@@ -1,0 +1,38 @@
+{
+  "name": "lattice",
+  "version": "0.1.0",
+  "description": "Tmux sessions with Claude Code + dev server, side by side",
+  "bin": {
+    "lattice": "./bin/lattice.js",
+    "lattice-app": "./bin/lattice-app.js"
+  },
+  "keywords": [
+    "tmux",
+    "claude",
+    "dev-server",
+    "developer-tools",
+    "cli",
+    "terminal",
+    "multiplexer"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/arach/lattice"
+  },
+  "license": "MIT",
+  "scripts": {
+    "dev": "bun --cwd docs-site dev"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "os": ["darwin"],
+  "files": [
+    "bin",
+    "app/Package.swift",
+    "app/Sources",
+    "app/LatticeApp.app/Contents/Info.plist",
+    "docs"
+  ]
+}

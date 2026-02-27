@@ -1,0 +1,17 @@
+node_modules/
+
+# Swift build artifacts
+app/.build/
+app/.swiftpm/
+
+# Built binary inside the .app bundle (rebuilt on install)
+app/LatticeApp.app/Contents/MacOS/LatticeApp
+
+# Release artifacts
+dist/
+
+# macOS junk
+.DS_Store
+
+# Claude Code local settings
+.claude/
