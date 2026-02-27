@@ -1,0 +1,25 @@
+---
+import DocsLayout from '../layouts/DocsLayout.astro'
+
+export async function getStaticPaths() {
+  const modules = import.meta.glob('../../../docs/*.md', { eager: true })
+  return Object.entries(modules).map(([path, mod]: [string, any]) => {
+    const slug = path.split('/').pop()!.replace('.md', '')
+    return {
+      params: { slug },
+      props: {
+        title: mod.frontmatter.title,
+        description: mod.frontmatter.description,
+        Content: mod.Content,
+        headings: mod.getHeadings(),
+      },
+    }
+  })
+}
+
+const { title, description, Content, headings } = Astro.props
+---
+
+<DocsLayout title={title} headings={headings} description={description}>
+  <Content />
+</DocsLayout>

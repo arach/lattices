@@ -13,7 +13,7 @@ const { title = 'Docs' } = Astro.props
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600&display=swap"
     />
-    <link rel="stylesheet" href="/pagefind/pagefind-ui.css" />
+    <link rel="stylesheet" href={`${import.meta.env.BASE_URL}/pagefind/pagefind-ui.css`} />
     <script is:inline>
       ;(function () {
         try {
@@ -76,7 +76,7 @@ const { title = 'Docs' } = Astro.props
         </p>
       </div>
     </div>
-    <script is:inline>
+    <script is:inline define:vars={{ baseUrl: import.meta.env.BASE_URL }}>
       (() => {
         const initUi = () => {
           try {
@@ -111,7 +111,7 @@ const { title = 'Docs' } = Astro.props
                   return
                 }
                 var script = document.createElement('script')
-                script.src = '/pagefind/pagefind-ui.js'
+                script.src = baseUrl + '/pagefind/pagefind-ui.js'
                 script.async = true
                 script.dataset.pagefind = 'true'
                 script.addEventListener('load', function () { resolve(true) })

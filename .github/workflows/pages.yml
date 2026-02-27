@@ -21,9 +21,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Landing page (site/)
       - uses: oven-sh/setup-bun@v2
 
+      # Landing page (site/)
       - run: bun install --frozen-lockfile
         working-directory: site
 
@@ -31,14 +31,10 @@ jobs:
         working-directory: site
 
       # Docs site (docs-site/) → site/dist/docs/
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - run: npm install
+      - run: bun install --frozen-lockfile
         working-directory: docs-site
 
-      - run: npx astro build
+      - run: bun run build
         working-directory: docs-site
 
       - run: mkdir -p site/dist/docs && cp -r docs-site/dist/* site/dist/docs/
