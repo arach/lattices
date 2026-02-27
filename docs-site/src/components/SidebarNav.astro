@@ -1,0 +1,37 @@
+---
+import { navGroups } from '../lib/nav'
+
+const currentPath = Astro.url.pathname.replace(/\/$/, '') || '/'
+---
+
+<nav class="space-y-4">
+  {navGroups.map((group) => (
+    <details class="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)]" open>
+      <summary class="flex w-full cursor-pointer items-center justify-between px-3 py-2 text-sm font-semibold text-[var(--color-text)] [&::-webkit-details-marker]:hidden">
+        <span>{group.title}</span>
+        <span class="text-xs text-[var(--color-text-muted)]">▾</span>
+      </summary>
+      <div class="border-t border-[var(--color-border)] px-3 py-2">
+        <ul class="m-0 list-none space-y-1 p-0 text-sm">
+          {group.items.map((item) => {
+            const isActive = currentPath === item.href
+            return (
+              <li>
+                <a
+                  class={'block rounded px-2 py-1 transition ' + (isActive
+                    ? 'font-medium text-[var(--color-accent)]'
+                    : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
+                  )}
+                  style={isActive ? 'background:color-mix(in srgb,var(--color-accent) 10%,transparent)' : undefined}
+                  href={item.href}
+                >
+                  {item.title}
+                </a>
+              </li>
+            )
+          })}
+        </ul>
+      </div>
+    </details>
+  ))}
+</nav>

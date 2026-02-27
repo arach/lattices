@@ -1,0 +1,47 @@
+@import "tailwindcss";
+@import "./tokens.css";
+@import "./base.css";
+@import "./markdown.css";
+
+@layer base {
+  .pagefind-ui {
+    color: var(--color-text);
+  }
+  .pagefind-ui__form input {
+    background: var(--color-surface);
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
+  }
+  .pagefind-ui__result {
+    background: var(--color-surface-muted);
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+  }
+  .pagefind-ui__result-link {
+    color: var(--color-text);
+    font-weight: 600;
+  }
+  .pagefind-ui__result-link:hover {
+    color: var(--color-accent);
+  }
+  .pagefind-ui__result-excerpt {
+    color: var(--color-text-muted);
+  }
+  .pagefind-ui__result-excerpt mark,
+  .pagefind-ui__result-title mark {
+    background: color-mix(in srgb, var(--color-accent) 25%, transparent);
+    color: var(--color-text);
+    border-radius: 4px;
+    padding: 0 2px;
+  }
+  .pagefind-ui__message {
+    color: var(--color-text-muted);
+  }
+  .pagefind-ui__button {
+    background: var(--color-surface-muted);
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
+  }
+}

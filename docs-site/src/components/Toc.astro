@@ -1,0 +1,88 @@
+---
+const { headings = [] } = Astro.props
+const filtered = headings.filter((heading) => heading.depth >= 2 && heading.depth <= 3)
+---
+
+<div class="space-y-3 text-sm" data-toc>
+  <p class="text-xs uppercase tracking-widest text-[var(--color-text-muted)]">On this page</p>
+  <ul class="space-y-2">
+    {filtered.map((heading) => (
+      <li>
+        <a
+          class="block text-[13px] text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text)]"
+          data-toc-link
+          data-level={heading.depth}
+          href={'#' + heading.slug}
+        >
+          {heading.text}
+        </a>
+      </li>
+    ))}
+  </ul>
+</div>
+
+<script is:inline>
+  var initToc = function () {
+    var tocLinks = Array.from(document.querySelectorAll('[data-toc-link]'))
+    var headings = tocLinks
+      .map(function (link) { return document.querySelector(link.getAttribute('href')) })
+      .filter(Boolean)
+
+    if (!headings.length) return
+    var activeId = null
+
+    var observer = new IntersectionObserver(
+      function (entries) {
+        entries.forEach(function (entry) {
+          if (!entry.isIntersecting) return
+          activeId = entry.target.id
+          tocLinks.forEach(function (link) { link.classList.remove('is-active') })
+          var activeLink = document.querySelector('[data-toc-link][href="#' + entry.target.id + '"]')
+          if (activeLink) activeLink.classList.add('is-active')
+        })
+      },
+      { rootMargin: '-120px 0px -66% 0px' },
+    )
+
+    headings.forEach(function (heading) { observer.observe(heading) })
+
+    window.addEventListener('mousemove', function (event) {
+      var atBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 2
+      if (!atBottom) return
+
+      var closest = null
+      var closestDistance = Infinity
+      headings.forEach(function (heading) {
+        var rect = heading.getBoundingClientRect()
+        var distance = Math.abs(rect.top - event.clientY)
+        if (distance < closestDistance) {
+          closestDistance = distance
+          closest = heading
+        }
+      })
+
+      if (closest && closest.id !== activeId) {
+        activeId = closest.id
+        tocLinks.forEach(function (link) { link.classList.remove('is-active') })
+        var activeLink = document.querySelector('[data-toc-link][href="#' + closest.id + '"]')
+        if (activeLink) activeLink.classList.add('is-active')
+      }
+    })
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initToc)
+  } else {
+    initToc()
+  }
+</script>
+
+<style is:inline>
+  [data-toc-link][data-level='3'] {
+    padding-left: 12px;
+  }
+  [data-toc-link].is-active {
+    color: var(--color-accent);
+    font-weight: 500;
+  }
+</style>

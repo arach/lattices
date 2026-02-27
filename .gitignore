@@ -10,6 +10,13 @@ app/LatticeApp.app/Contents/MacOS/LatticeApp
 # Release artifacts
 dist/
 
+# Site build artifacts
+site/dist/
+site/node_modules/
+docs-site/dist/
+docs-site/node_modules/
+docs-site/.astro/
+
 # macOS junk
 .DS_Store
 

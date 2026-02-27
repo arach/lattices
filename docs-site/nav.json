@@ -1,0 +1,31 @@
+{
+  "name": "lattice",
+  "groups": [
+    {
+      "id": "getting-started",
+      "title": "Getting Started",
+      "items": [
+        {
+          "id": "concepts",
+          "title": "Concepts",
+          "description": "Core ideas, glossary, and architecture of lattice"
+        },
+        {
+          "id": "config",
+          "title": "Configuration",
+          "description": "CLI commands, .lattice.json format, and tile positions"
+        },
+        {
+          "id": "app",
+          "title": "Menu Bar App",
+          "description": "Command palette, window tiling, and session management"
+        },
+        {
+          "id": "layers",
+          "title": "Layers & Tab Groups",
+          "description": "Switchable workspace layers and tabbed project groups"
+        }
+      ]
+    }
+  ]
+}

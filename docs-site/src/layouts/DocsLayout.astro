@@ -1,0 +1,35 @@
+---
+import BaseLayout from './BaseLayout.astro'
+import SidebarNav from '../components/SidebarNav.astro'
+import Toc from '../components/Toc.astro'
+
+const { title = 'Docs', headings = [], description } = Astro.props
+---
+
+<BaseLayout title={title}>
+  <div class="grid gap-8 lg:grid-cols-[var(--sidebar-width)_minmax(0,1fr)_var(--toc-width)]">
+    <aside class="hidden lg:block" data-pagefind-ignore>
+      <div class="sticky top-24">
+        <SidebarNav />
+      </div>
+    </aside>
+
+    <article class="min-w-0">
+      <div class="mb-10">
+        <h1 class="text-3xl md:text-4xl font-semibold tracking-tight">{title}</h1>
+        {description && (
+          <p class="mt-3 text-lg text-[var(--color-text-muted)]">{description}</p>
+        )}
+      </div>
+      <div class="doc-content">
+        <slot />
+      </div>
+    </article>
+
+    <aside class="hidden lg:block" data-pagefind-ignore>
+      <div class="sticky top-24">
+        <Toc headings={headings} />
+      </div>
+    </aside>
+  </div>
+</BaseLayout>

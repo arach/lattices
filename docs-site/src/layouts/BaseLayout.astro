@@ -1,0 +1,187 @@
+---
+import '../styles/global.css'
+
+const { title = 'Docs' } = Astro.props
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title} - lattice</title>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600&display=swap"
+    />
+    <link rel="stylesheet" href="/pagefind/pagefind-ui.css" />
+    <script is:inline>
+      ;(function () {
+        try {
+          var saved = localStorage.getItem('theme')
+        } catch (e) {}
+        var theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+        document.documentElement.setAttribute('data-theme', theme)
+      })()
+    </script>
+  </head>
+  <body>
+    <div class="root min-h-screen bg-[var(--color-bg)] text-[var(--color-text)]" data-theme-root>
+      <header class="sticky top-0 z-20 border-b border-[var(--color-border)] bg-[var(--color-bg)]/90 backdrop-blur" data-pagefind-ignore>
+        <div class="mx-auto flex w-full max-w-[1320px] items-center justify-between px-6 py-4">
+          <div class="flex items-center gap-3">
+            <div class="h-2.5 w-2.5 rounded-full bg-[var(--color-accent)] shadow-[0_0_0_4px_color-mix(in_srgb,var(--color-accent)_20%,transparent)]"></div>
+            <a class="text-lg font-semibold" href="/">lattice</a>
+          </div>
+          <div class="flex items-center gap-4 text-sm text-[var(--color-text-muted)]">
+            <button
+              class="hidden sm:flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-xs text-[var(--color-text-muted)]"
+              type="button"
+              data-search-toggle
+              data-pagefind-ignore
+            >
+              Search…
+              <span class="text-[10px] uppercase tracking-[0.2em]">⌘K</span>
+            </button>
+            <button
+              class="hidden sm:flex items-center rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1.5 text-xs text-[var(--color-text-muted)]"
+              type="button"
+              data-theme-toggle
+              data-pagefind-ignore
+            >
+              Theme
+            </button>
+          </div>
+        </div>
+      </header>
+      <main class="mx-auto w-full max-w-[1320px] px-6 py-8" data-pagefind-body>
+        <slot />
+      </main>
+    </div>
+    <div
+      class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50 p-6"
+      data-search-modal
+      data-pagefind-ignore
+    >
+      <div class="w-full max-w-2xl rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6 shadow-xl">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-xs uppercase tracking-widest text-[var(--color-text-muted)]">Search</p>
+            <h2 class="text-lg font-semibold">Find docs fast</h2>
+          </div>
+          <button class="text-xs text-[var(--color-text-muted)]" data-search-close>Close</button>
+        </div>
+        <div id="search-modal" class="mt-4 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4"></div>
+        <p id="search-modal-fallback" class="mt-3 hidden text-xs text-[var(--color-text-muted)]">
+          Search index is generated on build. Run <code>pnpm build</code> to enable Pagefind locally.
+        </p>
+      </div>
+    </div>
+    <script is:inline>
+      (() => {
+        const initUi = () => {
+          try {
+            var themeToggle = document.querySelector('[data-theme-toggle]')
+            themeToggle && themeToggle.addEventListener('click', function () {
+              var current = document.documentElement.getAttribute('data-theme') || 'light'
+              var next = current === 'dark' ? 'light' : 'dark'
+              document.documentElement.setAttribute('data-theme', next)
+              try { localStorage.setItem('theme', next) } catch (e) {}
+            })
+
+            window.addEventListener('keydown', function (event) {
+              var isMac = navigator.platform && navigator.platform.toUpperCase().indexOf('MAC') >= 0
+              var isCmdK = isMac ? event.metaKey && event.key.toLowerCase() === 'k' : event.ctrlKey && event.key.toLowerCase() === 'k'
+              if (isCmdK) {
+                event.preventDefault()
+                window.dispatchEvent(new CustomEvent('open-search'))
+              }
+            })
+
+            var searchModal = document.querySelector('[data-search-modal]')
+            var searchClose = document.querySelector('[data-search-close]')
+            var searchToggles = document.querySelectorAll('[data-search-toggle]')
+
+            var loadPagefind = function () {
+              return new Promise(function (resolve) {
+                if (window.PagefindUI) return resolve(true)
+                var existing = document.querySelector('script[data-pagefind]')
+                if (existing) {
+                  existing.addEventListener('load', function () { resolve(true) })
+                  existing.addEventListener('error', function () { resolve(false) })
+                  return
+                }
+                var script = document.createElement('script')
+                script.src = '/pagefind/pagefind-ui.js'
+                script.async = true
+                script.dataset.pagefind = 'true'
+                script.addEventListener('load', function () { resolve(true) })
+                script.addEventListener('error', function () { resolve(false) })
+                document.head.appendChild(script)
+              })
+            }
+
+            var initPagefind = function () {
+              loadPagefind().then(function (ok) {
+                if (ok && window.PagefindUI) {
+                  new window.PagefindUI({ element: '#search-modal', showSubResults: true })
+                } else {
+                  var fb = document.getElementById('search-modal-fallback')
+                  if (fb) fb.classList.remove('hidden')
+                }
+              })
+            }
+
+            var openSearch = function () {
+              if (!searchModal) return
+              searchModal.classList.remove('hidden')
+              searchModal.classList.add('flex')
+              initPagefind()
+            }
+
+            var closeSearch = function () {
+              if (!searchModal) return
+              searchModal.classList.add('hidden')
+              searchModal.classList.remove('flex')
+            }
+
+            searchToggles.forEach(function (btn) { btn.addEventListener('click', openSearch) })
+            searchClose && searchClose.addEventListener('click', closeSearch)
+            searchModal && searchModal.addEventListener('click', function (event) {
+              if (event.target === searchModal) closeSearch()
+            })
+            window.addEventListener('open-search', openSearch)
+          } catch (error) {
+            console.error('UI init failed', error)
+          }
+        }
+
+        var addCopyButtons = function () {
+          document.querySelectorAll('pre').forEach(function (block) {
+            if (block.dataset.copyReady) return
+            block.dataset.copyReady = 'true'
+            var button = document.createElement('button')
+            button.textContent = 'Copy'
+            button.className = 'absolute right-3 top-3 rounded bg-black/60 px-2 py-1 text-xs text-white transition hover:bg-black/80'
+            button.addEventListener('click', function () {
+              var code = block.querySelector('code')
+              if (!code) return
+              navigator.clipboard.writeText(code.innerText).then(function () {
+                button.textContent = 'Copied'
+                setTimeout(function () { button.textContent = 'Copy' }, 1200)
+              })
+            })
+            block.appendChild(button)
+          })
+        }
+
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', initUi)
+          document.addEventListener('DOMContentLoaded', addCopyButtons)
+        } else {
+          initUi()
+          addCopyButtons()
+        }
+      })()
+    </script>
+  </body>
+</html>

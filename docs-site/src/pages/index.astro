@@ -1,0 +1,262 @@
+---
+import '../styles/landing.css'
+
+const configExample = `{
+  <span class="hl-key">"ensure"</span>: <span class="hl-num">true</span>,
+  <span class="hl-key">"panes"</span>: [
+    {
+      <span class="hl-key">"name"</span>: <span class="hl-str">"claude"</span>,
+      <span class="hl-key">"cmd"</span>: <span class="hl-str">"claude"</span>,
+      <span class="hl-key">"size"</span>: <span class="hl-num">60</span>
+    },
+    {
+      <span class="hl-key">"name"</span>: <span class="hl-str">"server"</span>,
+      <span class="hl-key">"cmd"</span>: <span class="hl-str">"pnpm dev"</span>
+    },
+    {
+      <span class="hl-key">"name"</span>: <span class="hl-str">"tests"</span>,
+      <span class="hl-key">"cmd"</span>: <span class="hl-str">"pnpm test --watch"</span>
+    }
+  ]
+}`
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>lattice — tmux session manager for developers</title>
+
+    <meta name="description" content="A native tmux session manager with configurable pane layouts, auto-detection, and a macOS menu bar companion app." />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://lattice.arach.dev/" />
+    <meta property="og:title" content="lattice — tmux session manager for developers" />
+    <meta property="og:description" content="A native tmux session manager with configurable pane layouts, auto-detection, and a macOS menu bar companion app." />
+    <meta property="og:image" content="https://lattice.arach.dev/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:title" content="lattice — tmux session manager for developers" />
+    <meta property="twitter:description" content="A native tmux session manager with configurable pane layouts, auto-detection, and a macOS menu bar companion app." />
+    <meta property="twitter:image" content="https://lattice.arach.dev/og.png" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div class="landing">
+      <!-- Nav -->
+      <nav class="nav">
+        <div class="nav-inner">
+          <a href="/" class="nav-brand">
+            <span class="nav-dot"></span>
+            <span class="nav-name">lattice</span>
+          </a>
+          <div class="nav-links">
+            <a href="/docs/concepts" class="nav-link">Docs</a>
+            <a href="#config" class="nav-link">Config</a>
+            <a href="#app" class="nav-link">App</a>
+            <a href="https://github.com/arach/lattice" target="_blank" rel="noopener noreferrer" class="nav-github">
+              <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" /></svg>
+              <span class="github-label">GitHub</span>
+            </a>
+          </div>
+        </div>
+      </nav>
+
+      <!-- Hero -->
+      <div class="shell">
+        <section class="hero fade-in">
+          <div class="hero-badge">
+            <span class="hero-badge-dot"></span>
+            Open source · 100% free
+          </div>
+          <h1>
+            Declarative<br />
+            <span class="accent">tmux sessions</span>
+          </h1>
+          <p class="hero-sub">
+            Define your panes in JSON, run one command.
+            Native macOS menu bar app included.
+          </p>
+
+          <div class="install fade-in fade-in-delay-1">
+            <div class="install-tabs">
+              <button class="install-tab active" data-pm="npm">npm</button>
+              <button class="install-tab" data-pm="pnpm">pnpm</button>
+              <button class="install-tab" data-pm="bun">bun</button>
+            </div>
+            <div class="install-cmd">
+              <code><span class="prompt">$</span><span data-cmd>npm install -g lattice</span></code>
+              <button class="install-copy" data-copy-btn>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" data-copy-icon>
+                  <rect x="9" y="9" width="13" height="13" rx="2" />
+                  <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+                </svg>
+              </button>
+            </div>
+            <div class="hero-links">
+              <a href="https://github.com/arach/lattice" target="_blank" rel="noopener noreferrer" class="star-link">
+                <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M8 .25a.75.75 0 01.673.418l1.882 3.815 4.21.612a.75.75 0 01.416 1.279l-3.046 2.97.719 4.192a.75.75 0 01-1.088.791L8 12.347l-3.766 1.98a.75.75 0 01-1.088-.79l.72-4.194L.818 6.374a.75.75 0 01.416-1.28l4.21-.611L7.327.668A.75.75 0 018 .25z" /></svg>
+                Star us on GitHub
+              </a>
+              <a href="/docs/concepts" class="docs-link">Read the docs</a>
+            </div>
+          </div>
+        </section>
+
+        <!-- Config -->
+        <section class="section" id="config">
+          <div class="config-grid fade-in fade-in-delay-2">
+            <div>
+              <h2 class="config-title">One file. Any layout.</h2>
+              <p class="config-desc">
+                Drop a <code>.lattice.json</code> in your project root.
+                Define panes, commands, and sizes.
+              </p>
+              <div class="layouts">
+                <div class="layout-card">
+                  <h3>1 pane</h3>
+                  <p>Single focus</p>
+                  <div class="layout-diagram layout-1">
+                    <div class="layout-pane main">claude</div>
+                  </div>
+                </div>
+                <div class="layout-card">
+                  <h3>2 panes</h3>
+                  <p>Side-by-side</p>
+                  <div class="layout-diagram layout-2">
+                    <div class="layout-pane main">claude</div>
+                    <div class="layout-pane">server</div>
+                  </div>
+                </div>
+                <div class="layout-card">
+                  <h3>3+ panes</h3>
+                  <p>Main-vertical</p>
+                  <div class="layout-diagram layout-3">
+                    <div class="layout-pane main">claude</div>
+                    <div class="layout-pane">server</div>
+                    <div class="layout-pane">tests</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="code-block">
+              <div class="code-header">
+                <span class="code-dot code-dot-red"></span>
+                <span class="code-dot code-dot-yellow"></span>
+                <span class="code-dot code-dot-green"></span>
+                <span class="code-filename">.lattice.json</span>
+              </div>
+              <pre class="code-pre" set:html={configExample} />
+            </div>
+          </div>
+        </section>
+
+        <!-- Features -->
+        <section class="features fade-in fade-in-delay-2" id="features">
+          <div class="feature">
+            <span class="feature-icon">&#9654;</span>
+            <h3>One command</h3>
+            <p>Run <code>lattice</code> in any project directory to create a named tmux session with your panes running.</p>
+          </div>
+          <div class="feature">
+            <span class="feature-icon">&#9881;</span>
+            <h3>Auto-detect</h3>
+            <p>Reads <code>package.json</code> and lock files to pick the right dev command automatically.</p>
+          </div>
+          <div class="feature">
+            <span class="feature-icon">&#8644;</span>
+            <h3>Persistent</h3>
+            <p>Sessions run in the background. Detach, reattach, pick up where you left off.</p>
+          </div>
+          <div class="feature">
+            <span class="feature-icon">&#9638;</span>
+            <h3>Workspace layers</h3>
+            <p>Group projects into switchable layers. <code>Cmd+Option+1/2/3</code> to instantly focus and tile a whole context.</p>
+          </div>
+          <div class="feature">
+            <span class="feature-icon">&#9783;</span>
+            <h3>Tab groups</h3>
+            <p>Bundle related projects as tabs in one window. iOS, macOS, Web, API — one <code>lattice group</code> to launch them all.</p>
+          </div>
+        </section>
+
+        <!-- Menu bar app -->
+        <section class="app-section" id="app">
+          <div class="app-grid">
+            <div>
+              <h2 class="app-title">Native macOS menu bar app</h2>
+              <p class="app-desc">
+                Built with SwiftUI. Manage all your tmux sessions without touching the terminal.
+              </p>
+              <ul class="app-features">
+                <li>See all projects and session status</li>
+                <li>Launch, attach, or detach with a click</li>
+                <li>Command palette via <code>Cmd+Shift+M</code></li>
+                <li>Window tiling to halves, quarters, or full screen</li>
+                <li><a href="/docs/layers">Workspace layers</a> with <code>Cmd+Option+1/2/3</code></li>
+                <li><a href="/docs/layers#tab-groups">Tab groups</a> — related projects as tabs in one session</li>
+                <li>Space navigation and window highlighting</li>
+              </ul>
+            </div>
+            <div class="app-screenshot-wrap">
+              <img src="/app-screenshot.png" alt="lattice menu bar app showing a running session" class="app-screenshot" />
+            </div>
+          </div>
+        </section>
+
+        <!-- CTA -->
+        <section class="cta">
+          <h2>Ready to lattice?</h2>
+          <p>Install globally and run in any project directory.</p>
+          <div class="cta-actions">
+            <a href="https://github.com/arach/lattice" target="_blank" rel="noopener noreferrer" class="btn btn-primary">View on GitHub</a>
+            <a href="https://www.npmjs.com/package/lattice" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">npm package</a>
+          </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+          <span>Built by <a href="https://github.com/arach" target="_blank" rel="noopener noreferrer">@arach</a></span>
+          <a href="/docs/concepts" class="footer-link">Documentation</a>
+          <span>macOS only. Requires tmux.</span>
+        </footer>
+      </div>
+    </div>
+
+    <script is:inline>
+      (() => {
+        const commands = { npm: 'npm install -g lattice', pnpm: 'pnpm add -g lattice', bun: 'bun add -g lattice' }
+        const cmdEl = document.querySelector('[data-cmd]')
+        const tabs = document.querySelectorAll('.install-tab')
+        const copyBtn = document.querySelector('[data-copy-btn]')
+        let current = 'npm'
+
+        tabs.forEach(tab => {
+          tab.addEventListener('click', () => {
+            current = tab.dataset.pm
+            cmdEl.textContent = commands[current]
+            tabs.forEach(t => t.classList.remove('active'))
+            tab.classList.add('active')
+          })
+        })
+
+        copyBtn && copyBtn.addEventListener('click', () => {
+          navigator.clipboard.writeText(commands[current]).then(() => {
+            copyBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12" /></svg>'
+            setTimeout(() => {
+              copyBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>'
+            }, 2000)
+          })
+        })
+      })()
+    </script>
+  </body>
+</html>

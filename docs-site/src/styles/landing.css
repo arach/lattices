@@ -1,0 +1,702 @@
+/* ── Landing page styles ─────────────────────────── */
+
+/* Override any Astro/Tailwind base styles on the landing page */
+html:has(.landing) {
+  background: #111113;
+}
+
+html:has(.landing) body {
+  margin: 0;
+  padding: 0;
+  background: #111113;
+}
+
+/* Scoped under .landing to avoid collisions with docs */
+.landing {
+  --bg: #111113;
+  --surface: #1c1c1e;
+  --surface-hover: #2c2c2e;
+  --border: rgba(255, 255, 255, 0.06);
+  --border-lit: rgba(255, 255, 255, 0.1);
+  --text: rgba(255, 255, 255, 0.92);
+  --text-dim: rgba(255, 255, 255, 0.5);
+  --text-muted: rgba(255, 255, 255, 0.3);
+  --green: #33c773;
+  --green-glow: rgba(51, 199, 115, 0.15);
+  --amber: #f5a623;
+
+  font-family: "Space Grotesk", -apple-system, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+.landing a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.landing code {
+  font-family: "JetBrains Mono", "SF Mono", monospace;
+}
+
+/* ── Shell ─────────────────────────────────────────── */
+
+.landing .shell {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* ── Nav ───────────────────────────────────────────── */
+
+.landing .nav {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  backdrop-filter: blur(16px);
+  background: rgba(17, 17, 19, 0.85);
+  border-bottom: 1px solid var(--border);
+}
+
+.landing .nav-inner {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.landing .nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.landing .nav-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 8px var(--green-glow);
+}
+
+.landing .nav-name {
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: -0.02em;
+}
+
+.landing .nav-links {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.landing .nav-link {
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-dim);
+  transition: all 0.15s;
+}
+
+.landing .nav-link:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.landing .nav-github {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-lit);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-dim);
+  transition: all 0.15s;
+}
+
+.landing .nav-github:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.landing .nav-github svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* ── Hero ──────────────────────────────────────────── */
+
+.landing .hero {
+  padding: 56px 0 40px;
+  text-align: center;
+}
+
+.landing .hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1px solid var(--border-lit);
+  background: var(--surface);
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 24px;
+}
+
+.landing .hero-badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+}
+
+.landing .hero h1 {
+  font-family: "Space Grotesk", -apple-system, sans-serif;
+  font-size: clamp(2rem, 4.5vw, 3rem);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  margin-bottom: 16px;
+  color: var(--text);
+}
+
+.landing .hero h1 .accent {
+  color: var(--green);
+}
+
+.landing .hero-sub {
+  font-size: 16px;
+  color: var(--text-dim);
+  line-height: 1.6;
+  max-width: 420px;
+  margin: 0 auto 32px;
+}
+
+/* ── Install block ─────────────────────────────────── */
+
+.landing .install {
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+.landing .install-tabs {
+  display: inline-flex;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px;
+  margin-bottom: 8px;
+}
+
+.landing .install-tab {
+  padding: 4px 12px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.landing .install-tab:hover {
+  color: var(--text-dim);
+}
+
+.landing .install-tab.active {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--green);
+}
+
+.landing .install-cmd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border-lit);
+  border-radius: 10px;
+}
+
+.landing .install-cmd code {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.landing .install-cmd .prompt {
+  color: var(--green);
+  margin-right: 8px;
+}
+
+.landing .install-copy {
+  display: flex;
+  align-items: center;
+  padding: 5px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.landing .install-copy:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.landing .install-copy svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* ── Hero links ────────────────────────────────────── */
+
+.landing .hero-links {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 14px;
+}
+
+.landing .star-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  transition: all 0.15s;
+}
+
+.landing .star-link:hover {
+  color: var(--amber);
+}
+
+.landing .star-link svg {
+  width: 13px;
+  height: 13px;
+}
+
+.landing .docs-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  transition: all 0.15s;
+}
+
+.landing .docs-link:hover {
+  color: var(--green);
+}
+
+/* ── Config section ────────────────────────────────── */
+
+.landing .config-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+  align-items: start;
+}
+
+.landing .config-title {
+  font-family: "Space Grotesk", -apple-system, sans-serif;
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 10px;
+  color: var(--text);
+}
+
+.landing .config-desc {
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1.5;
+  margin-bottom: 20px;
+}
+
+/* ── Code block ────────────────────────────────────── */
+
+.landing .code-block {
+  border-radius: 12px;
+  border: 1px solid var(--border-lit);
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.landing .code-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.landing .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+.landing .code-dot-red { background: #ff5f56; }
+.landing .code-dot-yellow { background: #ffbd2e; }
+.landing .code-dot-green { background: #27ca40; }
+
+.landing .code-filename {
+  margin-left: 10px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.landing .code-pre {
+  margin: 0;
+  padding: 16px;
+  overflow-x: auto;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+}
+
+.landing .code-pre .hl-key { color: #7ec8e3; }
+.landing .code-pre .hl-str { color: var(--green); }
+.landing .code-pre .hl-num { color: var(--amber); }
+
+/* ── Layout diagrams ───────────────────────────────── */
+
+.landing .layouts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.landing .layout-card {
+  padding: 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.landing .layout-card h3 {
+  font-family: "Space Grotesk", -apple-system, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 2px;
+  color: var(--text);
+}
+
+.landing .layout-card p {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+.landing .layout-diagram {
+  display: grid;
+  gap: 3px;
+  height: 80px;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.landing .layout-1 { grid-template-columns: 1fr; }
+.landing .layout-2 { grid-template-columns: 60fr 40fr; }
+.landing .layout-3 { grid-template-columns: 60fr 40fr; grid-template-rows: 1fr 1fr; }
+
+.landing .layout-pane {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-lit);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.landing .layout-pane.main {
+  border-color: rgba(51, 199, 115, 0.25);
+  color: var(--green);
+}
+
+.landing .layout-3 .layout-pane.main {
+  grid-row: 1 / -1;
+}
+
+/* ── Features ──────────────────────────────────────── */
+
+.landing .features {
+  padding: 48px 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.landing .feature {
+  padding: 20px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  transition: border-color 0.2s;
+}
+
+.landing .feature:hover {
+  border-color: var(--border-lit);
+}
+
+.landing .feature-icon {
+  font-size: 18px;
+  margin-bottom: 10px;
+  display: block;
+}
+
+.landing .feature h3 {
+  font-family: "Space Grotesk", -apple-system, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--text);
+}
+
+.landing .feature p {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.45;
+}
+
+/* ── Section headers ───────────────────────────────── */
+
+.landing .section { padding: 48px 0; }
+
+/* ── Menu bar app section ──────────────────────────── */
+
+.landing .app-section {
+  padding: 48px 0;
+  border-top: 1px solid var(--border);
+}
+
+.landing .app-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 40px;
+  align-items: center;
+}
+
+.landing .app-title {
+  font-family: "Space Grotesk", -apple-system, sans-serif;
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 10px;
+  color: var(--text);
+}
+
+.landing .app-desc {
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1.5;
+  margin-bottom: 20px;
+}
+
+.landing .app-features {
+  list-style: none;
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  margin: 0;
+}
+
+.landing .app-features li {
+  font-size: 13px;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.landing .app-features li::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--green);
+  flex-shrink: 0;
+}
+
+.landing .app-screenshot-wrap {
+  display: flex;
+  justify-content: center;
+}
+
+.landing .app-screenshot {
+  max-width: 320px;
+  width: 100%;
+  border-radius: 14px;
+  box-shadow:
+    0 24px 48px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+/* ── CTA ───────────────────────────────────────────── */
+
+.landing .cta {
+  padding: 56px 0;
+  text-align: center;
+  border-top: 1px solid var(--border);
+}
+
+.landing .cta h2 {
+  font-family: "Space Grotesk", -apple-system, sans-serif;
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 10px;
+  color: var(--text);
+}
+
+.landing .cta p {
+  color: var(--text-dim);
+  font-size: 14px;
+  margin-bottom: 28px;
+}
+
+.landing .cta-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.landing .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 22px;
+  border-radius: 8px;
+  border: none;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.landing .btn-primary {
+  background: var(--green);
+  color: #0a1f12;
+}
+
+.landing .btn-primary:hover {
+  background: #3dd882;
+}
+
+.landing .btn-secondary {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border-lit);
+}
+
+.landing .btn-secondary:hover {
+  border-color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* ── Footer ────────────────────────────────────────── */
+
+.landing .footer {
+  padding: 32px 0 48px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.landing .footer a {
+  color: var(--text-dim);
+  transition: color 0.15s;
+}
+
+.landing .footer a:hover {
+  color: var(--text);
+}
+
+/* ── Animations ────────────────────────────────────── */
+
+.landing .fade-in {
+  animation: landing-fadeUp 0.6s ease both;
+}
+
+.landing .fade-in-delay-1 { animation-delay: 0.08s; }
+.landing .fade-in-delay-2 { animation-delay: 0.16s; }
+
+@keyframes landing-fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Responsive ────────────────────────────────────── */
+
+@media (max-width: 720px) {
+  .landing .features { grid-template-columns: repeat(2, 1fr); }
+  .landing .config-grid { grid-template-columns: 1fr; }
+  .landing .app-grid { grid-template-columns: 1fr; }
+  .landing .app-screenshot-wrap { order: -1; }
+}
+
+@media (max-width: 520px) {
+  .landing .shell { padding: 0 16px; }
+  .landing .nav-inner { padding: 12px 16px; }
+  .landing .nav-links { gap: 2px; }
+  .landing .nav-link { padding: 5px 8px; font-size: 12px; }
+  .landing .nav-github { padding: 5px 8px; }
+  .landing .github-label { display: none; }
+  .landing .hero { padding: 40px 0 32px; }
+  .landing .hero h1 { font-size: 1.8rem; }
+  .landing .hero-sub { font-size: 14px; margin-bottom: 24px; }
+  .landing .hero-badge { font-size: 11px; margin-bottom: 18px; }
+  .landing .install-cmd code { font-size: 12px; }
+  .landing .features { padding: 32px 0; grid-template-columns: 1fr; gap: 10px; }
+  .landing .feature { padding: 16px; }
+  .landing .feature h3 { font-size: 13px; }
+  .landing .feature p { font-size: 12px; }
+  .landing .section { padding: 32px 0; }
+  .landing .config-title, .landing .app-title { font-size: 1.3rem; }
+  .landing .layouts { grid-template-columns: 1fr; }
+  .landing .app-grid { gap: 20px; }
+  .landing .app-features li { font-size: 12px; }
+  .landing .app-screenshot { max-width: 260px; }
+  .landing .cta { padding: 40px 0; }
+  .landing .cta h2 { font-size: 1.3rem; }
+  .landing .cta-actions { flex-direction: column; align-items: stretch; }
+  .landing .btn { justify-content: center; }
+  .landing .footer { padding: 28px 0 40px; font-size: 11px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing .fade-in { animation: none; }
+}
