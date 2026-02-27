@@ -8,6 +8,8 @@
     <string>Lattice</string>
     <key>CFBundleExecutable</key>
     <string>LatticeApp</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleVersion</key>
