@@ -380,6 +380,8 @@ code {
 .code-pre .hl-num { color: var(--amber); }
 .code-pre .hl-comment { color: var(--text-muted); font-style: italic; }
 .code-pre .hl-brace { color: var(--text-muted); }
+.code-pre .hl-kw { color: #c792ea; }
+.code-pre .hl-cmt { color: var(--text-muted); font-style: italic; }
 
 /* ── Layout diagrams ───────────────────────────────── */
 
@@ -455,7 +457,7 @@ code {
 .features {
   padding: 48px 0;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
 }
 
@@ -487,6 +489,53 @@ code {
   font-size: 13px;
   color: var(--text-dim);
   line-height: 1.45;
+}
+
+/* ── Agent section ─────────────────────────────────── */
+
+.agent-methods {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 16px;
+  display: grid;
+  gap: 8px;
+}
+
+.agent-methods li {
+  font-size: 13px;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.agent-methods li::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--green);
+  flex-shrink: 0;
+}
+
+.agent-methods code {
+  font-size: 12px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--green);
+}
+
+.agent-api-link {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--green);
+  transition: opacity 0.15s;
+}
+
+.agent-api-link:hover {
+  opacity: 0.8;
 }
 
 /* ── Section headers ───────────────────────────────── */

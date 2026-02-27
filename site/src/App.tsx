@@ -63,6 +63,30 @@ const configExample = `{
   ]
 }`;
 
+const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span class="hl-kw">from</span> <span class="hl-str">'lattice/daemon-client'</span>
+
+<span class="hl-cmt">// Discover projects</span>
+<span class="hl-kw">const</span> projects = <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'projects.list'</span>)
+
+<span class="hl-cmt">// Launch two sessions</span>
+<span class="hl-kw">await</span> daemonCall(<span class="hl-str">'session.launch'</span>, {
+  path: <span class="hl-str">'/Users/you/dev/frontend'</span>
+})
+<span class="hl-kw">await</span> daemonCall(<span class="hl-str">'session.launch'</span>, {
+  path: <span class="hl-str">'/Users/you/dev/api'</span>
+})
+
+<span class="hl-cmt">// Tile side-by-side</span>
+<span class="hl-kw">const</span> sessions = <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'tmux.sessions'</span>)
+<span class="hl-kw">await</span> daemonCall(<span class="hl-str">'window.tile'</span>, {
+  session: sessions[<span class="hl-num">0</span>].name,
+  position: <span class="hl-str">'left'</span>
+})
+<span class="hl-kw">await</span> daemonCall(<span class="hl-str">'window.tile'</span>, {
+  session: sessions[<span class="hl-num">1</span>].name,
+  position: <span class="hl-str">'right'</span>
+})`;
+
 export default function App() {
   const [pm, setPm] = useState<PkgManager>("npm");
   const [copied, setCopied] = useState(false);
@@ -85,6 +109,9 @@ export default function App() {
           <div className="nav-links">
             <a href="/docs/concepts" className="nav-link">
               Docs
+            </a>
+            <a href="/docs/api" className="nav-link">
+              API
             </a>
             <a href="#config" className="nav-link">
               Config
@@ -113,13 +140,14 @@ export default function App() {
             Open source · 100% free
           </div>
           <h1>
-            Declarative
+            The workspace
             <br />
-            <span className="accent">tmux sessions</span>
+            <span className="accent">control plane</span>
           </h1>
           <p className="hero-sub">
-            Define your panes in JSON, run one command.
-            Native macOS menu bar app included.
+            Give AI coding agents full control over tmux sessions,
+            window tiling, and project layouts — or use the CLI and
+            menu bar app yourself. 20 RPC methods. Zero config required.
           </p>
 
           <div className="install fade-in fade-in-delay-1">
@@ -214,6 +242,45 @@ export default function App() {
           </div>
         </section>
 
+        {/* Agent Control Plane */}
+        <section className="section" id="agents">
+          <div className="config-grid fade-in fade-in-delay-2">
+            <div>
+              <h2 className="config-title">
+                Agents need more than a shell
+              </h2>
+              <p className="config-desc">
+                The daemon API gives AI agents full workspace control
+                over WebSocket. Discover projects, launch sessions,
+                tile windows, and react to changes — all programmatically.
+              </p>
+              <ul className="agent-methods">
+                <li><code>windows.list</code> — see every window on screen</li>
+                <li><code>session.launch</code> — start a project session</li>
+                <li><code>window.tile</code> — snap windows to screen positions</li>
+                <li><code>layer.switch</code> — switch workspace contexts</li>
+                <li>Real-time events for window and session changes</li>
+              </ul>
+              <a href="/docs/api" className="agent-api-link">
+                Full API reference &rarr;
+              </a>
+            </div>
+
+            <div className="code-block">
+              <div className="code-header">
+                <span className="code-dot code-dot-red" />
+                <span className="code-dot code-dot-yellow" />
+                <span className="code-dot code-dot-green" />
+                <span className="code-filename">agent-example.js</span>
+              </div>
+              <pre
+                className="code-pre"
+                dangerouslySetInnerHTML={{ __html: agentExample }}
+              />
+            </div>
+          </div>
+        </section>
+
         {/* Features */}
         <section className="features fade-in fade-in-delay-2" id="features">
           <div className="feature">
@@ -222,6 +289,14 @@ export default function App() {
             <p>
               Run <code>lattice</code> in any project directory to create a named
               tmux session with your panes running.
+            </p>
+          </div>
+          <div className="feature">
+            <span className="feature-icon">&#9881;</span>
+            <h3>Daemon API</h3>
+            <p>
+              20 JSON-RPC methods over WebSocket. Read windows, launch sessions,
+              tile, switch layers. Built for agents, scripts, and automation.
             </p>
           </div>
           <div className="feature">
@@ -296,7 +371,7 @@ export default function App() {
         {/* CTA */}
         <section className="cta">
           <h2>Ready to lattice?</h2>
-          <p>Install globally and run in any project directory.</p>
+          <p>Install globally. Your agent gets a control plane in seconds.</p>
           <div className="cta-actions">
             <a
               href="https://github.com/arach/lattice"
@@ -313,6 +388,12 @@ export default function App() {
               className="btn btn-secondary"
             >
               npm package
+            </a>
+            <a
+              href="/docs/api"
+              className="btn btn-secondary"
+            >
+              API Reference
             </a>
           </div>
         </section>
