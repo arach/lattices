@@ -19,6 +19,30 @@ const configExample = `{
     }
   ]
 }`
+
+const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span class="hl-kw">from</span> <span class="hl-str">'lattice/daemon-client'</span>
+
+<span class="hl-cmt">// Discover projects</span>
+<span class="hl-kw">const</span> projects = <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'projects.list'</span>)
+
+<span class="hl-cmt">// Launch two sessions</span>
+<span class="hl-kw">await</span> daemonCall(<span class="hl-str">'session.launch'</span>, {
+  path: <span class="hl-str">'/Users/you/dev/frontend'</span>
+})
+<span class="hl-kw">await</span> daemonCall(<span class="hl-str">'session.launch'</span>, {
+  path: <span class="hl-str">'/Users/you/dev/api'</span>
+})
+
+<span class="hl-cmt">// Tile side-by-side</span>
+<span class="hl-kw">const</span> sessions = <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'tmux.sessions'</span>)
+<span class="hl-kw">await</span> daemonCall(<span class="hl-str">'window.tile'</span>, {
+  session: sessions[<span class="hl-num">0</span>].name,
+  position: <span class="hl-str">'left'</span>
+})
+<span class="hl-kw">await</span> daemonCall(<span class="hl-str">'window.tile'</span>, {
+  session: sessions[<span class="hl-num">1</span>].name,
+  position: <span class="hl-str">'right'</span>
+})`
 ---
 
 <!doctype html>
@@ -27,21 +51,21 @@ const configExample = `{
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>lattice — tmux session manager for developers</title>
+    <title>lattice — workspace control plane for AI coding agents</title>
 
-    <meta name="description" content="A native tmux session manager with configurable pane layouts, auto-detection, and a macOS menu bar companion app." />
+    <meta name="description" content="Give AI agents full control over tmux sessions, window tiling, and project layouts. 20 RPC methods over WebSocket. CLI and native macOS menu bar app included." />
 
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://lattice.arach.dev/" />
-    <meta property="og:title" content="lattice — tmux session manager for developers" />
-    <meta property="og:description" content="A native tmux session manager with configurable pane layouts, auto-detection, and a macOS menu bar companion app." />
+    <meta property="og:title" content="lattice — workspace control plane for AI coding agents" />
+    <meta property="og:description" content="Give AI agents full control over tmux sessions, window tiling, and project layouts. 20 RPC methods over WebSocket. CLI and native macOS menu bar app included." />
     <meta property="og:image" content="https://lattice.arach.dev/og.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
 
     <meta property="twitter:card" content="summary_large_image" />
-    <meta property="twitter:title" content="lattice — tmux session manager for developers" />
-    <meta property="twitter:description" content="A native tmux session manager with configurable pane layouts, auto-detection, and a macOS menu bar companion app." />
+    <meta property="twitter:title" content="lattice — workspace control plane for AI coding agents" />
+    <meta property="twitter:description" content="Give AI agents full control over tmux sessions, window tiling, and project layouts. 20 RPC methods over WebSocket. CLI and native macOS menu bar app included." />
     <meta property="twitter:image" content="https://lattice.arach.dev/og.png" />
 
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-GSHDZPFRZG"></script>
@@ -67,6 +91,7 @@ const configExample = `{
           </a>
           <div class="nav-links">
             <a href="/docs/concepts" class="nav-link">Docs</a>
+            <a href="/docs/api" class="nav-link">API</a>
             <a href="#config" class="nav-link">Config</a>
             <a href="#app" class="nav-link">App</a>
             <a href="https://github.com/arach/lattice" target="_blank" rel="noopener noreferrer" class="nav-github">
@@ -85,12 +110,13 @@ const configExample = `{
             Open source · 100% free
           </div>
           <h1>
-            Declarative<br />
-            <span class="accent">tmux sessions</span>
+            The workspace<br />
+            <span class="accent">control plane</span>
           </h1>
           <p class="hero-sub">
-            Define your panes in JSON, run one command.
-            Native macOS menu bar app included.
+            Give AI coding agents full control over tmux sessions,
+            window tiling, and project layouts — or use the CLI and
+            menu bar app yourself. 20 RPC methods. Zero config required.
           </p>
 
           <div class="install fade-in fade-in-delay-1">
@@ -167,12 +193,49 @@ const configExample = `{
           </div>
         </section>
 
+        <!-- Agent Control Plane -->
+        <section class="section" id="agents">
+          <div class="config-grid fade-in fade-in-delay-2">
+            <div>
+              <h2 class="config-title">Agents need more than a shell</h2>
+              <p class="config-desc">
+                The daemon API gives AI agents full workspace control
+                over WebSocket. Discover projects, launch sessions,
+                tile windows, and react to changes — all programmatically.
+              </p>
+              <ul class="agent-methods">
+                <li><code>windows.list</code> — see every window on screen</li>
+                <li><code>session.launch</code> — start a project session</li>
+                <li><code>window.tile</code> — snap windows to screen positions</li>
+                <li><code>layer.switch</code> — switch workspace contexts</li>
+                <li>Real-time events for window and session changes</li>
+              </ul>
+              <a href="/docs/api" class="agent-api-link">Full API reference &rarr;</a>
+            </div>
+
+            <div class="code-block">
+              <div class="code-header">
+                <span class="code-dot code-dot-red"></span>
+                <span class="code-dot code-dot-yellow"></span>
+                <span class="code-dot code-dot-green"></span>
+                <span class="code-filename">agent-example.js</span>
+              </div>
+              <pre class="code-pre" set:html={agentExample} />
+            </div>
+          </div>
+        </section>
+
         <!-- Features -->
         <section class="features fade-in fade-in-delay-2" id="features">
           <div class="feature">
             <span class="feature-icon">&#9654;</span>
             <h3>One command</h3>
             <p>Run <code>lattice</code> in any project directory to create a named tmux session with your panes running.</p>
+          </div>
+          <div class="feature">
+            <span class="feature-icon">&#9881;</span>
+            <h3>Daemon API</h3>
+            <p>20 JSON-RPC methods over WebSocket. Read windows, launch sessions, tile, switch layers. Built for agents, scripts, and automation.</p>
           </div>
           <div class="feature">
             <span class="feature-icon">&#9881;</span>
@@ -223,10 +286,11 @@ const configExample = `{
         <!-- CTA -->
         <section class="cta">
           <h2>Ready to lattice?</h2>
-          <p>Install globally and run in any project directory.</p>
+          <p>Install globally. Your agent gets a control plane in seconds.</p>
           <div class="cta-actions">
             <a href="https://github.com/arach/lattice" target="_blank" rel="noopener noreferrer" class="btn btn-primary">View on GitHub</a>
             <a href="https://www.npmjs.com/package/lattice" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">npm package</a>
+            <a href="/docs/api" class="btn btn-secondary">API Reference</a>
           </div>
         </section>
 

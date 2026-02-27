@@ -200,6 +200,49 @@ links to open the full `config.md` and `concepts.md` docs.
 can't be targeted. "frontmost" means tiling applies to whatever
 window is in front.
 
+## Daemon
+
+The menu bar app runs a WebSocket daemon on `ws://127.0.0.1:9399`.
+It starts automatically when the app launches and stops when the app
+quits.
+
+### Checking status
+
+```bash
+lattice daemon status
+```
+
+Or programmatically:
+
+```js
+import { isDaemonRunning, daemonCall } from 'lattice/daemon-client'
+
+if (await isDaemonRunning()) {
+  const status = await daemonCall('daemon.status')
+  console.log(status) // { uptime, clientCount, version, windowCount, tmuxSessionCount }
+}
+```
+
+### What it provides
+
+- **20 RPC methods** — read windows, sessions, projects, spaces, layers;
+  launch/kill/sync sessions; tile/focus/move windows; switch layers;
+  manage tab groups
+- **3 real-time events** — `windows.changed`, `tmux.changed`,
+  `layer.switched` — broadcast to all connected clients
+- **Window tracking** — the daemon monitors the desktop window list
+  and correlates windows to lattice sessions via title tags
+- **Space awareness** — knows which macOS Space each window is on
+
+### Security
+
+The daemon binds to **localhost only** (`127.0.0.1:9399`). It is not
+accessible from the network. There is no authentication — any process
+on the same machine can connect. This is intentional: the daemon is
+designed for local automation, not remote access.
+
+See the [Daemon API reference](/docs/api) for the full method list.
+
 ## Diagnostics
 
 The diagnostics panel shows a timestamped log of window navigation

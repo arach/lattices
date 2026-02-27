@@ -214,6 +214,27 @@ When you switch to a layer:
 
 The app remembers which layer was last active across restarts.
 
+### Programmatic switching
+
+Agents and scripts can switch layers via the daemon API:
+
+```js
+import { daemonCall } from 'lattice/daemon-client'
+
+// List available layers
+const { layers, active } = await daemonCall('layers.list')
+console.log(`Active: ${layers[active].label}`)
+
+// Switch to a layer by index
+await daemonCall('layer.switch', { index: 0 })
+```
+
+The `layer.switch` call focuses and tiles all windows in the target
+layer, just like the hotkey or command palette. A `layer.switched`
+event is broadcast to all connected clients.
+
+See the [Daemon API reference](/docs/api) for more methods.
+
 ### Layer bar
 
 When a workspace config is loaded, a layer bar appears between the

@@ -20,6 +20,20 @@ It has two parts:
 
 ## Glossary
 
+### Daemon
+The lattice daemon is a WebSocket server (`ws://127.0.0.1:9399`) that
+runs inside the menu bar app. It exposes 20 RPC methods and 3 real-time
+events, giving scripts and AI agents full programmatic control over
+sessions, windows, layers, and projects. See the
+[API reference](/docs/api).
+
+### Agent
+Any program that calls the daemon API to control the workspace
+autonomously — an AI coding agent, a shell script, a CI pipeline,
+or a custom tool. Agents can discover projects, launch sessions, tile
+windows, switch layers, and react to real-time events without human
+interaction.
+
 ### Session
 A tmux session is a persistent workspace that lives in the background.
 It survives terminal crashes, disconnects, and even closing your laptop.
@@ -80,10 +94,12 @@ Tiling uses AppleScript bounds and respects the menu bar and dock.
 
 ## Architecture
 
-### Three-layer stack
+### Four-layer stack
 
 ```
 ┌─────────────────────────────┐
+│  AI Agents / Scripts        │  ← daemon API: 20 RPC methods, real-time events
+├─────────────────────────────┤
 │  Menu bar app (Swift/AppKit)│  ← GUI: command palette, tiling, project list
 ├─────────────────────────────┤
 │  CLI (Node.js)              │  ← lattice, lattice sync, lattice restart ...
@@ -95,8 +111,13 @@ Tiling uses AppleScript bounds and respects the menu bar and dock.
 - The **CLI** talks to tmux directly via `tmux` shell commands.
 - The **menu bar app** calls the CLI binary for session operations
   (launch, sync, restart) and uses tmux directly for status checks
-  (has-session, list-panes).
-- Both layers share the same session naming convention so they always
+  (has-session, list-panes). It also runs the **daemon** — a WebSocket
+  server on `ws://127.0.0.1:9399`.
+- **Agents and scripts** connect to the daemon over WebSocket and can
+  do everything the app and CLI can do: discover projects, launch
+  sessions, tile windows, switch layers, and subscribe to real-time
+  events.
+- All layers share the same session naming convention so they always
   agree on which session belongs to which project.
 
 ### Session naming
@@ -154,6 +175,36 @@ When you run `lattice` (no arguments) and a session already exists:
    - **ensure**: sends the command + Enter (auto-restart)
    - **prefill**: sends the command without Enter (manual restart)
 4. Then it attaches to the session as normal
+
+## Agentic architecture
+
+lattice is designed for programmatic control. The daemon API gives
+agents the same capabilities as a human using the menu bar app:
+
+- **Discover** — list projects, sessions, windows, and Spaces
+- **Launch** — start sessions for any scanned project
+- **Arrange** — tile windows to screen positions, move between Spaces
+- **Monitor** — subscribe to `windows.changed`, `tmux.changed`, and
+  `layer.switched` events for real-time workspace awareness
+- **Recover** — sync sessions back to their declared config, restart
+  failed panes
+
+An orchestrator agent can set up an entire multi-project workspace in
+a few calls:
+
+```js
+import { daemonCall } from 'lattice/daemon-client'
+
+await daemonCall('session.launch', { path: '/Users/you/dev/frontend' })
+await daemonCall('session.launch', { path: '/Users/you/dev/api' })
+
+const sessions = await daemonCall('tmux.sessions')
+await daemonCall('window.tile', { session: sessions[0].name, position: 'left' })
+await daemonCall('window.tile', { session: sessions[1].name, position: 'right' })
+```
+
+See the [Daemon API reference](/docs/api) for the full method list,
+event shapes, and integration patterns.
 
 ## Key shortcuts (inside tmux)
 

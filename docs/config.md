@@ -145,6 +145,34 @@ Run `lattice init` in your project directory to generate a starter
 Aliases: `ls`/`list`, `kill`/`rm`, `sync`/`reconcile`,
 `restart`/`respawn`, `tile`/`t`.
 
+## Machine-readable output
+
+### `--json` flag
+
+The `lattice windows` command supports a `--json` flag for structured
+output:
+
+```bash
+lattice windows --json
+```
+
+Returns a JSON array of window objects to stdout — useful for piping
+into `jq` or consuming from scripts.
+
+### Daemon responses
+
+All daemon API calls return JSON natively. If you need structured data
+from lattice, the daemon is the best path — no flags needed, no stdout
+parsing. See the [API reference](/docs/api).
+
+### Exit codes
+
+| Code | Meaning                                     |
+|------|---------------------------------------------|
+| `0`  | Success                                     |
+| `1`  | General error (missing args, bad config)    |
+| `2`  | Session not found                           |
+
 ## Recovery
 
 ### sync

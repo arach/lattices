@@ -26,6 +26,17 @@
           "description": "Switchable workspace layers and tabbed project groups"
         }
       ]
+    },
+    {
+      "id": "reference",
+      "title": "Reference",
+      "items": [
+        {
+          "id": "api",
+          "title": "Daemon API",
+          "description": "WebSocket API reference for programmatic control of lattice"
+        }
+      ]
     }
   ]
 }

@@ -450,7 +450,7 @@ html:has(.landing) body {
 .landing .features {
   padding: 48px 0;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
 }
 
@@ -485,6 +485,56 @@ html:has(.landing) body {
   color: var(--text-dim);
   line-height: 1.45;
 }
+
+/* ── Agent section ─────────────────────────────────── */
+
+.landing .agent-methods {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 16px;
+  display: grid;
+  gap: 8px;
+}
+
+.landing .agent-methods li {
+  font-size: 13px;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.landing .agent-methods li::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--green);
+  flex-shrink: 0;
+}
+
+.landing .agent-methods code {
+  font-size: 12px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--green);
+}
+
+.landing .agent-api-link {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--green);
+  transition: opacity 0.15s;
+}
+
+.landing .agent-api-link:hover {
+  opacity: 0.8;
+}
+
+.landing .code-pre .hl-kw { color: #c792ea; }
+.landing .code-pre .hl-cmt { color: var(--text-muted); font-style: italic; }
 
 /* ── Section headers ───────────────────────────────── */
 
@@ -663,6 +713,7 @@ html:has(.landing) body {
 
 @media (max-width: 720px) {
   .landing .features { grid-template-columns: repeat(2, 1fr); }
+  .landing .agent-methods { gap: 6px; }
   .landing .config-grid { grid-template-columns: 1fr; }
   .landing .app-grid { grid-template-columns: 1fr; }
   .landing .app-screenshot-wrap { order: -1; }
