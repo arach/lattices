@@ -753,6 +753,16 @@ async function layerCommand(index) {
   }
 }
 
+async function distributeCommand() {
+  try {
+    const { daemonCall } = await getDaemonClient();
+    await daemonCall("layout.distribute");
+    console.log("Distributed visible windows into grid");
+  } catch {
+    console.log("Daemon not running. Start with: lattice app");
+  }
+}
+
 async function daemonLsCommand() {
   try {
     const { daemonCall, isDaemonRunning } = await getDaemonClient();
@@ -873,6 +883,8 @@ Usage:
   lattice tab <group> [tab]  Switch tab within a group (by label or index)
   lattice windows [--json]   List all desktop windows (daemon required)
   lattice focus <session>    Focus a session's terminal window (daemon required)
+  lattice tile <position>    Tile the frontmost window (left, right, top, etc.)
+  lattice distribute         Smart-grid all visible windows (daemon required)
   lattice layer [index]      List layers or switch to a layer (daemon required)
   lattice daemon status      Show daemon status
   lattice app                Launch the menu bar companion app
@@ -1028,6 +1040,9 @@ const tilePresets = {
     const my = s.y + Math.round((s.h - mh) / 2);
     return [mx, my, mx + mw, my + mh];
   },
+  "left-third":   (s) => [s.x, s.y, s.x + Math.round(s.w * 0.333), s.y + s.h],
+  "center-third": (s) => [s.x + Math.round(s.w * 0.333), s.y, s.x + Math.round(s.w * 0.667), s.y + s.h],
+  "right-third":  (s) => [s.x + Math.round(s.w * 0.667), s.y, s.x + s.w, s.y + s.h],
 };
 
 function tileWindow(position) {
@@ -1229,6 +1244,9 @@ switch (command) {
       statusInventory();
     }
     break;
+  case "distribute":
+    await distributeCommand();
+    break;
   case "tile":
   case "t":
     if (args[1]) {
@@ -1236,7 +1254,8 @@ switch (command) {
     } else {
       console.log("Usage: lattice tile <position>\n");
       console.log("Positions: left, right, top, bottom, top-left, top-right,");
-      console.log("           bottom-left, bottom-right, maximize, center");
+      console.log("           bottom-left, bottom-right, maximize, center,");
+      console.log("           left-third, center-third, right-third");
     }
     break;
   case "windows":

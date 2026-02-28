@@ -37,6 +37,7 @@ enum MessageRouter {
         case "group.launch":    return try groupLaunch(params)
         case "group.kill":      return try groupKill(params)
         case "projects.scan":   return projectsScan()
+        case "layout.distribute": return layoutDistribute()
 
         default:
             throw RouterError.unknownMethod(method)
@@ -243,7 +244,7 @@ enum MessageRouter {
             throw RouterError.missingParam("index")
         }
         DispatchQueue.main.async {
-            WorkspaceManager.shared.switchToLayer(index: index)
+            WorkspaceManager.shared.tileLayer(index: index, launch: true)
             EventBus.shared.post(.layerSwitched(index: index))
         }
         return .object(["ok": .bool(true)])
@@ -276,6 +277,13 @@ enum MessageRouter {
     private static func projectsScan() -> JSON {
         DispatchQueue.main.async {
             ProjectScanner.shared.scan()
+        }
+        return .object(["ok": .bool(true)])
+    }
+
+    private static func layoutDistribute() -> JSON {
+        DispatchQueue.main.async {
+            WindowTiler.distributeVisible()
         }
         return .object(["ok": .bool(true)])
     }

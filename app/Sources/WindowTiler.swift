@@ -93,14 +93,19 @@ private class HighlightBorderView: NSView {
 }
 
 enum TilePosition: String, CaseIterable, Identifiable {
-    case left       = "left"
-    case right      = "right"
-    case topLeft    = "top-left"
-    case topRight   = "top-right"
-    case bottomLeft = "bottom-left"
+    case left        = "left"
+    case right       = "right"
+    case top         = "top"
+    case bottom      = "bottom"
+    case topLeft     = "top-left"
+    case topRight    = "top-right"
+    case bottomLeft  = "bottom-left"
     case bottomRight = "bottom-right"
-    case maximize   = "maximize"
-    case center     = "center"
+    case maximize    = "maximize"
+    case center      = "center"
+    case leftThird   = "left-third"
+    case centerThird = "center-third"
+    case rightThird  = "right-third"
 
     var id: String { rawValue }
 
@@ -108,12 +113,17 @@ enum TilePosition: String, CaseIterable, Identifiable {
         switch self {
         case .left:        return "Left"
         case .right:       return "Right"
+        case .top:         return "Top"
+        case .bottom:      return "Bottom"
         case .topLeft:     return "Top Left"
         case .topRight:    return "Top Right"
         case .bottomLeft:  return "Bottom Left"
         case .bottomRight: return "Bottom Right"
         case .maximize:    return "Max"
         case .center:      return "Center"
+        case .leftThird:   return "Left Third"
+        case .centerThird: return "Center Third"
+        case .rightThird:  return "Right Third"
         }
     }
 
@@ -121,26 +131,36 @@ enum TilePosition: String, CaseIterable, Identifiable {
         switch self {
         case .left:        return "rectangle.lefthalf.filled"
         case .right:       return "rectangle.righthalf.filled"
+        case .top:         return "rectangle.tophalf.filled"
+        case .bottom:      return "rectangle.bottomhalf.filled"
         case .topLeft:     return "rectangle.inset.topleft.filled"
         case .topRight:    return "rectangle.inset.topright.filled"
         case .bottomLeft:  return "rectangle.inset.bottomleft.filled"
         case .bottomRight: return "rectangle.inset.bottomright.filled"
         case .maximize:    return "rectangle.fill"
         case .center:      return "rectangle.center.inset.filled"
+        case .leftThird:   return "rectangle.leadingthird.inset.filled"
+        case .centerThird: return "rectangle.center.inset.filled"
+        case .rightThird:  return "rectangle.trailingthird.inset.filled"
         }
     }
 
     /// Returns (x, y, w, h) as fractions of screen
     var rect: (CGFloat, CGFloat, CGFloat, CGFloat) {
         switch self {
-        case .left:        return (0,   0,   0.5, 1.0)
-        case .right:       return (0.5, 0,   0.5, 1.0)
-        case .topLeft:     return (0,   0,   0.5, 0.5)
-        case .topRight:    return (0.5, 0,   0.5, 0.5)
-        case .bottomLeft:  return (0,   0.5, 0.5, 0.5)
-        case .bottomRight: return (0.5, 0.5, 0.5, 0.5)
-        case .maximize:    return (0,   0,   1.0, 1.0)
-        case .center:      return (0.15, 0.1, 0.7, 0.8)
+        case .left:        return (0,     0,   0.5,   1.0)
+        case .right:       return (0.5,   0,   0.5,   1.0)
+        case .top:         return (0,     0,   1.0,   0.5)
+        case .bottom:      return (0,     0.5, 1.0,   0.5)
+        case .topLeft:     return (0,     0,   0.5,   0.5)
+        case .topRight:    return (0.5,   0,   0.5,   0.5)
+        case .bottomLeft:  return (0,     0.5, 0.5,   0.5)
+        case .bottomRight: return (0.5,   0.5, 0.5,   0.5)
+        case .maximize:    return (0,     0,   1.0,   1.0)
+        case .center:      return (0.15,  0.1, 0.7,   0.8)
+        case .leftThird:   return (0,     0,   0.333, 1.0)
+        case .centerThird: return (0.333, 0,   0.334, 1.0)
+        case .rightThird:  return (0.667, 0,   0.333, 1.0)
         }
     }
 }
@@ -240,11 +260,65 @@ enum WindowTiler {
         return (x1, y1, x2, y2)
     }
 
-    /// Tile a specific terminal window (found by lattice session tag) to a position
-    static func tile(session: String, terminal: Terminal, to position: TilePosition) {
-        let tag = Terminal.windowTag(for: session)
-        let bounds = appleScriptBounds(for: position)
+    /// Compute AX-coordinate frame for a tile position on a given screen
+    static func tileFrame(for position: TilePosition, on screen: NSScreen) -> CGRect {
+        let visible = screen.visibleFrame
+        guard let primary = NSScreen.screens.first else { return .zero }
+        let primaryH = primary.frame.height
+        let axTop = primaryH - visible.maxY
+        let (fx, fy, fw, fh) = position.rect
+        return CGRect(
+            x: visible.origin.x + visible.width * fx,
+            y: axTop + visible.height * fy,
+            width: visible.width * fw,
+            height: visible.height * fh
+        )
+    }
 
+    /// Tile a specific terminal window on a given screen.
+    /// Fast path: DesktopModel → AX. Fallback: AX search → AppleScript last resort.
+    static func tile(session: String, terminal: Terminal, to position: TilePosition, on screen: NSScreen) {
+        let diag = DiagnosticLog.shared
+        let t = diag.startTimed("tile: \(session) → \(position.rawValue)")
+
+        // Fast path: use DesktopModel cache → single AX move
+        if let entry = DesktopModel.shared.windowForSession(session) {
+            let frame = tileFrame(for: position, on: screen)
+            batchMoveAndRaiseWindows([(wid: entry.wid, pid: entry.pid, frame: frame)])
+            diag.success("tile fast path (DesktopModel): \(session)")
+            diag.finish(t)
+            return
+        }
+
+        // AX fallback: search terminal windows by title tag
+        let tag = Terminal.windowTag(for: session)
+        if let (pid, axWindow) = findWindowViaAX(terminal: terminal, tag: tag) {
+            let targetFrame = tileFrame(for: position, on: screen)
+            var newPos = CGPoint(x: targetFrame.origin.x, y: targetFrame.origin.y)
+            var newSize = CGSize(width: targetFrame.width, height: targetFrame.height)
+            let win = axWindow
+            if let sv = AXValueCreate(.cgSize, &newSize) {
+                AXUIElementSetAttributeValue(win, kAXSizeAttribute as CFString, sv)
+            }
+            if let pv = AXValueCreate(.cgPoint, &newPos) {
+                AXUIElementSetAttributeValue(win, kAXPositionAttribute as CFString, pv)
+            }
+            if let sv = AXValueCreate(.cgSize, &newSize) {
+                AXUIElementSetAttributeValue(win, kAXSizeAttribute as CFString, sv)
+            }
+            if let pv = AXValueCreate(.cgPoint, &newPos) {
+                AXUIElementSetAttributeValue(win, kAXPositionAttribute as CFString, pv)
+            }
+            AXUIElementPerformAction(win, kAXRaiseAction as CFString)
+            if let app = NSRunningApplication(processIdentifier: pid) { app.activate() }
+            diag.success("tile AX fallback: \(session)")
+            diag.finish(t)
+            return
+        }
+
+        // AppleScript last resort (slow, single-monitor)
+        diag.warn("tile AppleScript last resort: \(session)")
+        let bounds = appleScriptBounds(for: position, screen: screen)
         switch terminal {
         case .terminal:
             tileAppleScript(app: "Terminal", tag: tag, bounds: bounds)
@@ -253,6 +327,14 @@ enum WindowTiler {
         default:
             tileFrontmost(bounds: bounds)
         }
+        diag.finish(t)
+    }
+
+    /// Tile a specific terminal window (found by lattice session tag) to a position.
+    /// Uses the same fast path strategy as tile(session:terminal:to:on:) with main screen.
+    static func tile(session: String, terminal: Terminal, to position: TilePosition) {
+        let screen = NSScreen.main ?? NSScreen.screens[0]
+        tile(session: session, terminal: terminal, to: position, on: screen)
     }
 
     /// Tile the frontmost window (works for any terminal)
@@ -438,13 +520,14 @@ enum WindowTiler {
     /// Falls back through CG → AX → AppleScript depending on available permissions
     static func navigateToWindow(session: String, terminal: Terminal) {
         let diag = DiagnosticLog.shared
+        let t = diag.startTimed("navigateToWindow: \(session)")
         let tag = Terminal.windowTag(for: session)
-        diag.info("navigateToWindow: session=\(session) tag=\(tag) terminal=\(terminal.rawValue)")
 
         // Path 1: CG window lookup (needs Screen Recording permission for window names)
         if let (wid, pid) = findWindow(tag: tag) {
             diag.success("Path 1 (CG): found wid=\(wid) pid=\(pid)")
             navigateToKnownWindow(wid: wid, pid: pid, tag: tag, session: session, terminal: terminal)
+            diag.finish(t)
             return
         }
         diag.warn("Path 1 (CG): findWindow failed — no Screen Recording?")
@@ -470,6 +553,7 @@ enum WindowTiler {
                     diag.error("axWindowFrame returned nil — no highlight")
                 }
             }
+            diag.finish(t)
             return
         }
         diag.warn("Path 2 (AX): findWindowViaAX failed — no Accessibility?")
@@ -477,6 +561,7 @@ enum WindowTiler {
         // Path 3: AppleScript / bare activate fallback
         diag.warn("Path 3: falling back to AppleScript/activate")
         activateViaAppleScript(session: session, tag: tag, terminal: terminal)
+        diag.finish(t)
     }
 
     private static func navigateToKnownWindow(wid: UInt32, pid: pid_t, tag: String, session: String, terminal: Terminal) {
@@ -912,6 +997,28 @@ enum WindowTiler {
     /// Distribute windows in a smart grid layout (delegates to batch operation)
     static func tileDistributeHorizontally(windows: [(wid: UInt32, pid: Int32)]) {
         batchRaiseAndDistribute(windows: windows)
+    }
+
+    /// Distribute ALL visible non-Lattice windows into a smart grid on the screen with the most windows.
+    static func distributeVisible() {
+        let diag = DiagnosticLog.shared
+        let t = diag.startTimed("distributeVisible")
+
+        let allEntries = DesktopModel.shared.allWindows()
+        let visible = allEntries.filter { entry in
+            entry.isOnScreen && entry.app != "Lattice" && entry.frame.w > 50 && entry.frame.h > 50
+        }
+
+        guard !visible.isEmpty else {
+            diag.info("distributeVisible: no visible windows to distribute")
+            diag.finish(t)
+            return
+        }
+
+        let windows = visible.map { (wid: $0.wid, pid: $0.pid) }
+        diag.info("distributeVisible: \(windows.count) windows")
+        batchRaiseAndDistribute(windows: windows)
+        diag.finish(t)
     }
 
     /// Get NSRect (bottom-left origin) for a known CG window ID
@@ -1444,6 +1551,95 @@ enum WindowTiler {
             }
         }
         return nil
+    }
+
+    // MARK: - Any-App Tiling via Accessibility
+
+    /// Tile the frontmost window of any app to a position using AX API.
+    /// Works for any application (Finder, Chrome, etc.), not just terminals.
+    static func tileFrontmostViaAX(to position: TilePosition) {
+        let diag = DiagnosticLog.shared
+        let t = diag.startTimed("tileFrontmostViaAX: \(position.rawValue)")
+
+        // 1. Get frontmost application
+        guard let frontApp = NSWorkspace.shared.frontmostApplication else {
+            diag.warn("tileFrontmostViaAX: no frontmost application")
+            diag.finish(t)
+            return
+        }
+
+        // 2. Skip if Lattice
+        if frontApp.bundleIdentifier == "com.arach.lattice" {
+            diag.info("tileFrontmostViaAX: skipping Lattice")
+            diag.finish(t)
+            return
+        }
+
+        let pid = frontApp.processIdentifier
+        let appRef = AXUIElementCreateApplication(pid)
+
+        // 3. Get focused window
+        var focusedRef: CFTypeRef?
+        let err = AXUIElementCopyAttributeValue(appRef, kAXFocusedWindowAttribute as CFString, &focusedRef)
+        guard err == .success, let axWindow = focusedRef else {
+            diag.warn("tileFrontmostViaAX: no focused window (AX error \(err.rawValue))")
+            diag.finish(t)
+            return
+        }
+
+        // 4. Read current position → find containing screen
+        var posRef: CFTypeRef?
+        var sizeRef: CFTypeRef?
+        AXUIElementCopyAttributeValue(axWindow as! AXUIElement, kAXPositionAttribute as CFString, &posRef)
+        AXUIElementCopyAttributeValue(axWindow as! AXUIElement, kAXSizeAttribute as CFString, &sizeRef)
+
+        var currentPos = CGPoint.zero
+        var currentSize = CGSize.zero
+        if let pv = posRef { AXValueGetValue(pv as! AXValue, .cgPoint, &currentPos) }
+        if let sv = sizeRef { AXValueGetValue(sv as! AXValue, .cgSize, &currentSize) }
+
+        // Find screen containing window center (AX uses top-left origin)
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? 1080
+        let nsCenterX = currentPos.x + currentSize.width / 2
+        let nsCenterY = primaryHeight - (currentPos.y + currentSize.height / 2)
+        let screen = NSScreen.screens.first(where: {
+            $0.frame.contains(NSPoint(x: nsCenterX, y: nsCenterY))
+        }) ?? NSScreen.main ?? NSScreen.screens[0]
+
+        // 5. Compute target frame
+        let targetFrame = tileFrame(for: position, on: screen)
+
+        // 6. Double-set: size → pos → size → pos
+        var newPos = CGPoint(x: targetFrame.origin.x, y: targetFrame.origin.y)
+        var newSize = CGSize(width: targetFrame.width, height: targetFrame.height)
+
+        let win = axWindow as! AXUIElement
+        if let sv = AXValueCreate(.cgSize, &newSize) {
+            AXUIElementSetAttributeValue(win, kAXSizeAttribute as CFString, sv)
+        }
+        if let pv = AXValueCreate(.cgPoint, &newPos) {
+            AXUIElementSetAttributeValue(win, kAXPositionAttribute as CFString, pv)
+        }
+        if let sv = AXValueCreate(.cgSize, &newSize) {
+            AXUIElementSetAttributeValue(win, kAXSizeAttribute as CFString, sv)
+        }
+        if let pv = AXValueCreate(.cgPoint, &newPos) {
+            AXUIElementSetAttributeValue(win, kAXPositionAttribute as CFString, pv)
+        }
+
+        // 7. Flash highlight
+        let nsFrame = NSRect(
+            x: targetFrame.origin.x,
+            y: primaryHeight - targetFrame.origin.y - targetFrame.height,
+            width: targetFrame.width,
+            height: targetFrame.height
+        )
+        DispatchQueue.main.async {
+            WindowHighlight.shared.flash(frame: nsFrame, duration: 0.6)
+        }
+
+        diag.success("tileFrontmostViaAX: tiled \(frontApp.localizedName ?? "?") to \(position.rawValue)")
+        diag.finish(t)
     }
 
     // MARK: - Private

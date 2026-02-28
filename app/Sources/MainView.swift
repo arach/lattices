@@ -453,7 +453,7 @@ struct MainView: View {
                 let isActive = i == workspace.activeLayerIndex
                 let counts = workspace.layerRunningCount(index: i)
                 Button {
-                    workspace.focusLayer(index: i)
+                    workspace.tileLayer(index: i)
                 } label: {
                     VStack(spacing: 2) {
                         HStack(spacing: 5) {

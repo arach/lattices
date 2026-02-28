@@ -5,6 +5,7 @@ final class DaemonServer: ObservableObject {
     static let shared = DaemonServer()
 
     @Published var clientCount: Int = 0
+    @Published var isListening: Bool = false
 
     private var listener: NWListener?
     private var connections: [UUID: NWConnection] = [:]
@@ -35,14 +36,17 @@ final class DaemonServer: ObservableObject {
             return
         }
 
-        listener?.stateUpdateHandler = { state in
+        listener?.stateUpdateHandler = { [weak self] state in
             switch state {
             case .ready:
                 diag.success("DaemonServer: listening on ws://127.0.0.1:9399")
+                DispatchQueue.main.async { self?.isListening = true }
             case .failed(let err):
                 diag.error("DaemonServer: listener failed — \(err.localizedDescription)")
+                DispatchQueue.main.async { self?.isListening = false }
             case .cancelled:
                 diag.info("DaemonServer: listener cancelled")
+                DispatchQueue.main.async { self?.isListening = false }
             default:
                 break
             }

@@ -241,7 +241,7 @@ enum CommandBuilder {
                     icon: "square.stack.3d.up",
                     category: .app,
                     badge: isActive ? "active" : nil,
-                    action: { workspace.focusLayer(index: layerIndex) }
+                    action: { workspace.tileLayer(index: layerIndex) }
                 ))
                 commands.append(PaletteCommand(
                     id: "layer-launch-\(layer.id)",
@@ -250,7 +250,7 @@ enum CommandBuilder {
                     icon: "play.circle",
                     category: .app,
                     badge: isActive ? "active" : nil,
-                    action: { workspace.switchToLayer(index: layerIndex) }
+                    action: { workspace.tileLayer(index: layerIndex, launch: true) }
                 ))
             }
 
@@ -362,6 +362,16 @@ enum CommandBuilder {
             action: {
                 SettingsWindow.open(prefs: Preferences.shared, scanner: ProjectScanner.shared)
             }
+        ))
+
+        commands.append(PaletteCommand(
+            id: "app-screen-map",
+            title: "Screen Map",
+            subtitle: "Visual window editor",
+            icon: "rectangle.3.group",
+            category: .app,
+            badge: nil,
+            action: { ScreenMapWindowController.shared.show() }
         ))
 
         commands.append(PaletteCommand(

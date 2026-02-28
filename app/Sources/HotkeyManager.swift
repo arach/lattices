@@ -126,4 +126,94 @@ class HotkeyManager {
             if let ref { hotKeyRefs[id] = ref }
         }
     }
+
+    /// Register a single global hotkey with a given ID, key code, and Carbon modifier mask
+    func registerSingle(id: UInt32, keyCode: UInt32, modifiers: UInt32, callback: @escaping () -> Void) {
+        ensureEventHandler()
+
+        if let existing = hotKeyRefs[id] {
+            UnregisterEventHotKey(existing)
+            hotKeyRefs.removeValue(forKey: id)
+        }
+
+        hotkeyCallbacks[id] = callback
+
+        let hotKeyID = EventHotKeyID(
+            signature: OSType(0x444D5558),  // "DMUX"
+            id: id
+        )
+
+        var ref: EventHotKeyRef?
+        RegisterEventHotKey(
+            keyCode,
+            modifiers,
+            hotKeyID,
+            GetApplicationEventTarget(),
+            0,
+            &ref
+        )
+        if let ref { hotKeyRefs[id] = ref }
+    }
+
+    /// Register Ctrl+Option window tiling hotkeys (Magnet-style)
+    func registerTileHotkeys() {
+        let mods = UInt32(controlKey | optionKey)
+
+        // Ctrl+Option+← → left
+        registerSingle(id: 300, keyCode: 123, modifiers: mods) {
+            WindowTiler.tileFrontmostViaAX(to: .left)
+        }
+        // Ctrl+Option+→ → right
+        registerSingle(id: 301, keyCode: 124, modifiers: mods) {
+            WindowTiler.tileFrontmostViaAX(to: .right)
+        }
+        // Ctrl+Option+Return → maximize
+        registerSingle(id: 302, keyCode: 36, modifiers: mods) {
+            WindowTiler.tileFrontmostViaAX(to: .maximize)
+        }
+        // Ctrl+Option+C → center
+        registerSingle(id: 303, keyCode: 8, modifiers: mods) {
+            WindowTiler.tileFrontmostViaAX(to: .center)
+        }
+        // Ctrl+Option+U → top-left
+        registerSingle(id: 304, keyCode: 32, modifiers: mods) {
+            WindowTiler.tileFrontmostViaAX(to: .topLeft)
+        }
+        // Ctrl+Option+I → top-right
+        registerSingle(id: 305, keyCode: 34, modifiers: mods) {
+            WindowTiler.tileFrontmostViaAX(to: .topRight)
+        }
+        // Ctrl+Option+J → bottom-left
+        registerSingle(id: 306, keyCode: 38, modifiers: mods) {
+            WindowTiler.tileFrontmostViaAX(to: .bottomLeft)
+        }
+        // Ctrl+Option+K → bottom-right
+        registerSingle(id: 307, keyCode: 40, modifiers: mods) {
+            WindowTiler.tileFrontmostViaAX(to: .bottomRight)
+        }
+        // Ctrl+Option+↑ → top
+        registerSingle(id: 308, keyCode: 126, modifiers: mods) {
+            WindowTiler.tileFrontmostViaAX(to: .top)
+        }
+        // Ctrl+Option+↓ → bottom
+        registerSingle(id: 309, keyCode: 125, modifiers: mods) {
+            WindowTiler.tileFrontmostViaAX(to: .bottom)
+        }
+        // Ctrl+Option+D → distribute visible windows
+        registerSingle(id: 310, keyCode: 2, modifiers: mods) {
+            WindowTiler.distributeVisible()
+        }
+        // Ctrl+Option+1 → left third
+        registerSingle(id: 311, keyCode: 18, modifiers: mods) {
+            WindowTiler.tileFrontmostViaAX(to: .leftThird)
+        }
+        // Ctrl+Option+2 → center third
+        registerSingle(id: 312, keyCode: 19, modifiers: mods) {
+            WindowTiler.tileFrontmostViaAX(to: .centerThird)
+        }
+        // Ctrl+Option+3 → right third
+        registerSingle(id: 313, keyCode: 20, modifiers: mods) {
+            WindowTiler.tileFrontmostViaAX(to: .rightThird)
+        }
+    }
 }

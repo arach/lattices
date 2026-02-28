@@ -1,3 +1,4 @@
+import AppKit
 import CryptoKit
 import Foundation
 
@@ -18,6 +19,7 @@ struct LayerProject: Codable {
     let path: String?
     let group: String?
     let tile: String?
+    let display: Int?
 }
 
 struct Layer: Codable, Identifiable {
@@ -155,110 +157,36 @@ class WorkspaceManager: ObservableObject {
         return task.terminationStatus
     }
 
+    // MARK: - Display Helper
+
+    /// Resolve a display index to an NSScreen (falls back to first screen)
+    private func screen(for displayIndex: Int?) -> NSScreen? {
+        let screens = NSScreen.screens
+        guard !screens.isEmpty else { return nil }
+        let idx = displayIndex ?? 0
+        return idx < screens.count ? screens[idx] : screens[0]
+    }
+
+    // MARK: - Window Lookup
+
+    /// Find a tracked window for a session name (instant — uses DesktopModel cache)
+    private func windowForSession(_ sessionName: String) -> WindowEntry? {
+        DesktopModel.shared.windowForSession(sessionName)
+    }
+
+    /// Resolve a session name to a tile target: (wid, pid, frame).
+    /// Returns nil if the window isn't tracked or has no tile position.
+    private func batchTarget(session: String, position: TilePosition, screen: NSScreen) -> (wid: UInt32, pid: Int32, frame: CGRect)? {
+        guard let entry = windowForSession(session) else { return nil }
+        let frame = WindowTiler.tileFrame(for: position, on: screen)
+        return (entry.wid, entry.pid, frame)
+    }
+
     // MARK: - Tiling
 
     /// Re-tile the current layer without switching (for "tile all")
     func retileCurrentLayer() {
-        guard let config, let layers = config.layers, activeLayerIndex < layers.count else { return }
-
-        let diag = DiagnosticLog.shared
-        diag.info("WorkspaceManager: re-tiling current layer \(activeLayerIndex)")
-
-        isSwitching = true
-        let terminal = Preferences.shared.terminal
-        let targetLayer = layers[activeLayerIndex]
-
-        for (i, lp) in targetLayer.projects.enumerated() {
-            if let groupId = lp.group, let group = group(byId: groupId) {
-                let firstTabSession = group.tabs.first.map { Self.sessionName(for: $0.path) } ?? ""
-                if let tileStr = lp.tile, let position = TilePosition(rawValue: tileStr) {
-                    let delay = Double(i) * 0.3 + 0.1
-                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                        diag.info("  tile group: \(firstTabSession) -> \(position.rawValue)")
-                        WindowTiler.tile(session: firstTabSession, terminal: terminal, to: position)
-                    }
-                }
-                continue
-            }
-
-            guard let path = lp.path else { continue }
-            let sessionName = Self.sessionName(for: path)
-
-            if let tileStr = lp.tile, let position = TilePosition(rawValue: tileStr) {
-                let delay = Double(i) * 0.3 + 0.1
-                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                    diag.info("  tile: \(sessionName) -> \(position.rawValue)")
-                    WindowTiler.tile(session: sessionName, terminal: terminal, to: position)
-                }
-            }
-        }
-
-        let projectCount = targetLayer.projects.count
-        DispatchQueue.main.asyncAfter(deadline: .now() + Double(projectCount) * 0.3 + 0.5) {
-            self.isSwitching = false
-        }
-    }
-
-    // MARK: - Layer Focus (no launch)
-
-    /// Focus/tile running projects in a layer without launching stopped ones
-    func focusLayer(index: Int) {
-        guard let config, let layers = config.layers, index < layers.count else { return }
-
-        let diag = DiagnosticLog.shared
-        diag.info("WorkspaceManager: focusing layer \(index)")
-
-        isSwitching = true
-        let terminal = Preferences.shared.terminal
-        let scanner = ProjectScanner.shared
-        let targetLayer = layers[index]
-
-        for (i, lp) in targetLayer.projects.enumerated() {
-            if let groupId = lp.group, let group = group(byId: groupId) {
-                let firstTabSession = group.tabs.first.map { Self.sessionName(for: $0.path) } ?? ""
-
-                if isGroupRunning(group) {
-                    diag.info("  focus group: \(group.label)")
-                    WindowTiler.navigateToWindow(session: firstTabSession, terminal: terminal)
-                    if let tileStr = lp.tile, let position = TilePosition(rawValue: tileStr) {
-                        let delay = Double(i) * 0.3 + 0.2
-                        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                            diag.info("  tile group: \(firstTabSession) -> \(position.rawValue)")
-                            WindowTiler.tile(session: firstTabSession, terminal: terminal, to: position)
-                        }
-                    }
-                } else {
-                    diag.info("  skip (not running): \(group.label)")
-                }
-                continue
-            }
-
-            guard let path = lp.path else { continue }
-            let sessionName = Self.sessionName(for: path)
-            let project = scanner.projects.first(where: { $0.path == path })
-
-            if let project, project.isRunning {
-                diag.info("  focus: \(project.name)")
-                WindowTiler.navigateToWindow(session: sessionName, terminal: terminal)
-                if let tileStr = lp.tile, let position = TilePosition(rawValue: tileStr) {
-                    let delay = Double(i) * 0.3 + 0.2
-                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                        diag.info("  tile: \(sessionName) -> \(position.rawValue)")
-                        WindowTiler.tile(session: sessionName, terminal: terminal, to: position)
-                    }
-                }
-            } else {
-                diag.info("  skip (not running): \(sessionName)")
-            }
-        }
-
-        activeLayerIndex = index
-        UserDefaults.standard.set(index, forKey: activeLayerKey)
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            scanner.refreshStatus()
-            self.isSwitching = false
-        }
+        tileLayer(index: activeLayerIndex, launch: false, force: true)
     }
 
     /// Count running projects+groups in a layer
@@ -280,65 +208,113 @@ class WorkspaceManager: ObservableObject {
         return (running, total)
     }
 
-    // MARK: - Layer Switching (full launch)
+    // MARK: - Unified Layer Tiling
 
-    func switchToLayer(index: Int, force: Bool = false) {
-        guard let config, let layers = config.layers, index < layers.count,
-              force || index != activeLayerIndex else { return }
+    /// Unified entry point for arranging a layer's windows.
+    ///
+    /// | launch | force | Behavior |
+    /// |--------|-------|----------|
+    /// | false  | false | Tile running projects only (focus) |
+    /// | true   | false | Launch stopped + tile all, skip if same layer |
+    /// | true   | true  | Re-launch current layer |
+    /// | false  | true  | Re-tile current layer |
+    func tileLayer(index: Int, launch: Bool = false, force: Bool = false) {
+        guard let config, let layers = config.layers, index < layers.count else { return }
+        if launch && !force && index == activeLayerIndex { return }
 
         let diag = DiagnosticLog.shared
-        diag.info("WorkspaceManager: switching from layer \(activeLayerIndex) to \(index)")
+        let label = launch ? "tileLayer(launch)" : "tileLayer(focus)"
+        let overall = diag.startTimed("\(label) \(activeLayerIndex)→\(index)")
 
         isSwitching = true
         let terminal = Preferences.shared.terminal
         let scanner = ProjectScanner.shared
         let targetLayer = layers[index]
 
-        for (i, lp) in targetLayer.projects.enumerated() {
-            // Handle group references
-            if let groupId = lp.group, let group = group(byId: groupId) {
-                // Use the first tab's session for focus/tiling (the iTerm window)
-                let firstTabSession = group.tabs.first.map { Self.sessionName(for: $0.path) } ?? ""
+        // Phase 1: classify each project
+        var batchMoves: [(wid: UInt32, pid: Int32, frame: CGRect)] = []
+        var fallbacks: [(session: String, position: TilePosition, screen: NSScreen)] = []
+        var launchQueue: [(session: String, position: TilePosition?, screen: NSScreen, launchAction: () -> Void)] = []
 
-                if isGroupRunning(group) {
-                    diag.info("  focus group: \(group.label)")
-                    WindowTiler.navigateToWindow(session: firstTabSession, terminal: terminal)
-                } else {
-                    diag.info("  launch group: \(group.label)")
-                    launchGroup(group)
-                }
+        for lp in targetLayer.projects {
+            guard let lpScreen = screen(for: lp.display) else { continue }
 
-                if let tileStr = lp.tile, let position = TilePosition(rawValue: tileStr) {
-                    let delay = Double(i) * 0.3 + (isGroupRunning(group) ? 0.2 : 0.8)
-                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                        diag.info("  tile group: \(firstTabSession) -> \(position.rawValue)")
-                        WindowTiler.tile(session: firstTabSession, terminal: terminal, to: position)
-                    }
+            if let groupId = lp.group, let grp = group(byId: groupId) {
+                let firstTabSession = grp.tabs.first.map { Self.sessionName(for: $0.path) } ?? ""
+                let position = lp.tile.flatMap { TilePosition(rawValue: $0) }
+                let groupRunning = isGroupRunning(grp)
+
+                if groupRunning, let pos = position,
+                   let target = batchTarget(session: firstTabSession, position: pos, screen: lpScreen) {
+                    batchMoves.append(target)
+                } else if !groupRunning && launch {
+                    diag.info("  launch group: \(grp.label)")
+                    launchQueue.append((firstTabSession, position, lpScreen, { [weak self] in
+                        self?.launchGroup(grp)
+                    }))
+                } else if groupRunning, let pos = position {
+                    // Running but not in DesktopModel — fallback
+                    fallbacks.append((firstTabSession, pos, lpScreen))
+                } else if !groupRunning {
+                    diag.info("  skip (not running): \(grp.label)")
                 }
                 continue
             }
 
-            // Handle regular project references
             guard let path = lp.path else { continue }
             let sessionName = Self.sessionName(for: path)
             let project = scanner.projects.first(where: { $0.path == path })
+            let position = lp.tile.flatMap { TilePosition(rawValue: $0) }
+            let isRunning = project?.isRunning == true
 
-            if let project, project.isRunning {
-                diag.info("  focus: \(project.name)")
-                WindowTiler.navigateToWindow(session: sessionName, terminal: terminal)
-            } else if let project {
-                diag.info("  launch: \(project.name)")
-                SessionManager.launch(project: project)
+            if isRunning {
+                if let pos = position,
+                   let target = batchTarget(session: sessionName, position: pos, screen: lpScreen) {
+                    batchMoves.append(target)
+                } else if let pos = position {
+                    fallbacks.append((sessionName, pos, lpScreen))
+                }
+            } else if launch {
+                if let project {
+                    let t = diag.startTimed("launch: \(project.name)")
+                    SessionManager.launch(project: project)
+                    diag.finish(t)
+                } else {
+                    diag.info("  launch (direct): \(sessionName)")
+                    terminal.launch(command: "/opt/homebrew/bin/lattice", in: path)
+                }
+                launchQueue.append((sessionName, position, lpScreen, {}))
             } else {
-                diag.info("  launch (direct): \(sessionName)")
-                terminal.launch(command: "/opt/homebrew/bin/lattice", in: path)
+                diag.info("  skip (not running): \(sessionName)")
             }
+        }
 
-            if let tileStr = lp.tile, let position = TilePosition(rawValue: tileStr) {
-                let delay = Double(i) * 0.3 + (project?.isRunning == true ? 0.2 : 0.8)
-                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                    diag.info("  tile: \(sessionName) -> \(position.rawValue)")
-                    WindowTiler.tile(session: sessionName, terminal: terminal, to: position)
+        // Phase 2: batch tile all tracked windows
+        if !batchMoves.isEmpty {
+            let t = diag.startTimed("batch tile \(batchMoves.count) windows")
+            WindowTiler.batchMoveAndRaiseWindows(batchMoves)
+            diag.finish(t)
+        }
+
+        // Phase 3: fallback for running-but-untracked windows
+        for (i, fb) in fallbacks.enumerated() {
+            let delay = Double(i) * 0.15 + 0.1
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                diag.info("  tile fallback: \(fb.session) → \(fb.position.rawValue)")
+                WindowTiler.navigateToWindow(session: fb.session, terminal: terminal)
+                WindowTiler.tile(session: fb.session, terminal: terminal, to: fb.position, on: fb.screen)
+            }
+        }
+
+        // Phase 4: staggered tile for newly-launched windows
+        for (i, item) in launchQueue.enumerated() {
+            let delay = Double(i) * 0.15 + 0.2
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                item.launchAction()
+                if let pos = item.position {
+                    let t = diag.startTimed("tile launched: \(item.session) → \(pos.rawValue)")
+                    WindowTiler.tile(session: item.session, terminal: terminal, to: pos, on: item.screen)
+                    diag.finish(t)
                 }
             }
         }
@@ -346,9 +322,15 @@ class WorkspaceManager: ObservableObject {
         activeLayerIndex = index
         UserDefaults.standard.set(index, forKey: activeLayerKey)
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+        let maxDelay = max(
+            fallbacks.isEmpty ? 0.0 : Double(fallbacks.count) * 0.15 + 0.3,
+            launchQueue.isEmpty ? 0.0 : Double(launchQueue.count) * 0.15 + 0.5
+        )
+        let cleanupDelay = max(0.2, maxDelay)
+        DispatchQueue.main.asyncAfter(deadline: .now() + cleanupDelay) {
             scanner.refreshStatus()
             self.isSwitching = false
+            diag.finish(overall)
         }
     }
 

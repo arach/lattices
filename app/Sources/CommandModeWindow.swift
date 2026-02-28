@@ -36,14 +36,15 @@ final class CommandModeWindow {
     static let shared = CommandModeWindow()
 
     private var panel: NSPanel?
+    private var isOpen = false
 
     /// Exposed for event monitor filtering (only handle clicks in this window)
     var panelWindow: NSWindow? { panel }
 
-    var isVisible: Bool { panel?.isVisible ?? false }
+    var isVisible: Bool { isOpen }
 
     func toggle() {
-        if let p = panel, p.isVisible {
+        if isOpen {
             dismiss()
         } else {
             show()
@@ -53,6 +54,7 @@ final class CommandModeWindow {
     func show() {
         // Always rebuild for fresh state
         dismiss()
+        isOpen = true
 
         // Dismiss palette if visible
         if CommandPaletteWindow.shared.isVisible {
@@ -72,26 +74,10 @@ final class CommandModeWindow {
         let initialWidth: CGFloat
         let initialHeight: CGFloat
         if state.phase == .desktopInventory {
-            if state.desktopMode == .screenMap {
-                // Compute bounding box aspect ratio from all screens
-                let screens = NSScreen.screens
-                let primaryHeight = screens.first?.frame.height ?? 0
-                var bbox = CGRect.zero
-                for (i, screen) in screens.enumerated() {
-                    let cgY = primaryHeight - screen.frame.maxY
-                    let cgRect = CGRect(x: screen.frame.origin.x, y: cgY,
-                                        width: screen.frame.width, height: screen.frame.height)
-                    bbox = i == 0 ? cgRect : bbox.union(cgRect)
-                }
-                let aspectRatio = bbox.width / max(bbox.height, 1)
-                initialHeight = 500
-                initialWidth = max(700, initialHeight * aspectRatio + 80)  // +80 for sidebar
-            } else {
-                let displayCount = max(1, state.desktopSnapshot?.displays.count ?? 1)
-                let columnWidth: CGFloat = 480
-                initialWidth = CGFloat(displayCount) * columnWidth + CGFloat(displayCount - 1) + 32
-                initialHeight = 640
-            }
+            let displayCount = max(1, state.desktopSnapshot?.displays.count ?? 1)
+            let columnWidth: CGFloat = 480
+            initialWidth = CGFloat(displayCount) * columnWidth + CGFloat(displayCount - 1) + 32
+            initialHeight = 640
         } else {
             initialWidth = 580; initialHeight = 360
         }
@@ -113,7 +99,7 @@ final class CommandModeWindow {
         panel.backgroundColor = .clear
         panel.hasShadow = true
         panel.level = .floating
-        panel.isMovableByWindowBackground = (state.desktopMode != .screenMap)
+        panel.isMovableByWindowBackground = true
         panel.hidesOnDeactivate = true
         panel.becomesKeyOnlyIfNeeded = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
@@ -152,6 +138,7 @@ final class CommandModeWindow {
 
         panel.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        AppDelegate.updateActivationPolicy()
     }
 
     private func animateResize(width: CGFloat, height: CGFloat) {
@@ -175,8 +162,10 @@ final class CommandModeWindow {
     }
 
     func dismiss() {
+        isOpen = false
         panel?.orderOut(nil)
         panel = nil
+        AppDelegate.updateActivationPolicy()
     }
 
     /// Stretchable mask image for rounded corners

@@ -42,6 +42,23 @@ final class DiagnosticLog: ObservableObject {
     func warn(_ msg: String)    { log(msg, level: .warning) }
     func error(_ msg: String)   { log(msg, level: .error) }
     func clear()                { DispatchQueue.main.async { self.entries.removeAll() } }
+
+    // MARK: - Per-Action Timing
+
+    struct TimedAction {
+        let label: String
+        let start: Date
+    }
+
+    func startTimed(_ label: String) -> TimedAction {
+        info("▸ \(label)")
+        return TimedAction(label: label, start: Date())
+    }
+
+    func finish(_ action: TimedAction) {
+        let ms = Date().timeIntervalSince(action.start) * 1000
+        success("▸ \(action.label) — \(String(format: "%.0f", ms))ms")
+    }
 }
 
 // MARK: - Diagnostic Window

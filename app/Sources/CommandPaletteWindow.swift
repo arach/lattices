@@ -100,11 +100,13 @@ final class CommandPaletteWindow {
         NSApp.activate(ignoringOtherApps: true)
 
         self.panel = panel
+        AppDelegate.updateActivationPolicy()
     }
 
     func dismiss() {
         panel?.orderOut(nil)
         panel = nil
+        AppDelegate.updateActivationPolicy()
     }
 
     /// Stretchable mask image for rounded corners — capInsets preserve the

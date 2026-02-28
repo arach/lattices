@@ -13,6 +13,7 @@ final class MainWindow {
     func toggle() {
         if let w = window, w.isVisible {
             w.orderOut(nil)
+            AppDelegate.updateActivationPolicy()
         } else {
             show()
         }
@@ -59,9 +60,11 @@ final class MainWindow {
         NSApp.activate(ignoringOtherApps: true)
 
         window = w
+        AppDelegate.updateActivationPolicy()
     }
 
     func close() {
         window?.orderOut(nil)
+        AppDelegate.updateActivationPolicy()
     }
 }
