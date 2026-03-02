@@ -37,7 +37,7 @@ struct MainView: View {
         .onAppear {
             if needsSetup && !hasCheckedSetup {
                 hasCheckedSetup = true
-                SettingsWindow.open(prefs: prefs, scanner: scanner)
+                SettingsWindowController.shared.show()
             }
             scanner.updateRoot(prefs.scanRoot)
             scanner.scan()
@@ -258,7 +258,7 @@ struct MainView: View {
     private var statusBar: some View {
         HStack(spacing: 0) {
             // Settings button
-            Button { SettingsWindow.open(prefs: prefs, scanner: scanner) } label: {
+            Button { SettingsWindowController.shared.show() } label: {
                 Image(systemName: "gearshape")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(Palette.textMuted)

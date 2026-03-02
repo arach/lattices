@@ -34,6 +34,33 @@ struct WorkspaceConfig: Codable {
     let layers: [Layer]?
 }
 
+// MARK: - Grid Presets & Named Layouts
+
+struct GridPreset: Codable {
+    let x: CGFloat
+    let y: CGFloat
+    let w: CGFloat
+    let h: CGFloat
+
+    var fractions: (CGFloat, CGFloat, CGFloat, CGFloat) { (x, y, w, h) }
+}
+
+struct LayoutWindowSpec: Codable {
+    let app: String
+    let tile: String        // TilePosition name or preset name
+    let display: Int?       // spatial display number (1-based), nil = current
+    let title: String?      // optional title match for disambiguation
+}
+
+struct LayoutConfig: Codable {
+    let windows: [LayoutWindowSpec]
+}
+
+struct GridFile: Codable {
+    let presets: [String: GridPreset]?
+    let layouts: [String: LayoutConfig]?
+}
+
 // MARK: - Manager
 
 class WorkspaceManager: ObservableObject {
@@ -42,16 +69,21 @@ class WorkspaceManager: ObservableObject {
     @Published var config: WorkspaceConfig?
     @Published var activeLayerIndex: Int = 0
     @Published var isSwitching: Bool = false
+    @Published var gridPresets: [String: GridPreset] = [:]
+    @Published var gridLayouts: [String: LayoutConfig] = [:]
 
     private let configPath: String
+    private let gridConfigPath: String
     private let tmuxPath = "/opt/homebrew/bin/tmux"
     private let activeLayerKey = "lattice.activeLayerIndex"
 
     init() {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         self.configPath = (home as NSString).appendingPathComponent(".lattice/workspace.json")
+        self.gridConfigPath = (home as NSString).appendingPathComponent(".lattice/grid.json")
         self.activeLayerIndex = UserDefaults.standard.integer(forKey: activeLayerKey)
         loadConfig()
+        loadGridConfig()
     }
 
     var activeLayer: Layer? {
@@ -81,6 +113,57 @@ class WorkspaceManager: ObservableObject {
 
     func reloadConfig() {
         loadConfig()
+        loadGridConfig()
+    }
+
+    // MARK: - Grid Config I/O
+
+    func loadGridConfig() {
+        var presets: [String: GridPreset] = [:]
+        var layouts: [String: LayoutConfig] = [:]
+
+        // Load global ~/.lattice/grid.json
+        if FileManager.default.fileExists(atPath: gridConfigPath),
+           let data = FileManager.default.contents(atPath: gridConfigPath) {
+            do {
+                let gridFile = try JSONDecoder().decode(GridFile.self, from: data)
+                if let p = gridFile.presets { presets.merge(p) { _, new in new } }
+                if let l = gridFile.layouts { layouts.merge(l) { _, new in new } }
+            } catch {
+                DiagnosticLog.shared.error("WorkspaceManager: failed to decode grid.json — \(error.localizedDescription)")
+            }
+        }
+
+        // Merge per-project .lattice.json "grid" section on top
+        let projectGridPath = ".lattice.json"
+        if FileManager.default.fileExists(atPath: projectGridPath),
+           let data = FileManager.default.contents(atPath: projectGridPath) {
+            do {
+                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let gridDict = json["grid"] {
+                    let gridData = try JSONSerialization.data(withJSONObject: gridDict)
+                    let gridFile = try JSONDecoder().decode(GridFile.self, from: gridData)
+                    if let p = gridFile.presets { presets.merge(p) { _, new in new } }
+                    if let l = gridFile.layouts { layouts.merge(l) { _, new in new } }
+                }
+            } catch {
+                DiagnosticLog.shared.error("WorkspaceManager: failed to decode .lattice.json grid — \(error.localizedDescription)")
+            }
+        }
+
+        self.gridPresets = presets
+        self.gridLayouts = layouts
+    }
+
+    /// Resolve a tile string to fractions: check user presets first, then built-in TilePosition
+    func resolveTileFractions(_ tile: String) -> (CGFloat, CGFloat, CGFloat, CGFloat)? {
+        if let preset = gridPresets[tile] {
+            return preset.fractions
+        }
+        if let position = TilePosition(rawValue: tile) {
+            return position.rect
+        }
+        return nil
     }
 
     // MARK: - Tab Groups

@@ -93,4 +93,9 @@ enum JSON: Codable, Equatable {
         guard case .int(let i) = self else { return nil }
         return UInt32(i)
     }
+
+    var boolValue: Bool? {
+        guard case .bool(let b) = self else { return nil }
+        return b
+    }
 }

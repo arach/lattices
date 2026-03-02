@@ -162,8 +162,9 @@ async function ensureBinary() {
 
 const cmd = process.argv[2];
 const flags = process.argv.slice(3);
-const hasDiag = flags.includes("--diagnostics") || flags.includes("-d");
-const launchFlags = hasDiag ? ["--diagnostics"] : [];
+const launchFlags = [];
+if (flags.includes("--diagnostics") || flags.includes("-d")) launchFlags.push("--diagnostics");
+if (flags.includes("--screen-map") || flags.includes("-m")) launchFlags.push("--screen-map");
 
 if (cmd === "build") {
   if (!hasSwift()) {

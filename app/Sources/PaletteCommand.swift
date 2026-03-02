@@ -360,7 +360,7 @@ enum CommandBuilder {
             category: .app,
             badge: nil,
             action: {
-                SettingsWindow.open(prefs: Preferences.shared, scanner: ProjectScanner.shared)
+                SettingsWindowController.shared.show()
             }
         ))
 

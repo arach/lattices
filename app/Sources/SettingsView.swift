@@ -1,78 +1,104 @@
 import SwiftUI
 
-struct SettingsView: View {
+/// Settings content with internal General / Shortcuts tabs.
+/// Can also render the Docs page when `page == .docs`.
+struct SettingsContentView: View {
+    var page: AppPage = .settings
     @ObservedObject var prefs: Preferences
     @ObservedObject var scanner: ProjectScanner
-    let onDismiss: () -> Void
+    @ObservedObject var hotkeyStore: HotkeyStore = .shared
+    var onBack: (() -> Void)? = nil
 
-    @State private var selectedTab = "general"
+    @State private var selectedTab = "shortcuts"
 
     var body: some View {
-        HStack(spacing: 0) {
-            // Sidebar
-            VStack(alignment: .leading, spacing: 2) {
-                sidebarItem(icon: "gearshape", label: "General", id: "general")
-                sidebarItem(icon: "keyboard", label: "Shortcuts", id: "shortcuts")
-                sidebarItem(icon: "book", label: "Docs", id: "docs")
+        VStack(spacing: 0) {
+            // Back bar
+            backBar
 
-                Spacer()
-
-                Text("v0.1.0")
-                    .font(Typo.mono(9))
-                    .foregroundColor(Palette.textMuted)
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 8)
+            if page == .docs {
+                docsContent
+            } else {
+                settingsBody
             }
-            .padding(.top, 12)
-            .frame(width: 140)
-            .frame(maxHeight: .infinity)
-            .background(Palette.surface.opacity(0.5))
-
-            Rectangle()
-                .fill(Palette.border)
-                .frame(width: 0.5)
-
-            // Content
-            VStack(spacing: 0) {
-                switch selectedTab {
-                case "general":   generalContent
-                case "shortcuts": shortcutsContent
-                case "docs":      docsContent
-                default:          generalContent
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .clipped()
         }
-        .frame(minWidth: 460, minHeight: 320)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
         .background(PanelBackground())
     }
 
-    // MARK: - Sidebar
+    // MARK: - Back Bar
 
-    private func sidebarItem(icon: String, label: String, id: String) -> some View {
+    private var backBar: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                Button {
+                    onBack?()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 9, weight: .semibold))
+                        Text("Screen Map")
+                            .font(Typo.heading(11))
+                    }
+                    .foregroundColor(Palette.textDim)
+                }
+                .buttonStyle(.plain)
+                .onHover { h in if h { NSCursor.pointingHand.push() } else { NSCursor.pop() } }
+
+                Spacer()
+
+                Text(page.label.uppercased())
+                    .font(Typo.pixel(11))
+                    .foregroundColor(Palette.textMuted)
+                    .tracking(1)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+
+            Rectangle().fill(Palette.border).frame(height: 0.5)
+        }
+    }
+
+    // MARK: - Settings Body (General + Shortcuts tabs)
+
+    private var settingsBody: some View {
+        VStack(spacing: 0) {
+            // Internal tab bar
+            HStack(spacing: 0) {
+                settingsTab(label: "General", id: "general")
+                settingsTab(label: "Shortcuts", id: "shortcuts")
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 4)
+            .padding(.bottom, 4)
+
+            Rectangle().fill(Palette.border).frame(height: 0.5)
+
+            // Tab content
+            switch selectedTab {
+            case "shortcuts": shortcutsContent
+            default:          generalContent
+            }
+        }
+    }
+
+    private func settingsTab(label: String, id: String) -> some View {
         Button {
             selectedTab = id
         } label: {
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(selectedTab == id ? Palette.text : Palette.textMuted)
-                    .frame(width: 16)
-                Text(label)
-                    .font(Typo.heading(12))
-                    .foregroundColor(selectedTab == id ? Palette.text : Palette.textDim)
-                Spacer()
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .background(
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(selectedTab == id ? Color.white.opacity(0.06) : Color.clear)
-            )
+            Text(label)
+                .font(Typo.heading(11))
+                .foregroundColor(selectedTab == id ? Palette.text : Palette.textDim)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(selectedTab == id ? Color.white.opacity(0.06) : Color.clear)
+                )
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 8)
     }
 
     // MARK: - Sticky section header
@@ -203,7 +229,6 @@ struct SettingsView: View {
                 Button {
                     scanner.updateRoot(prefs.scanRoot)
                     scanner.scan()
-                    onDismiss()
                 } label: {
                     Text("Save")
                         .font(Typo.monoBold(11))
@@ -221,49 +246,239 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - Shortcuts
+    // MARK: - Shortcuts (Spatial Layout)
 
     private var shortcutsContent: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: .sectionHeaders) {
-                Section(header: stickyHeader("App")) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        shortcutRow("Command palette", keys: ["Cmd", "Shift", "M"])
-                        shortcutRow("Layer 1/2/3...", keys: ["Cmd", "Option", "1/2/3"])
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
-                }
+        VStack(spacing: 0) {
+            GeometryReader { geo in
+                let spacing: CGFloat = 16
+                let pad: CGFloat = 20
+                let total = geo.size.width - pad * 2 - spacing * 2
+                let leftW = total * 0.35
+                let centerW = total * 0.35
+                let rightW = total * 0.30
 
-                Section(header: stickyHeader("Inside tmux")) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        shortcutRow("Detach", keys: ["Ctrl+B", "D"])
-                        shortcutRow("Kill pane", keys: ["Ctrl+B", "X"])
-                        shortcutRow("Pane left", keys: ["Ctrl+B", "\u{2190}"])
-                        shortcutRow("Pane right", keys: ["Ctrl+B", "\u{2192}"])
-                        shortcutRow("Zoom toggle", keys: ["Ctrl+B", "Z"])
-                        shortcutRow("Scroll mode", keys: ["Ctrl+B", "["])
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack(alignment: .top, spacing: spacing) {
+                            shortcutsLeftColumn
+                                .frame(width: leftW, alignment: .leading)
+                                .clipped()
+                            shortcutsCenterColumn
+                                .frame(width: centerW, alignment: .leading)
+                                .clipped()
+                            shortcutsRightColumn
+                                .frame(width: rightW, alignment: .leading)
+                                .clipped()
+                        }
+                        .padding(.horizontal, pad)
+                        .padding(.vertical, 16)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            separator
+
+            HStack {
+                Spacer()
+                Button {
+                    hotkeyStore.resetAll()
+                } label: {
+                    Text("Reset All to Defaults")
+                        .font(Typo.caption(11))
+                        .foregroundColor(Palette.textDim)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(Palette.surface)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 3)
+                                        .strokeBorder(Palette.border, lineWidth: 0.5)
+                                )
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 10)
+        }
+    }
+
+    // MARK: - Shortcuts: Left Column (App + Layers)
+
+    private var shortcutsLeftColumn: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            columnHeader("App & Layers")
+
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(HotkeyAction.allCases.filter { $0.group == .app }, id: \.rawValue) { action in
+                    compactKeyRecorder(action: action)
+                }
+            }
+
+            Rectangle().fill(Palette.border).frame(height: 0.5)
+
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(HotkeyAction.layerActions, id: \.rawValue) { action in
+                    compactKeyRecorder(action: action)
                 }
             }
         }
     }
+
+    // MARK: - Shortcuts: Center Column (Tiling)
+
+    private var shortcutsCenterColumn: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            columnHeader("Tiling")
+
+            // Monitor visualization — 3x3 grid
+            VStack(spacing: 2) {
+                HStack(spacing: 2) {
+                    tileCell(action: .tileTopLeft, label: "TL")
+                    tileCell(action: .tileTop, label: "Top")
+                    tileCell(action: .tileTopRight, label: "TR")
+                }
+                HStack(spacing: 2) {
+                    tileCell(action: .tileLeft, label: "Left")
+                    tileCell(action: .tileMaximize, label: "Max")
+                    tileCell(action: .tileRight, label: "Right")
+                }
+                HStack(spacing: 2) {
+                    tileCell(action: .tileBottomLeft, label: "BL")
+                    tileCell(action: .tileBottom, label: "Bottom")
+                    tileCell(action: .tileBottomRight, label: "BR")
+                }
+            }
+            .padding(6)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.black.opacity(0.25))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .strokeBorder(Palette.border, lineWidth: 0.5)
+                    )
+            )
+
+            // Thirds row
+            HStack(spacing: 2) {
+                tileCell(action: .tileLeftThird, label: "\u{2153}L")
+                tileCell(action: .tileCenterThird, label: "\u{2153}C")
+                tileCell(action: .tileRightThird, label: "\u{2153}R")
+            }
+            .padding(6)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.black.opacity(0.25))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .strokeBorder(Palette.border, lineWidth: 0.5)
+                    )
+            )
+
+            // Center + Distribute
+            HStack(spacing: 4) {
+                compactKeyRecorder(action: .tileCenter)
+                compactKeyRecorder(action: .tileDistribute)
+            }
+        }
+    }
+
+    // MARK: - Shortcuts: Right Column (tmux)
+
+    private var shortcutsRightColumn: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            columnHeader("Inside tmux")
+
+            VStack(alignment: .leading, spacing: 6) {
+                shortcutRow("Detach", keys: ["Ctrl+B", "D"])
+                shortcutRow("Kill pane", keys: ["Ctrl+B", "X"])
+                shortcutRow("Pane left", keys: ["Ctrl+B", "\u{2190}"])
+                shortcutRow("Pane right", keys: ["Ctrl+B", "\u{2192}"])
+                shortcutRow("Zoom toggle", keys: ["Ctrl+B", "Z"])
+                shortcutRow("Scroll mode", keys: ["Ctrl+B", "["])
+            }
+        }
+    }
+
+    // MARK: - Column header
+
+    private func columnHeader(_ title: String) -> some View {
+        Text(title.uppercased())
+            .font(Typo.pixel(12))
+            .foregroundColor(Palette.textDim)
+            .tracking(1)
+    }
+
+    // MARK: - Tile cell (spatial grid item)
+
+    private func tileCell(action: HotkeyAction, label: String) -> some View {
+        let binding = hotkeyStore.bindings[action]
+        let badgeText = binding?.displayParts.last ?? ""
+
+        return Button {
+            // Open inline key recorder for this action
+        } label: {
+            VStack(spacing: 3) {
+                Text(label)
+                    .font(Typo.caption(9))
+                    .foregroundColor(Palette.textDim)
+                Text(badgeText)
+                    .font(Typo.geistMonoBold(9))
+                    .foregroundColor(Palette.text)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 42)
+            .background(
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Palette.surface)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .strokeBorder(Palette.border, lineWidth: 0.5)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: tileCellPopoverBinding(for: action)) {
+            KeyRecorderView(action: action, store: hotkeyStore)
+                .padding(12)
+                .frame(width: 300)
+        }
+    }
+
+    @State private var activeTilePopover: HotkeyAction?
+
+    private func tileCellPopoverBinding(for action: HotkeyAction) -> Binding<Bool> {
+        Binding(
+            get: { activeTilePopover == action },
+            set: { if !$0 { activeTilePopover = nil } }
+        )
+    }
+
+    // MARK: - Compact key recorder
+
+    private func compactKeyRecorder(action: HotkeyAction) -> some View {
+        KeyRecorderView(action: action, store: hotkeyStore)
+    }
+
+    // MARK: - Shortcut row (read-only, for tmux)
 
     private func shortcutRow(_ label: String, keys: [String]) -> some View {
         HStack {
             Text(label)
                 .font(Typo.caption(11))
                 .foregroundColor(Palette.textDim)
-                .frame(width: 100, alignment: .trailing)
+                .frame(width: 80, alignment: .trailing)
 
             HStack(spacing: 4) {
                 ForEach(keys, id: \.self) { key in
                     keyBadge(key)
                 }
             }
-            .padding(.leading, 16)
+            .padding(.leading, 8)
 
             Spacer()
         }
@@ -399,7 +614,7 @@ struct SettingsView: View {
             Text(label)
                 .font(Typo.caption(11))
                 .foregroundColor(Palette.textDim)
-                .frame(width: 80, alignment: .trailing)
+                .frame(width: 100, alignment: .trailing)
                 .padding(.top, 2)
 
             content()

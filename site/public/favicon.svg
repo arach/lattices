@@ -1,11 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="6" fill="#111113"/>
-  <g stroke="#33c773" stroke-width="1.5" stroke-linecap="round" opacity="0.9">
-    <line x1="8" y1="8" x2="8" y2="24"/>
-    <line x1="16" y1="8" x2="16" y2="24"/>
-    <line x1="24" y1="8" x2="24" y2="24"/>
-    <line x1="8" y1="8" x2="24" y2="8"/>
-    <line x1="8" y1="16" x2="24" y2="16"/>
-    <line x1="8" y1="24" x2="24" y2="24"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <rect width="128" height="128" rx="20" fill="#111113"/>
+
+  <!-- Top-left: filled, notch bottom-right -->
+  <path d="M20,20 H60 V44 H44 V60 H20 Z" fill="#ffffff"/>
+
+  <!-- Top-right: ghost, notch bottom-left -->
+  <path d="M68,20 H108 V60 H84 V44 H68 Z"
+        fill="none" stroke="rgba(255,255,255,0.10)" stroke-width="1.5"/>
+
+  <!-- Bottom-left: filled, notch top-right -->
+  <path d="M20,68 H44 V84 H60 V108 H20 Z" fill="#ffffff"/>
+
+  <!-- Bottom-right: filled, notch top-left -->
+  <path d="M84,68 H108 V108 H68 V84 H84 Z" fill="#ffffff"/>
 </svg>

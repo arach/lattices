@@ -89,6 +89,27 @@ class HotkeyManager {
         if let ref { hotKeyRefs[id] = ref }
     }
 
+    /// Register Hyper+2 (Cmd+Ctrl+Option+Shift+2) for bezel mode
+    func registerBezelHotkey(callback: @escaping () -> Void) {
+        ensureEventHandler()
+        let id: UInt32 = 201
+        hotkeyCallbacks[id] = callback
+        let hotKeyID = EventHotKeyID(
+            signature: OSType(0x444D5558),  // "DMUX"
+            id: id
+        )
+        var ref: EventHotKeyRef?
+        RegisterEventHotKey(
+            19,  // '2' key
+            UInt32(cmdKey | controlKey | optionKey | shiftKey),  // Hyper
+            hotKeyID,
+            GetApplicationEventTarget(),
+            0,
+            &ref
+        )
+        if let ref { hotKeyRefs[id] = ref }
+    }
+
     /// Register Cmd+Option+1/2/3... hotkeys for layer switching
     func registerLayerHotkeys(count: Int, callback: @escaping (Int) -> Void) {
         ensureEventHandler()
@@ -153,6 +174,15 @@ class HotkeyManager {
             &ref
         )
         if let ref { hotKeyRefs[id] = ref }
+    }
+
+    /// Unregister all global hotkeys and clear callbacks
+    func unregisterAll() {
+        for (id, ref) in hotKeyRefs {
+            UnregisterEventHotKey(ref)
+            hotkeyCallbacks.removeValue(forKey: id)
+        }
+        hotKeyRefs.removeAll()
     }
 
     /// Register Ctrl+Option window tiling hotkeys (Magnet-style)

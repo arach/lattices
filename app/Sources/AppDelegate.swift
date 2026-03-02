@@ -27,25 +27,35 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.appearance = NSAppearance(named: .darkAqua)
 
         CommandPaletteWindow.shared.configure(scanner: ProjectScanner.shared)
-        HotkeyManager.shared.register {
-            CommandPaletteWindow.shared.toggle()
-        }
 
-        // Register command mode hotkey (Hyper+1) → opens standalone screen map
-        HotkeyManager.shared.registerCommandMode {
-            ScreenMapWindowController.shared.toggle()
-        }
+        // Register all hotkeys via HotkeyStore (user-configurable bindings)
+        let store = HotkeyStore.shared
+        store.register(action: .palette) { CommandPaletteWindow.shared.toggle() }
+        store.register(action: .screenMap) { ScreenMapWindowController.shared.toggle() }
+        store.register(action: .bezel) { WindowBezel.showBezelForFrontmostWindow() }
 
-        // Register layer-switching hotkeys (Cmd+Option+1/2/3...)
+        // Layer-switching hotkeys
         let workspace = WorkspaceManager.shared
-        if let config = workspace.config {
-            HotkeyManager.shared.registerLayerHotkeys(count: (config.layers ?? []).count) { index in
-                workspace.tileLayer(index: index)
-            }
+        let layerCount = (workspace.config?.layers ?? []).count
+        for (i, action) in HotkeyAction.layerActions.prefix(layerCount).enumerated() {
+            let index = i
+            store.register(action: action) { workspace.tileLayer(index: index) }
         }
 
-        // Register window tiling hotkeys (Ctrl+Option+arrows/letters)
-        HotkeyManager.shared.registerTileHotkeys()
+        // Tiling hotkeys
+        let tileMap: [(HotkeyAction, TilePosition)] = [
+            (.tileLeft, .left), (.tileRight, .right),
+            (.tileMaximize, .maximize), (.tileCenter, .center),
+            (.tileTopLeft, .topLeft), (.tileTopRight, .topRight),
+            (.tileBottomLeft, .bottomLeft), (.tileBottomRight, .bottomRight),
+            (.tileTop, .top), (.tileBottom, .bottom),
+            (.tileLeftThird, .leftThird), (.tileCenterThird, .centerThird),
+            (.tileRightThird, .rightThird),
+        ]
+        for (action, position) in tileMap {
+            store.register(action: action) { WindowTiler.tileFrontmostViaAX(to: position) }
+        }
+        store.register(action: .tileDistribute) { WindowTiler.distributeVisible() }
 
         // Style the MenuBarExtra panel when it appears
         NotificationCenter.default.addObserver(
@@ -63,12 +73,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Start daemon services
         DesktopModel.shared.start()
         TmuxModel.shared.start()
+        ProcessModel.shared.start()
+        LatticeApi.setup()
         DaemonServer.shared.start()
 
         // --diagnostics flag: auto-open diagnostics panel on launch
         if CommandLine.arguments.contains("--diagnostics") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 DiagnosticWindow.shared.show()
+            }
+        }
+
+        // --screen-map flag: auto-open screen map on launch
+        if CommandLine.arguments.contains("--screen-map") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                ScreenMapWindowController.shared.show()
             }
         }
     }
@@ -78,6 +97,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         panel.backgroundColor = bg
         panel.isOpaque = false
         panel.hasShadow = true
+        panel.becomesKeyOnlyIfNeeded = false
         panel.invalidateShadow()
     }
 }

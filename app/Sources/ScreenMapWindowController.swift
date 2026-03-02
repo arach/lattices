@@ -1,13 +1,14 @@
 import AppKit
 import SwiftUI
 
-/// Manages the standalone Screen Map editor window.
-/// Follows the MainWindow pattern: singleton, real NSWindow with title bar chrome.
-final class ScreenMapWindowController {
+/// Manages the unified app window (Screen Map + Settings).
+/// Singleton with show/close/toggle, plus showPage() for navigation.
+final class ScreenMapWindowController: ObservableObject {
     static let shared = ScreenMapWindowController()
 
     private var window: NSWindow?
     private var controller: ScreenMapController?
+    @Published var activePage: AppPage = .screenMap
 
     var isVisible: Bool { window?.isVisible ?? false }
 
@@ -22,10 +23,12 @@ final class ScreenMapWindowController {
         }
     }
 
+    /// Show the window on the current page (defaults to Screen Map).
     func show() {
         if let existing = window {
-            // Re-enter (refresh snapshot) and bring forward
-            controller?.enter()
+            if activePage == .screenMap {
+                controller?.enter()
+            }
             existing.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
@@ -35,15 +38,10 @@ final class ScreenMapWindowController {
         ctrl.onDismiss = { [weak self] in
             self?.close()
         }
-        ctrl.enter()
+        if activePage == .screenMap {
+            ctrl.enter()
+        }
 
-        let view = ScreenMapView(controller: ctrl)
-            .preferredColorScheme(.dark)
-
-        let hostingView = NSHostingView(rootView: view)
-        hostingView.frame = NSRect(x: 0, y: 0, width: 900, height: 560)
-
-        // Compute size from screen aspect ratio
         let screens = NSScreen.screens
         let primaryHeight = screens.first?.frame.height ?? 0
         var bbox = CGRect.zero
@@ -54,41 +52,30 @@ final class ScreenMapWindowController {
             bbox = i == 0 ? cgRect : bbox.union(cgRect)
         }
         let aspectRatio = bbox.width / max(bbox.height, 1)
-        let windowHeight: CGFloat = 620
-        let windowWidth = max(860, windowHeight * aspectRatio + 100)
+        let windowWidth = max(860, CGFloat(620) * aspectRatio + 100)
 
-        let w = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: windowWidth, height: windowHeight),
-            styleMask: [.titled, .closable, .resizable, .miniaturizable],
-            backing: .buffered,
-            defer: false
+        let view = AppShellView(controller: ctrl)
+
+        let w = AppWindowShell.makeWindow(
+            config: .init(
+                title: "Lattice",
+                initialSize: NSSize(width: windowWidth, height: 620),
+                minSize: NSSize(width: 600, height: 400),
+                maxSize: NSSize(width: 2400, height: 1600)
+            ),
+            rootView: view
         )
-        w.contentView = hostingView
-        w.title = "Screen Map"
-        w.titlebarAppearsTransparent = true
-        w.titleVisibility = .visible
-        w.isReleasedWhenClosed = false
-        w.backgroundColor = NSColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1.0)
-        w.appearance = NSAppearance(named: .darkAqua)
-        w.minSize = NSSize(width: 600, height: 400)
-        w.maxSize = NSSize(width: 2400, height: 1600)
-
-        // Center horizontally, slightly above vertical center
-        if let screen = NSScreen.main {
-            let screenFrame = screen.visibleFrame
-            let clampedWidth = min(windowWidth, screenFrame.width * 0.92)
-            let clampedHeight = min(windowHeight, screenFrame.height * 0.85)
-            let x = screenFrame.midX - clampedWidth / 2
-            let y = screenFrame.midY - clampedHeight / 2 + (screenFrame.height * 0.08)
-            w.setFrameOrigin(NSPoint(x: x, y: y))
-        }
-
-        w.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        AppWindowShell.positionCentered(w)
+        AppWindowShell.present(w)
 
         self.window = w
         self.controller = ctrl
-        AppDelegate.updateActivationPolicy()
+    }
+
+    /// Navigate to a specific page, opening the window if needed.
+    func showPage(_ page: AppPage) {
+        activePage = page
+        show()
     }
 
     func close() {
@@ -96,6 +83,7 @@ final class ScreenMapWindowController {
         window?.orderOut(nil)
         window = nil
         controller = nil
+        activePage = .screenMap
         AppDelegate.updateActivationPolicy()
     }
 }

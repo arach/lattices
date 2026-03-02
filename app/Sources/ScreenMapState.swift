@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import SwiftUI
 
 // MARK: - Display Geometry
 
@@ -16,12 +17,46 @@ struct ScreenMapWindowEntry: Identifiable {
     let pid: Int32              // for AX API
     let app: String
     let title: String
-    let originalFrame: CGRect   // frozen at snapshot time
+    var originalFrame: CGRect   // frozen at snapshot time
     var editedFrame: CGRect     // mutated during drag
     let zIndex: Int             // 0 = frontmost
     var layer: Int              // assigned by iterative peeling (per-display)
     let displayIndex: Int       // which monitor this window belongs to
+    let isOnScreen: Bool        // visible on current Space
+    var latticeSession: String? // parsed from [lattice:name] in title
+    var tmuxCommand: String?    // running command from tmux pane (e.g. "vim", "node")
+    var tmuxPaneTitle: String?  // tmux pane title (often cwd or custom label)
     var hasEdits: Bool { originalFrame != editedFrame }
+
+    /// Rich search key combining all available metadata.
+    /// Format: m{spatial}.L{layer}.{layerName}.{app}.{title}.{session}.{command}.{paneTitle}.{state}
+    /// Example: m1.L0.primary.terminal.~/dev/lattice.session:myproject.cmd:vim.visible
+    func searchKey(spatialNumber: Int, layerName: String?) -> String {
+        var parts: [String] = []
+        parts.append("m\(spatialNumber)")
+        parts.append(layerName.map { "L\(layer).\($0)" } ?? "L\(layer)")
+        parts.append(app)
+        parts.append(title.isEmpty ? "_" : title)
+        if let session = latticeSession {
+            parts.append("session:\(session)")
+        }
+        if let cmd = tmuxCommand, !cmd.isEmpty {
+            parts.append("cmd:\(cmd)")
+        }
+        if let pTitle = tmuxPaneTitle, !pTitle.isEmpty, pTitle != title {
+            parts.append(pTitle)
+        }
+        parts.append(isOnScreen ? "visible" : "hidden")
+        return parts.joined(separator: ".").lowercased()
+    }
+}
+
+// MARK: - Canvas Drag Mode
+
+enum CanvasDragMode {
+    case move
+    case resizeLeft, resizeRight, resizeTop, resizeBottom
+    case resizeTopLeft, resizeTopRight, resizeBottomLeft, resizeBottomRight
 }
 
 // MARK: - Screen Map Editor State
@@ -30,11 +65,104 @@ final class ScreenMapEditorState: ObservableObject {
     @Published var windows: [ScreenMapWindowEntry]
     @Published var selectedLayers: Set<Int> = [0]  // empty = show all
     @Published var draggingWindowId: UInt32? = nil
+    var canvasDragMode: CanvasDragMode = .move
+    var currentCursorMode: CanvasDragMode = .move
     @Published var isPreviewing: Bool = false
     @Published var lastActionRef: String? = nil
     @Published var zoomLevel: CGFloat = 1.0   // 1.0 = fit-all
     @Published var panOffset: CGPoint = .zero  // canvas-local pixels
     @Published var focusedDisplayIndex: Int? = nil  // nil = all-displays view
+    @Published var windowSearchQuery: String = ""
+    @Published var isTilingMode: Bool = false
+    var isSearching: Bool { !windowSearchQuery.isEmpty }
+
+    var searchFilteredWindows: [ScreenMapWindowEntry] {
+        guard !windowSearchQuery.isEmpty else { return [] }
+        let terms = windowSearchQuery.lowercased()
+            .split(separator: " ")
+            .map(String.init)
+            .filter { !$0.isEmpty }
+        guard !terms.isEmpty else { return [] }
+
+        // Pre-compile glob patterns into matchers
+        let matchers: [(String) -> Bool] = terms.map { term in
+            if term.hasPrefix("/"), term.count > 1 {
+                // Raw regex: /pattern/
+                let raw = String(term.dropFirst().hasSuffix("/") ? term.dropFirst().dropLast() : term.dropFirst())
+                return Self.regexMatcher(raw)
+            } else if term.contains("*") || term.contains("?") {
+                return Self.globMatcher(term)
+            } else {
+                return { key in key.contains(term) }
+            }
+        }
+
+        return windows
+            .filter { win in
+                let key = win.searchKey(
+                    spatialNumber: spatialNumber(for: win.displayIndex),
+                    layerName: layerNames[win.layer]
+                )
+                return matchers.allSatisfy { $0(key) }
+            }
+            .sorted { $0.zIndex < $1.zIndex }
+    }
+
+    /// Convert a glob pattern (with * and ?) into a substring matcher closure.
+    /// `*` matches any sequence of characters, `?` matches exactly one character.
+    /// Pattern is matched as a substring unless anchored with `*` on both ends.
+    private static func globMatcher(_ pattern: String) -> (String) -> Bool {
+        // Convert glob to regex: escape regex-special chars, then * → .* and ? → .
+        var regex = ""
+        for ch in pattern {
+            switch ch {
+            case "*": regex += ".*"
+            case "?": regex += "."
+            case ".", "(", ")", "[", "]", "{", "}", "^", "$", "|", "+", "\\": regex += "\\\(ch)"
+            default: regex += String(ch)
+            }
+        }
+        guard let re = try? NSRegularExpression(pattern: regex, options: []) else {
+            return { key in key.contains(pattern) }
+        }
+        return { key in
+            re.firstMatch(in: key, range: NSRange(key.startIndex..., in: key)) != nil
+        }
+    }
+
+    /// Raw regex matcher — term is an unescaped regex pattern.
+    /// Case-insensitive. Falls back to literal contains on invalid regex.
+    private static func regexMatcher(_ pattern: String) -> (String) -> Bool {
+        guard let re = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return { key in key.contains(pattern) }
+        }
+        return { key in
+            re.firstMatch(in: key, range: NSRange(key.startIndex..., in: key)) != nil
+        }
+    }
+
+    var searchTerms: [String] {
+        windowSearchQuery.lowercased()
+            .split(separator: " ")
+            .map(String.init)
+            .filter { !$0.isEmpty }
+    }
+
+    var searchHasDirectHit: Bool {
+        searchFilteredWindows.count == 1
+    }
+
+    var searchResultsByDisplay: [(displayIndex: Int, spatialNumber: Int, label: String, windows: [ScreenMapWindowEntry])] {
+        let filtered = searchFilteredWindows
+        guard !filtered.isEmpty else { return [] }
+        let grouped = Dictionary(grouping: filtered) { $0.displayIndex }
+        return grouped.keys.sorted { spatialNumber(for: $0) < spatialNumber(for: $1) }
+            .map { idx in
+                let label = displays.first(where: { $0.index == idx })?.label ?? "Display \(idx)"
+                let wins = grouped[idx]!.sorted { $0.zIndex < $1.zIndex }
+                return (idx, spatialNumber(for: idx), label, wins)
+            }
+    }
 
     /// Workspace layer names from workspace.json (layer index → label)
     var layerNames: [Int: String] = [:]
@@ -541,6 +669,72 @@ final class ScreenMapEditorState: ObservableObject {
         windows[idx].editedFrame = f
     }
 
+    /// Grow each window outward until it hits a neighbor or screen edge
+    func fitAvailableSpace() -> Int {
+        guard let layer = activeLayer else { return 0 }
+
+        let screens = NSScreen.screens
+        let primaryHeight = screens.first?.frame.height ?? 0
+        var totalAffected = 0
+
+        var displayIndices = Set(windows.filter { $0.layer == layer }.map(\.displayIndex))
+        if let focused = focusedDisplayIndex { displayIndices = displayIndices.intersection([focused]) }
+
+        for dIdx in displayIndices {
+            var indices = windows.indices.filter { windows[$0].layer == layer && windows[$0].displayIndex == dIdx }
+            guard !indices.isEmpty else { continue }
+            indices.sort { windows[$0].zIndex < windows[$1].zIndex }
+
+            let screen = dIdx < screens.count ? screens[dIdx] : screens.first!
+            let axTop = primaryHeight - screen.frame.maxY
+            let bounds = CGRect(x: screen.frame.origin.x, y: axTop,
+                                width: screen.frame.width, height: screen.frame.height)
+
+            // Snapshot original positions for neighbor detection
+            let origFrames = indices.map { windows[$0].editedFrame }
+
+            for (i, idx) in indices.enumerated() {
+                let me = origFrames[i]
+
+                // Find nearest obstacle in each direction (only neighbors that overlap on the perpendicular axis)
+                var left = bounds.minX
+                var right = bounds.maxX
+                var top = bounds.minY
+                var bottom = bounds.maxY
+
+                for (j, otherFrame) in origFrames.enumerated() where j != i {
+                    // Left: other window whose right edge is to my left, overlapping vertically
+                    if otherFrame.maxX <= me.minX + 1 &&
+                       otherFrame.maxY > me.minY && otherFrame.minY < me.maxY {
+                        left = max(left, otherFrame.maxX)
+                    }
+                    // Right: other window whose left edge is to my right, overlapping vertically
+                    if otherFrame.minX >= me.maxX - 1 &&
+                       otherFrame.maxY > me.minY && otherFrame.minY < me.maxY {
+                        right = min(right, otherFrame.minX)
+                    }
+                    // Top: other window whose bottom edge is above me, overlapping horizontally
+                    if otherFrame.maxY <= me.minY + 1 &&
+                       otherFrame.maxX > me.minX && otherFrame.minX < me.maxX {
+                        top = max(top, otherFrame.maxY)
+                    }
+                    // Bottom: other window whose top edge is below me, overlapping horizontally
+                    if otherFrame.minY >= me.maxY - 1 &&
+                       otherFrame.maxX > me.minX && otherFrame.minX < me.maxX {
+                        bottom = min(bottom, otherFrame.minY)
+                    }
+                }
+
+                let newFrame = CGRect(x: left, y: top, width: right - left, height: bottom - top)
+                if newFrame != windows[idx].editedFrame {
+                    windows[idx].editedFrame = newFrame
+                    totalAffected += 1
+                }
+            }
+        }
+        return totalAffected
+    }
+
     /// Distribute visible windows into a grid (staged — edits frames only)
     func distributeLayer() -> Int {
         let screens = NSScreen.screens
@@ -883,6 +1077,13 @@ final class ScreenMapController: ObservableObject {
     @Published var flashMessage: String? = nil
     @Published var previewCaptures: [UInt32: NSImage] = [:]
     @Published var savedPositions: [UInt32: (pid: Int32, frame: WindowFrame)]? = nil
+    @Published var isSearchActive: Bool = false
+    @Published var searchHighlightIndex: Int = 0
+
+    enum DisplayTransitionDirection {
+        case left, right, none
+    }
+    @Published var displayTransition: DisplayTransitionDirection = .none
 
     var previewWindow: NSWindow? = nil
     private var previewGlobalMonitor: Any? = nil
@@ -895,6 +1096,7 @@ final class ScreenMapController: ObservableObject {
     func isSelected(_ id: UInt32) -> Bool { selectedWindowIds.contains(id) }
 
     func selectSingle(_ id: UInt32) {
+        navigateToWindowDisplay(id)
         selectedWindowIds = [id]
     }
 
@@ -910,16 +1112,136 @@ final class ScreenMapController: ObservableObject {
         selectedWindowIds = []
     }
 
+    func selectNextWindow() {
+        guard let ed = editor else { return }
+        let wins = ed.focusedVisibleWindows.sorted(by: { $0.zIndex < $1.zIndex })
+        guard !wins.isEmpty else { return }
+        if selectedWindowIds.count == 1, let current = selectedWindowIds.first,
+           let idx = wins.firstIndex(where: { $0.id == current }) {
+            let next = wins[(idx + 1) % wins.count]
+            selectedWindowIds = [next.id]
+        } else {
+            selectedWindowIds = [wins[0].id]
+        }
+        objectWillChange.send()
+    }
+
+    func selectPreviousWindow() {
+        guard let ed = editor else { return }
+        let wins = ed.focusedVisibleWindows.sorted(by: { $0.zIndex < $1.zIndex })
+        guard !wins.isEmpty else { return }
+        if selectedWindowIds.count == 1, let current = selectedWindowIds.first,
+           let idx = wins.firstIndex(where: { $0.id == current }) {
+            let prev = wins[(idx - 1 + wins.count) % wins.count]
+            selectedWindowIds = [prev.id]
+        } else {
+            selectedWindowIds = [wins[wins.count - 1].id]
+        }
+        objectWillChange.send()
+    }
+
+    func selectAll() {
+        guard let ed = editor else { return }
+        let allIds = Set(ed.focusedVisibleWindows.map(\.id))
+        selectedWindowIds = allIds
+        flash("Selected \(allIds.count) windows")
+        objectWillChange.send()
+    }
+
+    // MARK: - Search
+
+    var searchHighlightedWindowId: UInt32? {
+        guard isSearchActive, let ed = editor else { return nil }
+        let results = ed.searchFilteredWindows
+        guard !results.isEmpty else { return nil }
+        let idx = max(0, min(searchHighlightIndex, results.count - 1))
+        return results[idx].id
+    }
+
+    func openSearch() {
+        isSearchActive = true
+        searchHighlightIndex = 0
+    }
+
+    func closeSearch() {
+        isSearchActive = false
+        searchHighlightIndex = 0
+        editor?.windowSearchQuery = ""
+    }
+
+    func searchSelectHighlighted() {
+        guard let wid = searchHighlightedWindowId else { return }
+        selectSingle(wid)
+        // Direct hit (single result) → close search immediately
+        if editor?.searchHasDirectHit == true {
+            closeSearch()
+        }
+        // Multiple results → stay open, just select
+    }
+
+    /// Switch display focus to match a window's display, with directional animation
+    func navigateToWindowDisplay(_ windowId: UInt32) {
+        guard let ed = editor,
+              let win = ed.windows.first(where: { $0.id == windowId }) else { return }
+        let targetDisplay = win.displayIndex
+        guard ed.focusedDisplayIndex != nil,
+              ed.focusedDisplayIndex != targetDisplay else { return }
+
+        let fromSpatial = ed.spatialNumber(for: ed.focusedDisplayIndex!)
+        let toSpatial = ed.spatialNumber(for: targetDisplay)
+        displayTransition = toSpatial > fromSpatial ? .right : .left
+
+        ed.focusDisplay(targetDisplay)
+        objectWillChange.send()
+
+        // Clear transition after animation completes
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.displayTransition = .none
+        }
+    }
+
+    func focusWindowOnScreen(_ windowId: UInt32) {
+        guard let ed = editor,
+              let win = ed.windows.first(where: { $0.id == windowId }) else { return }
+        if isSearchActive { closeSearch() }
+        selectSingle(windowId)
+        WindowTiler.raiseWindowAndReactivate(wid: win.id, pid: win.pid)
+        // Show bezel after a short delay so the target window is raised first
+        // and we can order the bezel behind it
+        let winCopy = win
+        let edCopy = ed
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            WindowBezel.shared.show(for: winCopy, editor: edCopy)
+        }
+    }
+
+    func focusSelectedWindowOnScreen() {
+        if isSearchActive, let wid = searchHighlightedWindowId {
+            focusWindowOnScreen(wid)
+        } else if selectedWindowIds.count == 1, let wid = selectedWindowIds.first {
+            focusWindowOnScreen(wid)
+        }
+    }
+
+    func searchNavigate(delta: Int) {
+        guard let ed = editor else { return }
+        let count = ed.searchFilteredWindows.count
+        guard count > 0 else { return }
+        searchHighlightIndex = (searchHighlightIndex + delta + count) % count
+        objectWillChange.send()
+    }
+
     // MARK: - Enter
 
     func enter() {
         guard let windowList = CGWindowListCopyWindowInfo(
-            [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID
+            [.optionAll, .excludeDesktopElements], kCGNullWindowID
         ) as? [[String: Any]] else { return }
 
         struct CGWin {
             let wid: UInt32; let pid: Int32; let app: String; let title: String
             let frame: CGRect; let layer: Int; let displayIndex: Int
+            let isOnScreen: Bool
         }
 
         let screens = NSScreen.screens
@@ -960,11 +1282,12 @@ final class ScreenMapController: ObservableObject {
             guard CGRectMakeWithDictionaryRepresentation(boundsDict, &rect) else { continue }
             guard rect.width >= 100 && rect.height >= 50 else { continue }
             let app = info[kCGWindowOwnerName as String] as? String ?? ""
-            if app == "LatticeApp" || app == "lattice" { continue }
+            if app == "LatticeApp" || app == "lattice" || app == "Lattice" { continue }
             let pid = info[kCGWindowOwnerPID as String] as? Int32 ?? 0
             let title = info[kCGWindowName as String] as? String ?? ""
             let dIdx = displayIndex(for: rect)
-            ordered.append(CGWin(wid: wid, pid: pid, app: app, title: title, frame: rect, layer: layer, displayIndex: dIdx))
+            let onScreen = (info[kCGWindowIsOnscreen as String] as? Bool) ?? false
+            ordered.append(CGWin(wid: wid, pid: pid, app: app, title: title, frame: rect, layer: layer, displayIndex: dIdx, isOnScreen: onScreen))
         }
 
         NSLog("[ScreenMap] enter: %d windows after filtering", ordered.count)
@@ -1010,18 +1333,56 @@ final class ScreenMapController: ObservableObject {
             }
         }
 
+        // Build tmux PID → context lookup from TmuxModel
+        let latticeSessionRegex = try? NSRegularExpression(pattern: "\\[lattice:([^\\]]+)\\]")
+        var tmuxPidLookup: [Int32: (command: String, paneTitle: String, session: String)] = [:]
+        for session in TmuxModel.shared.sessions {
+            for pane in session.panes {
+                // Map pane PID and all child PIDs to this context
+                tmuxPidLookup[Int32(pane.pid)] = (pane.currentCommand, pane.title, session.name)
+            }
+        }
+
         var mapWindows: [ScreenMapWindowEntry] = []
         for (i, win) in ordered.enumerated() {
             let assignedLayer = layerAssignment[i] ?? 0
+
+            // Parse [lattice:session] from title
+            var latticeSession: String?
+            if let regex = latticeSessionRegex,
+               let match = regex.firstMatch(in: win.title, range: NSRange(win.title.startIndex..., in: win.title)),
+               let range = Range(match.range(at: 1), in: win.title) {
+                latticeSession = String(win.title[range])
+            }
+
+            // Cross-reference with tmux — match by PID (window owner PID or child)
+            let tmuxCtx = tmuxPidLookup[win.pid]
+            // If no direct PID match, try looking up by lattice session name
+            let tmuxBySession: (command: String, paneTitle: String, session: String)? = {
+                guard let session = latticeSession else { return nil }
+                guard tmuxCtx == nil else { return nil }
+                for s in TmuxModel.shared.sessions where s.name == session {
+                    if let active = s.panes.first(where: { $0.isActive }) {
+                        return (active.currentCommand, active.title, s.name)
+                    }
+                }
+                return nil
+            }()
+            let ctx = tmuxCtx ?? tmuxBySession
+
             mapWindows.append(ScreenMapWindowEntry(
                 id: win.wid, pid: win.pid, app: win.app, title: win.title,
                 originalFrame: win.frame, editedFrame: win.frame,
-                zIndex: i, layer: assignedLayer, displayIndex: win.displayIndex
+                zIndex: i, layer: assignedLayer, displayIndex: win.displayIndex,
+                isOnScreen: win.isOnScreen,
+                latticeSession: latticeSession ?? ctx?.session,
+                tmuxCommand: ctx?.command,
+                tmuxPaneTitle: ctx?.paneTitle
             ))
         }
 
         let totalLayers = (mapWindows.map(\.layer).max() ?? 0) + 1
-        NSLog("[ScreenMap] Peeling complete: %d layers from %d windows across %d displays", totalLayers, mapWindows.count, byDisplay.count)
+        NSLog("[ScreenMap] Peeling complete: %d layers from %d windows across %d displays (tmux panes indexed: %d)", totalLayers, mapWindows.count, byDisplay.count, tmuxPidLookup.count)
 
         // Build display geometries
         var displayGeometries: [DisplayGeometry] = []
@@ -1073,6 +1434,110 @@ final class ScreenMapController: ObservableObject {
     func handleKey(_ keyCode: UInt16, modifiers: NSEvent.ModifierFlags = []) -> Bool {
         let diag = DiagnosticLog.shared
         diag.info("[ScreenMap] key: \(keyCode)")
+
+        // Tiling mode intercepts keys before anything else
+        if editor?.isTilingMode == true {
+            switch keyCode {
+            case 53: // Escape → cancel tiling mode
+                exitTilingMode()
+                flash("Tiling cancelled")
+                return true
+            case 123: // ← → left
+                tileSelectedWindowInEditor(to: .left)
+                return true
+            case 124: // → → right
+                tileSelectedWindowInEditor(to: .right)
+                return true
+            case 126: // ↑ → top (Shift = maximize)
+                if modifiers.contains(.shift) {
+                    tileSelectedWindowInEditor(to: .maximize)
+                } else {
+                    tileSelectedWindowInEditor(to: .top)
+                }
+                return true
+            case 125: // ↓ → bottom
+                tileSelectedWindowInEditor(to: .bottom)
+                return true
+            case 8: // c → center
+                tileSelectedWindowInEditor(to: .center)
+                return true
+            case 18: // 1 → topLeft
+                tileSelectedWindowInEditor(to: .topLeft)
+                return true
+            case 19: // 2 → topRight
+                tileSelectedWindowInEditor(to: .topRight)
+                return true
+            case 20: // 3 → bottomLeft
+                tileSelectedWindowInEditor(to: .bottomLeft)
+                return true
+            case 21: // 4 → bottomRight
+                tileSelectedWindowInEditor(to: .bottomRight)
+                return true
+            case 23: // 5 → leftThird
+                tileSelectedWindowInEditor(to: .leftThird)
+                return true
+            case 22: // 6 → centerThird
+                tileSelectedWindowInEditor(to: .centerThird)
+                return true
+            case 26: // 7 → rightThird
+                tileSelectedWindowInEditor(to: .rightThird)
+                return true
+            default:
+                exitTilingMode()
+                flash("Tiling cancelled")
+                return true
+            }
+        }
+
+        // Ctrl+Option direct tiling shortcuts (always active, single selection)
+        if modifiers.contains([.control, .option]) && selectedWindowIds.count == 1 {
+            switch keyCode {
+            case 123: // Ctrl+Opt+← → left
+                tileSelectedWindowInEditor(to: .left)
+                return true
+            case 124: // Ctrl+Opt+→ → right
+                tileSelectedWindowInEditor(to: .right)
+                return true
+            case 126: // Ctrl+Opt+↑ → top (+ Shift = maximize)
+                if modifiers.contains(.shift) {
+                    tileSelectedWindowInEditor(to: .maximize)
+                } else {
+                    tileSelectedWindowInEditor(to: .top)
+                }
+                return true
+            case 125: // Ctrl+Opt+↓ → bottom
+                tileSelectedWindowInEditor(to: .bottom)
+                return true
+            default:
+                break
+            }
+        }
+
+        // Search mode intercepts keys before normal handling
+        if isSearchActive {
+            switch keyCode {
+            case 53: // Escape → close search
+                closeSearch()
+                return true
+            case 36: // Enter → select or focus
+                if modifiers.contains(.command) {
+                    focusSelectedWindowOnScreen()
+                } else {
+                    searchSelectHighlighted()
+                }
+                return true
+            case 125: // ↓ → next result
+                searchNavigate(delta: 1)
+                return true
+            case 126: // ↑ → previous result
+                searchNavigate(delta: -1)
+                return true
+            default:
+                // Let other keys pass through to the text field
+                return false
+            }
+        }
+
         switch keyCode {
         case 53: // Escape
             if editor?.isPreviewing == true {
@@ -1088,20 +1553,64 @@ final class ScreenMapController: ObservableObject {
             }
             return true
 
-        case 36: // Enter → apply
-            if editor?.isPreviewing == true { endPreview() }
-            diag.info("[ScreenMap] apply edits")
-            applyEdits()
+        case 36: // Enter
+            if modifiers.contains(.command) {
+                // ⌘↩ → focus selected window on screen
+                focusSelectedWindowOnScreen()
+            } else {
+                // ↩ → apply edits
+                if editor?.isPreviewing == true { endPreview() }
+                diag.info("[ScreenMap] apply edits")
+                applyEdits()
+            }
             return true
 
-        case 47: // . → cycle layer
-            if modifiers.contains(.shift) {
-                editor?.cyclePreviousLayer()
-            } else {
-                editor?.cycleLayer()
+        // MARK: Right hand — Navigation
+
+        case 4: // h → previous display
+            if let ed = editor, ed.displays.count > 1 {
+                ed.cyclePreviousDisplay()
+                let label = ed.focusedDisplay?.label ?? "All displays"
+                flash(label)
+                objectWillChange.send()
             }
-            diag.info("[ScreenMap] cycle → \(editor?.layerLabel ?? "nil")")
+            return true
+
+        case 37: // l → next display
+            if let ed = editor, ed.displays.count > 1 {
+                ed.cycleNextDisplay()
+                let label = ed.focusedDisplay?.label ?? "All displays"
+                flash(label)
+                objectWillChange.send()
+            }
+            return true
+
+        case 38: // j → next layer
+            editor?.cycleLayer()
+            diag.info("[ScreenMap] layer → \(editor?.layerLabel ?? "nil")")
             objectWillChange.send()
+            return true
+
+        case 40: // k → previous layer
+            editor?.cyclePreviousLayer()
+            diag.info("[ScreenMap] layer → \(editor?.layerLabel ?? "nil")")
+            objectWillChange.send()
+            return true
+
+        case 45: // n → next window
+            selectNextWindow()
+            return true
+
+        case 35: // p → previous window
+            selectPreviousWindow()
+            return true
+
+        case 48: // Tab → cycle windows
+            if modifiers.contains(.shift) {
+                selectPreviousWindow()
+            } else {
+                selectNextWindow()
+            }
             return true
 
         case 33: // [ → move to previous layer
@@ -1129,40 +1638,73 @@ final class ScreenMapController: ObservableObject {
             }
             return true
 
-        case 8: // c → consolidate
-            consolidateLayers()
-            return true
+        // MARK: Left hand — Actions
 
-        case 3: // f → flatten
-            flattenLayers()
-            return true
-
-        case 9: // v → toggle preview
-            previewLayer()
-            return true
-
-        case 17: // t → tile
-            tileLayer()
+        case 1: // s → spread
+            smartSpreadLayer()
             return true
 
         case 14: // e → expose
             exposeLayer()
             return true
 
-        case 2: // d → smart spread
-            smartSpreadLayer()
+        case 17: // t → tile (1 window = tiling mode, otherwise bulk tile)
+            if selectedWindowIds.count == 1 {
+                enterTilingMode()
+            } else {
+                tileLayer()
+            }
             return true
 
-        case 5: // g → distribute visible
+        case 2: // d → distribute
             distributeVisible()
             return true
 
-        case 29: // 0 → fit all
+        case 15: // r → reset zoom/pan
             editor?.resetZoomPan()
             flash("Fit all")
             return true
 
-        case 123: // ← previous display
+        case 5: // g → grow to fill
+            fitAvailableSpace()
+            return true
+
+        case 3: // f → flatten
+            flattenLayers()
+            return true
+
+        case 8: // c → consolidate
+            consolidateLayers()
+            return true
+
+        case 9: // v → toggle preview
+            previewLayer()
+            return true
+
+        case 0: // a → select all
+            selectAll()
+            return true
+
+        case 7: // x → deselect all
+            clearSelection()
+            flash("Deselected")
+            return true
+
+        case 6: // z → discard edits
+            if let ed = editor, ed.pendingEditCount > 0 {
+                ed.discardEdits()
+                flash("Edits discarded")
+            } else {
+                flash("No edits to discard")
+            }
+            return true
+
+        case 29: // 0 → fit all (secondary)
+            editor?.resetZoomPan()
+            flash("Fit all")
+            return true
+
+        case 123: // ← previous display (secondary)
             if let ed = editor, ed.displays.count > 1 {
                 ed.cyclePreviousDisplay()
                 let label = ed.focusedDisplay?.label ?? "All displays"
@@ -1171,13 +1713,23 @@ final class ScreenMapController: ObservableObject {
             }
             return true
 
-        case 124: // → next display
+        case 124: // → next display (secondary)
             if let ed = editor, ed.displays.count > 1 {
                 ed.cycleNextDisplay()
                 let label = ed.focusedDisplay?.label ?? "All displays"
                 flash(label)
                 objectWillChange.send()
             }
+            return true
+
+        case 44: // / → open window search
+            openSearch()
+            return true
+
+        case 12: // q → dismiss screen map
+            if editor?.isPreviewing == true { endPreview() }
+            WindowBezel.shared.dismiss()
+            onDismiss?()
             return true
 
         default:
@@ -1210,19 +1762,28 @@ final class ScreenMapController: ObservableObject {
 
         let actionLog = ed.actionLog
 
+        // Apply AX changes (no hide/show — Screen Map stays visible)
         WindowTiler.batchMoveWindows(allMoves)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            WindowTiler.batchMoveWindows(allMoves)
+
+        // Commit edited frames as new originals so the map doesn't reload
+        for i in ed.windows.indices {
+            ed.windows[i].originalFrame = ed.windows[i].editedFrame
+        }
+        ed.objectWillChange.send()
+        objectWillChange.send()
+
+        // Verify in background — if anything drifted, retry once then refresh
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            let drifted = WindowTiler.verifyMoves(allMoves)
+            if !drifted.isEmpty {
+                NSLog("[ScreenMap] %d/%d windows drifted, retrying", drifted.count, allMoves.count)
+                WindowTiler.batchMoveWindows(drifted)
+            }
+            actionLog.verify()
         }
 
         let noun = pendingEdits.count == 1 ? "edit" : "edits"
         flash("Applied \(pendingEdits.count) \(noun)")
-
-        // Refresh the map to show new positions
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
-            actionLog.verify()
-            self?.refresh()
-        }
     }
 
     func applyEditsFromButton() {
@@ -1232,6 +1793,7 @@ final class ScreenMapController: ObservableObject {
 
     func exitScreenMap() {
         if editor?.isPreviewing == true { endPreview() }
+        WindowBezel.shared.dismiss()
         if let ed = editor, ed.pendingEditCount > 0 {
             ed.discardEdits()
             flash("Edits discarded")
@@ -1300,6 +1862,21 @@ final class ScreenMapController: ObservableObject {
         objectWillChange.send()
     }
 
+    func fitAvailableSpace() {
+        guard let ed = editor else { return }
+        let before = ed.actionLog.snapshot(ed.windows)
+        let count = ed.fitAvailableSpace()
+        let after = ed.actionLog.snapshot(ed.windows)
+        let summary: String
+        if count >= 2 { summary = "Grew \(count) windows to fill" }
+        else if count == 1 { summary = "Grew 1 window to fill" }
+        else { summary = "No windows to grow" }
+        let entry = ed.actionLog.record(action: "fit", summary: summary, before: before, after: after)
+        ed.lastActionRef = entry.ref
+        flash("\(summary)  [\(entry.ref)]")
+        objectWillChange.send()
+    }
+
     func consolidateLayers() {
         guard let ed = editor else { return }
         let before = ed.actionLog.snapshot(ed.windows)
@@ -1329,6 +1906,109 @@ final class ScreenMapController: ObservableObject {
         ed.lastActionRef = entry.ref
         flash("\(summary)  [\(entry.ref)]")
         objectWillChange.send()
+    }
+
+    // MARK: - Per-Window Tiling
+
+    func tileSelectedWindowInEditor(to position: TilePosition) {
+        guard let ed = editor, selectedWindowIds.count == 1,
+              let winId = selectedWindowIds.first,
+              let idx = ed.windows.firstIndex(where: { $0.id == winId }),
+              let display = ed.displays.first(where: { $0.index == ed.windows[idx].displayIndex })
+        else { return }
+        ed.windows[idx].editedFrame = WindowTiler.tileFrame(for: position, inDisplay: display.cgRect)
+        ed.isTilingMode = false
+        ed.objectWillChange.send(); objectWillChange.send()
+        flash(position.label)
+    }
+
+    func tileSelectedWindowInEditor(fractions: (CGFloat, CGFloat, CGFloat, CGFloat), label: String) {
+        guard let ed = editor, selectedWindowIds.count == 1,
+              let winId = selectedWindowIds.first,
+              let idx = ed.windows.firstIndex(where: { $0.id == winId }),
+              let display = ed.displays.first(where: { $0.index == ed.windows[idx].displayIndex })
+        else { return }
+        ed.windows[idx].editedFrame = WindowTiler.tileFrame(fractions: fractions, inDisplay: display.cgRect)
+        ed.isTilingMode = false
+        ed.objectWillChange.send(); objectWillChange.send()
+        flash(label)
+    }
+
+    func applyLayout(name: String) {
+        guard let ed = editor else { return }
+        let wm = WorkspaceManager.shared
+        guard let layout = wm.gridLayouts[name] else {
+            flash("Layout '\(name)' not found")
+            return
+        }
+
+        var matched = 0
+        for spec in layout.windows {
+            // Find matching window(s) by app name (case-insensitive substring)
+            let appLower = spec.app.lowercased()
+            let candidates = ed.windows.indices.filter { idx in
+                let win = ed.windows[idx]
+                let nameMatch = win.app.lowercased().contains(appLower)
+                if let titleFilter = spec.title {
+                    return nameMatch && win.title.lowercased().contains(titleFilter.lowercased())
+                }
+                return nameMatch
+            }
+            guard let idx = candidates.first else { continue }
+
+            // Resolve tile position (check presets first, then built-in)
+            guard let fractions = wm.resolveTileFractions(spec.tile) else { continue }
+
+            // Resolve display (spatial number → displayIndex)
+            let display: DisplayGeometry
+            if let spatialNum = spec.display {
+                let order = ed.spatialDisplayOrder
+                if spatialNum >= 1 && spatialNum <= order.count {
+                    display = order[spatialNum - 1]
+                } else {
+                    display = ed.displays.first(where: { $0.index == ed.windows[idx].displayIndex }) ?? ed.displays[0]
+                }
+            } else {
+                display = ed.displays.first(where: { $0.index == ed.windows[idx].displayIndex }) ?? ed.displays[0]
+            }
+
+            ed.windows[idx].editedFrame = WindowTiler.tileFrame(fractions: fractions, inDisplay: display.cgRect)
+            // Update display index if layout spec moves to a different display
+            if let spatialNum = spec.display {
+                let order = ed.spatialDisplayOrder
+                if spatialNum >= 1 && spatialNum <= order.count {
+                    let moved = ed.windows[idx]
+                    ed.windows[idx] = ScreenMapWindowEntry(
+                        id: moved.id, pid: moved.pid,
+                        app: moved.app, title: moved.title,
+                        originalFrame: moved.originalFrame,
+                        editedFrame: moved.editedFrame,
+                        zIndex: moved.zIndex, layer: moved.layer,
+                        displayIndex: order[spatialNum - 1].index,
+                        isOnScreen: moved.isOnScreen,
+                        latticeSession: moved.latticeSession,
+                        tmuxCommand: moved.tmuxCommand,
+                        tmuxPaneTitle: moved.tmuxPaneTitle
+                    )
+                }
+            }
+            matched += 1
+        }
+
+        ed.objectWillChange.send(); objectWillChange.send()
+        flash("Layout '\(name)': \(matched)/\(layout.windows.count) matched")
+    }
+
+    func enterTilingMode() {
+        guard let ed = editor, selectedWindowIds.count == 1 else { return }
+        ed.isTilingMode = true
+        ed.objectWillChange.send(); objectWillChange.send()
+    }
+
+    func exitTilingMode() {
+        guard let ed = editor else { return }
+        ed.isTilingMode = false
+        ed.objectWillChange.send(); objectWillChange.send()
     }
 
     // MARK: - Preview
@@ -1398,5 +2078,320 @@ final class ScreenMapController: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
             if self?.flashMessage == message { self?.flashMessage = nil }
         }
+    }
+}
+
+// MARK: - Bezel Panel (custom NSPanel)
+
+/// Panel that stays behind its target window and supports dragging both together.
+private class BezelPanel: NSPanel {
+    var targetWid: UInt32 = 0
+    var targetPid: Int32 = 0
+    private var dragOrigin: NSPoint?
+    private var panelOriginAtDrag: NSPoint?
+    private var targetOriginAtDrag: CGPoint?
+
+    // Never come to front on click — stay behind target
+    override func mouseDown(with event: NSEvent) {
+        let loc = event.locationInWindow
+        dragOrigin = NSEvent.mouseLocation
+        panelOriginAtDrag = frame.origin
+
+        // Read current target window position (CG coords, top-left origin)
+        if let axWin = WindowTiler.findAXWindowByFrame(wid: targetWid, pid: targetPid) {
+            var posRef: CFTypeRef?
+            AXUIElementCopyAttributeValue(axWin, kAXPositionAttribute as CFString, &posRef)
+            var pos = CGPoint.zero
+            if let pv = posRef { AXValueGetValue(pv as! AXValue, .cgPoint, &pos) }
+            targetOriginAtDrag = pos
+        }
+
+        // Keep behind target — don't call super which would order front
+        _ = loc  // suppress unused warning
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let dragStart = dragOrigin,
+              let panelStart = panelOriginAtDrag else { return }
+
+        let current = NSEvent.mouseLocation
+        let dx = current.x - dragStart.x
+        let dy = current.y - dragStart.y
+
+        // Move the bezel panel
+        setFrameOrigin(NSPoint(x: panelStart.x + dx, y: panelStart.y + dy))
+
+        // Move the target window via AX (CG coords: top-left origin, so dy is inverted)
+        if let targetStart = targetOriginAtDrag,
+           let axWin = WindowTiler.findAXWindowByFrame(wid: targetWid, pid: targetPid) {
+            var newPos = CGPoint(x: targetStart.x + dx, y: targetStart.y - dy)
+            let posVal: AXValue? = AXValueCreate(.cgPoint, &newPos)
+            if let pv = posVal {
+                AXUIElementSetAttributeValue(axWin, kAXPositionAttribute as CFString, pv)
+            }
+        }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        dragOrigin = nil
+        panelOriginAtDrag = nil
+        targetOriginAtDrag = nil
+    }
+}
+
+// MARK: - Window Bezel (standalone companion window)
+
+/// Persistent chromeless companion window that frames a target window with info.
+/// Singleton — reuses a single NSPanel, repositions/updates content for each target.
+final class WindowBezel {
+    static let shared = WindowBezel()
+
+    private var panel: BezelPanel?
+    private var currentTargetWid: UInt32?
+
+    var isVisible: Bool { panel?.isVisible ?? false }
+
+    /// Show or update bezel for a known ScreenMapWindowEntry.
+    func show(for win: ScreenMapWindowEntry, editor: ScreenMapEditorState) {
+        let screens = NSScreen.screens
+        guard !screens.isEmpty else { return }
+        let primaryHeight = screens.first!.frame.height
+        let targetScreen: NSScreen
+        if win.displayIndex < screens.count {
+            targetScreen = screens[win.displayIndex]
+        } else {
+            targetScreen = screens.first!
+        }
+
+        let targetWindowNumber = Self.findNSWindowNumber(forCGWindowID: win.id)
+
+        let displayName = editor.displays.first(where: { $0.index == win.displayIndex })?.label ?? "Display \(win.displayIndex)"
+        let displayNumber = editor.spatialNumber(for: win.displayIndex)
+        let layerName = editor.layerDisplayName(for: win.layer)
+        let windowsOnDisplay = editor.windows.filter { $0.displayIndex == win.displayIndex }.count
+        let layersOnDisplay = editor.layersForDisplay(win.displayIndex).count
+
+        let cgFrame = win.editedFrame
+        let screenNS = targetScreen.frame
+
+        let winLocalX = cgFrame.origin.x - screenNS.origin.x
+        let winLocalY = (primaryHeight - cgFrame.origin.y - cgFrame.height) - screenNS.origin.y
+
+        // Detect flush edges
+        let tolerance: CGFloat = 10
+        let flush = ShowOnScreenBezelView.FlushEdges(
+            top: (screenNS.height - (winLocalY + cgFrame.height)) < tolerance,
+            bottom: winLocalY < tolerance,
+            left: winLocalX < tolerance,
+            right: (screenNS.width - (winLocalX + cgFrame.width)) < tolerance
+        )
+
+        // Shelf placement: prefer non-flush edges
+        let bezelH: CGFloat = 48
+        let spaceBelow = winLocalY - bezelH
+        let spaceAbove = screenNS.height - (winLocalY + cgFrame.height) - bezelH
+        let spaceLeft = winLocalX
+        let spaceRight = screenNS.width - (winLocalX + cgFrame.width)
+
+        let placement: ShowOnScreenBezelView.LabelPlacement
+        if !flush.bottom && spaceBelow >= 0 {
+            placement = .below
+        } else if !flush.top && spaceAbove >= 0 {
+            placement = .above
+        } else if !flush.right && spaceRight >= 200 {
+            placement = .right
+        } else if !flush.left && spaceLeft >= 200 {
+            placement = .left
+        } else if spaceBelow >= 0 {
+            placement = .below
+        } else if spaceAbove >= 0 {
+            placement = .above
+        } else {
+            placement = .right
+        }
+
+        // Compute tight frame
+        let edgePx: CGFloat = 5
+        let shelfPx: CGFloat = 40
+        let inL: CGFloat = flush.left ? 0 : edgePx
+        let inR: CGFloat = flush.right ? 0 : edgePx
+        let inT: CGFloat = flush.top ? 0 : edgePx
+        let inB: CGFloat = flush.bottom ? 0 : edgePx
+
+        var fX = winLocalX - inL
+        var fY = winLocalY - inB
+        var fW = cgFrame.width + inL + inR
+        var fH = cgFrame.height + inT + inB
+
+        switch placement {
+        case .below:  fY -= shelfPx; fH += shelfPx
+        case .above:  fH += shelfPx
+        case .right:  fW += 200
+        case .left:   fX -= 200; fW += 200
+        }
+
+        let tightFrame = NSRect(
+            x: screenNS.origin.x + fX,
+            y: screenNS.origin.y + fY,
+            width: fW,
+            height: fH
+        )
+
+        let localWinFrame = CGRect(
+            x: winLocalX - fX,
+            y: winLocalY - fY,
+            width: cgFrame.width,
+            height: cgFrame.height
+        )
+        let tightSize = CGSize(width: tightFrame.width, height: tightFrame.height)
+
+        // Capture window content for screenshot tool compositing
+        let windowSnapshot: NSImage? = {
+            guard let cgImage = CGWindowListCreateImage(
+                .null,
+                .optionIncludingWindow,
+                win.id,
+                [.bestResolution, .boundsIgnoreFraming]
+            ) else { return nil }
+            return NSImage(cgImage: cgImage, size: NSSize(width: cgFrame.width, height: cgFrame.height))
+        }()
+
+        let bezelView = ShowOnScreenBezelView(
+            appName: win.app,
+            windowTitle: win.title,
+            displayName: displayName,
+            displayNumber: displayNumber,
+            layerName: layerName,
+            windowSize: "\(Int(cgFrame.width))×\(Int(cgFrame.height))",
+            windowsOnDisplay: windowsOnDisplay,
+            layersOnDisplay: layersOnDisplay,
+            windowLocalFrame: localWinFrame,
+            screenSize: tightSize,
+            labelPlacement: placement,
+            flush: flush,
+            windowSnapshot: windowSnapshot
+        )
+
+        let hostingView = NSHostingView(rootView: bezelView)
+        let isNewWindow = (panel == nil)
+
+        if panel == nil {
+            let p = BezelPanel(
+                contentRect: tightFrame,
+                styleMask: [.borderless, .nonactivatingPanel],
+                backing: .buffered,
+                defer: false
+            )
+            p.isOpaque = false
+            p.backgroundColor = .clear
+            p.level = .normal
+            p.hasShadow = true
+            p.hidesOnDeactivate = false
+            p.isReleasedWhenClosed = false
+            p.isMovable = false  // we handle dragging ourselves
+            p.appearance = nil
+            panel = p
+        }
+
+        guard let p = panel else { return }
+
+        p.contentView = hostingView
+        p.targetWid = win.id
+        p.targetPid = win.pid
+        currentTargetWid = win.id
+
+        if isNewWindow {
+            // First show: position and fade in
+            p.setFrame(tightFrame, display: false)
+            p.alphaValue = 0
+
+            if let targetWinNum = targetWindowNumber {
+                p.orderFrontRegardless()
+                p.order(.below, relativeTo: targetWinNum)
+            } else {
+                p.orderFrontRegardless()
+            }
+
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.15
+                p.animator().alphaValue = 1.0
+            }
+        } else {
+            // Reuse: animate to new position/size
+            if let targetWinNum = targetWindowNumber {
+                p.order(.below, relativeTo: targetWinNum)
+            }
+
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.2
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                p.animator().setFrame(tightFrame, display: true)
+                p.animator().alphaValue = 1.0
+            }
+        }
+    }
+
+    /// Toggle bezel for the frontmost window (global hotkey).
+    static func showBezelForFrontmostWindow() {
+        if shared.isVisible {
+            shared.dismiss()
+            return
+        }
+
+        guard let frontApp = NSWorkspace.shared.frontmostApplication,
+              frontApp.bundleIdentifier != "com.arach.lattice" else { return }
+
+        let pid = frontApp.processIdentifier
+
+        guard let infoList = CGWindowListCopyWindowInfo(
+            [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID
+        ) as? [[String: Any]] else { return }
+
+        var targetInfo: [String: Any]?
+        for info in infoList {
+            guard let wPid = info[kCGWindowOwnerPID as String] as? Int32,
+                  wPid == pid,
+                  let wLayer = info[kCGWindowLayer as String] as? Int,
+                  wLayer == 0 else { continue }
+            if let bounds = info[kCGWindowBounds as String] as? [String: CGFloat],
+               let w = bounds["Width"], let h = bounds["Height"],
+               w > 50, h > 50 {
+                targetInfo = info
+                break
+            }
+        }
+        guard let info = targetInfo,
+              let wid = info[kCGWindowNumber as String] as? UInt32 else { return }
+
+        let ctrl = ScreenMapController()
+        ctrl.enter()
+        guard let ed = ctrl.editor,
+              let win = ed.windows.first(where: { $0.id == wid }) else { return }
+
+        shared.show(for: win, editor: ed)
+    }
+
+    func dismiss() {
+        guard let p = panel else { return }
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = 0.2
+            p.animator().alphaValue = 0
+        }) { [weak self] in
+            p.orderOut(nil)
+            self?.panel = nil
+            self?.currentTargetWid = nil
+        }
+    }
+
+    private static func findNSWindowNumber(forCGWindowID cgWid: UInt32) -> Int? {
+        guard let infoList = CGWindowListCopyWindowInfo(
+            [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID
+        ) as? [[String: Any]] else { return nil }
+        for info in infoList {
+            guard let wid = info[kCGWindowNumber as String] as? UInt32,
+                  wid == cgWid else { continue }
+            return Int(wid)
+        }
+        return nil
     }
 }

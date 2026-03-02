@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="80" fill="#111113"/>
+
+  <!-- 3 filled L-pieces form the letter "L" (top-left, bottom-left, bottom-right) -->
+  <!-- Top-right is a ghost outline to show the full lattice grid -->
+
+  <!-- Top-left piece: L-shape, notch at bottom-right -->
+  <path d="M88,88 H248 V168 H168 V248 H88 Z" fill="#ffffff"/>
+
+  <!-- Top-right piece: ghost outline, notch at bottom-left -->
+  <path d="M264,88 H424 V248 H344 V168 H264 Z"
+        fill="none" stroke="rgba(255,255,255,0.10)" stroke-width="2"/>
+
+  <!-- Bottom-left piece: L-shape, notch at top-right -->
+  <path d="M88,264 H168 V344 H248 V424 H88 Z" fill="#ffffff"/>
+
+  <!-- Bottom-right piece: L-shape, notch at top-left -->
+  <path d="M344,264 H424 V424 H264 V344 H344 Z" fill="#ffffff"/>
+</svg>

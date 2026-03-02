@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="80" fill="#111113"/>
+
+  <!-- 3 rectangular panes: the dark gap between them traces an L -->
+  <!-- Left pane (full height, L vertical arm) -->
+  <rect x="72" y="72" width="129" height="368" rx="14" fill="#ffffff"/>
+
+  <!-- Top-right pane (dimmer, the "void" in the L) -->
+  <rect x="215" y="72" width="225" height="221" rx="14" fill="rgba(255,255,255,0.55)"/>
+
+  <!-- Bottom pane (full width, L horizontal arm — overlaps left pane at bottom-left) -->
+  <rect x="72" y="307" width="368" height="133" rx="14" fill="#ffffff"/>
+</svg>

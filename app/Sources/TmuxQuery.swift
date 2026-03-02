@@ -76,16 +76,6 @@ enum TmuxQuery {
     }
 
     private static func shell(_ args: [String]) -> String {
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: args[0])
-        task.arguments = Array(args.dropFirst())
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = FileHandle.nullDevice
-        try? task.run()
-        task.waitUntilExit()
-        guard task.terminationStatus == 0 else { return "" }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        ProcessQuery.shell(args)
     }
 }

@@ -4,6 +4,7 @@ enum ModelEvent {
     case windowsChanged(windows: [WindowEntry], added: [UInt32], removed: [UInt32])
     case tmuxChanged(sessions: [TmuxSession])
     case layerSwitched(index: Int)
+    case processesChanged(interesting: [Int])
 }
 
 final class EventBus {

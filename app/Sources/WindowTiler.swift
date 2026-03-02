@@ -275,6 +275,28 @@ enum WindowTiler {
         )
     }
 
+    /// Compute AX-coordinate frame for a tile position within a raw display CGRect (CG/AX coords)
+    static func tileFrame(for position: TilePosition, inDisplay displayRect: CGRect) -> CGRect {
+        let (fx, fy, fw, fh) = position.rect
+        return CGRect(
+            x: displayRect.origin.x + displayRect.width * fx,
+            y: displayRect.origin.y + displayRect.height * fy,
+            width: displayRect.width * fw,
+            height: displayRect.height * fh
+        )
+    }
+
+    /// Compute AX-coordinate frame from fractional (x, y, w, h) within a raw display CGRect
+    static func tileFrame(fractions: (CGFloat, CGFloat, CGFloat, CGFloat), inDisplay displayRect: CGRect) -> CGRect {
+        let (fx, fy, fw, fh) = fractions
+        return CGRect(
+            x: displayRect.origin.x + displayRect.width * fx,
+            y: displayRect.origin.y + displayRect.height * fy,
+            width: displayRect.width * fw,
+            height: displayRect.height * fh
+        )
+    }
+
     /// Tile a specific terminal window on a given screen.
     /// Fast path: DesktopModel → AX. Fallback: AX search → AppleScript last resort.
     static func tile(session: String, terminal: Terminal, to position: TilePosition, on screen: NSScreen) {
@@ -1159,27 +1181,7 @@ enum WindowTiler {
                     continue
                 }
 
-                var newPos = CGPoint(x: wm.target.origin.x, y: wm.target.origin.y)
-                var newSize = CGSize(width: wm.target.width, height: wm.target.height)
-
-                // Size → Position → Size → Position
-                // Setting size first prevents clipping when moving to screen edges.
-                // Double-set catches apps that adjust size after position change.
-                if let sv = AXValueCreate(.cgSize, &newSize) {
-                    let r = AXUIElementSetAttributeValue(axWin, kAXSizeAttribute as CFString, sv)
-                    if r != .success {
-                        diag.info("[batchMove] wid \(wm.wid) size1 failed: \(r.rawValue)")
-                    }
-                }
-                if let pv = AXValueCreate(.cgPoint, &newPos) {
-                    AXUIElementSetAttributeValue(axWin, kAXPositionAttribute as CFString, pv)
-                }
-                if let sv = AXValueCreate(.cgSize, &newSize) {
-                    AXUIElementSetAttributeValue(axWin, kAXSizeAttribute as CFString, sv)
-                }
-                if let pv = AXValueCreate(.cgPoint, &newPos) {
-                    AXUIElementSetAttributeValue(axWin, kAXPositionAttribute as CFString, pv)
-                }
+                applyFrameToAXWindow(axWin, wid: wm.wid, target: wm.target)
                 moved += 1
             }
         }
@@ -1187,6 +1189,72 @@ enum WindowTiler {
             diag.info("[batchMove] \(failed) windows failed to match")
         }
         diag.success("batchMoveWindows: moved \(moved)/\(moves.count) windows")
+    }
+
+    /// Apply position+size to a single AX window. No delays, no retries — just set and go.
+    private static func applyFrameToAXWindow(_ axWin: AXUIElement, wid: UInt32, target: CGRect) {
+        var newPos = CGPoint(x: target.origin.x, y: target.origin.y)
+        var newSize = CGSize(width: target.width, height: target.height)
+
+        // Size first (avoids clipping at screen edges), then position
+        if let sv = AXValueCreate(.cgSize, &newSize) {
+            AXUIElementSetAttributeValue(axWin, kAXSizeAttribute as CFString, sv)
+        }
+        if let pv = AXValueCreate(.cgPoint, &newPos) {
+            AXUIElementSetAttributeValue(axWin, kAXPositionAttribute as CFString, pv)
+        }
+    }
+
+    /// Read back current AX position+size for a window element.
+    static func readAXFrame(_ axWin: AXUIElement) -> CGRect? {
+        var posRef: CFTypeRef?
+        var sizeRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(axWin, kAXPositionAttribute as CFString, &posRef) == .success,
+              AXUIElementCopyAttributeValue(axWin, kAXSizeAttribute as CFString, &sizeRef) == .success else {
+            return nil
+        }
+        var pos = CGPoint.zero
+        var size = CGSize.zero
+        guard AXValueGetValue(posRef as! AXValue, .cgPoint, &pos),
+              AXValueGetValue(sizeRef as! AXValue, .cgSize, &size) else {
+            return nil
+        }
+        return CGRect(origin: pos, size: size)
+    }
+
+    /// Verify which windows drifted from their targets using CGWindowList.
+    /// Returns array of moves that still need correction.
+    static func verifyMoves(_ moves: [(wid: UInt32, pid: Int32, frame: CGRect)], tolerance: CGFloat = 4) -> [(wid: UInt32, pid: Int32, frame: CGRect)] {
+        guard let rawList = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
+            return moves  // can't verify, return all
+        }
+
+        var actualByWid: [UInt32: CGRect] = [:]
+        for info in rawList {
+            guard let wid = info[kCGWindowNumber as String] as? UInt32,
+                  let bounds = info[kCGWindowBounds as String] as? [String: Any],
+                  let x = bounds["X"] as? CGFloat, let y = bounds["Y"] as? CGFloat,
+                  let w = bounds["Width"] as? CGFloat, let h = bounds["Height"] as? CGFloat else { continue }
+            actualByWid[wid] = CGRect(x: x, y: y, width: w, height: h)
+        }
+
+        let diag = DiagnosticLog.shared
+        var drifted: [(wid: UInt32, pid: Int32, frame: CGRect)] = []
+        for move in moves {
+            guard let actual = actualByWid[move.wid] else {
+                drifted.append(move)
+                continue
+            }
+            let dx = abs(actual.origin.x - move.frame.origin.x)
+            let dy = abs(actual.origin.y - move.frame.origin.y)
+            let dw = abs(actual.width - move.frame.width)
+            let dh = abs(actual.height - move.frame.height)
+            if dx > tolerance || dy > tolerance || dw > tolerance || dh > tolerance {
+                diag.info("[verify] wid \(move.wid) drifted: target \(move.frame) actual \(actual) (dx=\(Int(dx)) dy=\(Int(dy)) dw=\(Int(dw)) dh=\(Int(dh)))")
+                drifted.append(move)
+            }
+        }
+        return drifted
     }
 
     /// Raise and focus a single window by its CGWindowID.
@@ -1513,7 +1581,7 @@ enum WindowTiler {
     }
 
     /// Find the AX window element for a given CG window ID by matching frames
-    private static func findAXWindowByFrame(wid: UInt32, pid: Int32) -> AXUIElement? {
+    static func findAXWindowByFrame(wid: UInt32, pid: Int32) -> AXUIElement? {
         // Get CG frame for the window
         guard let windowList = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return nil }
 
