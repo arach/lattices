@@ -101,7 +101,7 @@ final class DiagnosticWindow {
             defer: false
         )
         w.contentViewController = hosting
-        w.title = "Lattice Diagnostics"
+        w.title = "Lattices Diagnostics"
         w.titlebarAppearsTransparent = true
         w.isMovableByWindowBackground = true
         w.level = .floating

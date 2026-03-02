@@ -480,30 +480,30 @@ struct CommandModeView: View {
     ) -> some View {
         let isSelected = state.isSelected(window.id)
         let isHovered = hoveredWindowId == window.id
-        let isLattice = window.isLattice
+        let isLattices = window.isLattices
 
         return HStack(spacing: 0) {
             HStack(spacing: 4) {
                 if indented {
                     Spacer().frame(width: 8)
                 }
-                Text(isLattice ? "●" : "•")
+                Text(isLattices ? "●" : "•")
                     .font(.system(size: 7))
-                    .foregroundColor(isLattice ? Palette.running : (isSelected ? Palette.text : Palette.textDim))
+                    .foregroundColor(isLattices ? Palette.running : (isSelected ? Palette.text : Palette.textDim))
                 if let app = appLabel {
                     Text(app)
                         .font(Typo.monoBold(10))
-                        .foregroundColor(isLattice ? Palette.running : Palette.text)
+                        .foregroundColor(isLattices ? Palette.running : Palette.text)
                 }
                 Text(windowTitle(window))
                     .font(Typo.mono(10))
                     .foregroundColor(
-                        isLattice
+                        isLattices
                             ? Palette.running.opacity(appLabel != nil && !isSelected ? 0.7 : 1.0)
                             : (isSelected ? Palette.text : Palette.textDim)
                     )
                     .lineLimit(1)
-                if isLattice, let session = window.latticeSession, appLabel == nil {
+                if isLattices, let session = window.latticesSession, appLabel == nil {
                     Text("[\(session)]")
                         .font(Typo.mono(9))
                         .foregroundColor(Palette.running.opacity(isSelected ? 1.0 : 0.6))
@@ -1221,7 +1221,7 @@ struct CommandModeView: View {
             // App name
             Text(window.appName ?? "Unknown")
                 .font(Typo.monoBold(10))
-                .foregroundColor(window.isLattice ? Palette.running : Palette.text)
+                .foregroundColor(window.isLattices ? Palette.running : Palette.text)
                 .lineLimit(1)
 
             // Window title
@@ -1245,7 +1245,7 @@ struct CommandModeView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .strokeBorder(window.isLattice ? Palette.running.opacity(0.3) : Palette.border, lineWidth: 0.5)
+                .strokeBorder(window.isLattices ? Palette.running.opacity(0.3) : Palette.border, lineWidth: 0.5)
         )
         .overlay(alignment: .topLeading) {
             Text("\(index)")

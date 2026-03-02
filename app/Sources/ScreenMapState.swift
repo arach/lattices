@@ -23,21 +23,21 @@ struct ScreenMapWindowEntry: Identifiable {
     var layer: Int              // assigned by iterative peeling (per-display)
     let displayIndex: Int       // which monitor this window belongs to
     let isOnScreen: Bool        // visible on current Space
-    var latticeSession: String? // parsed from [lattice:name] in title
+    var latticesSession: String? // parsed from [lattices:name] in title
     var tmuxCommand: String?    // running command from tmux pane (e.g. "vim", "node")
     var tmuxPaneTitle: String?  // tmux pane title (often cwd or custom label)
     var hasEdits: Bool { originalFrame != editedFrame }
 
     /// Rich search key combining all available metadata.
     /// Format: m{spatial}.L{layer}.{layerName}.{app}.{title}.{session}.{command}.{paneTitle}.{state}
-    /// Example: m1.L0.primary.terminal.~/dev/lattice.session:myproject.cmd:vim.visible
+    /// Example: m1.L0.primary.terminal.~/dev/lattices.session:myproject.cmd:vim.visible
     func searchKey(spatialNumber: Int, layerName: String?) -> String {
         var parts: [String] = []
         parts.append("m\(spatialNumber)")
         parts.append(layerName.map { "L\(layer).\($0)" } ?? "L\(layer)")
         parts.append(app)
         parts.append(title.isEmpty ? "_" : title)
-        if let session = latticeSession {
+        if let session = latticesSession {
             parts.append("session:\(session)")
         }
         if let cmd = tmuxCommand, !cmd.isEmpty {
@@ -905,7 +905,7 @@ final class ScreenMapActionLog {
 
     private static var logFileURL: URL = {
         let dir = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".lattice", isDirectory: true)
+            .appendingPathComponent(".lattices", isDirectory: true)
             .appendingPathComponent("logs", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("actions.jsonl")
@@ -1282,7 +1282,7 @@ final class ScreenMapController: ObservableObject {
             guard CGRectMakeWithDictionaryRepresentation(boundsDict, &rect) else { continue }
             guard rect.width >= 100 && rect.height >= 50 else { continue }
             let app = info[kCGWindowOwnerName as String] as? String ?? ""
-            if app == "LatticeApp" || app == "lattice" || app == "Lattice" { continue }
+            if app == "Lattices" || app == "lattices" || app == "Lattices" { continue }
             let pid = info[kCGWindowOwnerPID as String] as? Int32 ?? 0
             let title = info[kCGWindowName as String] as? String ?? ""
             let dIdx = displayIndex(for: rect)
@@ -1334,7 +1334,7 @@ final class ScreenMapController: ObservableObject {
         }
 
         // Build tmux PID → context lookup from TmuxModel
-        let latticeSessionRegex = try? NSRegularExpression(pattern: "\\[lattice:([^\\]]+)\\]")
+        let latticesSessionRegex = try? NSRegularExpression(pattern: "\\[lattices:([^\\]]+)\\]")
         var tmuxPidLookup: [Int32: (command: String, paneTitle: String, session: String)] = [:]
         for session in TmuxModel.shared.sessions {
             for pane in session.panes {
@@ -1347,19 +1347,19 @@ final class ScreenMapController: ObservableObject {
         for (i, win) in ordered.enumerated() {
             let assignedLayer = layerAssignment[i] ?? 0
 
-            // Parse [lattice:session] from title
-            var latticeSession: String?
-            if let regex = latticeSessionRegex,
+            // Parse [lattices:session] from title
+            var latticesSession: String?
+            if let regex = latticesSessionRegex,
                let match = regex.firstMatch(in: win.title, range: NSRange(win.title.startIndex..., in: win.title)),
                let range = Range(match.range(at: 1), in: win.title) {
-                latticeSession = String(win.title[range])
+                latticesSession = String(win.title[range])
             }
 
             // Cross-reference with tmux — match by PID (window owner PID or child)
             let tmuxCtx = tmuxPidLookup[win.pid]
-            // If no direct PID match, try looking up by lattice session name
+            // If no direct PID match, try looking up by lattices session name
             let tmuxBySession: (command: String, paneTitle: String, session: String)? = {
-                guard let session = latticeSession else { return nil }
+                guard let session = latticesSession else { return nil }
                 guard tmuxCtx == nil else { return nil }
                 for s in TmuxModel.shared.sessions where s.name == session {
                     if let active = s.panes.first(where: { $0.isActive }) {
@@ -1375,7 +1375,7 @@ final class ScreenMapController: ObservableObject {
                 originalFrame: win.frame, editedFrame: win.frame,
                 zIndex: i, layer: assignedLayer, displayIndex: win.displayIndex,
                 isOnScreen: win.isOnScreen,
-                latticeSession: latticeSession ?? ctx?.session,
+                latticesSession: latticesSession ?? ctx?.session,
                 tmuxCommand: ctx?.command,
                 tmuxPaneTitle: ctx?.paneTitle
             ))
@@ -1986,7 +1986,7 @@ final class ScreenMapController: ObservableObject {
                         zIndex: moved.zIndex, layer: moved.layer,
                         displayIndex: order[spatialNum - 1].index,
                         isOnScreen: moved.isOnScreen,
-                        latticeSession: moved.latticeSession,
+                        latticesSession: moved.latticesSession,
                         tmuxCommand: moved.tmuxCommand,
                         tmuxPaneTitle: moved.tmuxPaneTitle
                     )
@@ -2339,7 +2339,7 @@ final class WindowBezel {
         }
 
         guard let frontApp = NSWorkspace.shared.frontmostApplication,
-              frontApp.bundleIdentifier != "com.arach.lattice" else { return }
+              frontApp.bundleIdentifier != "com.arach.lattices" else { return }
 
         let pid = frontApp.processIdentifier
 

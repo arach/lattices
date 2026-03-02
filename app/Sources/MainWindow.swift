@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// Manages the main lattice window as a standalone NSWindow.
+/// Manages the main lattices window as a standalone NSWindow.
 /// Menu bar icon toggles this window open/closed.
 final class MainWindow {
     static let shared = MainWindow()
@@ -39,7 +39,7 @@ final class MainWindow {
             defer: false
         )
         w.contentView = hostingView
-        w.title = "lattice"
+        w.title = "lattices"
         w.titlebarAppearsTransparent = true
         w.titleVisibility = .hidden
         w.isReleasedWhenClosed = false

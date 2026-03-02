@@ -120,7 +120,7 @@ enum TerminalSynthesizer {
             let cwd = procs.last(where: { $0.cwd != nil })?.cwd
                 ?? (shellPid.flatMap { processTable[$0]?.cwd })
 
-            // Window: try lattice tag match first, then positional
+            // Window: try lattices tag match first, then positional
             let windowMatch = resolveWindow(
                 tmuxSession: tmux?.session,
                 tab: tab,
@@ -171,14 +171,14 @@ enum TerminalSynthesizer {
         return result
     }
 
-    /// Resolve a window for this TTY. Try lattice tag match first, then positional.
+    /// Resolve a window for this TTY. Try lattices tag match first, then positional.
     private static func resolveWindow(
         tmuxSession: String?,
         tab: TerminalTab?,
         windowsByApp: [String: [WindowEntry]],
         allWindows: [UInt32: WindowEntry]
     ) -> WindowEntry? {
-        // Strategy 1: lattice session tag match
+        // Strategy 1: lattices session tag match
         if let session = tmuxSession {
             let tag = Terminal.windowTag(for: session)
             if let match = allWindows.values.first(where: { $0.title.contains(tag) }) {

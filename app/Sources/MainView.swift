@@ -51,7 +51,7 @@ struct MainView: View {
         VStack(spacing: 0) {
             // Title bar
             HStack {
-                Text("lattice")
+                Text("lattices")
                     .font(Typo.title())
                     .foregroundColor(Palette.text)
 
@@ -310,7 +310,7 @@ struct MainView: View {
                     .foregroundColor(Palette.textMuted)
             }
             .buttonStyle(.plain)
-            .help("Quit lattice")
+            .help("Quit lattices")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 7)
@@ -357,7 +357,7 @@ struct MainView: View {
                 .font(Typo.heading(14))
                 .foregroundColor(Palette.textDim)
 
-            Text("Run  lattice init  in a project\nto add it here")
+            Text("Run  lattices init  in a project\nto add it here")
                 .font(Typo.mono(11))
                 .foregroundColor(Palette.textMuted)
                 .multilineTextAlignment(.center)

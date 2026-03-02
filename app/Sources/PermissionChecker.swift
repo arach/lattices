@@ -50,7 +50,7 @@ final class PermissionChecker: ObservableObject {
     }
 
     /// Request Accessibility permission — shows the system dialog if not yet granted,
-    /// which adds lattice to the Accessibility list and asks the user to toggle it on.
+    /// which adds lattices to the Accessibility list and asks the user to toggle it on.
     func requestAccessibility() {
         let diag = DiagnosticLog.shared
         let beforeCheck = AXIsProcessTrusted()
@@ -67,7 +67,7 @@ final class PermissionChecker: ObservableObject {
     }
 
     /// Request Screen Recording permission — triggers the system prompt on first call,
-    /// which adds lattice to the Screen Recording list. The user toggles it on in Settings.
+    /// which adds lattices to the Screen Recording list. The user toggles it on in Settings.
     func requestScreenRecording() {
         let diag = DiagnosticLog.shared
         let beforeCheck = CGPreflightScreenCaptureAccess()

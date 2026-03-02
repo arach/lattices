@@ -14,7 +14,7 @@ final class DaemonServer: ObservableObject {
     private var serverFd: Int32 = -1
     private var clients: [UUID: WebSocketClient] = [:]
     private let lock = NSLock()
-    private let queue = DispatchQueue(label: "lattice.daemon", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "lattices.daemon", qos: .userInitiated)
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private var acceptSource: DispatchSourceRead?
@@ -320,7 +320,7 @@ final class DaemonServer: ObservableObject {
             return
         }
 
-        let response = LatticeApi.shared.handle(request)
+        let response = LatticesApi.shared.handle(request)
         sendResponse(response, to: client)
     }
 

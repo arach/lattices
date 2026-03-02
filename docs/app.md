@@ -6,16 +6,16 @@ order: 3
 
 # Menu Bar App
 
-The lattice menu bar app is a native macOS companion that lives in your
-menu bar and gives you quick access to all your lattice sessions.
+The lattices menu bar app is a native macOS companion that lives in your
+menu bar and gives you quick access to all your lattices sessions.
 
 ## Installation
 
 ```bash
-lattice app          # Build (or download) and launch
-lattice app build    # Rebuild from source
-lattice app restart  # Quit, rebuild, relaunch
-lattice app quit     # Stop the app
+lattices app          # Build (or download) and launch
+lattices app build    # Rebuild from source
+lattices app restart  # Quit, rebuild, relaunch
+lattices app quit     # Stop the app
 ```
 
 The first run builds from source if Swift is available, otherwise
@@ -51,7 +51,7 @@ Available for running sessions:
 
 ### Tab group commands
 
-Available when `groups` are configured in `~/.lattice/workspace.json`
+Available when `groups` are configured in `~/.lattices/workspace.json`
 (see [Tab Groups](/docs/layers#tab-groups)):
 
 | Command                     | Description                              |
@@ -63,7 +63,7 @@ Available when `groups` are configured in `~/.lattice/workspace.json`
 
 ### Layer commands
 
-Available when `layers` are configured in `~/.lattice/workspace.json`
+Available when `layers` are configured in `~/.lattices/workspace.json`
 (see [Layers](/docs/layers#layers)):
 
 | Command                     | Description                              |
@@ -76,30 +76,30 @@ Available when `layers` are configured in `~/.lattice/workspace.json`
 |-------------------|------------------------------------------|
 | Settings          | Open preferences (terminal, scan root)   |
 | Diagnostics       | View logs and debug info                 |
-| Refresh Projects  | Re-scan for .lattice.json configs         |
-| Quit Lattice       | Exit the menu bar app                    |
+| Refresh Projects  | Re-scan for .lattices.json configs        |
+| Quit Lattices      | Exit the menu bar app                    |
 
 ## Project discovery
 
 The app scans a configurable root directory (up to 3 levels deep)
-for `.lattice.json` files. It skips `.git/` and `node_modules/`.
+for `.lattices.json` files. It skips `.git/` and `node_modules/`.
 
 Auto-detection for the scan root checks these paths in order:
 `~/dev`, `~/Developer`, `~/projects`, `~/src`.
 
 For each project found, the app reads:
-- Pane names and commands from `.lattice.json`
+- Pane names and commands from `.lattices.json`
 - Dev command and package manager from `package.json`
 - Running status by checking `tmux has-session`
 
 ## Session management
 
-The app calls the lattice CLI for session operations:
+The app calls the lattices CLI for session operations:
 
-- **Launch** — runs `lattice` in the project directory, which creates
+- **Launch** — runs `lattices` in the project directory, which creates
   or reattaches to the session
-- **Sync** — runs `lattice sync` to reconcile panes to the config
-- **Restart** — runs `lattice restart <pane>` to kill and re-run a
+- **Sync** — runs `lattices sync` to reconcile panes to the config
+- **Restart** — runs `lattices restart <pane>` to kill and re-run a
   specific pane's process
 - **Detach** — calls `tmux detach-client` directly
 - **Kill** — calls `tmux kill-session` directly
@@ -107,7 +107,7 @@ The app calls the lattice CLI for session operations:
 ## Window tiling
 
 The app can tile terminal windows to preset screen positions via
-the command palette. It finds windows by their `[lattice:session-name]`
+the command palette. It finds windows by their `[lattices:session-name]`
 title tag.
 
 For Terminal.app and iTerm2, tiling uses AppleScript to set window
@@ -157,7 +157,7 @@ The settings window has three tabs:
 |------------|------------------------------------------------------|
 | Terminal   | Which terminal to use (auto-detected from installed) |
 | Mode       | `learning` or `auto` (see below)                     |
-| Scan Root  | Directory to scan for .lattice.json configs (type a path or click Browse) |
+| Scan Root  | Directory to scan for .lattices.json configs (type a path or click Browse) |
 
 **Mode** controls how the app handles session interaction:
 
@@ -209,13 +209,13 @@ quits.
 ### Checking status
 
 ```bash
-lattice daemon status
+lattices daemon status
 ```
 
 Or programmatically:
 
 ```js
-import { isDaemonRunning, daemonCall } from 'lattice/daemon-client'
+import { isDaemonRunning, daemonCall } from 'lattices/daemon-client'
 
 if (await isDaemonRunning()) {
   const status = await daemonCall('daemon.status')
@@ -231,7 +231,7 @@ if (await isDaemonRunning()) {
 - **3 real-time events** — `windows.changed`, `tmux.changed`,
   `layer.switched` — broadcast to all connected clients
 - **Window tracking** — the daemon monitors the desktop window list
-  and correlates windows to lattice sessions via title tags
+  and correlates windows to lattices sessions via title tags
 - **Space awareness** — knows which macOS Space each window is on
 
 ### Security

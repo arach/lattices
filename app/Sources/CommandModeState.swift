@@ -54,7 +54,7 @@ enum FilterPreset: String, CaseIterable {
     case terminals = "Terminals"
     case editors = "Editors"
     case browsers = "Browsers"
-    case lattice = "Lattice"
+    case lattices = "Lattices"
     case currentSpace = "Current Space"
 
     var appTypes: Set<AppType>? {
@@ -63,7 +63,7 @@ enum FilterPreset: String, CaseIterable {
         case .terminals: return [.terminal]
         case .editors: return [.editor]
         case .browsers: return [.browser]
-        case .lattice: return nil  // special case
+        case .lattices: return nil  // special case
         case .currentSpace: return nil  // special case
         }
     }
@@ -74,7 +74,7 @@ enum FilterPreset: String, CaseIterable {
         case .terminals: return 2
         case .editors: return 3
         case .browsers: return 4
-        case .lattice: return 5
+        case .lattices: return 5
         case .currentSpace: return 6
         }
     }
@@ -244,7 +244,7 @@ final class CommandModeState: ObservableObject {
                         if let preset = activePreset, preset != .all {
                             let passesPreset: Bool
                             switch preset {
-                            case .lattice: passesPreset = win.isLattice
+                            case .lattices: passesPreset = win.isLattices
                             case .currentSpace: passesPreset = true
                             default:
                                 if let types = preset.appTypes, let name = win.appName {
@@ -260,8 +260,8 @@ final class CommandModeState: ObservableObject {
                         if needsSearchFilter {
                             let matchesApp = win.appName?.lowercased().contains(query) ?? false
                             let matchesTitle = win.title.lowercased().contains(query)
-                            let matchesLattice = win.latticeSession?.lowercased().contains(query) ?? false
-                            if !matchesApp && !matchesTitle && !matchesLattice { return false }
+                            let matchesLattices = win.latticesSession?.lowercased().contains(query) ?? false
+                            if !matchesApp && !matchesTitle && !matchesLattices { return false }
                         }
 
                         return true
@@ -911,7 +911,7 @@ final class CommandModeState: ObservableObject {
                     if app.windows.count == 1, let win = app.windows.first {
                         let tile = win.tilePosition?.label ?? "—"
                         let title = win.title.isEmpty ? "(untitled)" : win.title
-                        let dmx = win.isLattice ? " [lattice]" : ""
+                        let dmx = win.isLattices ? " [lattices]" : ""
                         let path = win.inventoryPath?.description ?? ""
                         lines.append("    \(app.appName)  \(title)\(dmx)  \(Int(win.frame.w))×\(Int(win.frame.h))  \(tile)  \(path)")
                     } else {
@@ -919,7 +919,7 @@ final class CommandModeState: ObservableObject {
                         for win in app.windows {
                             let tile = win.tilePosition?.label ?? "—"
                             let title = win.title.isEmpty ? "(untitled)" : win.title
-                            let dmx = win.isLattice ? " [lattice]" : ""
+                            let dmx = win.isLattices ? " [lattices]" : ""
                             let path = win.inventoryPath?.description ?? ""
                             lines.append("      \(title)\(dmx)  \(Int(win.frame.w))×\(Int(win.frame.h))  \(tile)  \(path)")
                         }
@@ -1062,7 +1062,7 @@ final class CommandModeState: ObservableObject {
         struct RawWindow {
             let wid: UInt32; let app: String; let pid: Int32
             let title: String; let frame: WindowFrame
-            let latticeSession: String?; let spaceIds: [Int]
+            let latticesSession: String?; let spaceIds: [Int]
         }
 
         // System/helper processes that create layer-0 windows users don't care about
@@ -1124,14 +1124,14 @@ final class CommandModeState: ObservableObject {
             let frame = WindowFrame(x: Double(rect.origin.x), y: Double(rect.origin.y),
                                     w: Double(rect.width), h: Double(rect.height))
 
-            var latticeSession: String?
-            if let range = title.range(of: #"\[lattice:([^\]]+)\]"#, options: .regularExpression) {
+            var latticesSession: String?
+            if let range = title.range(of: #"\[lattices:([^\]]+)\]"#, options: .regularExpression) {
                 let match = String(title[range])
-                latticeSession = String(match.dropFirst(8).dropLast(1))
+                latticesSession = String(match.dropFirst(9).dropLast(1))
             }
 
             allWindows.append(RawWindow(wid: wid, app: ownerName, pid: pid, title: title,
-                                        frame: frame, latticeSession: latticeSession, spaceIds: spaceIds))
+                                        frame: frame, latticesSession: latticesSession, spaceIds: spaceIds))
         }
 
         DiagnosticLog.shared.info("Desktop scan: \(rawCount) raw → \(allWindows.count) after filter")
@@ -1234,8 +1234,8 @@ final class CommandModeState: ObservableObject {
                             title: aw.win.title,
                             frame: aw.win.frame,
                             tilePosition: tile,
-                            isLattice: aw.win.latticeSession != nil,
-                            latticeSession: aw.win.latticeSession,
+                            isLattices: aw.win.latticesSession != nil,
+                            latticesSession: aw.win.latticesSession,
                             spaceIndex: aw.spaceIdx,
                             isOnScreen: aw.isOnScreen,
                             inventoryPath: path,

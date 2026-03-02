@@ -1,4 +1,4 @@
-// Lightweight WebSocket client for lattice daemon (ws://127.0.0.1:9399)
+// Lightweight WebSocket client for lattices daemon (ws://127.0.0.1:9399)
 // Uses Node `net` module with manual HTTP upgrade + minimal WS framing.
 // Zero npm dependencies. Requires Node >= 18.
 

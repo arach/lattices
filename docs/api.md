@@ -1,12 +1,12 @@
 ---
 title: Daemon API
-description: WebSocket API reference for programmatic control of lattice
+description: WebSocket API reference for programmatic control of lattices
 order: 5
 ---
 
 # Daemon API
 
-The lattice menu bar app runs a WebSocket daemon on `ws://127.0.0.1:9399`.
+The lattices menu bar app runs a WebSocket daemon on `ws://127.0.0.1:9399`.
 It exposes 20 RPC methods and 3 real-time events — everything the app
 can do, agents and scripts can do too.
 
@@ -22,19 +22,19 @@ can do, agents and scripts can do too.
 1. Launch the daemon (it starts with the menu bar app):
 
 ```bash
-lattice app
+lattices app
 ```
 
 2. Check that it's running:
 
 ```bash
-lattice daemon status
+lattices daemon status
 ```
 
 3. Call a method from Node.js:
 
 ```js
-import { daemonCall } from 'lattice/daemon-client'
+import { daemonCall } from 'lattices/daemon-client'
 
 const windows = await daemonCall('windows.list')
 console.log(windows) // [{ wid, app, title, frame, ... }, ...]
@@ -49,7 +49,7 @@ echo '{"id":"1","method":"daemon.status"}' | websocat ws://127.0.0.1:9399
 
 ## Wire protocol
 
-lattice uses a JSON-RPC-style protocol over WebSocket on port **9399**.
+lattices uses a JSON-RPC-style protocol over WebSocket on port **9399**.
 
 ### Request
 
@@ -107,7 +107,7 @@ Three error types:
 
 ## Node.js client
 
-lattice ships a zero-dependency WebSocket client that works with
+lattices ships a zero-dependency WebSocket client that works with
 Node.js 18+. It handles connection, framing, and request/response
 matching internally.
 
@@ -116,7 +116,7 @@ matching internally.
 Send an RPC call and await the response.
 
 ```js
-import { daemonCall } from 'lattice/daemon-client'
+import { daemonCall } from 'lattices/daemon-client'
 
 // Read-only
 const status = await daemonCall('daemon.status')
@@ -139,7 +139,7 @@ await daemonCall('projects.scan', null, 10000)
 Check if the daemon is reachable.
 
 ```js
-import { isDaemonRunning } from 'lattice/daemon-client'
+import { isDaemonRunning } from 'lattices/daemon-client'
 
 if (await isDaemonRunning()) {
   console.log('daemon is up')
@@ -186,17 +186,17 @@ List all visible windows tracked by the desktop model.
     "wid": 1234,
     "app": "Terminal",
     "pid": 5678,
-    "title": "[lattice:myapp-a1b2c3] zsh",
+    "title": "[lattices:myapp-a1b2c3] zsh",
     "frame": { "x": 0, "y": 25, "w": 960, "h": 1050 },
     "spaceIds": [1],
     "isOnScreen": true,
-    "latticeSession": "myapp-a1b2c3"
+    "latticesSession": "myapp-a1b2c3"
   }
 ]
 ```
 
-The `latticeSession` field is present only on windows that belong to
-a lattice session (matched via the `[lattice:name]` title tag).
+The `latticesSession` field is present only on windows that belong to
+a lattices session (matched via the `[lattices:name]` title tag).
 
 ---
 
@@ -218,7 +218,7 @@ Get a single window by its CGWindowID.
 
 ### `tmux.sessions`
 
-List tmux sessions that belong to lattice.
+List tmux sessions that belong to lattices.
 
 **Params**: none
 
@@ -249,7 +249,7 @@ List tmux sessions that belong to lattice.
 
 ### `tmux.inventory`
 
-List all tmux sessions including orphans (sessions not tracked by lattice).
+List all tmux sessions including orphans (sessions not tracked by lattices).
 
 **Params**: none
 
@@ -393,7 +393,7 @@ Detach all clients from a session (keeps it running).
 
 ### `session.sync`
 
-Reconcile a running session to match its declared `.lattice.json` config.
+Reconcile a running session to match its declared `.lattices.json` config.
 Recreates missing panes, re-applies layout, restores labels, re-runs
 commands in idle panes.
 
@@ -453,7 +453,7 @@ Focus a window — bring it to front and switch Spaces if needed.
 | Field     | Type   | Required | Description                     |
 |-----------|--------|----------|---------------------------------|
 | `wid`     | number | no       | CGWindowID (any window)         |
-| `session` | string | no       | Session name (lattice windows)  |
+| `session` | string | no       | Session name (lattices windows)  |
 
 Provide either `wid` or `session`. If `wid` is given, it takes priority.
 
@@ -529,7 +529,7 @@ Kill a tab group session.
 ### `projects.scan`
 
 Trigger a re-scan of the project directory. Useful after cloning a new
-repo or adding a `.lattice.json` config.
+repo or adding a `.lattices.json` config.
 
 **Params**: none
 
@@ -614,7 +614,7 @@ project knows how to control the workspace:
 ```markdown
 ## Workspace Control
 
-This project uses lattice for workspace management. The daemon API
+This project uses lattices for workspace management. The daemon API
 is available at ws://127.0.0.1:9399.
 
 ### Available commands
@@ -626,7 +626,7 @@ is available at ws://127.0.0.1:9399.
 
 ### Import
 \```js
-import { daemonCall } from 'lattice/daemon-client'
+import { daemonCall } from 'lattices/daemon-client'
 \```
 ```
 
@@ -635,7 +635,7 @@ import { daemonCall } from 'lattice/daemon-client'
 An orchestrator agent can set up the full workspace for sub-agents:
 
 ```js
-import { daemonCall } from 'lattice/daemon-client'
+import { daemonCall } from 'lattices/daemon-client'
 
 // Discover what's available
 const projects = await daemonCall('projects.list')
@@ -670,8 +670,8 @@ ws.on('message', (raw) => {
   }
 
   if (msg.event === 'windows.changed') {
-    const latticeWindows = msg.data.windows.filter(w => w.latticeSession)
-    console.log('Lattice windows:', latticeWindows.length)
+    const latticesWindows = msg.data.windows.filter(w => w.latticesSession)
+    console.log('Lattices windows:', latticesWindows.length)
   }
 
   if (msg.event === 'layer.switched') {
@@ -690,10 +690,10 @@ ws.on('open', () => {
 Always verify the daemon is running before making calls:
 
 ```js
-import { isDaemonRunning, daemonCall } from 'lattice/daemon-client'
+import { isDaemonRunning, daemonCall } from 'lattices/daemon-client'
 
 if (!(await isDaemonRunning())) {
-  console.error('lattice daemon is not running — start it with: lattice app')
+  console.error('lattices daemon is not running — start it with: lattices app')
   process.exit(1)
 }
 

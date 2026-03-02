@@ -17,7 +17,7 @@ final class ProcessModel: ObservableObject {
 
     /// Background queue for process polling — avoids blocking the main thread
     /// with posix_spawn calls (waitUntilExit deadlocks on macOS 26 main run loop).
-    private let pollQueue = DispatchQueue(label: "lattice.process-poll", qos: .userInitiated)
+    private let pollQueue = DispatchQueue(label: "lattices.process-poll", qos: .userInitiated)
 
     func start(interval: TimeInterval = 5.0) {
         guard timer == nil else { return }

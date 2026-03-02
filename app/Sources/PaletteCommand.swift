@@ -387,7 +387,7 @@ enum CommandBuilder {
         commands.append(PaletteCommand(
             id: "app-refresh",
             title: "Refresh Projects",
-            subtitle: "Re-scan for .lattice.json configs",
+            subtitle: "Re-scan for .lattices.json configs",
             icon: "arrow.clockwise",
             category: .app,
             badge: nil,
@@ -396,7 +396,7 @@ enum CommandBuilder {
 
         commands.append(PaletteCommand(
             id: "app-quit",
-            title: "Quit Lattice",
+            title: "Quit Lattices",
             subtitle: "Exit the menu bar app",
             icon: "power",
             category: .app,

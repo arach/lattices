@@ -16,10 +16,10 @@ class ProjectScanner: ObservableObject {
     }
 
     func scan() {
-        // Use find to locate all .lattice.json files — no manual directory walking
+        // Use find to locate all .lattices.json files — no manual directory walking
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/find")
-        task.arguments = [scanRoot, "-name", ".lattice.json", "-maxdepth", "3", "-not", "-path", "*/.git/*", "-not", "-path", "*/node_modules/*"]
+        task.arguments = [scanRoot, "-name", ".lattices.json", "-maxdepth", "3", "-not", "-path", "*/.git/*", "-not", "-path", "*/node_modules/*"]
         let pipe = Pipe()
         task.standardOutput = pipe
         task.standardError = FileHandle.nullDevice

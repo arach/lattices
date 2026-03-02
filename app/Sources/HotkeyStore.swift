@@ -228,8 +228,8 @@ class HotkeyStore: ObservableObject {
             }
         }
 
-        // Layer 3: ~/.lattice/hotkeys.json overrides
-        let jsonPath = NSHomeDirectory() + "/.lattice/hotkeys.json"
+        // Layer 3: ~/.lattices/hotkeys.json overrides
+        let jsonPath = NSHomeDirectory() + "/.lattices/hotkeys.json"
         if let data = FileManager.default.contents(atPath: jsonPath),
            let overrides = try? JSONDecoder().decode([String: KeyBinding].self, from: data) {
             for (rawValue, binding) in overrides {

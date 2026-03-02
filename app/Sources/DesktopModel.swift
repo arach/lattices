@@ -68,11 +68,11 @@ final class DesktopModel: ObservableObject {
 
             let spaceIds = WindowTiler.getSpacesForWindow(wid)
 
-            // Extract lattice session tag from title: [lattice:session-name]
-            var latticeSession: String?
-            if let range = title.range(of: #"\[lattice:([^\]]+)\]"#, options: .regularExpression) {
+            // Extract lattices session tag from title: [lattices:session-name]
+            var latticesSession: String?
+            if let range = title.range(of: #"\[lattices:([^\]]+)\]"#, options: .regularExpression) {
                 let match = String(title[range])
-                latticeSession = String(match.dropFirst(8).dropLast(1)) // drop "[lattice:" and "]"
+                latticesSession = String(match.dropFirst(9).dropLast(1)) // drop "[lattices:" and "]"
             }
 
             fresh[wid] = WindowEntry(
@@ -83,7 +83,7 @@ final class DesktopModel: ObservableObject {
                 frame: frame,
                 spaceIds: spaceIds,
                 isOnScreen: isOnScreen,
-                latticeSession: latticeSession
+                latticesSession: latticesSession
             )
         }
 

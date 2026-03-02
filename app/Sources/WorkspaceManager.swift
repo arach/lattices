@@ -75,12 +75,12 @@ class WorkspaceManager: ObservableObject {
     private let configPath: String
     private let gridConfigPath: String
     private let tmuxPath = "/opt/homebrew/bin/tmux"
-    private let activeLayerKey = "lattice.activeLayerIndex"
+    private let activeLayerKey = "lattices.activeLayerIndex"
 
     init() {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        self.configPath = (home as NSString).appendingPathComponent(".lattice/workspace.json")
-        self.gridConfigPath = (home as NSString).appendingPathComponent(".lattice/grid.json")
+        self.configPath = (home as NSString).appendingPathComponent(".lattices/workspace.json")
+        self.gridConfigPath = (home as NSString).appendingPathComponent(".lattices/grid.json")
         self.activeLayerIndex = UserDefaults.standard.integer(forKey: activeLayerKey)
         loadConfig()
         loadGridConfig()
@@ -122,7 +122,7 @@ class WorkspaceManager: ObservableObject {
         var presets: [String: GridPreset] = [:]
         var layouts: [String: LayoutConfig] = [:]
 
-        // Load global ~/.lattice/grid.json
+        // Load global ~/.lattices/grid.json
         if FileManager.default.fileExists(atPath: gridConfigPath),
            let data = FileManager.default.contents(atPath: gridConfigPath) {
             do {
@@ -134,8 +134,8 @@ class WorkspaceManager: ObservableObject {
             }
         }
 
-        // Merge per-project .lattice.json "grid" section on top
-        let projectGridPath = ".lattice.json"
+        // Merge per-project .lattices.json "grid" section on top
+        let projectGridPath = ".lattices.json"
         if FileManager.default.fileExists(atPath: projectGridPath),
            let data = FileManager.default.contents(atPath: projectGridPath) {
             do {
@@ -147,7 +147,7 @@ class WorkspaceManager: ObservableObject {
                     if let l = gridFile.layouts { layouts.merge(l) { _, new in new } }
                 }
             } catch {
-                DiagnosticLog.shared.error("WorkspaceManager: failed to decode .lattice.json grid — \(error.localizedDescription)")
+                DiagnosticLog.shared.error("WorkspaceManager: failed to decode .lattices.json grid — \(error.localizedDescription)")
             }
         }
 
@@ -194,12 +194,12 @@ class WorkspaceManager: ObservableObject {
             let label = tab.label ?? (tab.path as NSString).lastPathComponent
             DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.4) {
                 if i == 0 {
-                    terminal.launch(command: "/opt/homebrew/bin/lattice", in: tab.path)
+                    terminal.launch(command: "/opt/homebrew/bin/lattices", in: tab.path)
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         terminal.nameTab(label)
                     }
                 } else {
-                    terminal.launchTab(command: "/opt/homebrew/bin/lattice", in: tab.path, tabName: label)
+                    terminal.launchTab(command: "/opt/homebrew/bin/lattices", in: tab.path, tabName: label)
                 }
             }
         }
@@ -364,7 +364,7 @@ class WorkspaceManager: ObservableObject {
                     diag.finish(t)
                 } else {
                     diag.info("  launch (direct): \(sessionName)")
-                    terminal.launch(command: "/opt/homebrew/bin/lattice", in: path)
+                    terminal.launch(command: "/opt/homebrew/bin/lattices", in: path)
                 }
                 launchQueue.append((sessionName, position, lpScreen, {}))
             } else {

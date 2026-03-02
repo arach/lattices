@@ -8,7 +8,7 @@ struct WindowEntry: Codable, Identifiable {
     let frame: WindowFrame
     let spaceIds: [Int]
     let isOnScreen: Bool
-    let latticeSession: String?
+    let latticesSession: String?
 
     var id: UInt32 { wid }
 }
@@ -56,8 +56,8 @@ struct DesktopInventorySnapshot {
         let title: String
         let frame: WindowFrame
         let tilePosition: TilePosition?
-        let isLattice: Bool
-        let latticeSession: String?
+        let isLattices: Bool
+        let latticesSession: String?
         let spaceIndex: Int?     // 1-based space index within display
         let isOnScreen: Bool     // on current space
         var inventoryPath: InventoryPath?

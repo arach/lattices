@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct LatticeApp: App {
+struct LatticesApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
     @StateObject private var scanner = ProjectScanner.shared
 

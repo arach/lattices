@@ -4,9 +4,9 @@ import "./index.css";
 type PkgManager = "npm" | "pnpm" | "bun";
 
 const commands: Record<PkgManager, string> = {
-  npm: "npm install -g lattice",
-  pnpm: "pnpm add -g lattice",
-  bun: "bun add -g lattice",
+  npm: "npm install -g lattices",
+  pnpm: "pnpm add -g lattices",
+  bun: "bun add -g lattices",
 };
 
 const pmOrder: PkgManager[] = ["npm", "pnpm", "bun"];
@@ -63,7 +63,7 @@ const configExample = `{
   ]
 }`;
 
-const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span class="hl-kw">from</span> <span class="hl-str">'lattice/daemon-client'</span>
+const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span class="hl-kw">from</span> <span class="hl-str">'lattices/daemon-client'</span>
 
 <span class="hl-cmt">// Discover projects</span>
 <span class="hl-kw">const</span> projects = <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'projects.list'</span>)
@@ -104,7 +104,7 @@ export default function App() {
         <div className="nav-inner">
           <a href="/" className="nav-brand">
             <span className="nav-dot" />
-            <span className="nav-name">lattice</span>
+            <span className="nav-name">lattices</span>
           </a>
           <div className="nav-links">
             <a href="/docs/concepts" className="nav-link">
@@ -120,7 +120,7 @@ export default function App() {
               App
             </a>
             <a
-              href="https://github.com/arach/lattice"
+              href="https://github.com/arach/lattices"
               target="_blank"
               rel="noopener noreferrer"
               className="nav-github"
@@ -173,7 +173,7 @@ export default function App() {
             </div>
             <div className="hero-links">
               <a
-                href="https://github.com/arach/lattice"
+                href="https://github.com/arach/lattices"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="star-link"
@@ -196,7 +196,7 @@ export default function App() {
                 One file. Any layout.
               </h2>
               <p className="config-desc">
-                Drop a <code>.lattice.json</code> in your project root.
+                Drop a <code>.lattices.json</code> in your project root.
                 Define panes, commands, and sizes.
               </p>
               <div className="layouts">
@@ -232,7 +232,7 @@ export default function App() {
                 <span className="code-dot code-dot-red" />
                 <span className="code-dot code-dot-yellow" />
                 <span className="code-dot code-dot-green" />
-                <span className="code-filename">.lattice.json</span>
+                <span className="code-filename">.lattices.json</span>
               </div>
               <pre
                 className="code-pre"
@@ -287,7 +287,7 @@ export default function App() {
             <span className="feature-icon">&#9654;</span>
             <h3>One command</h3>
             <p>
-              Run <code>lattice</code> in any project directory to create a named
+              Run <code>lattices</code> in any project directory to create a named
               tmux session with your panes running.
             </p>
           </div>
@@ -328,7 +328,7 @@ export default function App() {
             <h3>Tab groups</h3>
             <p>
               Bundle related projects as tabs in one window. iOS, macOS,
-              Web, API — one <code>lattice group</code> to launch them all.
+              Web, API — one <code>lattices group</code> to launch them all.
             </p>
           </div>
         </section>
@@ -361,7 +361,7 @@ export default function App() {
             <div className="app-screenshot-wrap">
               <img
                 src="/app-screenshot.png"
-                alt="lattice menu bar app showing a running session"
+                alt="lattices menu bar app showing a running session"
                 className="app-screenshot"
               />
             </div>
@@ -370,11 +370,11 @@ export default function App() {
 
         {/* CTA */}
         <section className="cta">
-          <h2>Ready to lattice?</h2>
+          <h2>Ready to lattices?</h2>
           <p>Install globally. Your agent gets a control plane in seconds.</p>
           <div className="cta-actions">
             <a
-              href="https://github.com/arach/lattice"
+              href="https://github.com/arach/lattices"
               target="_blank"
               rel="noopener noreferrer"
               className="btn btn-primary"
@@ -382,7 +382,7 @@ export default function App() {
               View on GitHub
             </a>
             <a
-              href="https://www.npmjs.com/package/lattice"
+              href="https://www.npmjs.com/package/lattices"
               target="_blank"
               rel="noopener noreferrer"
               className="btn btn-secondary"

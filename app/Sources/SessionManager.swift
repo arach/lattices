@@ -1,7 +1,7 @@
 import AppKit
 
 enum SessionManager {
-    private static let latticePath = "/opt/homebrew/bin/lattice"
+    private static let latticesPath = "/opt/homebrew/bin/lattices"
     private static let tmuxPath = "/opt/homebrew/bin/tmux"
 
     /// Launch or reattach — if session is running, find and focus the existing window
@@ -10,7 +10,7 @@ enum SessionManager {
         if project.isRunning {
             terminal.focusOrAttach(session: project.sessionName)
         } else {
-            terminal.launch(command: latticePath, in: project.path)
+            terminal.launch(command: latticesPath, in: project.path)
         }
     }
 
@@ -49,7 +49,7 @@ enum SessionManager {
     /// Reconcile session state to match declared config (recreate missing panes)
     static func sync(project: Project) {
         let task = Process()
-        task.executableURL = URL(fileURLWithPath: latticePath)
+        task.executableURL = URL(fileURLWithPath: latticesPath)
         task.arguments = ["sync"]
         task.currentDirectoryURL = URL(fileURLWithPath: project.path)
         task.standardOutput = FileHandle.nullDevice
@@ -61,7 +61,7 @@ enum SessionManager {
     /// Restart a specific pane's process (kill + re-run declared command)
     static func restart(project: Project, paneName: String? = nil) {
         let task = Process()
-        task.executableURL = URL(fileURLWithPath: latticePath)
+        task.executableURL = URL(fileURLWithPath: latticesPath)
         task.arguments = paneName != nil ? ["restart", paneName!] : ["restart"]
         task.currentDirectoryURL = URL(fileURLWithPath: project.path)
         task.standardOutput = FileHandle.nullDevice

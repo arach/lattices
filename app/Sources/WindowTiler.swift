@@ -352,7 +352,7 @@ enum WindowTiler {
         diag.finish(t)
     }
 
-    /// Tile a specific terminal window (found by lattice session tag) to a position.
+    /// Tile a specific terminal window (found by lattices session tag) to a position.
     /// Uses the same fast path strategy as tile(session:terminal:to:on:) with main screen.
     static func tile(session: String, terminal: Terminal, to position: TilePosition) {
         let screen = NSScreen.main ?? NSScreen.screens[0]
@@ -1021,14 +1021,14 @@ enum WindowTiler {
         batchRaiseAndDistribute(windows: windows)
     }
 
-    /// Distribute ALL visible non-Lattice windows into a smart grid on the screen with the most windows.
+    /// Distribute ALL visible non-Lattices windows into a smart grid on the screen with the most windows.
     static func distributeVisible() {
         let diag = DiagnosticLog.shared
         let t = diag.startTimed("distributeVisible")
 
         let allEntries = DesktopModel.shared.allWindows()
         let visible = allEntries.filter { entry in
-            entry.isOnScreen && entry.app != "Lattice" && entry.frame.w > 50 && entry.frame.h > 50
+            entry.isOnScreen && entry.app != "Lattices" && entry.frame.w > 50 && entry.frame.h > 50
         }
 
         guard !visible.isEmpty else {
@@ -1279,7 +1279,7 @@ enum WindowTiler {
     }
 
     /// Move AND raise windows in a single CG+AX pass (avoids duplicate lookups).
-    /// Does not reactivate lattice at the end — caller controls that.
+    /// Does not reactivate lattices at the end — caller controls that.
     static func batchMoveAndRaiseWindows(_ moves: [(wid: UInt32, pid: Int32, frame: CGRect)]) {
         guard !moves.isEmpty else { return }
         let diag = DiagnosticLog.shared
@@ -1636,9 +1636,9 @@ enum WindowTiler {
             return
         }
 
-        // 2. Skip if Lattice
-        if frontApp.bundleIdentifier == "com.arach.lattice" {
-            diag.info("tileFrontmostViaAX: skipping Lattice")
+        // 2. Skip if Lattices
+        if frontApp.bundleIdentifier == "com.arach.lattices" {
+            diag.info("tileFrontmostViaAX: skipping Lattices")
             diag.finish(t)
             return
         }

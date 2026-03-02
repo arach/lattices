@@ -175,10 +175,10 @@ enum Terminal: String, CaseIterable, Identifiable {
 
     /// The tag we put in the terminal window title via tmux set-titles
     static func windowTag(for session: String) -> String {
-        "[lattice:\(session)]"
+        "[lattices:\(session)]"
     }
 
-    /// Find and focus the existing terminal window by its [lattice:name] tag, or open a new attach
+    /// Find and focus the existing terminal window by its [lattices:name] tag, or open a new attach
     func focusOrAttach(session: String) {
         let tag = Terminal.windowTag(for: session)
 

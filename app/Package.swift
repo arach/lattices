@@ -2,11 +2,11 @@
 import PackageDescription
 
 let package = Package(
-    name: "LatticeApp",
+    name: "Lattices",
     platforms: [.macOS(.v13)],
     targets: [
         .executableTarget(
-            name: "LatticeApp",
+            name: "Lattices",
             path: "Sources"
         )
     ]

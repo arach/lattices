@@ -1447,7 +1447,7 @@ struct ScreenMapView: View {
                             }
                         }
 
-                        if h > 50, let session = Self.extractLatticeSession(from: win.title) {
+                        if h > 50, let session = Self.extractLatticesSession(from: win.title) {
                             VStack {
                                 Spacer()
                                 HStack {
@@ -1924,10 +1924,10 @@ struct ScreenMapView: View {
         return nil
     }
 
-    private static func extractLatticeSession(from title: String) -> String? {
-        guard let range = title.range(of: #"\[lattice:([^\]]+)\]"#, options: .regularExpression) else { return nil }
+    private static func extractLatticesSession(from title: String) -> String? {
+        guard let range = title.range(of: #"\[lattices:([^\]]+)\]"#, options: .regularExpression) else { return nil }
         let match = String(title[range])
-        return String(match.dropFirst(8).dropLast(1))
+        return String(match.dropFirst(9).dropLast(1))
     }
 
     // MARK: - Layer Preview

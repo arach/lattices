@@ -74,7 +74,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         DesktopModel.shared.start()
         TmuxModel.shared.start()
         ProcessModel.shared.start()
-        LatticeApi.setup()
+        LatticesApi.setup()
         DaemonServer.shared.start()
 
         // --diagnostics flag: auto-open diagnostics panel on launch

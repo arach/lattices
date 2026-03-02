@@ -208,7 +208,7 @@ struct SettingsContentView: View {
                                         .buttonStyle(.plain)
                                     }
 
-                                    Text("Scans for .lattice.json configs")
+                                    Text("Scans for .lattices.json configs")
                                         .font(Typo.caption(10))
                                         .foregroundColor(Palette.textMuted)
                                 }
@@ -489,7 +489,7 @@ struct SettingsContentView: View {
     private var docsContent: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0, pinnedViews: .sectionHeaders) {
-                Section(header: stickyHeader("What is lattice?")) {
+                Section(header: stickyHeader("What is lattices?")) {
                     Text("A developer workspace launcher. It creates pre-configured terminal layouts for your projects using tmux \u{2014} go from \u{201C}I want to work on X\u{201D} to a full environment in one click.")
                         .font(Typo.caption(11))
                         .foregroundColor(Palette.textDim)
@@ -509,7 +509,7 @@ struct SettingsContentView: View {
                         glossaryItem("Detach",
                             "Disconnect your terminal but keep the session alive. Your dev server keeps running, Claude keeps thinking.")
                         glossaryItem("tmux",
-                            "Terminal multiplexer \u{2014} the engine behind lattice. It manages sessions, panes, and layouts. lattice configures it so you don\u{2019}t have to.")
+                            "Terminal multiplexer \u{2014} the engine behind lattices. It manages sessions, panes, and layouts. lattices configures it so you don\u{2019}t have to.")
                     }
                     .padding(.horizontal, 20)
                     .padding(.vertical, 12)
@@ -517,8 +517,8 @@ struct SettingsContentView: View {
 
                 Section(header: stickyHeader("How it works")) {
                     VStack(alignment: .leading, spacing: 8) {
-                        flowStep("1", "Create a .lattice.json in your project root")
-                        flowStep("2", "lattice reads the config and builds a tmux session")
+                        flowStep("1", "Create a .lattices.json in your project root")
+                        flowStep("2", "lattices reads the config and builds a tmux session")
                         flowStep("3", "Each pane gets its command (claude, dev server, etc.)")
                         flowStep("4", "Session persists in the background until you kill it")
                         flowStep("5", "Attach and detach from any terminal, any time")

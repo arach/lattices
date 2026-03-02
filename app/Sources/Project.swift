@@ -14,7 +14,7 @@ struct Project: Identifiable {
     var isRunning: Bool
 
     /// Unique session name: basename-{6-char SHA256 hash of full path}
-    /// Must match the JS `toSessionName()` in lattice.js exactly
+    /// Must match the JS `toSessionName()` in lattices.js exactly
     var sessionName: String {
         let base = name.replacingOccurrences(
             of: "[^a-zA-Z0-9_-]",

@@ -6,7 +6,7 @@ order: 4
 
 # Workspace Layers & Tab Groups
 
-Two ways to organize related projects in `~/.lattice/workspace.json`:
+Two ways to organize related projects in `~/.lattices/workspace.json`:
 
 - **Layers** — switchable contexts that focus and tile windows
 - **Tab groups** — related projects as tabs within a single terminal window
@@ -23,7 +23,7 @@ you think of as one logical unit.
 
 ### Configuration
 
-Add `groups` to `~/.lattice/workspace.json`:
+Add `groups` to `~/.lattices/workspace.json`:
 
 ```json
 {
@@ -43,15 +43,15 @@ Add `groups` to `~/.lattice/workspace.json`:
 }
 ```
 
-Each tab's pane layout comes from its own `.lattice.json` — no changes
+Each tab's pane layout comes from its own `.lattices.json` — no changes
 to per-project configs.
 
 ### How it works
 
-- **Session naming**: `lattice-group-<id>` (e.g. `lattice-group-talkie`)
+- **Session naming**: `lattices-group-<id>` (e.g. `lattices-group-talkie`)
 - **tmux mapping**: 1 group = 1 tmux session, each tab = 1 tmux window,
-  each window has its own panes from that project's `.lattice.json`
-- **Independent launch still works**: `cd talkie-ios && lattice` creates
+  each window has its own panes from that project's `.lattices.json`
+- **Independent launch still works**: `cd talkie-ios && lattices` creates
   its own standalone session as before
 
 ### Tab group fields
@@ -67,17 +67,17 @@ to per-project configs.
 ### CLI commands
 
 ```bash
-lattice groups             # List all groups with status
-lattice group <id>         # Launch or attach to a group
-lattice tab <group> [tab]  # Switch tab by label or index
+lattices groups             # List all groups with status
+lattices group <id>         # Launch or attach to a group
+lattices tab <group> [tab]  # Switch tab by label or index
 ```
 
 Examples:
 
 ```bash
-lattice group talkie       # Launch all Talkie tabs
-lattice tab talkie iOS     # Switch to the iOS tab
-lattice tab talkie 0       # Switch to first tab (by index)
+lattices group talkie       # Launch all Talkie tabs
+lattices tab talkie iOS     # Switch to the iOS tab
+lattices tab talkie 0       # Switch to first tab (by index)
 ```
 
 ### Menu bar app
@@ -113,7 +113,7 @@ killed — layers only control which windows are focused.
 
 ### Configuration
 
-Add `layers` to `~/.lattice/workspace.json`:
+Add `layers` to `~/.lattices/workspace.json`:
 
 ```json
 {
@@ -170,7 +170,7 @@ This lets you tile a whole group into a screen position:
 }
 ```
 
-When switching to this layer, lattice launches (or focuses) the
+When switching to this layer, lattices launches (or focuses) the
 "talkie" group session and tiles it to the top-left quarter, alongside
 the design-system project on the right.
 
@@ -219,7 +219,7 @@ The app remembers which layer was last active across restarts.
 Agents and scripts can switch layers via the daemon API:
 
 ```js
-import { daemonCall } from 'lattice/daemon-client'
+import { daemonCall } from 'lattices/daemon-client'
 
 // List available layers
 const { layers, active } = await daemonCall('layers.list')
@@ -241,7 +241,7 @@ When a workspace config is loaded, a layer bar appears between the
 header and search field in the menu bar panel:
 
 ```
- lattice  2 sessions              [↔] [⟳]
+ lattices  2 sessions              [↔] [⟳]
 ┌────────────────────────────────────────┐
 │  ● Web          ○ Mobile               │
 │  ⌥1             ⌥2                     │
@@ -304,8 +304,8 @@ No `tile` — just focuses the window wherever it is.
 
 ## Tips
 
-- Projects don't need a `.lattice.json` config to be in a layer — any
-  directory path works. If the project has a config, lattice uses it; if
+- Projects don't need a `.lattices.json` config to be in a layer — any
+  directory path works. If the project has a config, lattices uses it; if
   not, it opens a plain terminal in that directory.
 - You can have up to 9 layers (Cmd+Option+1 through Cmd+Option+9).
 - Edit `workspace.json` by hand — the app re-reads it on launch. Use

@@ -1,27 +1,27 @@
 ---
 title: Concepts
-description: Core ideas, glossary, and architecture of lattice
+description: Core ideas, glossary, and architecture of lattices
 order: 1
 ---
 
 # Concepts
 
-## What is lattice?
+## What is lattices?
 
-lattice is a developer workspace launcher. It creates pre-configured
+lattices is a developer workspace launcher. It creates pre-configured
 terminal layouts for your projects using tmux, so you can go from
 "I want to work on X" to a full development environment in one click.
 
 It has two parts:
 
-1. **CLI** (`lattice`) — creates and manages tmux sessions from the terminal
+1. **CLI** (`lattices`) — creates and manages tmux sessions from the terminal
 2. **Menu bar app** — a native macOS companion for launching, tiling,
    and navigating sessions with a command palette
 
 ## Glossary
 
 ### Daemon
-The lattice daemon is a WebSocket server (`ws://127.0.0.1:9399`) that
+The lattices daemon is a WebSocket server (`ws://127.0.0.1:9399`) that
 runs inside the menu bar app. It exposes 20 RPC methods and 3 real-time
 events, giving scripts and AI agents full programmatic control over
 sessions, windows, layers, and projects. See the
@@ -40,7 +40,7 @@ It survives terminal crashes, disconnects, and even closing your laptop.
 Think of it as a virtual desktop for a single project.
 
 ### Pane
-A pane is a single terminal view inside a session. A typical lattice
+A pane is a single terminal view inside a session. A typical lattices
 setup has two panes side by side — one running Claude Code and one
 running your dev server. You can have up to four or more.
 
@@ -50,8 +50,8 @@ Detaching disconnects your terminal but keeps the session alive.
 Your dev server keeps running, Claude keeps thinking — nothing is lost.
 
 ### tmux
-tmux (terminal multiplexer) is the engine behind lattice. It manages
-sessions, panes, and layouts. lattice configures tmux for you so you
+tmux (terminal multiplexer) is the engine behind lattices. It manages
+sessions, panes, and layouts. lattices configures tmux for you so you
 don't need to learn tmux commands — but knowing a few shortcuts helps.
 
 ### Multiplexer
@@ -59,7 +59,7 @@ A program that lets you run multiple terminal sessions inside a single
 window and switch between them. tmux is the most popular one.
 
 ### Sync / Reconcile
-Sync (`lattice sync`) brings a running session back in line with its
+Sync (`lattices sync`) brings a running session back in line with its
 declared config. It recreates missing panes, re-applies the layout,
 restores labels, and re-runs commands in idle panes. Useful when a pane
 was accidentally killed but you don't want to restart the whole session.
@@ -71,7 +71,7 @@ Two modes for restoring exited commands when you reattach to a session:
 - **Prefill** — types the command into the pane but waits for you to
   press Enter (manual confirmation)
 
-Set via `"ensure": true` or `"prefill": true` in `.lattice.json`.
+Set via `"ensure": true` or `"prefill": true` in `.lattices.json`.
 
 ### Command Palette
 The menu bar app's primary interface, opened with **Cmd+Shift+M**.
@@ -79,14 +79,14 @@ A searchable list of actions: launch/attach projects, tile windows,
 sync sessions, restart panes, open settings.
 
 ### Window Tiling
-Both the CLI (`lattice tile`) and the menu bar app can snap terminal
+Both the CLI (`lattices tile`) and the menu bar app can snap terminal
 windows to preset screen positions (halves, quarters, maximize, center).
 Tiling uses AppleScript bounds and respects the menu bar and dock.
 
 ## How it works
 
-1. You create a `.lattice.json` file in your project root (or run `lattice init`)
-2. lattice reads the config and creates a tmux session with your layout
+1. You create a `.lattices.json` file in your project root (or run `lattices init`)
+2. lattices reads the config and creates a tmux session with your layout
 3. Each pane gets its command (claude, dev server, tests, etc.)
 4. The session persists in the background until you kill it
 5. You can attach/detach from any terminal at any time
@@ -102,7 +102,7 @@ Tiling uses AppleScript bounds and respects the menu bar and dock.
 ├─────────────────────────────┤
 │  Menu bar app (Swift/AppKit)│  ← GUI: command palette, tiling, project list
 ├─────────────────────────────┤
-│  CLI (Node.js)              │  ← lattice, lattice sync, lattice restart ...
+│  CLI (Node.js)              │  ← lattices, lattices sync, lattices restart ...
 ├─────────────────────────────┤
 │  tmux                       │  ← session/pane lifecycle, layout, persistence
 └─────────────────────────────┘
@@ -135,13 +135,13 @@ Both the CLI (Node.js `crypto.createHash`) and the app (Swift
 
 ### Window discovery via title tags
 
-When lattice creates a session, it sets the tmux option:
+When lattices creates a session, it sets the tmux option:
 
 ```
-set-titles-string "[lattice:<session-name>] #{pane_title}"
+set-titles-string "[lattices:<session-name>] #{pane_title}"
 ```
 
-This embeds a `[lattice:name]` tag in the terminal window title. The
+This embeds a `[lattices:name]` tag in the terminal window title. The
 menu bar app uses this tag to find windows via three fallback paths:
 
 1. **CGWindowList** (needs Screen Recording permission) — fastest,
@@ -166,9 +166,9 @@ and other macOS window managers.
 
 ### Ensure/prefill restoration
 
-When you run `lattice` (no arguments) and a session already exists:
+When you run `lattices` (no arguments) and a session already exists:
 
-1. lattice checks the `ensure` / `prefill` flag in `.lattice.json`
+1. lattices checks the `ensure` / `prefill` flag in `.lattices.json`
 2. For each pane, it queries `#{pane_current_command}` via tmux
 3. If the pane is running a shell (bash, zsh, fish, sh, dash) — meaning
    the original command has exited — it either:
@@ -178,7 +178,7 @@ When you run `lattice` (no arguments) and a session already exists:
 
 ## Agentic architecture
 
-lattice is designed for programmatic control. The daemon API gives
+lattices is designed for programmatic control. The daemon API gives
 agents the same capabilities as a human using the menu bar app:
 
 - **Discover** — list projects, sessions, windows, and Spaces
@@ -193,7 +193,7 @@ An orchestrator agent can set up an entire multi-project workspace in
 a few calls:
 
 ```js
-import { daemonCall } from 'lattice/daemon-client'
+import { daemonCall } from 'lattices/daemon-client'
 
 await daemonCall('session.launch', { path: '/Users/you/dev/frontend' })
 await daemonCall('session.launch', { path: '/Users/you/dev/api' })
