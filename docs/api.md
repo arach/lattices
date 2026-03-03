@@ -4,23 +4,40 @@ description: WebSocket API reference for programmatic control of lattices
 order: 5
 ---
 
-# Daemon API
-
 The lattices menu bar app runs a WebSocket daemon on `ws://127.0.0.1:9399`.
-It exposes 20 RPC methods and 3 real-time events — everything the app
+It exposes 26 RPC methods and 4 real-time events — everything the app
 can do, agents and scripts can do too.
 
-## Who this is for
+## Method index
 
-- **AI coding agents** that need to discover projects, launch sessions,
-  tile windows, and switch contexts without human interaction
-- **Scripts and automation** — CI, dotfile bootstraps, workspace setup
-- **Custom tools** — build your own launcher, dashboard, or orchestrator
-
-> New to lattices? Start with the [Overview](/docs/overview) and
-> [Quickstart](/docs/quickstart). For the `.lattices.json` config format
-> and CLI commands, see [Configuration](/docs/config). For architecture
-> details, see [Concepts](/docs/concepts).
+| Method | Type | Description |
+|--------|------|-------------|
+| `daemon.status` | read | Health check and stats |
+| `windows.list` | read | All visible windows |
+| `windows.get` | read | Single window by ID |
+| `tmux.sessions` | read | Lattices tmux sessions |
+| `tmux.inventory` | read | All sessions including orphans |
+| `projects.list` | read | Discovered projects |
+| `spaces.list` | read | macOS display spaces |
+| `layers.list` | read | Workspace layers and active index |
+| `processes.list` | read | Running developer processes |
+| `processes.tree` | read | Process tree from a PID |
+| `terminals.list` | read | Terminal instances with processes |
+| `terminals.search` | read | Search terminals by criteria |
+| `api.schema` | read | Full API schema for self-discovery |
+| `session.launch` | write | Launch a project session |
+| `session.kill` | write | Kill a session |
+| `session.detach` | write | Detach clients from a session |
+| `session.sync` | write | Reconcile session to config |
+| `session.restart` | write | Restart a pane's process |
+| `window.tile` | write | Tile a window to a position |
+| `window.focus` | write | Focus a window / switch Spaces |
+| `window.move` | write | Move a window to another Space |
+| `layer.switch` | write | Switch workspace layer |
+| `group.launch` | write | Launch a tab group |
+| `group.kill` | write | Kill a tab group |
+| `projects.scan` | write | Re-scan project directory |
+| `layout.distribute` | write | Distribute windows evenly |
 
 ## Quick start
 
@@ -39,7 +56,7 @@ lattices daemon status
 3. Call a method from Node.js:
 
 ```js
-import { daemonCall } from 'lattices/daemon-client'
+import { daemonCall } from '@arach/lattices/daemon-client'
 
 const windows = await daemonCall('windows.list')
 console.log(windows) // [{ wid, app, title, frame, ... }, ...]
@@ -110,6 +127,17 @@ Three error types:
 | Missing parameter | A required param was not provided   |
 | Not found       | The referenced resource doesn't exist |
 
+### Connection lifecycle
+
+- The daemon starts when the menu bar app launches and stops when it quits.
+- Connections are plain WebSocket — no handshake, no auth, no heartbeat.
+- The Node.js `daemonCall()` client opens a fresh connection per call and
+  closes it when the response arrives. For event subscriptions, hold the
+  connection open (see [Reactive event pattern](#reactive-event-pattern)).
+- If the daemon restarts (e.g. after `lattices app restart`), existing
+  connections are dropped. Clients should reconnect and treat the daemon
+  as stateless — there is no session resumption.
+
 ## Node.js client
 
 lattices ships a zero-dependency WebSocket client that works with
@@ -121,7 +149,7 @@ matching internally.
 Send an RPC call and await the response.
 
 ```js
-import { daemonCall } from 'lattices/daemon-client'
+import { daemonCall } from '@arach/lattices/daemon-client'
 
 // Read-only
 const status = await daemonCall('daemon.status')
@@ -132,7 +160,7 @@ const win = await daemonCall('windows.get', { wid: 1234 })
 await daemonCall('session.launch', { path: '/Users/you/dev/myapp' })
 await daemonCall('window.tile', { session: 'myapp-a1b2c3', position: 'left' })
 
-// Custom timeout (default: 5000ms)
+// Custom timeout (default: 3000ms)
 await daemonCall('projects.scan', null, 10000)
 ```
 
@@ -144,7 +172,7 @@ await daemonCall('projects.scan', null, 10000)
 Check if the daemon is reachable.
 
 ```js
-import { isDaemonRunning } from 'lattices/daemon-client'
+import { isDaemonRunning } from '@arach/lattices/daemon-client'
 
 if (await isDaemonRunning()) {
   console.log('daemon is up')
@@ -152,6 +180,26 @@ if (await isDaemonRunning()) {
 ```
 
 Returns `true` if `daemon.status` responds within 1 second.
+
+### Error handling
+
+`daemonCall` throws on errors — always wrap calls in try/catch:
+
+```js
+import { daemonCall } from '@arach/lattices/daemon-client'
+
+try {
+  await daemonCall('session.launch', { path: '/nonexistent' })
+} catch (err) {
+  // err.message is one of:
+  //   "Not found"              — resource doesn't exist
+  //   "Missing parameter: ..." — required param missing
+  //   "Unknown method: ..."    — bad method name
+  //   "Daemon request timed out" — no response within timeout
+  //   ECONNREFUSED             — daemon not running
+  console.error('Daemon error:', err.message)
+}
+```
 
 ---
 
@@ -345,6 +393,113 @@ Returns empty `layers` array if no workspace config is loaded.
 
 ---
 
+### `processes.list`
+
+List running processes relevant to development (editors, servers, build tools).
+
+**Params**:
+
+| Field     | Type   | Required | Description                        |
+|-----------|--------|----------|------------------------------------|
+| `command` | string | no       | Filter by command name substring   |
+
+**Returns**: array of process objects:
+
+```json
+[
+  {
+    "pid": 1234,
+    "ppid": 567,
+    "command": "node",
+    "args": "server.js",
+    "cwd": "/Users/you/dev/myapp",
+    "tty": "/dev/ttys003",
+    "tmuxSession": "myapp-a1b2c3",
+    "tmuxPaneId": "%0"
+  }
+]
+```
+
+---
+
+### `processes.tree`
+
+Get the process tree rooted at a given PID.
+
+**Params**:
+
+| Field | Type   | Required | Description   |
+|-------|--------|----------|---------------|
+| `pid` | number | yes      | Root PID      |
+
+**Returns**: array of process objects (same shape as `processes.list`).
+
+---
+
+### `terminals.list`
+
+List all discovered terminal instances with their processes, tabs, and tmux associations.
+
+**Params**:
+
+| Field     | Type    | Required | Description                          |
+|-----------|---------|----------|--------------------------------------|
+| `refresh` | boolean | no       | Force-refresh the terminal tab cache |
+
+**Returns**: array of terminal instance objects:
+
+```json
+[
+  {
+    "tty": "/dev/ttys003",
+    "app": "Terminal",
+    "windowIndex": 0,
+    "tabIndex": 0,
+    "isActiveTab": true,
+    "tabTitle": "myapp",
+    "processes": [ ... ],
+    "shellPid": 1234,
+    "cwd": "/Users/you/dev/myapp",
+    "tmuxSession": "myapp-a1b2c3",
+    "tmuxPaneId": "%0",
+    "hasClaude": true,
+    "displayName": "Terminal — myapp"
+  }
+]
+```
+
+---
+
+### `terminals.search`
+
+Search terminal instances by various criteria.
+
+**Params**:
+
+| Field      | Type    | Required | Description                          |
+|------------|---------|----------|--------------------------------------|
+| `command`  | string  | no       | Filter by command name substring     |
+| `cwd`      | string  | no       | Filter by working directory substring |
+| `app`      | string  | no       | Filter by terminal app name          |
+| `session`  | string  | no       | Filter by tmux session name          |
+| `hasClaude`| boolean | no       | Filter to only Claude-running TTYs   |
+
+**Returns**: filtered array of terminal instance objects (same shape as `terminals.list`).
+
+---
+
+### `api.schema`
+
+Return the full API schema including version, models, and method definitions.
+
+**Params**: none
+
+**Returns**: a structured schema object describing all registered endpoints,
+their parameters, return types, and data models. Useful for agent
+self-discovery.
+
+---
+
 ## Write methods
 
 ### `session.launch`
@@ -443,7 +598,8 @@ Tile a session's terminal window to a screen position.
 | `position` | string | yes      | Tile position (see below)           |
 
 **Positions**: `left`, `right`, `top`, `bottom`, `top-left`, `top-right`,
-`bottom-left`, `bottom-right`, `maximize`, `center`
+`bottom-left`, `bottom-right`, `left-third`, `center-third`, `right-third`,
+`maximize`, `center`
 
 **Returns**: `{ "ok": true }`
 
@@ -542,6 +698,16 @@ repo or adding a `.lattices.json` config.
 
 ---
 
+### `layout.distribute`
+
+Distribute all visible lattices windows evenly across the screen.
+
+**Params**: none
+
+**Returns**: `{ "ok": true }`
+
+---
+
 ## Events
 
 Events are pushed to all connected WebSocket clients when state changes.
@@ -550,24 +716,24 @@ They have no `id` field — listen for messages with an `event` field.
 ### `windows.changed`
 
 Fired when the desktop window list changes (windows opened, closed,
-moved, or resized).
+moved, or resized). Fires immediately on each change — not debounced.
 
 ```json
 {
   "event": "windows.changed",
   "data": {
-    "windows": [ ... ],
+    "windowCount": 12,
     "added": [1234],
     "removed": [5678]
   }
 }
 ```
 
-| Field     | Type     | Description                        |
-|-----------|----------|------------------------------------|
-| `windows` | array    | Full current window list           |
-| `added`   | number[] | Window IDs that appeared           |
-| `removed` | number[] | Window IDs that disappeared        |
+| Field         | Type     | Description                        |
+|---------------|----------|------------------------------------|
+| `windowCount` | number   | Total window count after change    |
+| `added`       | number[] | Window IDs that appeared           |
+| `removed`     | number[] | Window IDs that disappeared        |
 
 ---
 
@@ -579,14 +745,16 @@ Fired when tmux sessions change (created, killed, panes added/removed).
 {
   "event": "tmux.changed",
   "data": {
-    "sessions": [ ... ]
+    "sessionCount": 3,
+    "sessions": ["myapp-a1b2c3", "api-d4e5f6"]
   }
 }
 ```
 
-| Field      | Type  | Description              |
-|------------|-------|--------------------------|
-| `sessions` | array | Full current session list |
+| Field          | Type     | Description                   |
+|----------------|----------|-------------------------------|
+| `sessionCount` | number   | Total session count           |
+| `sessions`     | string[] | Session names                 |
 
 ---
 
@@ -606,6 +774,28 @@ Fired when the active workspace layer changes.
 | Field   | Type   | Description                  |
 |---------|--------|------------------------------|
 | `index` | number | Index of the now-active layer |
+
+---
+
+### `processes.changed`
+
+Fired when the set of interesting developer processes changes
+(editors, servers, build tools starting or stopping).
+
+```json
+{
+  "event": "processes.changed",
+  "data": {
+    "interestingCount": 5,
+    "pids": [1234, 5678, 9012]
+  }
+}
+```
+
+| Field              | Type     | Description                           |
+|--------------------|----------|---------------------------------------|
+| `interestingCount` | number   | Count of interesting developer processes |
+| `pids`             | number[] | PIDs of those processes               |
 
 ---
 
@@ -631,7 +821,7 @@ is available at ws://127.0.0.1:9399.
 
 ### Import
 \```js
-import { daemonCall } from 'lattices/daemon-client'
+import { daemonCall } from '@arach/lattices/daemon-client'
 \```
 ```
 
@@ -640,7 +830,7 @@ import { daemonCall } from 'lattices/daemon-client'
 An orchestrator agent can set up the full workspace for sub-agents:
 
 ```js
-import { daemonCall } from 'lattices/daemon-client'
+import { daemonCall } from '@arach/lattices/daemon-client'
 
 // Discover what's available
 const projects = await daemonCall('projects.list')
@@ -671,12 +861,13 @@ ws.on('message', (raw) => {
   const msg = JSON.parse(raw)
 
   if (msg.event === 'tmux.changed') {
-    console.log('Sessions changed:', msg.data.sessions.length, 'active')
+    console.log('Sessions:', msg.data.sessions.join(', '))
   }
 
   if (msg.event === 'windows.changed') {
-    const latticesWindows = msg.data.windows.filter(w => w.latticesSession)
-    console.log('Lattices windows:', latticesWindows.length)
+    console.log('Windows:', msg.data.windowCount, 'total')
+    if (msg.data.added.length) console.log('  Added:', msg.data.added)
+    if (msg.data.removed.length) console.log('  Removed:', msg.data.removed)
   }
 
   if (msg.event === 'layer.switched') {
@@ -695,7 +886,7 @@ ws.on('open', () => {
 Always verify the daemon is running before making calls:
 
 ```js
-import { isDaemonRunning, daemonCall } from 'lattices/daemon-client'
+import { isDaemonRunning, daemonCall } from '@arach/lattices/daemon-client'
 
 if (!(await isDaemonRunning())) {
   console.error('lattices daemon is not running — start it with: lattices app')

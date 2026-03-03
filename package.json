@@ -20,6 +20,10 @@
     "url": "https://github.com/arach/lattices"
   },
   "license": "MIT",
+  "exports": {
+    ".": "./bin/lattices.js",
+    "./daemon-client": "./bin/daemon-client.js"
+  },
   "scripts": {
     "dev": "bun --cwd docs-site dev"
   },

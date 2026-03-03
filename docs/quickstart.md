@@ -4,8 +4,6 @@ description: Install lattices and launch your first workspace in 2 minutes
 order: 0.5
 ---
 
-# Quickstart
-
 Get from zero to a running workspace in five steps.
 
 ## 1. Install tmux
@@ -19,10 +17,14 @@ Skip if you already have it (`tmux -V` to check).
 ## 2. Install lattices
 
 ```bash
-# Clone and link
+npm install -g @arach/lattices
+```
+
+Or install from source:
+
+```bash
 git clone https://github.com/arach/lattices
-cd lattices
-bun link
+cd lattices && npm link
 ```
 
 Verify: `lattices help` should print usage info.

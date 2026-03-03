@@ -4,8 +4,6 @@ description: CLI commands, .lattices.json format, and tile positions
 order: 2
 ---
 
-# Configuration
-
 ## .lattices.json
 
 Place a `.lattices.json` file in your project root to define your
@@ -225,6 +223,9 @@ screen position. Available positions:
 | `bottom-left`  | Bottom-left quarter         |
 | `bottom-right` | Bottom-right quarter        |
 | `maximize`     | Full screen (visible area)  |
+| `left-third`   | Left third                  |
+| `center-third` | Center third                |
+| `right-third`  | Right third                 |
 | `center`       | 70% width, 80% height, centered |
 
 Aliases: `left-half`/`left`, `right-half`/`right`, `top-half`/`top`,

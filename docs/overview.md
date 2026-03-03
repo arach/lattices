@@ -4,8 +4,6 @@ description: What lattices is and who it's for
 order: 0
 ---
 
-# Overview
-
 lattices is a macOS developer workspace manager. It pairs tmux sessions
 with a native menu bar app to give you — and your AI coding agents —
 full control over terminal layouts, window tiling, and project navigation.
@@ -24,7 +22,7 @@ lattices solves both sides:
 - **For you** — run `lattices` in any project to get a pre-configured
   tmux session. Use the menu bar app to launch, tile, and navigate
   sessions with a command palette.
-- **For agents** — the daemon API exposes 20 RPC methods over WebSocket.
+- **For agents** — the daemon API exposes 26 RPC methods over WebSocket.
   Agents can discover projects, launch sessions, tile windows, and
   switch workspace layers programmatically.
 
@@ -34,7 +32,7 @@ lattices solves both sides:
 |-----------|-------------|
 | **CLI** (`lattices`) | Create, manage, and tile tmux sessions from the terminal |
 | **Menu bar app** | Native macOS companion with command palette, tiling, and project discovery |
-| **Daemon API** | WebSocket server on `ws://127.0.0.1:9399` — 20 methods, 3 real-time events |
+| **Daemon API** | WebSocket server on `ws://127.0.0.1:9399` — 26 methods, 4 real-time events |
 | **Node.js client** | Zero-dependency `daemonCall()` helper for scripting |
 
 ## Quick taste
@@ -42,12 +40,12 @@ lattices solves both sides:
 ```bash
 # Launch a workspace (auto-detects your project)
 cd ~/my-project && lattices
-
-# Or give agents programmatic control
 ```
 
+Agents get the same control programmatically:
+
 ```js
-import { daemonCall } from 'lattices/daemon-client'
+import { daemonCall } from '@arach/lattices/daemon-client'
 
 await daemonCall('session.launch', { path: '/Users/you/dev/frontend' })
 await daemonCall('window.tile', { session: 'frontend-a1b2c3', position: 'left' })

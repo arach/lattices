@@ -4,8 +4,6 @@ description: Group projects into switchable layers and tabbed groups
 order: 4
 ---
 
-# Workspace Layers & Tab Groups
-
 Two ways to organize related projects in `~/.lattices/workspace.json`:
 
 - **Layers** — switchable contexts that focus and tile windows
@@ -192,8 +190,9 @@ Each project entry must have either `path` or `group`, not both.
 ### Tile values
 
 Any tile position from the [config reference](/docs/config#tile-positions)
-works: `left`, `right`, `top-left`, `top-right`, `bottom-left`,
-`bottom-right`, `maximize`, `center`.
+works: `left`, `right`, `top`, `bottom`, `top-left`, `top-right`,
+`bottom-left`, `bottom-right`, `left-third`, `center-third`,
+`right-third`, `maximize`, `center`.
 
 ### Switching layers
 
@@ -219,7 +218,7 @@ The app remembers which layer was last active across restarts.
 Agents and scripts can switch layers via the daemon API:
 
 ```js
-import { daemonCall } from 'lattices/daemon-client'
+import { daemonCall } from '@arach/lattices/daemon-client'
 
 // List available layers
 const { layers, active } = await daemonCall('layers.list')

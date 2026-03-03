@@ -4,8 +4,6 @@ description: Command palette, window tiling, and session management
 order: 3
 ---
 
-# Menu Bar App
-
 The lattices menu bar app is a native macOS companion that lives in your
 menu bar and gives you quick access to all your lattices sessions.
 
@@ -125,6 +123,9 @@ frontmost window.
 | Bottom Left  | Bottom-left quarter             |
 | Bottom Right | Bottom-right quarter            |
 | Maximize     | Full visible screen             |
+| Left Third   | Left third                      |
+| Center Third | Center third                    |
+| Right Third  | Right third                     |
 | Center       | 70% width, 80% height, centered |
 
 ## Space navigation
@@ -215,7 +216,7 @@ lattices daemon status
 Or programmatically:
 
 ```js
-import { isDaemonRunning, daemonCall } from 'lattices/daemon-client'
+import { isDaemonRunning, daemonCall } from '@arach/lattices/daemon-client'
 
 if (await isDaemonRunning()) {
   const status = await daemonCall('daemon.status')
@@ -225,10 +226,10 @@ if (await isDaemonRunning()) {
 
 ### What it provides
 
-- **20 RPC methods** — read windows, sessions, projects, spaces, layers;
+- **26 RPC methods** — read windows, sessions, projects, spaces, layers, processes, terminals;
   launch/kill/sync sessions; tile/focus/move windows; switch layers;
   manage tab groups
-- **3 real-time events** — `windows.changed`, `tmux.changed`,
+- **4 real-time events** — `windows.changed`, `tmux.changed`, `processes.changed`,
   `layer.switched` — broadcast to all connected clients
 - **Window tracking** — the daemon monitors the desktop window list
   and correlates windows to lattices sessions via title tags
