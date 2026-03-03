@@ -71,16 +71,16 @@
   }
 
   .doc-content pre {
-    background: #1e1e1e;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border-lit);
     border-radius: var(--radius-md);
     padding: 1rem 1.25rem;
     overflow-x: auto;
   }
 
   .doc-content code {
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border-lit);
     border-radius: 4px;
     padding: 0.15rem 0.4rem;
     font-size: 12px;
@@ -114,7 +114,26 @@
     text-align: left;
   }
 
+  .doc-content th {
+    background: var(--color-surface);
+    font-weight: 600;
+    font-size: 13px;
+  }
+
   .doc-content tr:last-child td {
     border-bottom: none;
+  }
+
+  .doc-content blockquote {
+    margin: 0 0 1.25rem;
+    padding: 0.75rem 1rem;
+    border-left: 3px solid var(--color-accent);
+    background: var(--color-surface);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    color: var(--color-text-muted);
+  }
+
+  .doc-content blockquote p:last-child {
+    margin-bottom: 0;
   }
 }

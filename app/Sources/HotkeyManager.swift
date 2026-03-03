@@ -1,5 +1,6 @@
 import Carbon
 import AppKit
+import Foundation
 
 /// Global callback registry keyed by hotkey ID
 private var hotkeyCallbacks: [UInt32: () -> Void] = [:]

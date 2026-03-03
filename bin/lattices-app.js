@@ -78,8 +78,8 @@ function buildFromSource() {
   try {
     // Prefer a real signing identity for stable TCC grants; fall back to ad-hoc with fixed identifier
     const identities = execSync("security find-identity -v -p codesigning", { stdio: "pipe" }).toString();
-    const devId = identities.match(/"(Apple Development:[^"]+)"/)?.[1]
-               || identities.match(/"(Developer ID Application:[^"]+)"/)?.[1];
+    const devId = identities.match(/"(Developer ID Application:[^"]+)"/)?.[1]
+               || identities.match(/"(Apple Development:[^"]+)"/)?.[1];
     const signArg = devId ? `'${devId}'` : "-";
     execSync(
       `codesign --force --sign ${signArg} --identifier com.arach.lattices '${bundlePath}'`,
@@ -89,6 +89,8 @@ function buildFromSource() {
     // Non-fatal — app still works, just permissions won't persist across rebuilds
     console.log("Warning: code signing failed — permissions may not persist across rebuilds.");
   }
+  // Update bundle timestamp so Finder shows the correct modified date
+  try { execSync(`touch '${bundlePath}'`, { stdio: "pipe" }); } catch {}
   console.log("Build complete.");
   return true;
 }

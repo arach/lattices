@@ -19,7 +19,7 @@ const { title = 'Docs' } = Astro.props
         try {
           var saved = localStorage.getItem('theme')
         } catch (e) {}
-        var theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+        var theme = saved || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
         document.documentElement.setAttribute('data-theme', theme)
       })()
     </script>
@@ -82,7 +82,7 @@ const { title = 'Docs' } = Astro.props
           try {
             var themeToggle = document.querySelector('[data-theme-toggle]')
             themeToggle && themeToggle.addEventListener('click', function () {
-              var current = document.documentElement.getAttribute('data-theme') || 'light'
+              var current = document.documentElement.getAttribute('data-theme') || 'dark'
               var next = current === 'dark' ? 'light' : 'dark'
               document.documentElement.setAttribute('data-theme', next)
               try { localStorage.setItem('theme', next) } catch (e) {}
@@ -161,7 +161,7 @@ const { title = 'Docs' } = Astro.props
             block.dataset.copyReady = 'true'
             var button = document.createElement('button')
             button.textContent = 'Copy'
-            button.className = 'absolute right-3 top-3 rounded bg-black/60 px-2 py-1 text-xs text-white transition hover:bg-black/80'
+            button.className = 'absolute right-3 top-3 rounded bg-white/10 px-2 py-1 text-xs text-[var(--color-text-muted)] transition hover:bg-white/15 hover:text-[var(--color-text)]'
             button.addEventListener('click', function () {
               var code = block.querySelector('code')
               if (!code) return
