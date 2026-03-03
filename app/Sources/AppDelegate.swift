@@ -33,6 +33,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         store.register(action: .palette) { CommandPaletteWindow.shared.toggle() }
         store.register(action: .screenMap) { ScreenMapWindowController.shared.toggle() }
         store.register(action: .bezel) { WindowBezel.showBezelForFrontmostWindow() }
+        store.register(action: .cheatSheet) { CheatSheetHUD.shared.toggle() }
 
         // Layer-switching hotkeys
         let workspace = WorkspaceManager.shared

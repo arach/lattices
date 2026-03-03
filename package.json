@@ -1,5 +1,5 @@
 {
-  "name": "lattices",
+  "name": "@arach/lattices",
   "version": "0.1.0",
   "description": "Tmux sessions with Claude Code + dev server, side by side",
   "bin": {
