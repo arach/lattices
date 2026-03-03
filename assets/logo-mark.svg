@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 336 336" width="336" height="336">
+  <!-- Grid mark only — transparent background, for use on any surface -->
+  <!-- Row 1 -->
+  <rect x="0" y="0" width="107" height="107" rx="10" fill="#f2f2f2"/>
+  <rect x="115" y="0" width="107" height="107" rx="10" fill="rgba(255,255,255,0.18)"/>
+  <rect x="230" y="0" width="107" height="107" rx="10" fill="rgba(255,255,255,0.18)"/>
+
+  <!-- Row 2 -->
+  <rect x="0" y="115" width="107" height="107" rx="10" fill="#f2f2f2"/>
+  <rect x="115" y="115" width="107" height="107" rx="10" fill="rgba(255,255,255,0.18)"/>
+  <rect x="230" y="115" width="107" height="107" rx="10" fill="rgba(255,255,255,0.18)"/>
+
+  <!-- Row 3 -->
+  <rect x="0" y="230" width="107" height="107" rx="10" fill="#f2f2f2"/>
+  <rect x="115" y="230" width="107" height="107" rx="10" fill="#f2f2f2"/>
+  <rect x="230" y="230" width="107" height="107" rx="10" fill="#f2f2f2"/>
+</svg>

@@ -1,16 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-  <rect width="128" height="128" rx="20" fill="#111113"/>
+  <rect width="128" height="128" rx="20" fill="#000000"/>
 
-  <!-- Top-left: filled, notch bottom-right -->
-  <path d="M20,20 H60 V44 H44 V60 H20 Z" fill="#ffffff"/>
+  <!-- 3×3 grid — L-shape bright, rest dim -->
+  <rect x="22" y="22" width="26" height="26" rx="3" fill="#f2f2f2"/>
+  <rect x="51" y="22" width="26" height="26" rx="3" fill="rgba(255,255,255,0.18)"/>
+  <rect x="80" y="22" width="26" height="26" rx="3" fill="rgba(255,255,255,0.18)"/>
 
-  <!-- Top-right: ghost, notch bottom-left -->
-  <path d="M68,20 H108 V60 H84 V44 H68 Z"
-        fill="none" stroke="rgba(255,255,255,0.10)" stroke-width="1.5"/>
+  <rect x="22" y="51" width="26" height="26" rx="3" fill="#f2f2f2"/>
+  <rect x="51" y="51" width="26" height="26" rx="3" fill="rgba(255,255,255,0.18)"/>
+  <rect x="80" y="51" width="26" height="26" rx="3" fill="rgba(255,255,255,0.18)"/>
 
-  <!-- Bottom-left: filled, notch top-right -->
-  <path d="M20,68 H44 V84 H60 V108 H20 Z" fill="#ffffff"/>
-
-  <!-- Bottom-right: filled, notch top-left -->
-  <path d="M84,68 H108 V108 H68 V84 H84 Z" fill="#ffffff"/>
+  <rect x="22" y="80" width="26" height="26" rx="3" fill="#f2f2f2"/>
+  <rect x="51" y="80" width="26" height="26" rx="3" fill="#f2f2f2"/>
+  <rect x="80" y="80" width="26" height="26" rx="3" fill="#f2f2f2"/>
 </svg>

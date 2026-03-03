@@ -5,26 +5,31 @@ struct LatticesApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
     @StateObject private var scanner = ProjectScanner.shared
 
-    /// 4×4 dot grid icon for the menu bar (template for auto light/dark)
+    /// 3×3 grid icon for the menu bar — L-shape bright, rest dim (template for auto light/dark)
     private static let menuBarIcon: NSImage = {
         let size: CGFloat = 18
         let img = NSImage(size: NSSize(width: size, height: size), flipped: false) { _ in
-            let dotRadius: CGFloat = 1.3
-            let cols = 4, rows = 4
-            let padX: CGFloat = 2.5, padY: CGFloat = 2.5
-            let spacingX = (size - 2 * padX) / CGFloat(cols - 1)
-            let spacingY = (size - 2 * padY) / CGFloat(rows - 1)
+            let pad: CGFloat = 2
+            let gap: CGFloat = 1.5
+            let cellSize = (size - 2 * pad - 2 * gap) / 3
 
-            NSColor.black.setFill()
-            for row in 0..<rows {
-                for col in 0..<cols {
-                    let cx = padX + CGFloat(col) * spacingX
-                    let cy = padY + CGFloat(row) * spacingY
-                    let dot = NSBezierPath(ovalIn: NSRect(
-                        x: cx - dotRadius, y: cy - dotRadius,
-                        width: dotRadius * 2, height: dotRadius * 2
-                    ))
-                    dot.fill()
+            // L-shape: left column + bottom row are solid, rest are dim
+            let solidCells: Set<Int> = [0, 3, 6, 7, 8]  // (0,0),(1,0),(2,0),(2,1),(2,2)
+
+            for row in 0..<3 {
+                for col in 0..<3 {
+                    let idx = row * 3 + col
+                    let x = pad + CGFloat(col) * (cellSize + gap)
+                    let y = pad + CGFloat(row) * (cellSize + gap)
+                    let rect = NSRect(x: x, y: y, width: cellSize, height: cellSize)
+
+                    if solidCells.contains(idx) {
+                        NSColor.black.setFill()
+                    } else {
+                        NSColor.black.withAlphaComponent(0.25).setFill()
+                    }
+                    let path = NSBezierPath(roundedRect: rect, xRadius: 0.8, yRadius: 0.8)
+                    path.fill()
                 }
             }
             return true

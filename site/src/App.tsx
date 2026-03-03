@@ -11,6 +11,37 @@ const commands: Record<PkgManager, string> = {
 
 const pmOrder: PkgManager[] = ["npm", "pnpm", "bun"];
 
+function LatticesLogo({ size = 20 }: { size?: number }) {
+  // 3×3 grid with L-shape pattern (left column + bottom row bright, rest dim)
+  const cells = [
+    true, false, false,
+    true, false, false,
+    true, true, true,
+  ];
+  const pad = 2;
+  const gap = 1.2;
+  const cell = (size - 2 * pad - 2 * gap) / 3;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} fill="none">
+      {cells.map((bright, i) => {
+        const row = Math.floor(i / 3);
+        const col = i % 3;
+        return (
+          <rect
+            key={i}
+            x={pad + col * (cell + gap)}
+            y={pad + row * (cell + gap)}
+            width={cell}
+            height={cell}
+            rx={1}
+            fill={bright ? "#f2f2f2" : "rgba(255,255,255,0.18)"}
+          />
+        );
+      })}
+    </svg>
+  );
+}
+
 function GitHubIcon() {
   return (
     <svg viewBox="0 0 16 16" fill="currentColor">
@@ -103,7 +134,7 @@ export default function App() {
       <nav className="nav">
         <div className="nav-inner">
           <a href="/" className="nav-brand">
-            <span className="nav-dot" />
+            <LatticesLogo size={20} />
             <span className="nav-name">lattices</span>
           </a>
           <div className="nav-links">
@@ -136,7 +167,7 @@ export default function App() {
       <div className="shell">
         <section className="hero fade-in">
           <div className="hero-badge">
-            <span className="hero-badge-dot" />
+            <LatticesLogo size={14} />
             Open source · 100% free
           </div>
           <h1>

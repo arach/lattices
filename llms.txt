@@ -1,0 +1,49 @@
+# lattices
+
+> macOS developer workspace manager — tmux sessions with a native menu bar app for tiling, navigation, and project management
+
+## Documentation
+
+- Quickstart: /docs/quickstart
+- Concepts: /docs/concepts
+- Configuration: /docs/config
+- Menu Bar App: /docs/app
+- Workspace Layers & Tab Groups: /docs/layers
+- Daemon API: /docs/api
+- Overview: /docs/overview
+
+## Quickstart
+
+Get from zero to a running workspace in five steps.
+
+## Concepts
+
+lattices is a developer workspace launcher. It creates pre-configured
+terminal layouts for your projects using tmux, so you can go from
+"I want to work on X" to a full development environment in one click.
+
+## Configuration
+
+Place a `.lattices.json` file in your project root to define your
+workspace layout. lattices reads this file when creating a session.
+
+## Menu Bar App
+
+The lattices menu bar app is a native macOS companion that lives in your
+menu bar and gives you quick access to all your lattices sessions.
+
+## Workspace Layers & Tab Groups
+
+Two ways to organize related projects in `~/.lattices/workspace.json`:
+
+## Daemon API
+
+The lattices menu bar app runs a WebSocket daemon on `ws://127.0.0.1:9399`.
+It exposes 20 RPC methods and 3 real-time events — everything the app
+can do, agents and scripts can do too.
+
+## Overview
+
+lattices is a macOS developer workspace manager. It pairs tmux sessions
+with a native menu bar app to give you — and your AI coding agents —
+full control over terminal layouts, window tiling, and project navigation.

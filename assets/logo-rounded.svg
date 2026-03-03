@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <rect width="512" height="512" fill="#000000"/>
+  <rect width="512" height="512" rx="80" fill="#000000"/>
 
   <!-- 3×3 grid — L-shape (left column + bottom row) bright, rest dim -->
   <!-- Row 1 -->

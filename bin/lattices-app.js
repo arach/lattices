@@ -65,6 +65,14 @@ function buildFromSource() {
   mkdirSync(binaryDir, { recursive: true });
   execSync(`cp '${builtPath}' '${binaryPath}'`);
 
+  // Copy app icon into bundle
+  const iconSrc = resolve(__dirname, "../assets/AppIcon.icns");
+  const resourcesDir = resolve(bundlePath, "Contents/Resources");
+  mkdirSync(resourcesDir, { recursive: true });
+  if (existsSync(iconSrc)) {
+    execSync(`cp '${iconSrc}' '${resolve(resourcesDir, "AppIcon.icns")}'`);
+  }
+
   // Re-sign the bundle so macOS TCC recognizes a stable identity across rebuilds.
   // Without this, each build gets a new ad-hoc signature and permission grants are lost.
   try {

@@ -75,12 +75,8 @@ code {
   gap: 10px;
 }
 
-.nav-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--green);
-  box-shadow: 0 0 8px var(--green-glow);
+.nav-brand svg {
+  flex-shrink: 0;
 }
 
 .nav-name {
@@ -153,11 +149,8 @@ code {
   margin-bottom: 24px;
 }
 
-.hero-badge-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--green);
+.hero-badge svg {
+  flex-shrink: 0;
 }
 
 .hero h1 {

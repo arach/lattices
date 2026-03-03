@@ -17,6 +17,11 @@ can do, agents and scripts can do too.
 - **Scripts and automation** — CI, dotfile bootstraps, workspace setup
 - **Custom tools** — build your own launcher, dashboard, or orchestrator
 
+> New to lattices? Start with the [Overview](/docs/overview) and
+> [Quickstart](/docs/quickstart). For the `.lattices.json` config format
+> and CLI commands, see [Configuration](/docs/config). For architecture
+> details, see [Concepts](/docs/concepts).
+
 ## Quick start
 
 1. Launch the daemon (it starts with the menu bar app):
