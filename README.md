@@ -1,39 +1,39 @@
 <picture>
-  <img alt="lattice" src="www/public/og.png" />
+  <img alt="lattices" src="site/public/og.png" />
 </picture>
 
-# lattice
+# lattices
 
 Declarative tmux sessions for developers.
 
-One command to create a named tmux session with your tools running. Auto-detects your stack, fully configurable with `.lattice.json`, and a native macOS menu bar app.
+One command to create a named tmux session with your tools running. Auto-detects your stack, fully configurable with `.lattices.json`, and a native macOS menu bar app.
 
 ## Install
 
 ```sh
-npm install -g lattice
+npm install -g @arach/lattices
 ```
 
 ## Quick start
 
 ```sh
 cd my-project
-lattice
+lattices
 ```
 
-That's it. lattice creates a tmux session named after your project with Claude Code on the left and your dev server on the right. It detects your package manager and dev command automatically.
+That's it. lattices creates a tmux session named after your project with Claude Code on the left and your dev server on the right. It detects your package manager and dev command automatically.
 
 ## How it works
 
-1. **Run `lattice`** in any project directory
+1. **Run `lattices`** in any project directory
 2. A named tmux session is created with configured panes
 3. Commands start running in each pane immediately
-4. Detach with `Ctrl+b d`, reattach by running `lattice` again
+4. Detach with `Ctrl+b d`, reattach by running `lattices` again
 5. Sessions persist in the background until you kill them
 
 ## Configuration
 
-Drop a `.lattice.json` in your project root:
+Drop a `.lattices.json` in your project root:
 
 ```json
 {
@@ -75,7 +75,7 @@ Drop a `.lattice.json` in your project root:
 
 ## Auto-detection
 
-Without a config file, lattice reads your `package.json` and picks the right command:
+Without a config file, lattices reads your `package.json` and picks the right command:
 
 - Checks `scripts.dev`, `scripts.start`, `scripts.serve`, `scripts.watch`
 - Detects package manager from lock files (pnpm, bun, yarn, npm)
@@ -86,9 +86,9 @@ Without a config file, lattice reads your `package.json` and picks the right com
 A macOS companion app for managing sessions without touching the terminal.
 
 ```sh
-lattice app          # Launch (builds from source or downloads binary)
-lattice app build    # Force rebuild from source
-lattice app quit     # Stop the menu bar app
+lattices app          # Launch (builds from source or downloads binary)
+lattices app build    # Force rebuild from source
+lattices app quit     # Stop the menu bar app
 ```
 
 Features:
@@ -103,7 +103,7 @@ The app tries to compile from source first (requires Xcode CLI tools), falling b
 ## Tab groups
 
 Bundle related projects as tabs within a single terminal window.
-Configure in `~/.lattice/workspace.json`:
+Configure in `~/.lattices/workspace.json`:
 
 ```json
 {
@@ -122,28 +122,28 @@ Configure in `~/.lattice/workspace.json`:
 }
 ```
 
-Each tab gets its own tmux window with pane layout from its `.lattice.json`.
+Each tab gets its own tmux window with pane layout from its `.lattices.json`.
 
 ```sh
-lattice groups            # List groups with status
-lattice group talkie      # Launch or attach
-lattice tab talkie iOS    # Switch to a tab
+lattices groups            # List groups with status
+lattices group talkie      # Launch or attach
+lattices tab talkie iOS    # Switch to a tab
 ```
 
-Groups can also be referenced in [workspace layers](https://lattice.dev/docs/layers) to tile a whole group into a screen position.
+Groups can also be referenced in [workspace layers](https://lattices.dev/docs/layers) to tile a whole group into a screen position.
 
 ## CLI reference
 
 ```
-lattice                    Create or reattach to a session for the current project
-lattice init               Generate a .lattice.json config
-lattice ls                 List active tmux sessions
-lattice kill [name]        Kill a session (defaults to current project)
-lattice group [id]         List tab groups or launch/attach a group
-lattice groups             List all tab groups with status
-lattice tab <group> [tab]  Switch tab within a group (by label or index)
-lattice app                Launch the menu bar companion app
-lattice help               Show help
+lattices                    Create or reattach to a session for the current project
+lattices init               Generate a .lattices.json config
+lattices ls                 List active tmux sessions
+lattices kill [name]        Kill a session (defaults to current project)
+lattices group [id]         List tab groups or launch/attach a group
+lattices groups             List all tab groups with status
+lattices tab <group> [tab]  Switch tab within a group (by label or index)
+lattices app                Launch the menu bar companion app
+lattices help               Show help
 ```
 
 ## Requirements
