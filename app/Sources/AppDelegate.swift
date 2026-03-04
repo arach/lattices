@@ -3,10 +3,10 @@ import SwiftUI
 
 /// Manages the NSStatusItem (menu bar icon), left-click popover, and right-click context menu.
 /// Replaces the previous SwiftUI MenuBarExtra approach for full click-event control.
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private var statusItem: NSStatusItem!
-    private let popover = NSPopover()
+    private var popover: NSPopover?
     private var contextMenu: NSMenu!
 
     /// 3×3 grid icon for the menu bar — L-shape bright, rest dim (template for auto light/dark)
@@ -71,17 +71,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             button.target = self
         }
 
-        // --- Popover (left-click) ---
-        let scanner = ProjectScanner.shared
-        popover.contentViewController = NSHostingController(rootView: MainView(scanner: scanner))
-        popover.behavior = .transient
-        popover.contentSize = NSSize(width: 380, height: 520)
-        popover.appearance = NSAppearance(named: .darkAqua)
-
         // --- Context menu (right-click) ---
         contextMenu = buildContextMenu()
 
         // --- Hotkey registration ---
+        let scanner = ProjectScanner.shared
         CommandPaletteWindow.shared.configure(scanner: scanner)
 
         let store = HotkeyStore.shared
@@ -151,21 +145,38 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             contextMenu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height + 4), in: button)
         } else {
             // Left-click → toggle popover
-            if popover.isShown {
-                popover.performClose(sender)
+            if let shown = popover, shown.isShown {
+                shown.performClose(sender)
             } else {
-                popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-                // Ensure the popover window gets focus
-                popover.contentViewController?.view.window?.makeKey()
+                let p = makePopover()
+                p.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+                p.contentViewController?.view.window?.makeKey()
             }
         }
     }
 
     /// Dismiss the popover programmatically (e.g. from the pop-out button).
     func dismissPopover() {
-        if popover.isShown {
-            popover.performClose(nil)
-        }
+        popover?.performClose(nil)
+    }
+
+    /// Create a fresh popover each time so the SwiftUI view tree isn't kept alive
+    /// when the popover is closed — prevents continuous CPU usage from @Published updates.
+    private func makePopover() -> NSPopover {
+        let p = NSPopover()
+        p.contentViewController = NSHostingController(rootView: MainView(scanner: ProjectScanner.shared))
+        p.behavior = .transient
+        p.contentSize = NSSize(width: 380, height: 520)
+        p.appearance = NSAppearance(named: .darkAqua)
+        p.delegate = self
+        popover = p
+        return p
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        // Tear down the SwiftUI view tree so observed models stop driving re-renders
+        popover?.contentViewController = nil
+        popover = nil
     }
 
     // MARK: - Context menu

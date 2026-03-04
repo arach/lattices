@@ -161,6 +161,26 @@ struct SettingsContentView: View {
 
                             separator
 
+                            settingsRow("Screen OCR") {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Toggle(isOn: Binding(
+                                        get: { OcrModel.shared.enabled },
+                                        set: { OcrModel.shared.setEnabled($0) }
+                                    )) {
+                                        Text("Enable screen text recognition")
+                                            .font(Typo.mono(12))
+                                            .foregroundColor(Palette.text)
+                                    }
+                                    .toggleStyle(.switch)
+
+                                    Text("Scans visible windows every 60s for searchable text")
+                                        .font(Typo.caption(10))
+                                        .foregroundColor(Palette.textMuted)
+                                }
+                            }
+
+                            separator
+
                             settingsRow("Scan root") {
                                 VStack(alignment: .leading, spacing: 6) {
                                     HStack(spacing: 6) {

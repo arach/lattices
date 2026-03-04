@@ -22,9 +22,9 @@ lattices solves both sides:
 - **For you** — run `lattices` in any project to get a pre-configured
   tmux session. Use the menu bar app to launch, tile, and navigate
   sessions with a command palette.
-- **For agents** — the daemon API exposes 26 RPC methods over WebSocket.
-  Agents can discover projects, launch sessions, tile windows, and
-  switch workspace layers programmatically.
+- **For agents** — the daemon API exposes 30 RPC methods over WebSocket.
+  Agents can discover projects, launch sessions, tile windows, switch
+  workspace layers, and read on-screen content via OCR — all programmatically.
 
 ## What's included
 
@@ -32,7 +32,8 @@ lattices solves both sides:
 |-----------|-------------|
 | **CLI** (`lattices`) | Create, manage, and tile tmux sessions from the terminal |
 | **Menu bar app** | Native macOS companion with command palette, tiling, and project discovery |
-| **Daemon API** | WebSocket server on `ws://127.0.0.1:9399` — 26 methods, 4 real-time events |
+| **Daemon API** | WebSocket server on `ws://127.0.0.1:9399` — 30 methods, 5 real-time events |
+| **OCR engine** | Vision-powered screen reading with FTS5 search — agents can see what's on screen |
 | **Node.js client** | Zero-dependency `daemonCall()` helper for scripting |
 
 ## Quick taste

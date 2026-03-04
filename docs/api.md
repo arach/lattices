@@ -5,7 +5,7 @@ order: 5
 ---
 
 The lattices menu bar app runs a WebSocket daemon on `ws://127.0.0.1:9399`.
-It exposes 26 RPC methods and 4 real-time events — everything the app
+It exposes 30 RPC methods and 5 real-time events — everything the app
 can do, agents and scripts can do too.
 
 ## Method index
@@ -24,6 +24,10 @@ can do, agents and scripts can do too.
 | `processes.tree` | read | Process tree from a PID |
 | `terminals.list` | read | Terminal instances with processes |
 | `terminals.search` | read | Search terminals by criteria |
+| `ocr.snapshot` | read | Current OCR results for all visible windows |
+| `ocr.search` | read | Full-text search across OCR history |
+| `ocr.history` | read | OCR timeline for a specific window |
+| `ocr.scan` | write | Trigger an immediate OCR scan |
 | `api.schema` | read | Full API schema for self-discovery |
 | `session.launch` | write | Launch a project session |
 | `session.kill` | write | Kill a session |
@@ -488,6 +492,115 @@ Search terminal instances by various criteria.
 
 ---
 
+### `ocr.snapshot`
+
+Get the current in-memory OCR results for all visible windows. Each result
+includes the full extracted text and individual text blocks with bounding
+boxes and confidence scores.
+
+**Params**: none
+
+**Returns**: array of OCR result objects:
+
+```json
+[
+  {
+    "wid": 1234,
+    "app": "Terminal",
+    "title": "zsh",
+    "frame": { "x": 0, "y": 25, "w": 960, "h": 1050 },
+    "fullText": "~/dev/myapp $ npm run dev\nready on port 3000",
+    "blocks": [
+      {
+        "text": "~/dev/myapp $ npm run dev",
+        "confidence": 0.95,
+        "x": 0.02, "y": 0.05, "w": 0.6, "h": 0.04
+      }
+    ],
+    "timestamp": 1709568000.0
+  }
+]
+```
+
+| Field       | Type     | Description                                    |
+|-------------|----------|------------------------------------------------|
+| `wid`       | number   | CGWindowID                                     |
+| `app`       | string   | Application name                               |
+| `title`     | string   | Window title                                   |
+| `frame`     | object   | Window position and size                       |
+| `fullText`  | string   | All recognized text concatenated               |
+| `blocks`    | array    | Individual text blocks with positions           |
+| `timestamp` | number   | Unix timestamp of the scan                     |
+
+Each block contains:
+
+| Field        | Type   | Description                           |
+|--------------|--------|---------------------------------------|
+| `text`       | string | Recognized text                       |
+| `confidence` | number | Vision confidence score (0.0–1.0)     |
+| `x, y, w, h` | number | Normalized bounding box (0.0–1.0)    |
+
+---
+
+### `ocr.search`
+
+Full-text search across OCR history using SQLite FTS5. Supports boolean
+operators, phrase queries, and prefix matching.
+
+**Params**:
+
+| Field   | Type    | Required | Description                              |
+|---------|---------|----------|------------------------------------------|
+| `query` | string  | yes      | FTS5 search query                        |
+| `app`   | string  | no       | Filter by application name               |
+| `limit` | number  | no       | Max results (default 50)                 |
+| `live`  | boolean | no       | Search live snapshot instead of history (default false) |
+
+**Returns**: array of search result objects:
+
+```json
+[
+  {
+    "id": 42,
+    "wid": 1234,
+    "app": "Code",
+    "title": "main.swift",
+    "frame": { "x": 0, "y": 25, "w": 960, "h": 1050 },
+    "fullText": "func applicationDidFinishLaunching...",
+    "snippet": "func <b>applicationDidFinishLaunching</b>...",
+    "timestamp": 1709568000.0
+  }
+]
+```
+
+**FTS5 query examples**:
+
+| Query              | Matches                                   |
+|--------------------|-------------------------------------------|
+| `error`            | Any window containing "error"             |
+| `"build failed"`   | Exact phrase match                        |
+| `error OR warning` | Either term                               |
+| `npm AND dev`      | Both terms present                        |
+| `react*`           | Prefix match (react, reactive, reactDOM)  |
+
+---
+
+### `ocr.history`
+
+Get the OCR timeline for a specific window, ordered by most recent first.
+Useful for tracking what content appeared in a window over time.
+
+**Params**:
+
+| Field   | Type   | Required | Description                |
+|---------|--------|----------|----------------------------|
+| `wid`   | number | yes      | CGWindowID                 |
+| `limit` | number | no       | Max results (default 50)   |
+
+**Returns**: array of search result objects (same shape as `ocr.search`).
+
+---
+
 ### `api.schema`
 
 Return the full API schema including version, models, and method definitions.
@@ -687,6 +800,19 @@ Kill a tab group session.
 
 ---
 
+### `ocr.scan`
+
+Trigger an immediate OCR scan of all visible windows, bypassing the
+periodic timer. The scan runs asynchronously — results will be available
+via `ocr.snapshot` once complete, and an `ocr.scanComplete` event is
+broadcast to all connected clients.
+
+**Params**: none
+
+**Returns**: `{ "ok": true }`
+
+---
+
 ### `projects.scan`
 
 Trigger a re-scan of the project directory. Useful after cloning a new
@@ -777,6 +903,27 @@ Fired when the active workspace layer changes.
 
 ---
 
+### `ocr.scanComplete`
+
+Fired when an OCR scan cycle finishes (periodic or manually triggered).
+
+```json
+{
+  "event": "ocr.scanComplete",
+  "data": {
+    "windowCount": 12,
+    "totalBlocks": 342
+  }
+}
+```
+
+| Field         | Type   | Description                                |
+|---------------|--------|--------------------------------------------|
+| `windowCount` | number | Number of windows scanned                  |
+| `totalBlocks` | number | Total text blocks recognized across all windows |
+
+---
+
 ### `processes.changed`
 
 Fired when the set of interesting developer processes changes
@@ -847,6 +994,34 @@ const api = sessions.find(s => s.name.startsWith('api'))
 await daemonCall('window.tile', { session: fe.name, position: 'left' })
 await daemonCall('window.tile', { session: api.name, position: 'right' })
 ```
+
+### OCR-powered context awareness
+
+Agents can read what's on screen to gain context about the user's work:
+
+```js
+import { daemonCall } from '@arach/lattices/daemon-client'
+
+// Search all windows for error messages
+const errors = await daemonCall('ocr.search', { query: 'error OR failed OR exception' })
+for (const result of errors) {
+  console.log(`[${result.app}] ${result.title}: ${result.snippet}`)
+}
+
+// Get current content of a specific window
+const snapshot = await daemonCall('ocr.snapshot')
+const terminal = snapshot.find(w => w.app === 'Terminal')
+console.log('Terminal says:', terminal?.fullText)
+
+// Track what happened in a window over time
+const history = await daemonCall('ocr.history', { wid: 1234, limit: 10 })
+```
+
+The OCR system scans visible windows every 30 seconds using Apple's Vision
+framework. Use `ocr.scan` to trigger an immediate scan, then read results
+with `ocr.snapshot`. Historical data is stored in SQLite FTS5 and
+searchable via `ocr.search`. Entries older than 3 days are automatically
+purged.
 
 ### Reactive event pattern
 

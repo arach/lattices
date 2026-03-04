@@ -27,7 +27,8 @@ final class OcrModel: ObservableObject {
 
     @Published private(set) var results: [UInt32: OcrWindowResult] = [:]
     @Published private(set) var isScanning: Bool = false
-    @Published var interval: TimeInterval = 30
+    @Published var interval: TimeInterval = 60
+    @Published var enabled: Bool = true
 
     private var timer: Timer?
     private let queue = DispatchQueue(label: "com.arach.lattices.ocr", qos: .background)
@@ -41,16 +42,32 @@ final class OcrModel: ObservableObject {
         if let interval { self.interval = interval }
         let saved = UserDefaults.standard.double(forKey: "ocr.interval")
         if saved > 0 { self.interval = saved }
+        self.enabled = !UserDefaults.standard.bool(forKey: "ocr.disabled")
+        guard enabled else {
+            DiagnosticLog.shared.info("OcrModel: disabled by user preference")
+            return
+        }
         DiagnosticLog.shared.info("OcrModel: starting (interval=\(self.interval)s)")
         scan()
         timer = Timer.scheduledTimer(withTimeInterval: self.interval, repeats: true) { [weak self] _ in
-            self?.scan()
+            guard let self, self.enabled else { return }
+            self.scan()
         }
     }
 
     func stop() {
         timer?.invalidate()
         timer = nil
+    }
+
+    func setEnabled(_ on: Bool) {
+        enabled = on
+        UserDefaults.standard.set(!on, forKey: "ocr.disabled")
+        if on && timer == nil {
+            start()
+        } else if !on {
+            stop()
+        }
     }
 
     // MARK: - Scan

@@ -201,6 +201,54 @@ links to open the full `config.md` and `concepts.md` docs.
 can't be targeted. "frontmost" means tiling applies to whatever
 window is in front.
 
+## Screen OCR
+
+The app continuously reads text from visible windows using Apple's Vision
+framework and stores results in a local SQLite database with FTS5
+full-text search. This gives agents the ability to "see" what's on screen.
+
+### How it works
+
+1. Every 30 seconds, the app captures each visible window as an image
+2. A SHA256 hash detects whether the window content has changed
+3. Changed windows are processed through `VNRecognizeTextRequest` (fast mode)
+4. Results are stored in `~/.lattices/ocr.db` with full-text indexing
+5. Entries older than 3 days are automatically purged
+
+### Desktop Inventory integration
+
+The Desktop Inventory view (Hyper+4) uses OCR to make windows searchable
+by their content — not just by title or app name. When you type a search
+query, windows matching by OCR content show contextual snippets.
+
+### API access
+
+Agents can query OCR data through four daemon endpoints:
+
+| Method         | Description                                    |
+|----------------|------------------------------------------------|
+| `ocr.snapshot` | Current OCR results for all visible windows    |
+| `ocr.search`   | Full-text search across history (FTS5 syntax)  |
+| `ocr.history`  | Timeline of OCR results for a specific window  |
+| `ocr.scan`     | Trigger an immediate scan (bypasses timer)     |
+
+```js
+import { daemonCall } from '@arach/lattices/daemon-client'
+
+// Find windows showing error messages
+const errors = await daemonCall('ocr.search', { query: 'error OR failed' })
+
+// Read what's currently on screen
+const snapshot = await daemonCall('ocr.snapshot')
+```
+
+See the [Daemon API reference](/docs/api#ocrsnapshot) for full details.
+
+### Requirements
+
+- **Screen Recording** permission — required to capture window images
+- Granted via System Settings > Privacy & Security > Screen Recording
+
 ## Daemon
 
 The menu bar app runs a WebSocket daemon on `ws://127.0.0.1:9399`.
@@ -226,11 +274,11 @@ if (await isDaemonRunning()) {
 
 ### What it provides
 
-- **26 RPC methods** — read windows, sessions, projects, spaces, layers, processes, terminals;
-  launch/kill/sync sessions; tile/focus/move windows; switch layers;
-  manage tab groups
-- **4 real-time events** — `windows.changed`, `tmux.changed`, `processes.changed`,
-  `layer.switched` — broadcast to all connected clients
+- **30 RPC methods** — read windows, sessions, projects, spaces, layers, processes, terminals,
+  OCR; launch/kill/sync sessions; tile/focus/move windows; switch layers;
+  manage tab groups; search on-screen text
+- **5 real-time events** — `windows.changed`, `tmux.changed`, `processes.changed`,
+  `layer.switched`, `ocr.scanComplete` — broadcast to all connected clients
 - **Window tracking** — the daemon monitors the desktop window list
   and correlates windows to lattices sessions via title tags
 - **Space awareness** — knows which macOS Space each window is on
