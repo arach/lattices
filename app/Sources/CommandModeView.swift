@@ -282,13 +282,15 @@ struct CommandModeView: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 11))
                 .foregroundColor(Palette.textDim)
-            TextField("Search windows...", text: $state.searchQuery)
+            TextField("Search windows & content…", text: $state.searchQuery)
                 .textFieldStyle(.plain)
                 .font(Typo.mono(12))
                 .foregroundColor(Palette.text)
                 .focused($isSearchFieldFocused)
             if !state.searchQuery.isEmpty {
-                Text("\(state.flatWindowList.count) matches")
+                let total = state.flatWindowList.count
+                let ocrCount = state.ocrMatchSnippets.count
+                Text(ocrCount > 0 ? "\(total) matches (\(ocrCount) by content)" : "\(total) matches")
                     .font(Typo.mono(9))
                     .foregroundColor(Palette.textMuted)
             }
@@ -442,6 +444,7 @@ struct CommandModeView: View {
         VStack(alignment: .leading, spacing: 0) {
             if appGroup.windows.count == 1, let win = appGroup.windows.first {
                 inventoryRow(window: win, appLabel: appGroup.appName)
+                ocrSnippetRow(for: win.id)
                 if state.isSelected(win.id), let path = win.inventoryPath {
                     inventoryPathLabel(path)
                 }
@@ -454,6 +457,7 @@ struct CommandModeView: View {
                     .padding(.bottom, 1)
                 ForEach(appGroup.windows) { win in
                     inventoryRow(window: win, indented: true)
+                    ocrSnippetRow(for: win.id)
                     if state.isSelected(win.id), let path = win.inventoryPath {
                         inventoryPathLabel(path)
                     }
@@ -469,6 +473,24 @@ struct CommandModeView: View {
             .foregroundColor(Palette.textMuted)
             .padding(.horizontal, 28)
             .padding(.vertical, 2)
+    }
+
+    @ViewBuilder
+    private func ocrSnippetRow(for windowId: UInt32) -> some View {
+        if let snippet = state.ocrMatchSnippets[windowId] {
+            HStack(spacing: 4) {
+                Image(systemName: "text.magnifyingglass")
+                    .font(.system(size: 7))
+                    .foregroundColor(Palette.textMuted)
+                Text(snippet)
+                    .font(Typo.mono(9).italic())
+                    .foregroundColor(Palette.textMuted)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            .padding(.horizontal, 28)
+            .padding(.vertical, 1)
+        }
     }
 
     /// Unified inventory row — handles both single-app rows (with appLabel) and

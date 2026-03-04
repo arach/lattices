@@ -261,7 +261,9 @@ final class CommandModeState: ObservableObject {
                             let matchesApp = win.appName?.lowercased().contains(query) ?? false
                             let matchesTitle = win.title.lowercased().contains(query)
                             let matchesLattices = win.latticesSession?.lowercased().contains(query) ?? false
-                            if !matchesApp && !matchesTitle && !matchesLattices { return false }
+                            let matchesOcr = OcrModel.shared.results[win.id]?.fullText
+                                .lowercased().contains(query) ?? false
+                            if !matchesApp && !matchesTitle && !matchesLattices && !matchesOcr { return false }
                         }
 
                         return true
@@ -303,6 +305,37 @@ final class CommandModeState: ObservableObject {
     /// Flat window list for keyboard navigation (respects active filter)
     var flatWindowList: [DesktopInventorySnapshot.InventoryWindowInfo] {
         filteredSnapshot?.allWindows ?? []
+    }
+
+    var ocrMatchSnippets: [UInt32: String] {
+        guard isSearching, !searchQuery.isEmpty else { return [:] }
+        let query = searchQuery.lowercased()
+        let ocrResults = OcrModel.shared.results
+        var snippets: [UInt32: String] = [:]
+        for win in flatWindowList {
+            // Only show snippet if match came from OCR, not title/app
+            let matchesApp = win.appName?.lowercased().contains(query) ?? false
+            let matchesTitle = win.title.lowercased().contains(query)
+            let matchesLattices = win.latticesSession?.lowercased().contains(query) ?? false
+            if matchesApp || matchesTitle || matchesLattices { continue }
+            if let ocr = ocrResults[win.id],
+               let range = ocr.fullText.lowercased().range(of: query) {
+                snippets[win.id] = Self.extractSnippet(from: ocr.fullText, around: range)
+            }
+        }
+        return snippets
+    }
+
+    private static func extractSnippet(from text: String, around range: Range<String.Index>, maxLen: Int = 80) -> String {
+        let half = max(0, (maxLen - text.distance(from: range.lowerBound, to: range.upperBound)) / 2)
+        let start = text.index(range.lowerBound, offsetBy: -half, limitedBy: text.startIndex) ?? text.startIndex
+        let end = text.index(range.upperBound, offsetBy: half, limitedBy: text.endIndex) ?? text.endIndex
+        var s = String(text[start..<end])
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespaces)
+        if start > text.startIndex { s = "…" + s }
+        if end < text.endIndex { s += "…" }
+        return s
     }
 
     func enter() {

@@ -314,6 +314,63 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
+            method: "windows.search",
+            description: "Search windows by title, app, and OCR content",
+            access: .read,
+            params: [
+                Param(name: "query", type: "string", required: true, description: "Search text"),
+                Param(name: "ocr", type: "bool", required: false, description: "Include OCR content (default true)"),
+                Param(name: "limit", type: "int", required: false, description: "Max results (default 50)"),
+            ],
+            returns: .array(model: "Window"),
+            handler: { params in
+                guard let query = params?["query"]?.stringValue?.lowercased(), !query.isEmpty else {
+                    throw RouterError.missingParam("query")
+                }
+                let includeOcr = params?["ocr"]?.boolValue ?? true
+                let limit = params?["limit"]?.intValue ?? 50
+                let ocrResults = OcrModel.shared.results
+
+                var matches: [JSON] = []
+                for entry in DesktopModel.shared.allWindows() {
+                    let matchesApp = entry.app.lowercased().contains(query)
+                    let matchesTitle = entry.title.lowercased().contains(query)
+                    let matchesSession = entry.latticesSession?.lowercased().contains(query) ?? false
+                    let ocrText = includeOcr ? ocrResults[entry.wid]?.fullText : nil
+                    let matchesOcrContent = ocrText?.lowercased().contains(query) ?? false
+
+                    if matchesApp || matchesTitle || matchesSession || matchesOcrContent {
+                        var obj = Encoders.window(entry)
+                        if matchesOcrContent, let text = ocrText,
+                           let range = text.lowercased().range(of: query) {
+                            // Extract snippet around match
+                            let half = max(0, (80 - text.distance(from: range.lowerBound, to: range.upperBound)) / 2)
+                            let start = text.index(range.lowerBound, offsetBy: -half, limitedBy: text.startIndex) ?? text.startIndex
+                            let end = text.index(range.upperBound, offsetBy: half, limitedBy: text.endIndex) ?? text.endIndex
+                            var snippet = String(text[start..<end])
+                                .replacingOccurrences(of: "\n", with: " ")
+                                .trimmingCharacters(in: .whitespaces)
+                            if start > text.startIndex { snippet = "…" + snippet }
+                            if end < text.endIndex { snippet += "…" }
+                            if case .object(var dict) = obj {
+                                dict["ocrSnippet"] = .string(snippet)
+                                dict["matchSource"] = .string("ocr")
+                                obj = .object(dict)
+                            }
+                        } else if case .object(var dict) = obj {
+                            let source = matchesTitle ? "title" : matchesApp ? "app" : "session"
+                            dict["matchSource"] = .string(source)
+                            obj = .object(dict)
+                        }
+                        matches.append(obj)
+                        if matches.count >= limit { break }
+                    }
+                }
+                return .array(matches)
+            }
+        ))
+
+        api.register(Endpoint(
             method: "tmux.sessions",
             description: "List all tmux sessions with child process enrichment",
             access: .read,

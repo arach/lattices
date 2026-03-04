@@ -1,12 +1,48 @@
 import AppKit
+import SwiftUI
 
-/// Registers the global hotkey (Cmd+Shift+D) on launch.
-/// The menu bar itself is handled by SwiftUI's MenuBarExtra.
+/// Manages the NSStatusItem (menu bar icon), left-click popover, and right-click context menu.
+/// Replaces the previous SwiftUI MenuBarExtra approach for full click-event control.
 class AppDelegate: NSObject, NSApplicationDelegate {
+
+    private var statusItem: NSStatusItem!
+    private let popover = NSPopover()
+    private var contextMenu: NSMenu!
+
+    /// 3×3 grid icon for the menu bar — L-shape bright, rest dim (template for auto light/dark)
+    private static let menuBarIcon: NSImage = {
+        let size: CGFloat = 18
+        let img = NSImage(size: NSSize(width: size, height: size), flipped: true) { _ in
+            let pad: CGFloat = 2
+            let gap: CGFloat = 1.5
+            let cellSize = (size - 2 * pad - 2 * gap) / 3
+
+            let solidCells: Set<Int> = [0, 3, 6, 7, 8]
+
+            for row in 0..<3 {
+                for col in 0..<3 {
+                    let idx = row * 3 + col
+                    let x = pad + CGFloat(col) * (cellSize + gap)
+                    let y = pad + CGFloat(row) * (cellSize + gap)
+                    let rect = NSRect(x: x, y: y, width: cellSize, height: cellSize)
+
+                    if solidCells.contains(idx) {
+                        NSColor.black.setFill()
+                    } else {
+                        NSColor.black.withAlphaComponent(0.25).setFill()
+                    }
+                    let path = NSBezierPath(roundedRect: rect, xRadius: 0.8, yRadius: 0.8)
+                    path.fill()
+                }
+            }
+            return true
+        }
+        img.isTemplate = true
+        return img
+    }()
 
     /// Toggle between .accessory (hidden from Dock/Cmd+Tab) and .regular (visible)
     /// based on whether any managed windows are open.
-    /// Call this after showing or dismissing a window.
     static func updateActivationPolicy() {
         let hasVisibleWindow =
             CommandModeWindow.shared.isVisible ||
@@ -26,9 +62,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         NSApp.appearance = NSAppearance(named: .darkAqua)
 
-        CommandPaletteWindow.shared.configure(scanner: ProjectScanner.shared)
+        // --- Status item ---
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        if let button = statusItem.button {
+            button.image = Self.menuBarIcon
+            button.action = #selector(statusItemClicked(_:))
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+            button.target = self
+        }
 
-        // Register all hotkeys via HotkeyStore (user-configurable bindings)
+        // --- Popover (left-click) ---
+        let scanner = ProjectScanner.shared
+        popover.contentViewController = NSHostingController(rootView: MainView(scanner: scanner))
+        popover.behavior = .transient
+        popover.contentSize = NSSize(width: 380, height: 520)
+        popover.appearance = NSAppearance(named: .darkAqua)
+
+        // --- Context menu (right-click) ---
+        contextMenu = buildContextMenu()
+
+        // --- Hotkey registration ---
+        CommandPaletteWindow.shared.configure(scanner: scanner)
+
         let store = HotkeyStore.shared
         store.register(action: .palette) { CommandPaletteWindow.shared.toggle() }
         store.register(action: .screenMap) { ScreenMapWindowController.shared.toggle() }
@@ -59,16 +114,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         store.register(action: .tileDistribute) { WindowTiler.distributeVisible() }
 
-        // Style the MenuBarExtra panel when it appears
-        NotificationCenter.default.addObserver(
-            forName: NSWindow.didBecomeKeyNotification,
-            object: nil,
-            queue: .main
-        ) { note in
-            guard let panel = note.object as? NSPanel else { return }
-            Self.stylePanel(panel)
-        }
-
         // Check macOS permissions (Accessibility, Screen Recording)
         PermissionChecker.shared.check()
 
@@ -96,12 +141,79 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private static func stylePanel(_ panel: NSPanel) {
-        let bg = NSColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1.0)
-        panel.backgroundColor = bg
-        panel.isOpaque = false
-        panel.hasShadow = true
-        panel.becomesKeyOnlyIfNeeded = false
-        panel.invalidateShadow()
+    // MARK: - Status item click handler
+
+    @objc private func statusItemClicked(_ sender: Any?) {
+        guard let event = NSApp.currentEvent, let button = statusItem.button else { return }
+
+        if event.type == .rightMouseUp {
+            // Right-click → context menu
+            contextMenu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height + 4), in: button)
+        } else {
+            // Left-click → toggle popover
+            if popover.isShown {
+                popover.performClose(sender)
+            } else {
+                popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+                // Ensure the popover window gets focus
+                popover.contentViewController?.view.window?.makeKey()
+            }
+        }
     }
+
+    /// Dismiss the popover programmatically (e.g. from the pop-out button).
+    func dismissPopover() {
+        if popover.isShown {
+            popover.performClose(nil)
+        }
+    }
+
+    // MARK: - Context menu
+
+    private func buildContextMenu() -> NSMenu {
+        let menu = NSMenu()
+
+        let actions: [(String, String, Selector)] = [
+            ("Command Palette", "⌘⇧M", #selector(menuCommandPalette)),
+            ("Screen Map", "", #selector(menuScreenMap)),
+            ("Desktop Inventory", "", #selector(menuDesktopInventory)),
+            ("Window Bezel", "", #selector(menuWindowBezel)),
+            ("Cheat Sheet", "", #selector(menuCheatSheet)),
+        ]
+        for (title, shortcut, action) in actions {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+            item.target = self
+            if !shortcut.isEmpty {
+                // Display-only; the actual hotkey is global
+            }
+            menu.addItem(item)
+        }
+
+        menu.addItem(.separator())
+
+        let settings = NSMenuItem(title: "Settings…", action: #selector(menuSettings), keyEquivalent: ",")
+        settings.target = self
+        menu.addItem(settings)
+
+        let diag = NSMenuItem(title: "Diagnostics", action: #selector(menuDiagnostics), keyEquivalent: "")
+        diag.target = self
+        menu.addItem(diag)
+
+        menu.addItem(.separator())
+
+        let quit = NSMenuItem(title: "Quit Lattices", action: #selector(menuQuit), keyEquivalent: "q")
+        quit.target = self
+        menu.addItem(quit)
+
+        return menu
+    }
+
+    @objc private func menuCommandPalette() { CommandPaletteWindow.shared.toggle() }
+    @objc private func menuScreenMap() { ScreenMapWindowController.shared.toggle() }
+    @objc private func menuDesktopInventory() { CommandModeWindow.shared.toggle() }
+    @objc private func menuWindowBezel() { WindowBezel.showBezelForFrontmostWindow() }
+    @objc private func menuCheatSheet() { CheatSheetHUD.shared.toggle() }
+    @objc private func menuSettings() { SettingsWindowController.shared.show() }
+    @objc private func menuDiagnostics() { DiagnosticWindow.shared.toggle() }
+    @objc private func menuQuit() { NSApp.terminate(nil) }
 }

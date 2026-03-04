@@ -71,16 +71,7 @@ struct MainView: View {
                 Spacer()
 
                 headerButton(icon: "arrow.up.left.and.arrow.down.right") {
-                    // Dismiss the MenuBarExtra panel immediately
-                    for window in NSApp.windows {
-                        if window is NSPanel, window.isVisible,
-                           !CommandPaletteWindow.shared.isVisible || window.frame.width < 500 {
-                            // MenuBarExtra panels are small (~380px); command palette is 540px
-                            if window.frame.width <= 400 {
-                                window.orderOut(nil)
-                            }
-                        }
-                    }
+                    (NSApp.delegate as? AppDelegate)?.dismissPopover()
                     MainWindow.shared.show()
                 }
                 headerButton(icon: "arrow.clockwise") { scanner.scan(); inventory.refresh() }
@@ -190,8 +181,8 @@ struct MainView: View {
                 .fill(Palette.border)
                 .frame(height: 0.5)
 
-            // Status bar
-            statusBar
+            // Actions footer
+            actionsSection
         }
     }
 
@@ -253,110 +244,62 @@ struct MainView: View {
         }
     }
 
-    // MARK: - Status bar
+    // MARK: - Actions footer
 
-    private var statusBar: some View {
-        HStack(spacing: 0) {
-            // Settings button
-            Button { SettingsWindowController.shared.show() } label: {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(Palette.textMuted)
+    private var actionsSection: some View {
+        VStack(spacing: 0) {
+            ActionRow(shortcut: "1", label: "Command Palette", hotkey: hotkeyLabel(.palette), icon: "command", accentColor: Palette.running) {
+                CommandPaletteWindow.shared.toggle()
             }
-            .buttonStyle(.plain)
-            .help("Settings")
+            ActionRow(shortcut: "2", label: "Screen Map", hotkey: hotkeyLabel(.screenMap), icon: "rectangle.3.group") {
+                ScreenMapWindowController.shared.toggle()
+            }
+            ActionRow(shortcut: "3", label: "Desktop Inventory", hotkey: hotkeyLabel(.desktopInventory), icon: "rectangle.split.2x1") {
+                CommandModeWindow.shared.toggle()
+            }
+            ActionRow(shortcut: "4", label: "Window Bezel", hotkey: hotkeyLabel(.bezel), icon: "macwindow") {
+                WindowBezel.showBezelForFrontmostWindow()
+            }
+            ActionRow(shortcut: "5", label: "Cheat Sheet", hotkey: hotkeyLabel(.cheatSheet), icon: "keyboard") {
+                CheatSheetHUD.shared.toggle()
+            }
 
-            // Diagnostics toggle
-            Button { DiagnosticWindow.shared.toggle() } label: {
-                HStack(spacing: 3) {
-                    Image(systemName: "stethoscope")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(DiagnosticWindow.shared.isVisible ? Palette.running : Palette.textMuted)
-                    if !permChecker.allGranted {
-                        Circle()
-                            .fill(Palette.detach)
-                            .frame(width: 5, height: 5)
-                    }
+            Rectangle()
+                .fill(Palette.border)
+                .frame(height: 0.5)
+                .padding(.horizontal, 10)
+
+            ActionRow(shortcut: "S", label: "Settings", icon: "gearshape") {
+                SettingsWindowController.shared.show()
+            }
+            HStack(spacing: 0) {
+                ActionRow(shortcut: "D", label: "Diagnostics", icon: "stethoscope") {
+                    DiagnosticWindow.shared.toggle()
+                }
+                if !permChecker.allGranted {
+                    Circle()
+                        .fill(Palette.detach)
+                        .frame(width: 6, height: 6)
+                        .padding(.trailing, 14)
                 }
             }
-            .buttonStyle(.plain)
-            .help(!permChecker.allGranted ? "Permissions missing — open diagnostics" : "Toggle diagnostics")
 
             Rectangle()
                 .fill(Palette.border)
-                .frame(width: 0.5, height: 12)
-                .padding(.horizontal, 8)
+                .frame(height: 0.5)
+                .padding(.horizontal, 10)
 
-            // Config summary — keys dim, values white
-            statusLine
-
-            Spacer()
-
-            // Desktop Inventory
-            Button { CommandModeWindow.shared.toggle() } label: {
-                Image(systemName: "rectangle.split.2x1")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(CommandModeWindow.shared.isVisible ? Palette.running : Palette.textMuted)
+            ActionRow(shortcut: "Q", label: "Quit", icon: "power", accentColor: Palette.kill) {
+                NSApp.terminate(nil)
             }
-            .buttonStyle(.plain)
-            .help("Desktop Inventory (Hyper+4)")
-
-            Rectangle()
-                .fill(Palette.border)
-                .frame(width: 0.5, height: 12)
-                .padding(.horizontal, 6)
-
-            // Palette hint
-            Text("\u{2318}\u{21E7}M")
-                .font(Typo.mono(9))
-                .foregroundColor(Palette.textMuted)
-                .help("Command palette (Cmd+Shift+M)")
-
-            Rectangle()
-                .fill(Palette.border)
-                .frame(width: 0.5, height: 12)
-                .padding(.horizontal, 6)
-
-            // Quit
-            Button { NSApp.terminate(nil) } label: {
-                Image(systemName: "power")
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundColor(Palette.textMuted)
-            }
-            .buttonStyle(.plain)
-            .help("Quit lattices")
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 7)
+        .padding(.vertical, 4)
         .background(Palette.surface.opacity(0.4))
     }
 
-    private var statusLine: some View {
-        HStack(spacing: 3) {
-            statusPair("terminal", prefs.terminal.rawValue.lowercased())
-            statusDot
-            statusPair("mode", prefs.mode.rawValue)
-            statusDot
-            statusPair("home", "~/\((prefs.scanRoot as NSString).lastPathComponent)")
-        }
-    }
-
-    private func statusPair(_ key: String, _ value: String) -> some View {
-        HStack(spacing: 3) {
-            Text(key + ":")
-                .font(Typo.mono(9))
-                .foregroundColor(Palette.textMuted)
-            Text(value)
-                .font(Typo.mono(9))
-                .foregroundColor(Palette.text)
-        }
-    }
-
-    private var statusDot: some View {
-        Circle()
-            .fill(Palette.textMuted)
-            .frame(width: 2, height: 2)
-            .padding(.horizontal, 4)
+    private func hotkeyLabel(_ action: HotkeyAction) -> String? {
+        guard let binding = HotkeyStore.shared.bindings[action] else { return nil }
+        return binding.displayParts.joined(separator: "")
     }
 
     // MARK: - Empty state

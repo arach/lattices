@@ -365,8 +365,18 @@ enum CommandBuilder {
         ))
 
         commands.append(PaletteCommand(
+            id: "app-windows-list",
+            title: "Windows List",
+            subtitle: "Browse all windows across displays",
+            icon: "rectangle.split.2x1",
+            category: .app,
+            badge: nil,
+            action: { CommandModeWindow.shared.show() }
+        ))
+
+        commands.append(PaletteCommand(
             id: "app-screen-map",
-            title: "Screen Map",
+            title: "Window Map",
             subtitle: "Visual window editor",
             icon: "rectangle.3.group",
             category: .app,
