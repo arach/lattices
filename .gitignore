@@ -22,3 +22,6 @@ docs-site/.astro/
 
 # Claude Code local settings
 .claude/
+
+# Dewey reviews
+.dewey/
