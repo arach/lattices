@@ -34,6 +34,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         store.register(action: .screenMap) { ScreenMapWindowController.shared.toggle() }
         store.register(action: .bezel) { WindowBezel.showBezelForFrontmostWindow() }
         store.register(action: .cheatSheet) { CheatSheetHUD.shared.toggle() }
+        store.register(action: .desktopInventory) { CommandModeWindow.shared.toggle() }
 
         // Layer-switching hotkeys
         let workspace = WorkspaceManager.shared
@@ -72,7 +73,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         PermissionChecker.shared.check()
 
         // Start daemon services
+        OcrStore.shared.open()
         DesktopModel.shared.start()
+        OcrModel.shared.start()
         TmuxModel.shared.start()
         ProcessModel.shared.start()
         LatticesApi.setup()

@@ -8,13 +8,14 @@ struct LatticesApp: App {
     /// 3×3 grid icon for the menu bar — L-shape bright, rest dim (template for auto light/dark)
     private static let menuBarIcon: NSImage = {
         let size: CGFloat = 18
-        let img = NSImage(size: NSSize(width: size, height: size), flipped: false) { _ in
+        let img = NSImage(size: NSSize(width: size, height: size), flipped: true) { _ in
             let pad: CGFloat = 2
             let gap: CGFloat = 1.5
             let cellSize = (size - 2 * pad - 2 * gap) / 3
 
-            // L-shape: left column + bottom row are solid, rest are dim
-            let solidCells: Set<Int> = [0, 3, 6, 7, 8]  // (0,0),(1,0),(2,0),(2,1),(2,2)
+            // L-shape: left column (rows 0-2) + bottom row (cols 1-2)
+            // In flipped coords: row 0 = top, row 2 = bottom
+            let solidCells: Set<Int> = [0, 3, 6, 7, 8]  // top-left, mid-left, bottom-left, bottom-mid, bottom-right
 
             for row in 0..<3 {
                 for col in 0..<3 {

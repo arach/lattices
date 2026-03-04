@@ -5,6 +5,7 @@ enum ModelEvent {
     case tmuxChanged(sessions: [TmuxSession])
     case layerSwitched(index: Int)
     case processesChanged(interesting: [Int])
+    case ocrScanComplete(windowCount: Int, totalBlocks: Int)
 }
 
 final class EventBus {

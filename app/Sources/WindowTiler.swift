@@ -5,6 +5,24 @@ import CoreGraphics
 @_silgen_name("_AXUIElementGetWindow")
 func _AXUIElementGetWindow(_ element: AXUIElement, _ windowID: UnsafeMutablePointer<CGWindowID>) -> AXError
 
+// MARK: - SkyLight Private APIs (instant window moves, no animation)
+// Loaded at runtime via dlsym — graceful fallback if unavailable.
+
+private let skyLight: UnsafeMutableRawPointer? = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight", RTLD_NOW)
+
+private typealias SLSMainConnectionIDFunc = @convention(c) () -> Int32
+private typealias SLSMoveWindowFunc = @convention(c) (Int32, UInt32, UnsafeMutablePointer<CGPoint>) -> CGError
+
+private let _SLSMainConnectionID: SLSMainConnectionIDFunc? = {
+    guard let sl = skyLight, let sym = dlsym(sl, "SLSMainConnectionID") else { return nil }
+    return unsafeBitCast(sym, to: SLSMainConnectionIDFunc.self)
+}()
+
+private let _SLSMoveWindow: SLSMoveWindowFunc? = {
+    guard let sl = skyLight, let sym = dlsym(sl, "SLSMoveWindow") else { return nil }
+    return unsafeBitCast(sym, to: SLSMoveWindowFunc.self)
+}()
+
 // MARK: - Window Highlight Overlay
 
 final class WindowHighlight {
@@ -1626,47 +1644,30 @@ enum WindowTiler {
     /// Tile the frontmost window of any app to a position using AX API.
     /// Works for any application (Finder, Chrome, etc.), not just terminals.
     static func tileFrontmostViaAX(to position: TilePosition) {
-        let diag = DiagnosticLog.shared
-        let t = diag.startTimed("tileFrontmostViaAX: \(position.rawValue)")
-
         // 1. Get frontmost application
-        guard let frontApp = NSWorkspace.shared.frontmostApplication else {
-            diag.warn("tileFrontmostViaAX: no frontmost application")
-            diag.finish(t)
-            return
-        }
+        guard let frontApp = NSWorkspace.shared.frontmostApplication,
+              frontApp.bundleIdentifier != "com.arach.lattices" else { return }
 
-        // 2. Skip if Lattices
-        if frontApp.bundleIdentifier == "com.arach.lattices" {
-            diag.info("tileFrontmostViaAX: skipping Lattices")
-            diag.finish(t)
-            return
-        }
+        let appRef = AXUIElementCreateApplication(frontApp.processIdentifier)
 
-        let pid = frontApp.processIdentifier
-        let appRef = AXUIElementCreateApplication(pid)
-
-        // 3. Get focused window
+        // 2. Get focused window
         var focusedRef: CFTypeRef?
-        let err = AXUIElementCopyAttributeValue(appRef, kAXFocusedWindowAttribute as CFString, &focusedRef)
-        guard err == .success, let axWindow = focusedRef else {
-            diag.warn("tileFrontmostViaAX: no focused window (AX error \(err.rawValue))")
-            diag.finish(t)
-            return
-        }
+        guard AXUIElementCopyAttributeValue(appRef, kAXFocusedWindowAttribute as CFString, &focusedRef) == .success,
+              let axWindow = focusedRef else { return }
 
-        // 4. Read current position → find containing screen
+        let win = axWindow as! AXUIElement
+
+        // 3. Read current position → find containing screen (AX coords: top-left origin)
         var posRef: CFTypeRef?
         var sizeRef: CFTypeRef?
-        AXUIElementCopyAttributeValue(axWindow as! AXUIElement, kAXPositionAttribute as CFString, &posRef)
-        AXUIElementCopyAttributeValue(axWindow as! AXUIElement, kAXSizeAttribute as CFString, &sizeRef)
+        AXUIElementCopyAttributeValue(win, kAXPositionAttribute as CFString, &posRef)
+        AXUIElementCopyAttributeValue(win, kAXSizeAttribute as CFString, &sizeRef)
 
         var currentPos = CGPoint.zero
         var currentSize = CGSize.zero
         if let pv = posRef { AXValueGetValue(pv as! AXValue, .cgPoint, &currentPos) }
         if let sv = sizeRef { AXValueGetValue(sv as! AXValue, .cgSize, &currentSize) }
 
-        // Find screen containing window center (AX uses top-left origin)
         let primaryHeight = NSScreen.screens.first?.frame.height ?? 1080
         let nsCenterX = currentPos.x + currentSize.width / 2
         let nsCenterY = primaryHeight - (currentPos.y + currentSize.height / 2)
@@ -1674,40 +1675,42 @@ enum WindowTiler {
             $0.frame.contains(NSPoint(x: nsCenterX, y: nsCenterY))
         }) ?? NSScreen.main ?? NSScreen.screens[0]
 
-        // 5. Compute target frame
+        // 4. Compute target frame (AX/CGS coords: top-left origin)
         let targetFrame = tileFrame(for: position, on: screen)
-
-        // 6. Double-set: size → pos → size → pos
         var newPos = CGPoint(x: targetFrame.origin.x, y: targetFrame.origin.y)
         var newSize = CGSize(width: targetFrame.width, height: targetFrame.height)
 
-        let win = axWindow as! AXUIElement
-        if let sv = AXValueCreate(.cgSize, &newSize) {
-            AXUIElementSetAttributeValue(win, kAXSizeAttribute as CFString, sv)
-        }
-        if let pv = AXValueCreate(.cgPoint, &newPos) {
-            AXUIElementSetAttributeValue(win, kAXPositionAttribute as CFString, pv)
-        }
-        if let sv = AXValueCreate(.cgSize, &newSize) {
-            AXUIElementSetAttributeValue(win, kAXSizeAttribute as CFString, sv)
-        }
-        if let pv = AXValueCreate(.cgPoint, &newPos) {
-            AXUIElementSetAttributeValue(win, kAXPositionAttribute as CFString, pv)
-        }
+        // 5. Try SkyLight fast path (instant, no animation)
+        var wid: CGWindowID = 0
+        let hasSkyLight = _SLSMainConnectionID != nil
+            && _SLSMoveWindow != nil
+            && _AXUIElementGetWindow(win, &wid) == .success
+            && wid != 0
 
-        // 7. Flash highlight
-        let nsFrame = NSRect(
-            x: targetFrame.origin.x,
-            y: primaryHeight - targetFrame.origin.y - targetFrame.height,
-            width: targetFrame.width,
-            height: targetFrame.height
-        )
-        DispatchQueue.main.async {
-            WindowHighlight.shared.flash(frame: nsFrame, duration: 0.6)
-        }
+        if hasSkyLight {
+            let cid = _SLSMainConnectionID!()
 
-        diag.success("tileFrontmostViaAX: tiled \(frontApp.localizedName ?? "?") to \(position.rawValue)")
-        diag.finish(t)
+            // Resize via AX (app must handle its own content layout)
+            if let sv = AXValueCreate(.cgSize, &newSize) {
+                AXUIElementSetAttributeValue(win, kAXSizeAttribute as CFString, sv)
+            }
+
+            // Move via SkyLight (instant, no animation)
+            if _SLSMoveWindow!(cid, UInt32(wid), &newPos) != .success {
+                // SLS move failed — fall back to AX position
+                if let pv = AXValueCreate(.cgPoint, &newPos) {
+                    AXUIElementSetAttributeValue(win, kAXPositionAttribute as CFString, pv)
+                }
+            }
+        } else {
+            // 6. AX fallback: size then position
+            if let sv = AXValueCreate(.cgSize, &newSize) {
+                AXUIElementSetAttributeValue(win, kAXSizeAttribute as CFString, sv)
+            }
+            if let pv = AXValueCreate(.cgPoint, &newPos) {
+                AXUIElementSetAttributeValue(win, kAXPositionAttribute as CFString, pv)
+            }
+        }
     }
 
     // MARK: - Private

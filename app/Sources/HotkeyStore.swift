@@ -18,6 +18,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
     case screenMap
     case bezel
     case cheatSheet
+    case desktopInventory
     // Layers
     case layer1, layer2, layer3, layer4, layer5, layer6, layer7, layer8, layer9
     // Tiling
@@ -32,6 +33,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .screenMap:       return "Screen Map"
         case .bezel:           return "Window Bezel"
         case .cheatSheet:      return "Cheat Sheet"
+        case .desktopInventory: return "Desktop Inventory"
         case .layer1:          return "Layer 1"
         case .layer2:          return "Layer 2"
         case .layer3:          return "Layer 3"
@@ -60,7 +62,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
 
     var group: HotkeyGroup {
         switch self {
-        case .palette, .screenMap, .bezel, .cheatSheet: return .app
+        case .palette, .screenMap, .bezel, .cheatSheet, .desktopInventory: return .app
         case .layer1, .layer2, .layer3, .layer4, .layer5,
              .layer6, .layer7, .layer8, .layer9: return .layers
         default: return .tiling
@@ -73,6 +75,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .screenMap:       return 200
         case .bezel:           return 201
         case .cheatSheet:      return 202
+        case .desktopInventory: return 203
         case .layer1:          return 101
         case .layer2:          return 102
         case .layer3:          return 103
@@ -192,6 +195,7 @@ class HotkeyStore: ObservableObject {
         bind(.screenMap, 18, hyper)      // Hyper+1
         bind(.bezel,     19, hyper)      // Hyper+2
         bind(.cheatSheet, 20, hyper)     // Hyper+3
+        bind(.desktopInventory, 21, hyper) // Hyper+4
 
         // Layers: Cmd+Option+1-9
         let layerKeyCodes: [UInt32] = [18, 19, 20, 21, 23, 22, 26, 28, 25]

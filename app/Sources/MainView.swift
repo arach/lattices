@@ -292,6 +292,20 @@ struct MainView: View {
 
             Spacer()
 
+            // Desktop Inventory
+            Button { CommandModeWindow.shared.toggle() } label: {
+                Image(systemName: "rectangle.split.2x1")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(CommandModeWindow.shared.isVisible ? Palette.running : Palette.textMuted)
+            }
+            .buttonStyle(.plain)
+            .help("Desktop Inventory (Hyper+4)")
+
+            Rectangle()
+                .fill(Palette.border)
+                .frame(width: 0.5, height: 12)
+                .padding(.horizontal, 6)
+
             // Palette hint
             Text("\u{2318}\u{21E7}M")
                 .font(Typo.mono(9))

@@ -231,6 +231,7 @@ struct CheatSheetView: View {
             shortcutRow(action: .screenMap)
             shortcutRow(action: .bezel)
             shortcutRow(action: .cheatSheet)
+            shortcutRow(action: .desktopInventory)
         }
     }
 

@@ -244,6 +244,36 @@ final class LatticesApi {
             Field(name: "displayName", type: "string", required: true, description: "Best display name (session > tab title > tty)"),
         ]))
 
+        api.model(ApiModel(name: "OcrResult", fields: [
+            Field(name: "wid", type: "int", required: true, description: "Window ID"),
+            Field(name: "app", type: "string", required: true, description: "Application name"),
+            Field(name: "title", type: "string", required: true, description: "Window title"),
+            Field(name: "frame", type: "Frame", required: true, description: "Window frame"),
+            Field(name: "fullText", type: "string", required: true, description: "All recognized text"),
+            Field(name: "blocks", type: "[OcrBlock]", required: true, description: "Individual text blocks with position/confidence"),
+            Field(name: "timestamp", type: "double", required: true, description: "Scan timestamp (Unix)"),
+        ]))
+
+        api.model(ApiModel(name: "OcrBlock", fields: [
+            Field(name: "text", type: "string", required: true, description: "Recognized text"),
+            Field(name: "confidence", type: "double", required: true, description: "Recognition confidence 0-1"),
+            Field(name: "x", type: "double", required: true, description: "Normalized bounding box x"),
+            Field(name: "y", type: "double", required: true, description: "Normalized bounding box y"),
+            Field(name: "w", type: "double", required: true, description: "Normalized bounding box width"),
+            Field(name: "h", type: "double", required: true, description: "Normalized bounding box height"),
+        ]))
+
+        api.model(ApiModel(name: "OcrSearchResult", fields: [
+            Field(name: "id", type: "int", required: true, description: "Database row ID"),
+            Field(name: "wid", type: "int", required: true, description: "Window ID"),
+            Field(name: "app", type: "string", required: true, description: "Application name"),
+            Field(name: "title", type: "string", required: true, description: "Window title"),
+            Field(name: "frame", type: "Frame", required: true, description: "Window frame at scan time"),
+            Field(name: "fullText", type: "string", required: true, description: "Full recognized text"),
+            Field(name: "snippet", type: "string", required: true, description: "Highlighted snippet (FTS5)"),
+            Field(name: "timestamp", type: "double", required: true, description: "Scan timestamp (Unix)"),
+        ]))
+
         api.model(ApiModel(name: "DaemonStatus", fields: [
             Field(name: "uptime", type: "double", required: true, description: "Seconds since daemon started"),
             Field(name: "clientCount", type: "int", required: true, description: "Connected WebSocket clients"),
@@ -483,6 +513,85 @@ final class LatticesApi {
                 }
 
                 return .array(instances.map { Encoders.terminalInstance($0) })
+            }
+        ))
+
+        // ── Endpoints: OCR ─────────────────────────────────────
+
+        api.register(Endpoint(
+            method: "ocr.snapshot",
+            description: "Get the latest OCR scan results for all on-screen windows",
+            access: .read,
+            params: [],
+            returns: .array(model: "OcrResult"),
+            handler: { _ in
+                let results = OcrModel.shared.results
+                return .array(results.values.map { Encoders.ocrResult($0) })
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "ocr.search",
+            description: "Search OCR text across all windows (queries persistent SQLite FTS5 index by default)",
+            access: .read,
+            params: [
+                Param(name: "query", type: "string", required: true, description: "Search text (FTS5 query syntax)"),
+                Param(name: "app", type: "string", required: false, description: "Filter by app name"),
+                Param(name: "limit", type: "int", required: false, description: "Max results (default 50)"),
+                Param(name: "live", type: "bool", required: false, description: "Search in-memory snapshot instead of history (default false)"),
+            ],
+            returns: .array(model: "OcrSearchResult"),
+            handler: { params in
+                guard let query = params?["query"]?.stringValue else {
+                    throw RouterError.missingParam("query")
+                }
+                let app = params?["app"]?.stringValue
+                let limit = params?["limit"]?.intValue ?? 50
+                let live = params?["live"]?.boolValue ?? false
+
+                if live {
+                    // In-memory snapshot search (original behavior)
+                    var results = Array(OcrModel.shared.results.values)
+                    let q = query.lowercased()
+                    results = results.filter { $0.fullText.lowercased().contains(q) }
+                    if let app { results = results.filter { $0.app == app } }
+                    return .array(results.prefix(limit).map { Encoders.ocrResult($0) })
+                }
+
+                // Persistent FTS5 search
+                let results = OcrStore.shared.search(query: query, app: app, limit: limit)
+                return .array(results.map { Encoders.ocrSearchResult($0) })
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "ocr.history",
+            description: "Get OCR content timeline for a specific window",
+            access: .read,
+            params: [
+                Param(name: "wid", type: "uint32", required: true, description: "Window ID"),
+                Param(name: "limit", type: "int", required: false, description: "Max results (default 50)"),
+            ],
+            returns: .array(model: "OcrSearchResult"),
+            handler: { params in
+                guard let wid = params?["wid"]?.uint32Value else {
+                    throw RouterError.missingParam("wid")
+                }
+                let limit = params?["limit"]?.intValue ?? 50
+                let results = OcrStore.shared.history(wid: wid, limit: limit)
+                return .array(results.map { Encoders.ocrSearchResult($0) })
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "ocr.scan",
+            description: "Trigger an immediate OCR scan",
+            access: .mutate,
+            params: [],
+            returns: .ok,
+            handler: { _ in
+                OcrModel.shared.scan()
+                return .object(["ok": .bool(true)])
             }
         ))
 
@@ -855,6 +964,50 @@ enum Encoders {
         if let w = inst.windowId { obj["windowId"] = .int(Int(w)) }
         if let t = inst.windowTitle { obj["windowTitle"] = .string(t) }
         return .object(obj)
+    }
+
+    static func ocrResult(_ r: OcrWindowResult) -> JSON {
+        .object([
+            "wid": .int(Int(r.wid)),
+            "app": .string(r.app),
+            "title": .string(r.title),
+            "frame": .object([
+                "x": .double(r.frame.x),
+                "y": .double(r.frame.y),
+                "w": .double(r.frame.w),
+                "h": .double(r.frame.h)
+            ]),
+            "fullText": .string(r.fullText),
+            "blocks": .array(r.texts.map { block in
+                .object([
+                    "text": .string(block.text),
+                    "confidence": .double(Double(block.confidence)),
+                    "x": .double(block.boundingBox.origin.x),
+                    "y": .double(block.boundingBox.origin.y),
+                    "w": .double(block.boundingBox.size.width),
+                    "h": .double(block.boundingBox.size.height)
+                ])
+            }),
+            "timestamp": .double(r.timestamp.timeIntervalSince1970)
+        ])
+    }
+
+    static func ocrSearchResult(_ r: OcrSearchResult) -> JSON {
+        .object([
+            "id": .int(Int(r.id)),
+            "wid": .int(Int(r.wid)),
+            "app": .string(r.app),
+            "title": .string(r.title),
+            "frame": .object([
+                "x": .double(r.frame.x),
+                "y": .double(r.frame.y),
+                "w": .double(r.frame.w),
+                "h": .double(r.frame.h)
+            ]),
+            "fullText": .string(r.fullText),
+            "snippet": .string(r.snippet),
+            "timestamp": .double(r.timestamp.timeIntervalSince1970)
+        ])
     }
 
     static func enrichedSession(_ s: TmuxSession) -> JSON {

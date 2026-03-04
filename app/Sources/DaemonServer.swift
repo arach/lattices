@@ -386,6 +386,14 @@ final class DaemonServer: ObservableObject {
                     "pids": .array(interesting.map { .int($0) })
                 ])
             )
+        case .ocrScanComplete(let windowCount, let totalBlocks):
+            daemonEvent = DaemonEvent(
+                event: "ocr.scanComplete",
+                data: .object([
+                    "windowCount": .int(windowCount),
+                    "totalBlocks": .int(totalBlocks)
+                ])
+            )
         }
         broadcast(daemonEvent)
     }
