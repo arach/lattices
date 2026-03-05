@@ -12,6 +12,8 @@ private let skyLight: UnsafeMutableRawPointer? = dlopen("/System/Library/Private
 
 private typealias SLSMainConnectionIDFunc = @convention(c) () -> Int32
 private typealias SLSMoveWindowFunc = @convention(c) (Int32, UInt32, UnsafeMutablePointer<CGPoint>) -> CGError
+private typealias SLSDisableUpdateFunc = @convention(c) (Int32) -> Int32
+private typealias SLSReenableUpdateFunc = @convention(c) (Int32) -> Int32
 
 private let _SLSMainConnectionID: SLSMainConnectionIDFunc? = {
     guard let sl = skyLight, let sym = dlsym(sl, "SLSMainConnectionID") else { return nil }
@@ -21,6 +23,16 @@ private let _SLSMainConnectionID: SLSMainConnectionIDFunc? = {
 private let _SLSMoveWindow: SLSMoveWindowFunc? = {
     guard let sl = skyLight, let sym = dlsym(sl, "SLSMoveWindow") else { return nil }
     return unsafeBitCast(sym, to: SLSMoveWindowFunc.self)
+}()
+
+private let _SLSDisableUpdate: SLSDisableUpdateFunc? = {
+    guard let sl = skyLight, let sym = dlsym(sl, "SLSDisableUpdate") else { return nil }
+    return unsafeBitCast(sym, to: SLSDisableUpdateFunc.self)
+}()
+
+private let _SLSReenableUpdate: SLSReenableUpdateFunc? = {
+    guard let sl = skyLight, let sym = dlsym(sl, "SLSReenableUpdate") else { return nil }
+    return unsafeBitCast(sym, to: SLSReenableUpdateFunc.self)
 }()
 
 // MARK: - Window Highlight Overlay
@@ -1659,6 +1671,10 @@ enum WindowTiler {
         // Disable enhanced UI on the APP element (not window) — breaks macOS tile lock
         AXUIElementSetAttributeValue(appRef, "AXEnhancedUserInterface" as CFString, false as CFTypeRef)
 
+        // Freeze screen rendering so the size→position→size steps aren't visible
+        let cid = _SLSMainConnectionID?()
+        if let cid { _ = _SLSDisableUpdate?(cid) }
+
         // Size → Position → Size (same pattern as Rectangle and rift)
         var pos = CGPoint(x: target.origin.x, y: target.origin.y)
         var size = CGSize(width: target.width, height: target.height)
@@ -1672,6 +1688,9 @@ enum WindowTiler {
         if let sv = AXValueCreate(.cgSize, &size) {
             AXUIElementSetAttributeValue(win, kAXSizeAttribute as CFString, sv)
         }
+
+        // Unfreeze screen rendering
+        if let cid { _ = _SLSReenableUpdate?(cid) }
 
         // Re-enable enhanced UI
         AXUIElementSetAttributeValue(appRef, "AXEnhancedUserInterface" as CFString, true as CFTypeRef)
