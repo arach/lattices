@@ -1,7 +1,7 @@
 {
   "name": "@arach/lattices",
-  "version": "0.1.0",
-  "description": "Tmux sessions with Claude Code + dev server, side by side",
+  "version": "0.2.0",
+  "description": "macOS workspace manager with window tiling, OCR, and a 30-method daemon API for AI agents",
   "bin": {
     "lattices": "./bin/lattices.js",
     "lattices-app": "./bin/lattices-app.js"
