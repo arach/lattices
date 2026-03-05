@@ -4,8 +4,10 @@ node_modules/
 app/.build/
 app/.swiftpm/
 
-# Built binary inside the .app bundle (rebuilt on install)
-app/LatticeApp.app/Contents/MacOS/LatticeApp
+# Built .app bundle artifacts (rebuilt on install)
+Lattices.app/Contents/MacOS/
+Lattices.app/Contents/_CodeSignature/
+Lattices.app/Contents/Resources/AppIcon.icns
 
 # Release artifacts
 dist/

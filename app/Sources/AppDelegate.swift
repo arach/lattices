@@ -114,6 +114,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         PermissionChecker.shared.check()
 
         // Start daemon services
+        let diag = DiagnosticLog.shared
+        let tBoot = diag.startTimed("Daemon services boot")
         OcrStore.shared.open()
         DesktopModel.shared.start()
         OcrModel.shared.start()
@@ -121,6 +123,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         ProcessModel.shared.start()
         LatticesApi.setup()
         DaemonServer.shared.start()
+        diag.finish(tBoot)
 
         // --diagnostics flag: auto-open diagnostics panel on launch
         if CommandLine.arguments.contains("--diagnostics") {
@@ -165,6 +168,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// Create a fresh popover each time so the SwiftUI view tree isn't kept alive
     /// when the popover is closed — prevents continuous CPU usage from @Published updates.
     private func makePopover() -> NSPopover {
+        let t = DiagnosticLog.shared.startTimed("makePopover")
         let p = NSPopover()
         p.contentViewController = NSHostingController(rootView: MainView(scanner: ProjectScanner.shared))
         p.behavior = .transient
@@ -172,6 +176,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         p.appearance = NSAppearance(named: .darkAqua)
         p.delegate = self
         popover = p
+        DiagnosticLog.shared.finish(t)
         return p
     }
 

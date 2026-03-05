@@ -16,7 +16,10 @@ class ProjectScanner: ObservableObject {
     }
 
     func scan() {
+        let diag = DiagnosticLog.shared
+
         // Use find to locate all .lattices.json files — no manual directory walking
+        let tFind = diag.startTimed("ProjectScanner: find .lattices.json")
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/find")
         task.arguments = [scanRoot, "-name", ".lattices.json", "-maxdepth", "3", "-not", "-path", "*/.git/*", "-not", "-path", "*/node_modules/*"]
@@ -25,11 +28,13 @@ class ProjectScanner: ObservableObject {
         task.standardError = FileHandle.nullDevice
         try? task.run()
         task.waitUntilExit()
+        diag.finish(tFind)
 
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         let output = String(data: data, encoding: .utf8) ?? ""
         let configPaths = output.split(separator: "\n").map(String.init).filter { !$0.isEmpty }
 
+        let tParse = diag.startTimed("ProjectScanner: parse \(configPaths.count) configs")
         var found: [Project] = []
 
         for configPath in configPaths.sorted() {
@@ -53,7 +58,9 @@ class ProjectScanner: ObservableObject {
             project.isRunning = isSessionRunning(project.sessionName)
             found.append(project)
         }
+        diag.finish(tParse)
 
+        diag.info("ProjectScanner: found \(found.count) projects (\(found.filter(\.isRunning).count) running)")
         DispatchQueue.main.async { self.projects = found }
     }
 

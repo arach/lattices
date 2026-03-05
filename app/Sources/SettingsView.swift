@@ -410,6 +410,17 @@ struct SettingsContentView: View {
                             Spacer()
                         }
 
+                        HStack(spacing: 0) {
+                            Text("OCR budget: ")
+                                .font(Typo.mono(11))
+                                .foregroundColor(Palette.textDim)
+                            ocrIntField($prefs.ocrDeepBudget, width: 32)
+                            Text(" windows per scan")
+                                .font(Typo.mono(11))
+                                .foregroundColor(Palette.textDim)
+                            Spacer()
+                        }
+
                         // Human-readable deep interval
                         let h = Int(prefs.ocrDeepInterval / 3600)
                         let m = Int(prefs.ocrDeepInterval.truncatingRemainder(dividingBy: 3600) / 60)

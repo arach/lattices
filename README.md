@@ -4,12 +4,10 @@
 
 # lattices
 
-macOS workspace manager. Menu bar app, CLI, and a WebSocket API
-so your AI agents can control the desktop.
-
-Window tiling, project discovery, workspace layers, on-screen OCR,
-and optionally tmux-powered persistent sessions. 30 RPC methods
-over WebSocket. One JSON config file.
+macOS workspace manager. Tile windows, switch between projects,
+read on-screen text with OCR, and optionally run persistent tmux
+sessions. There's a menu bar app, a CLI, and a WebSocket API with
+30 methods so your AI agents can do all of this too.
 
 ## Install
 
@@ -27,9 +25,8 @@ lattices app
 # Cmd+Shift+M
 ```
 
-The app scans your projects, tiles windows, and gives you a command
-palette for everything. Add tmux if you want persistent terminal
-sessions:
+The app scans your projects and gives you a command palette for
+everything. If you want persistent terminal sessions, add tmux:
 
 ```sh
 brew install tmux
@@ -40,17 +37,17 @@ That creates a tmux session with Claude Code on the left and your
 dev server on the right. Detach, close your laptop, come back later,
 reattach. Everything is where you left it.
 
-## What it does
+## What's in the box
 
-**Menu bar app** sits in your menu bar. Command palette, window tiling,
-project discovery, workspace layers, OCR, and the daemon API. Works
+The menu bar app is the main thing. It gives you a command palette
+(`Cmd+Shift+M`), window tiling, project discovery, workspace layers,
+OCR, and runs a WebSocket daemon on `ws://127.0.0.1:9399`. Works
 with or without tmux.
 
-**CLI** for tiling, session management, OCR queries, and tab groups.
+The CLI does tiling, session management, OCR queries, and tab groups.
 
-**Daemon API** on `ws://127.0.0.1:9399`. 30 RPC methods and 5
-real-time events. Agents can discover projects, tile windows, launch
-sessions, switch layers, and read on-screen text.
+The daemon exposes 30 RPC methods and 5 real-time events. Anything
+you can do from the app, an agent can do over WebSocket.
 
 ```js
 import { daemonCall } from '@arach/lattices/daemon-client'
@@ -93,8 +90,8 @@ picks the right dev command automatically.
 ## Workspace layers
 
 Group projects into switchable contexts. `Cmd+Option+1` tiles your
-frontend and API side by side. `Cmd+Option+2` switches to the mobile
-stack. All sessions stay alive across switches.
+frontend and API side by side. `Cmd+Option+2` for the mobile stack.
+Sessions stay alive across switches.
 
 Configure in `~/.lattices/workspace.json`:
 
@@ -125,8 +122,8 @@ lattices tab talkie iOS    # Switch to the iOS tab
 ## Screen OCR
 
 The app reads text from visible windows using Apple Vision and indexes
-it with FTS5 full-text search. Agents can search for error messages,
-read terminal output, or find content across all your windows.
+it with FTS5. You or your agents can search for error messages, read
+terminal output, find content across windows.
 
 ```js
 await daemonCall('ocr.scan')
@@ -161,7 +158,7 @@ lattices help               Show help
 
 ## Docs
 
-Full documentation at [lattices.dev/docs](https://lattices.dev/docs/overview).
+[lattices.dev/docs](https://lattices.dev/docs/overview)
 
 ## License
 

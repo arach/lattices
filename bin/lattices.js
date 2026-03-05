@@ -869,31 +869,44 @@ async function daemonStatusInventory() {
 
 // ── OCR commands ──────────────────────────────────────────────────────
 
-async function ocrCommand(sub, ...rest) {
+async function scanCommand(sub, ...rest) {
   const { daemonCall } = await getDaemonClient();
 
-  if (!sub || sub === "snapshot" || sub === "ls") {
-    // Default: show latest OCR snapshot
+  if (!sub || sub === "snapshot" || sub === "ls" || sub === "--full" || sub === "-f" || sub === "--json") {
+    const full = sub === "--full" || sub === "-f" || rest.includes("--full") || rest.includes("-f");
+    const json = sub === "--json" || rest.includes("--json");
     try {
       const results = await daemonCall("ocr.snapshot", null, 5000);
       if (!results.length) {
-        console.log("No OCR results yet. The first scan runs ~60s after launch.");
+        console.log("No scan results yet. The first scan runs ~60s after launch.");
         return;
       }
-      console.log(`\x1b[1mOCR Snapshot\x1b[0m  (${results.length} windows)\n`);
+      if (json) {
+        console.log(JSON.stringify(results, null, 2));
+        return;
+      }
+      console.log(`\x1b[1mScan\x1b[0m  (${results.length} windows)\n`);
       for (const r of results) {
         const age = Math.round((Date.now() / 1000) - r.timestamp);
         const ageStr = age < 60 ? `${age}s ago` : age < 3600 ? `${Math.floor(age / 60)}m ago` : `${Math.floor(age / 3600)}h ago`;
+        const src = r.source === "accessibility" ? "\x1b[33mAX\x1b[0m" : "\x1b[35mOCR\x1b[0m";
         const lines = (r.fullText || "").split("\n").filter(Boolean);
-        const preview = lines.slice(0, 3).map(l => l.length > 80 ? l.slice(0, 77) + "..." : l);
-        console.log(`  \x1b[1m${r.app}\x1b[0m  wid:${r.wid}  \x1b[90m${ageStr}\x1b[0m`);
+        console.log(`  \x1b[1m${r.app}\x1b[0m  wid:${r.wid}  ${src}  \x1b[90m${ageStr}\x1b[0m`);
         console.log(`    \x1b[36m"${r.title || "(untitled)"}"\x1b[0m`);
-        if (preview.length) {
-          for (const line of preview) {
-            console.log(`    \x1b[90m${line}\x1b[0m`);
-          }
-          if (lines.length > 3) {
-            console.log(`    \x1b[90m… ${lines.length - 3} more lines\x1b[0m`);
+        if (lines.length) {
+          if (full) {
+            for (const line of lines) {
+              console.log(`    \x1b[90m${line}\x1b[0m`);
+            }
+          } else {
+            const maxPreview = 5;
+            const preview = lines.slice(0, maxPreview).map(l => l.length > 100 ? l.slice(0, 97) + "..." : l);
+            for (const line of preview) {
+              console.log(`    \x1b[90m${line}\x1b[0m`);
+            }
+            if (lines.length > maxPreview) {
+              console.log(`    \x1b[90m… ${lines.length - maxPreview} more lines\x1b[0m`);
+            }
           }
         } else {
           console.log(`    \x1b[90m(no text detected)\x1b[0m`);
@@ -909,19 +922,20 @@ async function ocrCommand(sub, ...rest) {
   if (sub === "search") {
     const query = rest.join(" ");
     if (!query) {
-      console.log("Usage: lattices ocr search <query>");
+      console.log("Usage: lattices scan search <query>");
       return;
     }
     try {
       const results = await daemonCall("ocr.search", { query }, 5000);
       if (!results.length) {
-        console.log(`No OCR matches for "${query}".`);
+        console.log(`No matches for "${query}".`);
         return;
       }
-      console.log(`\x1b[1mOCR Search\x1b[0m  "${query}"  (${results.length} matches)\n`);
+      console.log(`\x1b[1mSearch\x1b[0m  "${query}"  (${results.length} matches)\n`);
       for (const r of results) {
         const snippet = r.snippet || r.fullText?.slice(0, 120) || "";
-        console.log(`  \x1b[1m${r.app}\x1b[0m  wid:${r.wid}`);
+        const src = r.source === "accessibility" ? "\x1b[33mAX\x1b[0m" : "\x1b[35mOCR\x1b[0m";
+        console.log(`  ${src}  \x1b[1m${r.app}\x1b[0m  wid:${r.wid}`);
         console.log(`    \x1b[36m"${r.title || "(untitled)"}"\x1b[0m`);
         console.log(`    ${snippet}`);
         console.log();
@@ -932,11 +946,50 @@ async function ocrCommand(sub, ...rest) {
     return;
   }
 
-  if (sub === "scan") {
+  if (sub === "recent" || sub === "log") {
+    const full = rest.includes("--full") || rest.includes("-f");
+    const numArg = rest.find(a => !a.startsWith("-"));
+    const limit = parseInt(numArg, 10) || 20;
     try {
-      console.log("Triggering OCR scan...");
+      const results = await daemonCall("ocr.recent", { limit }, 5000);
+      if (!results.length) {
+        console.log("No history yet. The first scan runs ~60s after launch.");
+        return;
+      }
+      console.log(`\x1b[1mRecent\x1b[0m  (${results.length} entries)\n`);
+      for (const r of results) {
+        const ts = new Date(r.timestamp * 1000).toLocaleTimeString();
+        const src = r.source === "accessibility" ? "\x1b[33mAX\x1b[0m" : "\x1b[35mOCR\x1b[0m";
+        const lines = (r.fullText || "").split("\n").filter(Boolean);
+        console.log(`  \x1b[90m${ts}\x1b[0m  ${src}  \x1b[1m${r.app}\x1b[0m  wid:${r.wid}`);
+        console.log(`    \x1b[36m"${r.title || "(untitled)"}"\x1b[0m`);
+        if (full) {
+          for (const line of lines) {
+            console.log(`    \x1b[90m${line}\x1b[0m`);
+          }
+        } else {
+          const maxPreview = 5;
+          const preview = lines.slice(0, maxPreview).map(l => l.length > 100 ? l.slice(0, 97) + "..." : l);
+          for (const line of preview) {
+            console.log(`    \x1b[90m${line}\x1b[0m`);
+          }
+          if (lines.length > maxPreview) {
+            console.log(`    \x1b[90m… ${lines.length - maxPreview} more lines\x1b[0m`);
+          }
+        }
+        console.log();
+      }
+    } catch {
+      console.log("Daemon not running. Start with: lattices app");
+    }
+    return;
+  }
+
+  if (sub === "deep" || sub === "now" || sub === "scan") {
+    try {
+      console.log("Triggering deep scan (Vision OCR)...");
       await daemonCall("ocr.scan", null, 30000);
-      console.log("Scan complete.");
+      console.log("Done.");
     } catch (e) {
       console.log(`Error: ${e.message}`);
     }
@@ -946,21 +999,22 @@ async function ocrCommand(sub, ...rest) {
   if (sub === "history") {
     const wid = parseInt(rest[0], 10);
     if (isNaN(wid)) {
-      console.log("Usage: lattices ocr history <wid>");
+      console.log("Usage: lattices scan history <wid>");
       return;
     }
     try {
       const results = await daemonCall("ocr.history", { wid }, 5000);
       if (!results.length) {
-        console.log(`No OCR history for wid:${wid}.`);
+        console.log(`No history for wid:${wid}.`);
         return;
       }
-      console.log(`\x1b[1mOCR History\x1b[0m  wid:${wid}  (${results.length} entries)\n`);
+      console.log(`\x1b[1mHistory\x1b[0m  wid:${wid}  (${results.length} entries)\n`);
       for (const r of results) {
         const ts = new Date(r.timestamp * 1000).toLocaleTimeString();
+        const src = r.source === "accessibility" ? "\x1b[33mAX\x1b[0m" : "\x1b[35mOCR\x1b[0m";
         const lines = (r.fullText || "").split("\n").filter(Boolean);
         const preview = lines.slice(0, 2).map(l => l.length > 80 ? l.slice(0, 77) + "..." : l);
-        console.log(`  \x1b[90m${ts}\x1b[0m  \x1b[1m${r.app}\x1b[0m — "${r.title}"`);
+        console.log(`  \x1b[90m${ts}\x1b[0m  ${src}  \x1b[1m${r.app}\x1b[0m — "${r.title}"`);
         for (const line of preview) {
           console.log(`    \x1b[90m${line}\x1b[0m`);
         }
@@ -973,13 +1027,16 @@ async function ocrCommand(sub, ...rest) {
   }
 
   // Unknown subcommand
-  console.log(`lattices ocr — Screen text recognition
+  console.log(`lattices scan — Screen text recognition
 
 Usage:
-  lattices ocr              Show latest OCR snapshot (all windows)
-  lattices ocr search <q>   Full-text search across all scanned windows
-  lattices ocr scan         Trigger an immediate scan
-  lattices ocr history <id> Show OCR timeline for a window (by wid)
+  lattices scan               Show text from all visible windows
+  lattices scan --full        Full text dump
+  lattices scan --json        JSON output
+  lattices scan search <q>    Full-text search across scanned windows
+  lattices scan recent [n]    Show recent scans chronologically (default 20)
+  lattices scan deep          Trigger a deep Vision OCR scan
+  lattices scan history <wid> Show scan timeline for a window
 `);
 }
 
@@ -1002,10 +1059,12 @@ Usage:
   lattices tile <position>    Tile the frontmost window (left, right, top, etc.)
   lattices distribute         Smart-grid all visible windows (daemon required)
   lattices layer [index]      List layers or switch to a layer (daemon required)
-  lattices ocr                Show latest OCR snapshot (all windows)
-  lattices ocr search <q>     Full-text search screen text
-  lattices ocr scan           Trigger an immediate scan
-  lattices ocr history <wid>  OCR timeline for a specific window
+  lattices scan               Show text from all visible windows
+  lattices scan --full        Full text dump
+  lattices scan search <q>    Full-text search across scanned windows
+  lattices scan recent [n]    Show recent scans chronologically
+  lattices scan deep          Trigger a deep Vision OCR scan
+  lattices scan history <wid> Scan timeline for a specific window
   lattices daemon status      Show daemon status
   lattices app                Launch the menu bar companion app
   lattices app build          Rebuild the menu bar app
@@ -1388,8 +1447,9 @@ switch (command) {
   case "layers":
     await layerCommand(args[1]);
     break;
+  case "scan":
   case "ocr":
-    await ocrCommand(args[1], ...args.slice(2));
+    await scanCommand(args[1], ...args.slice(2));
     break;
   case "daemon":
     if (args[1] === "status") {

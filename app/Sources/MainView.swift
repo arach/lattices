@@ -35,15 +35,27 @@ struct MainView: View {
         .background(PanelBackground())
         .preferredColorScheme(.dark)
         .onAppear {
+            let tTotal = DiagnosticLog.shared.startTimed("MainView.onAppear (total)")
             if needsSetup && !hasCheckedSetup {
                 hasCheckedSetup = true
                 SettingsWindowController.shared.show()
             }
             scanner.updateRoot(prefs.scanRoot)
+
+            let tScan = DiagnosticLog.shared.startTimed("ProjectScanner.scan")
             scanner.scan()
+            DiagnosticLog.shared.finish(tScan)
+
+            let tInv = DiagnosticLog.shared.startTimed("InventoryManager.refresh")
             inventory.refresh()
+            DiagnosticLog.shared.finish(tInv)
+
+            let tPerm = DiagnosticLog.shared.startTimed("PermissionChecker.check")
             permChecker.check()
+            DiagnosticLog.shared.finish(tPerm)
+
             bannerDismissed = false
+            DiagnosticLog.shared.finish(tTotal)
         }
     }
 

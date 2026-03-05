@@ -272,6 +272,7 @@ final class LatticesApi {
             Field(name: "fullText", type: "string", required: true, description: "Full recognized text"),
             Field(name: "snippet", type: "string", required: true, description: "Highlighted snippet (FTS5)"),
             Field(name: "timestamp", type: "double", required: true, description: "Scan timestamp (Unix)"),
+            Field(name: "source", type: "string", required: true, description: "Text source: 'accessibility' or 'ocr'"),
         ]))
 
         api.model(ApiModel(name: "DaemonStatus", fields: [
@@ -636,6 +637,21 @@ final class LatticesApi {
                 }
                 let limit = params?["limit"]?.intValue ?? 50
                 let results = OcrStore.shared.history(wid: wid, limit: limit)
+                return .array(results.map { Encoders.ocrSearchResult($0) })
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "ocr.recent",
+            description: "Get recent OCR entries across all windows (chronological, from persistent store)",
+            access: .read,
+            params: [
+                Param(name: "limit", type: "int", required: false, description: "Max results (default 50)"),
+            ],
+            returns: .array(model: "OcrSearchResult"),
+            handler: { params in
+                let limit = params?["limit"]?.intValue ?? 50
+                let results = OcrStore.shared.recent(limit: limit)
                 return .array(results.map { Encoders.ocrSearchResult($0) })
             }
         ))
@@ -1045,7 +1061,8 @@ enum Encoders {
                     "h": .double(block.boundingBox.size.height)
                 ])
             }),
-            "timestamp": .double(r.timestamp.timeIntervalSince1970)
+            "timestamp": .double(r.timestamp.timeIntervalSince1970),
+            "source": .string(r.source.rawValue)
         ])
     }
 
@@ -1063,7 +1080,8 @@ enum Encoders {
             ]),
             "fullText": .string(r.fullText),
             "snippet": .string(r.snippet),
-            "timestamp": .double(r.timestamp.timeIntervalSince1970)
+            "timestamp": .double(r.timestamp.timeIntervalSince1970),
+            "source": .string(r.source.rawValue)
         ])
     }
 

@@ -12,6 +12,7 @@ struct OcrSearchResult {
     let fullText: String
     let snippet: String
     let timestamp: Date
+    let source: TextSource
 }
 
 // MARK: - SQLite OCR Store
@@ -95,6 +96,9 @@ final class OcrStore {
                 END
             """)
 
+            // Migration: add source column if not present
+            migrateAddSourceColumn()
+
             // Prepare cached statements
             prepareInsert()
             prepareCleanup()
@@ -126,6 +130,7 @@ final class OcrStore {
                 sqlite3_bind_double(stmt, 7, r.frame.h)
                 self.bindText(stmt, 8, r.fullText)
                 sqlite3_bind_double(stmt, 9, ts)
+                self.bindText(stmt, 10, r.source.rawValue)
                 sqlite3_step(stmt)
                 sqlite3_reset(stmt)
                 sqlite3_clear_bindings(stmt)
@@ -144,7 +149,8 @@ final class OcrStore {
             SELECT e.id, e.wid, e.app, e.title,
                    e.frame_x, e.frame_y, e.frame_w, e.frame_h,
                    e.full_text, e.timestamp,
-                   snippet(ocr_fts, 0, '»', '«', '…', 32) AS snip
+                   snippet(ocr_fts, 0, '»', '«', '…', 32) AS snip,
+                   COALESCE(e.source, 'ocr') AS source
             FROM ocr_fts f
             JOIN ocr_entry e ON e.id = f.rowid
             WHERE ocr_fts MATCH ?1
@@ -175,7 +181,8 @@ final class OcrStore {
         let sql = """
             SELECT id, wid, app, title,
                    frame_x, frame_y, frame_w, frame_h,
-                   full_text, timestamp, '' AS snip
+                   full_text, timestamp, '' AS snip,
+                   COALESCE(source, 'ocr') AS source
             FROM ocr_entry
             WHERE wid = ?1
             ORDER BY timestamp DESC
@@ -204,7 +211,8 @@ final class OcrStore {
         let sql = """
             SELECT id, wid, app, title,
                    frame_x, frame_y, frame_w, frame_h,
-                   full_text, timestamp, '' AS snip
+                   full_text, timestamp, '' AS snip,
+                   COALESCE(source, 'ocr') AS source
             FROM ocr_entry
             ORDER BY timestamp DESC
             LIMIT ?1
@@ -257,10 +265,33 @@ final class OcrStore {
 
     private func prepareInsert() {
         let sql = """
-            INSERT INTO ocr_entry (wid, app, title, frame_x, frame_y, frame_w, frame_h, full_text, timestamp)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+            INSERT INTO ocr_entry (wid, app, title, frame_x, frame_y, frame_w, frame_h, full_text, timestamp, source)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
         """
         sqlite3_prepare_v2(db, sql, -1, &insertStmt, nil)
+    }
+
+    private func migrateAddSourceColumn() {
+        // Check if source column exists
+        var tableInfoStmt: OpaquePointer?
+        let sql = "PRAGMA table_info(ocr_entry)"
+        guard sqlite3_prepare_v2(db, sql, -1, &tableInfoStmt, nil) == SQLITE_OK else { return }
+        defer { sqlite3_finalize(tableInfoStmt) }
+
+        var hasSource = false
+        while sqlite3_step(tableInfoStmt) == SQLITE_ROW {
+            if let name = sqlite3_column_text(tableInfoStmt, 1) {
+                if String(cString: name) == "source" {
+                    hasSource = true
+                    break
+                }
+            }
+        }
+
+        if !hasSource {
+            exec("ALTER TABLE ocr_entry ADD COLUMN source TEXT DEFAULT 'ocr'")
+            DiagnosticLog.shared.info("OcrStore: migrated — added source column")
+        }
     }
 
     private func prepareCleanup() {
@@ -276,7 +307,9 @@ final class OcrStore {
     }
 
     private func rowToSearchResult(_ stmt: OpaquePointer) -> OcrSearchResult {
-        OcrSearchResult(
+        let sourceStr = columnText(stmt, 11)
+        let source = TextSource(rawValue: sourceStr) ?? .ocr
+        return OcrSearchResult(
             id: sqlite3_column_int64(stmt, 0),
             wid: UInt32(sqlite3_column_int(stmt, 1)),
             app: columnText(stmt, 2),
@@ -289,7 +322,8 @@ final class OcrStore {
             ),
             fullText: columnText(stmt, 8),
             snippet: columnText(stmt, 10),
-            timestamp: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 9))
+            timestamp: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 9)),
+            source: source
         )
     }
 }

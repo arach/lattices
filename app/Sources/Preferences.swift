@@ -42,6 +42,10 @@ class Preferences: ObservableObject {
         didSet { UserDefaults.standard.set(ocrDeepLimit, forKey: "ocr.deepLimit") }
     }
 
+    @Published var ocrDeepBudget: Int {
+        didSet { UserDefaults.standard.set(ocrDeepBudget, forKey: "ocr.deepBudget") }
+    }
+
     @Published var ocrAccuracy: String {
         didSet { UserDefaults.standard.set(ocrAccuracy, forKey: "ocr.accuracy") }
     }
@@ -85,6 +89,9 @@ class Preferences: ObservableObject {
 
         let savedDL = UserDefaults.standard.integer(forKey: "ocr.deepLimit")
         self.ocrDeepLimit = savedDL > 0 ? savedDL : 15
+
+        let savedBudget = UserDefaults.standard.integer(forKey: "ocr.deepBudget")
+        self.ocrDeepBudget = savedBudget > 0 ? savedBudget : 3
 
         let savedAcc = UserDefaults.standard.string(forKey: "ocr.accuracy") ?? "accurate"
         self.ocrAccuracy = savedAcc

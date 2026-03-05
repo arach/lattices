@@ -4,6 +4,11 @@ import Vision
 
 // MARK: - Data Types
 
+enum TextSource: String {
+    case accessibility
+    case ocr
+}
+
 struct OcrTextBlock {
     let text: String
     let confidence: Float         // 0.0–1.0
@@ -18,6 +23,7 @@ struct OcrWindowResult {
     let texts: [OcrTextBlock]
     let fullText: String
     let timestamp: Date
+    let source: TextSource
 }
 
 // MARK: - OCR Scanner
@@ -33,7 +39,11 @@ final class OcrModel: ObservableObject {
     private var timer: Timer?
     private var deepTimer: Timer?
     private let queue = DispatchQueue(label: "com.arach.lattices.ocr", qos: .background)
+    private let axExtractor = AccessibilityTextExtractor()
     private var imageHashes: [UInt32: Data] = [:]
+    private var lastAXHashes: [UInt32: Data] = [:]
+    private var lastOCRTextHashes: [UInt32: Data] = [:]
+    private var lastScanned: [UInt32: Date] = [:]
     private var scanGeneration: Int = 0
 
     private let myPid = ProcessInfo.processInfo.processIdentifier
@@ -82,17 +92,68 @@ final class OcrModel: ObservableObject {
 
     // MARK: - Scan
 
-    /// Quick scan: only the topmost frontmost windows (called every 60s)
+    /// Quick scan: AX-only text extraction for topmost windows (called every 60s).
+    /// No screenshots, no Vision OCR — nearly free.
     func quickScan() {
-        scanWithLimit(prefs.ocrQuickLimit)
+        guard !isScanning else { return }
+        DispatchQueue.main.async { self.isScanning = true }
+
+        queue.async { [weak self] in
+            guard let self else { return }
+            let windows = Array(self.enumerateWindows().prefix(self.prefs.ocrQuickLimit))
+            let previousResults = self.results
+            var fresh = previousResults  // carry forward all existing results
+            var changed = 0
+
+            for win in windows {
+                if let axResult = self.axExtractor.extract(pid: win.pid, wid: win.wid) {
+                    let textHash = SHA256.hash(data: Data(axResult.fullText.utf8))
+                    let hashData = Data(textHash)
+
+                    if hashData == self.lastAXHashes[win.wid], previousResults[win.wid] != nil {
+                        // Unchanged — carry forward cached result
+                        continue
+                    }
+
+                    // Changed — build new result
+                    self.lastAXHashes[win.wid] = hashData
+                    changed += 1
+
+                    let blocks = axResult.texts.map { text in
+                        OcrTextBlock(text: text, confidence: 1.0, boundingBox: .zero)
+                    }
+                    let result = OcrWindowResult(
+                        wid: win.wid,
+                        app: win.app,
+                        title: win.title,
+                        frame: win.frame,
+                        texts: blocks,
+                        fullText: axResult.fullText,
+                        timestamp: Date(),
+                        source: .accessibility
+                    )
+                    fresh[win.wid] = result
+                    OcrStore.shared.insert(results: [result])
+                }
+            }
+
+            DiagnosticLog.shared.info("OcrModel: quick scan (AX) \(windows.count)/\(self.enumerateWindows().count) windows, \(changed) changed")
+
+            DispatchQueue.main.async {
+                self.results = fresh
+                self.isScanning = false
+            }
+
+            EventBus.shared.post(.ocrScanComplete(
+                windowCount: fresh.count,
+                totalBlocks: fresh.values.reduce(0) { $0 + $1.texts.count }
+            ))
+        }
     }
 
     /// Deep scan: all visible windows (called every 2h, or manually via ocr.scan)
+    /// Uses a budget to limit how many windows get OCR'd per tick.
     func scan() {
-        scanWithLimit(prefs.ocrDeepLimit)
-    }
-
-    private func scanWithLimit(_ limit: Int) {
         guard !isScanning else { return }
         DispatchQueue.main.async { self.isScanning = true }
         scanGeneration += 1
@@ -101,28 +162,75 @@ final class OcrModel: ObservableObject {
         queue.async { [weak self] in
             guard let self else { return }
             var windows = self.enumerateWindows()
-
-            // Cap windows — CGWindowList returns front-to-back order,
-            // so prefix gives us the topmost/frontmost windows first
+            let limit = self.prefs.ocrDeepLimit
             if windows.count > limit {
                 windows = Array(windows.prefix(limit))
             }
 
-            // For quick scans, merge new results into existing rather than replacing
             let previousResults = self.results
-            let fresh: [UInt32: OcrWindowResult] = limit < self.prefs.ocrDeepLimit ? previousResults : [:]
-            let newHashes: [UInt32: Data] = [:]
-            let totalBlocks = 0
+            var newHashes: [UInt32: Data] = [:]
+            var changedWindows: [WindowEntry] = []
+            var unchangedWindows: [WindowEntry] = []
 
+            // Phase 1: capture + hash all windows (cheap)
+            for win in windows {
+                if let cgImage = CGWindowListCreateImage(
+                    .null,
+                    .optionIncludingWindow,
+                    CGWindowID(win.wid),
+                    [.boundsIgnoreFraming, .bestResolution]
+                ) {
+                    let hash = self.imageHash(cgImage)
+                    newHashes[win.wid] = hash
+
+                    if hash == self.imageHashes[win.wid], previousResults[win.wid] != nil {
+                        unchangedWindows.append(win)
+                    } else {
+                        changedWindows.append(win)
+                    }
+                }
+            }
+
+            // Phase 2: budget which windows actually get OCR'd
+            let budget = self.prefs.ocrDeepBudget
+            let changedBudgeted = Array(changedWindows.prefix(budget))
+            let remaining = max(0, budget - changedBudgeted.count)
+
+            // Sort unchanged by lastScanned ascending (nil = stalest = highest priority)
+            let stalestUnchanged = unchangedWindows.sorted { a, b in
+                let aDate = self.lastScanned[a.wid] ?? .distantPast
+                let bDate = self.lastScanned[b.wid] ?? .distantPast
+                return aDate < bDate
+            }
+            let unchangedBudgeted = Array(stalestUnchanged.prefix(remaining))
+            let toScan = changedBudgeted + unchangedBudgeted
+            let toScanWids = Set(toScan.map(\.wid))
+
+            // Carry forward cached results for non-budgeted windows
+            var fresh: [UInt32: OcrWindowResult] = [:]
+            var totalBlocks = 0
+            for win in windows {
+                if !toScanWids.contains(win.wid), let prev = previousResults[win.wid] {
+                    fresh[win.wid] = prev
+                    totalBlocks += prev.texts.count
+                }
+            }
+
+            self.imageHashes = newHashes
+
+            DiagnosticLog.shared.info("OcrModel: deep scan budget=\(budget), changed=\(changedWindows.count), scanning=\(toScan.count)/\(windows.count)")
+
+            // Phase 3: OCR only the budgeted windows
             self.processNextWindow(
-                windows: windows,
+                windows: toScan,
                 index: 0,
                 generation: generation,
                 previousResults: previousResults,
                 fresh: fresh,
                 newHashes: newHashes,
                 totalBlocks: totalBlocks,
-                changedResults: []
+                changedResults: [],
+                updateLastScanned: true
             )
         }
     }
@@ -137,7 +245,8 @@ final class OcrModel: ObservableObject {
         fresh: [UInt32: OcrWindowResult],
         newHashes: [UInt32: Data],
         totalBlocks: Int,
-        changedResults: [OcrWindowResult]
+        changedResults: [OcrWindowResult],
+        updateLastScanned: Bool = false
     ) {
         // Stale scan — a newer one started, abandon this one
         guard generation == scanGeneration else {
@@ -198,10 +307,21 @@ final class OcrModel: ObservableObject {
                     frame: win.frame,
                     texts: blocks,
                     fullText: fullText,
-                    timestamp: Date()
+                    timestamp: Date(),
+                    source: .ocr
                 )
                 fresh[win.wid] = result
-                changedResults.append(result)
+
+                // Text-level dedup: if OCR text is identical to previous, skip store insert
+                let textHash = Data(SHA256.hash(data: Data(fullText.utf8)))
+                if textHash != lastOCRTextHashes[win.wid] {
+                    changedResults.append(result)
+                }
+                lastOCRTextHashes[win.wid] = textHash
+            }
+
+            if updateLastScanned {
+                self.lastScanned[win.wid] = Date()
             }
         }
 
@@ -215,7 +335,8 @@ final class OcrModel: ObservableObject {
                 fresh: fresh,
                 newHashes: newHashes,
                 totalBlocks: totalBlocks,
-                changedResults: changedResults
+                changedResults: changedResults,
+                updateLastScanned: updateLastScanned
             )
         }
     }
