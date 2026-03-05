@@ -207,21 +207,21 @@ class HotkeyStore: ObservableObject {
             bind(action, layerKeyCodes[i], cmdOpt)
         }
 
-        // Tiling: Ctrl+Option+...
-        bind(.tileLeft,        123, ctrlOpt)  // ←
-        bind(.tileRight,       124, ctrlOpt)  // →
-        bind(.tileMaximize,     36, ctrlOpt)  // Return
-        bind(.tileCenter,        8, ctrlOpt)  // C
-        bind(.tileTopLeft,      32, ctrlOpt)  // U
-        bind(.tileTopRight,     34, ctrlOpt)  // I
-        bind(.tileBottomLeft,   38, ctrlOpt)  // J
-        bind(.tileBottomRight,  40, ctrlOpt)  // K
-        bind(.tileTop,         126, ctrlOpt)  // ↑
-        bind(.tileBottom,      125, ctrlOpt)  // ↓
-        bind(.tileDistribute,    2, ctrlOpt)  // D
-        bind(.tileLeftThird,    18, ctrlOpt)  // 1
-        bind(.tileCenterThird,  19, ctrlOpt)  // 2
-        bind(.tileRightThird,   20, ctrlOpt)  // 3
+        // Tiling: Ctrl+Option for all
+        bind(.tileLeft,        123, ctrlOpt)  // Ctrl+Opt+←
+        bind(.tileRight,       124, ctrlOpt)  // Ctrl+Opt+→
+        bind(.tileTop,         126, ctrlOpt)  // Ctrl+Opt+↑
+        bind(.tileBottom,      125, ctrlOpt)  // Ctrl+Opt+↓
+        bind(.tileMaximize,     36, ctrlOpt)  // Ctrl+Opt+Return
+        bind(.tileCenter,        8, ctrlOpt)  // Ctrl+Opt+C
+        bind(.tileTopLeft,      32, ctrlOpt)  // Ctrl+Opt+U
+        bind(.tileTopRight,     34, ctrlOpt)  // Ctrl+Opt+I
+        bind(.tileBottomLeft,   38, ctrlOpt)  // Ctrl+Opt+J
+        bind(.tileBottomRight,  40, ctrlOpt)  // Ctrl+Opt+K
+        bind(.tileDistribute,    2, ctrlOpt)  // Ctrl+Opt+D
+        bind(.tileLeftThird,    18, ctrlOpt)  // Ctrl+Opt+1
+        bind(.tileCenterThird,  19, ctrlOpt)  // Ctrl+Opt+2
+        bind(.tileRightThird,   20, ctrlOpt)  // Ctrl+Opt+3
 
         return d
     }()

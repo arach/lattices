@@ -166,7 +166,7 @@ class HotkeyManager {
         )
 
         var ref: EventHotKeyRef?
-        RegisterEventHotKey(
+        let status = RegisterEventHotKey(
             keyCode,
             modifiers,
             hotKeyID,
@@ -174,7 +174,11 @@ class HotkeyManager {
             0,
             &ref
         )
-        if let ref { hotKeyRefs[id] = ref }
+        if let ref {
+            hotKeyRefs[id] = ref
+        } else {
+            DiagnosticLog.shared.warn("HotkeyManager: failed to register id=\(id) keyCode=\(keyCode) mods=\(modifiers) status=\(status)")
+        }
     }
 
     /// Unregister all global hotkeys and clear callbacks

@@ -22,27 +22,23 @@ const configExample = `{
 
 const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span class="hl-kw">from</span> <span class="hl-str">'lattices/daemon-client'</span>
 
-<span class="hl-cmt">// Discover projects</span>
-<span class="hl-kw">const</span> projects = <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'projects.list'</span>)
-
-<span class="hl-cmt">// Launch two sessions</span>
+<span class="hl-cmt">// Launch a session and tile it</span>
 <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'session.launch'</span>, {
   path: <span class="hl-str">'/Users/you/dev/frontend'</span>
 })
-<span class="hl-kw">await</span> daemonCall(<span class="hl-str">'session.launch'</span>, {
-  path: <span class="hl-str">'/Users/you/dev/api'</span>
-})
-
-<span class="hl-cmt">// Tile side-by-side</span>
-<span class="hl-kw">const</span> sessions = <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'tmux.sessions'</span>)
 <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'window.tile'</span>, {
-  session: sessions[<span class="hl-num">0</span>].name,
+  session: <span class="hl-str">'frontend-a1b2c3'</span>,
   position: <span class="hl-str">'left'</span>
 })
-<span class="hl-kw">await</span> daemonCall(<span class="hl-str">'window.tile'</span>, {
-  session: sessions[<span class="hl-num">1</span>].name,
-  position: <span class="hl-str">'right'</span>
-})`
+
+<span class="hl-cmt">// Read the screen</span>
+<span class="hl-kw">await</span> daemonCall(<span class="hl-str">'ocr.scan'</span>)
+<span class="hl-kw">const</span> errors = <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'ocr.search'</span>, {
+  query: <span class="hl-str">'error OR failed'</span>
+})
+
+<span class="hl-cmt">// See all windows</span>
+<span class="hl-kw">const</span> windows = <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'windows.list'</span>)`
 ---
 
 <!doctype html>
@@ -51,21 +47,21 @@ const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span cla
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>lattices — your desktop is an API now</title>
+    <title>lattices — workspace control plane for macOS</title>
 
-    <meta name="description" content="macOS workspace manager. 30 RPC methods over WebSocket so your AI agents can tile windows, launch sessions, and read your screen. Menu bar app and CLI included." />
+    <meta name="description" content="Persistent terminal sessions, window tiling, and screen text indexing — all controllable from the CLI or a 30-method daemon API. Menu bar app included." />
 
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://lattices.dev/" />
-    <meta property="og:title" content="lattices — your desktop is an API now" />
-    <meta property="og:description" content="macOS workspace manager. 30 RPC methods over WebSocket so your AI agents can tile windows, launch sessions, and read your screen. Menu bar app and CLI included." />
+    <meta property="og:title" content="lattices — workspace control plane for macOS" />
+    <meta property="og:description" content="Persistent terminal sessions, window tiling, and screen text indexing — all controllable from the CLI or a 30-method daemon API. Menu bar app included." />
     <meta property="og:image" content="https://lattices.dev/og.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
 
     <meta property="twitter:card" content="summary_large_image" />
-    <meta property="twitter:title" content="lattices — your desktop is an API now" />
-    <meta property="twitter:description" content="macOS workspace manager. 30 RPC methods over WebSocket so your AI agents can tile windows, launch sessions, and read your screen. Menu bar app and CLI included." />
+    <meta property="twitter:title" content="lattices — workspace control plane for macOS" />
+    <meta property="twitter:description" content="Persistent terminal sessions, window tiling, and screen text indexing — all controllable from the CLI or a 30-method daemon API. Menu bar app included." />
     <meta property="twitter:image" content="https://lattices.dev/og.png" />
 
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-GSHDZPFRZG"></script>
@@ -110,14 +106,23 @@ const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span cla
             Open source · 100% free
           </div>
           <h1>
-            Your desktop is<br />
-            <span class="accent">an API now</span>
+            Workspace<br />
+            <span class="accent">control plane</span>
           </h1>
-          <p class="hero-sub">
-            30 RPC methods over WebSocket. Your AI agents can tile windows,
-            launch sessions, read on-screen text, and switch between projects.
-            You get a menu bar app and CLI too.
-          </p>
+          <div class="hero-pillars">
+            <div class="hero-pillar">
+              <h2>Terminal sessions</h2>
+              <p>Declare your dev environment in JSON. Lattices builds it, runs it, and keeps it alive across reboots.</p>
+            </div>
+            <div class="hero-pillar">
+              <h2>Window awareness</h2>
+              <p>Tile with hotkeys, organize into layers, and search the text on every window — indexed automatically.</p>
+            </div>
+            <div class="hero-pillar">
+              <h2>Programmable desktop</h2>
+              <p>30-method daemon API. Your CLI scripts and AI agents control the same desktop you do.</p>
+            </div>
+          </div>
 
           <div class="install fade-in fade-in-delay-1">
             <div class="install-tabs">
@@ -148,10 +153,12 @@ const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span cla
         <section class="section" id="config">
           <div class="config-grid fade-in fade-in-delay-2">
             <div>
-              <h2 class="config-title">One JSON file. That's it.</h2>
+              <h2 class="config-title">Persistent terminal sessions</h2>
               <p class="config-desc">
-                Drop a <code>.lattices.json</code> in your project root
-                and forget about it. lattices figures out the rest.
+                Drop a <code>.lattices.json</code> in your project root.
+                lattices builds your panes, runs your commands, and keeps
+                them alive. Reboot, come back a week later — everything
+                is where you left it.
               </p>
               <div class="layouts">
                 <div class="layout-card">
@@ -197,18 +204,18 @@ const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span cla
         <section class="section" id="agents">
           <div class="config-grid fade-in fade-in-delay-2">
             <div>
-              <h2 class="config-title">Your agent can control the whole desktop</h2>
+              <h2 class="config-title">A programmable desktop</h2>
               <p class="config-desc">
-                The daemon API exposes every workspace action over WebSocket.
-                OCR to read the screen. Tiling to arrange windows. Session
-                management to launch and kill projects.
+                The CLI and daemon API expose everything: query what's on screen,
+                search window text, tile layouts, manage sessions. Claude Code
+                skills, MCP servers, or your own scripts can drive your desktop.
               </p>
               <ul class="agent-methods">
                 <li><code>windows.list</code> see every window on screen</li>
+                <li><code>ocr.search</code> search text across all windows</li>
                 <li><code>session.launch</code> start a project session</li>
                 <li><code>window.tile</code> snap windows to screen positions</li>
-                <li><code>layer.switch</code> switch workspace contexts</li>
-                <li>Real-time events for window and session changes</li>
+                <li>30 methods + 5 real-time events over WebSocket</li>
               </ul>
               <a href="/docs/api" class="agent-api-link">Full API reference &rarr;</a>
             </div>
@@ -230,32 +237,32 @@ const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span cla
           <div class="feature">
             <span class="feature-icon">&#9654;</span>
             <h3>One command</h3>
-            <p>Run <code>lattices</code> in any project directory. tmux session, panes running, layout applied.</p>
+            <p>Run <code>lattices</code> in any project directory. Session created, panes running, layout applied.</p>
+          </div>
+          <div class="feature">
+            <span class="feature-icon">&#8644;</span>
+            <h3>Survives reboots</h3>
+            <p>Close your laptop, come back a week later. Reattach and your editor, dev server, and tests are where you left them.</p>
+          </div>
+          <div class="feature">
+            <span class="feature-icon">&#9638;</span>
+            <h3>Window tiling</h3>
+            <p>Tile with hotkeys, organize into switchable layers, snap to grids. Works across Spaces.</p>
+          </div>
+          <div class="feature">
+            <span class="feature-icon">&#128270;</span>
+            <h3>Screen text indexing</h3>
+            <p>Reads text from UI elements every 60s. Vision OCR on background windows every 2h. All searchable.</p>
           </div>
           <div class="feature">
             <span class="feature-icon">&#9881;</span>
             <h3>30 RPC methods</h3>
-            <p>WebSocket daemon on localhost. Windows, sessions, tiling, layers, OCR. Anything the app does, your agent can do.</p>
-          </div>
-          <div class="feature">
-            <span class="feature-icon">&#9881;</span>
-            <h3>Zero config</h3>
-            <p>No <code>.lattices.json</code>? It reads your <code>package.json</code> and picks the right dev command.</p>
-          </div>
-          <div class="feature">
-            <span class="feature-icon">&#8644;</span>
-            <h3>Persistent sessions</h3>
-            <p>Close your terminal, close your laptop, come back later. Reattach and everything is where you left it.</p>
-          </div>
-          <div class="feature">
-            <span class="feature-icon">&#9638;</span>
-            <h3>Workspace layers</h3>
-            <p><code>Cmd+Option+1</code> and your frontend + API tile into place. <code>Cmd+Option+2</code> for the mobile stack.</p>
+            <p>WebSocket daemon on localhost. Windows, sessions, tiling, layers, screen text. Anything the app does, your agent can do.</p>
           </div>
           <div class="feature">
             <span class="feature-icon">&#9783;</span>
-            <h3>Tab groups</h3>
-            <p>Bundle related repos into one session. <code>lattices group talkie</code> launches iOS, macOS, Web, and API as tabs.</p>
+            <h3>Zero config</h3>
+            <p>No <code>.lattices.json</code>? It reads your <code>package.json</code> and picks the right dev command automatically.</p>
           </div>
         </section>
 
@@ -263,18 +270,18 @@ const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span cla
         <section class="app-section" id="app">
           <div class="app-grid">
             <div>
-              <h2 class="app-title">Native menu bar app</h2>
+              <h2 class="app-title">Window tiling and awareness</h2>
               <p class="app-desc">
-                Built with SwiftUI. Always one click away in your menu bar.
+                A native menu bar app that tracks every window on your desktop.
               </p>
               <ul class="app-features">
-                <li>All your projects and sessions in one panel</li>
-                <li>Launch, attach, or kill with a click</li>
                 <li>Command palette with <code>Cmd+Shift+M</code></li>
                 <li>Window tiling that works across Spaces</li>
                 <li><a href="/docs/layers">Workspace layers</a> with <code>Cmd+Option+1/2/3</code></li>
                 <li><a href="/docs/layers#tab-groups">Tab groups</a> for related repos</li>
-                <li>Space navigation with window highlighting</li>
+                <li>Screen text extraction via Accessibility API (every 60s)</li>
+                <li>Vision OCR for background windows (every 2h)</li>
+                <li>Full-text search across all indexed window content</li>
               </ul>
             </div>
             <div class="app-screenshot-wrap">
@@ -286,7 +293,7 @@ const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span cla
         <!-- CTA -->
         <section class="cta">
           <h2>Get started</h2>
-          <p>One install. Your workspace becomes programmable.</p>
+          <p>Terminal sessions, window awareness, and a programmable desktop.</p>
           <div class="cta-actions">
             <a href="https://github.com/arach/lattices" target="_blank" rel="noopener noreferrer" class="btn btn-primary">View on GitHub</a>
             <a href="https://www.npmjs.com/package/lattices" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">npm package</a>

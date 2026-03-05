@@ -185,6 +185,40 @@ html:has(.landing) body {
   margin: 0 auto 32px;
 }
 
+.landing .hero-pillars {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  max-width: 640px;
+  margin: 0 auto 36px;
+  text-align: left;
+}
+
+.landing .hero-pillar {
+  padding: 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+}
+
+.landing .hero-pillar:hover {
+  border-color: var(--border-lit);
+}
+
+.landing .hero-pillar h2 {
+  font-family: "Space Grotesk", -apple-system, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 6px;
+}
+
+.landing .hero-pillar p {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  margin: 0;
+}
+
 /* ── Install block ─────────────────────────────────── */
 
 .landing .install {
@@ -712,6 +746,7 @@ html:has(.landing) body {
 /* ── Responsive ────────────────────────────────────── */
 
 @media (max-width: 720px) {
+  .landing .hero-pillars { grid-template-columns: 1fr; max-width: 360px; }
   .landing .features { grid-template-columns: repeat(2, 1fr); }
   .landing .agent-methods { gap: 6px; }
   .landing .config-grid { grid-template-columns: 1fr; }

@@ -1644,73 +1644,63 @@ enum WindowTiler {
     /// Tile the frontmost window of any app to a position using AX API.
     /// Works for any application (Finder, Chrome, etc.), not just terminals.
     static func tileFrontmostViaAX(to position: TilePosition) {
-        // 1. Get frontmost application
         guard let frontApp = NSWorkspace.shared.frontmostApplication,
               frontApp.bundleIdentifier != "com.arach.lattices" else { return }
 
         let appRef = AXUIElementCreateApplication(frontApp.processIdentifier)
-
-        // 2. Get focused window
         var focusedRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(appRef, kAXFocusedWindowAttribute as CFString, &focusedRef) == .success,
               let axWindow = focusedRef else { return }
-
         let win = axWindow as! AXUIElement
 
-        // 3. Read current position → find containing screen (AX coords: top-left origin)
+        let screen = screenForAXWindow(win)
+        let target = tileFrame(for: position, on: screen)
+
+        // Disable enhanced UI on the APP element (not window) — breaks macOS tile lock
+        AXUIElementSetAttributeValue(appRef, "AXEnhancedUserInterface" as CFString, false as CFTypeRef)
+
+        // Size → Position → Size (same pattern as Rectangle and rift)
+        var pos = CGPoint(x: target.origin.x, y: target.origin.y)
+        var size = CGSize(width: target.width, height: target.height)
+
+        if let sv = AXValueCreate(.cgSize, &size) {
+            AXUIElementSetAttributeValue(win, kAXSizeAttribute as CFString, sv)
+        }
+        if let pv = AXValueCreate(.cgPoint, &pos) {
+            AXUIElementSetAttributeValue(win, kAXPositionAttribute as CFString, pv)
+        }
+        if let sv = AXValueCreate(.cgSize, &size) {
+            AXUIElementSetAttributeValue(win, kAXSizeAttribute as CFString, sv)
+        }
+
+        // Re-enable enhanced UI
+        AXUIElementSetAttributeValue(appRef, "AXEnhancedUserInterface" as CFString, true as CFTypeRef)
+    }
+
+    /// Find which NSScreen contains a given AX window (nearest if center is off-screen)
+    private static func screenForAXWindow(_ win: AXUIElement) -> NSScreen {
         var posRef: CFTypeRef?
         var sizeRef: CFTypeRef?
         AXUIElementCopyAttributeValue(win, kAXPositionAttribute as CFString, &posRef)
         AXUIElementCopyAttributeValue(win, kAXSizeAttribute as CFString, &sizeRef)
 
-        var currentPos = CGPoint.zero
-        var currentSize = CGSize.zero
-        if let pv = posRef { AXValueGetValue(pv as! AXValue, .cgPoint, &currentPos) }
-        if let sv = sizeRef { AXValueGetValue(sv as! AXValue, .cgSize, &currentSize) }
+        var pos = CGPoint.zero
+        var size = CGSize.zero
+        if let pv = posRef { AXValueGetValue(pv as! AXValue, .cgPoint, &pos) }
+        if let sv = sizeRef { AXValueGetValue(sv as! AXValue, .cgSize, &size) }
 
-        let primaryHeight = NSScreen.screens.first?.frame.height ?? 1080
-        let nsCenterX = currentPos.x + currentSize.width / 2
-        let nsCenterY = primaryHeight - (currentPos.y + currentSize.height / 2)
-        let screen = NSScreen.screens.first(where: {
-            $0.frame.contains(NSPoint(x: nsCenterX, y: nsCenterY))
-        }) ?? NSScreen.main ?? NSScreen.screens[0]
+        let primaryH = NSScreen.screens.first?.frame.height ?? 1080
+        let cx = pos.x + size.width / 2
+        let cy = primaryH - (pos.y + size.height / 2)
+        let pt = NSPoint(x: cx, y: cy)
 
-        // 4. Compute target frame (AX/CGS coords: top-left origin)
-        let targetFrame = tileFrame(for: position, on: screen)
-        var newPos = CGPoint(x: targetFrame.origin.x, y: targetFrame.origin.y)
-        var newSize = CGSize(width: targetFrame.width, height: targetFrame.height)
-
-        // 5. Try SkyLight fast path (instant, no animation)
-        var wid: CGWindowID = 0
-        let hasSkyLight = _SLSMainConnectionID != nil
-            && _SLSMoveWindow != nil
-            && _AXUIElementGetWindow(win, &wid) == .success
-            && wid != 0
-
-        if hasSkyLight {
-            let cid = _SLSMainConnectionID!()
-
-            // Resize via AX (app must handle its own content layout)
-            if let sv = AXValueCreate(.cgSize, &newSize) {
-                AXUIElementSetAttributeValue(win, kAXSizeAttribute as CFString, sv)
-            }
-
-            // Move via SkyLight (instant, no animation)
-            if _SLSMoveWindow!(cid, UInt32(wid), &newPos) != .success {
-                // SLS move failed — fall back to AX position
-                if let pv = AXValueCreate(.cgPoint, &newPos) {
-                    AXUIElementSetAttributeValue(win, kAXPositionAttribute as CFString, pv)
-                }
-            }
-        } else {
-            // 6. AX fallback: size then position
-            if let sv = AXValueCreate(.cgSize, &newSize) {
-                AXUIElementSetAttributeValue(win, kAXSizeAttribute as CFString, sv)
-            }
-            if let pv = AXValueCreate(.cgPoint, &newPos) {
-                AXUIElementSetAttributeValue(win, kAXPositionAttribute as CFString, pv)
-            }
-        }
+        return NSScreen.screens.first(where: { $0.frame.contains(pt) })
+            ?? NSScreen.screens.min(by: {
+                hypot(cx - $0.frame.midX, cy - $0.frame.midY) <
+                hypot(cx - $1.frame.midX, cy - $1.frame.midY)
+            })
+            ?? NSScreen.main
+            ?? NSScreen.screens[0]
     }
 
     // MARK: - Private
