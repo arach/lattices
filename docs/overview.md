@@ -4,42 +4,44 @@ description: What lattices is and who it's for
 order: 0
 ---
 
-lattices is a macOS developer workspace manager. It pairs tmux sessions
-with a native menu bar app to give you — and your AI coding agents —
-full control over terminal layouts, window tiling, and project navigation.
+lattices is a macOS developer workspace manager. A native menu bar app
+handles window tiling, project navigation, on-screen OCR, and optionally
+tmux-powered terminal sessions. Your AI coding agents can use it too.
 
 ## The problem
 
-Modern development means juggling multiple terminal windows: a coding
-agent in one, a dev server in another, tests in a third. Setting this up
-every morning is tedious. AI agents can't do it at all — they're trapped
-inside a single shell with no way to manage windows or switch contexts.
+I kept losing track of windows. Terminal here, dev server there, browser
+somewhere on the second monitor, three other projects buried under it all.
+Every morning I'd rebuild the same layout. Half my context-switching was
+just hunting for the right window.
+
+AI agents have it worse. They're stuck inside a single shell with no way
+to see what's on screen, arrange windows, or jump between projects.
 
 ## The solution
 
-lattices solves both sides:
+lattices fixes both sides:
 
-- **For you** — run `lattices` in any project to get a pre-configured
-  tmux session. Use the menu bar app to launch, tile, and navigate
-  sessions with a command palette.
-- **For agents** — the daemon API exposes 30 RPC methods over WebSocket.
-  Agents can discover projects, launch sessions, tile windows, switch
-  workspace layers, and read on-screen content via OCR — all programmatically.
+- The menu bar app tiles windows, navigates projects, and manages
+  workspace layers through a command palette. Add tmux if you want
+  persistent terminal sessions with auto-layout.
+- The daemon API exposes 30 RPC methods over WebSocket. Agents can
+  discover projects, tile windows, switch layers, read on-screen text
+  via OCR, and launch sessions programmatically.
 
 ## What's included
 
 | Component | Description |
 |-----------|-------------|
-| **CLI** (`lattices`) | Create, manage, and tile tmux sessions from the terminal |
-| **Menu bar app** | Native macOS companion with command palette, tiling, and project discovery |
-| **Daemon API** | WebSocket server on `ws://127.0.0.1:9399` — 30 methods, 5 real-time events |
-| **OCR engine** | Vision-powered screen reading with FTS5 search — agents can see what's on screen |
+| **CLI** | The `lattices` command. Tile windows, manage sessions, control the workspace from your terminal |
+| **Menu bar app** | Native macOS companion. Command palette, window tiling, project discovery |
+| **Daemon API** | WebSocket server on `ws://127.0.0.1:9399`. 30 methods, 5 real-time events |
+| **OCR engine** | Reads text from visible windows using Apple Vision, indexes it with FTS5 |
 | **Node.js client** | Zero-dependency `daemonCall()` helper for scripting |
 
-## Quick taste
+## Example
 
 ```bash
-# Launch a workspace (auto-detects your project)
 cd ~/my-project && lattices
 ```
 
@@ -47,27 +49,31 @@ Agents get the same control programmatically:
 
 ```js
 import { daemonCall } from '@arach/lattices/daemon-client'
-
 await daemonCall('session.launch', { path: '/Users/you/dev/frontend' })
 await daemonCall('window.tile', { session: 'frontend-a1b2c3', position: 'left' })
 ```
 
 ## Who it's for
 
-- **Developers** who use tmux and want faster project switching
-- **AI agent builders** who need their agents to control the workspace
-- **Power users** who manage multiple projects across macOS Spaces
+- Developers who juggle multiple projects and want faster window management
+- People building AI agents that need to control the desktop
+- Power users who work across multiple macOS Spaces
+- tmux users who want persistent, auto-configured terminal sessions
 
 ## Requirements
 
 - macOS 13.0+
-- tmux (`brew install tmux`)
 - Node.js 18+
-- Swift 5.9+ (only needed to build the menu bar app from source)
+
+### Dev dependencies
+
+- Swift 5.9+ — only to build the menu bar app from source
+- tmux — needed for persistent terminal sessions (`brew install tmux`)
 
 ## Next steps
 
-- [Quickstart](/docs/quickstart) — install and run your first session in 2 minutes
-- [Concepts](/docs/concepts) — architecture, glossary, and how it all works
-- [Configuration](/docs/config) — `.lattices.json` format and CLI commands
-- [Daemon API](/docs/api) — full RPC method reference for agents and scripts
+- [Quickstart](/docs/quickstart): install and run your first session in 2 minutes
+- [Configuration](/docs/config): `.lattices.json` format and CLI commands
+- [Screen OCR](/docs/ocr): Vision-powered screen reading and full-text search
+- [Concepts](/docs/concepts): architecture, glossary, and how it all works
+- [Daemon API](/docs/api): RPC method reference for agents and scripts

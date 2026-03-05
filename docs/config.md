@@ -126,7 +126,7 @@ Run `lattices init` in your project directory to generate a starter
 |----------------------------|--------------------------------------------------|
 | `lattices`                   | Create or attach to session for current project   |
 | `lattices init`              | Generate .lattices.json config for this project     |
-| `lattices ls`                | List active tmux sessions                         |
+| `lattices ls`                | List active sessions (requires tmux)              |
 | `lattices kill [name]`       | Kill a session (defaults to current project)      |
 | `lattices sync`              | Reconcile session to match declared config        |
 | `lattices restart [pane]`    | Restart a pane's process (by name or index)       |
@@ -154,14 +154,14 @@ output:
 lattices windows --json
 ```
 
-Returns a JSON array of window objects to stdout — useful for piping
+Returns a JSON array of window objects to stdout, useful for piping
 into `jq` or consuming from scripts.
 
 ### Daemon responses
 
 All daemon API calls return JSON natively. If you need structured data
-from lattices, the daemon is the best path — no flags needed, no stdout
-parsing. See the [API reference](/docs/api).
+from lattices, the daemon is easier than parsing stdout. See the
+[API reference](/docs/api).
 
 ### Exit codes
 
@@ -231,5 +231,5 @@ screen position. Available positions:
 Aliases: `left-half`/`left`, `right-half`/`right`, `top-half`/`top`,
 `bottom-half`/`bottom`, `max`/`maximize`.
 
-Tiling respects the menu bar and dock — it uses the visible desktop
+Tiling respects the menu bar and dock. It uses the visible desktop
 area, not the full screen.

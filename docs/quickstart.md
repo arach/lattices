@@ -4,17 +4,9 @@ description: Install lattices and launch your first workspace in 2 minutes
 order: 0.5
 ---
 
-Get from zero to a running workspace in five steps.
+Four steps to a running workspace.
 
-## 1. Install tmux
-
-```bash
-brew install tmux
-```
-
-Skip if you already have it (`tmux -V` to check).
-
-## 2. Install lattices
+## 1. Install lattices
 
 ```bash
 npm install -g @arach/lattices
@@ -29,43 +21,7 @@ cd lattices && npm link
 
 Verify: `lattices help` should print usage info.
 
-## 3. Launch a workspace
-
-```bash
-cd ~/your-project
-lattices
-```
-
-This creates a tmux session with two panes side by side:
-- Left pane (60%): `claude` (AI coding agent)
-- Right pane (40%): your dev command (auto-detected from `package.json`)
-
-No config file needed — lattices auto-detects your package manager
-and dev script.
-
-## 4. Customize with .lattices.json
-
-For more control, add a config to your project:
-
-```bash
-lattices init
-```
-
-This generates a `.lattices.json` like:
-
-```json
-{
-  "ensure": true,
-  "panes": [
-    { "name": "claude", "cmd": "claude", "size": 60 },
-    { "name": "server", "cmd": "bun dev" }
-  ]
-}
-```
-
-Edit it to match your workflow, then run `lattices` again to apply.
-
-## 5. Launch the menu bar app
+## 2. Launch the menu bar app
 
 ```bash
 lattices app
@@ -75,10 +31,51 @@ This builds (or downloads) and launches the native macOS companion.
 Open the command palette with **Cmd+Shift+M** to search and launch
 any project, tile windows, or switch workspace layers.
 
+## 3. Add a project config
+
+Drop a `.lattices.json` in your project root:
+
+```bash
+cd ~/your-project
+lattices init
+```
+
+This generates a config like:
+
+```json
+{
+  "panes": [
+    { "name": "claude", "cmd": "claude", "size": 60 },
+    { "name": "server", "cmd": "bun dev" }
+  ]
+}
+```
+
+The menu bar app discovers projects with `.lattices.json` files
+automatically — they show up in the command palette.
+
+## 4. (Optional) Add tmux for persistent sessions
+
+If you want terminal sessions that survive disconnects and auto-restore
+your pane layout:
+
+```bash
+brew install tmux
+cd ~/your-project && lattices
+```
+
+This creates a tmux session with your configured panes side by side.
+The session persists in the background — close your terminal, reopen it,
+run `lattices` again, and everything is still there.
+
+> **Without tmux**, you still get the menu bar app, command palette,
+> window tiling, workspace layers, OCR, and the full daemon API.
+
 ## What's next
 
-- [Concepts](/docs/concepts) — understand sessions, panes, and the architecture
-- [Configuration](/docs/config) — full `.lattices.json` reference and CLI commands
-- [Menu Bar App](/docs/app) — command palette, tiling, and settings
-- [Daemon API](/docs/api) — programmatic control for agents and scripts
-- [Layers & Groups](/docs/layers) — organize projects into switchable contexts
+- [Configuration](/docs/config): `.lattices.json` reference and CLI commands
+- [Menu Bar App](/docs/app): command palette, tiling, and settings
+- [Layers & Groups](/docs/layers): organize projects into switchable contexts
+- [Screen OCR](/docs/ocr): let agents read what's on screen
+- [Concepts](/docs/concepts): sessions, panes, and the architecture
+- [Daemon API](/docs/api): programmatic control for agents and scripts

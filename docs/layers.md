@@ -14,8 +14,8 @@ work together.
 
 ## Tab Groups
 
-Tab groups let you bundle related projects as tabs (tmux windows)
-within a single tmux session. This is useful when you have a family
+Tab groups let you bundle related projects as tabs within a single
+terminal session (requires tmux). This is useful when you have a family
 of projects — like an iOS app, macOS app, website, and API — that
 you think of as one logical unit.
 
@@ -46,11 +46,11 @@ to per-project configs.
 
 ### How it works
 
-- **Session naming**: `lattices-group-<id>` (e.g. `lattices-group-talkie`)
-- **tmux mapping**: 1 group = 1 tmux session, each tab = 1 tmux window,
-  each window has its own panes from that project's `.lattices.json`
-- **Independent launch still works**: `cd talkie-ios && lattices` creates
-  its own standalone session as before
+- Session name follows the pattern `lattices-group-<id>` (e.g. `lattices-group-talkie`)
+- 1 group = 1 tmux session. Each tab is a tmux window, and each window
+  gets its own panes from that project's `.lattices.json`
+- You can still launch projects independently: `cd talkie-ios && lattices`
+  creates its own standalone session as before
 
 ### Tab group fields
 
@@ -100,14 +100,13 @@ The command palette also includes group commands:
 
 ## Layers
 
-Layers let you group projects into switchable contexts. Instead of
-juggling six terminal windows at once, define two or three layers and
-switch between them instantly — the target layer's windows come to the
-front and tile into position, while the previous layer's windows fall
+Layers let you group projects into switchable contexts. Define two or
+three layers and switch between them. The target layer's windows come
+to the front and tile into position; the previous layer's windows fall
 behind.
 
 All tmux sessions stay alive across switches. Nothing is detached or
-killed — layers only control which windows are focused.
+killed. Layers only control which windows are focused.
 
 ### Configuration
 
@@ -232,7 +231,7 @@ The `layer.switch` call focuses and tiles all windows in the target
 layer, just like the hotkey or command palette. A `layer.switched`
 event is broadcast to all connected clients.
 
-See the [Daemon API reference](/docs/api) for more methods.
+More methods in the [Daemon API reference](/docs/api).
 
 ### Layer bar
 

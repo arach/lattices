@@ -1,60 +1,51 @@
 ---
 title: Concepts
 description: Core ideas, glossary, and architecture of lattices
-order: 1
+order: 6
 ---
 
 ## Glossary
 
 | Term | Definition |
 |------|------------|
-| **Session** | A persistent tmux workspace that lives in the background. Survives terminal crashes, disconnects, and closing your laptop. One session per project. |
-| **Pane** | A single terminal view inside a session. A typical setup has two panes side by side — Claude Code on the left, dev server on the right. |
-| **Attach / Detach** | Attaching connects your terminal to an existing session. Detaching disconnects but keeps the session alive — your dev server keeps running, Claude keeps thinking. |
-| **Daemon** | WebSocket server (`ws://127.0.0.1:9399`) inside the menu bar app. Exposes 26 RPC methods and 4 real-time events for programmatic control. See the [API reference](/docs/api). |
-| **Agent** | Any program that calls the daemon API autonomously — an AI coding agent, a shell script, a CI pipeline, or a custom tool. |
-| **Sync / Reconcile** | `lattices sync` brings a running session back in line with its declared config — recreates missing panes, re-applies layout, restores labels, re-runs commands in idle panes. |
-| **Ensure / Prefill** | Two modes for restoring exited commands on reattach. **Ensure** auto-reruns the command. **Prefill** types it but waits for you to press Enter. Set via `.lattices.json`. |
 | **Command Palette** | The menu bar app's primary interface (**Cmd+Shift+M**). Searchable list of actions: launch, tile, sync, restart, settings. |
 | **Window Tiling** | Snap terminal windows to preset screen positions (halves, quarters, thirds, maximize, center). Works from the CLI (`lattices tile`) or the command palette. |
-| **tmux** | Terminal multiplexer — the engine behind lattices. Manages sessions, panes, and layouts. lattices configures it for you. |
+| **Daemon** | WebSocket server (`ws://127.0.0.1:9399`) inside the menu bar app. Exposes 30 RPC methods and 5 real-time events for programmatic control. See the [API reference](/docs/api). |
+| **Agent** | Any program that calls the daemon API autonomously — an AI coding agent, a shell script, a CI pipeline, or a custom tool. |
+| **Session** | A persistent tmux workspace that lives in the background. Survives terminal crashes, disconnects, and closing your laptop. One session per project. Requires tmux. |
+| **Pane** | A single terminal view inside a session. A typical setup has two panes side by side — Claude Code on the left, dev server on the right. Requires tmux. |
+| **Attach / Detach** | Attaching connects your terminal to an existing session. Detaching disconnects but keeps the session alive — your dev server keeps running, Claude keeps thinking. Requires tmux. |
+| **Sync / Reconcile** | `lattices sync` brings a running session back in line with its declared config — recreates missing panes, re-applies layout, restores labels, re-runs commands in idle panes. Requires tmux. |
+| **Ensure / Prefill** | Two modes for restoring exited commands on reattach. **Ensure** auto-reruns the command. **Prefill** types it but waits for you to press Enter. Set via `.lattices.json`. Requires tmux. |
+| **tmux** | Terminal multiplexer (optional). Provides persistent sessions, pane layouts, and command restoration. Install with `brew install tmux` if you want session management. |
 
 ## How it works
 
 1. You create a `.lattices.json` file in your project root (or run `lattices init`)
-2. lattices reads the config and creates a tmux session with your layout
-3. Each pane gets its command (claude, dev server, tests, etc.)
-4. The session persists in the background until you kill it
-5. You can attach/detach from any terminal at any time
-6. If `ensure` is enabled, exited commands auto-restart on reattach
+2. The menu bar app discovers the project and adds it to the command palette
+3. You can tile windows, switch layers, search via OCR, and use the daemon API
+4. With tmux installed, `lattices` also creates persistent terminal sessions:
+   - Each pane gets its command (claude, dev server, tests, etc.)
+   - The session persists in the background until you kill it
+   - You can attach/detach from any terminal at any time
+   - If `ensure` is enabled, exited commands auto-restart on reattach
 
 ## Architecture
 
-### Four-layer stack
+<img src="/architecture.svg" alt="lattices architecture diagram" style="margin: 2rem 0; max-width: 100%;" />
 
-```
-┌─────────────────────────────┐
-│  AI Agents / Scripts        │  ← daemon API: 26 RPC methods, real-time events
-├─────────────────────────────┤
-│  Menu bar app (Swift/AppKit)│  ← GUI: command palette, tiling, project list
-├─────────────────────────────┤
-│  CLI (Node.js)              │  ← lattices, lattices sync, lattices restart ...
-├─────────────────────────────┤
-│  tmux                       │  ← session/pane lifecycle, layout, persistence
-└─────────────────────────────┘
-```
-
-- The **CLI** talks to tmux directly via `tmux` shell commands.
-- The **menu bar app** calls the CLI binary for session operations
-  (launch, sync, restart) and uses tmux directly for status checks
-  (has-session, list-panes). It also runs the **daemon** — a WebSocket
-  server on `ws://127.0.0.1:9399`.
-- **Agents and scripts** connect to the daemon over WebSocket and can
-  do everything the app and CLI can do: discover projects, launch
-  sessions, tile windows, switch layers, and subscribe to real-time
-  events.
-- All layers share the same session naming convention so they always
-  agree on which session belongs to which project.
+- The menu bar app is the core. It provides the command palette,
+  window tiling, OCR, project discovery, and the daemon (a WebSocket
+  server on `ws://127.0.0.1:9399`). It works with or without tmux.
+- The CLI handles tiling, OCR queries, and (when tmux is installed)
+  session management via `tmux` shell commands.
+- Agents and scripts connect to the daemon over WebSocket. They can
+  do everything the app and CLI can do: discover projects, tile windows,
+  switch layers, read on-screen text, and subscribe to real-time events.
+- When tmux is installed, the app and CLI can also launch, sync, and
+  manage persistent terminal sessions. All layers share the same session
+  naming convention so they always agree on which session belongs to
+  which project.
 
 ### Session naming
 
@@ -71,7 +62,7 @@ Both the CLI (Node.js `crypto.createHash`) and the app (Swift
 
 ### Window discovery via title tags
 
-When lattices creates a session, it sets the tmux option:
+When lattices creates a tmux session, it sets the tmux option:
 
 ```
 set-titles-string "[lattices:<session-name>] #{pane_title}"
@@ -100,7 +91,7 @@ It uses private SkyLight framework APIs loaded at runtime via `dlopen`:
 This is the same approach used by [Loop](https://github.com/MrKai77/Loop)
 and other macOS window managers.
 
-### Ensure/prefill restoration
+### Ensure/prefill restoration (requires tmux)
 
 When you run `lattices` (no arguments) and a session already exists:
 
@@ -112,24 +103,17 @@ When you run `lattices` (no arguments) and a session already exists:
    - **prefill**: sends the command without Enter (manual restart)
 4. Then it attaches to the session as normal
 
-## Agentic architecture
+## Agent control
 
-lattices is designed for programmatic control. The daemon API gives
-agents the same capabilities as a human using the menu bar app:
+The daemon API gives agents the same control as a human using the
+menu bar app. An agent can list projects and windows, launch sessions,
+tile windows to screen positions, subscribe to real-time events
+(`windows.changed`, `tmux.changed`, `layer.switched`), and sync
+sessions back to their declared config.
 
-- **Discover** — list projects, sessions, windows, and Spaces
-- **Launch** — start sessions for any scanned project
-- **Arrange** — tile windows to screen positions, move between Spaces
-- **Monitor** — subscribe to `windows.changed`, `tmux.changed`,
-  `layer.switched`, and `processes.changed` events for real-time
-  workspace awareness
-- **Recover** — sync sessions back to their declared config, restart
-  failed panes
-
-An orchestrator agent can set up an entire multi-project workspace in
-a few `daemonCall()` invocations — launching sessions, tiling windows,
-and switching layers. See the [Daemon API reference](/docs/api) for the
-full method list, code examples, and integration patterns.
+A typical orchestrator sets up a multi-project workspace in a few
+`daemonCall()` invocations. See the [Daemon API reference](/docs/api)
+for the full method list and code examples.
 
 ## Key shortcuts (inside tmux)
 

@@ -2,14 +2,25 @@
   "name": "lattices",
   "groups": [
     {
-      "id": "getting-started",
-      "title": "Getting Started",
+      "id": "introduction",
+      "title": "Introduction",
       "items": [
         {
-          "id": "concepts",
-          "title": "Concepts",
-          "description": "Core ideas, glossary, and architecture of lattices"
+          "id": "overview",
+          "title": "Overview",
+          "description": "What lattices is and who it's for"
         },
+        {
+          "id": "quickstart",
+          "title": "Quickstart",
+          "description": "Install lattices and launch your first workspace in 2 minutes"
+        }
+      ]
+    },
+    {
+      "id": "user-guide",
+      "title": "User Guide",
+      "items": [
         {
           "id": "config",
           "title": "Configuration",
@@ -24,13 +35,23 @@
           "id": "layers",
           "title": "Layers & Tab Groups",
           "description": "Switchable workspace layers and tabbed project groups"
+        },
+        {
+          "id": "ocr",
+          "title": "Screen OCR",
+          "description": "Vision-powered screen reading with full-text search"
         }
       ]
     },
     {
-      "id": "reference",
-      "title": "Reference",
+      "id": "architecture-api",
+      "title": "Architecture & API",
       "items": [
+        {
+          "id": "concepts",
+          "title": "Concepts",
+          "description": "Core ideas, glossary, and architecture of lattices"
+        },
         {
           "id": "api",
           "title": "Daemon API",

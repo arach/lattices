@@ -4,8 +4,8 @@ description: Command palette, window tiling, and session management
 order: 3
 ---
 
-The lattices menu bar app is a native macOS companion that lives in your
-menu bar and gives you quick access to all your lattices sessions.
+The lattices menu bar app sits in your menu bar and controls your
+workspace from there.
 
 ## Installation
 
@@ -92,15 +92,11 @@ For each project found, the app reads:
 
 ## Session management
 
-The app calls the lattices CLI for session operations:
-
-- **Launch** — runs `lattices` in the project directory, which creates
-  or reattaches to the session
-- **Sync** — runs `lattices sync` to reconcile panes to the config
-- **Restart** — runs `lattices restart <pane>` to kill and re-run a
-  specific pane's process
-- **Detach** — calls `tmux detach-client` directly
-- **Kill** — calls `tmux kill-session` directly
+The app calls the lattices CLI for session operations. Launch runs
+`lattices` in the project directory, Sync runs `lattices sync` to
+reconcile panes, and Restart runs `lattices restart <pane>` to kill
+and re-run a pane's process. Detach and Kill call `tmux detach-client`
+and `tmux kill-session` directly.
 
 ## Window tiling
 
@@ -145,7 +141,7 @@ When a window is found and focused, the app flashes a green border
 highlight around it for ~1 second so you can spot it immediately.
 
 Grant Screen Recording and Accessibility permissions in System
-Settings > Privacy & Security for the best experience.
+Settings > Privacy & Security for all three paths to work.
 
 ## Settings
 
@@ -203,13 +199,16 @@ window is in front.
 
 ## Screen OCR
 
-The app continuously reads text from visible windows using Apple's Vision
-framework and stores results in a local SQLite database with FTS5
-full-text search. This gives agents the ability to "see" what's on screen.
+> See [Screen OCR](/docs/ocr) for full details on configuration, scanning,
+> search, and agent usage.
+
+The app reads text from visible windows using Apple's Vision framework
+and stores results in a local SQLite database with FTS5 full-text search.
+Agents can use this to "see" what's on screen.
 
 ### How it works
 
-1. Every 30 seconds, the app captures each visible window as an image
+1. Every 60 seconds, the app captures the top visible windows as images
 2. A SHA256 hash detects whether the window content has changed
 3. Changed windows are processed through `VNRecognizeTextRequest` (fast mode)
 4. Results are stored in `~/.lattices/ocr.db` with full-text indexing
@@ -242,7 +241,7 @@ const errors = await daemonCall('ocr.search', { query: 'error OR failed' })
 const snapshot = await daemonCall('ocr.snapshot')
 ```
 
-See the [Daemon API reference](/docs/api#ocrsnapshot) for full details.
+More in the [Daemon API reference](/docs/api#ocrsnapshot).
 
 ### Requirements
 
@@ -274,23 +273,22 @@ if (await isDaemonRunning()) {
 
 ### What it provides
 
-- **30 RPC methods** — read windows, sessions, projects, spaces, layers, processes, terminals,
-  OCR; launch/kill/sync sessions; tile/focus/move windows; switch layers;
-  manage tab groups; search on-screen text
-- **5 real-time events** — `windows.changed`, `tmux.changed`, `processes.changed`,
-  `layer.switched`, `ocr.scanComplete` — broadcast to all connected clients
-- **Window tracking** — the daemon monitors the desktop window list
-  and correlates windows to lattices sessions via title tags
-- **Space awareness** — knows which macOS Space each window is on
+- 30 RPC methods for reading windows, sessions, projects, spaces, layers,
+  processes, terminals, and OCR. Also launching/killing sessions, tiling
+  windows, switching layers, and managing tab groups.
+- 5 real-time events (`windows.changed`, `tmux.changed`, `processes.changed`,
+  `layer.switched`, `ocr.scanComplete`) broadcast to all connected clients.
+- Window tracking that monitors the desktop window list and correlates
+  windows to lattices sessions via title tags.
+- Space awareness, so it knows which macOS Space each window is on.
 
 ### Security
 
-The daemon binds to **localhost only** (`127.0.0.1:9399`). It is not
-accessible from the network. There is no authentication — any process
-on the same machine can connect. This is intentional: the daemon is
-designed for local automation, not remote access.
+The daemon binds to localhost only (`127.0.0.1:9399`). Not accessible
+from the network. No authentication, so any local process can connect.
+This is intentional. It's for local automation, not remote access.
 
-See the [Daemon API reference](/docs/api) for the full method list.
+Full method list in the [Daemon API reference](/docs/api).
 
 ## Diagnostics
 
