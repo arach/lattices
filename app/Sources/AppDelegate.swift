@@ -48,7 +48,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             CommandModeWindow.shared.isVisible ||
             CommandPaletteWindow.shared.isVisible ||
             MainWindow.shared.isVisible ||
-            ScreenMapWindowController.shared.isVisible
+            ScreenMapWindowController.shared.isVisible ||
+            OmniSearchWindow.shared.isVisible
         let desired: NSApplication.ActivationPolicy = hasVisibleWindow ? .regular : .accessory
         if NSApp.activationPolicy() != desired {
             NSApp.setActivationPolicy(desired)
@@ -84,6 +85,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         store.register(action: .bezel) { WindowBezel.showBezelForFrontmostWindow() }
         store.register(action: .cheatSheet) { CheatSheetHUD.shared.toggle() }
         store.register(action: .desktopInventory) { CommandModeWindow.shared.toggle() }
+        store.register(action: .omniSearch) { OmniSearchWindow.shared.toggle() }
 
         // Layer-switching hotkeys
         let workspace = WorkspaceManager.shared
@@ -190,6 +192,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             ("Desktop Inventory", "", #selector(menuDesktopInventory)),
             ("Window Bezel", "", #selector(menuWindowBezel)),
             ("Cheat Sheet", "", #selector(menuCheatSheet)),
+            ("Omni Search", "", #selector(menuOmniSearch)),
         ]
         for (title, shortcut, action) in actions {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
@@ -224,6 +227,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc private func menuDesktopInventory() { CommandModeWindow.shared.toggle() }
     @objc private func menuWindowBezel() { WindowBezel.showBezelForFrontmostWindow() }
     @objc private func menuCheatSheet() { CheatSheetHUD.shared.toggle() }
+    @objc private func menuOmniSearch() { OmniSearchWindow.shared.toggle() }
     @objc private func menuSettings() { SettingsWindowController.shared.show() }
     @objc private func menuDiagnostics() { DiagnosticWindow.shared.toggle() }
     @objc private func menuQuit() { NSApp.terminate(nil) }

@@ -1300,6 +1300,9 @@ struct CommandModeView: View {
     private func installKeyHandler() {
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             guard state.phase == .inventory || state.phase == .desktopInventory else { return event }
+            // Only handle keys when our panel is the key window
+            guard let panel = CommandModeWindow.shared.panelWindow,
+                  panel.isKeyWindow else { return event }
             let consumed = state.handleKey(event.keyCode, modifiers: event.modifierFlags)
             return consumed ? nil : event
         }

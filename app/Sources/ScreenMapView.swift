@@ -1972,6 +1972,9 @@ struct ScreenMapView: View {
 
     private func installKeyHandler() {
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { event in
+            // Only handle keys when our window is the key window
+            guard let win = ScreenMapWindowController.shared.nsWindow,
+                  win.isKeyWindow else { return event }
             // Track space key for canvas drag-to-pan
             if event.keyCode == 49 && !controller.isSearchActive {
                 if event.type == .keyDown && !event.isARepeat {

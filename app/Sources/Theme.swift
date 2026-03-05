@@ -92,6 +92,41 @@ struct GlassCard: ViewModifier {
     }
 }
 
+struct LiquidGlassCard: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .background(
+                ZStack {
+                    // Base: translucent dark fill
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.white.opacity(0.04))
+
+                    // Subtle gradient: brighter at top edge for "glass reflection"
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.06), Color.clear],
+                                startPoint: .top,
+                                endPoint: .center
+                            )
+                        )
+
+                    // Border: top-bright, bottom-dark for depth
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.12), Color.white.opacity(0.04)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 0.5
+                        )
+                }
+            )
+            .shadow(color: Color.black.opacity(0.2), radius: 8, y: 4)
+    }
+}
+
 struct AngularButton: ViewModifier {
     let color: Color
     var filled: Bool = true
@@ -116,6 +151,10 @@ struct AngularButton: ViewModifier {
 extension View {
     func glassCard(hovered: Bool = false) -> some View {
         modifier(GlassCard(isHovered: hovered))
+    }
+
+    func liquidGlass() -> some View {
+        modifier(LiquidGlassCard())
     }
 
     func angularButton(_ color: Color, filled: Bool = true) -> some View {

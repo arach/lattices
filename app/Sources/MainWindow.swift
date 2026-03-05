@@ -7,6 +7,7 @@ final class MainWindow {
     static let shared = MainWindow()
 
     private var window: NSWindow?
+    private var keyMonitor: Any?
 
     var isVisible: Bool { window?.isVisible ?? false }
 
@@ -61,10 +62,22 @@ final class MainWindow {
 
         window = w
         AppDelegate.updateActivationPolicy()
+
+        // Escape key → close
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard event.keyCode == 53,
+                  self?.window?.isKeyWindow == true else { return event }
+            self?.close()
+            return nil
+        }
     }
 
     func close() {
         window?.orderOut(nil)
+        if let monitor = keyMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyMonitor = nil
+        }
         AppDelegate.updateActivationPolicy()
     }
 }

@@ -196,6 +196,33 @@ final class OcrStore {
         return results
     }
 
+    // MARK: - Recent (chronological, synchronous)
+
+    func recent(limit: Int = 50) -> [OcrSearchResult] {
+        guard let db else { return [] }
+
+        let sql = """
+            SELECT id, wid, app, title,
+                   frame_x, frame_y, frame_w, frame_h,
+                   full_text, timestamp, '' AS snip
+            FROM ocr_entry
+            ORDER BY timestamp DESC
+            LIMIT ?1
+        """
+
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
+        defer { sqlite3_finalize(stmt) }
+
+        sqlite3_bind_int(stmt!, 1, Int32(limit))
+
+        var results: [OcrSearchResult] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            results.append(rowToSearchResult(stmt!))
+        }
+        return results
+    }
+
     // MARK: - Cleanup
 
     private func cleanupSync(olderThanDays days: Int) {

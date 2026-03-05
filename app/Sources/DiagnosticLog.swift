@@ -67,15 +67,24 @@ final class DiagnosticWindow {
     static let shared = DiagnosticWindow()
 
     private var window: NSWindow?
+    private var keyMonitor: Any?
     private let log = DiagnosticLog.shared
 
     var isVisible: Bool { window?.isVisible ?? false }
 
     func toggle() {
         if let w = window, w.isVisible {
-            w.orderOut(nil)
+            dismiss()
         } else {
             show()
+        }
+    }
+
+    func dismiss() {
+        window?.orderOut(nil)
+        if let monitor = keyMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyMonitor = nil
         }
     }
 
@@ -118,6 +127,15 @@ final class DiagnosticWindow {
 
         w.orderFrontRegardless()
         window = w
+
+        // Escape key → dismiss
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard event.keyCode == 53,
+                  let win = self?.window,
+                  event.window === win || win.isKeyWindow else { return event }
+            self?.dismiss()
+            return nil
+        }
 
         // Startup log
         let diag = DiagnosticLog.shared

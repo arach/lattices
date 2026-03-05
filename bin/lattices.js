@@ -867,6 +867,122 @@ async function daemonStatusInventory() {
   }
 }
 
+// ── OCR commands ──────────────────────────────────────────────────────
+
+async function ocrCommand(sub, ...rest) {
+  const { daemonCall } = await getDaemonClient();
+
+  if (!sub || sub === "snapshot" || sub === "ls") {
+    // Default: show latest OCR snapshot
+    try {
+      const results = await daemonCall("ocr.snapshot", null, 5000);
+      if (!results.length) {
+        console.log("No OCR results yet. The first scan runs ~60s after launch.");
+        return;
+      }
+      console.log(`\x1b[1mOCR Snapshot\x1b[0m  (${results.length} windows)\n`);
+      for (const r of results) {
+        const age = Math.round((Date.now() / 1000) - r.timestamp);
+        const ageStr = age < 60 ? `${age}s ago` : age < 3600 ? `${Math.floor(age / 60)}m ago` : `${Math.floor(age / 3600)}h ago`;
+        const lines = (r.fullText || "").split("\n").filter(Boolean);
+        const preview = lines.slice(0, 3).map(l => l.length > 80 ? l.slice(0, 77) + "..." : l);
+        console.log(`  \x1b[1m${r.app}\x1b[0m  wid:${r.wid}  \x1b[90m${ageStr}\x1b[0m`);
+        console.log(`    \x1b[36m"${r.title || "(untitled)"}"\x1b[0m`);
+        if (preview.length) {
+          for (const line of preview) {
+            console.log(`    \x1b[90m${line}\x1b[0m`);
+          }
+          if (lines.length > 3) {
+            console.log(`    \x1b[90m… ${lines.length - 3} more lines\x1b[0m`);
+          }
+        } else {
+          console.log(`    \x1b[90m(no text detected)\x1b[0m`);
+        }
+        console.log();
+      }
+    } catch {
+      console.log("Daemon not running. Start with: lattices app");
+    }
+    return;
+  }
+
+  if (sub === "search") {
+    const query = rest.join(" ");
+    if (!query) {
+      console.log("Usage: lattices ocr search <query>");
+      return;
+    }
+    try {
+      const results = await daemonCall("ocr.search", { query }, 5000);
+      if (!results.length) {
+        console.log(`No OCR matches for "${query}".`);
+        return;
+      }
+      console.log(`\x1b[1mOCR Search\x1b[0m  "${query}"  (${results.length} matches)\n`);
+      for (const r of results) {
+        const snippet = r.snippet || r.fullText?.slice(0, 120) || "";
+        console.log(`  \x1b[1m${r.app}\x1b[0m  wid:${r.wid}`);
+        console.log(`    \x1b[36m"${r.title || "(untitled)"}"\x1b[0m`);
+        console.log(`    ${snippet}`);
+        console.log();
+      }
+    } catch (e) {
+      console.log(`Error: ${e.message}`);
+    }
+    return;
+  }
+
+  if (sub === "scan") {
+    try {
+      console.log("Triggering OCR scan...");
+      await daemonCall("ocr.scan", null, 30000);
+      console.log("Scan complete.");
+    } catch (e) {
+      console.log(`Error: ${e.message}`);
+    }
+    return;
+  }
+
+  if (sub === "history") {
+    const wid = parseInt(rest[0], 10);
+    if (isNaN(wid)) {
+      console.log("Usage: lattices ocr history <wid>");
+      return;
+    }
+    try {
+      const results = await daemonCall("ocr.history", { wid }, 5000);
+      if (!results.length) {
+        console.log(`No OCR history for wid:${wid}.`);
+        return;
+      }
+      console.log(`\x1b[1mOCR History\x1b[0m  wid:${wid}  (${results.length} entries)\n`);
+      for (const r of results) {
+        const ts = new Date(r.timestamp * 1000).toLocaleTimeString();
+        const lines = (r.fullText || "").split("\n").filter(Boolean);
+        const preview = lines.slice(0, 2).map(l => l.length > 80 ? l.slice(0, 77) + "..." : l);
+        console.log(`  \x1b[90m${ts}\x1b[0m  \x1b[1m${r.app}\x1b[0m — "${r.title}"`);
+        for (const line of preview) {
+          console.log(`    \x1b[90m${line}\x1b[0m`);
+        }
+        console.log();
+      }
+    } catch (e) {
+      console.log(`Error: ${e.message}`);
+    }
+    return;
+  }
+
+  // Unknown subcommand
+  console.log(`lattices ocr — Screen text recognition
+
+Usage:
+  lattices ocr              Show latest OCR snapshot (all windows)
+  lattices ocr search <q>   Full-text search across all scanned windows
+  lattices ocr scan         Trigger an immediate scan
+  lattices ocr history <id> Show OCR timeline for a window (by wid)
+`);
+}
+
 function printUsage() {
   console.log(`lattices — Claude Code + dev server in tmux
 
@@ -886,6 +1002,10 @@ Usage:
   lattices tile <position>    Tile the frontmost window (left, right, top, etc.)
   lattices distribute         Smart-grid all visible windows (daemon required)
   lattices layer [index]      List layers or switch to a layer (daemon required)
+  lattices ocr                Show latest OCR snapshot (all windows)
+  lattices ocr search <q>     Full-text search screen text
+  lattices ocr scan           Trigger an immediate scan
+  lattices ocr history <wid>  OCR timeline for a specific window
   lattices daemon status      Show daemon status
   lattices app                Launch the menu bar companion app
   lattices app build          Rebuild the menu bar app
@@ -1267,6 +1387,9 @@ switch (command) {
   case "layer":
   case "layers":
     await layerCommand(args[1]);
+    break;
+  case "ocr":
+    await ocrCommand(args[1], ...args.slice(2));
     break;
   case "daemon":
     if (args[1] === "status") {

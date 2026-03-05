@@ -4,9 +4,9 @@ import "./index.css";
 type PkgManager = "npm" | "pnpm" | "bun";
 
 const commands: Record<PkgManager, string> = {
-  npm: "npm install -g lattices",
-  pnpm: "pnpm add -g lattices",
-  bun: "bun add -g lattices",
+  npm: "npm install -g @arach/lattices",
+  pnpm: "pnpm add -g @arach/lattices",
+  bun: "bun add -g @arach/lattices",
 };
 
 const pmOrder: PkgManager[] = ["npm", "pnpm", "bun"];
@@ -71,6 +71,24 @@ function CheckIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
       <polyline points="20 6 9 17 4 12" />
+    </svg>
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} width="16" height="16">
+      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  );
+}
+
+function AppleIcon() {
+  return (
+    <svg viewBox="0 0 384 512" fill="currentColor" width="14" height="14">
+      <path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184 4 273.5c0 26.2 4.8 53.3 14.4 81.2 12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z" />
     </svg>
   );
 }
@@ -388,11 +406,21 @@ export default function App() {
                 </li>
                 <li>Space navigation and window highlighting</li>
               </ul>
+              <a
+                href="https://github.com/arach/lattices/releases/latest"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="app-download"
+              >
+                <AppleIcon />
+                Download for macOS
+                <span className="app-download-meta">Apple Silicon · Free</span>
+              </a>
             </div>
             <div className="app-screenshot-wrap">
               <img
-                src="/app-screenshot.png"
-                alt="lattices menu bar app showing a running session"
+                src="/app-latest.png"
+                alt="lattices app showing screen map with dual displays, layers, and inspector"
                 className="app-screenshot"
               />
             </div>
@@ -413,12 +441,20 @@ export default function App() {
               View on GitHub
             </a>
             <a
-              href="https://www.npmjs.com/package/lattices"
+              href="https://www.npmjs.com/package/@arach/lattices"
               target="_blank"
               rel="noopener noreferrer"
               className="btn btn-secondary"
             >
               npm package
+            </a>
+            <a
+              href="https://github.com/arach/lattices/releases/latest"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-secondary"
+            >
+              Download App
             </a>
             <a
               href="/docs/api"

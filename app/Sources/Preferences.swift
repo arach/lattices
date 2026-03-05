@@ -20,6 +20,32 @@ class Preferences: ObservableObject {
         didSet { UserDefaults.standard.set(mode.rawValue, forKey: "mode") }
     }
 
+    // MARK: - Search & OCR
+
+    @Published var ocrEnabled: Bool {
+        didSet { UserDefaults.standard.set(!ocrEnabled, forKey: "ocr.disabled") }
+    }
+
+    @Published var ocrQuickInterval: Double {
+        didSet { UserDefaults.standard.set(ocrQuickInterval, forKey: "ocr.interval") }
+    }
+
+    @Published var ocrDeepInterval: Double {
+        didSet { UserDefaults.standard.set(ocrDeepInterval, forKey: "ocr.deepInterval") }
+    }
+
+    @Published var ocrQuickLimit: Int {
+        didSet { UserDefaults.standard.set(ocrQuickLimit, forKey: "ocr.quickLimit") }
+    }
+
+    @Published var ocrDeepLimit: Int {
+        didSet { UserDefaults.standard.set(ocrDeepLimit, forKey: "ocr.deepLimit") }
+    }
+
+    @Published var ocrAccuracy: String {
+        didSet { UserDefaults.standard.set(ocrAccuracy, forKey: "ocr.accuracy") }
+    }
+
     init() {
         if let saved = UserDefaults.standard.string(forKey: "terminal"),
            let t = Terminal(rawValue: saved), t.isInstalled {
@@ -44,5 +70,23 @@ class Preferences: ObservableObject {
         } else {
             self.mode = .learning
         }
+
+        // Search & OCR
+        self.ocrEnabled = !UserDefaults.standard.bool(forKey: "ocr.disabled")
+
+        let savedInterval = UserDefaults.standard.double(forKey: "ocr.interval")
+        self.ocrQuickInterval = savedInterval > 0 ? savedInterval : 60
+
+        let savedDeep = UserDefaults.standard.double(forKey: "ocr.deepInterval")
+        self.ocrDeepInterval = savedDeep > 0 ? savedDeep : 7200
+
+        let savedQL = UserDefaults.standard.integer(forKey: "ocr.quickLimit")
+        self.ocrQuickLimit = savedQL > 0 ? savedQL : 5
+
+        let savedDL = UserDefaults.standard.integer(forKey: "ocr.deepLimit")
+        self.ocrDeepLimit = savedDL > 0 ? savedDL : 15
+
+        let savedAcc = UserDefaults.standard.string(forKey: "ocr.accuracy") ?? "accurate"
+        self.ocrAccuracy = savedAcc
     }
 }

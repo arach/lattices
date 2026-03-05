@@ -437,20 +437,8 @@ final class CommandModeState: ObservableObject {
         }
 
         switch keyCode {
-        case 53: // Escape
-            if isSearching {
-                deactivateSearch()
-                return true
-            }
-            if !selectedWindowIds.isEmpty {
-                clearSelection()
-                return true
-            }
-            // No selection — back to chord view
-            desktopMode = .browsing
-            activePreset = nil
-            phase = .inventory
-            onPanelResize?(chordPanelSize.0, chordPanelSize.1)
+        case 53: // Escape — always dismiss
+            onDismiss?()
             return true
 
         case 126: // ↑
@@ -593,8 +581,8 @@ final class CommandModeState: ObservableObject {
 
     private func handleTilingKey(_ keyCode: UInt16, modifiers: NSEvent.ModifierFlags = []) -> Bool {
         switch keyCode {
-        case 53: // Escape → back to browsing
-            desktopMode = .browsing
+        case 53: // Escape — always dismiss
+            onDismiss?()
             return true
 
         case 123: tileSelectedWindow(to: .left); return true       // ←
@@ -626,8 +614,8 @@ final class CommandModeState: ObservableObject {
 
     private func handleGridPreviewKey(_ keyCode: UInt16) -> Bool {
         switch keyCode {
-        case 53: // Escape → back to browsing
-            desktopMode = .browsing
+        case 53: // Escape — always dismiss
+            onDismiss?()
             return true
 
         case 36, 1: // Enter or s → apply the layout

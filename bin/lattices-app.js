@@ -19,7 +19,22 @@ const ASSET_NAME = "Lattices-macos-arm64";
 
 function isRunning() {
   try {
-    execSync("pgrep -f Lattices.app", { stdio: "pipe" });
+    execSync("pgrep -x Lattices", { stdio: "pipe" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function quit() {
+  try {
+    execSync("pkill -x Lattices", { stdio: "pipe" });
+    // Wait briefly for process to exit
+    try { execSync("sleep 0.5", { stdio: "pipe" }); } catch {}
+    // Force kill if still running
+    if (isRunning()) {
+      execSync("pkill -9 -x Lattices", { stdio: "pipe" });
+    }
     return true;
   } catch {
     return false;
@@ -183,15 +198,14 @@ if (cmd === "build") {
   }
   buildFromSource();
 } else if (cmd === "quit") {
-  try {
-    execSync("pkill -f Lattices.app", { stdio: "pipe" });
+  if (quit()) {
     console.log("lattices app stopped.");
-  } catch {
+  } else {
     console.log("lattices app is not running.");
   }
 } else if (cmd === "restart") {
   // Quit → rebuild → relaunch
-  try { execSync("pkill -f Lattices.app", { stdio: "pipe" }); } catch {}
+  quit();
   if (!hasSwift()) {
     console.error("Swift is required. Install with: xcode-select --install");
     process.exit(1);

@@ -36,31 +36,39 @@ Install the lattices CLI and optionally the native macOS menu bar companion app.
 brew install tmux
 ```
 
-## Step 2: Clone the repository
+## Step 2: Install from npm
+
+```bash
+npm install -g @arach/lattices
+```
+
+Or with your preferred package manager:
+
+```bash
+pnpm add -g @arach/lattices
+bun add -g @arach/lattices
+```
+
+### Alternative: Install from source
 
 ```bash
 git clone https://github.com/arach/lattices && cd lattices
-```
-
-## Step 3: Link the CLI globally
-
-```bash
 bun link
 ```
 
-## Step 4: Build and launch the menu bar app
+## Step 3: Build and launch the menu bar app
 
 ```bash
 lattices app
 ```
 
-## Step 5: Create a config in your project
+## Step 4: Create a config in your project
 
 ```bash
 cd ~/your-project && lattices init
 ```
 
-## Step 6: Start your first workspace
+## Step 5: Start your first workspace
 
 ```bash
 lattices

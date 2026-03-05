@@ -263,6 +263,9 @@ struct MainView: View {
             ActionRow(shortcut: "5", label: "Cheat Sheet", hotkey: hotkeyLabel(.cheatSheet), icon: "keyboard") {
                 CheatSheetHUD.shared.toggle()
             }
+            ActionRow(shortcut: "6", label: "Omni Search", hotkey: hotkeyLabel(.omniSearch), icon: "magnifyingglass", accentColor: Palette.running) {
+                OmniSearchWindow.shared.toggle()
+            }
 
             Rectangle()
                 .fill(Palette.border)

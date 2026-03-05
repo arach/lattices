@@ -31,25 +31,33 @@ final class OcrModel: ObservableObject {
     @Published var enabled: Bool = true
 
     private var timer: Timer?
+    private var deepTimer: Timer?
     private let queue = DispatchQueue(label: "com.arach.lattices.ocr", qos: .background)
     private var imageHashes: [UInt32: Data] = [:]
     private var scanGeneration: Int = 0
 
     private let myPid = ProcessInfo.processInfo.processIdentifier
 
+    private var prefs: Preferences { Preferences.shared }
+
     func start(interval: TimeInterval? = nil) {
         guard timer == nil else { return }
         if let interval { self.interval = interval }
-        let saved = UserDefaults.standard.double(forKey: "ocr.interval")
-        if saved > 0 { self.interval = saved }
-        self.enabled = !UserDefaults.standard.bool(forKey: "ocr.disabled")
+        self.interval = prefs.ocrQuickInterval
+        self.enabled = prefs.ocrEnabled
         guard enabled else {
             DiagnosticLog.shared.info("OcrModel: disabled by user preference")
             return
         }
-        DiagnosticLog.shared.info("OcrModel: starting (interval=\(self.interval)s)")
-        scan()
+        let deepInterval = prefs.ocrDeepInterval
+        // Defer initial scan — let the first timer tick handle it (grace period on launch)
+        DiagnosticLog.shared.info("OcrModel: starting (quick=\(self.interval)s/\(prefs.ocrQuickLimit)win, deep=\(deepInterval)s/\(prefs.ocrDeepLimit)win)")
         timer = Timer.scheduledTimer(withTimeInterval: self.interval, repeats: true) { [weak self] _ in
+            guard let self, self.enabled else { return }
+            self.quickScan()
+        }
+        // Deep scan on a slower cadence
+        deepTimer = Timer.scheduledTimer(withTimeInterval: deepInterval, repeats: true) { [weak self] _ in
             guard let self, self.enabled else { return }
             self.scan()
         }
@@ -58,11 +66,13 @@ final class OcrModel: ObservableObject {
     func stop() {
         timer?.invalidate()
         timer = nil
+        deepTimer?.invalidate()
+        deepTimer = nil
     }
 
     func setEnabled(_ on: Bool) {
         enabled = on
-        UserDefaults.standard.set(!on, forKey: "ocr.disabled")
+        prefs.ocrEnabled = on
         if on && timer == nil {
             start()
         } else if !on {
@@ -72,7 +82,17 @@ final class OcrModel: ObservableObject {
 
     // MARK: - Scan
 
+    /// Quick scan: only the topmost frontmost windows (called every 60s)
+    func quickScan() {
+        scanWithLimit(prefs.ocrQuickLimit)
+    }
+
+    /// Deep scan: all visible windows (called every 2h, or manually via ocr.scan)
     func scan() {
+        scanWithLimit(prefs.ocrDeepLimit)
+    }
+
+    private func scanWithLimit(_ limit: Int) {
         guard !isScanning else { return }
         DispatchQueue.main.async { self.isScanning = true }
         scanGeneration += 1
@@ -80,9 +100,17 @@ final class OcrModel: ObservableObject {
 
         queue.async { [weak self] in
             guard let self else { return }
-            let windows = self.enumerateWindows()
+            var windows = self.enumerateWindows()
+
+            // Cap windows — CGWindowList returns front-to-back order,
+            // so prefix gives us the topmost/frontmost windows first
+            if windows.count > limit {
+                windows = Array(windows.prefix(limit))
+            }
+
+            // For quick scans, merge new results into existing rather than replacing
             let previousResults = self.results
-            let fresh: [UInt32: OcrWindowResult] = [:]
+            let fresh: [UInt32: OcrWindowResult] = limit < self.prefs.ocrDeepLimit ? previousResults : [:]
             let newHashes: [UInt32: Data] = [:]
             let totalBlocks = 0
 
@@ -177,9 +205,8 @@ final class OcrModel: ObservableObject {
             }
         }
 
-        // Yield: re-enqueue the next window instead of looping.
-        // GCD will schedule this after any higher-priority work.
-        queue.async { [weak self] in
+        // Throttle: 100ms delay between windows to reduce CPU bursts
+        queue.asyncAfter(deadline: .now() + 0.1) { [weak self] in
             self?.processNextWindow(
                 windows: windows,
                 index: index + 1,
@@ -259,7 +286,7 @@ final class OcrModel: ObservableObject {
     private func recognizeText(in image: CGImage) -> [OcrTextBlock] {
         let handler = VNImageRequestHandler(cgImage: image, options: [:])
         let request = VNRecognizeTextRequest()
-        request.recognitionLevel = .fast
+        request.recognitionLevel = prefs.ocrAccuracy == "fast" ? .fast : .accurate
         request.usesLanguageCorrection = true
 
         do {

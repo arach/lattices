@@ -1438,9 +1438,8 @@ final class ScreenMapController: ObservableObject {
         // Tiling mode intercepts keys before anything else
         if editor?.isTilingMode == true {
             switch keyCode {
-            case 53: // Escape → cancel tiling mode
-                exitTilingMode()
-                flash("Tiling cancelled")
+            case 53: // Escape — always dismiss
+                onDismiss?()
                 return true
             case 123: // ← → left
                 tileSelectedWindowInEditor(to: .left)
@@ -1516,8 +1515,8 @@ final class ScreenMapController: ObservableObject {
         // Search mode intercepts keys before normal handling
         if isSearchActive {
             switch keyCode {
-            case 53: // Escape → close search
-                closeSearch()
+            case 53: // Escape — always dismiss
+                onDismiss?()
                 return true
             case 36: // Enter → select or focus
                 if modifiers.contains(.command) {
@@ -1539,18 +1538,9 @@ final class ScreenMapController: ObservableObject {
         }
 
         switch keyCode {
-        case 53: // Escape
-            if editor?.isPreviewing == true {
-                endPreview()
-            }
-            if let ed = editor, ed.pendingEditCount > 0 {
-                ed.discardEdits()
-                diag.info("[ScreenMap] discarded edits")
-                flash("Edits discarded")
-            } else {
-                diag.info("[ScreenMap] exit")
-                onDismiss?()
-            }
+        case 53: // Escape — always dismiss
+            diag.info("[ScreenMap] exit")
+            onDismiss?()
             return true
 
         case 36: // Enter
