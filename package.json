@@ -1,6 +1,6 @@
 {
   "name": "@arach/lattices",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "macOS workspace manager with window tiling, OCR, and a 30-method daemon API for AI agents",
   "bin": {
     "lattices": "./bin/lattices.js",
