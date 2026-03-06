@@ -18,32 +18,6 @@
       ]
     },
     {
-      "id": "user-guide",
-      "title": "User Guide",
-      "items": [
-        {
-          "id": "config",
-          "title": "Configuration",
-          "description": "CLI commands, .lattices.json format, and tile positions"
-        },
-        {
-          "id": "app",
-          "title": "Menu Bar App",
-          "description": "Command palette, window tiling, and session management"
-        },
-        {
-          "id": "layers",
-          "title": "Layers & Tab Groups",
-          "description": "Switchable workspace layers and tabbed project groups"
-        },
-        {
-          "id": "ocr",
-          "title": "Screen OCR",
-          "description": "Vision-powered screen reading with full-text search"
-        }
-      ]
-    },
-    {
       "id": "architecture-api",
       "title": "Architecture & API",
       "items": [
@@ -54,8 +28,34 @@
         },
         {
           "id": "api",
-          "title": "Daemon API",
+          "title": "Agent API",
           "description": "WebSocket API reference for programmatic control of lattices"
+        }
+      ]
+    },
+    {
+      "id": "user-guide",
+      "title": "User Guide",
+      "items": [
+        {
+          "id": "config",
+          "title": "Configuration",
+          "description": "CLI commands, .lattices.json format, and tile positions"
+        },
+        {
+          "id": "layers",
+          "title": "Layers & Tab Groups",
+          "description": "Switchable workspace layers and tabbed project groups"
+        },
+        {
+          "id": "ocr",
+          "title": "Screen OCR & Search",
+          "description": "Vision-powered screen reading with full-text search"
+        },
+        {
+          "id": "app",
+          "title": "Menu Bar App",
+          "description": "Command palette, window tiling, and session management"
         }
       ]
     }

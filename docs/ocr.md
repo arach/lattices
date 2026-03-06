@@ -72,9 +72,9 @@ lattices ocr scan
 lattices ocr history 12345
 ```
 
-### From the daemon API
+### From the agent API
 
-Agents can query OCR data through four daemon methods:
+Agents can query OCR data through four API methods:
 
 | Method | Description |
 |--------|-------------|
@@ -88,7 +88,7 @@ Agents can query OCR data through four daemon methods:
 Returns the latest OCR results for all on-screen windows.
 
 ```js
-import { daemonCall } from '@arach/lattices/daemon-client'
+import { daemonCall } from '@lattices/cli'
 
 const snapshot = await daemonCall('ocr.snapshot')
 // [{ wid, app, title, frame, fullText, blocks, timestamp }, ...]
@@ -158,7 +158,7 @@ Entries older than 3 days are automatically deleted.
 A typical agent workflow: trigger a scan, then search for relevant content.
 
 ```js
-import { daemonCall } from '@arach/lattices/daemon-client'
+import { daemonCall } from '@lattices/cli'
 
 // Trigger a fresh scan
 await daemonCall('ocr.scan')

@@ -11,7 +11,7 @@ controllable from the CLI or a 30-method daemon API.
 ## Install
 
 ```sh
-npm install -g @arach/lattices
+npm install -g @lattices/cli
 ```
 
 ## Quick start
@@ -104,7 +104,7 @@ events over WebSocket. Anything you can do from the app, an agent or
 script can do over the API.
 
 ```js
-import { daemonCall } from '@arach/lattices/daemon-client'
+import { daemonCall } from '@lattices/cli/daemon-client'
 
 const windows = await daemonCall('windows.list')
 await daemonCall('session.launch', { path: '/Users/you/dev/frontend' })

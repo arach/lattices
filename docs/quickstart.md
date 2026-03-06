@@ -9,12 +9,6 @@ Four steps to a running workspace.
 ## 1. Install lattices
 
 ```bash
-npm install -g @arach/lattices
-```
-
-Or install from source:
-
-```bash
 git clone https://github.com/arach/lattices
 cd lattices && npm link
 ```
@@ -69,7 +63,7 @@ The session persists in the background — close your terminal, reopen it,
 run `lattices` again, and everything is still there.
 
 > **Without tmux**, you still get the menu bar app, command palette,
-> window tiling, workspace layers, OCR, and the full daemon API.
+> window tiling, workspace layers, OCR, and the full agent API.
 
 ## What's next
 
@@ -78,4 +72,4 @@ run `lattices` again, and everything is still there.
 - [Layers & Groups](/docs/layers): organize projects into switchable contexts
 - [Screen OCR](/docs/ocr): let agents read what's on screen
 - [Concepts](/docs/concepts): sessions, panes, and the architecture
-- [Daemon API](/docs/api): programmatic control for agents and scripts
+- [Agent API](/docs/api): programmatic control for agents and scripts

@@ -1,26 +1,30 @@
 ---
 import '../styles/landing.css'
 
-const configExample = `{
+const configExamples: Record<number, string> = {
+  1: `{
+  <span class="hl-key">"panes"</span>: [
+    { <span class="hl-key">"cmd"</span>: <span class="hl-str">"claude"</span> }
+  ]
+}`,
+  2: `{
   <span class="hl-key">"ensure"</span>: <span class="hl-num">true</span>,
   <span class="hl-key">"panes"</span>: [
-    {
-      <span class="hl-key">"name"</span>: <span class="hl-str">"claude"</span>,
-      <span class="hl-key">"cmd"</span>: <span class="hl-str">"claude"</span>,
-      <span class="hl-key">"size"</span>: <span class="hl-num">60</span>
-    },
-    {
-      <span class="hl-key">"name"</span>: <span class="hl-str">"server"</span>,
-      <span class="hl-key">"cmd"</span>: <span class="hl-str">"pnpm dev"</span>
-    },
-    {
-      <span class="hl-key">"name"</span>: <span class="hl-str">"tests"</span>,
-      <span class="hl-key">"cmd"</span>: <span class="hl-str">"pnpm test --watch"</span>
-    }
+    { <span class="hl-key">"name"</span>: <span class="hl-str">"claude"</span>, <span class="hl-key">"cmd"</span>: <span class="hl-str">"claude"</span>, <span class="hl-key">"size"</span>: <span class="hl-num">60</span> },
+    { <span class="hl-key">"name"</span>: <span class="hl-str">"dev"</span>,    <span class="hl-key">"cmd"</span>: <span class="hl-str">"bun dev"</span> }
   ]
-}`
+}`,
+  3: `{
+  <span class="hl-key">"ensure"</span>: <span class="hl-num">true</span>,
+  <span class="hl-key">"panes"</span>: [
+    { <span class="hl-key">"name"</span>: <span class="hl-str">"claude"</span>, <span class="hl-key">"cmd"</span>: <span class="hl-str">"claude"</span>, <span class="hl-key">"size"</span>: <span class="hl-num">60</span> },
+    { <span class="hl-key">"name"</span>: <span class="hl-str">"dev"</span>,    <span class="hl-key">"cmd"</span>: <span class="hl-str">"bun dev"</span> },
+    { <span class="hl-key">"name"</span>: <span class="hl-str">"test"</span>,   <span class="hl-key">"cmd"</span>: <span class="hl-str">"bun test --watch"</span> }
+  ]
+}`,
+}
 
-const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span class="hl-kw">from</span> <span class="hl-str">'lattices/daemon-client'</span>
+const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span class="hl-kw">from</span> <span class="hl-str">'@lattices/cli'</span>
 
 <span class="hl-cmt">// Launch a session and tile it</span>
 <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'session.launch'</span>, {
@@ -49,19 +53,19 @@ const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span cla
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>lattices — workspace control plane for macOS</title>
 
-    <meta name="description" content="Persistent terminal sessions, window tiling, and screen text indexing — all controllable from the CLI or a 35+-method daemon API. Menu bar app included." />
+    <meta name="description" content="Persistent terminal sessions, window tiling, and screen text indexing — all controllable from the CLI or a 35+-method agent API. Menu bar app included." />
 
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://lattices.dev/" />
     <meta property="og:title" content="lattices — workspace control plane for macOS" />
-    <meta property="og:description" content="Persistent terminal sessions, window tiling, and screen text indexing — all controllable from the CLI or a 35+-method daemon API. Menu bar app included." />
+    <meta property="og:description" content="Persistent terminal sessions, window tiling, and screen text indexing — all controllable from the CLI or a 35+-method agent API. Menu bar app included." />
     <meta property="og:image" content="https://lattices.dev/og.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
 
     <meta property="twitter:card" content="summary_large_image" />
     <meta property="twitter:title" content="lattices — workspace control plane for macOS" />
-    <meta property="twitter:description" content="Persistent terminal sessions, window tiling, and screen text indexing — all controllable from the CLI or a 35+-method daemon API. Menu bar app included." />
+    <meta property="twitter:description" content="Persistent terminal sessions, window tiling, and screen text indexing — all controllable from the CLI or a 35+-method agent API. Menu bar app included." />
     <meta property="twitter:image" content="https://lattices.dev/og.png" />
 
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-GSHDZPFRZG"></script>
@@ -106,21 +110,21 @@ const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span cla
             Open source · 100% free
           </div>
           <h1>
-            Workspace<br />
-            <span class="accent">control plane</span>
+            The agentic<br />
+            <span class="accent">window manager</span>
           </h1>
           <div class="hero-pillars">
             <div class="hero-pillar">
-              <h2>Terminal sessions</h2>
-              <p>Declare your dev environment in JSON. Lattices builds it, runs it, and keeps it alive across reboots.</p>
+              <h2>Programmable workspace</h2>
+              <p>35+ RPC methods. AI agents and scripts drive the same desktop you do.</p>
             </div>
             <div class="hero-pillar">
-              <h2>Window awareness</h2>
-              <p>Tile with hotkeys, organize into layers, and search the text on every window — indexed automatically.</p>
+              <h2>Smart layout manager</h2>
+              <p>Tile with hotkeys, organize into layers, search text across every window.</p>
             </div>
             <div class="hero-pillar">
-              <h2>Programmable desktop</h2>
-              <p>35+-method daemon API. Your CLI scripts and AI agents control the same desktop you do.</p>
+              <h2>Managed tmux sessions</h2>
+              <p>We make tmux easy. Use your own terminal — panes and layouts just work.</p>
             </div>
           </div>
 
@@ -131,7 +135,7 @@ const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span cla
               <button class="install-tab" data-pm="bun">bun</button>
             </div>
             <div class="install-cmd">
-              <code><span class="prompt">$</span><span data-cmd>npm install -g lattices</span></code>
+              <code><span class="prompt">$</span><span data-cmd>npm install -g @lattices/cli</span></code>
               <button class="install-copy" data-copy-btn>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" data-copy-icon>
                   <rect x="9" y="9" width="13" height="13" rx="2" />
@@ -149,64 +153,13 @@ const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span cla
           </div>
         </section>
 
-        <!-- Config -->
-        <section class="section" id="config">
-          <div class="config-grid fade-in fade-in-delay-2">
-            <div>
-              <h2 class="config-title">Persistent terminal sessions</h2>
-              <p class="config-desc">
-                Drop a <code>.lattices.json</code> in your project root.
-                lattices builds your panes, runs your commands, and keeps
-                them alive. Reboot, come back a week later — everything
-                is where you left it.
-              </p>
-              <div class="layouts">
-                <div class="layout-card">
-                  <h3>1 pane</h3>
-                  <p>Single focus</p>
-                  <div class="layout-diagram layout-1">
-                    <div class="layout-pane main">claude</div>
-                  </div>
-                </div>
-                <div class="layout-card">
-                  <h3>2 panes</h3>
-                  <p>Side-by-side</p>
-                  <div class="layout-diagram layout-2">
-                    <div class="layout-pane main">claude</div>
-                    <div class="layout-pane">server</div>
-                  </div>
-                </div>
-                <div class="layout-card">
-                  <h3>3+ panes</h3>
-                  <p>Main-vertical</p>
-                  <div class="layout-diagram layout-3">
-                    <div class="layout-pane main">claude</div>
-                    <div class="layout-pane">server</div>
-                    <div class="layout-pane">tests</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="code-block">
-              <div class="code-header">
-                <span class="code-dot code-dot-red"></span>
-                <span class="code-dot code-dot-yellow"></span>
-                <span class="code-dot code-dot-green"></span>
-                <span class="code-filename">.lattices.json</span>
-              </div>
-              <pre class="code-pre" set:html={configExample} />
-            </div>
-          </div>
-        </section>
-
         <!-- Agent Control Plane -->
         <section class="section" id="agents">
           <div class="config-grid fade-in fade-in-delay-2">
             <div>
               <h2 class="config-title">A programmable desktop</h2>
               <p class="config-desc">
-                The CLI and daemon API expose everything: query what's on screen,
+                The CLI and agent API expose everything: query what's on screen,
                 search window text, tile layouts, manage sessions. Claude Code
                 skills, MCP servers, or your own scripts can drive your desktop.
               </p>
@@ -232,37 +185,95 @@ const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span cla
           </div>
         </section>
 
+        <!-- Config -->
+        <section class="section" id="config">
+          <div class="config-grid fade-in fade-in-delay-2">
+            <div>
+              <h2 class="config-title">Managed tmux sessions</h2>
+              <p class="config-desc">
+                We make tmux easy. Use your own terminal — define
+                panes and layouts in a single JSON file.
+              </p>
+              <div class="layouts">
+                <div class="layout-card" data-panes="1">
+                  <h3>1 pane</h3>
+                  <p>Single focus</p>
+                  <div class="layout-diagram layout-1">
+                    <div class="layout-pane main">claude</div>
+                  </div>
+                </div>
+                <div class="layout-card active" data-panes="2">
+                  <h3>2 panes</h3>
+                  <p>Side-by-side</p>
+                  <div class="layout-diagram layout-2">
+                    <div class="layout-pane main">claude</div>
+                    <div class="layout-pane">server</div>
+                  </div>
+                </div>
+                <div class="layout-card" data-panes="3">
+                  <h3>3+ panes</h3>
+                  <p>Main-vertical</p>
+                  <div class="layout-diagram layout-3">
+                    <div class="layout-pane main">claude</div>
+                    <div class="layout-pane">server</div>
+                    <div class="layout-pane">tests</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="code-block">
+              <div class="code-header">
+                <span class="code-dot code-dot-red"></span>
+                <span class="code-dot code-dot-yellow"></span>
+                <span class="code-dot code-dot-green"></span>
+                <span class="code-filename">.lattices.json</span>
+              </div>
+              <pre class="code-pre" data-config-pre set:html={configExamples[2]} />
+            </div>
+          </div>
+        </section>
+
         <!-- Features -->
-        <section class="features fade-in fade-in-delay-2" id="features">
-          <div class="feature">
-            <span class="feature-icon">&#9654;</span>
-            <h3>One command</h3>
-            <p>Run <code>lattices</code> in any project directory. Session created, panes running, layout applied.</p>
+        <section class="feature-buckets fade-in fade-in-delay-2" id="features">
+          <div class="bucket">
+            <h3 class="bucket-label">Durable Terminal Sessions</h3>
+            <div class="bucket-cards">
+              <div class="feature">
+                <h3>One command, zero config</h3>
+                <p>Run <code>lattices</code> — session created, dev server running.</p>
+              </div>
+              <div class="feature">
+                <h3>Persistent sessions</h3>
+                <p>Survives reboots. Reattach anytime.</p>
+              </div>
+            </div>
           </div>
-          <div class="feature">
-            <span class="feature-icon">&#8644;</span>
-            <h3>Survives reboots</h3>
-            <p>Close your laptop, come back a week later. Reattach and your editor, dev server, and tests are where you left them.</p>
+          <div class="bucket">
+            <h3 class="bucket-label">Smart Layout Manager</h3>
+            <div class="bucket-cards">
+              <div class="feature">
+                <h3>Tiling + layers</h3>
+                <p>Hotkeys, snap to grids, switchable window groups.</p>
+              </div>
+              <div class="feature">
+                <h3>Screen text indexing</h3>
+                <p>AX + OCR. Search text across all windows.</p>
+              </div>
+            </div>
           </div>
-          <div class="feature">
-            <span class="feature-icon">&#9638;</span>
-            <h3>Window tiling</h3>
-            <p>Tile with hotkeys, organize into switchable layers, snap to grids. Works across Spaces.</p>
-          </div>
-          <div class="feature">
-            <span class="feature-icon">&#128270;</span>
-            <h3>Screen text indexing</h3>
-            <p>Reads text from UI elements every 60s. Vision OCR on background windows every 2h. All searchable.</p>
-          </div>
-          <div class="feature">
-            <span class="feature-icon">&#9881;</span>
-            <h3>35+ RPC methods</h3>
-            <p>WebSocket daemon on localhost. Windows, sessions, tiling, layers, screen text. Anything the app does, your agent can do.</p>
-          </div>
-          <div class="feature">
-            <span class="feature-icon">&#9783;</span>
-            <h3>Zero config</h3>
-            <p>No <code>.lattices.json</code>? It reads your <code>package.json</code> and picks the right dev command automatically.</p>
+          <div class="bucket">
+            <h3 class="bucket-label">Programmable Workspace</h3>
+            <div class="bucket-cards">
+              <div class="feature">
+                <h3>35+ RPC methods</h3>
+                <p>WebSocket on localhost. Full workspace control.</p>
+              </div>
+              <div class="feature">
+                <h3>Agent automation</h3>
+                <p>AI agents and scripts drive your desktop.</p>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -285,7 +296,7 @@ const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span cla
               </ul>
             </div>
             <div class="app-screenshot-wrap">
-              <img src="/app-screenshot.png" alt="lattices menu bar app showing a running session" class="app-screenshot" />
+              <img src="/docs/app-latest.png" alt="lattices app showing screen map with dual displays, layers, and inspector" class="app-screenshot" />
             </div>
           </div>
         </section>
@@ -312,7 +323,7 @@ const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span cla
 
     <script is:inline>
       (() => {
-        const commands = { npm: 'npm install -g lattices', pnpm: 'pnpm add -g lattices', bun: 'bun add -g lattices' }
+        const commands = { npm: 'npm install -g @lattices/cli', pnpm: 'pnpm add -g @lattices/cli', bun: 'bun add -g @lattices/cli' }
         const cmdEl = document.querySelector('[data-cmd]')
         const tabs = document.querySelectorAll('.install-tab')
         const copyBtn = document.querySelector('[data-copy-btn]')
@@ -333,6 +344,24 @@ const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span cla
             setTimeout(() => {
               copyBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>'
             }, 2000)
+          })
+        })
+        // Layout switcher
+        const configPre = document.querySelector('[data-config-pre]')
+        const layoutCards = document.querySelectorAll('.layout-card[data-panes]')
+        layoutCards.forEach(card => {
+          card.addEventListener('click', () => {
+            const n = card.dataset.panes
+            layoutCards.forEach(c => c.classList.remove('active'))
+            card.classList.add('active')
+            if (configPre) {
+              const examples = {
+                '1': `{\n  <span class="hl-key">"panes"</span>: [\n    { <span class="hl-key">"cmd"</span>: <span class="hl-str">"claude"</span> }\n  ]\n}`,
+                '2': `{\n  <span class="hl-key">"ensure"</span>: <span class="hl-num">true</span>,\n  <span class="hl-key">"panes"</span>: [\n    { <span class="hl-key">"name"</span>: <span class="hl-str">"claude"</span>, <span class="hl-key">"cmd"</span>: <span class="hl-str">"claude"</span>, <span class="hl-key">"size"</span>: <span class="hl-num">60</span> },\n    { <span class="hl-key">"name"</span>: <span class="hl-str">"dev"</span>,    <span class="hl-key">"cmd"</span>: <span class="hl-str">"bun dev"</span> }\n  ]\n}`,
+                '3': `{\n  <span class="hl-key">"ensure"</span>: <span class="hl-num">true</span>,\n  <span class="hl-key">"panes"</span>: [\n    { <span class="hl-key">"name"</span>: <span class="hl-str">"claude"</span>, <span class="hl-key">"cmd"</span>: <span class="hl-str">"claude"</span>, <span class="hl-key">"size"</span>: <span class="hl-num">60</span> },\n    { <span class="hl-key">"name"</span>: <span class="hl-str">"dev"</span>,    <span class="hl-key">"cmd"</span>: <span class="hl-str">"bun dev"</span> },\n    { <span class="hl-key">"name"</span>: <span class="hl-str">"test"</span>,   <span class="hl-key">"cmd"</span>: <span class="hl-str">"bun test --watch"</span> }\n  ]\n}`
+              }
+              configPre.innerHTML = examples[n] || examples['2']
+            }
           })
         })
       })()

@@ -4,9 +4,9 @@ import "./index.css";
 type PkgManager = "npm" | "pnpm" | "bun";
 
 const commands: Record<PkgManager, string> = {
-  npm: "npm install -g lattices",
-  pnpm: "pnpm add -g lattices",
-  bun: "bun add -g lattices",
+  npm: "npm install -g @lattices/cli",
+  pnpm: "pnpm add -g @lattices/cli",
+  bun: "bun add -g @lattices/cli",
 };
 
 const pmOrder: PkgManager[] = ["npm", "pnpm", "bun"];
@@ -83,26 +83,32 @@ function AppleIcon() {
   );
 }
 
-const configExample = `{
+type PaneLayout = 1 | 2 | 3;
+
+const configExamples: Record<PaneLayout, string> = {
+  1: `{
+  <span class="hl-key">"panes"</span>: [
+    { <span class="hl-key">"cmd"</span>: <span class="hl-str">"claude"</span> }
+  ]
+}`,
+  2: `{
   <span class="hl-key">"ensure"</span>: <span class="hl-num">true</span>,
   <span class="hl-key">"panes"</span>: [
-    {
-      <span class="hl-key">"name"</span>: <span class="hl-str">"claude"</span>,
-      <span class="hl-key">"cmd"</span>: <span class="hl-str">"claude"</span>,
-      <span class="hl-key">"size"</span>: <span class="hl-num">60</span>
-    },
-    {
-      <span class="hl-key">"name"</span>: <span class="hl-str">"server"</span>,
-      <span class="hl-key">"cmd"</span>: <span class="hl-str">"pnpm dev"</span>
-    },
-    {
-      <span class="hl-key">"name"</span>: <span class="hl-str">"tests"</span>,
-      <span class="hl-key">"cmd"</span>: <span class="hl-str">"pnpm test --watch"</span>
-    }
+    { <span class="hl-key">"name"</span>: <span class="hl-str">"claude"</span>, <span class="hl-key">"cmd"</span>: <span class="hl-str">"claude"</span>, <span class="hl-key">"size"</span>: <span class="hl-num">60</span> },
+    { <span class="hl-key">"name"</span>: <span class="hl-str">"dev"</span>,    <span class="hl-key">"cmd"</span>: <span class="hl-str">"bun dev"</span> }
   ]
-}`;
+}`,
+  3: `{
+  <span class="hl-key">"ensure"</span>: <span class="hl-num">true</span>,
+  <span class="hl-key">"panes"</span>: [
+    { <span class="hl-key">"name"</span>: <span class="hl-str">"claude"</span>, <span class="hl-key">"cmd"</span>: <span class="hl-str">"claude"</span>, <span class="hl-key">"size"</span>: <span class="hl-num">60</span> },
+    { <span class="hl-key">"name"</span>: <span class="hl-str">"dev"</span>,    <span class="hl-key">"cmd"</span>: <span class="hl-str">"bun dev"</span> },
+    { <span class="hl-key">"name"</span>: <span class="hl-str">"test"</span>,   <span class="hl-key">"cmd"</span>: <span class="hl-str">"bun test --watch"</span> }
+  ]
+}`,
+};
 
-const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span class="hl-kw">from</span> <span class="hl-str">'lattices/daemon-client'</span>
+const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span class="hl-kw">from</span> <span class="hl-str">'@lattices/cli'</span>
 
 <span class="hl-cmt">// Discover projects</span>
 <span class="hl-kw">const</span> projects = <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'projects.list'</span>)
@@ -129,6 +135,7 @@ const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span cla
 export default function App() {
   const [pm, setPm] = useState<PkgManager>("npm");
   const [copied, setCopied] = useState(false);
+  const [paneLayout, setPaneLayout] = useState<PaneLayout>(2);
 
   const copy = async () => {
     await navigator.clipboard.writeText(commands[pm]);
@@ -179,15 +186,24 @@ export default function App() {
             Open source · 100% free
           </div>
           <h1>
-            The workspace
+            The agentic
             <br />
-            <span className="accent">control plane</span>
+            <span className="accent">window manager</span>
           </h1>
-          <p className="hero-sub">
-            Give AI coding agents full control over terminal sessions,
-            window tiling, and workspace layers — or use the CLI and
-            menu bar app yourself. 35+ RPC methods. Zero config required.
-          </p>
+          <div className="hero-pillars">
+            <div className="hero-pillar">
+              <h2>Programmable workspace</h2>
+              <p>35+ RPC methods. AI agents and scripts drive the same desktop you do.</p>
+            </div>
+            <div className="hero-pillar">
+              <h2>Smart layout manager</h2>
+              <p>Tile with hotkeys, organize into layers, search text across every window.</p>
+            </div>
+            <div className="hero-pillar">
+              <h2>Managed tmux sessions</h2>
+              <p>We make tmux easy. Use your own terminal — panes and layouts just work.</p>
+            </div>
+          </div>
 
           <div className="install fade-in fade-in-delay-1">
             <div className="install-tabs">
@@ -227,60 +243,6 @@ export default function App() {
           </div>
         </section>
 
-        {/* Config */}
-        <section className="section" id="config">
-          <div className="config-grid fade-in fade-in-delay-2">
-            <div>
-              <h2 className="config-title">
-                One file. Any layout.
-              </h2>
-              <p className="config-desc">
-                Drop a <code>.lattices.json</code> in your project root.
-                Define panes, commands, and sizes.
-              </p>
-              <div className="layouts">
-                <div className="layout-card">
-                  <h3>1 pane</h3>
-                  <p>Single focus</p>
-                  <div className="layout-diagram layout-1">
-                    <div className="layout-pane main">claude</div>
-                  </div>
-                </div>
-                <div className="layout-card">
-                  <h3>2 panes</h3>
-                  <p>Side-by-side</p>
-                  <div className="layout-diagram layout-2">
-                    <div className="layout-pane main">claude</div>
-                    <div className="layout-pane">server</div>
-                  </div>
-                </div>
-                <div className="layout-card">
-                  <h3>3+ panes</h3>
-                  <p>Main-vertical</p>
-                  <div className="layout-diagram layout-3">
-                    <div className="layout-pane main">claude</div>
-                    <div className="layout-pane">server</div>
-                    <div className="layout-pane">tests</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="code-block">
-              <div className="code-header">
-                <span className="code-dot code-dot-red" />
-                <span className="code-dot code-dot-yellow" />
-                <span className="code-dot code-dot-green" />
-                <span className="code-filename">.lattices.json</span>
-              </div>
-              <pre
-                className="code-pre"
-                dangerouslySetInnerHTML={{ __html: configExample }}
-              />
-            </div>
-          </div>
-        </section>
-
         {/* Agent Control Plane */}
         <section className="section" id="agents">
           <div className="config-grid fade-in fade-in-delay-2">
@@ -289,8 +251,8 @@ export default function App() {
                 Agents need more than a shell
               </h2>
               <p className="config-desc">
-                The daemon API gives AI agents full workspace control
-                over WebSocket. Discover projects, launch sessions,
+                The agent API gives full workspace control over
+                WebSocket. Discover projects, launch sessions,
                 tile windows, and react to changes — all programmatically.
               </p>
               <ul className="agent-methods">
@@ -320,55 +282,100 @@ export default function App() {
           </div>
         </section>
 
+        {/* Config */}
+        <section className="section" id="config">
+          <div className="config-grid fade-in fade-in-delay-2">
+            <div>
+              <h2 className="config-title">
+                Managed tmux sessions
+              </h2>
+              <p className="config-desc">
+                We make tmux easy. Use your own terminal — define
+                panes and layouts in a single JSON file.
+              </p>
+              <div className="layouts">
+                <div className={`layout-card${paneLayout === 1 ? " active" : ""}`} onClick={() => setPaneLayout(1)}>
+                  <h3>1 pane</h3>
+                  <p>Single focus</p>
+                  <div className="layout-diagram layout-1">
+                    <div className="layout-pane main">claude</div>
+                  </div>
+                </div>
+                <div className={`layout-card${paneLayout === 2 ? " active" : ""}`} onClick={() => setPaneLayout(2)}>
+                  <h3>2 panes</h3>
+                  <p>Side-by-side</p>
+                  <div className="layout-diagram layout-2">
+                    <div className="layout-pane main">claude</div>
+                    <div className="layout-pane">server</div>
+                  </div>
+                </div>
+                <div className={`layout-card${paneLayout === 3 ? " active" : ""}`} onClick={() => setPaneLayout(3)}>
+                  <h3>3+ panes</h3>
+                  <p>Main-vertical</p>
+                  <div className="layout-diagram layout-3">
+                    <div className="layout-pane main">claude</div>
+                    <div className="layout-pane">server</div>
+                    <div className="layout-pane">tests</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="code-block">
+              <div className="code-header">
+                <span className="code-dot code-dot-red" />
+                <span className="code-dot code-dot-yellow" />
+                <span className="code-dot code-dot-green" />
+                <span className="code-filename">.lattices.json</span>
+              </div>
+              <pre
+                className="code-pre"
+                dangerouslySetInnerHTML={{ __html: configExamples[paneLayout] }}
+              />
+            </div>
+          </div>
+        </section>
+
         {/* Features */}
-        <section className="features fade-in fade-in-delay-2" id="features">
-          <div className="feature">
-            <span className="feature-icon">&#9654;</span>
-            <h3>One command</h3>
-            <p>
-              Run <code>lattices</code> in any project directory to create a named
-              tmux session with your panes running.
-            </p>
+        <section className="feature-buckets fade-in fade-in-delay-2" id="features">
+          <div className="bucket">
+            <h3 className="bucket-label">Durable Terminal Sessions</h3>
+            <div className="bucket-cards">
+              <div className="feature">
+                <h3>One command, zero config</h3>
+                <p>Run <code>lattices</code> — session created, dev server running.</p>
+              </div>
+              <div className="feature">
+                <h3>Persistent sessions</h3>
+                <p>Survives reboots. Reattach anytime.</p>
+              </div>
+            </div>
           </div>
-          <div className="feature">
-            <span className="feature-icon">&#9881;</span>
-            <h3>Daemon API</h3>
-            <p>
-              35+ JSON-RPC methods over WebSocket. Read windows, launch sessions,
-              tile, switch layers. Built for agents, scripts, and automation.
-            </p>
+          <div className="bucket">
+            <h3 className="bucket-label">Smart Layout Manager</h3>
+            <div className="bucket-cards">
+              <div className="feature">
+                <h3>Tiling + layers</h3>
+                <p>Hotkeys, snap to grids, switchable window groups.</p>
+              </div>
+              <div className="feature">
+                <h3>Screen text indexing</h3>
+                <p>AX + OCR. Search text across all windows.</p>
+              </div>
+            </div>
           </div>
-          <div className="feature">
-            <span className="feature-icon">&#9881;</span>
-            <h3>Auto-detect</h3>
-            <p>
-              Reads <code>package.json</code> and lock files to pick
-              the right dev command automatically.
-            </p>
-          </div>
-          <div className="feature">
-            <span className="feature-icon">&#8644;</span>
-            <h3>Persistent</h3>
-            <p>
-              Sessions run in the background. Detach, reattach, pick up
-              where you left off.
-            </p>
-          </div>
-          <div className="feature">
-            <span className="feature-icon">&#9638;</span>
-            <h3>Workspace layers</h3>
-            <p>
-              Group any windows into switchable layers. <code>Cmd+Option+1/2/3</code> to
-              instantly focus and tile a whole context.
-            </p>
-          </div>
-          <div className="feature">
-            <span className="feature-icon">&#9783;</span>
-            <h3>Tab groups</h3>
-            <p>
-              Bundle related projects as tabs in one window. iOS, macOS,
-              Web, API — one <code>lattices group</code> to launch them all.
-            </p>
+          <div className="bucket">
+            <h3 className="bucket-label">Programmable Workspace</h3>
+            <div className="bucket-cards">
+              <div className="feature">
+                <h3>35+ RPC methods</h3>
+                <p>WebSocket on localhost. Full workspace control.</p>
+              </div>
+              <div className="feature">
+                <h3>Agent automation</h3>
+                <p>AI agents and scripts drive your desktop.</p>
+              </div>
+            </div>
           </div>
         </section>
 

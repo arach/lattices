@@ -189,7 +189,7 @@ html:has(.landing) body {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 16px;
-  max-width: 640px;
+  max-width: 780px;
   margin: 0 auto 36px;
   text-align: left;
 }
@@ -430,6 +430,12 @@ html:has(.landing) body {
   border-radius: 10px;
   border: 1px solid var(--border);
   background: var(--surface);
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.landing .layout-card.active {
+  border-color: var(--green);
 }
 
 .landing .layout-card h3 {
@@ -479,17 +485,32 @@ html:has(.landing) body {
   grid-row: 1 / -1;
 }
 
-/* ── Features ──────────────────────────────────────── */
+/* ── Feature buckets ───────────────────────────────── */
 
-.landing .features {
+.landing .feature-buckets {
   padding: 48px 0;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+
+.landing .bucket-label {
+  font-family: "Space Grotesk", -apple-system, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--green);
+  margin-bottom: 12px;
+}
+
+.landing .bucket-cards {
+  display: grid;
   gap: 12px;
 }
 
 .landing .feature {
-  padding: 20px;
+  padding: 14px 16px;
   border-radius: 10px;
   border: 1px solid var(--border);
   background: var(--surface);
@@ -500,17 +521,11 @@ html:has(.landing) body {
   border-color: var(--border-lit);
 }
 
-.landing .feature-icon {
-  font-size: 18px;
-  margin-bottom: 10px;
-  display: block;
-}
-
 .landing .feature h3 {
   font-family: "Space Grotesk", -apple-system, sans-serif;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   color: var(--text);
 }
 
@@ -747,7 +762,7 @@ html:has(.landing) body {
 
 @media (max-width: 720px) {
   .landing .hero-pillars { grid-template-columns: 1fr; max-width: 360px; }
-  .landing .features { grid-template-columns: repeat(2, 1fr); }
+  .landing .feature-buckets { grid-template-columns: 1fr; gap: 32px; }
   .landing .agent-methods { gap: 6px; }
   .landing .config-grid { grid-template-columns: 1fr; }
   .landing .app-grid { grid-template-columns: 1fr; }
@@ -766,7 +781,7 @@ html:has(.landing) body {
   .landing .hero-sub { font-size: 14px; margin-bottom: 24px; }
   .landing .hero-badge { font-size: 11px; margin-bottom: 18px; }
   .landing .install-cmd code { font-size: 12px; }
-  .landing .features { padding: 32px 0; grid-template-columns: 1fr; gap: 10px; }
+  .landing .feature-buckets { padding: 32px 0; gap: 24px; }
   .landing .feature { padding: 16px; }
   .landing .feature h3 { font-size: 13px; }
   .landing .feature p { font-size: 12px; }

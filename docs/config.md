@@ -169,7 +169,7 @@ into `jq` or consuming from scripts.
 
 ### Daemon responses
 
-All daemon API calls return JSON natively. If you need structured data
+All agent API calls return JSON natively. If you need structured data
 from lattices, the daemon is easier than parsing stdout. See the
 [API reference](/docs/api).
 

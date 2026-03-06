@@ -222,7 +222,7 @@ query, windows matching by OCR content show contextual snippets.
 
 ### API access
 
-Agents can query OCR data through four daemon endpoints:
+Agents can query OCR data through four API methods:
 
 | Method         | Description                                    |
 |----------------|------------------------------------------------|
@@ -232,7 +232,7 @@ Agents can query OCR data through four daemon endpoints:
 | `ocr.scan`     | Trigger an immediate scan (bypasses timer)     |
 
 ```js
-import { daemonCall } from '@arach/lattices/daemon-client'
+import { daemonCall } from '@lattices/cli'
 
 // Find windows showing error messages
 const errors = await daemonCall('ocr.search', { query: 'error OR failed' })
@@ -241,16 +241,16 @@ const errors = await daemonCall('ocr.search', { query: 'error OR failed' })
 const snapshot = await daemonCall('ocr.snapshot')
 ```
 
-More in the [Daemon API reference](/docs/api#ocrsnapshot).
+More in the [Agent API reference](/docs/api#ocrsnapshot).
 
 ### Requirements
 
 - **Screen Recording** permission — required to capture window images
 - Granted via System Settings > Privacy & Security > Screen Recording
 
-## Daemon
+## Agent API server
 
-The menu bar app runs a WebSocket daemon on `ws://127.0.0.1:9399`.
+The menu bar app runs a WebSocket server on `ws://127.0.0.1:9399`.
 It starts automatically when the app launches and stops when the app
 quits.
 
@@ -263,7 +263,7 @@ lattices daemon status
 Or programmatically:
 
 ```js
-import { isDaemonRunning, daemonCall } from '@arach/lattices/daemon-client'
+import { isDaemonRunning, daemonCall } from '@lattices/cli'
 
 if (await isDaemonRunning()) {
   const status = await daemonCall('daemon.status')
@@ -273,7 +273,7 @@ if (await isDaemonRunning()) {
 
 ### What it provides
 
-- 30 RPC methods for reading windows, sessions, projects, spaces, layers,
+- 35+ RPC methods for reading windows, sessions, projects, spaces, layers,
   processes, terminals, and OCR. Also launching/killing sessions, tiling
   windows, switching layers, and managing tab groups.
 - 5 real-time events (`windows.changed`, `tmux.changed`, `processes.changed`,
@@ -284,11 +284,11 @@ if (await isDaemonRunning()) {
 
 ### Security
 
-The daemon binds to localhost only (`127.0.0.1:9399`). Not accessible
+The server binds to localhost only (`127.0.0.1:9399`). Not accessible
 from the network. No authentication, so any local process can connect.
-This is intentional. It's for local automation, not remote access.
+This is intentional — it's for local automation, not remote access.
 
-Full method list in the [Daemon API reference](/docs/api).
+Full method list in the [Agent API reference](/docs/api).
 
 ## Diagnostics
 

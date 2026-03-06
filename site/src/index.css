@@ -173,6 +173,41 @@ code {
   margin: 0 auto 32px;
 }
 
+/* ── Hero pillars ─────────────────────────────────── */
+
+.hero-pillars {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  max-width: 780px;
+  margin: 0 auto 36px;
+  text-align: left;
+}
+
+.hero-pillar {
+  padding: 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  transition: border-color 0.2s;
+}
+
+.hero-pillar:hover {
+  border-color: var(--border-lit);
+}
+
+.hero-pillar h2 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 6px;
+}
+
+.hero-pillar p {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  margin: 0;
+}
+
 /* ── Install block ─────────────────────────────────── */
 
 .install {
@@ -389,6 +424,12 @@ code {
   border-radius: 10px;
   border: 1px solid var(--border);
   background: var(--surface);
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.layout-card.active {
+  border-color: var(--green);
 }
 
 .layout-card h3 {
@@ -445,17 +486,31 @@ code {
   grid-row: 1 / -1;
 }
 
-/* ── Features ──────────────────────────────────────── */
+/* ── Feature buckets ───────────────────────────────── */
 
-.features {
+.feature-buckets {
   padding: 48px 0;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+
+.bucket-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--green);
+  margin-bottom: 12px;
+}
+
+.bucket-cards {
+  display: grid;
   gap: 12px;
 }
 
 .feature {
-  padding: 20px;
+  padding: 14px 16px;
   border-radius: 10px;
   border: 1px solid var(--border);
   background: var(--surface);
@@ -466,16 +521,10 @@ code {
   border-color: var(--border-lit);
 }
 
-.feature-icon {
-  font-size: 18px;
-  margin-bottom: 10px;
-  display: block;
-}
-
 .feature h3 {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .feature p {
@@ -760,8 +809,14 @@ code {
 /* ── Responsive ────────────────────────────────────── */
 
 @media (max-width: 720px) {
-  .features {
-    grid-template-columns: repeat(2, 1fr);
+  .hero-pillars {
+    grid-template-columns: 1fr;
+    max-width: 360px;
+  }
+
+  .feature-buckets {
+    grid-template-columns: 1fr;
+    gap: 32px;
   }
 
   .config-grid {
@@ -825,10 +880,9 @@ code {
     font-size: 12px;
   }
 
-  .features {
+  .feature-buckets {
     padding: 32px 0;
-    grid-template-columns: 1fr;
-    gap: 10px;
+    gap: 24px;
   }
 
   .feature {

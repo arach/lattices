@@ -1,15 +1,15 @@
 ---
-title: Daemon API
+title: Agent API
 description: WebSocket API reference for programmatic control of lattices
 order: 5
 ---
 
-The lattices menu bar app runs a WebSocket daemon on `ws://127.0.0.1:9399`.
+The lattices menu bar app runs a WebSocket server on `ws://127.0.0.1:9399`.
 35+ RPC methods and 5 real-time events.
 
 ## Quick start
 
-1. Launch the daemon (it starts with the menu bar app):
+1. Launch the server (it starts with the menu bar app):
 
 ```bash
 lattices app
@@ -24,7 +24,7 @@ lattices daemon status
 3. Call a method from Node.js:
 
 ```js
-import { daemonCall } from '@arach/lattices/daemon-client'
+import { daemonCall } from '@lattices/cli'
 
 const windows = await daemonCall('windows.list')
 console.log(windows) // [{ wid, app, title, frame, ... }, ...]
@@ -83,14 +83,14 @@ lattices uses a JSON-RPC-style protocol over WebSocket on port **9399**.
 
 ### Connection lifecycle
 
-- The daemon starts when the menu bar app launches and stops when it quits.
+- The server starts when the menu bar app launches and stops when it quits.
 - Connections are plain WebSocket. No handshake, no auth, no heartbeat.
 - The Node.js `daemonCall()` client opens a fresh connection per call and
   closes it when the response arrives. For event subscriptions, hold the
   connection open (see [Reactive event pattern](#agent-integration)).
-- If the daemon restarts (e.g. after `lattices app restart`), existing
-  connections are dropped. Clients should reconnect and treat the daemon
-  as stateless. There is no session resumption.
+- If the server restarts (e.g. after `lattices app restart`), existing
+  connections are dropped. Clients should reconnect and treat it as
+  stateless. There is no session resumption.
 
 ## Node.js client
 
@@ -103,7 +103,7 @@ matching internally.
 Send an RPC call and await the response.
 
 ```js
-import { daemonCall } from '@arach/lattices/daemon-client'
+import { daemonCall } from '@lattices/cli'
 
 // Read-only
 const status = await daemonCall('daemon.status')
@@ -119,14 +119,14 @@ await daemonCall('projects.scan', null, 10000)
 ```
 
 **Returns** the `result` field from the response.
-**Throws** if the daemon returns an error, the connection fails, or the timeout is reached.
+**Throws** if the server returns an error, the connection fails, or the timeout is reached.
 
 ### `isDaemonRunning()`
 
-Check if the daemon is reachable.
+Check if the server is reachable.
 
 ```js
-import { isDaemonRunning } from '@arach/lattices/daemon-client'
+import { isDaemonRunning } from '@lattices/cli'
 
 if (await isDaemonRunning()) {
   console.log('daemon is up')
@@ -140,7 +140,7 @@ Returns `true` if `daemon.status` responds within 1 second.
 `daemonCall` throws on errors — always wrap calls in try/catch:
 
 ```js
-import { daemonCall } from '@arach/lattices/daemon-client'
+import { daemonCall } from '@lattices/cli'
 
 try {
   await daemonCall('session.launch', { path: '/nonexistent' })
@@ -849,7 +849,7 @@ is available at ws://127.0.0.1:9399.
 
 ### Import
 \```js
-import { daemonCall } from '@arach/lattices/daemon-client'
+import { daemonCall } from '@lattices/cli'
 \```
 ```
 
@@ -858,7 +858,7 @@ import { daemonCall } from '@arach/lattices/daemon-client'
 An orchestrator agent can set up the full workspace for sub-agents:
 
 ```js
-import { daemonCall } from '@arach/lattices/daemon-client'
+import { daemonCall } from '@lattices/cli'
 
 // Discover what's available
 const projects = await daemonCall('projects.list')
@@ -912,7 +912,7 @@ ws.on('open', () => {
 Always verify the daemon is running before making calls:
 
 ```js
-import { isDaemonRunning, daemonCall } from '@arach/lattices/daemon-client'
+import { isDaemonRunning, daemonCall } from '@lattices/cli'
 
 if (!(await isDaemonRunning())) {
   console.error('lattices daemon is not running — start it with: lattices app')

@@ -1,7 +1,7 @@
 {
-  "name": "@arach/lattices",
+  "name": "@lattices/cli",
   "version": "0.2.1",
-  "description": "macOS workspace manager with window tiling, OCR, and a 30-method daemon API for AI agents",
+  "description": "Agentic window manager for macOS — programmable workspace, smart layouts, managed tmux sessions, and a 35+-method agent API",
   "bin": {
     "lattices": "./bin/lattices.js",
     "lattices-app": "./bin/lattices-app.js"
@@ -21,7 +21,7 @@
   },
   "license": "MIT",
   "exports": {
-    ".": "./bin/lattices.js",
+    ".": "./bin/client.js",
     "./daemon-client": "./bin/daemon-client.js"
   },
   "scripts": {

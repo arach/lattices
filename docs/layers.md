@@ -281,7 +281,7 @@ Tagged windows behave like declared ones — they're raised and tiled
 when their layer activates. Remove a tag by reassigning or with:
 
 ```bash
-# Via the daemon API
+# Via the agent API
 await daemonCall('window.removeLayer', { wid: 1234 })
 ```
 
@@ -293,10 +293,10 @@ This provides instant visual feedback without interrupting your flow.
 
 ### Programmatic switching
 
-Agents and scripts can switch layers via the daemon API:
+Agents and scripts can switch layers via the agent API:
 
 ```js
-import { daemonCall } from '@arach/lattices/daemon-client'
+import { daemonCall } from '@lattices/cli'
 
 // List available layers
 const { layers, active } = await daemonCall('layers.list')
@@ -313,7 +313,7 @@ The `layer.switch` call focuses and tiles all windows in the target
 layer, just like the hotkey or command palette. A `layer.switched`
 event is broadcast to all connected clients.
 
-More methods in the [Daemon API reference](/docs/api).
+More methods in the [Agent API reference](/docs/api).
 
 ### Layer bar
 
