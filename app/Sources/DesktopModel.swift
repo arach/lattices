@@ -5,6 +5,8 @@ final class DesktopModel: ObservableObject {
     static let shared = DesktopModel()
 
     @Published private(set) var windows: [UInt32: WindowEntry] = [:]
+    /// In-memory layer tags: wid → layer id (e.g. "lattices", "talkie", "hudson")
+    private(set) var windowLayerTags: [UInt32: String] = [:]
     private var timer: Timer?
 
     func start(interval: TimeInterval = 1.5) {
@@ -28,6 +30,32 @@ final class DesktopModel: ObservableObject {
     func windowForSession(_ session: String) -> WindowEntry? {
         let tag = Terminal.windowTag(for: session)
         return windows.values.first { $0.title.contains(tag) }
+    }
+
+    /// Assign a layer tag to a window (in-memory only)
+    func assignLayer(wid: UInt32, layerId: String) {
+        windowLayerTags[wid] = layerId
+    }
+
+    /// Remove layer tag from a window
+    func removeLayerTag(wid: UInt32) {
+        windowLayerTags.removeValue(forKey: wid)
+    }
+
+    /// Clear all layer tags
+    func clearLayerTags() {
+        windowLayerTags.removeAll()
+    }
+
+    /// Find a window by app name and optional title substring (case-insensitive)
+    func windowForApp(app: String, title: String?) -> WindowEntry? {
+        let matches = windows.values.filter {
+            $0.app.localizedCaseInsensitiveContains(app)
+        }
+        if let title {
+            return matches.first { $0.title.localizedCaseInsensitiveContains(title) }
+        }
+        return matches.first
     }
 
     // MARK: - Polling

@@ -1322,8 +1322,16 @@ enum WindowTiler {
         var processed = 0
         var activatedPids = Set<Int32>()
 
+        // Freeze screen rendering for smooth batch moves
+        let cid = _SLSMainConnectionID?()
+        if let cid { _ = _SLSDisableUpdate?(cid) }
+
         for (pid, windowMoves) in byPid {
             let appRef = AXUIElementCreateApplication(pid)
+
+            // Disable enhanced UI — breaks macOS tile lock so resize works
+            AXUIElementSetAttributeValue(appRef, "AXEnhancedUserInterface" as CFString, false as CFTypeRef)
+
             var windowsRef: CFTypeRef?
             let err = AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &windowsRef)
             guard err == .success, let axWindows = windowsRef as? [AXUIElement] else { continue }
@@ -1343,15 +1351,15 @@ enum WindowTiler {
                 var newPos = CGPoint(x: wm.target.origin.x, y: wm.target.origin.y)
                 var newSize = CGSize(width: wm.target.width, height: wm.target.height)
 
-                // Position → Size → Position (double-set avoids clipping/snapping)
-                if let pv = AXValueCreate(.cgPoint, &newPos) {
-                    AXUIElementSetAttributeValue(axWin, kAXPositionAttribute as CFString, pv)
-                }
+                // Size → Position → Size (same pattern as single-window tiler)
                 if let sv = AXValueCreate(.cgSize, &newSize) {
                     AXUIElementSetAttributeValue(axWin, kAXSizeAttribute as CFString, sv)
                 }
                 if let pv = AXValueCreate(.cgPoint, &newPos) {
                     AXUIElementSetAttributeValue(axWin, kAXPositionAttribute as CFString, pv)
+                }
+                if let sv = AXValueCreate(.cgSize, &newSize) {
+                    AXUIElementSetAttributeValue(axWin, kAXSizeAttribute as CFString, sv)
                 }
 
                 // Raise
@@ -1361,6 +1369,9 @@ enum WindowTiler {
                 processed += 1
             }
 
+            // Re-enable enhanced UI
+            AXUIElementSetAttributeValue(appRef, "AXEnhancedUserInterface" as CFString, true as CFTypeRef)
+
             // Activate each app once so its windows come to front
             if !activatedPids.contains(pid) {
                 if let app = NSRunningApplication(processIdentifier: pid) {
@@ -1369,6 +1380,9 @@ enum WindowTiler {
                 }
             }
         }
+
+        // Unfreeze screen rendering
+        if let cid { _ = _SLSReenableUpdate?(cid) }
         diag.success("batchMoveAndRaiseWindows: processed \(processed)/\(moves.count) windows")
     }
 

@@ -700,11 +700,48 @@ async function windowsCommand(jsonFlag) {
     console.log(`Windows (${windows.length}):\n`);
     for (const w of windows) {
       const session = w.latticesSession ? `  \x1b[36m[lattices:${w.latticesSession}]\x1b[0m` : "";
+      const layer = w.layerTag ? `  \x1b[33m[layer:${w.layerTag}]\x1b[0m` : "";
       const spaces = w.spaceIds.length ? ` space:${w.spaceIds.join(",")}` : "";
-      console.log(`  \x1b[1m${w.app}\x1b[0m  wid:${w.wid}${spaces}${session}`);
+      console.log(`  \x1b[1m${w.app}\x1b[0m  wid:${w.wid}${spaces}${session}${layer}`);
       console.log(`    "${w.title}"`);
       console.log(`    ${Math.round(w.frame.w)}×${Math.round(w.frame.h)} at (${Math.round(w.frame.x)},${Math.round(w.frame.y)})`);
       console.log();
+    }
+  } catch {
+    console.log("Daemon not running. Start with: lattices app");
+  }
+}
+
+async function windowAssignCommand(wid, layerId) {
+  if (!wid || !layerId) {
+    console.log("Usage: lattices window assign <wid> <layer-id>");
+    return;
+  }
+  try {
+    const { daemonCall } = await getDaemonClient();
+    await daemonCall("window.assignLayer", { wid: parseInt(wid), layer: layerId });
+    console.log(`Tagged wid:${wid} → layer:${layerId}`);
+  } catch (e) {
+    console.log(`Error: ${e.message}`);
+  }
+}
+
+async function windowLayerMapCommand(jsonFlag) {
+  try {
+    const { daemonCall } = await getDaemonClient();
+    const map = await daemonCall("window.layerMap");
+    if (jsonFlag) {
+      console.log(JSON.stringify(map, null, 2));
+      return;
+    }
+    const entries = Object.entries(map);
+    if (!entries.length) {
+      console.log("No layer tags assigned.");
+      return;
+    }
+    console.log("Window → Layer map:\n");
+    for (const [wid, layer] of entries) {
+      console.log(`  wid:${wid} → ${layer}`);
     }
   } catch {
     console.log("Daemon not running. Start with: lattices app");
@@ -742,12 +779,32 @@ async function layerCommand(index) {
       return;
     }
     const idx = parseInt(index, 10);
-    if (isNaN(idx)) {
-      console.log("Usage: lattices layer <index>");
+    if (!isNaN(idx)) {
+      await daemonCall("layer.switch", { index: idx });
+      console.log(`Switched to layer ${idx}`);
+    } else {
+      await daemonCall("layer.switch", { name: index });
+      console.log(`Switched to layer "${index}"`);
+    }
+  } catch (e) {
+    console.log(`Error: ${e.message}`);
+  }
+}
+
+async function diagCommand(limit) {
+  try {
+    const { daemonCall } = await getDaemonClient();
+    const result = await daemonCall("diagnostics.list", { limit: parseInt(limit, 10) || 40 });
+    if (!result.entries || !result.entries.length) {
+      console.log("No diagnostic entries.");
       return;
     }
-    await daemonCall("layer.switch", { index: idx });
-    console.log(`Switched to layer ${idx}`);
+    for (const entry of result.entries) {
+      const icon = entry.level === "success" ? "\x1b[32m✓\x1b[0m" :
+                   entry.level === "warning" ? "\x1b[33m⚠\x1b[0m" :
+                   entry.level === "error"   ? "\x1b[31m✗\x1b[0m" : "›";
+      console.log(`  \x1b[90m${entry.time}\x1b[0m ${icon} ${entry.message}`);
+    }
   } catch (e) {
     console.log(`Error: ${e.message}`);
   }
@@ -1058,7 +1115,7 @@ Usage:
   lattices focus <session>    Focus a session's terminal window (daemon required)
   lattices tile <position>    Tile the frontmost window (left, right, top, etc.)
   lattices distribute         Smart-grid all visible windows (daemon required)
-  lattices layer [index]      List layers or switch to a layer (daemon required)
+  lattices layer [name|index]  List layers or switch by name/index (daemon required)
   lattices scan               Show text from all visible windows
   lattices scan --full        Full text dump
   lattices scan search <q>    Full-text search across scanned windows
@@ -1066,6 +1123,7 @@ Usage:
   lattices scan deep          Trigger a deep Vision OCR scan
   lattices scan history <wid> Scan timeline for a specific window
   lattices daemon status      Show daemon status
+  lattices diag [limit]       Show diagnostic log entries
   lattices app                Launch the menu bar companion app
   lattices app build          Rebuild the menu bar app
   lattices app restart        Rebuild and relaunch the menu bar app
@@ -1440,12 +1498,27 @@ switch (command) {
   case "windows":
     await windowsCommand(args[1] === "--json");
     break;
+  case "window":
+    if (args[1] === "assign") {
+      await windowAssignCommand(args[2], args[3]);
+    } else if (args[1] === "map") {
+      await windowLayerMapCommand(args[2] === "--json");
+    } else {
+      console.log("Usage:");
+      console.log("  lattices window assign <wid> <layer-id>   Tag a window to a layer");
+      console.log("  lattices window map [--json]               Show all layer tags");
+    }
+    break;
   case "focus":
     await focusCommand(args[1]);
     break;
   case "layer":
   case "layers":
     await layerCommand(args[1]);
+    break;
+  case "diag":
+  case "diagnostics":
+    await diagCommand(args[1]);
     break;
   case "scan":
   case "ocr":

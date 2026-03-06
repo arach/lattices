@@ -20,6 +20,10 @@ struct LayerProject: Codable {
     let group: String?
     let tile: String?
     let display: Int?
+    let app: String?       // match by owner app name (e.g. "Google Chrome", "Xcode")
+    let title: String?     // substring match on window title (case-insensitive)
+    let url: String?       // URL to open if no matching window found
+    let launch: String?    // app name to launch if not running (via `open -a`)
 }
 
 struct Layer: Codable, Identifiable {
@@ -89,6 +93,18 @@ class WorkspaceManager: ObservableObject {
     var activeLayer: Layer? {
         guard let config, let layers = config.layers, activeLayerIndex < layers.count else { return nil }
         return layers[activeLayerIndex]
+    }
+
+    /// Look up a layer index by id or label (case-insensitive)
+    func layerIndex(named name: String) -> Int? {
+        guard let layers = config?.layers else { return nil }
+        // Try exact id match first
+        if let i = layers.firstIndex(where: { $0.id == name }) { return i }
+        // Then case-insensitive id
+        if let i = layers.firstIndex(where: { $0.id.localizedCaseInsensitiveCompare(name) == .orderedSame }) { return i }
+        // Then case-insensitive label
+        if let i = layers.firstIndex(where: { $0.label.localizedCaseInsensitiveCompare(name) == .orderedSame }) { return i }
+        return nil
     }
 
     // MARK: - Config I/O
@@ -283,6 +299,8 @@ class WorkspaceManager: ObservableObject {
         for lp in layer.projects {
             if let groupId = lp.group, let group = group(byId: groupId) {
                 if isGroupRunning(group) { running += 1 }
+            } else if let appName = lp.app {
+                if DesktopModel.shared.windowForApp(app: appName, title: lp.title) != nil { running += 1 }
             } else if let path = lp.path {
                 let project = scanner.projects.first(where: { $0.path == path })
                 if project?.isRunning == true { running += 1 }
@@ -314,10 +332,19 @@ class WorkspaceManager: ObservableObject {
         let scanner = ProjectScanner.shared
         let targetLayer = layers[index]
 
+        // Tile debug log (written to ~/.lattices/tile-debug.log)
+        let debugPath = (FileManager.default.homeDirectoryForCurrentUser.path as NSString).appendingPathComponent(".lattices/tile-debug.log")
+        var debugLines: [String] = ["tileLayer index=\(index) launch=\(launch) force=\(force) layer=\(targetLayer.id)"]
+
         // Phase 1: classify each project
         var batchMoves: [(wid: UInt32, pid: Int32, frame: CGRect)] = []
         var fallbacks: [(session: String, position: TilePosition, screen: NSScreen)] = []
         var launchQueue: [(session: String, position: TilePosition?, screen: NSScreen, launchAction: () -> Void)] = []
+
+        // Log screen info
+        for (i, s) in NSScreen.screens.enumerated() {
+            debugLines.append("screen[\(i)]: frame=\(s.frame) visible=\(s.visibleFrame)")
+        }
 
         for lp in targetLayer.projects {
             guard let lpScreen = screen(for: lp.display) else { continue }
@@ -344,18 +371,58 @@ class WorkspaceManager: ObservableObject {
                 continue
             }
 
+            // App-based window matching
+            if let appName = lp.app {
+                let position = lp.tile.flatMap { TilePosition(rawValue: $0) }
+                if let entry = DesktopModel.shared.windowForApp(app: appName, title: lp.title) {
+                    if let pos = position {
+                        let frame = WindowTiler.tileFrame(for: pos, on: lpScreen)
+                        batchMoves.append((entry.wid, entry.pid, frame))
+                    }
+                } else if launch {
+                    diag.info("  launch app: \(appName)")
+                    let capturedLp = lp
+                    let capturedScreen = lpScreen
+                    launchQueue.append(("app:\(appName)", nil, capturedScreen, { [weak self] in
+                        self?.launchAppEntry(capturedLp)
+                    }))
+                    // Queue a delayed tile after launch
+                    if let pos = position {
+                        let capturedTitle = lp.title
+                        let delay = Double(launchQueue.count) * 0.5 + 1.0
+                        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                            DesktopModel.shared.poll()
+                            if let entry = DesktopModel.shared.windowForApp(app: appName, title: capturedTitle) {
+                                let frame = WindowTiler.tileFrame(for: pos, on: capturedScreen)
+                                WindowTiler.batchMoveAndRaiseWindows([(entry.wid, entry.pid, frame)])
+                            }
+                        }
+                    }
+                } else {
+                    diag.info("  skip (not found): \(appName)")
+                }
+                continue
+            }
+
             guard let path = lp.path else { continue }
             let sessionName = Self.sessionName(for: path)
             let project = scanner.projects.first(where: { $0.path == path })
             let position = lp.tile.flatMap { TilePosition(rawValue: $0) }
-            let isRunning = project?.isRunning == true
+            // Check scanner first, fall back to direct tmux check for projects without .lattices.json
+            let isRunning = project?.isRunning == true || shell([tmuxPath, "has-session", "-t", sessionName]) == 0
 
             if isRunning {
+                let foundWindow = windowForSession(sessionName)
+                let msg = "  \(sessionName): running=\(isRunning) window=\(foundWindow?.wid ?? 0) tile=\(position?.rawValue ?? "nil") desktopCount=\(DesktopModel.shared.windows.count)"
+                diag.info(msg)
+                debugLines.append(msg)
                 if let pos = position,
                    let target = batchTarget(session: sessionName, position: pos, screen: lpScreen) {
                     batchMoves.append(target)
+                    debugLines.append("    → batch move wid=\(target.wid) frame=\(target.frame)")
                 } else if let pos = position {
                     fallbacks.append((sessionName, pos, lpScreen))
+                    debugLines.append("    → fallback \(pos.rawValue)")
                 }
             } else if launch {
                 if let project {
@@ -370,7 +437,43 @@ class WorkspaceManager: ObservableObject {
             } else {
                 diag.info("  skip (not running): \(sessionName)")
             }
+
+            // Compose companion windows from project's .lattices.json "windows" array
+            let companions = projectWindows(at: path)
+            for cw in companions {
+                guard let appName = cw.app else { continue }
+                let cwScreen = screen(for: cw.display ?? lp.display) ?? lpScreen
+                let cwPosition = cw.tile.flatMap { TilePosition(rawValue: $0) }
+                if let entry = DesktopModel.shared.windowForApp(app: appName, title: cw.title) {
+                    if let pos = cwPosition {
+                        let frame = WindowTiler.tileFrame(for: pos, on: cwScreen)
+                        batchMoves.append((entry.wid, entry.pid, frame))
+                    }
+                } else if launch {
+                    diag.info("  launch companion: \(appName)")
+                    let capturedCw = cw
+                    launchQueue.append(("app:\(appName)", nil, cwScreen, { [weak self] in
+                        self?.launchAppEntry(capturedCw)
+                    }))
+                    if let pos = cwPosition {
+                        let capturedTitle = cw.title
+                        let capturedScreen = cwScreen
+                        let delay = Double(launchQueue.count) * 0.5 + 1.0
+                        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                            DesktopModel.shared.poll()
+                            if let entry = DesktopModel.shared.windowForApp(app: appName, title: capturedTitle) {
+                                let frame = WindowTiler.tileFrame(for: pos, on: capturedScreen)
+                                WindowTiler.batchMoveAndRaiseWindows([(entry.wid, entry.pid, frame)])
+                            }
+                        }
+                    }
+                }
+            }
         }
+
+        // Write debug log
+        debugLines.append("batchMoves=\(batchMoves.count) fallbacks=\(fallbacks.count) launchQueue=\(launchQueue.count)")
+        try? debugLines.joined(separator: "\n").write(toFile: debugPath, atomically: true, encoding: .utf8)
 
         // Phase 2: batch tile all tracked windows
         if !batchMoves.isEmpty {
@@ -405,6 +508,11 @@ class WorkspaceManager: ObservableObject {
         activeLayerIndex = index
         UserDefaults.standard.set(index, forKey: activeLayerKey)
 
+        // Show layer bezel
+        let totalLayers = layers.count
+        let allLabels = layers.map(\.label)
+        LayerBezel.shared.show(label: targetLayer.label, index: index, total: totalLayers, allLabels: allLabels)
+
         let maxDelay = max(
             fallbacks.isEmpty ? 0.0 : Double(fallbacks.count) * 0.15 + 0.3,
             launchQueue.isEmpty ? 0.0 : Double(launchQueue.count) * 0.15 + 0.5
@@ -414,6 +522,39 @@ class WorkspaceManager: ObservableObject {
             scanner.refreshStatus()
             self.isSwitching = false
             diag.finish(overall)
+        }
+    }
+
+    // MARK: - Per-Project Window Config
+
+    /// Read companion window entries from a project's .lattices.json "windows" array
+    func projectWindows(at projectPath: String) -> [LayerProject] {
+        let configPath = (projectPath as NSString).appendingPathComponent(".lattices.json")
+        guard let data = FileManager.default.contents(atPath: configPath),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let windowsArray = json["windows"] else { return [] }
+        do {
+            let windowsData = try JSONSerialization.data(withJSONObject: windowsArray)
+            return try JSONDecoder().decode([LayerProject].self, from: windowsData)
+        } catch {
+            DiagnosticLog.shared.error("WorkspaceManager: failed to decode windows in \(configPath) — \(error.localizedDescription)")
+            return []
+        }
+    }
+
+    // MARK: - App Launch Helper
+
+    /// Launch an app-based layer project (open URL or launch app by name)
+    private func launchAppEntry(_ lp: LayerProject) {
+        if let urlStr = lp.url, let url = URL(string: urlStr) {
+            NSWorkspace.shared.open(url)
+        } else if let appName = lp.launch ?? lp.app {
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+            task.arguments = ["-a", appName]
+            task.standardOutput = FileHandle.nullDevice
+            task.standardError = FileHandle.nullDevice
+            try? task.run()
         }
     }
 

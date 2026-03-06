@@ -371,6 +371,62 @@ final class LatticesApi {
             }
         ))
 
+        // MARK: - Window Layer Tags
+
+        api.register(Endpoint(
+            method: "window.assignLayer",
+            description: "Tag a window with a layer id (in-memory only)",
+            access: .mutate,
+            params: [
+                Param(name: "wid", type: "uint32", required: true, description: "Window ID"),
+                Param(name: "layer", type: "string", required: true, description: "Layer id (e.g. 'lattices', 'talkie')")
+            ],
+            returns: .ok,
+            handler: { params in
+                guard let wid = params?["wid"]?.uint32Value else {
+                    throw RouterError.missingParam("wid")
+                }
+                guard let layerId = params?["layer"]?.stringValue, !layerId.isEmpty else {
+                    throw RouterError.missingParam("layer")
+                }
+                DesktopModel.shared.assignLayer(wid: wid, layerId: layerId)
+                return .object(["ok": .bool(true), "wid": .int(Int(wid)), "layer": .string(layerId)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "window.removeLayer",
+            description: "Remove layer tag from a window",
+            access: .mutate,
+            params: [
+                Param(name: "wid", type: "uint32", required: true, description: "Window ID")
+            ],
+            returns: .ok,
+            handler: { params in
+                guard let wid = params?["wid"]?.uint32Value else {
+                    throw RouterError.missingParam("wid")
+                }
+                DesktopModel.shared.removeLayerTag(wid: wid)
+                return .object(["ok": .bool(true)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "window.layerMap",
+            description: "Get all window-to-layer assignments",
+            access: .read,
+            params: [],
+            returns: .custom("{ [wid]: layerId }"),
+            handler: { _ in
+                let tags = DesktopModel.shared.windowLayerTags
+                var obj: [String: JSON] = [:]
+                for (wid, layerId) in tags {
+                    obj[String(wid)] = .string(layerId)
+                }
+                return .object(obj)
+            }
+        ))
+
         api.register(Endpoint(
             method: "tmux.sessions",
             description: "List all tmux sessions with child process enrichment",
@@ -478,6 +534,29 @@ final class LatticesApi {
                     "version": .string("1.0.0"),
                     "windowCount": .int(DesktopModel.shared.windows.count),
                     "tmuxSessionCount": .int(TmuxModel.shared.sessions.count)
+                ])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "diagnostics.list",
+            description: "Get recent diagnostic log entries",
+            access: .read,
+            params: [Param(name: "limit", type: "int", required: false, description: "Max entries to return (default 40)")],
+            returns: .custom("Array of log entries with time, level, message"),
+            handler: { params in
+                let limit = params?["limit"]?.intValue ?? 40
+                let entries = DiagnosticLog.shared.entries.suffix(limit)
+                let fmt = DateFormatter()
+                fmt.dateFormat = "HH:mm:ss.SSS"
+                return .object([
+                    "entries": .array(entries.map { entry in
+                        .object([
+                            "time": .string(fmt.string(from: entry.time)),
+                            "level": .string("\(entry.level)"),
+                            "message": .string(entry.message)
+                        ])
+                    })
                 ])
             }
         ))
@@ -842,16 +921,25 @@ final class LatticesApi {
 
         api.register(Endpoint(
             method: "layer.switch",
-            description: "Switch to a workspace layer by index",
+            description: "Switch to a workspace layer by index or name",
             access: .mutate,
-            params: [Param(name: "index", type: "int", required: true, description: "Layer index")],
+            params: [
+                Param(name: "index", type: "int", required: false, description: "Layer index"),
+                Param(name: "name", type: "string", required: false, description: "Layer id or label (case-insensitive)")
+            ],
             returns: .ok,
             handler: { params in
-                guard let index = params?["index"]?.intValue else {
-                    throw RouterError.missingParam("index")
+                let wm = WorkspaceManager.shared
+                let index: Int
+                if let i = params?["index"]?.intValue {
+                    index = i
+                } else if let n = params?["name"]?.stringValue, let i = wm.layerIndex(named: n) {
+                    index = i
+                } else {
+                    throw RouterError.missingParam("index or name")
                 }
                 DispatchQueue.main.async {
-                    WorkspaceManager.shared.tileLayer(index: index, launch: true)
+                    wm.tileLayer(index: index, launch: true, force: true)
                     EventBus.shared.post(.layerSwitched(index: index))
                 }
                 return .object(["ok": .bool(true)])
@@ -959,6 +1047,9 @@ enum Encoders {
         ]
         if let session = w.latticesSession {
             obj["latticesSession"] = .string(session)
+        }
+        if let layerTag = DesktopModel.shared.windowLayerTags[w.wid] {
+            obj["layerTag"] = .string(layerTag)
         }
         return .object(obj)
     }

@@ -92,7 +92,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let layerCount = (workspace.config?.layers ?? []).count
         for (i, action) in HotkeyAction.layerActions.prefix(layerCount).enumerated() {
             let index = i
-            store.register(action: action) { workspace.tileLayer(index: index) }
+            store.register(action: action) {
+                workspace.tileLayer(index: index, launch: true, force: true)
+                EventBus.shared.post(.layerSwitched(index: index))
+            }
         }
 
         // Tiling hotkeys
