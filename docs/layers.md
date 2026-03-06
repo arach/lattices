@@ -136,6 +136,42 @@ Add `layers` to `~/.lattices/workspace.json`:
 }
 ```
 
+### App windows in layers
+
+Layers aren't limited to terminal sessions. You can include any
+application window by using the `app`, `title`, `url`, and `launch`
+fields instead of `path`:
+
+```json
+{
+  "name": "hudson",
+  "layers": [
+    {
+      "id": "main",
+      "label": "Main",
+      "projects": [
+        { "app": "Google Chrome", "title": "GitHub", "tile": "left" },
+        { "app": "Talkie", "tile": "top-right", "launch": "open -a Talkie" },
+        { "path": "/Users/you/dev/frontend", "tile": "bottom-right" }
+      ]
+    },
+    {
+      "id": "docs",
+      "label": "Docs",
+      "projects": [
+        { "app": "Google Chrome", "url": "https://docs.example.com", "tile": "left" },
+        { "app": "Notes", "title": "Sprint Notes", "tile": "right" }
+      ]
+    }
+  ]
+}
+```
+
+When switching to a layer, lattices matches windows by `app` name and
+optionally filters by `title` substring or `url` prefix. If `launch`
+is provided and no matching window is found, the command is executed
+to open the app.
+
 ### Using groups in layers
 
 Layer projects can reference a tab group instead of a single path.
@@ -182,9 +218,13 @@ the design-system project on the right.
 | `layers[].projects` | array  | Projects in this layer                   |
 | `projects[].path` | string?  | Absolute path to project directory       |
 | `projects[].group`| string?  | Group ID (alternative to `path`)         |
+| `projects[].app`  | string?  | Application name (for non-terminal windows) |
+| `projects[].title`| string?  | Window title substring to match          |
+| `projects[].url`  | string?  | URL prefix to match (browser windows)    |
+| `projects[].launch`| string? | Shell command to launch the app if not found |
 | `projects[].tile` | string?  | Tile position (optional, see below)      |
 
-Each project entry must have either `path` or `group`, not both.
+Each project entry must have either `path`, `group`, or `app` — pick one.
 
 ### Tile values
 
@@ -195,22 +235,61 @@ works: `left`, `right`, `top`, `bottom`, `top-left`, `top-right`,
 
 ### Switching layers
 
-Three ways to switch:
+Four ways to switch:
 
 | Method               | How                                      |
 |----------------------|------------------------------------------|
 | **Hotkey**           | Cmd+Option+1, Cmd+Option+2, Cmd+Option+3... |
 | **Layer bar**        | Click a layer pill in the menu bar panel |
 | **Command palette**  | Search "Switch to Layer" in Cmd+Shift+M  |
+| **CLI**              | `lattices layer <name\|index>`           |
 
 When you switch to a layer:
 
-1. Each project's terminal window is **raised and focused**
-2. If a project isn't running yet, it gets **launched** automatically
-3. Windows with a `tile` value are **tiled** to that position
-4. The previous layer's windows stay open behind the new ones
+1. Each project's window is **raised and focused**
+2. App windows are matched by `app` / `title` / `url`
+3. If a project isn't running yet, it gets **launched** automatically
+4. Windows with a `tile` value are **tiled** to that position
+5. The previous layer's windows stay open behind the new ones
 
 The app remembers which layer was last active across restarts.
+
+### Named layer switching
+
+You can switch layers by name from the CLI:
+
+```bash
+lattices layer hudson     # Switch to the layer named "hudson"
+lattices layer 0          # Switch to the first layer (by index)
+```
+
+This is useful for scripting — you don't need to know the index,
+just the layer's `id` or `label`.
+
+### Window tagging
+
+You can manually assign any window to a layer, even if it's not
+declared in `workspace.json`. This is useful for ad-hoc windows
+that you want to move with a layer:
+
+```bash
+lattices window assign <wid> <layer>   # Tag a window to a layer
+lattices window map                    # Show all window→layer assignments
+```
+
+Tagged windows behave like declared ones — they're raised and tiled
+when their layer activates. Remove a tag by reassigning or with:
+
+```bash
+# Via the daemon API
+await daemonCall('window.removeLayer', { wid: 1234 })
+```
+
+### Layer bezel
+
+When you switch layers via hotkey, a translucent HUD pill appears
+briefly at the top of the screen showing the new layer's name.
+This provides instant visual feedback without interrupting your flow.
 
 ### Programmatic switching
 
@@ -225,6 +304,9 @@ console.log(`Active: ${layers[active].label}`)
 
 // Switch to a layer by index
 await daemonCall('layer.switch', { index: 0 })
+
+// Switch to a layer by name
+await daemonCall('layer.switch', { name: 'hudson' })
 ```
 
 The `layer.switch` call focuses and tiles all windows in the target
@@ -276,6 +358,17 @@ No `tile` — just focuses the window wherever it is.
 }
 ```
 
+### Mixed: apps + terminals
+
+```json
+{
+  "projects": [
+    { "app": "Google Chrome", "title": "GitHub", "tile": "left" },
+    { "path": "/Users/you/dev/api", "tile": "right" }
+  ]
+}
+```
+
 ### Group + project
 
 ```json
@@ -305,6 +398,8 @@ No `tile` — just focuses the window wherever it is.
 - Projects don't need a `.lattices.json` config to be in a layer — any
   directory path works. If the project has a config, lattices uses it; if
   not, it opens a plain terminal in that directory.
+- App windows don't need any config at all — just specify `app` and
+  optionally `title` or `url` to match the right window.
 - You can have up to 9 layers (Cmd+Option+1 through Cmd+Option+9).
 - Edit `workspace.json` by hand — the app re-reads it on launch. Use
   the Refresh Projects button or restart the app to pick up changes.

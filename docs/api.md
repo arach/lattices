@@ -5,7 +5,7 @@ order: 5
 ---
 
 The lattices menu bar app runs a WebSocket daemon on `ws://127.0.0.1:9399`.
-30 RPC methods and 5 real-time events.
+35+ RPC methods and 5 real-time events.
 
 ## Quick start
 
@@ -163,6 +163,7 @@ try {
 |--------|------|-------------|
 | `daemon.status` | read | Health check and stats |
 | `api.schema` | read | Full API schema for self-discovery |
+| `diagnostics.list` | read | Recent diagnostic entries |
 
 #### `daemon.status`
 
@@ -189,6 +190,16 @@ Useful for agent self-discovery.
 
 **Params**: none
 
+#### `diagnostics.list`
+
+Return recent diagnostic log entries from the daemon.
+
+**Params**:
+
+| Field   | Type   | Required | Description                    |
+|---------|--------|----------|--------------------------------|
+| `limit` | number | no       | Max entries to return (default 50) |
+
 ---
 
 ## Windows & Spaces
@@ -197,10 +208,14 @@ Useful for agent self-discovery.
 |--------|------|-------------|
 | `windows.list` | read | All visible windows |
 | `windows.get` | read | Single window by ID |
+| `windows.search` | read | Search windows by query |
 | `spaces.list` | read | macOS display spaces |
 | `window.tile` | write | Tile a window to a position |
 | `window.focus` | write | Focus a window / switch Spaces |
 | `window.move` | write | Move a window to another Space |
+| `window.assignLayer` | write | Tag a window to a layer |
+| `window.removeLayer` | write | Remove a window's layer tag |
+| `window.layerMap` | read | All window→layer assignments |
 | `layout.distribute` | write | Distribute windows evenly |
 
 #### `windows.list`
@@ -221,13 +236,17 @@ List all visible windows tracked by the desktop model.
     "frame": { "x": 0, "y": 25, "w": 960, "h": 1050 },
     "spaceIds": [1],
     "isOnScreen": true,
-    "latticesSession": "myapp-a1b2c3"
+    "latticesSession": "myapp-a1b2c3",
+    "layerTag": "web"
   }
 ]
 ```
 
 The `latticesSession` field is present only on windows that belong to
 a lattices session (matched via the `[lattices:name]` title tag).
+
+The `layerTag` field is present when a window has been manually assigned
+to a layer via `window.assignLayer`.
 
 #### `windows.get`
 
@@ -241,6 +260,20 @@ Get a single window by its CGWindowID.
 
 **Returns**: a single window object (same shape as `windows.list` items).
 **Errors**: `Not found` if the window ID doesn't exist.
+
+#### `windows.search`
+
+Search windows by text query, including OCR content.
+
+**Params**:
+
+| Field   | Type   | Required | Description                    |
+|---------|--------|----------|--------------------------------|
+| `query` | string | yes      | Search query (matches title, app, OCR text) |
+| `ocr`   | boolean| no       | Include OCR text in search (default true) |
+| `limit` | number | no       | Max results (default 20)       |
+
+**Returns**: array of window objects matching the query.
 
 #### `spaces.list`
 
@@ -302,6 +335,45 @@ Move a session's window to a different macOS Space.
 |-----------|--------|----------|----------------------------|
 | `session` | string | yes      | Session name               |
 | `spaceId` | number | yes      | Target Space ID (from `spaces.list`) |
+
+#### `window.assignLayer`
+
+Manually tag a window to a layer. Tagged windows are raised and tiled
+when that layer activates, even if they aren't declared in `workspace.json`.
+
+**Params**:
+
+| Field   | Type   | Required | Description                    |
+|---------|--------|----------|--------------------------------|
+| `wid`   | number | yes      | CGWindowID                     |
+| `layer` | string | yes      | Layer ID to assign             |
+
+#### `window.removeLayer`
+
+Remove a window's layer tag.
+
+**Params**:
+
+| Field | Type   | Required | Description    |
+|-------|--------|----------|----------------|
+| `wid` | number | yes      | CGWindowID     |
+
+#### `window.layerMap`
+
+Return all current window→layer assignments.
+
+**Params**: none
+
+**Returns**:
+
+```json
+{
+  "1234": "web",
+  "5678": "mobile"
+}
+```
+
+Keys are CGWindowIDs (as strings), values are layer IDs.
 
 #### `layout.distribute`
 
@@ -507,7 +579,10 @@ a `layer.switched` event.
 
 | Field   | Type   | Required | Description                    |
 |---------|--------|----------|--------------------------------|
-| `index` | number | yes      | Layer index (0-based)          |
+| `index` | number | no       | Layer index (0-based)          |
+| `name`  | string | no       | Layer ID or label              |
+
+Provide either `index` or `name`. If both are given, `name` takes priority.
 
 #### `group.launch`
 
@@ -734,7 +809,7 @@ They have no `id` field — listen for messages with an `event` field.
 #### `layer.switched`
 
 ```json
-{ "event": "layer.switched", "data": { "index": 1 } }
+{ "event": "layer.switched", "data": { "index": 1, "name": "mobile" } }
 ```
 
 #### `ocr.scanComplete`
@@ -770,6 +845,7 @@ is available at ws://127.0.0.1:9399.
 - Launch a project: `daemonCall('session.launch', { path: '/absolute/path' })`
 - Tile a window: `daemonCall('window.tile', { session: 'name', position: 'left' })`
 - Switch layer: `daemonCall('layer.switch', { index: 0 })`
+- Switch layer by name: `daemonCall('layer.switch', { name: 'web' })`
 
 ### Import
 \```js

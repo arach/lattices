@@ -5,9 +5,8 @@ app/.build/
 app/.swiftpm/
 
 # Built .app bundle artifacts (rebuilt on install)
-Lattices.app/Contents/MacOS/
-Lattices.app/Contents/_CodeSignature/
-Lattices.app/Contents/Resources/AppIcon.icns
+Lattices.app/
+app/Lattices.app/
 
 # Release artifacts
 dist/

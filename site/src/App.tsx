@@ -4,9 +4,9 @@ import "./index.css";
 type PkgManager = "npm" | "pnpm" | "bun";
 
 const commands: Record<PkgManager, string> = {
-  npm: "npm install -g @arach/lattices",
-  pnpm: "pnpm add -g @arach/lattices",
-  bun: "bun add -g @arach/lattices",
+  npm: "npm install -g lattices",
+  pnpm: "pnpm add -g lattices",
+  bun: "bun add -g lattices",
 };
 
 const pmOrder: PkgManager[] = ["npm", "pnpm", "bun"];
@@ -146,7 +146,7 @@ export default function App() {
             <span className="nav-name">lattices</span>
           </a>
           <div className="nav-links">
-            <a href="/docs/concepts" className="nav-link">
+            <a href="/docs/overview" className="nav-link">
               Docs
             </a>
             <a href="/docs/api" className="nav-link">
@@ -184,9 +184,9 @@ export default function App() {
             <span className="accent">control plane</span>
           </h1>
           <p className="hero-sub">
-            Give AI coding agents full control over tmux sessions,
-            window tiling, and project layouts — or use the CLI and
-            menu bar app yourself. 20 RPC methods. Zero config required.
+            Give AI coding agents full control over terminal sessions,
+            window tiling, and workspace layers — or use the CLI and
+            menu bar app yourself. 35+ RPC methods. Zero config required.
           </p>
 
           <div className="install fade-in fade-in-delay-1">
@@ -220,7 +220,7 @@ export default function App() {
                 <StarIcon />
                 Star us on GitHub
               </a>
-              <a href="/docs/concepts" className="docs-link">
+              <a href="/docs/overview" className="docs-link">
                 Read the docs
               </a>
             </div>
@@ -334,7 +334,7 @@ export default function App() {
             <span className="feature-icon">&#9881;</span>
             <h3>Daemon API</h3>
             <p>
-              20 JSON-RPC methods over WebSocket. Read windows, launch sessions,
+              35+ JSON-RPC methods over WebSocket. Read windows, launch sessions,
               tile, switch layers. Built for agents, scripts, and automation.
             </p>
           </div>
@@ -358,7 +358,7 @@ export default function App() {
             <span className="feature-icon">&#9638;</span>
             <h3>Workspace layers</h3>
             <p>
-              Group projects into switchable layers. <code>Cmd+Option+1/2/3</code> to
+              Group any windows into switchable layers. <code>Cmd+Option+1/2/3</code> to
               instantly focus and tile a whole context.
             </p>
           </div>
@@ -378,8 +378,8 @@ export default function App() {
             <div>
               <h2 className="app-title">Native macOS menu bar app</h2>
               <p className="app-desc">
-                Built with SwiftUI. Manage all your tmux sessions
-                without touching the terminal.
+                Built with SwiftUI. Manage your workspace — terminal
+                sessions, app windows, and layers — from the menu bar.
               </p>
               <ul className="app-features">
                 <li>See all projects and session status</li>
@@ -431,7 +431,7 @@ export default function App() {
               View on GitHub
             </a>
             <a
-              href="https://www.npmjs.com/package/@arach/lattices"
+              href="https://www.npmjs.com/package/lattices"
               target="_blank"
               rel="noopener noreferrer"
               className="btn btn-secondary"
@@ -467,10 +467,10 @@ export default function App() {
               @arach
             </a>
           </span>
-          <a href="/docs/concepts" className="footer-link">
+          <a href="/docs/overview" className="footer-link">
             Documentation
           </a>
-          <span>macOS only. Requires tmux.</span>
+          <span>macOS only. tmux optional.</span>
         </footer>
       </div>
     </>

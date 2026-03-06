@@ -137,6 +137,16 @@ Run `lattices init` in your project directory to generate a starter
 | `lattices app`               | Launch the menu bar companion app                 |
 | `lattices app build`         | Rebuild the menu bar app from source              |
 | `lattices app restart`       | Rebuild and relaunch the menu bar app             |
+| `lattices layer [name\|index]` | Switch to a workspace layer by name or index      |
+| `lattices windows [--json]`  | List all visible windows                          |
+| `lattices window assign <wid> <layer>` | Tag a window to a layer                |
+| `lattices window map [--json]` | Show all window→layer assignments                |
+| `lattices scan search <query>` | Search indexed screen text                       |
+| `lattices diag [limit]`       | Show recent diagnostic entries                   |
+| `lattices focus <session>`   | Focus a session's window and switch Spaces        |
+| `lattices app`               | Launch the menu bar companion app                 |
+| `lattices app build`         | Rebuild the menu bar app from source              |
+| `lattices app restart`       | Rebuild and relaunch the menu bar app             |
 | `lattices app quit`          | Stop the menu bar app                             |
 | `lattices help`              | Show help                                         |
 
