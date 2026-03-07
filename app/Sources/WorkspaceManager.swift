@@ -309,6 +309,70 @@ class WorkspaceManager: ObservableObject {
         return (running, total)
     }
 
+    // MARK: - Layer Focus (raise only)
+
+    /// Switch to a layer by raising all its windows in place — no launching, no tiling, no moving.
+    /// This is the default hotkey action: just bring the layer's windows to the front.
+    func focusLayer(index: Int) {
+        guard let config, let layers = config.layers, index < layers.count else { return }
+        if index == activeLayerIndex { return }
+
+        let diag = DiagnosticLog.shared
+        let t = diag.startTimed("focusLayer \(activeLayerIndex)→\(index)")
+
+        DesktopModel.shared.poll()
+
+        let targetLayer = layers[index]
+        var windowsToRaise: [(wid: UInt32, pid: Int32)] = []
+
+        for lp in targetLayer.projects {
+            if let groupId = lp.group, let grp = group(byId: groupId) {
+                // Raise all tab windows in the group
+                for tab in grp.tabs {
+                    let sessionName = Self.sessionName(for: tab.path)
+                    if let entry = windowForSession(sessionName) {
+                        windowsToRaise.append((entry.wid, entry.pid))
+                    }
+                }
+                continue
+            }
+
+            if let appName = lp.app {
+                if let entry = DesktopModel.shared.windowForApp(app: appName, title: lp.title) {
+                    windowsToRaise.append((entry.wid, entry.pid))
+                }
+                continue
+            }
+
+            guard let path = lp.path else { continue }
+            let sessionName = Self.sessionName(for: path)
+            if let entry = windowForSession(sessionName) {
+                windowsToRaise.append((entry.wid, entry.pid))
+            }
+
+            // Also raise companion windows
+            let companions = projectWindows(at: path)
+            for cw in companions {
+                guard let appName = cw.app else { continue }
+                if let entry = DesktopModel.shared.windowForApp(app: appName, title: cw.title) {
+                    windowsToRaise.append((entry.wid, entry.pid))
+                }
+            }
+        }
+
+        if !windowsToRaise.isEmpty {
+            WindowTiler.raiseWindowsAndReactivate(windows: windowsToRaise)
+        }
+
+        activeLayerIndex = index
+        UserDefaults.standard.set(index, forKey: activeLayerKey)
+
+        let allLabels = layers.map(\.label)
+        LayerBezel.shared.show(label: targetLayer.label, index: index, total: layers.count, allLabels: allLabels)
+
+        diag.finish(t)
+    }
+
     // MARK: - Unified Layer Tiling
 
     /// Unified entry point for arranging a layer's windows.
@@ -331,6 +395,9 @@ class WorkspaceManager: ObservableObject {
         let terminal = Preferences.shared.terminal
         let scanner = ProjectScanner.shared
         let targetLayer = layers[index]
+
+        // Fresh poll so we see windows on all Spaces before matching
+        DesktopModel.shared.poll()
 
         // Tile debug log (written to ~/.lattices/tile-debug.log)
         let debugPath = (FileManager.default.homeDirectoryForCurrentUser.path as NSString).appendingPathComponent(".lattices/tile-debug.log")
@@ -378,6 +445,13 @@ class WorkspaceManager: ObservableObject {
                     if let pos = position {
                         let frame = WindowTiler.tileFrame(for: pos, on: lpScreen)
                         batchMoves.append((entry.wid, entry.pid, frame))
+                    }
+                } else if let found = Self.findAppWindow(app: appName, title: lp.title) {
+                    // Window exists but wasn't in DesktopModel (e.g. different Space) — tile it
+                    diag.info("  found app via CGWindowList fallback: \(appName) wid=\(found.wid)")
+                    if let pos = position {
+                        let frame = WindowTiler.tileFrame(for: pos, on: lpScreen)
+                        batchMoves.append((found.wid, found.pid, frame))
                     }
                 } else if launch {
                     diag.info("  launch app: \(appName)")
@@ -556,6 +630,38 @@ class WorkspaceManager: ObservableObject {
             task.standardError = FileHandle.nullDevice
             try? task.run()
         }
+    }
+
+    // MARK: - App Window Fallback (CGWindowList .optionAll)
+
+    /// Find an app window across ALL Spaces via CGWindowList (bypasses DesktopModel cache)
+    static func findAppWindow(app: String, title: String?) -> (wid: UInt32, pid: Int32)? {
+        guard let list = CGWindowListCopyWindowInfo(
+            [.optionAll, .excludeDesktopElements],
+            kCGNullWindowID
+        ) as? [[String: Any]] else { return nil }
+
+        for info in list {
+            guard let ownerName = info[kCGWindowOwnerName as String] as? String,
+                  ownerName.localizedCaseInsensitiveContains(app),
+                  let wid = info[kCGWindowNumber as String] as? UInt32,
+                  let pid = info[kCGWindowOwnerPID as String] as? Int32,
+                  let layer = info[kCGWindowLayer as String] as? Int, layer == 0,
+                  let boundsDict = info[kCGWindowBounds as String] as? NSDictionary
+            else { continue }
+
+            var rect = CGRect.zero
+            guard CGRectMakeWithDictionaryRepresentation(boundsDict, &rect),
+                  rect.width >= 50, rect.height >= 50 else { continue }
+
+            if let title {
+                let windowTitle = info[kCGWindowName as String] as? String ?? ""
+                guard windowTitle.localizedCaseInsensitiveContains(title) else { continue }
+            }
+
+            return (wid, pid)
+        }
+        return nil
     }
 
     // MARK: - Session Name Helper
