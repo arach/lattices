@@ -66,6 +66,7 @@ final class CheatSheetHUD {
     func dismiss() {
         guard let p = panel else { return }
         removeMonitors()
+        TileZoneOverlay.shared.dismiss()
 
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.2
@@ -103,6 +104,7 @@ final class CheatSheetHUD {
 
 struct CheatSheetView: View {
     @ObservedObject private var hotkeyStore = HotkeyStore.shared
+    @State private var hoveredAction: HotkeyAction?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -170,6 +172,15 @@ struct CheatSheetView: View {
         VStack(alignment: .leading, spacing: 10) {
             columnHeader("Tiling")
 
+            // Modifier prefix
+            HStack(spacing: 3) {
+                keyBadge("Ctrl")
+                keyBadge("Option")
+                Text("+")
+                    .font(Typo.caption(11))
+                    .foregroundColor(Palette.textMuted)
+            }
+
             // 3x3 grid
             VStack(spacing: 2) {
                 HStack(spacing: 2) {
@@ -217,8 +228,32 @@ struct CheatSheetView: View {
             // Center + Distribute
             shortcutRow(action: .tileCenter)
             shortcutRow(action: .tileDistribute)
+
+            // Hovered shortcut detail
+            if let hovered = hoveredAction, let binding = hotkeyStore.bindings[hovered] {
+                HStack(spacing: 3) {
+                    ForEach(binding.displayParts, id: \.self) { part in
+                        keyBadge(part)
+                    }
+                    Text("→ \(hovered.label)")
+                        .font(Typo.caption(11))
+                        .foregroundColor(Palette.textDim)
+                }
+                .transition(.opacity)
+                .animation(.easeInOut(duration: 0.1), value: hoveredAction)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onHover { over in
+            if !over {
+                hoveredAction = nil
+                TileZoneOverlay.shared.dismiss()
+            }
+        }
+        .onDisappear {
+            hoveredAction = nil
+            TileZoneOverlay.shared.dismiss()
+        }
     }
 
     // MARK: - App Column
@@ -262,25 +297,34 @@ struct CheatSheetView: View {
     private func tileCell(action: HotkeyAction, label: String) -> some View {
         let binding = hotkeyStore.bindings[action]
         let badgeText = binding?.displayParts.last ?? ""
+        let isHovered = hoveredAction == action
 
-        return VStack(spacing: 3) {
-            Text(label)
-                .font(Typo.caption(9))
-                .foregroundColor(Palette.textDim)
+        return VStack(spacing: 2) {
             Text(badgeText)
-                .font(Typo.geistMonoBold(9))
-                .foregroundColor(Palette.text)
+                .font(Typo.geistMonoBold(12))
+                .foregroundColor(isHovered ? Color.blue : Palette.text)
+            Text(label)
+                .font(Typo.caption(8))
+                .foregroundColor(isHovered ? Palette.text : Palette.textMuted)
         }
         .frame(maxWidth: .infinity)
         .frame(height: 38)
         .background(
             RoundedRectangle(cornerRadius: 4)
-                .fill(Palette.surface)
+                .fill(isHovered ? Color.blue.opacity(0.15) : Palette.surface)
                 .overlay(
                     RoundedRectangle(cornerRadius: 4)
-                        .strokeBorder(Palette.border, lineWidth: 0.5)
+                        .strokeBorder(isHovered ? Color.blue.opacity(0.5) : Palette.border, lineWidth: 0.5)
                 )
         )
+        .onHover { over in
+            if over {
+                hoveredAction = action
+                if let pos = action.tilePosition {
+                    TileZoneOverlay.shared.show(position: pos)
+                }
+            }
+        }
     }
 
     private func shortcutRow(action: HotkeyAction) -> some View {
@@ -328,5 +372,101 @@ struct CheatSheetView: View {
                             .strokeBorder(Palette.border, lineWidth: 0.5)
                     )
             )
+    }
+}
+
+// MARK: - HotkeyAction → TilePosition mapping
+
+extension HotkeyAction {
+    var tilePosition: TilePosition? {
+        switch self {
+        case .tileLeft:        return .left
+        case .tileRight:       return .right
+        case .tileTop:         return .top
+        case .tileBottom:      return .bottom
+        case .tileTopLeft:     return .topLeft
+        case .tileTopRight:    return .topRight
+        case .tileBottomLeft:  return .bottomLeft
+        case .tileBottomRight: return .bottomRight
+        case .tileMaximize:    return .maximize
+        case .tileCenter:      return .center
+        case .tileLeftThird:   return .leftThird
+        case .tileCenterThird: return .centerThird
+        case .tileRightThird:  return .rightThird
+        default:               return nil
+        }
+    }
+}
+
+// MARK: - TileZoneOverlay
+
+final class TileZoneOverlay {
+    static let shared = TileZoneOverlay()
+
+    private var panel: NSPanel?
+
+    func show(position: TilePosition) {
+        // Instant teardown (no animation) when switching between cells
+        if let p = panel {
+            p.orderOut(nil)
+            self.panel = nil
+        }
+
+        // Use the screen where the mouse is (same as CheatSheetHUD)
+        let mouseLocation = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }) ?? NSScreen.main ?? NSScreen.screens.first!
+        let visible = screen.visibleFrame
+
+        let (fx, fy, fw, fh) = position.rect
+        // visibleFrame origin is bottom-left in AppKit coordinates
+        let zoneRect = NSRect(
+            x: visible.origin.x + visible.width * fx,
+            y: visible.origin.y + visible.height * (1 - fy - fh),
+            width: visible.width * fw,
+            height: visible.height * fh
+        )
+
+        let p = NSPanel(
+            contentRect: zoneRect,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        p.isOpaque = false
+        p.backgroundColor = .clear
+        p.level = .floating
+        p.hasShadow = false
+        p.hidesOnDeactivate = false
+        p.isReleasedWhenClosed = false
+        p.ignoresMouseEvents = true
+
+        let overlay = NSView(frame: NSRect(origin: .zero, size: zoneRect.size))
+        overlay.wantsLayer = true
+        overlay.layer?.backgroundColor = NSColor.systemBlue.withAlphaComponent(0.08).cgColor
+        overlay.layer?.borderColor = NSColor.systemBlue.withAlphaComponent(0.4).cgColor
+        overlay.layer?.borderWidth = 2
+        overlay.layer?.cornerRadius = 8
+        p.contentView = overlay
+
+        p.alphaValue = 0
+        p.orderFrontRegardless()
+
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.12
+            p.animator().alphaValue = 1.0
+        }
+
+        self.panel = p
+    }
+
+    func dismiss() {
+        guard let p = panel else { return }
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = 0.1
+            p.animator().alphaValue = 0
+        }) { [weak self] in
+            p.orderOut(nil)
+            self?.panel = nil
+        }
     }
 }
