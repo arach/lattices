@@ -22,6 +22,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
     case omniSearch
     // Layers
     case layer1, layer2, layer3, layer4, layer5, layer6, layer7, layer8, layer9
+    case layerNext, layerPrev, layerTag
     // Tiling
     case tileLeft, tileRight, tileMaximize, tileCenter
     case tileTopLeft, tileTopRight, tileBottomLeft, tileBottomRight
@@ -45,6 +46,9 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .layer7:          return "Layer 7"
         case .layer8:          return "Layer 8"
         case .layer9:          return "Layer 9"
+        case .layerNext:       return "Next Layer"
+        case .layerPrev:       return "Previous Layer"
+        case .layerTag:        return "Tag Window"
         case .tileLeft:        return "Tile Left"
         case .tileRight:       return "Tile Right"
         case .tileMaximize:    return "Maximize"
@@ -66,7 +70,8 @@ enum HotkeyAction: String, CaseIterable, Codable {
         switch self {
         case .palette, .screenMap, .bezel, .cheatSheet, .desktopInventory, .omniSearch: return .app
         case .layer1, .layer2, .layer3, .layer4, .layer5,
-             .layer6, .layer7, .layer8, .layer9: return .layers
+             .layer6, .layer7, .layer8, .layer9,
+             .layerNext, .layerPrev, .layerTag: return .layers
         default: return .tiling
         }
     }
@@ -88,6 +93,9 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .layer7:          return 107
         case .layer8:          return 108
         case .layer9:          return 109
+        case .layerNext:       return 110
+        case .layerPrev:       return 111
+        case .layerTag:        return 112
         case .tileLeft:        return 300
         case .tileRight:       return 301
         case .tileMaximize:    return 302
@@ -206,6 +214,11 @@ class HotkeyStore: ObservableObject {
         for (i, action) in HotkeyAction.layerActions.enumerated() {
             bind(action, layerKeyCodes[i], cmdOpt)
         }
+
+        // Layer cycling: Cmd+Option+Arrow / Cmd+Option+T
+        bind(.layerNext, 124, cmdOpt)  // Cmd+Opt+→
+        bind(.layerPrev, 123, cmdOpt)  // Cmd+Opt+←
+        bind(.layerTag,   17, cmdOpt)  // Cmd+Opt+T
 
         // Tiling: Ctrl+Option for all
         bind(.tileLeft,        123, ctrlOpt)  // Ctrl+Opt+←

@@ -243,41 +243,90 @@ export default function App() {
           </div>
         </section>
 
-        {/* Agent Control Plane */}
-        <section className="section" id="agents">
-          <div className="config-grid fade-in fade-in-delay-2">
+        {/* Menu bar app */}
+        <section className="app-section" id="app">
+          <div className="app-grid">
             <div>
-              <h2 className="config-title">
-                Agents need more than a shell
-              </h2>
-              <p className="config-desc">
-                The agent API gives full workspace control over
-                WebSocket. Discover projects, launch sessions,
-                tile windows, and react to changes — all programmatically.
+              <h2 className="app-title">Native macOS menu bar app</h2>
+              <p className="app-desc">
+                Built with SwiftUI. Manage your workspace — terminal
+                sessions, app windows, and layers — from the menu bar.
               </p>
-              <ul className="agent-methods">
-                <li><code>windows.list</code> — see every window on screen</li>
-                <li><code>session.launch</code> — start a project session</li>
-                <li><code>window.tile</code> — snap windows to screen positions</li>
-                <li><code>layer.switch</code> — switch workspace contexts</li>
-                <li>Real-time events for window and session changes</li>
+              <ul className="app-features">
+                <li>See all projects and session status</li>
+                <li>Launch, attach, or detach with a click</li>
+                <li>
+                  Command palette via <code>Cmd+Shift+M</code>
+                </li>
+                <li>Window tiling to halves, quarters, or full screen</li>
+                <li>
+                  <a href="/docs/layers">Workspace layers</a> with <code>Cmd+Option+1/2/3</code>
+                </li>
+                <li>
+                  <a href="/docs/layers#tab-groups">Tab groups</a> — related projects as tabs in one session
+                </li>
+                <li>Space navigation and window highlighting</li>
               </ul>
-              <a href="/docs/api" className="agent-api-link">
-                Full API reference &rarr;
+              <a
+                href="https://github.com/arach/lattices/releases/latest"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="app-download"
+              >
+                <AppleIcon />
+                Download for macOS
+                <span className="app-download-meta">Apple Silicon · Free</span>
               </a>
             </div>
-
-            <div className="code-block">
-              <div className="code-header">
-                <span className="code-dot code-dot-red" />
-                <span className="code-dot code-dot-yellow" />
-                <span className="code-dot code-dot-green" />
-                <span className="code-filename">agent-example.js</span>
-              </div>
-              <pre
-                className="code-pre"
-                dangerouslySetInnerHTML={{ __html: agentExample }}
+            <div className="app-screenshot-wrap">
+              <img
+                src="/app-latest.png"
+                alt="lattices app showing screen map with dual displays, layers, and inspector"
+                className="app-screenshot"
               />
+            </div>
+          </div>
+        </section>
+
+        {/* Features */}
+        <section className="feature-buckets fade-in fade-in-delay-2" id="features">
+          <div className="bucket">
+            <h3 className="bucket-label">Durable Terminal Sessions</h3>
+            <div className="bucket-cards">
+              <div className="feature">
+                <h3>One command, zero config</h3>
+                <p>Run <code>lattices</code> — session created, dev server running.</p>
+              </div>
+              <div className="feature">
+                <h3>Persistent sessions</h3>
+                <p>Survives reboots. Reattach anytime.</p>
+              </div>
+            </div>
+          </div>
+          <div className="bucket">
+            <h3 className="bucket-label">Smart Layout Manager</h3>
+            <div className="bucket-cards">
+              <div className="feature">
+                <h3>Tiling + layers</h3>
+                <p>Hotkeys, snap to grids, switchable window groups.</p>
+              </div>
+              <div className="feature">
+                <h3>Screen text indexing</h3>
+                <p>AX + OCR. Search text across all windows.</p>
+              </div>
+            </div>
+          </div>
+          <div className="bucket">
+            <h3 className="bucket-label">Programmable Workspace</h3>
+            <div className="bucket-cards">
+              <div className="feature">
+                <h3>35+ RPC methods</h3>
+                <p>WebSocket on localhost. Full workspace control.</p>
+              </div>
+              <div className="feature">
+                <h3>Agent automation</h3>
+                <p>AI agents and scripts drive your desktop.</p>
+              </div>
             </div>
           </div>
         </section>
@@ -336,89 +385,40 @@ export default function App() {
           </div>
         </section>
 
-        {/* Features */}
-        <section className="feature-buckets fade-in fade-in-delay-2" id="features">
-          <div className="bucket">
-            <h3 className="bucket-label">Durable Terminal Sessions</h3>
-            <div className="bucket-cards">
-              <div className="feature">
-                <h3>One command, zero config</h3>
-                <p>Run <code>lattices</code> — session created, dev server running.</p>
-              </div>
-              <div className="feature">
-                <h3>Persistent sessions</h3>
-                <p>Survives reboots. Reattach anytime.</p>
-              </div>
-            </div>
-          </div>
-          <div className="bucket">
-            <h3 className="bucket-label">Smart Layout Manager</h3>
-            <div className="bucket-cards">
-              <div className="feature">
-                <h3>Tiling + layers</h3>
-                <p>Hotkeys, snap to grids, switchable window groups.</p>
-              </div>
-              <div className="feature">
-                <h3>Screen text indexing</h3>
-                <p>AX + OCR. Search text across all windows.</p>
-              </div>
-            </div>
-          </div>
-          <div className="bucket">
-            <h3 className="bucket-label">Programmable Workspace</h3>
-            <div className="bucket-cards">
-              <div className="feature">
-                <h3>35+ RPC methods</h3>
-                <p>WebSocket on localhost. Full workspace control.</p>
-              </div>
-              <div className="feature">
-                <h3>Agent automation</h3>
-                <p>AI agents and scripts drive your desktop.</p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Menu bar app */}
-        <section className="app-section" id="app">
-          <div className="app-grid">
+        {/* Agent-managed workspaces */}
+        <section className="section" id="agents">
+          <div className="config-grid fade-in fade-in-delay-2">
             <div>
-              <h2 className="app-title">Native macOS menu bar app</h2>
-              <p className="app-desc">
-                Built with SwiftUI. Manage your workspace — terminal
-                sessions, app windows, and layers — from the menu bar.
+              <h2 className="config-title">
+                Your AI co-pilot needs to see what you see
+              </h2>
+              <p className="config-desc">
+                Agents are limited to a terminal. Lattices gives them
+                eyes — every window, every pixel of text, every layout
+                change — over a single WebSocket.
               </p>
-              <ul className="app-features">
-                <li>See all projects and session status</li>
-                <li>Launch, attach, or detach with a click</li>
-                <li>
-                  Command palette via <code>Cmd+Shift+M</code>
-                </li>
-                <li>Window tiling to halves, quarters, or full screen</li>
-                <li>
-                  <a href="/docs/layers">Workspace layers</a> with <code>Cmd+Option+1/2/3</code>
-                </li>
-                <li>
-                  <a href="/docs/layers#tab-groups">Tab groups</a> — related projects as tabs in one session
-                </li>
-                <li>Space navigation and window highlighting</li>
+              <ul className="agent-methods">
+                <li><code>windows.list</code> — see every window on screen</li>
+                <li><code>ocr.search</code> — search text across all windows</li>
+                <li><code>session.launch</code> — start a project session</li>
+                <li><code>window.tile</code> — snap windows to screen positions</li>
+                <li>35+ methods + 5 real-time events</li>
               </ul>
-              <a
-                href="https://github.com/arach/lattices/releases/latest"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="app-download"
-              >
-                <AppleIcon />
-                Download for macOS
-                <span className="app-download-meta">Apple Silicon · Free</span>
+              <a href="/docs/api" className="agent-api-link">
+                Full API reference &rarr;
               </a>
             </div>
-            <div className="app-screenshot-wrap">
-              <img
-                src="/app-latest.png"
-                alt="lattices app showing screen map with dual displays, layers, and inspector"
-                className="app-screenshot"
+
+            <div className="code-block">
+              <div className="code-header">
+                <span className="code-dot code-dot-red" />
+                <span className="code-dot code-dot-yellow" />
+                <span className="code-dot code-dot-green" />
+                <span className="code-filename">agent-example.js</span>
+              </div>
+              <pre
+                className="code-pre"
+                dangerouslySetInnerHTML={{ __html: agentExample }}
               />
             </div>
           </div>

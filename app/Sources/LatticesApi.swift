@@ -1012,6 +1012,262 @@ final class LatticesApi {
             }
         ))
 
+        // ── Session Layers ────────────────────────────────────────
+
+        api.model(ApiModel(name: "WindowRef", fields: [
+            Field(name: "id", type: "string", required: true, description: "Stable UUID for this ref"),
+            Field(name: "app", type: "string", required: true, description: "Application name"),
+            Field(name: "contentHint", type: "string", required: false, description: "Title substring hint for matching"),
+            Field(name: "tile", type: "string", required: false, description: "Intended tile position"),
+            Field(name: "display", type: "int", required: false, description: "Intended display index"),
+            Field(name: "wid", type: "int", required: false, description: "Resolved CGWindowID"),
+            Field(name: "pid", type: "int", required: false, description: "Resolved process ID"),
+            Field(name: "title", type: "string", required: false, description: "Resolved window title"),
+            Field(name: "frame", type: "Frame", required: false, description: "Resolved window frame"),
+        ]))
+
+        api.model(ApiModel(name: "SessionLayer", fields: [
+            Field(name: "id", type: "string", required: true, description: "Layer UUID"),
+            Field(name: "name", type: "string", required: true, description: "Layer display name"),
+            Field(name: "windows", type: "[WindowRef]", required: true, description: "Window references in this layer"),
+        ]))
+
+        api.register(Endpoint(
+            method: "session.layers.create",
+            description: "Create a named session layer with optional window references",
+            access: .mutate,
+            params: [
+                Param(name: "name", type: "string", required: true, description: "Layer name"),
+                Param(name: "windowIds", type: "[uint32]", required: false, description: "Window IDs to include"),
+                Param(name: "windows", type: "[object]", required: false, description: "Window refs as {app, contentHint}"),
+            ],
+            returns: .object(model: "SessionLayer"),
+            handler: { params in
+                guard let name = params?["name"]?.stringValue, !name.isEmpty else {
+                    throw RouterError.missingParam("name")
+                }
+                var refs: [WindowRef] = []
+
+                // Build refs from windowIds
+                if case .array(let ids) = params?["windowIds"] {
+                    for idJson in ids {
+                        if let wid = idJson.uint32Value, let entry = DesktopModel.shared.windows[wid] {
+                            refs.append(WindowRef(
+                                app: entry.app, contentHint: entry.title,
+                                wid: entry.wid, pid: entry.pid, title: entry.title, frame: entry.frame
+                            ))
+                        }
+                    }
+                }
+
+                // Build refs from windows array
+                if case .array(let winSpecs) = params?["windows"] {
+                    for spec in winSpecs {
+                        guard let app = spec["app"]?.stringValue else { continue }
+                        let hint = spec["contentHint"]?.stringValue
+                        var ref = WindowRef(app: app, contentHint: hint)
+                        // Try to resolve immediately
+                        if let entry = DesktopModel.shared.windowForApp(app: app, title: hint) {
+                            ref.wid = entry.wid
+                            ref.pid = entry.pid
+                            ref.title = entry.title
+                            ref.frame = entry.frame
+                        }
+                        refs.append(ref)
+                    }
+                }
+
+                let layer = SessionLayerStore.shared.create(name: name, windows: refs)
+                // Update layer tags
+                for ref in refs {
+                    if let wid = ref.wid {
+                        DesktopModel.shared.assignLayer(wid: wid, layerId: name)
+                    }
+                }
+                return Encoders.sessionLayer(layer)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "session.layers.delete",
+            description: "Delete a session layer by id or name",
+            access: .mutate,
+            params: [
+                Param(name: "id", type: "string", required: false, description: "Layer UUID"),
+                Param(name: "name", type: "string", required: false, description: "Layer name"),
+            ],
+            returns: .ok,
+            handler: { params in
+                let store = SessionLayerStore.shared
+                if let id = params?["id"]?.stringValue {
+                    store.delete(id: id)
+                } else if let name = params?["name"]?.stringValue, let layer = store.layerByName(name) {
+                    store.delete(id: layer.id)
+                } else {
+                    throw RouterError.missingParam("id or name")
+                }
+                return .object(["ok": .bool(true)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "session.layers.list",
+            description: "List all session layers with resolved window info",
+            access: .read,
+            params: [],
+            returns: .custom("Object with 'layers' array and 'activeIndex'"),
+            handler: { _ in
+                let store = SessionLayerStore.shared
+                return .object([
+                    "layers": .array(store.layers.map { Encoders.sessionLayer($0) }),
+                    "activeIndex": .int(store.activeIndex)
+                ])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "session.layers.assign",
+            description: "Add window ref(s) to a session layer",
+            access: .mutate,
+            params: [
+                Param(name: "layerId", type: "string", required: false, description: "Layer UUID"),
+                Param(name: "layerName", type: "string", required: false, description: "Layer name"),
+                Param(name: "wid", type: "uint32", required: false, description: "Single window ID to add"),
+                Param(name: "windowIds", type: "[uint32]", required: false, description: "Multiple window IDs to add"),
+                Param(name: "window", type: "object", required: false, description: "Window ref as {app, contentHint}"),
+            ],
+            returns: .ok,
+            handler: { params in
+                let store = SessionLayerStore.shared
+                let layerId: String
+                if let id = params?["layerId"]?.stringValue {
+                    layerId = id
+                } else if let name = params?["layerName"]?.stringValue, let layer = store.layerByName(name) {
+                    layerId = layer.id
+                } else {
+                    throw RouterError.missingParam("layerId or layerName")
+                }
+
+                if let wid = params?["wid"]?.uint32Value {
+                    store.assignByWid(wid, toLayerId: layerId)
+                }
+                if case .array(let ids) = params?["windowIds"] {
+                    for idJson in ids {
+                        if let wid = idJson.uint32Value {
+                            store.assignByWid(wid, toLayerId: layerId)
+                        }
+                    }
+                }
+                if let spec = params?["window"] {
+                    if let app = spec["app"]?.stringValue {
+                        let hint = spec["contentHint"]?.stringValue
+                        var ref = WindowRef(app: app, contentHint: hint)
+                        if let entry = DesktopModel.shared.windowForApp(app: app, title: hint) {
+                            ref.wid = entry.wid
+                            ref.pid = entry.pid
+                            ref.title = entry.title
+                            ref.frame = entry.frame
+                        }
+                        store.assign(ref: ref, toLayerId: layerId)
+                    }
+                }
+                return .object(["ok": .bool(true)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "session.layers.remove",
+            description: "Remove window ref(s) from a session layer",
+            access: .mutate,
+            params: [
+                Param(name: "layerId", type: "string", required: false, description: "Layer UUID"),
+                Param(name: "layerName", type: "string", required: false, description: "Layer name"),
+                Param(name: "refId", type: "string", required: true, description: "WindowRef ID to remove"),
+            ],
+            returns: .ok,
+            handler: { params in
+                let store = SessionLayerStore.shared
+                let layerId: String
+                if let id = params?["layerId"]?.stringValue {
+                    layerId = id
+                } else if let name = params?["layerName"]?.stringValue, let layer = store.layerByName(name) {
+                    layerId = layer.id
+                } else {
+                    throw RouterError.missingParam("layerId or layerName")
+                }
+                guard let refId = params?["refId"]?.stringValue else {
+                    throw RouterError.missingParam("refId")
+                }
+                store.remove(refId: refId, fromLayerId: layerId)
+                return .object(["ok": .bool(true)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "session.layers.switch",
+            description: "Switch to a session layer by index or name",
+            access: .mutate,
+            params: [
+                Param(name: "index", type: "int", required: false, description: "Layer index"),
+                Param(name: "name", type: "string", required: false, description: "Layer name"),
+            ],
+            returns: .ok,
+            handler: { params in
+                let store = SessionLayerStore.shared
+                let index: Int
+                if let i = params?["index"]?.intValue {
+                    index = i
+                } else if let name = params?["name"]?.stringValue,
+                          let i = store.layers.firstIndex(where: { $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame }) {
+                    index = i
+                } else {
+                    throw RouterError.missingParam("index or name")
+                }
+                DispatchQueue.main.async {
+                    store.switchTo(index: index)
+                }
+                return .object(["ok": .bool(true)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "session.layers.rename",
+            description: "Rename a session layer",
+            access: .mutate,
+            params: [
+                Param(name: "id", type: "string", required: false, description: "Layer UUID"),
+                Param(name: "oldName", type: "string", required: false, description: "Current layer name"),
+                Param(name: "name", type: "string", required: true, description: "New layer name"),
+            ],
+            returns: .ok,
+            handler: { params in
+                let store = SessionLayerStore.shared
+                guard let newName = params?["name"]?.stringValue, !newName.isEmpty else {
+                    throw RouterError.missingParam("name")
+                }
+                if let id = params?["id"]?.stringValue {
+                    store.rename(id: id, name: newName)
+                } else if let oldName = params?["oldName"]?.stringValue, let layer = store.layerByName(oldName) {
+                    store.rename(id: layer.id, name: newName)
+                } else {
+                    throw RouterError.missingParam("id or oldName")
+                }
+                return .object(["ok": .bool(true)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "session.layers.clear",
+            description: "Clear all session layers",
+            access: .mutate,
+            params: [],
+            returns: .ok,
+            handler: { _ in
+                SessionLayerStore.shared.clear()
+                return .object(["ok": .bool(true)])
+            }
+        ))
+
         // ── Meta endpoint ───────────────────────────────────────
 
         api.register(Endpoint(
@@ -1214,6 +1470,34 @@ enum Encoders {
         if let cmd = p.devCommand { obj["devCommand"] = .string(cmd) }
         if let pm = p.packageManager { obj["packageManager"] = .string(pm) }
         return .object(obj)
+    }
+
+    static func windowRef(_ ref: WindowRef) -> JSON {
+        var obj: [String: JSON] = [
+            "id": .string(ref.id),
+            "app": .string(ref.app),
+        ]
+        if let hint = ref.contentHint { obj["contentHint"] = .string(hint) }
+        if let tile = ref.tile { obj["tile"] = .string(tile) }
+        if let display = ref.display { obj["display"] = .int(display) }
+        if let wid = ref.wid { obj["wid"] = .int(Int(wid)) }
+        if let pid = ref.pid { obj["pid"] = .int(Int(pid)) }
+        if let title = ref.title { obj["title"] = .string(title) }
+        if let frame = ref.frame {
+            obj["frame"] = .object([
+                "x": .double(frame.x), "y": .double(frame.y),
+                "w": .double(frame.w), "h": .double(frame.h)
+            ])
+        }
+        return .object(obj)
+    }
+
+    static func sessionLayer(_ layer: SessionLayer) -> JSON {
+        .object([
+            "id": .string(layer.id),
+            "name": .string(layer.name),
+            "windows": .array(layer.windows.map { windowRef($0) })
+        ])
     }
 }
 

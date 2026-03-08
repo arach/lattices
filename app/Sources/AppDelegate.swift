@@ -87,13 +87,24 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         store.register(action: .desktopInventory) { CommandModeWindow.shared.toggle() }
         store.register(action: .omniSearch) { OmniSearchWindow.shared.toggle() }
 
-        // Layer-switching hotkeys
+        // Session layer cycling
+        store.register(action: .layerNext) { SessionLayerStore.shared.cycleNext() }
+        store.register(action: .layerPrev) { SessionLayerStore.shared.cyclePrev() }
+        store.register(action: .layerTag)  { SessionLayerStore.shared.tagFrontmostWindow() }
+
+        // Layer-switching hotkeys (1-9): session layers take priority
         let workspace = WorkspaceManager.shared
-        let layerCount = (workspace.config?.layers ?? []).count
-        for (i, action) in HotkeyAction.layerActions.prefix(layerCount).enumerated() {
+        let configLayerCount = (workspace.config?.layers ?? []).count
+        let maxLayers = max(configLayerCount, 9)
+        for (i, action) in HotkeyAction.layerActions.prefix(maxLayers).enumerated() {
             let index = i
             store.register(action: action) {
-                workspace.focusLayer(index: index)
+                let session = SessionLayerStore.shared
+                if !session.layers.isEmpty && index < session.layers.count {
+                    session.switchTo(index: index)
+                } else {
+                    workspace.focusLayer(index: index)
+                }
                 EventBus.shared.post(.layerSwitched(index: index))
             }
         }

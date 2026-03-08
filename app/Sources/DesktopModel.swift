@@ -62,7 +62,7 @@ final class DesktopModel: ObservableObject {
 
     func poll() {
         guard let list = CGWindowListCopyWindowInfo(
-            [.optionOnScreenOnly, .excludeDesktopElements],
+            [.optionAll, .excludeDesktopElements],
             kCGNullWindowID
         ) as? [[String: Any]] else { return }
 
