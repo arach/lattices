@@ -78,14 +78,21 @@ final class AudioLayer: ObservableObject {
 
     /// Start a voice command capture. Transcription is piped to the intent engine.
     func startVoiceCommand() {
-        guard let provider = provider, !isListening else { return }
+        guard !isListening else { return }
 
-        isListening = true
+        // Clear previous state
         lastTranscript = nil
         matchedIntent = nil
         matchedSlots = [:]
         matchConfidence = 0
         executionResult = nil
+
+        guard let provider = provider else {
+            executionResult = "No voice provider — install Talkie"
+            return
+        }
+
+        isListening = true
 
         provider.startListening { [weak self] transcription in
             DispatchQueue.main.async {

@@ -151,7 +151,7 @@ struct CheatSheetView: View {
             Spacer(minLength: 0)
 
             // Voice feedback strip
-            if audioLayer.isListening || audioLayer.lastTranscript != nil {
+            if audioLayer.isListening || audioLayer.lastTranscript != nil || audioLayer.executionResult != nil {
                 Rectangle().fill(Palette.border).frame(height: 0.5)
                 voiceFeedback
             }
@@ -159,22 +159,26 @@ struct CheatSheetView: View {
             Rectangle().fill(Palette.border).frame(height: 0.5)
 
             // Footer
-            HStack(spacing: 16) {
+            HStack(spacing: 20) {
                 Spacer()
-                HStack(spacing: 4) {
+                HStack(spacing: 6) {
                     keyBadge("Space")
-                    Text(audioLayer.isListening ? "Listening..." : "Voice Command")
-                        .font(Typo.caption(10))
-                        .foregroundColor(audioLayer.isListening ? Palette.running : Palette.textMuted)
+                    Image(systemName: audioLayer.isListening ? "mic.fill" : "mic")
+                        .font(.system(size: 11))
+                        .foregroundColor(audioLayer.isListening ? Palette.running : Palette.text)
+                    Text(audioLayer.isListening ? "Listening..." : "Voice")
+                        .font(Typo.geistMono(11))
+                        .foregroundColor(audioLayer.isListening ? Palette.running : Palette.text)
                 }
-                Text("·")
-                    .foregroundColor(Palette.textMuted)
-                Text("ESC to dismiss")
-                    .font(Typo.caption(10))
-                    .foregroundColor(Palette.textMuted)
+                HStack(spacing: 6) {
+                    keyBadge("ESC")
+                    Text("Dismiss")
+                        .font(Typo.geistMono(11))
+                        .foregroundColor(Palette.textMuted)
+                }
                 Spacer()
             }
-            .padding(.vertical, 8)
+            .padding(.vertical, 10)
         }
         .frame(width: 520, height: 480)
         .background(
