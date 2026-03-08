@@ -278,6 +278,10 @@ struct MainView: View {
             ActionRow(shortcut: "6", label: "Omni Search", hotkey: hotkeyLabel(.omniSearch), icon: "magnifyingglass", accentColor: Palette.running) {
                 OmniSearchWindow.shared.toggle()
             }
+            ActionRow(shortcut: "7", label: "Voice Command", hotkey: hotkeyLabel(.voiceCommand), icon: "mic", accentColor: AudioLayer.shared.isListening ? Palette.running : Palette.textDim) {
+                let audio = AudioLayer.shared
+                if audio.isListening { audio.stopVoiceCommand() } else { audio.startVoiceCommand() }
+            }
 
             Rectangle()
                 .fill(Palette.border)

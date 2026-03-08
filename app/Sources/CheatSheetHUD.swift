@@ -80,10 +80,17 @@ final class CheatSheetHUD {
     // MARK: - Event monitors
 
     private func installMonitors() {
-        // Escape key dismisses (global — panel is non-activating so keys go to frontmost app)
+        // Key handling (global — panel is non-activating so keys go to frontmost app)
         localMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
             if event.keyCode == 53 { // Escape
                 self?.dismiss()
+            } else if event.keyCode == 49 { // Space — toggle voice command
+                let audio = AudioLayer.shared
+                if audio.isListening {
+                    audio.stopVoiceCommand()
+                } else {
+                    audio.startVoiceCommand()
+                }
             }
         }
 
@@ -104,6 +111,7 @@ final class CheatSheetHUD {
 
 struct CheatSheetView: View {
     @ObservedObject private var hotkeyStore = HotkeyStore.shared
+    @ObservedObject private var audioLayer = AudioLayer.shared
     @State private var hoveredAction: HotkeyAction?
 
     var body: some View {
@@ -145,9 +153,17 @@ struct CheatSheetView: View {
             Rectangle().fill(Palette.border).frame(height: 0.5)
 
             // Footer
-            HStack {
+            HStack(spacing: 16) {
                 Spacer()
-                Text("Press ESC to dismiss")
+                HStack(spacing: 4) {
+                    keyBadge("Space")
+                    Text(audioLayer.isListening ? "Listening..." : "Voice Command")
+                        .font(Typo.caption(10))
+                        .foregroundColor(audioLayer.isListening ? Palette.running : Palette.textMuted)
+                }
+                Text("·")
+                    .foregroundColor(Palette.textMuted)
+                Text("ESC to dismiss")
                     .font(Typo.caption(10))
                     .foregroundColor(Palette.textMuted)
                 Spacer()
