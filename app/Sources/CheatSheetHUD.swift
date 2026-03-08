@@ -29,7 +29,7 @@ final class CheatSheetHUD {
         let hosting = NSHostingView(rootView: view)
 
         let p = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 520, height: 420),
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 480),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -48,7 +48,7 @@ final class CheatSheetHUD {
         let screen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }) ?? NSScreen.main ?? NSScreen.screens.first!
         let screenFrame = screen.visibleFrame
         let x = screenFrame.midX - 260
-        let y = screenFrame.midY - 210
+        let y = screenFrame.midY - 240
         p.setFrameOrigin(NSPoint(x: x, y: y))
 
         p.alphaValue = 0
@@ -150,6 +150,12 @@ struct CheatSheetView: View {
 
             Spacer(minLength: 0)
 
+            // Voice feedback strip
+            if audioLayer.isListening || audioLayer.lastTranscript != nil {
+                Rectangle().fill(Palette.border).frame(height: 0.5)
+                voiceFeedback
+            }
+
             Rectangle().fill(Palette.border).frame(height: 0.5)
 
             // Footer
@@ -170,7 +176,7 @@ struct CheatSheetView: View {
             }
             .padding(.vertical, 8)
         }
-        .frame(width: 520, height: 420)
+        .frame(width: 520, height: 480)
         .background(
             RoundedRectangle(cornerRadius: 12)
                 .fill(Palette.bg)
@@ -270,6 +276,81 @@ struct CheatSheetView: View {
             hoveredAction = nil
             TileZoneOverlay.shared.dismiss()
         }
+    }
+
+    // MARK: - Voice Feedback
+
+    private var voiceFeedback: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if audioLayer.isListening {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(Palette.running)
+                        .frame(width: 8, height: 8)
+                    Text("Listening...")
+                        .font(Typo.geistMono(12))
+                        .foregroundColor(Palette.running)
+                    Spacer()
+                    Text("Press Space to stop")
+                        .font(Typo.caption(10))
+                        .foregroundColor(Palette.textMuted)
+                }
+            } else if let transcript = audioLayer.lastTranscript {
+                // Show what was heard
+                HStack(spacing: 6) {
+                    Image(systemName: "quote.opening")
+                        .font(.system(size: 10))
+                        .foregroundColor(Palette.textMuted)
+                    Text(transcript)
+                        .font(Typo.geistMono(12))
+                        .foregroundColor(Palette.text)
+                        .lineLimit(1)
+                }
+
+                // Show matched intent + result
+                if let intent = audioLayer.matchedIntent {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 9))
+                            .foregroundColor(Palette.textMuted)
+                        Text(intent.replacingOccurrences(of: "_", with: " "))
+                            .font(Typo.geistMonoBold(11))
+                            .foregroundColor(Palette.text)
+
+                        if !audioLayer.matchedSlots.isEmpty {
+                            let slotText = audioLayer.matchedSlots
+                                .map { "\($0.key): \($0.value)" }
+                                .joined(separator: ", ")
+                            Text(slotText)
+                                .font(Typo.caption(10))
+                                .foregroundColor(Palette.textDim)
+                        }
+
+                        Spacer()
+
+                        if let result = audioLayer.executionResult {
+                            Text(result == "ok" ? "Done" : result)
+                                .font(Typo.caption(10))
+                                .foregroundColor(result == "ok" ? Palette.running : Palette.kill)
+                        }
+                    }
+                } else if let result = audioLayer.executionResult {
+                    HStack(spacing: 6) {
+                        Image(systemName: "questionmark.circle")
+                            .font(.system(size: 10))
+                            .foregroundColor(Palette.textMuted)
+                        Text(result)
+                            .font(Typo.caption(10))
+                            .foregroundColor(Palette.textMuted)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 10)
+        .background(Color.black.opacity(0.15))
+        .animation(.easeInOut(duration: 0.15), value: audioLayer.isListening)
+        .animation(.easeInOut(duration: 0.15), value: audioLayer.lastTranscript)
     }
 
     // MARK: - App Column

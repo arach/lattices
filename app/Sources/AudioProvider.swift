@@ -34,6 +34,10 @@ final class AudioLayer: ObservableObject {
 
     @Published var isListening = false
     @Published var lastTranscript: String?
+    @Published var matchedIntent: String?
+    @Published var matchedSlots: [String: String] = [:]
+    @Published var matchConfidence: Double = 0
+    @Published var executionResult: String?   // "ok" or error message
     @Published var provider: (any AudioProvider)?
     @Published var providerName: String = "none"
 
@@ -78,6 +82,10 @@ final class AudioLayer: ObservableObject {
 
         isListening = true
         lastTranscript = nil
+        matchedIntent = nil
+        matchedSlots = [:]
+        matchConfidence = 0
+        executionResult = nil
 
         provider.startListening { [weak self] transcription in
             DispatchQueue.main.async {
@@ -118,7 +126,6 @@ final class AudioLayer: ObservableObject {
     }
 
     private func executeVoiceIntent(_ transcription: Transcription) {
-        // Use the local LLM or pattern matching to extract intent from text
         let extracted = IntentExtractor.extract(
             text: transcription.text,
             catalog: IntentEngine.shared.catalog()
@@ -126,7 +133,16 @@ final class AudioLayer: ObservableObject {
 
         guard let intent = extracted else {
             DiagnosticLog.shared.info("AudioLayer: no intent matched for '\(transcription.text)'")
+            matchedIntent = nil
+            executionResult = "No intent matched"
             return
+        }
+
+        matchedIntent = intent.name
+        matchConfidence = intent.confidence
+        // Flatten slots to string for display
+        matchedSlots = intent.slots.reduce(into: [:]) { dict, pair in
+            dict[pair.key] = pair.value.stringValue ?? "\(pair.value)"
         }
 
         let request = IntentRequest(
@@ -139,8 +155,10 @@ final class AudioLayer: ObservableObject {
 
         do {
             let result = try IntentEngine.shared.execute(request)
+            executionResult = "ok"
             DiagnosticLog.shared.info("AudioLayer: executed '\(intent.name)' → \(result)")
         } catch {
+            executionResult = error.localizedDescription
             DiagnosticLog.shared.info("AudioLayer: intent error — \(error.localizedDescription)")
         }
     }
