@@ -80,6 +80,12 @@ function buildFromSource() {
   mkdirSync(binaryDir, { recursive: true });
   execSync(`cp '${builtPath}' '${binaryPath}'`);
 
+  // Copy Info.plist into bundle
+  const plistSrc = resolve(__dirname, "../app/Info.plist");
+  if (existsSync(plistSrc)) {
+    execSync(`cp '${plistSrc}' '${resolve(bundlePath, "Contents/Info.plist")}'`);
+  }
+
   // Copy app icon into bundle
   const iconSrc = resolve(__dirname, "../assets/AppIcon.icns");
   const resourcesDir = resolve(bundlePath, "Contents/Resources");
@@ -96,8 +102,10 @@ function buildFromSource() {
     const devId = identities.match(/"(Developer ID Application:[^"]+)"/)?.[1]
                || identities.match(/"(Apple Development:[^"]+)"/)?.[1];
     const signArg = devId ? `'${devId}'` : "-";
+    const entitlements = resolve(__dirname, "../app/Lattices.entitlements");
+    const entFlag = existsSync(entitlements) ? `--entitlements '${entitlements}'` : "";
     execSync(
-      `codesign --force --sign ${signArg} --identifier com.arach.lattices '${bundlePath}'`,
+      `codesign --force --sign ${signArg} ${entFlag} --identifier com.arach.lattices '${bundlePath}'`,
       { stdio: "pipe" }
     );
   } catch (e) {

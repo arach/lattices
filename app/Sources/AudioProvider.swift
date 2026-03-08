@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 
 // MARK: - Audio Provider Protocol
 
@@ -40,6 +41,7 @@ final class AudioLayer: ObservableObject {
     @Published var executionResult: String?   // "ok" or error message
     @Published var provider: (any AudioProvider)?
     @Published var providerName: String = "none"
+
 
     private init() {
         // Try to discover Talkie on startup
@@ -103,16 +105,11 @@ final class AudioLayer: ObservableObject {
                     return
                 }
 
-                // Final transcript — execute intent
+                // Final transcript (e.g. from streaming providers)
                 self.lastTranscript = transcription.text
                 self.isListening = false
 
-                DiagnosticLog.shared.info("AudioLayer: received '\(transcription.text)' (confidence: \(transcription.confidence))")
-
-                // Post as event so connected agents can see it
                 EventBus.shared.post(.voiceCommand(text: transcription.text, confidence: transcription.confidence))
-
-                // Route to intent engine
                 self.executeVoiceIntent(transcription)
             }
         }
@@ -121,12 +118,18 @@ final class AudioLayer: ObservableObject {
     func stopVoiceCommand() {
         guard let provider = provider, isListening else { return }
 
+        isListening = false
+        executionResult = "Transcribing..."
+
         provider.stopListening { [weak self] transcription in
             DispatchQueue.main.async {
-                self?.isListening = false
+                guard let self = self else { return }
                 if let t = transcription {
-                    self?.lastTranscript = t.text
-                    self?.executeVoiceIntent(t)
+                    self.lastTranscript = t.text
+                    EventBus.shared.post(.voiceCommand(text: t.text, confidence: t.confidence))
+                    self.executeVoiceIntent(t)
+                } else {
+                    self.executionResult = "No speech detected"
                 }
             }
         }
@@ -500,14 +503,15 @@ final class TalkieAudioProvider: AudioProvider {
     private var onTranscript: ((Transcription) -> Void)?
     private var _isAvailable = false
     private var _isListening = false
-    private var recordingTimer: Timer?
+    private var audioRecorder: AVAudioRecorder?
+    private var recordingURL: URL?
 
     var isAvailable: Bool { _isAvailable }
     var isListening: Bool { _isListening }
 
     func checkHealth(completion: @escaping (Bool) -> Void) {
         // Ping the engine bridge to see if Talkie is up
-        bridgeCall(port: enginePort, method: "status", params: nil) { [weak self] result, error in
+        bridgeCall(port: enginePort, method: "ping", params: nil) { [weak self] result, error in
             let ok = error == nil && result != nil
             self?._isAvailable = ok
             completion(ok)
@@ -518,81 +522,85 @@ final class TalkieAudioProvider: AudioProvider {
         self.onTranscript = onTranscript
         _isListening = true
 
-        // Tell TalkieAgent to start recording via DistributedNotification
-        DistributedNotificationCenter.default().postNotificationName(
-            Notification.Name("com.jdi.talkie.lattices.startRecording"),
-            object: nil,
-            userInfo: ["source": "lattices"],
-            deliverImmediately: true
-        )
+        // Record audio from the default mic
+        let tempDir = FileManager.default.temporaryDirectory
+        let url = tempDir.appendingPathComponent("lattices-voice-\(UUID().uuidString).wav")
+        recordingURL = url
 
-        DiagnosticLog.shared.info("TalkieAudioProvider: requested recording start via notification")
+        let settings: [String: Any] = [
+            AVFormatIDKey: Int(kAudioFormatLinearPCM),
+            AVSampleRateKey: 16000,
+            AVNumberOfChannelsKey: 1,
+            AVLinearPCMBitDepthKey: 16,
+            AVLinearPCMIsFloatKey: false,
+        ]
 
-        // Listen for transcription result
-        DistributedNotificationCenter.default().addObserver(
-            self,
-            selector: #selector(handleTranscriptionResult(_:)),
-            name: Notification.Name("com.jdi.talkie.agent.dictation.new"),
-            object: nil
-        )
+        do {
+            let recorder = try AVAudioRecorder(url: url, settings: settings)
+            recorder.record()
+            audioRecorder = recorder
+            DiagnosticLog.shared.info("TalkieAudioProvider: recording started → \(url.lastPathComponent)")
+        } catch {
+            DiagnosticLog.shared.info("TalkieAudioProvider: failed to start recording — \(error)")
+            _isListening = false
+            onTranscript(Transcription(text: "", confidence: 0, source: "talkie", isPartial: false, durationMs: nil))
+        }
     }
 
     func stopListening(completion: @escaping (Transcription?) -> Void) {
         _isListening = false
 
-        // Tell TalkieAgent to stop recording
-        DistributedNotificationCenter.default().postNotificationName(
-            Notification.Name("com.jdi.talkie.lattices.stopRecording"),
-            object: nil,
-            userInfo: ["source": "lattices"],
-            deliverImmediately: true
-        )
-
-        DistributedNotificationCenter.default().removeObserver(
-            self,
-            name: Notification.Name("com.jdi.talkie.agent.dictation.new"),
-            object: nil
-        )
-
-        // The transcription will arrive async via handleTranscriptionResult
-        // For now, return nil — the callback handles it
-        completion(nil)
-    }
-
-    @objc private func handleTranscriptionResult(_ notification: Notification) {
-        guard let userInfo = notification.userInfo,
-              let text = userInfo["transcript"] as? String else {
-            DiagnosticLog.shared.info("TalkieAudioProvider: got notification but no transcript")
+        guard let recorder = audioRecorder, let url = recordingURL else {
+            completion(nil)
             return
         }
 
-        let confidence = (userInfo["confidence"] as? Double) ?? 0.9
-        let transcription = Transcription(
-            text: text,
-            confidence: confidence,
-            source: "talkie",
-            isPartial: false,
-            durationMs: userInfo["durationMs"] as? Int
-        )
+        let duration = recorder.currentTime
+        recorder.stop()
+        audioRecorder = nil
 
-        _isListening = false
-        onTranscript?(transcription)
+        DiagnosticLog.shared.info("TalkieAudioProvider: recording stopped (\(Int(duration * 1000))ms), sending to Talkie engine")
 
-        DistributedNotificationCenter.default().removeObserver(
-            self,
-            name: Notification.Name("com.jdi.talkie.agent.dictation.new"),
-            object: nil
-        )
-    }
+        // Read the audio file and send to Talkie engine as base64
+        guard let audioData = try? Data(contentsOf: url) else {
+            DiagnosticLog.shared.info("TalkieAudioProvider: failed to read recorded audio")
+            completion(nil)
+            return
+        }
 
-    /// Transcribe an audio file directly via the engine bridge
-    func transcribeFile(path: String, completion: @escaping (String?) -> Void) {
-        bridgeCall(port: enginePort, method: "transcribe", params: ["audioPath": path]) { result, error in
-            if let result = result,
-               let transcript = (result as? [String: Any])?["transcript"] as? String {
-                completion(transcript)
-            } else {
-                completion(nil)
+        let base64Audio = audioData.base64EncodedString()
+
+        // Clean up the temp file
+        try? FileManager.default.removeItem(at: url)
+        recordingURL = nil
+
+        // Send to Talkie engine for transcription
+        bridgeCall(port: enginePort, method: "transcribeAudio", params: [
+            "audioData": base64Audio
+        ]) { result, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    DiagnosticLog.shared.info("TalkieAudioProvider: transcription error — \(error)")
+                    completion(nil)
+                    return
+                }
+
+                if let result = result as? [String: Any],
+                   let transcript = result["transcript"] as? String {
+                    let confidence = (result["confidence"] as? Double) ?? 0.9
+                    let t = Transcription(
+                        text: transcript,
+                        confidence: confidence,
+                        source: "talkie",
+                        isPartial: false,
+                        durationMs: Int(duration * 1000)
+                    )
+                    DiagnosticLog.shared.info("TalkieAudioProvider: transcribed → '\(transcript)'")
+                    completion(t)
+                } else {
+                    DiagnosticLog.shared.info("TalkieAudioProvider: no transcript in response")
+                    completion(nil)
+                }
             }
         }
     }
