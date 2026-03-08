@@ -98,4 +98,12 @@ enum JSON: Codable, Equatable {
         guard case .bool(let b) = self else { return nil }
         return b
     }
+
+    var numericDouble: Double? {
+        switch self {
+        case .double(let d): return d
+        case .int(let i): return Double(i)
+        default: return nil
+        }
+    }
 }

@@ -1268,6 +1268,174 @@ final class LatticesApi {
             }
         ))
 
+        // ── Intents ───────────────────────────────────────────────
+
+        api.model(ApiModel(name: "IntentSlot", fields: [
+            Field(name: "name", type: "string", required: true, description: "Slot name"),
+            Field(name: "type", type: "string", required: true, description: "Slot type (string, int, position, query, bool)"),
+            Field(name: "required", type: "bool", required: true, description: "Whether the slot is required"),
+            Field(name: "description", type: "string", required: true, description: "Slot description"),
+            Field(name: "values", type: "[string]", required: false, description: "Allowed values for enum slots"),
+        ]))
+
+        api.model(ApiModel(name: "IntentDef", fields: [
+            Field(name: "intent", type: "string", required: true, description: "Intent identifier"),
+            Field(name: "description", type: "string", required: true, description: "What the intent does"),
+            Field(name: "examples", type: "[string]", required: true, description: "Example phrases"),
+            Field(name: "slots", type: "[IntentSlot]", required: true, description: "Named parameters"),
+        ]))
+
+        api.register(Endpoint(
+            method: "intents.list",
+            description: "List all available intents with their slots and example phrases",
+            access: .read,
+            params: [],
+            returns: .array(model: "IntentDef"),
+            handler: { _ in
+                IntentEngine.shared.catalog()
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "intents.execute",
+            description: "Execute a structured intent (from voice, agent, or script)",
+            access: .mutate,
+            params: [
+                Param(name: "intent", type: "string", required: true, description: "Intent name (e.g. 'tile_window', 'focus', 'launch')"),
+                Param(name: "slots", type: "object", required: false, description: "Named parameters for the intent"),
+                Param(name: "rawText", type: "string", required: false, description: "Original transcription text"),
+                Param(name: "confidence", type: "double", required: false, description: "Transcription confidence (0-1)"),
+                Param(name: "source", type: "string", required: false, description: "Source of the intent (e.g. 'talkie', 'siri', 'cli')"),
+            ],
+            returns: .custom("Intent-specific result"),
+            handler: { params in
+                guard let intentName = params?["intent"]?.stringValue else {
+                    throw RouterError.missingParam("intent")
+                }
+
+                // Extract slots
+                var slots: [String: JSON] = [:]
+                if case .object(let obj) = params?["slots"] {
+                    slots = obj
+                }
+
+                let request = IntentRequest(
+                    intent: intentName,
+                    slots: slots,
+                    rawText: params?["rawText"]?.stringValue,
+                    confidence: params?["confidence"]?.numericDouble,
+                    source: params?["source"]?.stringValue
+                )
+
+                return try IntentEngine.shared.execute(request)
+            }
+        ))
+
+        // ── Voice / Audio ─────────────────────────────────────────
+
+        api.register(Endpoint(
+            method: "voice.status",
+            description: "Check audio provider status (e.g. Talkie availability)",
+            access: .read,
+            params: [],
+            returns: .custom("Provider status with name and listening state"),
+            handler: { _ in
+                let audio = AudioLayer.shared
+                return .object([
+                    "provider": .string(audio.providerName),
+                    "available": .bool(audio.provider?.isAvailable ?? false),
+                    "listening": .bool(audio.isListening),
+                    "lastTranscript": audio.lastTranscript.map { .string($0) } ?? .null
+                ])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "voice.listen",
+            description: "Start voice capture via the audio provider (e.g. Talkie)",
+            access: .mutate,
+            params: [],
+            returns: .ok,
+            handler: { _ in
+                guard AudioLayer.shared.provider != nil else {
+                    throw RouterError.custom("No audio provider available. Is Talkie running?")
+                }
+                DispatchQueue.main.async {
+                    AudioLayer.shared.startVoiceCommand()
+                }
+                return .object(["ok": .bool(true), "provider": .string(AudioLayer.shared.providerName)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "voice.stop",
+            description: "Stop voice capture and process the transcription",
+            access: .mutate,
+            params: [],
+            returns: .ok,
+            handler: { _ in
+                DispatchQueue.main.async {
+                    AudioLayer.shared.stopVoiceCommand()
+                }
+                return .object(["ok": .bool(true)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "voice.simulate",
+            description: "Simulate a voice command: parse text into an intent and execute it",
+            access: .mutate,
+            params: [
+                Param(name: "text", type: "string", required: true, description: "Voice command text (as if transcribed)"),
+                Param(name: "execute", type: "bool", required: false, description: "Actually execute the intent (default true)"),
+            ],
+            returns: .custom("Parsed intent with execution result"),
+            handler: { params in
+                guard let text = params?["text"]?.stringValue, !text.isEmpty else {
+                    throw RouterError.missingParam("text")
+                }
+                let shouldExecute = params?["execute"]?.boolValue ?? true
+
+                let catalog = IntentEngine.shared.catalog()
+                guard let extracted = IntentExtractor.extract(text: text, catalog: catalog) else {
+                    return .object([
+                        "parsed": .bool(false),
+                        "text": .string(text),
+                        "intent": .null,
+                        "message": .string("No intent matched")
+                    ])
+                }
+
+                var response: [String: JSON] = [
+                    "parsed": .bool(true),
+                    "text": .string(text),
+                    "intent": .string(extracted.name),
+                    "slots": .object(extracted.slots),
+                    "confidence": .double(extracted.confidence),
+                ]
+
+                if shouldExecute {
+                    let request = IntentRequest(
+                        intent: extracted.name,
+                        slots: extracted.slots,
+                        rawText: text,
+                        confidence: 1.0,
+                        source: "simulate"
+                    )
+                    do {
+                        let result = try IntentEngine.shared.execute(request)
+                        response["executed"] = .bool(true)
+                        response["result"] = result
+                    } catch {
+                        response["executed"] = .bool(false)
+                        response["error"] = .string(error.localizedDescription)
+                    }
+                }
+
+                return .object(response)
+            }
+        ))
+
         // ── Meta endpoint ───────────────────────────────────────
 
         api.register(Endpoint(
@@ -1507,12 +1675,14 @@ enum RouterError: LocalizedError {
     case unknownMethod(String)
     case missingParam(String)
     case notFound(String)
+    case custom(String)
 
     var errorDescription: String? {
         switch self {
         case .unknownMethod(let m): return "Unknown method: \(m)"
         case .missingParam(let p):  return "Missing parameter: \(p)"
         case .notFound(let what):   return "Not found: \(what)"
+        case .custom(let msg):      return msg
         }
     }
 }

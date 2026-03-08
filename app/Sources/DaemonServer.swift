@@ -394,6 +394,14 @@ final class DaemonServer: ObservableObject {
                     "totalBlocks": .int(totalBlocks)
                 ])
             )
+        case .voiceCommand(let text, let confidence):
+            daemonEvent = DaemonEvent(
+                event: "voice.command",
+                data: .object([
+                    "text": .string(text),
+                    "confidence": .double(confidence)
+                ])
+            )
         }
         broadcast(daemonEvent)
     }

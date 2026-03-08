@@ -6,6 +6,7 @@ enum ModelEvent {
     case layerSwitched(index: Int)
     case processesChanged(interesting: [Int])
     case ocrScanComplete(windowCount: Int, totalBlocks: Int)
+    case voiceCommand(text: String, confidence: Double)
 }
 
 final class EventBus {
