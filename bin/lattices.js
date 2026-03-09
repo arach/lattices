@@ -748,15 +748,128 @@ async function windowLayerMapCommand(jsonFlag) {
   }
 }
 
-async function focusCommand(session) {
+async function focusCommand(session, tilePosition) {
   if (!session) {
-    console.log("Usage: lattices focus <session-name>");
+    console.log("Usage: lattices focus <session-name> [position]");
+    console.log("  Position: left, right, bottom-right, maximize, etc.");
+    console.log("  Default position: bottom-right");
     return;
   }
   try {
     const { daemonCall } = await getDaemonClient();
-    await daemonCall("window.focus", { session });
-    console.log(`Focused: ${session}`);
+
+    // Fuzzy match: find session by partial name
+    const sessions = await daemonCall("tmux.sessions", null, 3000);
+    const match = sessions.find(s => s.name.toLowerCase().includes(session.toLowerCase()));
+    const name = match ? match.name : session;
+
+    await daemonCall("window.focus", { session: name });
+    const pos = tilePosition || "bottom-right";
+    await daemonCall("window.tile", { session: name, position: pos }, 3000);
+    console.log(`Focused: ${name} → ${pos}`);
+  } catch (e) {
+    console.log(`Error: ${e.message}`);
+  }
+}
+
+async function sessionsCommand(jsonFlag) {
+  try {
+    const { daemonCall } = await getDaemonClient();
+    const sessions = await daemonCall("tmux.sessions");
+    if (jsonFlag) {
+      console.log(JSON.stringify(sessions, null, 2));
+      return;
+    }
+    if (!sessions.length) {
+      console.log("No active sessions.");
+      return;
+    }
+    console.log(`Sessions (${sessions.length}):\n`);
+    for (const s of sessions) {
+      const windows = s.windowCount || s.windows || "?";
+      console.log(`  \x1b[1m${s.name}\x1b[0m  (${windows} windows)`);
+    }
+  } catch {
+    console.log("Daemon not running. Start with: lattices app");
+  }
+}
+
+async function voiceCommand(subcommand, ...rest) {
+  const { daemonCall } = await getDaemonClient();
+  try {
+    switch (subcommand) {
+      case "status": {
+        const status = await daemonCall("voice.status");
+        console.log(`Provider: ${status.provider}`);
+        console.log(`Available: ${status.available}`);
+        console.log(`Listening: ${status.listening}`);
+        if (status.lastTranscript) console.log(`Last: "${status.lastTranscript}"`);
+        break;
+      }
+      case "simulate":
+      case "sim": {
+        const text = rest.join(" ");
+        if (!text) {
+          console.log("Usage: lattices voice simulate <text>");
+          return;
+        }
+        const execute = !rest.includes("--dry-run");
+        const dryFlag = rest.includes("--dry-run");
+        const cleanText = dryFlag ? rest.filter(r => r !== "--dry-run").join(" ") : text;
+        const result = await daemonCall("voice.simulate", { text: cleanText, execute }, 15000);
+        if (!result.parsed) {
+          console.log(`\x1b[33mNo match:\x1b[0m "${cleanText}"`);
+          return;
+        }
+        const slots = Object.entries(result.slots || {}).map(([k,v]) => `${k}: ${v}`).join(", ");
+        const conf = result.confidence ? ` (${(result.confidence * 100).toFixed(0)}%)` : "";
+        console.log(`\x1b[36m${result.intent}\x1b[0m${slots ? `  ${slots}` : ""}${conf}`);
+        if (result.executed) {
+          console.log(`\x1b[32mExecuted\x1b[0m`);
+        } else if (result.error) {
+          console.log(`\x1b[31mError:\x1b[0m ${result.error}`);
+        }
+        break;
+      }
+      case "intents": {
+        const intents = await daemonCall("intents.list");
+        for (const intent of intents) {
+          const slots = intent.slots.map(s => `${s.name}:${s.type}${s.required ? "*" : ""}`).join(", ");
+          console.log(`  \x1b[1m${intent.intent}\x1b[0m  ${intent.description}`);
+          if (slots) console.log(`    slots: ${slots}`);
+          console.log(`    e.g. "${intent.examples[0]}"`);
+          console.log();
+        }
+        break;
+      }
+      default:
+        console.log("Usage: lattices voice <subcommand>\n");
+        console.log("  status      Show voice provider status");
+        console.log("  simulate    Parse and execute a voice command");
+        console.log("  intents     List all available intents");
+        console.log("\nExamples:");
+        console.log('  lattices voice simulate "tile this left"');
+        console.log('  lattices voice simulate "focus chrome" --dry-run');
+    }
+  } catch (e) {
+    console.log(`Error: ${e.message}`);
+  }
+}
+
+async function callCommand(method, ...rest) {
+  if (!method) {
+    console.log("Usage: lattices call <method> [params-json]");
+    console.log("\nExamples:");
+    console.log("  lattices call daemon.status");
+    console.log("  lattices call windows.list");
+    console.log('  lattices call window.tile \'{"session":"talkie","position":"left"}\'');
+    return;
+  }
+  try {
+    const { daemonCall } = await getDaemonClient();
+    const params = rest[0] ? JSON.parse(rest[0]) : null;
+    const result = await daemonCall(method, params, 15000);
+    console.log(JSON.stringify(result, null, 2));
   } catch (e) {
     console.log(`Error: ${e.message}`);
   }
@@ -1112,10 +1225,15 @@ Usage:
   lattices groups             List all tab groups with status
   lattices tab <group> [tab]  Switch tab within a group (by label or index)
   lattices windows [--json]   List all desktop windows (daemon required)
-  lattices focus <session>    Focus a session's terminal window (daemon required)
+  lattices sessions [--json]  List active tmux sessions via daemon
+  lattices focus <session> [pos]  Focus + tile a session (default: bottom-right)
   lattices tile <position>    Tile the frontmost window (left, right, top, etc.)
   lattices distribute         Smart-grid all visible windows (daemon required)
   lattices layer [name|index]  List layers or switch by name/index (daemon required)
+  lattices voice status       Voice provider status
+  lattices voice simulate <t> Parse and execute a voice command
+  lattices voice intents      List all available intents
+  lattices call <method> [p]  Raw daemon API call (params as JSON)
   lattices scan               Show text from all visible windows
   lattices scan --full        Full text dump
   lattices scan search <q>    Full-text search across scanned windows
@@ -1510,7 +1628,16 @@ switch (command) {
     }
     break;
   case "focus":
-    await focusCommand(args[1]);
+    await focusCommand(args[1], args[2]);
+    break;
+  case "sessions":
+    await sessionsCommand(args[1] === "--json");
+    break;
+  case "voice":
+    await voiceCommand(args[1], ...args.slice(2));
+    break;
+  case "call":
+    await callCommand(args[1], ...args.slice(2));
     break;
   case "layer":
   case "layers":
