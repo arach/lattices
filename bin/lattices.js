@@ -772,6 +772,123 @@ async function focusCommand(session, tilePosition) {
   }
 }
 
+async function searchCommand(query, flags) {
+  if (!query) {
+    console.log("Usage: lattices search <query> [flags]");
+    console.log("\nFlags:");
+    console.log("  --json       JSON output");
+    console.log("  --wid        Print matching window IDs only");
+    console.log("  --session    Print matching session names only");
+    console.log("  --text       Print matching OCR text lines only");
+    return;
+  }
+
+  const { daemonCall } = await getDaemonClient();
+  const q = query.toLowerCase();
+  const jsonOut = flags.has("--json");
+  const widOnly = flags.has("--wid");
+  const sessionOnly = flags.has("--session");
+  const textOnly = flags.has("--text");
+  const pipeMode = widOnly || sessionOnly || textOnly;
+
+  const results = { sessions: [], windows: [], text: [] };
+
+  try {
+    // Search sessions
+    const sessions = await daemonCall("tmux.sessions", null, 3000);
+    results.sessions = sessions.filter(s => s.name.toLowerCase().includes(q));
+  } catch {}
+
+  try {
+    // Search windows
+    const windows = await daemonCall("windows.list", null, 3000);
+    results.windows = windows.filter(w =>
+      (w.app || "").toLowerCase().includes(q) ||
+      (w.title || "").toLowerCase().includes(q) ||
+      (w.latticesSession || "").toLowerCase().includes(q)
+    );
+  } catch {}
+
+  try {
+    // Search screen text (OCR)
+    const ocr = await daemonCall("ocr.search", { query }, 10000);
+    if (Array.isArray(ocr)) {
+      results.text = ocr;
+    } else if (ocr && ocr.results) {
+      results.text = ocr.results;
+    }
+  } catch {}
+
+  // JSON output
+  if (jsonOut) {
+    console.log(JSON.stringify(results, null, 2));
+    return;
+  }
+
+  // Pipe modes — one value per line, no decoration
+  if (widOnly) {
+    for (const w of results.windows) console.log(w.wid);
+    return;
+  }
+  if (sessionOnly) {
+    for (const s of results.sessions) console.log(s.name);
+    return;
+  }
+  if (textOnly) {
+    for (const t of results.text) {
+      const lines = t.matches || t.lines || [];
+      if (typeof t === "string") {
+        console.log(t);
+      } else if (t.text) {
+        console.log(t.text);
+      } else {
+        for (const line of lines) {
+          console.log(typeof line === "string" ? line : line.text || JSON.stringify(line));
+        }
+      }
+    }
+    return;
+  }
+
+  // Human-readable output
+  const total = results.sessions.length + results.windows.length + results.text.length;
+  if (total === 0) {
+    console.log(`No results for "${query}"`);
+    return;
+  }
+
+  if (results.sessions.length) {
+    console.log(`\n\x1b[1mSessions\x1b[0m (${results.sessions.length}):`);
+    for (const s of results.sessions) {
+      console.log(`  ${s.name}`);
+    }
+  }
+
+  if (results.windows.length) {
+    console.log(`\n\x1b[1mWindows\x1b[0m (${results.windows.length}):`);
+    for (const w of results.windows) {
+      const session = w.latticesSession ? `  \x1b[36m[${w.latticesSession}]\x1b[0m` : "";
+      console.log(`  \x1b[1m${w.app}\x1b[0m  "${w.title}"  wid:${w.wid}${session}`);
+    }
+  }
+
+  if (results.text.length) {
+    console.log(`\n\x1b[1mScreen text\x1b[0m (${results.text.length} matches):`);
+    for (const t of results.text) {
+      if (t.app && t.text) {
+        const preview = t.text.length > 80 ? t.text.slice(0, 80) + "..." : t.text;
+        console.log(`  \x1b[36m${t.app}\x1b[0m (wid:${t.wid || "?"})  "${preview}"`);
+      } else if (t.matches) {
+        for (const m of t.matches.slice(0, 3)) {
+          console.log(`  wid:${t.wid || "?"}  "${typeof m === "string" ? m : m.text || JSON.stringify(m)}"`);
+        }
+      }
+    }
+  }
+
+  console.log();
+}
+
 async function sessionsCommand(jsonFlag) {
   try {
     const { daemonCall } = await getDaemonClient();
@@ -1224,6 +1341,7 @@ Usage:
   lattices group [id]         List tab groups or launch/attach a group
   lattices groups             List all tab groups with status
   lattices tab <group> [tab]  Switch tab within a group (by label or index)
+  lattices search <query>     Search sessions, windows, and screen text
   lattices windows [--json]   List all desktop windows (daemon required)
   lattices sessions [--json]  List active tmux sessions via daemon
   lattices focus <session> [pos]  Focus + tile a session (default: bottom-right)
@@ -1626,6 +1744,10 @@ switch (command) {
       console.log("  lattices window assign <wid> <layer-id>   Tag a window to a layer");
       console.log("  lattices window map [--json]               Show all layer tags");
     }
+    break;
+  case "search":
+  case "s":
+    await searchCommand(args[1], new Set(args.slice(2)));
     break;
   case "focus":
     await focusCommand(args[1], args[2]);
