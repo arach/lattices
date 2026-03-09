@@ -748,28 +748,45 @@ async function windowLayerMapCommand(jsonFlag) {
   }
 }
 
-async function focusCommand(session, tilePosition) {
+async function focusCommand(session) {
   if (!session) {
-    console.log("Usage: lattices focus <session-name> [position]");
-    console.log("  Position: left, right, bottom-right, maximize, etc.");
-    console.log("  Default position: bottom-right");
+    console.log("Usage: lattices focus <session-name>");
     return;
   }
   try {
     const { daemonCall } = await getDaemonClient();
-
-    // Fuzzy match: find session by partial name
-    const sessions = await daemonCall("tmux.sessions", null, 3000);
-    const match = sessions.find(s => s.name.toLowerCase().includes(session.toLowerCase()));
-    const name = match ? match.name : session;
-
+    const name = await fuzzyMatchSession(session);
     await daemonCall("window.focus", { session: name });
-    const pos = tilePosition || "bottom-right";
-    await daemonCall("window.tile", { session: name, position: pos }, 3000);
-    console.log(`Focused: ${name} → ${pos}`);
+    console.log(`Focused: ${name}`);
   } catch (e) {
     console.log(`Error: ${e.message}`);
   }
+}
+
+async function placeCommand(session, tilePosition) {
+  if (!session) {
+    console.log("Usage: lattices place <session-name> [position]");
+    console.log("  Position: left, right, bottom-right, maximize, etc.");
+    console.log("  Default: bottom-right");
+    return;
+  }
+  try {
+    const { daemonCall } = await getDaemonClient();
+    const name = await fuzzyMatchSession(session);
+    await daemonCall("window.focus", { session: name });
+    const pos = tilePosition || "bottom-right";
+    await daemonCall("window.tile", { session: name, position: pos }, 3000);
+    console.log(`${name} → ${pos}`);
+  } catch (e) {
+    console.log(`Error: ${e.message}`);
+  }
+}
+
+async function fuzzyMatchSession(query) {
+  const { daemonCall } = await getDaemonClient();
+  const sessions = await daemonCall("tmux.sessions", null, 3000);
+  const match = sessions.find(s => s.name.toLowerCase().includes(query.toLowerCase()));
+  return match ? match.name : query;
 }
 
 async function searchCommand(query, flags) {
@@ -1344,7 +1361,8 @@ Usage:
   lattices search <query>     Search sessions, windows, and screen text
   lattices windows [--json]   List all desktop windows (daemon required)
   lattices sessions [--json]  List active tmux sessions via daemon
-  lattices focus <session> [pos]  Focus + tile a session (default: bottom-right)
+  lattices focus <session>    Raise a session's window
+  lattices place <session> [pos]  Raise + tile a session (default: bottom-right)
   lattices tile <position>    Tile the frontmost window (left, right, top, etc.)
   lattices distribute         Smart-grid all visible windows (daemon required)
   lattices layer [name|index]  List layers or switch by name/index (daemon required)
@@ -1750,7 +1768,10 @@ switch (command) {
     await searchCommand(args[1], new Set(args.slice(2)));
     break;
   case "focus":
-    await focusCommand(args[1], args[2]);
+    await focusCommand(args[1]);
+    break;
+  case "place":
+    await placeCommand(args[1], args[2]);
     break;
   case "sessions":
     await sessionsCommand(args[1] === "--json");
