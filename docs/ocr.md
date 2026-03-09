@@ -59,17 +59,26 @@ contextual snippets.
 ### From the CLI
 
 ```bash
-# View current OCR snapshot
-lattices ocr
+# Search windows by title, app, session, and OCR content
+lattices search "error"
 
-# Search OCR history
-lattices ocr search "error OR failed"
+# Deep search — also inspects terminal tabs and processes
+lattices search "myproject" --deep
+
+# Search + focus + tile the top result
+lattices place "myproject" left
+
+# View current OCR snapshot
+lattices scan
+
+# Search OCR history directly (FTS5 syntax)
+lattices scan search "error OR failed"
 
 # Trigger an immediate deep scan
-lattices ocr scan
+lattices scan deep
 
 # View OCR history for a specific window ID
-lattices ocr history 12345
+lattices scan history 12345
 ```
 
 ### From the agent API

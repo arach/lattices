@@ -106,13 +106,24 @@ script can do over the API.
 ```js
 import { daemonCall } from '@lattices/cli/daemon-client'
 
-const windows = await daemonCall('windows.list')
+// Search windows by content — title, app, session tags, OCR
+const results = await daemonCall('windows.search', { query: 'myproject' })
+
+// Launch and tile
 await daemonCall('session.launch', { path: '/Users/you/dev/frontend' })
 await daemonCall('window.tile', { session: 'frontend-a1b2c3', position: 'left' })
 
 // Read the screen
 await daemonCall('ocr.scan')
 const errors = await daemonCall('ocr.search', { query: 'error OR failed' })
+```
+
+Or from the CLI:
+
+```sh
+lattices search myproject           # Find windows by content
+lattices search myproject --deep    # Include terminal tab/process data
+lattices place myproject left       # Search + focus + tile in one step
 ```
 
 Claude Code skills, MCP servers, or your own scripts can drive your
@@ -125,12 +136,15 @@ lattices                    Create or reattach to session
 lattices init               Generate .lattices.json
 lattices ls                 List active sessions
 lattices kill [name]        Kill a session
+lattices search <query>     Search windows by title, app, session, OCR
+lattices search <q> --deep  Deep search: index + terminal inspection
+lattices place <query> [pos]  Deep search + focus + tile
+lattices focus <session>    Raise a session's window
 lattices tile <position>    Tile frontmost window
 lattices group [id]         Launch or attach a tab group
 lattices tab <group> [tab]  Switch tab within a group
 lattices scan               View current screen text
 lattices scan search <q>    Search indexed text
-lattices scan recent [n]    Browse scan history
 lattices scan deep          Trigger Vision OCR now
 lattices app                Launch the menu bar app
 lattices help               Show help

@@ -110,18 +110,18 @@ const configExamples: Record<PaneLayout, string> = {
 
 const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span class="hl-kw">from</span> <span class="hl-str">'@lattices/cli'</span>
 
-<span class="hl-cmt">// Discover projects</span>
-<span class="hl-kw">const</span> projects = <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'projects.list'</span>)
+<span class="hl-cmt">// Search windows by content</span>
+<span class="hl-kw">const</span> hits = <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'windows.search'</span>, {
+  query: <span class="hl-str">'myproject'</span>
+})
 
-<span class="hl-cmt">// Launch two sessions</span>
+<span class="hl-cmt">// Launch and tile side-by-side</span>
 <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'session.launch'</span>, {
   path: <span class="hl-str">'/Users/you/dev/frontend'</span>
 })
 <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'session.launch'</span>, {
   path: <span class="hl-str">'/Users/you/dev/api'</span>
 })
-
-<span class="hl-cmt">// Tile side-by-side</span>
 <span class="hl-kw">const</span> sessions = <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'tmux.sessions'</span>)
 <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'window.tile'</span>, {
   session: sessions[<span class="hl-num">0</span>].name,
@@ -398,8 +398,9 @@ export default function App() {
                 change — over a single WebSocket.
               </p>
               <ul className="agent-methods">
-                <li><code>windows.list</code> — see every window on screen</li>
-                <li><code>ocr.search</code> — search text across all windows</li>
+                <li><code>windows.search</code> — find windows by title, app, session, OCR</li>
+                <li><code>terminals.search</code> — inspect terminal tabs, processes, cwds</li>
+                <li><code>ocr.search</code> — full-text search across all screen content</li>
                 <li><code>session.launch</code> — start a project session</li>
                 <li><code>window.tile</code> — snap windows to screen positions</li>
                 <li>35+ methods + 5 real-time events</li>

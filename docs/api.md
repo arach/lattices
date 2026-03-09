@@ -263,17 +263,50 @@ Get a single window by its CGWindowID.
 
 #### `windows.search`
 
-Search windows by text query, including OCR content.
+Search windows by text query across title, app name, session tags, and OCR content. Returns results with `matchSource` indicating how the match was found, and `ocrSnippet` for OCR matches.
 
 **Params**:
 
 | Field   | Type   | Required | Description                    |
 |---------|--------|----------|--------------------------------|
-| `query` | string | yes      | Search query (matches title, app, OCR text) |
+| `query` | string | yes      | Search query (matches title, app, session, OCR text) |
 | `ocr`   | boolean| no       | Include OCR text in search (default true) |
-| `limit` | number | no       | Max results (default 20)       |
+| `limit` | number | no       | Max results (default 50)       |
 
-**Returns**: array of window objects matching the query.
+**Returns**: array of window objects with additional search fields:
+
+```json
+[
+  {
+    "wid": 265,
+    "app": "iTerm2",
+    "title": "✳ Claude Code",
+    "matchSource": "ocr",
+    "ocrSnippet": "…~/dev/talkie StatusBarIconFolder…",
+    "frame": { "x": 688, "y": 3, "w": 1720, "h": 720 },
+    "isOnScreen": true
+  }
+]
+```
+
+`matchSource` values: `"title"`, `"app"`, `"session"`, `"ocr"`.
+
+**CLI usage**:
+
+```bash
+# Basic search (uses windows.search)
+lattices search talkie
+
+# Deep search — adds terminal tab/process inspection for ranking
+lattices search talkie --deep
+
+# Pipeable output
+lattices search talkie --wid
+lattices search talkie --json
+
+# Search + focus + tile in one step
+lattices place talkie right
+```
 
 #### `spaces.list`
 
@@ -839,13 +872,18 @@ project knows how to control the workspace:
 This project uses lattices for workspace management. The daemon API
 is available at ws://127.0.0.1:9399.
 
-### Available commands
-- List windows: `daemonCall('windows.list')`
-- List sessions: `daemonCall('tmux.sessions')`
-- Launch a project: `daemonCall('session.launch', { path: '/absolute/path' })`
+### Search (find windows)
+- Search by content: `daemonCall('windows.search', { query: 'myproject' })`
+  Returns windows with `matchSource` ("title", "app", "session", "ocr") and `ocrSnippet`
+- Search terminals: `daemonCall('terminals.search', {})` — tabs, cwds, processes
+- CLI: `lattices search myproject` or `lattices search myproject --deep`
+
+### Actions
+- Focus a window: `daemonCall('window.focus', { wid: 1234 })`
 - Tile a window: `daemonCall('window.tile', { session: 'name', position: 'left' })`
-- Switch layer: `daemonCall('layer.switch', { index: 0 })`
-- Switch layer by name: `daemonCall('layer.switch', { name: 'web' })`
+- Launch a project: `daemonCall('session.launch', { path: '/absolute/path' })`
+- Switch layer: `daemonCall('layer.switch', { name: 'web' })`
+- CLI: `lattices place myproject left` (search + focus + tile in one step)
 
 ### Import
 \```js

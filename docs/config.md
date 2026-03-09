@@ -141,9 +141,13 @@ Run `lattices init` in your project directory to generate a starter
 | `lattices windows [--json]`  | List all visible windows                          |
 | `lattices window assign <wid> <layer>` | Tag a window to a layer                |
 | `lattices window map [--json]` | Show all window→layer assignments                |
+| `lattices search <query>`      | Search windows by title, app, session, OCR       |
+| `lattices search <q> --deep`   | Deep search: index + live terminal inspection    |
+| `lattices search <q> --wid`    | Print matching window IDs only (pipeable)        |
+| `lattices place <query> [pos]` | Deep search + focus + tile (default: bottom-right)|
+| `lattices focus <session>`   | Focus a session's window and switch Spaces        |
 | `lattices scan search <query>` | Search indexed screen text                       |
 | `lattices diag [limit]`       | Show recent diagnostic entries                   |
-| `lattices focus <session>`   | Focus a session's window and switch Spaces        |
 | `lattices app`               | Launch the menu bar companion app                 |
 | `lattices app build`         | Rebuild the menu bar app from source              |
 | `lattices app restart`       | Rebuild and relaunch the menu bar app             |

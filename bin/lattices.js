@@ -763,147 +763,179 @@ async function focusCommand(session) {
   }
 }
 
-async function placeCommand(session, tilePosition) {
-  if (!session) {
-    console.log("Usage: lattices place <session-name> [position]");
-    console.log("  Position: left, right, bottom-right, maximize, etc.");
-    console.log("  Default: bottom-right");
-    return;
-  }
-  try {
-    const { daemonCall } = await getDaemonClient();
-    const name = await fuzzyMatchSession(session);
-    await daemonCall("window.focus", { session: name });
-    const pos = tilePosition || "bottom-right";
-    await daemonCall("window.tile", { session: name, position: pos }, 3000);
-    console.log(`${name} → ${pos}`);
-  } catch (e) {
-    console.log(`Error: ${e.message}`);
-  }
+// ── Search ───────────────────────────────────────────────────────────
+
+// Window search — title, app, session tag, OCR content
+async function search(query) {
+  const { daemonCall } = await getDaemonClient();
+  const hits = await daemonCall("windows.search", { query }, 10000);
+  const sourceWeight = { title: 3, session: 3, app: 2, ocr: 1 };
+  return hits.map(w => ({
+    score: sourceWeight[w.matchSource] || 1,
+    window: w,
+    tabs: [],
+    reasons: [w.matchSource],
+  }));
 }
 
-async function fuzzyMatchSession(query) {
+// Terminal search — cwd, tab titles, tmux sessions, processes
+async function terminalSearch(query) {
   const { daemonCall } = await getDaemonClient();
-  const sessions = await daemonCall("tmux.sessions", null, 3000);
-  const match = sessions.find(s => s.name.toLowerCase().includes(query.toLowerCase()));
-  return match ? match.name : query;
+  const q = query.toLowerCase();
+  let terminals = [];
+  try {
+    const t = await daemonCall("terminals.search", {}, 3000);
+    if (Array.isArray(t)) terminals = t;
+  } catch {}
+
+  const byWid = new Map();
+  for (const t of terminals) {
+    if (!t.windowId) continue;
+    const cwdMatch = (t.cwd || "").toLowerCase().includes(q);
+    const tabMatch = (t.tabTitle || "").toLowerCase().includes(q);
+    const tmuxMatch = (t.tmuxSession || "").toLowerCase().includes(q);
+    if (!cwdMatch && !tabMatch && !tmuxMatch) continue;
+
+    if (!byWid.has(t.windowId)) {
+      byWid.set(t.windowId, {
+        score: 0, window: { wid: t.windowId, app: t.app || "terminal", title: t.windowTitle || "" },
+        tabs: [], reasons: [],
+      });
+    }
+    const e = byWid.get(t.windowId);
+    e.score += 2;
+    e.tabs.push({ tab: t.tabIndex, cwd: t.cwd, title: t.tabTitle || t.displayName, hasClaude: t.hasClaude, tmuxSession: t.tmuxSession });
+    if (cwdMatch && !e.reasons.includes("cwd")) e.reasons.push("cwd");
+    if (tabMatch && !e.reasons.includes("tab")) e.reasons.push("tab");
+    if (tmuxMatch && !e.reasons.includes("tmux")) e.reasons.push("tmux");
+  }
+
+  return [...byWid.values()].sort((a, b) => b.score - a.score);
 }
+
+// Deep search — search the index, then inspect top candidates live
+async function deepSearch(query) {
+  const { daemonCall } = await getDaemonClient();
+  const q = query.toLowerCase();
+
+  // 1. Start with indexed results
+  const results = await search(query);
+
+  // 2. Inspect top candidates with live tools
+  const byWid = new Map();
+  for (const r of results) byWid.set(r.window.wid, r);
+
+  // Terminal inspection — enrich windows that are terminals
+  let terminals = [];
+  try {
+    const t = await daemonCall("terminals.search", {}, 3000);
+    if (Array.isArray(t)) terminals = t;
+  } catch {}
+
+  for (const t of terminals) {
+    if (!t.windowId) continue;
+    const cwdMatch = (t.cwd || "").toLowerCase().includes(q);
+    const tabMatch = (t.tabTitle || "").toLowerCase().includes(q);
+    const tmuxMatch = (t.tmuxSession || "").toLowerCase().includes(q);
+    if (!cwdMatch && !tabMatch && !tmuxMatch) continue;
+
+    if (!byWid.has(t.windowId)) {
+      byWid.set(t.windowId, {
+        score: 0, window: { wid: t.windowId, app: t.app || "terminal", title: t.windowTitle || "" },
+        tabs: [], reasons: [],
+      });
+    }
+    const e = byWid.get(t.windowId);
+    e.score += 2;
+    e.tabs.push({ tab: t.tabIndex, cwd: t.cwd, title: t.tabTitle || t.displayName, hasClaude: t.hasClaude, tmuxSession: t.tmuxSession });
+    if (cwdMatch && !e.reasons.includes("cwd")) e.reasons.push("cwd");
+    if (tabMatch && !e.reasons.includes("tab")) e.reasons.push("tab");
+    if (tmuxMatch && !e.reasons.includes("tmux")) e.reasons.push("tmux");
+  }
+
+  // TODO: AX live scan of top candidates for richer content
+  // TODO: OCR re-scan of ambiguous windows
+
+  return [...byWid.values()].sort((a, b) => b.score - a.score);
+}
+
+// Format and print search results
+function printResults(ranked) {
+  if (!ranked.length) return;
+  for (const r of ranked) {
+    const w = r.window;
+    console.log(`  \x1b[1m${w.app}\x1b[0m  "${w.title}"  wid:${w.wid}  score:${r.score}  (${r.reasons.join(", ")})`);
+    for (const t of r.tabs) {
+      const claude = t.hasClaude ? " \x1b[32m●\x1b[0m" : "";
+      const tmux = t.tmuxSession ? ` \x1b[36m[${t.tmuxSession}]\x1b[0m` : "";
+      console.log(`    tab ${t.tab}: ${t.cwd || t.title}${claude}${tmux}`);
+    }
+    if (w.ocrSnippet) console.log(`    ocr: "${w.ocrSnippet}"`);
+  }
+  console.log();
+}
+
+// ── search command ───────────────────────────────────────────────────
 
 async function searchCommand(query, flags) {
   if (!query) {
-    console.log("Usage: lattices search <query> [flags]");
-    console.log("\nFlags:");
-    console.log("  --json       JSON output");
-    console.log("  --wid        Print matching window IDs only");
-    console.log("  --session    Print matching session names only");
-    console.log("  --text       Print matching OCR text lines only");
+    console.log("Usage: lattices search <query> [--deep | --json | --wid]");
     return;
   }
 
-  const { daemonCall } = await getDaemonClient();
-  const q = query.toLowerCase();
+  const deep = flags.has("--deep");
+  const ranked = deep ? await deepSearch(query) : await search(query);
   const jsonOut = flags.has("--json");
   const widOnly = flags.has("--wid");
-  const sessionOnly = flags.has("--session");
-  const textOnly = flags.has("--text");
-  const pipeMode = widOnly || sessionOnly || textOnly;
 
-  const results = { sessions: [], windows: [], text: [] };
-
-  try {
-    // Search sessions
-    const sessions = await daemonCall("tmux.sessions", null, 3000);
-    results.sessions = sessions.filter(s => s.name.toLowerCase().includes(q));
-  } catch {}
-
-  try {
-    // Search windows
-    const windows = await daemonCall("windows.list", null, 3000);
-    results.windows = windows.filter(w =>
-      (w.app || "").toLowerCase().includes(q) ||
-      (w.title || "").toLowerCase().includes(q) ||
-      (w.latticesSession || "").toLowerCase().includes(q)
-    );
-  } catch {}
-
-  try {
-    // Search screen text (OCR)
-    const ocr = await daemonCall("ocr.search", { query }, 10000);
-    if (Array.isArray(ocr)) {
-      results.text = ocr;
-    } else if (ocr && ocr.results) {
-      results.text = ocr.results;
-    }
-  } catch {}
-
-  // JSON output
   if (jsonOut) {
-    console.log(JSON.stringify(results, null, 2));
+    console.log(JSON.stringify(ranked.map(r => ({
+      wid: r.window.wid, app: r.window.app, title: r.window.title,
+      score: r.score, reasons: r.reasons, tabs: r.tabs, ocrSnippet: r.window.ocrSnippet,
+    })), null, 2));
     return;
   }
 
-  // Pipe modes — one value per line, no decoration
   if (widOnly) {
-    for (const w of results.windows) console.log(w.wid);
-    return;
-  }
-  if (sessionOnly) {
-    for (const s of results.sessions) console.log(s.name);
-    return;
-  }
-  if (textOnly) {
-    for (const t of results.text) {
-      const lines = t.matches || t.lines || [];
-      if (typeof t === "string") {
-        console.log(t);
-      } else if (t.text) {
-        console.log(t.text);
-      } else {
-        for (const line of lines) {
-          console.log(typeof line === "string" ? line : line.text || JSON.stringify(line));
-        }
-      }
-    }
+    for (const r of ranked) console.log(r.window.wid);
     return;
   }
 
-  // Human-readable output
-  const total = results.sessions.length + results.windows.length + results.text.length;
-  if (total === 0) {
+  if (!ranked.length) {
     console.log(`No results for "${query}"`);
     return;
   }
 
-  if (results.sessions.length) {
-    console.log(`\n\x1b[1mSessions\x1b[0m (${results.sessions.length}):`);
-    for (const s of results.sessions) {
-      console.log(`  ${s.name}`);
-    }
-  }
+  printResults(ranked);
+}
 
-  if (results.windows.length) {
-    console.log(`\n\x1b[1mWindows\x1b[0m (${results.windows.length}):`);
-    for (const w of results.windows) {
-      const session = w.latticesSession ? `  \x1b[36m[${w.latticesSession}]\x1b[0m` : "";
-      console.log(`  \x1b[1m${w.app}\x1b[0m  "${w.title}"  wid:${w.wid}${session}`);
-    }
-  }
+// ── place command ────────────────────────────────────────────────────
 
-  if (results.text.length) {
-    console.log(`\n\x1b[1mScreen text\x1b[0m (${results.text.length} matches):`);
-    for (const t of results.text) {
-      if (t.app && t.text) {
-        const preview = t.text.length > 80 ? t.text.slice(0, 80) + "..." : t.text;
-        console.log(`  \x1b[36m${t.app}\x1b[0m (wid:${t.wid || "?"})  "${preview}"`);
-      } else if (t.matches) {
-        for (const m of t.matches.slice(0, 3)) {
-          console.log(`  wid:${t.wid || "?"}  "${typeof m === "string" ? m : m.text || JSON.stringify(m)}"`);
-        }
-      }
-    }
+async function placeCommand(query, tilePosition) {
+  if (!query) {
+    console.log("Usage: lattices place <query> [position]");
+    return;
   }
+  try {
+    const { daemonCall } = await getDaemonClient();
+    const ranked = await deepSearch(query);
 
-  console.log();
+    if (!ranked.length) {
+      console.log(`No window matching "${query}"`);
+      return;
+    }
+
+    const pos = tilePosition || "bottom-right";
+    const win = ranked[0].window;
+    await daemonCall("window.focus", { wid: win.wid });
+    await daemonCall("intents.execute", {
+      intent: "tile_window",
+      slots: { position: pos, wid: win.wid }
+    }, 3000);
+    console.log(`${win.app} "${win.title}" (wid:${win.wid}) → ${pos}`);
+  } catch (e) {
+    console.log(`Error: ${e.message}`);
+  }
 }
 
 async function sessionsCommand(jsonFlag) {
@@ -1358,11 +1390,14 @@ Usage:
   lattices group [id]         List tab groups or launch/attach a group
   lattices groups             List all tab groups with status
   lattices tab <group> [tab]  Switch tab within a group (by label or index)
-  lattices search <query>     Search sessions, windows, and screen text
+  lattices search <query>     Search windows by title, app, session, OCR
+  lattices search <q> --deep  Deep search: index + live terminal inspection
+  lattices search <q> --wid   Print matching window IDs only (pipeable)
+  lattices search <q> --json  JSON output
+  lattices place <query> [pos]  Deep search + focus + tile (default: bottom-right)
+  lattices focus <session>    Raise a session's window
   lattices windows [--json]   List all desktop windows (daemon required)
   lattices sessions [--json]  List active tmux sessions via daemon
-  lattices focus <session>    Raise a session's window
-  lattices place <session> [pos]  Raise + tile a session (default: bottom-right)
   lattices tile <position>    Tile the frontmost window (left, right, top, etc.)
   lattices distribute         Smart-grid all visible windows (daemon required)
   lattices layer [name|index]  List layers or switch by name/index (daemon required)
