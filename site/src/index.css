@@ -486,6 +486,23 @@ code {
   grid-row: 1 / -1;
 }
 
+/* ── Beta badge ────────────────────────────────────── */
+
+.beta-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--amber);
+  background: rgba(245, 166, 35, 0.12);
+  border: 1px solid rgba(245, 166, 35, 0.2);
+  vertical-align: middle;
+  margin-left: 4px;
+}
+
 /* ── Feature buckets ───────────────────────────────── */
 
 .feature-buckets {

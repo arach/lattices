@@ -6,7 +6,7 @@
 
 A workspace control plane for macOS. Manage persistent terminal sessions,
 tile and organize your windows, and index the text on your screen — all
-controllable from the CLI or a 30-method daemon API.
+controllable from the CLI or a 35-method daemon API.
 
 ## Install
 
@@ -97,9 +97,21 @@ lattices scan recent           # Browse scan history
 lattices scan deep             # Trigger a Vision OCR scan now
 ```
 
+## Voice commands (beta)
+
+Speak to control your workspace — tile windows, search, focus apps,
+and launch projects with natural language. Powered by
+[Talkie](https://github.com/nicktmro/talkie) for transcription and
+local NLEmbedding for intent matching, with Claude fallback for
+ambiguous commands.
+
+Trigger with `Hyper+3` (configurable). Press Space to speak, Space to
+stop. The panel shows what was heard, the matched intent, extracted
+parameters, and execution results.
+
 ## A programmable desktop
 
-The menu bar app runs a daemon with 30 RPC methods and 5 real-time
+The menu bar app runs a daemon with 35 RPC methods and 5 real-time
 events over WebSocket. Anything you can do from the app, an agent or
 script can do over the API.
 

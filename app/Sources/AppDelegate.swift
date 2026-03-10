@@ -85,12 +85,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         store.register(action: .bezel) { WindowBezel.showBezelForFrontmostWindow() }
         store.register(action: .cheatSheet) { CheatSheetHUD.shared.toggle() }
         store.register(action: .voiceCommand) {
-            let audio = AudioLayer.shared
-            if audio.isListening {
-                audio.stopVoiceCommand()
-            } else {
-                audio.startVoiceCommand()
-            }
+            DiagnosticLog.shared.info("Hotkey: voiceCommand triggered")
+            VoiceCommandWindow.shared.toggle()
         }
         store.register(action: .desktopInventory) { CommandModeWindow.shared.toggle() }
         store.register(action: .omniSearch) { OmniSearchWindow.shared.toggle() }

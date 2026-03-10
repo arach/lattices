@@ -1,5 +1,4 @@
 import AppKit
-import AVFoundation
 
 // MARK: - Audio Provider Protocol
 
@@ -39,43 +38,17 @@ final class AudioLayer: ObservableObject {
     @Published var matchedSlots: [String: String] = [:]
     @Published var matchConfidence: Double = 0
     @Published var executionResult: String?   // "ok" or error message
+    @Published var executionData: JSON?       // Full result data from intent execution
     @Published var provider: (any AudioProvider)?
     @Published var providerName: String = "none"
 
 
     private init() {
-        // Try to discover Talkie on startup
         let talkie = TalkieAudioProvider()
-        talkie.checkHealth { available in
-            DispatchQueue.main.async {
-                if available {
-                    self.provider = talkie
-                    self.providerName = "talkie"
-                    DiagnosticLog.shared.info("AudioLayer: Talkie discovered")
-                } else {
-                    DiagnosticLog.shared.info("AudioLayer: no audio provider found")
-                }
-            }
-        }
-
-        // Listen for Talkie coming online via DistributedNotification
-        DistributedNotificationCenter.default().addObserver(
-            forName: Notification.Name("com.jdi.talkie.agent.live.ready"),
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            guard self?.provider == nil else { return }
-            let talkie = TalkieAudioProvider()
-            talkie.checkHealth { available in
-                DispatchQueue.main.async {
-                    if available {
-                        self?.provider = talkie
-                        self?.providerName = "talkie"
-                        DiagnosticLog.shared.info("AudioLayer: Talkie came online")
-                    }
-                }
-            }
-        }
+        provider = talkie
+        providerName = "talkie"
+        // Connection is managed by VoiceCommandWindow — not here.
+        // Connecting here would race with (and destroy) the existing WebSocket.
     }
 
     /// Start a voice command capture. Transcription is piped to the intent engine.
@@ -109,6 +82,14 @@ final class AudioLayer: ObservableObject {
                 self.lastTranscript = transcription.text
                 self.isListening = false
 
+                // Empty transcript = transcription failed, don't try to execute
+                guard !transcription.text.isEmpty else {
+                    if self.executionResult == nil || self.executionResult == "Transcribing..." {
+                        self.executionResult = "No speech detected"
+                    }
+                    return
+                }
+
                 EventBus.shared.post(.voiceCommand(text: transcription.text, confidence: transcription.confidence))
                 self.executeVoiceIntent(transcription)
             }
@@ -141,35 +122,94 @@ final class AudioLayer: ObservableObject {
             catalog: IntentEngine.shared.catalog()
         )
 
-        guard let intent = extracted else {
-            DiagnosticLog.shared.info("AudioLayer: no intent matched for '\(transcription.text)'")
+        if let intent = extracted {
+            matchedIntent = intent.name
+            matchConfidence = intent.confidence
+            matchedSlots = intent.slots.reduce(into: [:]) { dict, pair in
+                dict[pair.key] = pair.value.stringValue ?? "\(pair.value)"
+            }
+
+            let request = IntentRequest(
+                intent: intent.name,
+                slots: intent.slots,
+                rawText: transcription.text,
+                confidence: transcription.confidence,
+                source: transcription.source
+            )
+
+            do {
+                let result = try IntentEngine.shared.execute(request)
+                // If search returned empty, fall back to Claude
+                if intent.name == "search", case .array(let items) = result, items.isEmpty {
+                    DiagnosticLog.shared.info("AudioLayer: search returned 0 results, falling back to Claude")
+                    executionResult = "searching..."
+                    executionData = nil
+                    claudeFallback(transcription: transcription)
+                    return
+                }
+                executionResult = "ok"
+                executionData = result
+                DiagnosticLog.shared.info("AudioLayer: executed '\(intent.name)' → \(result)")
+            } catch {
+                // Local execution failed — try Claude
+                DiagnosticLog.shared.info("AudioLayer: intent error — \(error.localizedDescription), falling back to Claude")
+                executionResult = "thinking..."
+                executionData = nil
+                claudeFallback(transcription: transcription)
+            }
+        } else {
+            // No local match at all — Claude fallback
+            DiagnosticLog.shared.info("AudioLayer: no local match for '\(transcription.text)', falling back to Claude")
             matchedIntent = nil
-            executionResult = "No intent matched"
-            return
+            matchedSlots = [:]
+            executionResult = "thinking..."
+            executionData = nil
+            claudeFallback(transcription: transcription)
         }
+    }
 
-        matchedIntent = intent.name
-        matchConfidence = intent.confidence
-        // Flatten slots to string for display
-        matchedSlots = intent.slots.reduce(into: [:]) { dict, pair in
-            dict[pair.key] = pair.value.stringValue ?? "\(pair.value)"
-        }
+    private func claudeFallback(transcription: Transcription) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
 
-        let request = IntentRequest(
-            intent: intent.name,
-            slots: intent.slots,
-            rawText: transcription.text,
-            confidence: transcription.confidence,
-            source: transcription.source
-        )
+            let result = ClaudeFallback.resolve(
+                transcript: transcription.text,
+                windows: DesktopModel.shared.windows.values.map { $0 },
+                intentCatalog: IntentEngine.shared.catalog()
+            )
 
-        do {
-            let result = try IntentEngine.shared.execute(request)
-            executionResult = "ok"
-            DiagnosticLog.shared.info("AudioLayer: executed '\(intent.name)' → \(result)")
-        } catch {
-            executionResult = error.localizedDescription
-            DiagnosticLog.shared.info("AudioLayer: intent error — \(error.localizedDescription)")
+            DispatchQueue.main.async {
+                guard let resolved = result else {
+                    self.executionResult = "Claude couldn't resolve intent"
+                    DiagnosticLog.shared.info("AudioLayer: Claude fallback returned nil")
+                    return
+                }
+
+                DiagnosticLog.shared.info("AudioLayer: Claude resolved → \(resolved.intent) \(resolved.slots)")
+                self.matchedIntent = resolved.intent
+                self.matchedSlots = resolved.slots.reduce(into: [:]) { dict, pair in
+                    dict[pair.key] = pair.value.stringValue ?? "\(pair.value)"
+                }
+
+                let request = IntentRequest(
+                    intent: resolved.intent,
+                    slots: resolved.slots,
+                    rawText: transcription.text,
+                    confidence: 0.8,
+                    source: "claude"
+                )
+
+                do {
+                    let execResult = try IntentEngine.shared.execute(request)
+                    self.executionResult = "ok"
+                    self.executionData = execResult
+                    DiagnosticLog.shared.info("AudioLayer: Claude-resolved executed → \(execResult)")
+                } catch {
+                    self.executionResult = error.localizedDescription
+                    self.executionData = nil
+                    DiagnosticLog.shared.info("AudioLayer: Claude-resolved execution error — \(error.localizedDescription)")
+                }
+            }
         }
     }
 }
@@ -252,10 +292,14 @@ final class IntentExtractor {
                 "search for", "find text", "look for", "where does it say",
                 "search the screen", "find on screen", "where is the error",
                 "find todo", "search error message",
+                "find all", "find terminal", "find chrome", "find safari",
+                "find windows", "find all windows", "find all terminal windows",
+                "search windows", "search for windows",
             ]),
             ("list_windows", [
                 "what windows are open", "show all windows", "list windows",
                 "what's on screen", "which windows are visible",
+                "list all windows", "show me all the windows",
             ]),
             ("list_sessions", [
                 "what sessions are running", "list sessions", "show my projects",
@@ -298,7 +342,15 @@ final class IntentExtractor {
     }
 
     func classify(text: String) -> ExtractedIntent? {
-        let lower = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        var lower = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        // Strip trailing punctuation (Whisper adds periods)
+        lower = lower.trimmingCharacters(in: .punctuationCharacters).trimmingCharacters(in: .whitespaces)
+        // Strip speech disfluencies
+        let disfluencies = ["um ", "uh ", "like ", "no sorry ", "sorry ", "no wait ", "wait ", "actually ", "okay ", "ok "]
+        for d in disfluencies {
+            lower = lower.replacingOccurrences(of: d, with: "")
+        }
+        lower = lower.trimmingCharacters(in: .whitespaces)
 
         // Tier 1: Exact match
         for entry in phraseIndex {
@@ -413,7 +465,30 @@ private enum SlotExtractor {
         case .layerTarget:
             return extractTargetSlot(from: text, prefixes: ["switch to layer", "go to layer", "switch to", "go to", "activate layer", "activate", "change to layer", "change to", "layer"], slotName: "layer")
         case .queryTarget:
-            return extractTargetSlot(from: text, prefixes: ["search for", "find", "look for", "where is", "where does it say"], slotName: "query")
+            var result = extractTargetSlot(from: text, prefixes: [
+                "search for all instances of", "search for all", "search for",
+                "search all the", "search all",
+                "find all instances of", "find all the", "find all",
+                "find instances of", "find the", "find",
+                "look for all", "look for",
+                "where is the", "where is",
+                "where does it say",
+            ], slotName: "query", stripSuffixes: ["windows", "instances", "apps", "applications", "terminals", "on screen", "on my screen"])
+            // Clean up extracted query — strip filler phrases
+            if var q = result["query"]?.stringValue {
+                let fillerPhrases = [
+                    "instances of ", "all the ", "all ",
+                    "that mentioned ", "that mention ", "that say ", "that says ",
+                    "talking about ", "related to ", "about ", "with ",
+                    "alternate ", "alternative ",
+                ]
+                for filler in fillerPhrases {
+                    q = q.replacingOccurrences(of: filler, with: "")
+                }
+                q = q.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !q.isEmpty { result["query"] = .string(q) }
+            }
+            return result
         case .sessionTarget:
             return extractTargetSlot(from: text, prefixes: ["kill", "stop", "shut down", "close", "terminate"], slotName: "session", stripSuffixes: ["session", "project"])
         case .nameTarget:
@@ -479,6 +554,9 @@ private enum SlotExtractor {
                     }
                 }
                 target = target.trimmingCharacters(in: .whitespacesAndNewlines)
+                // Strip trailing punctuation (Whisper often adds periods)
+                target = target.trimmingCharacters(in: .punctuationCharacters)
+                target = target.trimmingCharacters(in: .whitespacesAndNewlines)
                 // Also strip "project" suffix for project targets
                 if slotName == "project" && target.hasSuffix(" project") {
                     target = String(target.dropLast(8)).trimmingCharacters(in: .whitespaces)
@@ -492,222 +570,137 @@ private enum SlotExtractor {
     }
 }
 
-// MARK: - Talkie Audio Provider (WebSocket Bridge)
+// MARK: - Talkie Audio Provider (WebSocket JSON-RPC via TalkieClient)
 //
-// Connects to TalkieAgent (port 19821 engine, DistributedNotification for state)
-// via the JSON-RPC WebSocket bridges that Talkie exposes on localhost.
-// This avoids XPC entitlement issues between independently built apps.
+// Delegates recording and transcription entirely to TalkieAgent.
+// Lattices never touches the mic — TalkieAgent owns the mic lifecycle,
+// recording, and Whisper transcription. We just call startDictation
+// and listen for streaming events.
 
 final class TalkieAudioProvider: AudioProvider {
-    private let enginePort = 19821
     private var onTranscript: ((Transcription) -> Void)?
-    private var _isAvailable = false
     private var _isListening = false
-    private var audioRecorder: AVAudioRecorder?
-    private var recordingURL: URL?
+    private var startTime: Date?
 
-    var isAvailable: Bool { _isAvailable }
+    var isAvailable: Bool {
+        TalkieClient.shared.connectionState == .connected
+    }
+
     var isListening: Bool { _isListening }
 
     func checkHealth(completion: @escaping (Bool) -> Void) {
-        // Ping the engine bridge to see if Talkie is up
-        bridgeCall(port: enginePort, method: "ping", params: nil) { [weak self] result, error in
-            let ok = error == nil && result != nil
-            self?._isAvailable = ok
-            completion(ok)
+        let client = TalkieClient.shared
+        if client.connectionState == .connected {
+            client.ping { ok in
+                DispatchQueue.main.async { completion(ok) }
+            }
+        } else {
+            completion(false)
         }
     }
 
     func startListening(onTranscript: @escaping (Transcription) -> Void) {
+        let client = TalkieClient.shared
+        guard client.connectionState == .connected else {
+            DiagnosticLog.shared.warn("TalkieAudioProvider: not connected to TalkieAgent")
+            onTranscript(Transcription(text: "", confidence: 0, source: "talkie", isPartial: false, durationMs: nil))
+            return
+        }
+
         self.onTranscript = onTranscript
         _isListening = true
+        startTime = Date()
 
-        // Record audio from the default mic
-        let tempDir = FileManager.default.temporaryDirectory
-        let url = tempDir.appendingPathComponent("lattices-voice-\(UUID().uuidString).wav")
-        recordingURL = url
+        DiagnosticLog.shared.info("TalkieAudioProvider: starting dictation via TalkieAgent")
 
-        let settings: [String: Any] = [
-            AVFormatIDKey: Int(kAudioFormatLinearPCM),
-            AVSampleRateKey: 16000,
-            AVNumberOfChannelsKey: 1,
-            AVLinearPCMBitDepthKey: 16,
-            AVLinearPCMIsFloatKey: false,
-        ]
+        // Call startDictation as a streaming RPC — TalkieAgent records and transcribes
+        client.callStreaming(
+            method: "startDictation",
+            params: ["persist": false, "source": "lattices"],
+            onProgress: { [weak self] event, data in
+                guard let self else { return }
+                DispatchQueue.main.async {
+                    switch event {
+                    case "stateChange":
+                        let state = data["state"] as? String ?? ""
+                        DiagnosticLog.shared.info("TalkieAudioProvider: state → \(state)")
 
-        do {
-            let recorder = try AVAudioRecorder(url: url, settings: settings)
-            recorder.record()
-            audioRecorder = recorder
-            DiagnosticLog.shared.info("TalkieAudioProvider: recording started → \(url.lastPathComponent)")
-        } catch {
-            DiagnosticLog.shared.info("TalkieAudioProvider: failed to start recording — \(error)")
-            _isListening = false
-            onTranscript(Transcription(text: "", confidence: 0, source: "talkie", isPartial: false, durationMs: nil))
-        }
+                    case "partialTranscript":
+                        if let text = data["text"] as? String {
+                            self.onTranscript?(Transcription(
+                                text: text, confidence: 0.5, source: "talkie",
+                                isPartial: true, durationMs: nil
+                            ))
+                        }
+
+                    default:
+                        break
+                    }
+                }
+            },
+            completion: { [weak self] result in
+                guard let self else { return }
+                DispatchQueue.main.async {
+                    self._isListening = false
+                    let elapsed = self.startTime.map { Int(Date().timeIntervalSince($0) * 1000) }
+
+                    switch result {
+                    case .success(let data):
+                        DiagnosticLog.shared.info("TalkieAudioProvider: response keys → \(Array(data.keys))")
+                        if let text = (data["transcript"] as? String) ?? (data["text"] as? String) {
+                            let confidence = data["confidence"] as? Double ?? 0.9
+                            let t = Transcription(
+                                text: text, confidence: confidence, source: "talkie",
+                                isPartial: false, durationMs: elapsed
+                            )
+                            DiagnosticLog.shared.info("TalkieAudioProvider: transcribed → '\(text)'")
+                            self.onTranscript?(t)
+                        } else {
+                            DiagnosticLog.shared.info("TalkieAudioProvider: no transcript in response")
+                        }
+
+                    case .failure(let error):
+                        DiagnosticLog.shared.warn("TalkieAudioProvider: dictation error — \(error.localizedDescription)")
+                        if case .micBusy(let owner) = error {
+                            AudioLayer.shared.executionResult = "Mic in use by \(owner)"
+                        } else {
+                            AudioLayer.shared.executionResult = "Transcription failed"
+                        }
+                        // Notify with empty transcript so the UI updates
+                        self.onTranscript?(Transcription(
+                            text: "", confidence: 0, source: "talkie",
+                            isPartial: false, durationMs: nil
+                        ))
+                    }
+                }
+            }
+        )
     }
 
     func stopListening(completion: @escaping (Transcription?) -> Void) {
         _isListening = false
 
-        guard let recorder = audioRecorder, let url = recordingURL else {
+        let client = TalkieClient.shared
+        guard client.connectionState == .connected else {
             completion(nil)
             return
         }
 
-        let duration = recorder.currentTime
-        recorder.stop()
-        audioRecorder = nil
+        DiagnosticLog.shared.info("TalkieAudioProvider: stopping dictation")
 
-        DiagnosticLog.shared.info("TalkieAudioProvider: recording stopped (\(Int(duration * 1000))ms), sending to Talkie engine")
-
-        // Read the audio file and send to Talkie engine as base64
-        guard let audioData = try? Data(contentsOf: url) else {
-            DiagnosticLog.shared.info("TalkieAudioProvider: failed to read recorded audio")
-            completion(nil)
-            return
-        }
-
-        let base64Audio = audioData.base64EncodedString()
-
-        // Clean up the temp file
-        try? FileManager.default.removeItem(at: url)
-        recordingURL = nil
-
-        // Send to Talkie engine for transcription
-        bridgeCall(port: enginePort, method: "transcribeAudio", params: [
-            "audioData": base64Audio
-        ]) { result, error in
+        // stopDictation tells TalkieAgent to finalize — the transcript comes
+        // back through the streaming call's completion handler, not here.
+        // We just ack the stop.
+        client.call(method: "stopDictation") { result in
             DispatchQueue.main.async {
-                if let error = error {
-                    DiagnosticLog.shared.info("TalkieAudioProvider: transcription error — \(error)")
-                    completion(nil)
-                    return
-                }
-
-                if let result = result as? [String: Any],
-                   let transcript = result["transcript"] as? String {
-                    let confidence = (result["confidence"] as? Double) ?? 0.9
-                    let t = Transcription(
-                        text: transcript,
-                        confidence: confidence,
-                        source: "talkie",
-                        isPartial: false,
-                        durationMs: Int(duration * 1000)
-                    )
-                    DiagnosticLog.shared.info("TalkieAudioProvider: transcribed → '\(transcript)'")
-                    completion(t)
-                } else {
-                    DiagnosticLog.shared.info("TalkieAudioProvider: no transcript in response")
+                switch result {
+                case .success:
+                    // Transcript arrives via the startDictation streaming completion
+                    break
+                case .failure(let error):
+                    DiagnosticLog.shared.warn("TalkieAudioProvider: stopDictation error — \(error.localizedDescription)")
                     completion(nil)
                 }
-            }
-        }
-    }
-
-    // MARK: - WebSocket Bridge RPC
-
-    private func bridgeCall(port: Int, method: String, params: [String: Any]?, completion: @escaping (Any?, String?) -> Void) {
-        // Use a raw TCP socket to do a single WebSocket RPC call
-        // (Same pattern as Lattices' own daemon client)
-        let id = UUID().uuidString
-        var payload: [String: Any] = ["id": id, "method": method]
-        if let params = params { payload["params"] = params }
-
-        guard let jsonData = try? JSONSerialization.data(withJSONObject: payload),
-              let jsonStr = String(data: jsonData, encoding: .utf8) else {
-            completion(nil, "JSON serialization failed")
-            return
-        }
-
-        // Open TCP connection to bridge
-        let fd = socket(AF_INET, SOCK_STREAM, 0)
-        guard fd >= 0 else {
-            completion(nil, "socket() failed")
-            return
-        }
-
-        var addr = sockaddr_in()
-        addr.sin_family = sa_family_t(AF_INET)
-        addr.sin_port = UInt16(port).bigEndian
-        addr.sin_addr.s_addr = inet_addr("127.0.0.1")
-
-        let connectResult = withUnsafePointer(to: &addr) { ptr in
-            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockPtr in
-                connect(fd, sockPtr, socklen_t(MemoryLayout<sockaddr_in>.size))
-            }
-        }
-
-        guard connectResult == 0 else {
-            close(fd)
-            completion(nil, "connect() failed")
-            return
-        }
-
-        // Send WebSocket upgrade
-        let key = Data((0..<16).map { _ in UInt8.random(in: 0...255) }).base64EncodedString()
-        let upgrade = "GET / HTTP/1.1\r\nHost: 127.0.0.1:\(port)\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: \(key)\r\nSec-WebSocket-Version: 13\r\n\r\n"
-        upgrade.utf8.withContiguousStorageIfAvailable { buf in
-            _ = send(fd, buf.baseAddress, buf.count, 0)
-        }
-
-        // Read upgrade response (simplified — just drain until \r\n\r\n)
-        var headerBuf = [UInt8](repeating: 0, count: 4096)
-        _ = recv(fd, &headerBuf, headerBuf.count, 0)
-
-        // Send WebSocket text frame with mask
-        let frameData = Array(jsonStr.utf8)
-        var frame = [UInt8]()
-        frame.append(0x81) // FIN + text
-        let mask: [UInt8] = (0..<4).map { _ in UInt8.random(in: 0...255) }
-        if frameData.count < 126 {
-            frame.append(UInt8(frameData.count) | 0x80)
-        } else {
-            frame.append(126 | 0x80)
-            frame.append(UInt8(frameData.count >> 8))
-            frame.append(UInt8(frameData.count & 0xFF))
-        }
-        frame.append(contentsOf: mask)
-        for (i, byte) in frameData.enumerated() {
-            frame.append(byte ^ mask[i % 4])
-        }
-        _ = send(fd, frame, frame.count, 0)
-
-        // Read response frame
-        DispatchQueue.global().async {
-            var respBuf = [UInt8](repeating: 0, count: 65536)
-            let n = recv(fd, &respBuf, respBuf.count, 0)
-            close(fd)
-
-            guard n > 2 else {
-                completion(nil, "empty response")
-                return
-            }
-
-            // Parse WebSocket frame (server frames are unmasked)
-            var offset = 2
-            var payloadLen = Int(respBuf[1] & 0x7F)
-            if payloadLen == 126 {
-                payloadLen = Int(respBuf[2]) << 8 | Int(respBuf[3])
-                offset = 4
-            }
-
-            guard offset + payloadLen <= n else {
-                completion(nil, "truncated frame")
-                return
-            }
-
-            let payloadBytes = Array(respBuf[offset..<(offset + payloadLen)])
-            if let str = String(bytes: payloadBytes, encoding: .utf8),
-               let data = str.data(using: .utf8),
-               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                if let error = json["error"] as? String {
-                    completion(nil, error)
-                } else {
-                    completion(json["result"], nil)
-                }
-            } else {
-                completion(nil, "parse failed")
             }
         }
     }

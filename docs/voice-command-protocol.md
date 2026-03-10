@@ -72,8 +72,23 @@ If ping fails, Lattices marks voice as unavailable and retries on the next `live
 
 ### When TalkieAgent is not running
 
-- Footer shows `[Space] Voice (unavailable)` in muted text
-- Pressing Space shows: "Voice commands require Talkie"
+Three possible states:
+
+| State | How detected | Lattices behavior |
+|---|---|---|
+| **Not installed** | `/Applications/Talkie.app` doesn't exist and no `~/.talkie/` dir | Footer: `[Space] Voice (unavailable)` — no recovery action |
+| **Installed but not running** | App bundle exists, but `services.json` missing/stale or ping fails | Footer: `[Space] Voice (start Talkie)` — pressing Space runs `open /Applications/Talkie.app`, which brings up TalkieAgent as a side effect |
+| **Running** | Ping succeeds | Normal operation |
+
+Launch-on-demand flow:
+1. User presses Space while TalkieAgent is down but Talkie is installed
+2. Lattices runs `NSWorkspace.shared.open(URL(fileURLWithPath: "/Applications/Talkie.app"))`
+3. Feedback strip shows "Starting Talkie..."
+4. Lattices waits for `live.ready` notification (timeout: 10s)
+5. On `live.ready`, connects and proceeds with `startDictation`
+6. On timeout, shows "Couldn't reach Talkie — try opening it manually"
+
+Passive behavior (no user action):
 - No log spam — just a quiet unavailable state
 - Lattices keeps listening for `live.ready` and re-checks `services.json` periodically (~30s)
 - The moment TalkieAgent comes online, voice becomes available — no restart needed
@@ -92,10 +107,10 @@ Event:    {"event": "...", "data": {...}}   (server push, no id)
 
 ### Methods (Lattices → TalkieAgent)
 
-**`initiate_dictation`** — Start recording from the mic.
+**`startDictation`** — Start recording from the mic.
 
 ```json
-{"id": "1", "method": "initiate_dictation", "params": {
+{"id": "1", "method": "startDictation", "params": {
   "source": "lattices",
   "persist": false
 }}
@@ -113,12 +128,17 @@ Error responses:
 ```json
 {"id": "1", "error": "Microphone access denied"}
 {"id": "1", "error": "No model loaded"}
+{"id": "1", "error": "mic_busy", "owner": "talkie"}
 ```
 
-**`stop_dictation`** — Stop recording and return the transcript.
+The `mic_busy` error means another consumer (Talkie's own memo recording, or another client) already has an active dictation. The `owner` field identifies who holds the mic. Lattices shows: "Mic in use by Talkie — finish your memo first".
+
+The reverse case (user hits Talkie hotkey while Lattices has the mic) is handled on TalkieAgent's side — it should reject its own recording with an equivalent busy state. TalkieAgent is the single owner of mic arbitration.
+
+**`stopDictation`** — Stop recording and return the transcript.
 
 ```json
-{"id": "2", "method": "stop_dictation"}
+{"id": "2", "method": "stopDictation"}
 ```
 
 Response (after transcription completes):
@@ -130,10 +150,10 @@ Response (after transcription completes):
 }}
 ```
 
-**`cancel_dictation`** — Abort without transcribing.
+**`cancelDictation`** — Abort without transcribing.
 
 ```json
-{"id": "3", "method": "cancel_dictation"}
+{"id": "3", "method": "cancelDictation"}
 ```
 
 ```json
@@ -151,6 +171,22 @@ Pushed over the WebSocket connection during an active dictation.
 | `dictation.result` | Transcription complete | `{"transcript": "...", "confidence": 0.94, "durationMs": 1820}` |
 | `dictation.error` | Something failed during recording or transcription | `{"message": "..."}` |
 
+## Disconnect Contract
+
+If the WebSocket connection drops mid-dictation (Lattices crashes, user quits, network hiccup), TalkieAgent **must** auto-cancel the in-flight dictation:
+
+1. Stop recording immediately
+2. Discard any captured audio — do not transcribe
+3. Release the mic so Talkie's own UI or a reconnecting client can use it
+4. Log the orphaned dictation for diagnostics: `[dictation] orphaned session from lattices — connection dropped, auto-cancelled`
+
+TalkieAgent treats a closed WebSocket as an implicit `cancelDictation`. No grace period, no buffering — if the consumer is gone, the recording is worthless.
+
+On the Lattices side, if the connection drops while in `listening` or `transcribing` state:
+- Feedback strip: "Connection lost" (red)
+- Attempt reconnect via normal discovery (ping → `services.json` → wait for `live.ready`)
+- Do not auto-retry the dictation — the user needs to press Space again
+
 ## End-to-End Lifecycle
 
 ```mermaid
@@ -161,7 +197,7 @@ sequenceDiagram
     participant IE as Intent Engine
 
     U->>L: Press Space (in cheat sheet)
-    L->>TA: initiate_dictation (persist: false)
+    L->>TA: startDictation (persist: false)
 
     alt Error
         TA-->>L: error (mic denied / no model)
@@ -174,7 +210,7 @@ sequenceDiagram
         Note over U,TA: User speaks...
 
         U->>L: Press Space again
-        L->>TA: stop_dictation
+        L->>TA: stopDictation
         TA-->>L: dictation.transcribing
         L->>U: "Transcribing..."
 
@@ -198,8 +234,11 @@ sequenceDiagram
 | State | Feedback strip | Footer |
 |---|---|---|
 | **Idle** | Hidden | `[Space] Voice  [ESC] Dismiss` |
-| **Unavailable** | Hidden | `[Space] Voice (unavailable)  [ESC] Dismiss` |
-| **Error** | Red: "Mic access denied" or "Talkie not running" | `[ESC] Dismiss` |
+| **Not installed** | Hidden | `[Space] Voice (unavailable)  [ESC] Dismiss` |
+| **Installed, not running** | Hidden | `[Space] Voice (start Talkie)  [ESC] Dismiss` |
+| **Starting** | "Starting Talkie..." | `[ESC] Cancel` |
+| **Error** | Red: "Mic access denied" or "Mic in use by Talkie" | `[ESC] Dismiss` |
+| **Disconnected** | Red: "Connection lost" | `[ESC] Dismiss` |
 | **Listening** | Green dot + "Listening..." | `[Space] Stop  [ESC] Cancel` |
 | **Transcribing** | "Transcribing..." | `[ESC] Cancel` |
 | **Result** | `"tile this left"` → `tile window · position: left` → `Done` | `[Space] New  [ESC] Dismiss` |
@@ -213,20 +252,27 @@ Every voice command produces a diagnostic log entry:
 [voice] "organize my stuff" → distribute() → ok (conf=0.79, 2100ms)
 [voice] "do something weird" → (no match, conf=0.41, 900ms)
 [voice] error: TalkieAgent not running
+[voice] error: mic_busy (owner: talkie)
+[voice] error: connection dropped mid-dictation
+[voice] launched Talkie, connected in 2.1s
 ```
 
 ## Implementation Scope
 
 ### Lattices side
-- Replace `AVAudioRecorder` in `TalkieAudioProvider` with WebSocket RPC calls to TalkieAgent
+- Use `@talkie/client` SDK (`TalkieClient` with `service: "agent"`, `clientId: "lattices"`, `capabilities: ["dictation"]`) — see `talkie/sdk/SDK.md` for full reference
+- Replace `AVAudioRecorder` in `TalkieAudioProvider` with `createDictationSession().start({ persist: false })`
 - Remove mic entitlement and `NSMicrophoneUsageDescription` (Lattices never touches the mic)
-- Add service discovery (read `~/.talkie/services.json` + listen for `live.ready`)
-- Update UI states in cheat sheet feedback strip
+- Service discovery, auto-reconnect, and auth are handled by the SDK
+- Map `DictationSession` events (`stateChange`, `partialTranscript`, `finalTranscript`, `error`) to cheat sheet UI states
+- Handle `MicBusyError` — show `"Mic in use by ${error.owner}"`
 
 ### TalkieAgent side (separate repo)
 - Expose a WebSocket bridge (or add methods to existing bridge)
-- Add `initiate_dictation`, `stop_dictation`, `cancel_dictation` handlers
+- Add `startDictation`, `stopDictation`, `cancelDictation` handlers
 - Emit `dictation.started`, `dictation.transcribing`, `dictation.result`, `dictation.error` events
 - Honor `persist: false` — skip memo creation and sync
 - Write `~/.talkie/services.json` on startup (all service ports)
 - Include `agentPort` in `live.ready` notification userInfo
+- Return `mic_busy` error with `owner` field when another consumer holds the mic
+- Auto-cancel dictation on WebSocket disconnect (closed socket = implicit cancel)

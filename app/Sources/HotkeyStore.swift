@@ -208,10 +208,10 @@ class HotkeyStore: ObservableObject {
         bind(.palette,   46, cmdShift)   // Cmd+Shift+M
         bind(.screenMap, 18, hyper)      // Hyper+1
         bind(.bezel,     19, hyper)      // Hyper+2
-        bind(.cheatSheet, 20, hyper)       // Hyper+3
+        bind(.voiceCommand, 20, hyper)      // Hyper+3
         bind(.desktopInventory, 21, hyper) // Hyper+4
         bind(.omniSearch, 23, hyper)       // Hyper+5
-        bind(.voiceCommand, 22, hyper)     // Hyper+6 (also triggered by Space in cheat sheet)
+        bind(.cheatSheet, 22, hyper)       // Hyper+6
 
         // Layers: Cmd+Option+1-9
         let layerKeyCodes: [UInt32] = [18, 19, 20, 21, 23, 22, 26, 28, 25]

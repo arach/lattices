@@ -304,14 +304,16 @@ final class IntentEngine {
             }
         ))
 
-        // ── Search Screen Text ──────────────────────────────────
+        // ── Search Windows ─────────────────────────────────────
 
         register(IntentDef(
             name: "search",
-            description: "Search for text across all windows",
+            description: "Search for windows by app name, title, session, or screen text",
             examples: [
                 "find the error message",
                 "search for TODO",
+                "find all terminal windows",
+                "find chrome",
                 "where does it say build failed",
                 "look for port 3000"
             ],
@@ -323,10 +325,53 @@ final class IntentEngine {
                 guard let query = req.slots["query"]?.stringValue else {
                     throw IntentError.missingSlot("query")
                 }
-                return try LatticesApi.shared.dispatch(
-                    method: "ocr.search",
+                DiagnosticLog.shared.info("search: query='\(query)'")
+
+                // Try full query first
+                let result = try LatticesApi.shared.dispatch(
+                    method: "windows.search",
                     params: .object(["query": .string(query)])
                 )
+                if case .array(let items) = result, !items.isEmpty {
+                    DiagnosticLog.shared.info("search: \(items.count) results for '\(query)'")
+                    return result
+                }
+
+                // Fallback: try each word individually, merge unique results
+                let stopWords: Set<String> = ["the", "a", "an", "all", "that", "this", "is", "are",
+                                               "in", "on", "my", "and", "or", "of", "to", "for",
+                                               "it", "its", "with", "about", "say", "says", "said",
+                                               "mentioned", "mention", "talking", "related"]
+                let words = query.lowercased()
+                    .split(separator: " ")
+                    .map(String.init)
+                    .filter { $0.count > 2 && !stopWords.contains($0) }
+
+                if words.isEmpty {
+                    DiagnosticLog.shared.info("search: no usable words in query")
+                    return .array([])
+                }
+
+                var seenWids: Set<Int> = []
+                var merged: [JSON] = []
+
+                for word in words {
+                    let wordResult = try LatticesApi.shared.dispatch(
+                        method: "windows.search",
+                        params: .object(["query": .string(word)])
+                    )
+                    if case .array(let items) = wordResult {
+                        for item in items {
+                            if let wid = item["wid"]?.intValue, !seenWids.contains(wid) {
+                                seenWids.insert(wid)
+                                merged.append(item)
+                            }
+                        }
+                    }
+                }
+
+                DiagnosticLog.shared.info("search: \(merged.count) results from word fallback [\(words.joined(separator: ", "))]")
+                return .array(merged)
             }
         ))
 
@@ -487,5 +532,141 @@ enum IntentError: LocalizedError {
         case .targetNotFound(let detail):
             return detail
         }
+    }
+}
+
+// MARK: - Claude CLI Fallback
+
+struct ClaudeResolvedIntent {
+    let intent: String
+    let slots: [String: JSON]
+}
+
+enum ClaudeFallback {
+
+    private static let claudePath = "/Users/arach/.local/bin/claude"
+
+    /// Shell out to Claude CLI to resolve a voice command transcript into an intent + slots.
+    /// Runs synchronously — call from a background thread.
+    static func resolve(
+        transcript: String,
+        windows: [WindowEntry],
+        intentCatalog: JSON
+    ) -> ClaudeResolvedIntent? {
+
+        let timer = DiagnosticLog.shared.startTimed("Claude fallback")
+
+        // Build window context (compact)
+        // Compact window list — just app and title, max 20
+        let windowList = windows.prefix(20).map { "\($0.app): \($0.title)" }.joined(separator: "\n")
+
+        // Compact intent list — just name and slot names
+        var intentList = ""
+        if case .array(let intents) = intentCatalog {
+            for intent in intents {
+                let name = intent["intent"]?.stringValue ?? ""
+                var slotNames: [String] = []
+                if case .array(let slots) = intent["slots"] {
+                    slotNames = slots.compactMap { $0["name"]?.stringValue }
+                }
+                let s = slotNames.isEmpty ? "" : "(\(slotNames.joined(separator: ",")))"
+                intentList += "\(name)\(s), "
+            }
+        }
+
+        let prompt = """
+        Voice command resolver. Whisper transcript (may have typos): "\(transcript)"
+        Intents: \(intentList.trimmingCharacters(in: .init(charactersIn: ", ")))
+        Windows: \(windowList)
+        Return ONLY a JSON object like {"intent":"search","slots":{"query":"dewey"},"reasoning":"user wants to find dewey windows"}. For search, extract the key term. Use window names from the list. If unclear, use intent "unknown".
+        """
+
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: claudePath)
+
+        proc.arguments = [
+            "-p", prompt,
+            "--model", "haiku",
+            "--output-format", "text",
+            "--no-session-persistence",
+            "--max-budget-usd", "0.50",
+        ]
+
+        // Clear CLAUDECODE env var to allow nested invocation
+        var env = ProcessInfo.processInfo.environment
+        env.removeValue(forKey: "CLAUDECODE")
+        proc.environment = env
+
+        let pipe = Pipe()
+        let errPipe = Pipe()
+        proc.standardOutput = pipe
+        proc.standardError = errPipe
+
+        do {
+            try proc.run()
+        } catch {
+            DiagnosticLog.shared.warn("ClaudeFallback: failed to launch claude CLI — \(error)")
+            return nil
+        }
+
+        proc.waitUntilExit()
+        let exitCode = proc.terminationStatus
+        DiagnosticLog.shared.finish(timer)
+        DiagnosticLog.shared.info("ClaudeFallback: exit code \(exitCode)")
+
+        let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let errOutput = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        if !errOutput.isEmpty {
+            DiagnosticLog.shared.warn("ClaudeFallback: stderr → \(errOutput.prefix(200))")
+        }
+        DiagnosticLog.shared.info("ClaudeFallback: raw output → \(output.prefix(300))")
+
+        // Parse JSON from text output
+        guard let jsonStr = extractJSON(from: output),
+              let jsonData = jsonStr.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+              let intent = json["intent"] as? String,
+              intent != "unknown" else {
+            DiagnosticLog.shared.info("ClaudeFallback: couldn't parse response")
+            return nil
+        }
+
+        if let reasoning = json["reasoning"] as? String {
+            DiagnosticLog.shared.info("ClaudeFallback: reasoning → \(reasoning)")
+        }
+
+        // Convert slots
+        var slots: [String: JSON] = [:]
+        if let rawSlots = json["slots"] as? [String: Any] {
+            for (key, value) in rawSlots {
+                if let s = value as? String {
+                    slots[key] = .string(s)
+                } else if let n = value as? Int {
+                    slots[key] = .int(n)
+                } else if let b = value as? Bool {
+                    slots[key] = .bool(b)
+                }
+            }
+        }
+
+        return ClaudeResolvedIntent(intent: intent, slots: slots)
+    }
+
+    private static func extractJSON(from text: String) -> String? {
+        // Try to find JSON object in the response
+        // Claude might return it directly, or wrapped in ```json ... ```
+        let cleaned = text
+            .replacingOccurrences(of: "```json", with: "")
+            .replacingOccurrences(of: "```", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Find first { and last }
+        guard let start = cleaned.firstIndex(of: "{"),
+              let end = cleaned.lastIndex(of: "}") else { return nil }
+
+        return String(cleaned[start...end])
     }
 }

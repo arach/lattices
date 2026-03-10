@@ -12,7 +12,7 @@ final class DiagnosticLog: ObservableObject {
         let message: String
         let level: Level
 
-        enum Level { case info, success, warning, error }
+        enum Level: String { case info, success, warning, error }
 
         var icon: String {
             switch level {
@@ -27,12 +27,66 @@ final class DiagnosticLog: ObservableObject {
     @Published var entries: [Entry] = []
     private let maxEntries = 80
 
+    // Disk persistence
+    private let logFile: URL
+    private let fileHandle: FileHandle?
+    private let diskQueue = DispatchQueue(label: "com.lattices.log-writer")
+    private static let timeFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm:ss.SSS"
+        return f
+    }()
+
+    private init() {
+        let dir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".lattices")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+
+        logFile = dir.appendingPathComponent("lattices.log")
+
+        // Rotate if > 1MB
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: logFile.path),
+           let size = attrs[.size] as? UInt64, size > 1_000_000 {
+            let prev = dir.appendingPathComponent("lattices.log.1")
+            try? FileManager.default.removeItem(at: prev)
+            try? FileManager.default.moveItem(at: logFile, to: prev)
+        }
+
+        // Create file if needed and open for appending
+        if !FileManager.default.fileExists(atPath: logFile.path) {
+            FileManager.default.createFile(atPath: logFile.path, contents: nil)
+        }
+        fileHandle = try? FileHandle(forWritingTo: logFile)
+        fileHandle?.seekToEndOfFile()
+
+        // Write session header
+        let header = "\n──── Lattices launched \(ISO8601DateFormatter().string(from: Date())) ────\n"
+        if let data = header.data(using: .utf8) {
+            fileHandle?.write(data)
+        }
+    }
+
+    deinit {
+        fileHandle?.closeFile()
+    }
+
     func log(_ message: String, level: Entry.Level = .info) {
         let entry = Entry(time: Date(), message: message, level: level)
+
+        // In-memory for UI
         DispatchQueue.main.async {
             self.entries.append(entry)
             if self.entries.count > self.maxEntries {
                 self.entries.removeFirst(self.entries.count - self.maxEntries)
+            }
+        }
+
+        // Disk
+        diskQueue.async { [weak self] in
+            let ts = Self.timeFmt.string(from: entry.time)
+            let line = "\(ts) \(entry.icon) [\(level.rawValue)] \(message)\n"
+            if let data = line.data(using: .utf8) {
+                self?.fileHandle?.write(data)
             }
         }
     }

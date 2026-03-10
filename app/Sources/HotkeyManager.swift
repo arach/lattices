@@ -35,6 +35,7 @@ class HotkeyManager {
                     nil,
                     &hotkeyID
                 )
+                DiagnosticLog.shared.info("HotkeyManager: fired id=\(hotkeyID.id)")
                 hotkeyCallbacks[hotkeyID.id]?()
                 return noErr
             },
@@ -176,6 +177,7 @@ class HotkeyManager {
         )
         if let ref {
             hotKeyRefs[id] = ref
+            DiagnosticLog.shared.info("HotkeyManager: registered id=\(id) keyCode=\(keyCode) mods=\(modifiers)")
         } else {
             DiagnosticLog.shared.warn("HotkeyManager: failed to register id=\(id) keyCode=\(keyCode) mods=\(modifiers) status=\(status)")
         }

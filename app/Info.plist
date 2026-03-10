@@ -20,7 +20,5 @@
     <true/>
     <key>NSSupportsAutomaticTermination</key>
     <true/>
-    <key>NSMicrophoneUsageDescription</key>
-    <string>Lattices uses the microphone for voice commands to control your workspace.</string>
 </dict>
 </plist>
