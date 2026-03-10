@@ -266,7 +266,7 @@ export default function App() {
                   <a href="/docs/layers#tab-groups">Tab groups</a> — related projects as tabs in one session
                 </li>
                 <li>Cheat sheet HUD and omni search</li>
-                <li>Voice commands via <a href="https://github.com/nicktmro/talkie">Talkie</a> integration <span className="beta-badge">beta</span></li>
+                <li>Voice commands via Talkie integration <span className="beta-badge">beta</span></li>
               </ul>
               <a
                 href="https://github.com/arach/lattices/releases/latest"

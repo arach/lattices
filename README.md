@@ -101,7 +101,7 @@ lattices scan deep             # Trigger a Vision OCR scan now
 
 Speak to control your workspace — tile windows, search, focus apps,
 and launch projects with natural language. Powered by
-[Talkie](https://github.com/nicktmro/talkie) for transcription and
+Talkie for transcription and
 local NLEmbedding for intent matching, with Claude fallback for
 ambiguous commands.
 
