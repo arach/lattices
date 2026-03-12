@@ -141,6 +141,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         ProcessModel.shared.start()
         LatticesApi.setup()
         DaemonServer.shared.start()
+        AgentPool.shared.start()
         diag.finish(tBoot)
 
         // --diagnostics flag: auto-open diagnostics panel on launch

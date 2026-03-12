@@ -82,23 +82,38 @@ export async function daemonCall(method, params, timeoutMs = 3000) {
         sendFrame(socket, request);
       }
 
-      // Try to parse a WebSocket frame from the buffer
-      const result = parseFrame(buffer);
-      if (result) {
+      // The daemon can push broadcast events before the RPC response.
+      // Keep consuming frames until we see our matching response id.
+      while (true) {
+        const result = parseFrame(buffer);
+        if (!result) break;
         buffer = result.rest;
-        if (!settled) {
-          settled = true;
-          cleanup();
-          try {
-            const parsed = JSON.parse(result.payload);
+
+        try {
+          const parsed = JSON.parse(result.payload);
+          if (parsed.event) {
+            continue;
+          }
+          if (parsed.id !== id) {
+            continue;
+          }
+          if (!settled) {
+            settled = true;
+            cleanup();
             if (parsed.error) {
               reject(new Error(parsed.error));
             } else {
               resolve(parsed.result);
             }
-          } catch (e) {
+          }
+          return;
+        } catch (e) {
+          if (!settled) {
+            settled = true;
+            cleanup();
             reject(new Error("Invalid JSON response from daemon"));
           }
+          return;
         }
       }
     });

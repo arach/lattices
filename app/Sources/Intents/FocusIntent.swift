@@ -1,0 +1,67 @@
+import Foundation
+
+struct FocusIntent: LatticeIntent {
+    static let name = "focus"
+    static let title = "Focus and raise a window"
+
+    static let phrases = [
+        // Primary operator: show
+        "show {app}",
+        "show me {app}",
+        "show me the {app}",
+        // focus
+        "focus {app}",
+        "focus on {app}",
+        "focus the {app}",
+        // switch / go
+        "switch to {app}",
+        "switch over to {app}",
+        "go to {app}",
+        "go back to {app}",
+        // bring / raise / pull
+        "bring up {app}",
+        "bring up the {app}",
+        "bring forward {app}",
+        "raise {app}",
+        "raise the {app}",
+        "pull up {app}",
+        "pull up the {app}",
+        // natural
+        "i want to see {app}",
+        "let me see {app}",
+        "take me to {app}",
+        "give me {app}",
+        "give me the {app}",
+        // activate / jump
+        "activate {app}",
+        "activate the {app}",
+        "jump to {app}",
+    ]
+
+    static let slots = [
+        SlotDef(name: "app", type: .app, required: true),
+    ]
+
+    func perform(slots: [String: JSON]) throws -> JSON {
+        guard let app = slots["app"]?.stringValue else {
+            throw IntentError.missingSlot("app")
+        }
+
+        // Search for the app in windows
+        let result = try LatticesApi.shared.dispatch(
+            method: "windows.search",
+            params: .object(["query": .string(app)])
+        )
+        if case .array(let items) = result, let first = items.first,
+           let wid = first["wid"]?.uint32Value,
+           let pid = first["pid"]?.intValue {
+            DispatchQueue.main.async {
+                WindowTiler.focusWindow(wid: wid, pid: Int32(pid))
+            }
+            return .object(["ok": .bool(true), "focused": .string(app), "wid": .int(Int(wid))])
+        }
+
+        // Try launching the app if not found as a window
+        return .object(["ok": .bool(false), "reason": .string("No window found for '\(app)'")])
+    }
+}

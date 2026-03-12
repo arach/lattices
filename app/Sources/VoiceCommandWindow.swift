@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 // MARK: - Window Controller
@@ -30,9 +31,8 @@ final class VoiceCommandWindow {
                 p.animator().alphaValue = 1.0
             }
             installMonitors()
-            // Auto-start listening on re-show
-            s.armed = true
-            if s.phase == .idle || s.phase == .result {
+            // Re-show respects the user's last armed state
+            if s.armed, s.phase == .idle || s.phase == .result {
                 s.startListening()
             }
             return
@@ -153,6 +153,7 @@ struct TranscriptEntry: Identifiable {
     let slots: [String: String]
     let result: String?
     let resultItems: [ResultItem]
+    let logLines: [String]
 }
 
 // MARK: - State
@@ -178,6 +179,12 @@ final class VoiceCommandState: ObservableObject {
     @Published var resultItems: [ResultItem] = []
     @Published var resultSummary: String = ""
 
+    // Agent advisor response
+    @Published var agentResponse: AgentResponse?
+
+    // Listening timer
+    @Published var listenStartTime: Date = Date()
+
     // History — all transcripts this session
     @Published var history: [TranscriptEntry] = []
 
@@ -185,6 +192,7 @@ final class VoiceCommandState: ObservableObject {
     @Published var logLines: [String] = []
 
     private var logSnapshot = 0
+    private var logObserver: AnyCancellable?
 
     func startListening() {
         let client = TalkieClient.shared
@@ -214,6 +222,7 @@ final class VoiceCommandState: ObservableObject {
 
     private func beginListening() {
         phase = .listening
+        listenStartTime = Date()
         partialText = ""
         finalText = ""
         intentName = nil
@@ -221,7 +230,20 @@ final class VoiceCommandState: ObservableObject {
         executionResult = nil
         resultItems = []
         resultSummary = ""
+        agentResponse = nil
+        // Snapshot log position and observe changes reactively (no polling race)
         logSnapshot = DiagnosticLog.shared.entries.count
+        logLines = []
+        logObserver = DiagnosticLog.shared.$entries
+            .receive(on: RunLoop.main)
+            .sink { [weak self] entries in
+                guard let self else { return }
+                let start = min(self.logSnapshot, entries.count)
+                let newLines = entries.suffix(from: start).map { $0.message }
+                if !newLines.isEmpty {
+                    self.logLines = newLines
+                }
+            }
         AudioLayer.shared.startVoiceCommand()
     }
 
@@ -256,14 +278,39 @@ final class VoiceCommandState: ObservableObject {
         }
     }
 
-    private func appendLog(_ msg: String) {
+    func appendLog(_ msg: String) {
         logLines.append(msg)
     }
 
     private func syncLogs() {
+        // Logs are now updated reactively via logObserver.
+        // This is kept as a manual trigger for the final commit.
         let entries = DiagnosticLog.shared.entries
-        if entries.count > logSnapshot {
-            logLines = entries.suffix(from: min(logSnapshot, entries.count)).map { $0.message }
+        let start = min(logSnapshot, entries.count)
+        let newLines = entries.suffix(from: start).map { $0.message }
+        if !newLines.isEmpty {
+            logLines = newLines
+        }
+    }
+
+    private func pollForAdvisor() {
+        let audio = AudioLayer.shared
+        var checks = 0
+
+        func poll() {
+            if let resp = audio.agentResponse {
+                self.agentResponse = resp
+                return
+            }
+            checks += 1
+            if checks < 60 { // Up to 12 seconds
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { poll() }
+            }
+        }
+
+        // Only poll if we don't already have a response
+        if agentResponse == nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { poll() }
         }
     }
 
@@ -275,9 +322,11 @@ final class VoiceCommandState: ObservableObject {
             intent: intentName,
             slots: intentSlots,
             result: executionResult,
-            resultItems: resultItems
+            resultItems: resultItems,
+            logLines: logLines
         )
         history.append(entry)
+        // logLines are NOT reset here — they stay visible until the next command starts
     }
 
     private func observeResult() {
@@ -299,6 +348,11 @@ final class VoiceCommandState: ObservableObject {
             // Sync intent/slots
             self.intentName = audio.matchedIntent
             self.intentSlots = audio.matchedSlots
+
+            // Sync agent advisor response
+            if let resp = audio.agentResponse {
+                self.agentResponse = resp
+            }
 
             let result = audio.executionResult
 
@@ -368,8 +422,12 @@ final class VoiceCommandState: ObservableObject {
                 self.resultSummary = ""
             }
 
+            syncLogs()  // Final sync before committing
             commitToHistory()
             self.phase = .result
+
+            // Keep polling for agent advisor response (arrives later)
+            self.pollForAdvisor()
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { poll() }
@@ -384,31 +442,34 @@ struct VoiceCommandView: View {
 
     private let docsURL = "https://lattices.dev/docs/voice"
 
+    private var hasHistory: Bool { !state.history.isEmpty || !state.logLines.isEmpty || state.phase != .idle }
+
     var body: some View {
         VStack(spacing: 0) {
-            // Title bar
-            titleBar
+            // Mic bar
+            micBar
 
-            Rectangle().fill(Palette.border).frame(height: 0.5)
+            // Main content
+            GeometryReader { geo in
+                HStack(alignment: .top, spacing: 0) {
+                    // Left: history + log — only shown when there's content
+                    if hasHistory {
+                        VStack(spacing: 0) {
+                            transcriptHistory
+                            logPane
+                        }
+                        .frame(width: geo.size.width * 0.4, height: geo.size.height, alignment: .top)
+                        .transition(.move(edge: .leading).combined(with: .opacity))
 
-            // Main 3-pane layout
-            HStack(spacing: 0) {
-                // Left: transcript history
-                transcriptHistory
-                    .frame(minWidth: 200, idealWidth: 260)
+                        Rectangle().fill(Palette.border).frame(width: 0.5)
+                    }
 
-                Rectangle().fill(Palette.border).frame(width: 0.5)
-
-                // Right: current command + results
-                VStack(spacing: 0) {
-                    currentCommand
-                    Spacer(minLength: 0)
-                    Rectangle().fill(Palette.border).frame(height: 0.5)
-                    diagnosticLog
+                    // Right: voice command — full height
+                    voiceCommandPane
+                        .frame(height: geo.size.height, alignment: .top)
                 }
+                .animation(.easeInOut(duration: 0.25), value: hasHistory)
             }
-
-            Rectangle().fill(Palette.border).frame(height: 0.5)
 
             // Footer
             footerBar
@@ -424,99 +485,51 @@ struct VoiceCommandView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
-    // MARK: - Title Bar
+    // MARK: - Mic Bar
 
-    private var titleBar: some View {
-        HStack(spacing: 10) {
-            // Mic status indicator
-            micDot
+    private var micBar: some View {
+        HStack(spacing: 0) {
+            // Mic button
+            Button(action: { state.toggleListening() }) {
+                HStack(spacing: 8) {
+                    Image(systemName: state.phase == .listening ? "mic.fill" : state.armed ? "mic" : "mic.slash")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(state.phase == .listening ? .white : state.armed ? Palette.textMuted : Palette.textMuted.opacity(0.4))
 
-            Text("Voice")
-                .font(Typo.geistMonoBold(12))
-                .foregroundColor(Palette.text)
-
-            statusLabel
-
-            // Armed badge — clickable to toggle
-            Button(action: { state.toggleArmed() }) {
-                Text(state.armed ? "ON" : "OFF")
-                    .font(Typo.geistMonoBold(8))
-                    .tracking(0.5)
-                    .foregroundColor(state.armed ? Palette.running : Palette.textMuted)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(state.armed ? Palette.running.opacity(0.12) : Palette.surface)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 3)
-                                    .strokeBorder(state.armed ? Palette.running.opacity(0.3) : Palette.border, lineWidth: 0.5)
-                            )
-                    )
+                    if state.phase == .listening {
+                        WaveBar()
+                        ListeningTimer(startTime: state.listenStartTime)
+                    } else {
+                        statusLabel
+                    }
+                }
+                .padding(.horizontal, 14)
+                .frame(maxHeight: .infinity)
             }
             .buttonStyle(.plain)
 
             Spacer()
-
-            connectionDot
-
-            if let url = URL(string: docsURL) {
-                Link(destination: url) {
-                    Text("docs")
-                        .font(Typo.geistMono(10))
-                        .foregroundColor(Palette.textMuted)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(Palette.surface)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 3)
-                                        .strokeBorder(Palette.border, lineWidth: 0.5)
-                                )
-                        )
-                }
-            }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-    }
-
-    private var micDot: some View {
-        Circle()
-            .fill(micDotColor)
-            .frame(width: 8, height: 8)
-            .overlay(
-                state.phase == .listening
-                    ? Circle().stroke(Palette.running.opacity(0.4), lineWidth: 1.5)
-                        .scaleEffect(1.8)
-                        .opacity(0.6)
-                    : nil
-            )
-            .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: state.phase)
-    }
-
-    private var micDotColor: Color {
-        switch state.phase {
-        case .listening: return Palette.running
-        case .transcribing: return Palette.detach
-        case .connecting: return Palette.detach
-        default: return Palette.textMuted
-        }
+        .frame(height: 36)
+        .background(Color.black)
     }
 
     private var statusLabel: some View {
         Group {
             switch state.phase {
             case .idle:
-                Text("ready")
-                    .foregroundColor(Palette.textMuted)
+                if state.armed {
+                    Text("ready — Space to speak")
+                        .foregroundColor(Palette.textMuted)
+                } else {
+                    Text("paused — Tab to activate")
+                        .foregroundColor(Palette.textMuted.opacity(0.5))
+                }
             case .connecting:
                 Text("connecting...")
                     .foregroundColor(Palette.detach)
             case .listening:
-                Text("listening")
-                    .foregroundColor(Palette.running)
+                ListeningTimer(startTime: state.listenStartTime)
             case .transcribing:
                 if let r = state.executionResult, r == "thinking..." || r == "searching..." {
                     Text(r)
@@ -526,8 +539,13 @@ struct VoiceCommandView: View {
                         .foregroundColor(Palette.textDim)
                 }
             case .result:
-                Text("done")
-                    .foregroundColor(Palette.running)
+                if state.armed {
+                    Text("done — Space for next")
+                        .foregroundColor(Palette.textMuted)
+                } else {
+                    Text("done — paused")
+                        .foregroundColor(Palette.textMuted.opacity(0.5))
+                }
             }
         }
         .font(Typo.geistMono(10))
@@ -543,28 +561,13 @@ struct VoiceCommandView: View {
                     .foregroundColor(Palette.textMuted)
                     .tracking(1)
                 Spacer()
-                Text("\(state.history.count)")
-                    .font(Typo.geistMono(9))
-                    .foregroundColor(Palette.textMuted)
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 14)
             .padding(.vertical, 8)
 
             Rectangle().fill(Palette.border).frame(height: 0.5)
 
-            if state.history.isEmpty {
-                VStack(spacing: 8) {
-                    Spacer()
-                    Image(systemName: "waveform")
-                        .font(.system(size: 24, weight: .light))
-                        .foregroundColor(Palette.textMuted.opacity(0.5))
-                    Text("Transcripts appear here")
-                        .font(Typo.geistMono(11))
-                        .foregroundColor(Palette.textMuted)
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity)
-            } else {
+            if !state.history.isEmpty {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 0) {
@@ -588,6 +591,8 @@ struct VoiceCommandView: View {
         .background(Palette.bg.opacity(0.5))
     }
 
+    @State private var expandedEntries: Set<UUID> = []
+
     private func historyRow(_ entry: TranscriptEntry) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             // Timestamp + transcript
@@ -599,6 +604,7 @@ struct VoiceCommandView: View {
                     .font(Typo.geistMono(11))
                     .foregroundColor(Palette.text)
                     .lineLimit(3)
+                Spacer()
             }
 
             // Intent tag
@@ -623,27 +629,56 @@ struct VoiceCommandView: View {
                 }
             }
 
-            // Result summary
+            // Result items (clickable)
             if !entry.resultItems.isEmpty {
-                Text("\(entry.resultItems.count) match\(entry.resultItems.count == 1 ? "" : "es")")
-                    .font(Typo.geistMono(9))
-                    .foregroundColor(Palette.textDim)
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(Array(entry.resultItems.prefix(5).enumerated()), id: \.1.id) { idx, item in
+                        ResultRow(index: idx, item: item, onFocus: focusWindow, onTile: tileWindow)
+                    }
+                    if entry.resultItems.count > 5 {
+                        Text("+ \(entry.resultItems.count - 5) more")
+                            .font(Typo.geistMono(9))
+                            .foregroundColor(Palette.textMuted)
+                    }
+                }
             } else if let result = entry.result, result != "ok" {
                 Text(result)
                     .font(Typo.geistMono(9))
                     .foregroundColor(Palette.detach)
             }
+
+            // Expandable log lines
+            if expandedEntries.contains(entry.id), !entry.logLines.isEmpty {
+                VStack(alignment: .leading, spacing: 1) {
+                    ForEach(Array(entry.logLines.enumerated()), id: \.offset) { _, line in
+                        Text(line)
+                            .font(.system(size: 8, design: .monospaced))
+                            .foregroundColor(Palette.textMuted.opacity(0.7))
+                            .lineLimit(1)
+                    }
+                }
+                .padding(.top, 2)
+            }
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 14)
         .padding(.vertical, 8)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if entry.logLines.isEmpty { return }
+            if expandedEntries.contains(entry.id) {
+                expandedEntries.remove(entry.id)
+            } else {
+                expandedEntries.insert(entry.id)
+            }
+        }
     }
 
-    // MARK: - Current Command (right pane, top)
+    // MARK: - Voice Command (right pane, full height)
 
-    private var currentCommand: some View {
+    private var voiceCommandPane: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("CURRENT")
+                Text("VOICE COMMAND")
                     .font(Typo.geistMonoBold(9))
                     .foregroundColor(Palette.textMuted)
                     .tracking(1)
@@ -655,69 +690,57 @@ struct VoiceCommandView: View {
             Rectangle().fill(Palette.border).frame(height: 0.5)
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 10) {
+                    // Partial transcript (while listening)
+                    if state.phase == .listening, !state.partialText.isEmpty {
+                        commandSection("hearing...") {
+                            Text(state.partialText)
+                                .font(Typo.geistMono(13))
+                                .foregroundColor(Palette.textDim)
+                        }
+                    }
+
                     // What was heard
                     if !state.finalText.isEmpty {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("heard")
-                                .font(Typo.geistMono(9))
-                                .foregroundColor(Palette.textMuted)
+                        commandSection("heard") {
                             Text(state.finalText)
                                 .font(Typo.geistMono(13))
                                 .foregroundColor(Palette.text)
                                 .textSelection(.enabled)
                         }
-                    } else if state.phase == .listening, !state.partialText.isEmpty {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("hearing...")
-                                .font(Typo.geistMono(9))
-                                .foregroundColor(Palette.textMuted)
-                            Text(state.partialText)
-                                .font(Typo.geistMono(13))
-                                .foregroundColor(Palette.textDim)
-                        }
-                    } else if state.phase == .idle || state.phase == .listening {
-                        VStack(spacing: 12) {
-                            Image(systemName: "mic")
-                                .font(.system(size: 28, weight: .light))
-                                .foregroundColor(state.phase == .listening ? Palette.running : Palette.textMuted.opacity(0.4))
-                            Text(state.phase == .listening ? "Listening..." : "Press Space to speak")
-                                .font(Typo.geistMono(12))
-                                .foregroundColor(state.phase == .listening ? Palette.running : Palette.textMuted)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 20)
                     }
 
                     // Matched intent + slots
                     if let intent = state.intentName {
-                        HStack(spacing: 6) {
-                            Text(intent)
-                                .font(Typo.geistMonoBold(11))
-                                .foregroundColor(Palette.running)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(Palette.running.opacity(0.1))
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 4)
-                                                .strokeBorder(Palette.running.opacity(0.2), lineWidth: 0.5)
-                                        )
-                                )
-
-                            if !state.intentSlots.isEmpty {
-                                ForEach(Array(state.intentSlots.keys.sorted()), id: \.self) { key in
-                                    if let val = state.intentSlots[key] {
-                                        Text("\(key): \(val)")
-                                            .font(Typo.geistMono(10))
-                                            .foregroundColor(Palette.detach)
-                                            .padding(.horizontal, 5)
-                                            .padding(.vertical, 1)
-                                            .background(
-                                                RoundedRectangle(cornerRadius: 3)
-                                                    .fill(Palette.detach.opacity(0.08))
+                        commandSection("intent") {
+                            HStack(spacing: 6) {
+                                Text(intent)
+                                    .font(Typo.geistMonoBold(11))
+                                    .foregroundColor(Palette.running)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(Palette.running.opacity(0.1))
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 4)
+                                                    .strokeBorder(Palette.running.opacity(0.2), lineWidth: 0.5)
                                             )
+                                    )
+
+                                if !state.intentSlots.isEmpty {
+                                    ForEach(Array(state.intentSlots.keys.sorted()), id: \.self) { key in
+                                        if let val = state.intentSlots[key] {
+                                            Text("\(key): \(val)")
+                                                .font(Typo.geistMono(10))
+                                                .foregroundColor(Palette.detach)
+                                                .padding(.horizontal, 5)
+                                                .padding(.vertical, 1)
+                                                .background(
+                                                    RoundedRectangle(cornerRadius: 3)
+                                                        .fill(Palette.detach.opacity(0.08))
+                                                )
+                                        }
                                     }
                                 }
                             }
@@ -726,30 +749,35 @@ struct VoiceCommandView: View {
 
                     // Results
                     if !state.resultItems.isEmpty {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("\(state.resultItems.count) match\(state.resultItems.count == 1 ? "" : "es")")
-                                .font(Typo.geistMono(9))
-                                .foregroundColor(Palette.textMuted)
-                                .padding(.bottom, 2)
-
-                            ForEach(Array(state.resultItems.prefix(25).enumerated()), id: \.1.id) { idx, item in
-                                ResultRow(index: idx, item: item, onFocus: focusWindow, onTile: tileWindow)
-                            }
-                            if state.resultItems.count > 25 {
-                                Text("+ \(state.resultItems.count - 25) more")
-                                    .font(Typo.geistMono(9))
-                                    .foregroundColor(Palette.textMuted)
-                                    .padding(.leading, 108)
+                        commandSection("\(state.resultItems.count) match\(state.resultItems.count == 1 ? "" : "es")") {
+                            VStack(alignment: .leading, spacing: 2) {
+                                ForEach(Array(state.resultItems.prefix(25).enumerated()), id: \.1.id) { idx, item in
+                                    ResultRow(index: idx, item: item, onFocus: focusWindow, onTile: tileWindow)
+                                }
+                                if state.resultItems.count > 25 {
+                                    Text("+ \(state.resultItems.count - 25) more")
+                                        .font(Typo.geistMono(9))
+                                        .foregroundColor(Palette.textMuted)
+                                }
                             }
                         }
                     } else if !state.resultSummary.isEmpty {
-                        Text(state.resultSummary)
-                            .font(Typo.geistMono(11))
-                            .foregroundColor(Palette.text)
+                        commandSection("result") {
+                            Text(state.resultSummary)
+                                .font(Typo.geistMono(11))
+                                .foregroundColor(Palette.text)
+                        }
                     } else if state.executionResult == "ok" {
-                        Text("done")
-                            .font(Typo.geistMono(11))
-                            .foregroundColor(Palette.running)
+                        commandSection("result") {
+                            Text("done")
+                                .font(Typo.geistMono(11))
+                                .foregroundColor(Palette.running)
+                        }
+                    }
+
+                    // Claude advisor section
+                    if let agent = state.agentResponse {
+                        advisorSection(agent)
                     }
                 }
                 .padding(14)
@@ -757,9 +785,83 @@ struct VoiceCommandView: View {
         }
     }
 
-    // MARK: - Diagnostic Log (right pane, bottom)
+    // MARK: - Advisor (Claude says)
 
-    private var diagnosticLog: some View {
+    private func advisorSection(_ response: AgentResponse) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("CLAUDE")
+                .font(Typo.geistMono(9))
+                .foregroundColor(Palette.textMuted)
+                .tracking(1)
+
+            if let commentary = response.commentary {
+                Text(commentary)
+                    .font(Typo.geistMono(11))
+                    .foregroundColor(Palette.text)
+                    .lineLimit(3)
+            }
+
+            if let suggestion = response.suggestion {
+                Button(action: {
+                    executeSuggestion(suggestion)
+                }) {
+                    HStack(spacing: 6) {
+                        Text(suggestion.label)
+                            .font(Typo.geistMono(10))
+                            .foregroundColor(Palette.text)
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 8))
+                            .foregroundColor(Palette.textMuted)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(Palette.surface)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 5)
+                                    .strokeBorder(Palette.border, lineWidth: 0.5)
+                            )
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Palette.surface.opacity(0.4))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(Palette.border.opacity(0.5), lineWidth: 0.5)
+                )
+        )
+        .transition(.opacity.combined(with: .move(edge: .bottom)))
+        .animation(.easeInOut(duration: 0.3), value: response.raw)
+    }
+
+    private func executeSuggestion(_ suggestion: AgentResponse.AgentSuggestion) {
+        let slots: [String: JSON] = suggestion.slots.reduce(into: [:]) { dict, pair in
+            dict[pair.key] = .string(pair.value)
+        }
+        let match = IntentMatch(
+            intentName: suggestion.intent,
+            slots: slots,
+            confidence: 0.9,
+            matchedPhrase: "advisor-suggestion"
+        )
+        do {
+            let result = try PhraseMatcher.shared.execute(match)
+            state.appendLog("Advisor: executed \(suggestion.intent) → ok")
+            DiagnosticLog.shared.info("Advisor suggestion executed: \(suggestion.intent) → \(result)")
+        } catch {
+            state.appendLog("Advisor: \(suggestion.intent) failed — \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Log (left pane, bottom)
+
+    private var logPane: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text("LOG")
@@ -806,7 +908,7 @@ struct VoiceCommandView: View {
                                 .id(idx)
                         }
                     }
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, 14)
                     .padding(.vertical, 4)
                 }
                 .onChange(of: state.logLines.count) { _ in
@@ -816,52 +918,72 @@ struct VoiceCommandView: View {
                     }
                 }
             }
-            .frame(height: 100)
+            .frame(maxHeight: 100)
             .background(Palette.bg.opacity(0.3))
         }
+    }
+
+    // MARK: - Section Helper
+
+    private func commandSection<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label)
+                .font(Typo.geistMono(9))
+                .foregroundColor(Palette.textMuted)
+            content()
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Palette.surface.opacity(0.3))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(Palette.border, lineWidth: 0.5)
+                )
+        )
     }
 
     // MARK: - Footer
 
     private var footerBar: some View {
-        HStack(spacing: 16) {
-            if state.phase == .listening {
-                footerHint("Space", "Stop")
-                footerHint("ESC", "Cancel")
-            } else {
-                footerHint("Space", "Speak")
-                footerHint("Tab", state.armed ? "Off" : "On")
-                footerHint("ESC", "Dismiss")
+        VStack(spacing: 0) {
+            Rectangle().fill(Palette.border).frame(height: 0.5)
+            HStack(spacing: 12) {
+                footerHint("ESC", "Dismiss", dimmed: false)
+                footerHint("Tab", state.armed ? "Pause" : "Activate", dimmed: false)
+                footerHint("Space", state.phase == .listening ? "Stop" : "Speak", dimmed: !state.armed && state.phase != .listening)
+
+                Spacer()
+
+                Text("find · show · open · tile · kill · scan")
+                    .font(Typo.geistMono(9))
+                    .foregroundColor(Palette.textMuted.opacity(0.5))
             }
-
-            Spacer()
-
-            Text("find · show · open · tile · kill · scan")
-                .font(Typo.geistMono(9))
-                .foregroundColor(Palette.textMuted.opacity(0.6))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
+            .background(Palette.surface.opacity(0.6))
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
     }
 
-    private func footerHint(_ key: String, _ label: String) -> some View {
+    private func footerHint(_ key: String, _ label: String, dimmed: Bool = false) -> some View {
         HStack(spacing: 4) {
             Text(key)
                 .font(Typo.geistMonoBold(9))
-                .foregroundColor(Palette.text)
+                .foregroundColor(dimmed ? Palette.textMuted.opacity(0.3) : Palette.text)
                 .padding(.horizontal, 5)
                 .padding(.vertical, 2)
                 .background(
                     RoundedRectangle(cornerRadius: 2)
-                        .fill(Palette.surface)
+                        .fill(Palette.surface.opacity(dimmed ? 0.3 : 1))
                         .overlay(
                             RoundedRectangle(cornerRadius: 2)
-                                .strokeBorder(Palette.border, lineWidth: 0.5)
+                                .strokeBorder(Palette.border.opacity(dimmed ? 0.3 : 1), lineWidth: 0.5)
                         )
                 )
             Text(label)
                 .font(Typo.caption(9))
-                .foregroundColor(Palette.textMuted)
+                .foregroundColor(dimmed ? Palette.textMuted.opacity(0.3) : Palette.textMuted)
         }
     }
 
@@ -883,23 +1005,71 @@ struct VoiceCommandView: View {
         }
     }
 
-    private var connectionDot: some View {
-        let client = TalkieClient.shared
-        let color: Color = {
-            switch client.connectionState {
-            case .connected: return Palette.running
-            case .connecting: return Palette.detach
-            default: return Palette.kill
-            }
-        }()
-
-        return Circle()
-            .fill(color)
-            .frame(width: 6, height: 6)
-    }
 }
 
 // MARK: - Result Row (hover actions)
+
+// MARK: - Wave Bar Animation
+
+struct WaveBar: View {
+    @State private var animating = false
+    private let barCount = 4
+    private let barWidth: CGFloat = 2
+    private let barSpacing: CGFloat = 1.5
+
+    var body: some View {
+        HStack(spacing: barSpacing) {
+            ForEach(0..<barCount, id: \.self) { i in
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(Palette.text.opacity(0.7))
+                    .frame(width: barWidth, height: animating ? barHeight(for: i) : 3)
+                    .animation(
+                        .easeInOut(duration: duration(for: i))
+                            .repeatForever(autoreverses: true)
+                            .delay(Double(i) * 0.1),
+                        value: animating
+                    )
+            }
+        }
+        .frame(height: 12)
+        .onAppear { animating = true }
+        .onDisappear { animating = false }
+    }
+
+    private func barHeight(for index: Int) -> CGFloat {
+        [10, 6, 12, 8][index % 4]
+    }
+
+    private func duration(for index: Int) -> Double {
+        [0.4, 0.35, 0.45, 0.3][index % 4]
+    }
+}
+
+// MARK: - Listening Timer
+
+struct ListeningTimer: View {
+    let startTime: Date
+    @State private var elapsed: TimeInterval = 0
+    private let timer = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        Text(formatTime(elapsed))
+            .font(Typo.geistMono(10))
+            .foregroundColor(Palette.text.opacity(0.7))
+            .monospacedDigit()
+            .onReceive(timer) { _ in
+                elapsed = Date().timeIntervalSince(startTime)
+            }
+    }
+
+    private func formatTime(_ t: TimeInterval) -> String {
+        let secs = Int(t)
+        let tenths = Int((t - Double(secs)) * 10)
+        return String(format: "%d.%d", secs, tenths)
+    }
+}
+
+// MARK: - Result Row
 
 struct ResultRow: View {
     let index: Int
@@ -910,15 +1080,15 @@ struct ResultRow: View {
     @State private var isHovered = false
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 4) {
             Text("\(index + 1)")
                 .font(Typo.geistMono(9))
                 .foregroundColor(Palette.textMuted)
-                .frame(width: 18, alignment: .trailing)
+                .frame(width: 14, alignment: .leading)
             Text(item.app)
                 .font(Typo.geistMonoBold(10))
                 .foregroundColor(Palette.textDim)
-                .frame(width: 70, alignment: .trailing)
+                .frame(width: 60, alignment: .leading)
             Text(item.title.isEmpty ? "(untitled)" : item.title)
                 .font(Typo.geistMono(10))
                 .foregroundColor(Palette.text)

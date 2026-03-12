@@ -766,98 +766,23 @@ async function focusCommand(session) {
 // ── Search ───────────────────────────────────────────────────────────
 
 // Window search — title, app, session tag, OCR content
-async function search(query) {
+// Unified search via lattices.search daemon API
+async function search(query, { mode = "complete" } = {}) {
   const { daemonCall } = await getDaemonClient();
-  const hits = await daemonCall("windows.search", { query }, 10000);
-  const sourceWeight = { title: 3, session: 3, app: 2, ocr: 1 };
+  const hits = await daemonCall("lattices.search", { query, mode }, 10000);
   return hits.map(w => ({
-    score: sourceWeight[w.matchSource] || 1,
+    score: w.score || 0,
     window: w,
-    tabs: [],
-    reasons: [w.matchSource],
+    tabs: (w.terminalTabs || []).map(t => ({
+      tab: t.tabIndex, cwd: t.cwd, title: t.tabTitle, hasClaude: t.hasClaude, tmuxSession: t.tmuxSession,
+    })),
+    reasons: w.matchSources || [],
   }));
 }
 
-// Terminal search — cwd, tab titles, tmux sessions, processes
-async function terminalSearch(query) {
-  const { daemonCall } = await getDaemonClient();
-  const q = query.toLowerCase();
-  let terminals = [];
-  try {
-    const t = await daemonCall("terminals.search", {}, 3000);
-    if (Array.isArray(t)) terminals = t;
-  } catch {}
-
-  const byWid = new Map();
-  for (const t of terminals) {
-    if (!t.windowId) continue;
-    const cwdMatch = (t.cwd || "").toLowerCase().includes(q);
-    const tabMatch = (t.tabTitle || "").toLowerCase().includes(q);
-    const tmuxMatch = (t.tmuxSession || "").toLowerCase().includes(q);
-    if (!cwdMatch && !tabMatch && !tmuxMatch) continue;
-
-    if (!byWid.has(t.windowId)) {
-      byWid.set(t.windowId, {
-        score: 0, window: { wid: t.windowId, app: t.app || "terminal", title: t.windowTitle || "" },
-        tabs: [], reasons: [],
-      });
-    }
-    const e = byWid.get(t.windowId);
-    e.score += 2;
-    e.tabs.push({ tab: t.tabIndex, cwd: t.cwd, title: t.tabTitle || t.displayName, hasClaude: t.hasClaude, tmuxSession: t.tmuxSession });
-    if (cwdMatch && !e.reasons.includes("cwd")) e.reasons.push("cwd");
-    if (tabMatch && !e.reasons.includes("tab")) e.reasons.push("tab");
-    if (tmuxMatch && !e.reasons.includes("tmux")) e.reasons.push("tmux");
-  }
-
-  return [...byWid.values()].sort((a, b) => b.score - a.score);
-}
-
-// Deep search — search the index, then inspect top candidates live
-async function deepSearch(query) {
-  const { daemonCall } = await getDaemonClient();
-  const q = query.toLowerCase();
-
-  // 1. Start with indexed results
-  const results = await search(query);
-
-  // 2. Inspect top candidates with live tools
-  const byWid = new Map();
-  for (const r of results) byWid.set(r.window.wid, r);
-
-  // Terminal inspection — enrich windows that are terminals
-  let terminals = [];
-  try {
-    const t = await daemonCall("terminals.search", {}, 3000);
-    if (Array.isArray(t)) terminals = t;
-  } catch {}
-
-  for (const t of terminals) {
-    if (!t.windowId) continue;
-    const cwdMatch = (t.cwd || "").toLowerCase().includes(q);
-    const tabMatch = (t.tabTitle || "").toLowerCase().includes(q);
-    const tmuxMatch = (t.tmuxSession || "").toLowerCase().includes(q);
-    if (!cwdMatch && !tabMatch && !tmuxMatch) continue;
-
-    if (!byWid.has(t.windowId)) {
-      byWid.set(t.windowId, {
-        score: 0, window: { wid: t.windowId, app: t.app || "terminal", title: t.windowTitle || "" },
-        tabs: [], reasons: [],
-      });
-    }
-    const e = byWid.get(t.windowId);
-    e.score += 2;
-    e.tabs.push({ tab: t.tabIndex, cwd: t.cwd, title: t.tabTitle || t.displayName, hasClaude: t.hasClaude, tmuxSession: t.tmuxSession });
-    if (cwdMatch && !e.reasons.includes("cwd")) e.reasons.push("cwd");
-    if (tabMatch && !e.reasons.includes("tab")) e.reasons.push("tab");
-    if (tmuxMatch && !e.reasons.includes("tmux")) e.reasons.push("tmux");
-  }
-
-  // TODO: AX live scan of top candidates for richer content
-  // TODO: OCR re-scan of ambiguous windows
-
-  return [...byWid.values()].sort((a, b) => b.score - a.score);
-}
+// Aliases for backward compatibility
+async function deepSearch(query) { return search(query, { mode: "complete" }); }
+async function terminalSearch(query) { return search(query, { mode: "terminal" }); }
 
 // Format and print search results
 function printResults(ranked) {
@@ -879,12 +804,12 @@ function printResults(ranked) {
 
 async function searchCommand(query, flags) {
   if (!query) {
-    console.log("Usage: lattices search <query> [--deep | --json | --wid]");
+    console.log("Usage: lattices search <query> [--quick | --terminal | --json | --wid]");
     return;
   }
 
-  const deep = flags.has("--deep");
-  const ranked = deep ? await deepSearch(query) : await search(query);
+  const mode = flags.has("--quick") ? "quick" : flags.has("--terminal") ? "terminal" : "complete";
+  const ranked = await search(query, { mode });
   const jsonOut = flags.has("--json");
   const widOnly = flags.has("--wid");
 

@@ -45,6 +45,10 @@ final class IntentEngine {
         }
     }
 
+    func definitions() -> [IntentDef] {
+        intentOrder.compactMap { intents[$0] }
+    }
+
     // MARK: - Execution
 
     func execute(_ request: IntentRequest) throws -> JSON {
@@ -328,7 +332,7 @@ final class IntentEngine {
                 DiagnosticLog.shared.info("search: query='\(query)'")
 
                 let result = try LatticesApi.shared.dispatch(
-                    method: "windows.search",
+                    method: "lattices.search",
                     params: .object(["query": .string(query)])
                 )
                 if case .array(let items) = result {
@@ -503,6 +507,11 @@ enum IntentError: LocalizedError {
 struct ClaudeResolvedIntent {
     let intent: String
     let slots: [String: JSON]
+}
+
+struct ClaudeAgentPlan {
+    let steps: [ClaudeResolvedIntent]
+    let reasoning: String
 }
 
 enum ClaudeFallback {
