@@ -327,51 +327,14 @@ final class IntentEngine {
                 }
                 DiagnosticLog.shared.info("search: query='\(query)'")
 
-                // Try full query first
                 let result = try LatticesApi.shared.dispatch(
                     method: "windows.search",
                     params: .object(["query": .string(query)])
                 )
-                if case .array(let items) = result, !items.isEmpty {
+                if case .array(let items) = result {
                     DiagnosticLog.shared.info("search: \(items.count) results for '\(query)'")
-                    return result
                 }
-
-                // Fallback: try each word individually, merge unique results
-                let stopWords: Set<String> = ["the", "a", "an", "all", "that", "this", "is", "are",
-                                               "in", "on", "my", "and", "or", "of", "to", "for",
-                                               "it", "its", "with", "about", "say", "says", "said",
-                                               "mentioned", "mention", "talking", "related"]
-                let words = query.lowercased()
-                    .split(separator: " ")
-                    .map(String.init)
-                    .filter { $0.count > 2 && !stopWords.contains($0) }
-
-                if words.isEmpty {
-                    DiagnosticLog.shared.info("search: no usable words in query")
-                    return .array([])
-                }
-
-                var seenWids: Set<Int> = []
-                var merged: [JSON] = []
-
-                for word in words {
-                    let wordResult = try LatticesApi.shared.dispatch(
-                        method: "windows.search",
-                        params: .object(["query": .string(word)])
-                    )
-                    if case .array(let items) = wordResult {
-                        for item in items {
-                            if let wid = item["wid"]?.intValue, !seenWids.contains(wid) {
-                                seenWids.insert(wid)
-                                merged.append(item)
-                            }
-                        }
-                    }
-                }
-
-                DiagnosticLog.shared.info("search: \(merged.count) results from word fallback [\(words.joined(separator: ", "))]")
-                return .array(merged)
+                return result
             }
         ))
 

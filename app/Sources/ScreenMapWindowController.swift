@@ -78,6 +78,28 @@ final class ScreenMapWindowController: ObservableObject {
         show()
     }
 
+    /// Open screen map focused on a specific window.
+    func showWindow(wid: UInt32) {
+        activePage = .screenMap
+        show()
+
+        // Avoid overlapping the voice panel — nudge screen map below it
+        if let w = window, let voicePanel = VoiceCommandWindow.shared.panel, voicePanel.isVisible {
+            let voiceBottom = voicePanel.frame.minY
+            let mapFrame = w.frame
+            if mapFrame.maxY > voiceBottom - 10 {
+                // Position just below the voice panel
+                let newY = voiceBottom - mapFrame.height - 16
+                w.setFrameOrigin(NSPoint(x: mapFrame.origin.x, y: max(newY, 40)))
+            }
+        }
+
+        // Select after a brief delay so the controller has time to populate
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            self?.controller?.selectSingle(wid)
+        }
+    }
+
     func close() {
         controller?.endPreview()
         window?.orderOut(nil)

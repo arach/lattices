@@ -6,7 +6,7 @@ import SwiftUI
 final class VoiceCommandWindow {
     static let shared = VoiceCommandWindow()
 
-    private var panel: NSPanel?
+    private(set) var panel: NSPanel?
     private var keyMonitor: Any?
     private var state: VoiceCommandState?
 
@@ -15,15 +15,26 @@ final class VoiceCommandWindow {
     func toggle() {
         if isVisible {
             dismiss()
-        } else {
-            show()
+            return
         }
+        show()
     }
 
     func show() {
-        if let p = panel, p.isVisible {
-            // Already showing — toggle listening
-            state?.toggleListening()
+        // If panel exists but is hidden, just re-show it
+        if let p = panel, let s = state {
+            p.alphaValue = 0
+            p.orderFrontRegardless()
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.15
+                p.animator().alphaValue = 1.0
+            }
+            installMonitors()
+            // Auto-start listening on re-show
+            s.armed = true
+            if s.phase == .idle || s.phase == .result {
+                s.startListening()
+            }
             return
         }
 
@@ -35,8 +46,15 @@ final class VoiceCommandWindow {
         }
         .preferredColorScheme(.dark)
 
+        let mouseLocation = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }) ?? NSScreen.main ?? NSScreen.screens.first!
+        let visible = screen.visibleFrame
+
+        let panelWidth: CGFloat = min(720, visible.width - 80)
+        let panelHeight: CGFloat = min(560, visible.height - 80)
+
         let p = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 360, height: 200),
+            contentRect: NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -47,15 +65,12 @@ final class VoiceCommandWindow {
         p.hasShadow = true
         p.hidesOnDeactivate = false
         p.isReleasedWhenClosed = false
-        p.isMovableByWindowBackground = false
+        p.isMovableByWindowBackground = true
         p.contentView = NSHostingView(rootView: view)
 
-        // Position: bottom-center of screen, above the dock
-        let mouseLocation = NSEvent.mouseLocation
-        let screen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }) ?? NSScreen.main ?? NSScreen.screens.first!
-        let visible = screen.visibleFrame
-        let x = visible.midX - 180
-        let y = visible.origin.y + 80
+        // Position: top-center of screen
+        let x = visible.midX - panelWidth / 2
+        let y = visible.maxY - panelHeight - 40
         p.setFrameOrigin(NSPoint(x: x, y: y))
 
         p.alphaValue = 0
@@ -67,32 +82,26 @@ final class VoiceCommandWindow {
         }
 
         self.panel = p
-
-        // Pre-connect to Talkie so Space → listen is instant
-        let client = TalkieClient.shared
-        if client.connectionState != .connected {
-            client.connect()
-        }
-
         installMonitors()
+
+        // Auto-start listening immediately
+        voiceState.startListening()
     }
 
     func dismiss() {
         guard let p = panel else { return }
         removeMonitors()
 
-        // Cancel any in-flight dictation
         if let s = state, s.phase == .listening {
             AudioLayer.shared.stopVoiceCommand()
         }
 
+        // Hide panel but keep state — Hyper+3 will bring it back
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.15
             p.animator().alphaValue = 0
-        }) { [weak self] in
+        }) {
             p.orderOut(nil)
-            self?.panel = nil
-            self?.state = nil
         }
     }
 
@@ -104,11 +113,16 @@ final class VoiceCommandWindow {
             case 53: // Escape
                 if state.phase == .listening {
                     state.cancelListening()
+                    state.armed = false
                 } else {
                     self.dismiss()
                 }
 
-            case 49: // Space — toggle listening
+            case 48: // Tab — toggle armed
+                state.toggleArmed()
+
+            case 49: // Space — only when armed
+                guard state.armed else { break }
                 state.toggleListening()
 
             default:
@@ -122,6 +136,25 @@ final class VoiceCommandWindow {
     }
 }
 
+// MARK: - Transcript Entry
+
+struct ResultItem: Identifiable {
+    let id = UUID()
+    let wid: UInt32
+    let app: String
+    let title: String
+}
+
+struct TranscriptEntry: Identifiable {
+    let id = UUID()
+    let timestamp: Date
+    let text: String
+    let intent: String?
+    let slots: [String: String]
+    let result: String?
+    let resultItems: [ResultItem]
+}
+
 // MARK: - State
 
 final class VoiceCommandState: ObservableObject {
@@ -131,20 +164,27 @@ final class VoiceCommandState: ObservableObject {
         case listening
         case transcribing
         case result
-        case error(String)
     }
 
     @Published var phase: Phase = .idle
+    @Published var armed: Bool = true   // When armed, Space controls the mic
     @Published var partialText: String = ""
+
+    // Current command
     @Published var finalText: String = ""
     @Published var intentName: String?
     @Published var intentSlots: [String: String] = [:]
     @Published var executionResult: String?
-    @Published var resultItems: [(app: String, title: String)] = []
+    @Published var resultItems: [ResultItem] = []
     @Published var resultSummary: String = ""
+
+    // History — all transcripts this session
+    @Published var history: [TranscriptEntry] = []
+
+    // Diagnostic log
     @Published var logLines: [String] = []
 
-    private var audioObserver: NSKeyValueObservation?
+    private var logSnapshot = 0
 
     func startListening() {
         let client = TalkieClient.shared
@@ -162,16 +202,15 @@ final class VoiceCommandState: ObservableObject {
         let client = TalkieClient.shared
         if client.connectionState == .connected {
             beginListening()
-        } else if attempts < 20 { // 2 seconds max (20 × 100ms)
+        } else if attempts < 20 {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
                 self?.waitForConnection(attempts: attempts + 1)
             }
         } else {
-            phase = .error("Couldn't connect to Talkie")
+            appendLog("Connection to Talkie failed after 2s")
+            phase = .idle
         }
     }
-
-    private var logSnapshot = 0
 
     private func beginListening() {
         phase = .listening
@@ -181,7 +220,7 @@ final class VoiceCommandState: ObservableObject {
         intentSlots = [:]
         executionResult = nil
         resultItems = []
-        logLines = []
+        resultSummary = ""
         logSnapshot = DiagnosticLog.shared.entries.count
         AudioLayer.shared.startVoiceCommand()
     }
@@ -189,100 +228,132 @@ final class VoiceCommandState: ObservableObject {
     func stopListening() {
         phase = .transcribing
         AudioLayer.shared.stopVoiceCommand()
-
-        // Watch AudioLayer for result
         observeResult()
     }
 
     func cancelListening() {
         phase = .idle
         AudioLayer.shared.stopVoiceCommand()
+        appendLog("Cancelled")
+    }
+
+    func toggleArmed() {
+        if phase == .listening {
+            // Stop listening when disarming
+            cancelListening()
+        }
+        armed.toggle()
     }
 
     func toggleListening() {
         switch phase {
         case .listening:
             stopListening()
-        case .idle, .result, .error:
+        case .idle, .result:
             startListening()
         default:
             break
         }
     }
 
+    private func appendLog(_ msg: String) {
+        logLines.append(msg)
+    }
+
+    private func syncLogs() {
+        let entries = DiagnosticLog.shared.entries
+        if entries.count > logSnapshot {
+            logLines = entries.suffix(from: min(logSnapshot, entries.count)).map { $0.message }
+        }
+    }
+
+    private func commitToHistory() {
+        guard !finalText.isEmpty else { return }
+        let entry = TranscriptEntry(
+            timestamp: Date(),
+            text: finalText,
+            intent: intentName,
+            slots: intentSlots,
+            result: executionResult,
+            resultItems: resultItems
+        )
+        history.append(entry)
+    }
+
     private func observeResult() {
         let audio = AudioLayer.shared
         var checks = 0
-        let maxChecks = 150  // 30 seconds max (150 × 0.2s)
+        let maxChecks = 150
 
         func poll() {
             checks += 1
 
-            // 1. Always sync transcript from AudioLayer
+            // Sync transcript
             if let transcript = audio.lastTranscript, !transcript.isEmpty {
                 self.finalText = transcript
             }
 
-            // 2. Always sync log entries
-            let entries = DiagnosticLog.shared.entries
-            if entries.count > self.logSnapshot {
-                self.logLines = entries.suffix(from: min(self.logSnapshot, entries.count)).map { $0.message }
-            }
+            // Sync logs
+            syncLogs()
 
-            // 3. Always sync intent/slots
+            // Sync intent/slots
             self.intentName = audio.matchedIntent
             self.intentSlots = audio.matchedSlots
 
             let result = audio.executionResult
 
-            // 4. Terminal error states — stop polling
-            if result == "No speech detected" || result == "Transcription failed" {
-                self.phase = .error(result!)
+            // Terminal errors — log them, go to idle (not a separate error phase)
+            if result == "No speech detected" {
+                appendLog("No speech detected")
+                self.phase = .idle
+                return
+            }
+            if result == "Transcription failed" {
+                appendLog("Transcription failed")
+                self.phase = .idle
                 return
             }
             if let result, result.hasPrefix("Mic in use") {
-                self.phase = .error(result)
+                appendLog(result)
+                self.phase = .idle
                 return
             }
 
-            // 5. Still waiting for transcription/processing — keep polling
+            // Still working
             let stillWorking = result == nil
                 || result == "Transcribing..."
                 || result == "thinking..."
                 || result == "searching..."
 
             if stillWorking {
-                // Show intermediate status
-                if let result {
-                    self.executionResult = result
-                }
+                if let result { self.executionResult = result }
                 self.phase = .transcribing
                 if checks < maxChecks {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { poll() }
                 } else {
-                    self.phase = .error("Timed out")
+                    appendLog("Timed out waiting for result")
+                    self.phase = .idle
                 }
                 return
             }
 
-            // 6. We have a real result — but do we have a transcript?
-            //    If not, keep polling briefly (transcript might arrive next tick)
+            // Grace period for transcript
             if self.finalText.isEmpty && checks < 25 {
-                // 5 seconds grace period for transcript to arrive
                 self.phase = .transcribing
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { poll() }
                 return
             }
 
-            // 7. Final result — show it
+            // Final result
             self.executionResult = result
             if let data = audio.executionData {
                 switch data {
                 case .array(let items):
                     self.resultItems = items.compactMap { item in
-                        guard let app = item["app"]?.stringValue,
+                        guard let wid = item["wid"]?.intValue,
+                              let app = item["app"]?.stringValue,
                               let title = item["title"]?.stringValue else { return nil }
-                        return (app: app, title: title)
+                        return ResultItem(wid: UInt32(wid), app: app, title: title)
                     }
                     self.resultSummary = "\(items.count) result\(items.count == 1 ? "" : "s")"
                 case .object(let obj):
@@ -297,6 +368,7 @@ final class VoiceCommandState: ObservableObject {
                 self.resultSummary = ""
             }
 
+            commitToHistory()
             self.phase = .result
         }
 
@@ -310,41 +382,37 @@ struct VoiceCommandView: View {
     @ObservedObject var state: VoiceCommandState
     let onDismiss: () -> Void
 
+    private let docsURL = "https://lattices.dev/docs/voice"
+
     var body: some View {
         VStack(spacing: 0) {
-            // Main content area
-            VStack(spacing: 12) {
-                micIcon
-                statusText
-                transcriptArea
-            }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 20)
+            // Title bar
+            titleBar
 
-            // Live log
-            if !state.logLines.isEmpty {
-                Rectangle().fill(Palette.border).frame(height: 0.5)
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 1) {
-                        ForEach(Array(state.logLines.enumerated()), id: \.offset) { _, line in
-                            Text(line)
-                                .font(.system(size: 9, design: .monospaced))
-                                .foregroundColor(Palette.textMuted)
-                                .lineLimit(1)
-                        }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
+            Rectangle().fill(Palette.border).frame(height: 0.5)
+
+            // Main 3-pane layout
+            HStack(spacing: 0) {
+                // Left: transcript history
+                transcriptHistory
+                    .frame(minWidth: 200, idealWidth: 260)
+
+                Rectangle().fill(Palette.border).frame(width: 0.5)
+
+                // Right: current command + results
+                VStack(spacing: 0) {
+                    currentCommand
+                    Spacer(minLength: 0)
+                    Rectangle().fill(Palette.border).frame(height: 0.5)
+                    diagnosticLog
                 }
-                .frame(maxHeight: 120)
             }
+
+            Rectangle().fill(Palette.border).frame(height: 0.5)
 
             // Footer
-            Rectangle().fill(Palette.border).frame(height: 0.5)
             footerBar
         }
-        .frame(width: 360)
-        .fixedSize(horizontal: false, vertical: true)
         .background(
             RoundedRectangle(cornerRadius: 12)
                 .fill(Palette.bg)
@@ -356,194 +424,400 @@ struct VoiceCommandView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
-    // MARK: - Mic Icon
+    // MARK: - Title Bar
 
-    private var micIcon: some View {
-        ZStack {
-            // Pulsing ring when listening
-            if state.phase == .listening {
-                Circle()
-                    .stroke(Palette.running.opacity(0.3), lineWidth: 2)
-                    .frame(width: 52, height: 52)
-                    .scaleEffect(pulseScale)
-                    .opacity(pulseOpacity)
-                    .animation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true), value: state.phase)
+    private var titleBar: some View {
+        HStack(spacing: 10) {
+            // Mic status indicator
+            micDot
+
+            Text("Voice")
+                .font(Typo.geistMonoBold(12))
+                .foregroundColor(Palette.text)
+
+            statusLabel
+
+            // Armed badge — clickable to toggle
+            Button(action: { state.toggleArmed() }) {
+                Text(state.armed ? "ON" : "OFF")
+                    .font(Typo.geistMonoBold(8))
+                    .tracking(0.5)
+                    .foregroundColor(state.armed ? Palette.running : Palette.textMuted)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(state.armed ? Palette.running.opacity(0.12) : Palette.surface)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 3)
+                                    .strokeBorder(state.armed ? Palette.running.opacity(0.3) : Palette.border, lineWidth: 0.5)
+                            )
+                    )
             }
+            .buttonStyle(.plain)
 
-            Circle()
-                .fill(micBackground)
-                .frame(width: 44, height: 44)
+            Spacer()
 
-            Image(systemName: micIconName)
-                .font(.system(size: 20, weight: .medium))
-                .foregroundColor(micIconColor)
+            connectionDot
+
+            if let url = URL(string: docsURL) {
+                Link(destination: url) {
+                    Text("docs")
+                        .font(Typo.geistMono(10))
+                        .foregroundColor(Palette.textMuted)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(Palette.surface)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 3)
+                                        .strokeBorder(Palette.border, lineWidth: 0.5)
+                                )
+                        )
+                }
+            }
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
     }
 
-    private var pulseScale: CGFloat { state.phase == .listening ? 1.3 : 1.0 }
-    private var pulseOpacity: Double { state.phase == .listening ? 0.0 : 0.5 }
+    private var micDot: some View {
+        Circle()
+            .fill(micDotColor)
+            .frame(width: 8, height: 8)
+            .overlay(
+                state.phase == .listening
+                    ? Circle().stroke(Palette.running.opacity(0.4), lineWidth: 1.5)
+                        .scaleEffect(1.8)
+                        .opacity(0.6)
+                    : nil
+            )
+            .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: state.phase)
+    }
 
-    private var micIconName: String {
+    private var micDotColor: Color {
         switch state.phase {
-        case .listening: return "mic.fill"
-        case .transcribing: return "waveform"
-        case .result: return "checkmark"
-        case .error: return "exclamationmark.triangle"
-        case .connecting: return "antenna.radiowaves.left.and.right"
-        case .idle: return "mic"
+        case .listening: return Palette.running
+        case .transcribing: return Palette.detach
+        case .connecting: return Palette.detach
+        default: return Palette.textMuted
         }
     }
 
-    private var micIconColor: Color {
-        switch state.phase {
-        case .listening: return .white
-        case .result: return Palette.running
-        case .error: return Palette.kill
-        default: return Palette.text
-        }
-    }
-
-    private var micBackground: Color {
-        switch state.phase {
-        case .listening: return Palette.running.opacity(0.8)
-        case .error: return Palette.kill.opacity(0.15)
-        default: return Palette.surface
-        }
-    }
-
-    // MARK: - Status Text
-
-    private var statusText: some View {
+    private var statusLabel: some View {
         Group {
             switch state.phase {
             case .idle:
-                Text("Press Space to speak")
-                    .font(Typo.geistMono(13))
-                    .foregroundColor(Palette.textDim)
-
+                Text("ready")
+                    .foregroundColor(Palette.textMuted)
             case .connecting:
-                Text("Connecting to Talkie...")
-                    .font(Typo.geistMono(13))
+                Text("connecting...")
                     .foregroundColor(Palette.detach)
-
             case .listening:
-                Text("Listening...")
-                    .font(Typo.geistMono(13))
+                Text("listening")
                     .foregroundColor(Palette.running)
-
             case .transcribing:
                 if let r = state.executionResult, r == "thinking..." || r == "searching..." {
                     Text(r)
-                        .font(Typo.geistMono(13))
                         .foregroundColor(Palette.detach)
                 } else {
-                    Text("Processing...")
-                        .font(Typo.geistMono(13))
+                    Text("processing...")
                         .foregroundColor(Palette.textDim)
                 }
-
             case .result:
-                EmptyView()
-
-            case .error(let msg):
-                Text(msg)
-                    .font(Typo.geistMono(12))
-                    .foregroundColor(Palette.kill)
-                    .multilineTextAlignment(.center)
+                Text("done")
+                    .foregroundColor(Palette.running)
             }
         }
+        .font(Typo.geistMono(10))
     }
 
-    // MARK: - Transcript Area
+    // MARK: - Transcript History (left pane)
 
-    private var transcriptArea: some View {
-        Group {
-            if state.phase == .result {
-                VStack(alignment: .leading, spacing: 6) {
-                    // Row 1: Transcript
-                    resultRow(label: "heard", value: state.finalText, color: Palette.text)
+    private var transcriptHistory: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("HISTORY")
+                    .font(Typo.geistMonoBold(9))
+                    .foregroundColor(Palette.textMuted)
+                    .tracking(1)
+                Spacer()
+                Text("\(state.history.count)")
+                    .font(Typo.geistMono(9))
+                    .foregroundColor(Palette.textMuted)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
 
-                    // Row 2: Matched intent
-                    if let intent = state.intentName {
-                        resultRow(label: "intent", value: intent, color: Palette.running)
-                    }
+            Rectangle().fill(Palette.border).frame(height: 0.5)
 
-                    // Row 3: Extracted slots
-                    if !state.intentSlots.isEmpty {
-                        let slotText = state.intentSlots
-                            .map { "\($0.key) = \($0.value)" }
-                            .joined(separator: "  ")
-                        resultRow(label: "params", value: slotText, color: Palette.detach)
-                    }
-
-                    // Row 4: Execution result
-                    if let result = state.executionResult {
-                        if !state.resultItems.isEmpty {
-                            resultRow(label: "result", value: "\(state.resultItems.count) match\(state.resultItems.count == 1 ? "" : "es")", color: Palette.running)
-
-                            // Window list
-                            VStack(alignment: .leading, spacing: 2) {
-                                ForEach(Array(state.resultItems.prefix(6).enumerated()), id: \.offset) { _, item in
-                                    HStack(spacing: 6) {
-                                        Text(item.app)
-                                            .font(Typo.geistMonoBold(10))
-                                            .foregroundColor(Palette.textDim)
-                                            .frame(width: 80, alignment: .trailing)
-                                        Text(item.title.isEmpty ? "(untitled)" : item.title)
-                                            .font(Typo.geistMono(10))
-                                            .foregroundColor(Palette.text)
-                                            .lineLimit(1)
-                                            .truncationMode(.tail)
-                                    }
-                                }
-                                if state.resultItems.count > 6 {
-                                    Text("+ \(state.resultItems.count - 6) more")
-                                        .font(Typo.caption(9))
-                                        .foregroundColor(Palette.textMuted)
-                                        .padding(.leading, 86)
-                                }
+            if state.history.isEmpty {
+                VStack(spacing: 8) {
+                    Spacer()
+                    Image(systemName: "waveform")
+                        .font(.system(size: 24, weight: .light))
+                        .foregroundColor(Palette.textMuted.opacity(0.5))
+                    Text("Transcripts appear here")
+                        .font(Typo.geistMono(11))
+                        .foregroundColor(Palette.textMuted)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity)
+            } else {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            ForEach(state.history) { entry in
+                                historyRow(entry)
+                                    .id(entry.id)
+                                Rectangle().fill(Palette.border).frame(height: 0.5)
                             }
-                            .padding(.top, 2)
-                        } else if !state.resultSummary.isEmpty {
-                            resultRow(label: "result", value: state.resultSummary, color: Palette.running)
-                        } else if result == "ok" {
-                            resultRow(label: "result", value: "done", color: Palette.running)
-                        } else {
-                            // Error — show once as error, not as both "result" and "error"
-                            resultRow(label: "error", value: result, color: Palette.kill)
+                        }
+                    }
+                    .onChange(of: state.history.count) { _ in
+                        if let last = state.history.last {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                proxy.scrollTo(last.id, anchor: .bottom)
+                            }
                         }
                     }
                 }
-            } else if state.phase == .transcribing, !state.finalText.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    resultRow(label: "heard", value: state.finalText, color: Palette.text)
-                    if let intent = state.intentName {
-                        resultRow(label: "intent", value: intent, color: Palette.running)
+            }
+        }
+        .background(Palette.bg.opacity(0.5))
+    }
+
+    private func historyRow(_ entry: TranscriptEntry) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            // Timestamp + transcript
+            HStack(alignment: .top, spacing: 6) {
+                Text(entry.timestamp, style: .time)
+                    .font(Typo.geistMono(9))
+                    .foregroundColor(Palette.textMuted)
+                Text(entry.text)
+                    .font(Typo.geistMono(11))
+                    .foregroundColor(Palette.text)
+                    .lineLimit(3)
+            }
+
+            // Intent tag
+            if let intent = entry.intent {
+                HStack(spacing: 4) {
+                    Text(intent)
+                        .font(Typo.geistMonoBold(9))
+                        .foregroundColor(Palette.running)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(Palette.running.opacity(0.1))
+                        )
+
+                    if !entry.slots.isEmpty {
+                        let slotText = entry.slots.map { "\($0.key)=\($0.value)" }.joined(separator: " ")
+                        Text(slotText)
+                            .font(Typo.geistMono(9))
+                            .foregroundColor(Palette.textDim)
                     }
                 }
-            } else if state.phase == .listening, !state.partialText.isEmpty {
-                HStack {
-                    Text(state.partialText)
-                        .font(Typo.geistMono(12))
-                        .foregroundColor(Palette.textDim)
-                        .lineLimit(2)
-                    Spacer()
+            }
+
+            // Result summary
+            if !entry.resultItems.isEmpty {
+                Text("\(entry.resultItems.count) match\(entry.resultItems.count == 1 ? "" : "es")")
+                    .font(Typo.geistMono(9))
+                    .foregroundColor(Palette.textDim)
+            } else if let result = entry.result, result != "ok" {
+                Text(result)
+                    .font(Typo.geistMono(9))
+                    .foregroundColor(Palette.detach)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
+    // MARK: - Current Command (right pane, top)
+
+    private var currentCommand: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("CURRENT")
+                    .font(Typo.geistMonoBold(9))
+                    .foregroundColor(Palette.textMuted)
+                    .tracking(1)
+                Spacer()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+
+            Rectangle().fill(Palette.border).frame(height: 0.5)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    // What was heard
+                    if !state.finalText.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("heard")
+                                .font(Typo.geistMono(9))
+                                .foregroundColor(Palette.textMuted)
+                            Text(state.finalText)
+                                .font(Typo.geistMono(13))
+                                .foregroundColor(Palette.text)
+                                .textSelection(.enabled)
+                        }
+                    } else if state.phase == .listening, !state.partialText.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("hearing...")
+                                .font(Typo.geistMono(9))
+                                .foregroundColor(Palette.textMuted)
+                            Text(state.partialText)
+                                .font(Typo.geistMono(13))
+                                .foregroundColor(Palette.textDim)
+                        }
+                    } else if state.phase == .idle || state.phase == .listening {
+                        VStack(spacing: 12) {
+                            Image(systemName: "mic")
+                                .font(.system(size: 28, weight: .light))
+                                .foregroundColor(state.phase == .listening ? Palette.running : Palette.textMuted.opacity(0.4))
+                            Text(state.phase == .listening ? "Listening..." : "Press Space to speak")
+                                .font(Typo.geistMono(12))
+                                .foregroundColor(state.phase == .listening ? Palette.running : Palette.textMuted)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 20)
+                    }
+
+                    // Matched intent + slots
+                    if let intent = state.intentName {
+                        HStack(spacing: 6) {
+                            Text(intent)
+                                .font(Typo.geistMonoBold(11))
+                                .foregroundColor(Palette.running)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .fill(Palette.running.opacity(0.1))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 4)
+                                                .strokeBorder(Palette.running.opacity(0.2), lineWidth: 0.5)
+                                        )
+                                )
+
+                            if !state.intentSlots.isEmpty {
+                                ForEach(Array(state.intentSlots.keys.sorted()), id: \.self) { key in
+                                    if let val = state.intentSlots[key] {
+                                        Text("\(key): \(val)")
+                                            .font(Typo.geistMono(10))
+                                            .foregroundColor(Palette.detach)
+                                            .padding(.horizontal, 5)
+                                            .padding(.vertical, 1)
+                                            .background(
+                                                RoundedRectangle(cornerRadius: 3)
+                                                    .fill(Palette.detach.opacity(0.08))
+                                            )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Results
+                    if !state.resultItems.isEmpty {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(state.resultItems.count) match\(state.resultItems.count == 1 ? "" : "es")")
+                                .font(Typo.geistMono(9))
+                                .foregroundColor(Palette.textMuted)
+                                .padding(.bottom, 2)
+
+                            ForEach(Array(state.resultItems.prefix(25).enumerated()), id: \.1.id) { idx, item in
+                                ResultRow(index: idx, item: item, onFocus: focusWindow, onTile: tileWindow)
+                            }
+                            if state.resultItems.count > 25 {
+                                Text("+ \(state.resultItems.count - 25) more")
+                                    .font(Typo.geistMono(9))
+                                    .foregroundColor(Palette.textMuted)
+                                    .padding(.leading, 108)
+                            }
+                        }
+                    } else if !state.resultSummary.isEmpty {
+                        Text(state.resultSummary)
+                            .font(Typo.geistMono(11))
+                            .foregroundColor(Palette.text)
+                    } else if state.executionResult == "ok" {
+                        Text("done")
+                            .font(Typo.geistMono(11))
+                            .foregroundColor(Palette.running)
+                    }
                 }
+                .padding(14)
             }
         }
     }
 
-    private func resultRow(label: String, value: String, color: Color) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Text(label)
-                .font(Typo.geistMono(10))
-                .foregroundColor(Palette.textMuted)
-                .frame(width: 46, alignment: .trailing)
-            Text(value)
-                .font(Typo.geistMono(11))
-                .foregroundColor(color)
-                .lineLimit(2)
-            Spacer()
+    // MARK: - Diagnostic Log (right pane, bottom)
+
+    private var diagnosticLog: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("LOG")
+                    .font(Typo.geistMonoBold(9))
+                    .foregroundColor(Palette.textMuted)
+                    .tracking(1)
+                Spacer()
+                if !state.logLines.isEmpty {
+                    Button(action: {
+                        let text = state.logLines.joined(separator: "\n")
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(text, forType: .string)
+                    }) {
+                        Text("copy")
+                            .font(Typo.geistMono(9))
+                            .foregroundColor(Palette.textMuted)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(Palette.surface)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 2)
+                                            .strokeBorder(Palette.border, lineWidth: 0.5)
+                                    )
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
+
+            Rectangle().fill(Palette.border).frame(height: 0.5)
+
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 1) {
+                        ForEach(Array(state.logLines.enumerated()), id: \.offset) { idx, line in
+                            Text(line)
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundColor(Palette.textMuted)
+                                .lineLimit(1)
+                                .id(idx)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4)
+                }
+                .onChange(of: state.logLines.count) { _ in
+                    let last = state.logLines.count - 1
+                    if last >= 0 {
+                        proxy.scrollTo(last, anchor: .bottom)
+                    }
+                }
+            }
+            .frame(height: 100)
+            .background(Palette.bg.opacity(0.3))
         }
     }
 
@@ -551,27 +825,22 @@ struct VoiceCommandView: View {
 
     private var footerBar: some View {
         HStack(spacing: 16) {
-            Spacer()
-
             if state.phase == .listening {
                 footerHint("Space", "Stop")
                 footerHint("ESC", "Cancel")
-            } else if state.phase == .result {
-                footerHint("Space", "Again")
-                footerHint("ESC", "Dismiss")
-            } else if case .error = state.phase {
-                footerHint("Space", "Retry")
-                footerHint("ESC", "Dismiss")
             } else {
                 footerHint("Space", "Speak")
+                footerHint("Tab", state.armed ? "Off" : "On")
                 footerHint("ESC", "Dismiss")
             }
 
-            // Connection indicator
-            connectionDot
-
             Spacer()
+
+            Text("find · show · open · tile · kill · scan")
+                .font(Typo.geistMono(9))
+                .foregroundColor(Palette.textMuted.opacity(0.6))
         }
+        .padding(.horizontal, 14)
         .padding(.vertical, 8)
     }
 
@@ -596,6 +865,24 @@ struct VoiceCommandView: View {
         }
     }
 
+    private func focusWindow(wid: UInt32) {
+        guard let entry = DesktopModel.shared.windows[wid] else { return }
+        DispatchQueue.main.async {
+            WindowTiler.focusWindow(wid: wid, pid: entry.pid)
+            WindowTiler.highlightWindowById(wid: wid)
+        }
+    }
+
+    private func tileWindow(wid: UInt32, position: String) {
+        guard let entry = DesktopModel.shared.windows[wid],
+              let pos = TilePosition(rawValue: position) else { return }
+        DispatchQueue.main.async {
+            WindowTiler.focusWindow(wid: wid, pid: entry.pid)
+            WindowTiler.tileWindowById(wid: wid, pid: entry.pid, to: pos)
+            WindowTiler.highlightWindowById(wid: wid)
+        }
+    }
+
     private var connectionDot: some View {
         let client = TalkieClient.shared
         let color: Color = {
@@ -611,3 +898,90 @@ struct VoiceCommandView: View {
             .frame(width: 6, height: 6)
     }
 }
+
+// MARK: - Result Row (hover actions)
+
+struct ResultRow: View {
+    let index: Int
+    let item: ResultItem
+    let onFocus: (UInt32) -> Void
+    let onTile: (UInt32, String) -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text("\(index + 1)")
+                .font(Typo.geistMono(9))
+                .foregroundColor(Palette.textMuted)
+                .frame(width: 18, alignment: .trailing)
+            Text(item.app)
+                .font(Typo.geistMonoBold(10))
+                .foregroundColor(Palette.textDim)
+                .frame(width: 70, alignment: .trailing)
+            Text(item.title.isEmpty ? "(untitled)" : item.title)
+                .font(Typo.geistMono(10))
+                .foregroundColor(Palette.text)
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            Spacer()
+
+            if isHovered {
+                HStack(spacing: 4) {
+                    actionButton("Focus", systemImage: "eye") {
+                        onFocus(item.wid)
+                    }
+                    actionButton("Tile Left", systemImage: "rectangle.lefthalf.filled") {
+                        onTile(item.wid, "left")
+                    }
+                    actionButton("Tile Right", systemImage: "rectangle.righthalf.filled") {
+                        onTile(item.wid, "right")
+                    }
+                    actionButton("Maximize", systemImage: "rectangle.fill") {
+                        onTile(item.wid, "maximize")
+                    }
+                    actionButton("Inspect in Map", systemImage: "map") {
+                        ScreenMapWindowController.shared.showWindow(wid: item.wid)
+                    }
+                }
+                .transition(.opacity.combined(with: .move(edge: .trailing)))
+            }
+        }
+        .padding(.vertical, 3)
+        .padding(.horizontal, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 4)
+                .fill(isHovered ? Palette.surface : Color.clear)
+        )
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.12)) {
+                isHovered = hovering
+            }
+        }
+        .onTapGesture {
+            onFocus(item.wid)
+        }
+    }
+
+    private func actionButton(_ label: String, systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 9))
+                .foregroundColor(Palette.text)
+                .frame(width: 22, height: 18)
+                .background(
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Palette.bg)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 3)
+                                .strokeBorder(Palette.border, lineWidth: 0.5)
+                        )
+                )
+        }
+        .buttonStyle(.plain)
+        .help(label)
+    }
+}
+

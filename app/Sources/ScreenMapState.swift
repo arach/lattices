@@ -1205,14 +1205,9 @@ final class ScreenMapController: ObservableObject {
               let win = ed.windows.first(where: { $0.id == windowId }) else { return }
         if isSearchActive { closeSearch() }
         selectSingle(windowId)
-        WindowTiler.raiseWindowAndReactivate(wid: win.id, pid: win.pid)
-        // Show bezel after a short delay so the target window is raised first
-        // and we can order the bezel behind it
-        let winCopy = win
-        let edCopy = ed
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            WindowBezel.shared.show(for: winCopy, editor: edCopy)
-        }
+        // Raise the target window and let it stay on top (don't re-activate Lattices)
+        WindowTiler.focusWindow(wid: win.id, pid: win.pid)
+        WindowTiler.highlightWindowById(wid: win.id)
     }
 
     func focusSelectedWindowOnScreen() {

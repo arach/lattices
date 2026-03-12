@@ -262,68 +262,145 @@ final class IntentExtractor {
     // MARK: - Index Building
 
     private func buildIndex() {
-        // All intent → example phrase mappings
+        // Dense intent catalog — many permutations per intent.
+        // Tier 2 (verb prefixes) handles the fast path; this catches everything else.
+        // Goal: no NLEmbedding needed. If a phrase isn't here, Claude fallback handles it.
         let intentPhrases: [(intent: String, phrases: [String])] = [
-            ("tile_window", [
-                "tile left", "snap left", "move to the left", "put it on the left",
-                "tile right", "snap right", "move to the right", "put it on the right",
-                "maximize", "full screen", "make it big", "go full screen",
-                "center the window", "put it in the center",
-                "top left corner", "upper left", "top right corner", "upper right",
-                "bottom left corner", "lower left", "bottom right corner", "lower right",
-                "tile this window", "snap this window", "arrange the window",
-            ]),
-            ("focus", [
-                "switch to", "focus on", "go to", "show me", "bring up",
-                "switch to chrome", "focus the terminal", "show slack",
-                "open finder", "go to safari", "bring up xcode",
-            ]),
-            ("launch", [
-                "launch the project", "start working on", "open project",
-                "launch frontend", "start the api", "open my app",
-                "work on the backend", "begin coding",
-            ]),
-            ("switch_layer", [
-                "switch to layer", "go to layer", "layer one", "layer two",
-                "switch workspace", "change layer", "activate layer",
-                "switch to the web layer", "go to mobile", "layer review",
-            ]),
+            // ── find: search windows by name, title, content ──
             ("search", [
-                "search for", "find text", "look for", "where does it say",
-                "search the screen", "find on screen", "where is the error",
-                "find todo", "search error message",
-                "find all", "find terminal", "find chrome", "find safari",
-                "find windows", "find all windows", "find all terminal windows",
-                "search windows", "search for windows",
+                "find", "find it", "find that", "find this",
+                "find all", "find all the", "find all instances",
+                "find windows", "find all windows", "find terminal windows",
+                "find chrome", "find safari", "find slack", "find xcode", "find vscode",
+                "find the error", "find the error message", "find errors",
+                "find todo", "find todos", "find fixme",
+                "search", "search for", "search for all", "search the screen",
+                "search windows", "search all windows", "search everything",
+                "look for", "look for all", "look up",
+                "where is", "where is the", "where's", "where's the",
+                "where does it say", "where did i see",
+                "which window has", "which window shows",
+                "can you find", "help me find",
+                "locate", "locate the", "locate all",
             ]),
+            // ── show: focus/raise a window ──
+            ("focus", [
+                "show", "show me", "show me the",
+                "focus", "focus on", "focus the",
+                "switch to", "switch over to", "go to", "go back to",
+                "bring up", "bring up the", "bring forward",
+                "raise", "raise the", "pull up", "pull up the",
+                "i want to see", "let me see", "take me to",
+                "give me", "give me the",
+                "activate", "activate the",
+                "jump to", "hop to", "move to",
+            ]),
+            // ── open: launch a project/session ──
+            ("launch", [
+                "open", "open up", "open my", "open the",
+                "launch", "launch the", "launch my",
+                "start", "start up", "start the", "start my",
+                "work on", "work on the", "start working on",
+                "begin", "begin working on", "begin coding on",
+                "boot", "boot up", "fire up",
+                "spin up", "spin up the",
+                "run", "run the",
+                "load", "load up", "load the",
+                "set up", "get started on",
+                "create session for", "new session for",
+            ]),
+            // ── tile: snap window to a position ──
+            ("tile_window", [
+                "tile", "tile it", "tile this", "tile the window",
+                "tile left", "tile right", "tile top", "tile bottom",
+                "snap", "snap it", "snap this", "snap the window",
+                "snap left", "snap right", "snap to the left", "snap to the right",
+                "move to the left", "move to the right", "move it left", "move it right",
+                "put it on the left", "put it on the right",
+                "put it in the center", "center it", "center the window",
+                "left half", "right half", "top half", "bottom half",
+                "maximize", "maximize it", "make it full screen", "full screen",
+                "go full", "go full screen", "make it big", "make it bigger",
+                "top left", "top right", "bottom left", "bottom right",
+                "upper left", "upper right", "lower left", "lower right",
+                "top left corner", "top right corner", "bottom left corner", "bottom right corner",
+                "quarter", "half", "fill the screen",
+                "resize", "resize the window", "make it smaller",
+            ]),
+            // ── kill: stop a session ──
+            ("kill", [
+                "kill", "kill it", "kill the session", "kill the project",
+                "kill that", "kill this session",
+                "stop", "stop it", "stop the session", "stop the project",
+                "shut down", "shut it down", "shut down the",
+                "close", "close it", "close the session", "close that",
+                "terminate", "terminate the", "terminate it",
+                "end", "end the session", "end it",
+                "quit", "quit the", "quit that",
+                "destroy", "remove the session",
+            ]),
+            // ── scan: rescan screen OCR ──
+            ("scan", [
+                "scan", "scan the screen", "scan everything", "scan all",
+                "scan my screen", "scan my windows", "scan all windows",
+                "rescan", "rescan the screen", "rescan everything",
+                "read the screen", "read my screen", "read all windows",
+                "ocr", "ocr scan", "run ocr", "do an ocr",
+                "update screen text", "refresh screen text",
+                "capture screen text", "capture text",
+                "what's on my screen", "what's on screen",
+                "read what's on screen", "index the screen",
+            ]),
+            // ── distribute: arrange windows evenly ──
+            ("distribute", [
+                "distribute", "distribute windows", "distribute everything",
+                "spread", "spread out", "spread out the windows", "spread them out",
+                "organize", "organize windows", "organize my windows", "organize everything",
+                "arrange", "arrange windows", "arrange my windows", "arrange everything",
+                "arrange them evenly", "arrange everything evenly",
+                "tidy", "tidy up", "tidy up the desktop", "tidy up my windows",
+                "clean up", "clean up the layout", "clean up my desktop",
+                "even out", "even out the windows",
+                "layout", "fix the layout", "reset the layout",
+                "grid", "make a grid", "grid layout",
+                "cascade", "stack them", "line them up",
+            ]),
+            // ── list: enumerate windows or sessions ──
             ("list_windows", [
-                "what windows are open", "show all windows", "list windows",
-                "what's on screen", "which windows are visible",
-                "list all windows", "show me all the windows",
+                "list windows", "list all windows", "list my windows",
+                "what windows", "what windows are open", "what's open",
+                "which windows", "which windows are visible",
+                "show all windows", "show me all windows", "show me all the windows",
+                "how many windows", "count windows",
+                "what do i have open", "what's visible",
             ]),
             ("list_sessions", [
-                "what sessions are running", "list sessions", "show my projects",
-                "what's running", "whats running", "which projects are active",
-                "show me whats running", "show me what is running",
+                "list sessions", "list all sessions", "list my sessions",
+                "what sessions", "what sessions are running",
+                "what's running", "whats running", "what is running",
+                "which projects", "which projects are active",
+                "show sessions", "show my sessions", "show my projects",
+                "show me what's running", "show me whats running",
+                "how many sessions", "any sessions running",
             ]),
-            ("distribute", [
-                "distribute windows", "spread out the windows", "organize windows",
-                "clean up the layout", "arrange everything evenly",
-                "tidy up the desktop", "even out the windows",
-                "arrange my windows", "arrange windows neatly", "organize my windows",
+            // ── layer: switch or create ──
+            ("switch_layer", [
+                "switch to layer", "go to layer", "layer",
+                "activate layer", "change layer", "change to layer",
+                "switch workspace", "switch context", "switch to workspace",
+                "go to the web layer", "go to mobile", "go to review",
+                "layer one", "layer two", "layer three",
+                "layer 1", "layer 2", "layer 3",
+                "first layer", "second layer", "third layer",
+                "next layer", "previous layer", "other layer",
             ]),
             ("create_layer", [
-                "save this layout", "create a layer", "make a new layer",
-                "save as layer", "snapshot this arrangement",
-            ]),
-            ("kill", [
-                "kill the session", "stop the project", "shut it down",
-                "close the session", "terminate", "kill the frontend",
-            ]),
-            ("scan", [
-                "scan the screen", "read the screen", "ocr scan",
-                "update screen text", "capture screen text",
-                "what's on my screen", "read all windows",
+                "create a layer", "create layer", "create new layer",
+                "make a layer", "make layer", "make a new layer",
+                "save this layout", "save layout", "save as layer",
+                "save the arrangement", "snapshot", "snapshot this",
+                "new layer", "new layer called", "name this layer",
+                "remember this layout", "save this workspace",
             ]),
         ]
 
@@ -359,7 +436,39 @@ final class IntentExtractor {
             }
         }
 
-        // Tier 2: Substring match (phrase must be >3 chars to avoid false positives)
+        // Tier 2: Verb-prefix matching — instant, no ambiguity
+        // Primary operators: find · show · open · tile · kill · scan
+        let verbPrefixes: [(prefixes: [String], intent: String)] = [
+            // find <query> — search windows
+            (["find ", "search ", "search for ", "look for ", "where is ", "where's "], "search"),
+            // show <app> — focus/raise a window
+            (["show ", "focus ", "switch to ", "go to ", "bring up "], "focus"),
+            // open <project> — launch a session
+            (["open ", "launch ", "start ", "work on ", "begin "], "launch"),
+            // tile <position> — tile frontmost window
+            (["tile ", "snap ", "move ", "put "], "tile_window"),
+            // kill <session> — stop a session
+            (["kill ", "stop ", "close ", "terminate ", "shut down "], "kill"),
+            // scan — rescan screen text
+            (["scan", "read the screen", "ocr ", "capture screen"], "scan"),
+            // spread / distribute — arrange windows
+            (["distribute", "organize", "arrange", "spread out", "spread", "tidy up", "clean up"], "distribute"),
+            // list — enumerate
+            (["list windows", "list all windows", "what windows"], "list_windows"),
+            (["list sessions", "what sessions"], "list_sessions"),
+            // layer — switch or create
+            (["create a layer", "create layer", "save layout", "save as layer"], "create_layer"),
+            (["switch to layer ", "go to layer ", "activate layer ", "layer "], "switch_layer"),
+        ]
+        for (prefixes, intent) in verbPrefixes {
+            for prefix in prefixes {
+                if lower.hasPrefix(prefix) || lower == prefix.trimmingCharacters(in: .whitespaces) {
+                    return buildResult(intent: intent, text: lower, confidence: 0.95)
+                }
+            }
+        }
+
+        // Tier 3: Substring match (phrase must be >3 chars to avoid false positives)
         // Pick the longest matching phrase to avoid partial matches winning
         var bestSubstring: (intent: String, phraseLen: Int)? = nil
         for entry in phraseIndex where entry.phrase.count > 3 {
@@ -465,6 +574,32 @@ private enum SlotExtractor {
         case .layerTarget:
             return extractTargetSlot(from: text, prefixes: ["switch to layer", "go to layer", "switch to", "go to", "activate layer", "activate", "change to layer", "change to", "layer"], slotName: "layer")
         case .queryTarget:
+            // Try to extract a clean search term from conversational speech.
+            // Strategy: look for "named X", "called X", "name X" patterns first,
+            // then fall back to prefix-based extraction with aggressive cleaning.
+            let namedPatterns: [(String, String)] = [
+                ("with the name ", ""), ("that have the name ", ""), ("that has the name ", ""),
+                ("named ", ""), ("called ", ""), ("name ", ""),
+            ]
+            for (pattern, _) in namedPatterns {
+                if let range = text.range(of: pattern) {
+                    var target = String(text[range.upperBound...])
+                    // Take only the first meaningful phrase (stop at prepositions/noise)
+                    let stopWords = [" in the", " in my", " on the", " on my", " from", " that", " which", " window"]
+                    for stop in stopWords {
+                        if let stopRange = target.range(of: stop) {
+                            target = String(target[..<stopRange.lowerBound])
+                        }
+                    }
+                    target = target.trimmingCharacters(in: .whitespacesAndNewlines)
+                    target = target.trimmingCharacters(in: .punctuationCharacters)
+                    target = target.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !target.isEmpty {
+                        return ["query": .string(target)]
+                    }
+                }
+            }
+
             var result = extractTargetSlot(from: text, prefixes: [
                 "search for all instances of", "search for all", "search for",
                 "search all the", "search all",
@@ -474,17 +609,25 @@ private enum SlotExtractor {
                 "where is the", "where is",
                 "where does it say",
             ], slotName: "query", stripSuffixes: ["windows", "instances", "apps", "applications", "terminals", "on screen", "on my screen"])
-            // Clean up extracted query — strip filler phrases
+            // Aggressively clean extracted query
             if var q = result["query"]?.stringValue {
+                // Strip conversational framing
                 let fillerPhrases = [
                     "instances of ", "all the ", "all ",
                     "that mentioned ", "that mention ", "that say ", "that says ",
+                    "that have ", "that has ", "that are ", "that is ",
+                    "windows ", "window ",
                     "talking about ", "related to ", "about ", "with ",
                     "alternate ", "alternative ",
+                    "in the title", "in my title", "in the name", "in my screen",
                 ]
                 for filler in fillerPhrases {
-                    q = q.replacingOccurrences(of: filler, with: "")
+                    q = q.replacingOccurrences(of: filler, with: " ")
                 }
+                // Collapse whitespace and trim
+                q = q.components(separatedBy: .whitespaces).filter { !$0.isEmpty }.joined(separator: " ")
+                q = q.trimmingCharacters(in: .whitespacesAndNewlines)
+                q = q.trimmingCharacters(in: .punctuationCharacters)
                 q = q.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !q.isEmpty { result["query"] = .string(q) }
             }

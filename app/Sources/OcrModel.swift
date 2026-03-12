@@ -90,6 +90,36 @@ final class OcrModel: ObservableObject {
         }
     }
 
+    // MARK: - Single Window Scan
+
+    /// Scan a single window by wid (AX extraction, instant).
+    func scanSingle(wid: UInt32) {
+        guard let entry = DesktopModel.shared.windows[wid] else { return }
+        queue.async { [weak self] in
+            guard let self else { return }
+            if let axResult = self.axExtractor.extract(pid: entry.pid, wid: wid) {
+                let blocks = axResult.texts.map { text in
+                    OcrTextBlock(text: text, confidence: 1.0, boundingBox: .zero)
+                }
+                let result = OcrWindowResult(
+                    wid: wid,
+                    app: entry.app,
+                    title: entry.title,
+                    frame: entry.frame,
+                    texts: blocks,
+                    fullText: axResult.fullText,
+                    timestamp: Date(),
+                    source: .accessibility
+                )
+                OcrStore.shared.insert(results: [result])
+                DispatchQueue.main.async {
+                    self.results[wid] = result
+                    DiagnosticLog.shared.info("OcrModel: single scan wid=\(wid) → \(axResult.texts.count) blocks")
+                }
+            }
+        }
+    }
+
     // MARK: - Scan
 
     /// Quick scan: AX-only text extraction for topmost windows (called every 60s).

@@ -28,7 +28,7 @@ struct ScreenMapView: View {
     @State private var mouseMovedMonitor: Any?
     @State private var sidebarWidth: CGFloat = 180
     @State private var isDraggingSidebar: Bool = false
-    @State private var inspectorWidth: CGFloat = 200
+    @State private var inspectorWidth: CGFloat = 280
     @State private var isDraggingInspector: Bool = false
     @FocusState private var isSearchFieldFocused: Bool
     @State private var searchHoveredDisplayIndex: Int? = nil
@@ -84,7 +84,7 @@ struct ScreenMapView: View {
                 }
                 if let editor = controller.editor {
                     panelResizeHandle(isActive: $isDraggingInspector, width: $inspectorWidth,
-                                      range: 160...360, edge: .leading)
+                                      range: 220...480, edge: .leading)
                     inspectorPane(editor: editor)
                 }
             }
@@ -287,24 +287,57 @@ struct ScreenMapView: View {
     // MARK: - Inspector Window Card
 
     private func inspectorWindowCard(win: ScreenMapWindowEntry, editor: ScreenMapEditorState) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        let desktopEntry = DesktopModel.shared.windows[UInt32(win.id)]
+        let ocrText = OcrModel.shared.results[UInt32(win.id)]?.fullText
+        let layerTag = DesktopModel.shared.windowLayerTags[UInt32(win.id)]
+
+        return VStack(alignment: .leading, spacing: 8) {
+            // Header: app + visibility
             HStack(spacing: 5) {
                 Circle()
                     .fill(Self.layerColor(for: win.layer))
                     .frame(width: 6, height: 6)
                 Text(win.app)
-                    .font(Typo.monoBold(10))
+                    .font(Typo.monoBold(11))
                     .foregroundColor(Palette.text)
                     .lineLimit(1)
+                Spacer()
+                if desktopEntry?.isOnScreen == true {
+                    Text("visible")
+                        .font(Typo.monoBold(7))
+                        .foregroundColor(Palette.running)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(Palette.running.opacity(0.1))
+                        )
+                }
             }
+
+            // Title
             if !win.title.isEmpty {
                 Text(win.title)
-                    .font(Typo.mono(9))
+                    .font(Typo.mono(10))
                     .foregroundColor(Palette.textDim)
                     .lineLimit(3)
+                    .textSelection(.enabled)
             }
+
+            // Identity
+            HStack(spacing: 10) {
+                inspectorLabel(label: "wid", value: "\(win.id)")
+                if let entry = desktopEntry {
+                    inspectorLabel(label: "pid", value: "\(entry.pid)")
+                }
+            }
+
+            // Layout info
             VStack(alignment: .leading, spacing: 3) {
                 inspectorRow(label: "Layer", value: editor.layerDisplayName(for: win.layer))
+                if let tag = layerTag {
+                    inspectorRow(label: "Tag", value: tag)
+                }
                 inspectorRow(label: "Display", value: {
                     if let disp = editor.displays.first(where: { $0.index == win.displayIndex }) {
                         return "\(editor.spatialNumber(for: disp.index)). \(disp.label)"
@@ -320,7 +353,24 @@ struct ScreenMapView: View {
                     inspectorRow(label: "Original",
                                  value: "\(Int(win.originalFrame.width))×\(Int(win.originalFrame.height))")
                 }
+                if let entry = desktopEntry, !entry.spaceIds.isEmpty {
+                    inspectorRow(label: "Spaces", value: entry.spaceIds.map(String.init).joined(separator: ", "))
+                }
             }
+
+            // Session
+            if let session = desktopEntry?.latticesSession {
+                HStack(spacing: 4) {
+                    Text("session")
+                        .font(Typo.monoBold(8))
+                        .foregroundColor(Palette.textMuted)
+                    Text(session)
+                        .font(Typo.mono(9))
+                        .foregroundColor(Palette.running)
+                        .lineLimit(1)
+                }
+            }
+
             if win.hasEdits {
                 HStack(spacing: 4) {
                     Circle()
@@ -331,8 +381,32 @@ struct ScreenMapView: View {
                         .foregroundColor(Color.orange)
                 }
             }
+
+            // OCR snippet
+            if let ocr = ocrText, !ocr.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("SCREEN TEXT")
+                        .font(Typo.monoBold(8))
+                        .foregroundColor(Palette.textMuted)
+                    Text(String(ocr.prefix(400)))
+                        .font(Typo.mono(8))
+                        .foregroundColor(Palette.textMuted)
+                        .lineLimit(8)
+                        .textSelection(.enabled)
+                }
+                .padding(6)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Palette.bg.opacity(0.5))
+                )
+            }
+
+            // Window actions — contextual to this card
+            if let entry = desktopEntry {
+                windowCardActions(wid: UInt32(win.id), entry: entry)
+            }
         }
-        .padding(8)
+        .padding(10)
         .background(
             RoundedRectangle(cornerRadius: 6)
                 .fill(Palette.surface)
@@ -341,6 +415,101 @@ struct ScreenMapView: View {
                         .strokeBorder(Palette.border, lineWidth: 0.5)
                 )
         )
+    }
+
+    private func windowCardActions(wid: UInt32, entry: WindowEntry) -> some View {
+        let actions: [(key: String, label: String, action: () -> Void)] = [
+            ("f", "focus", { [controller] in
+                controller.focusWindowOnScreen(wid)
+            }),
+            ("h", "highlight", {
+                WindowTiler.highlightWindowById(wid: wid)
+            }),
+            ("←", "tile left", {
+                WindowTiler.focusWindow(wid: wid, pid: entry.pid)
+                WindowTiler.tileWindowById(wid: wid, pid: entry.pid, to: .left)
+            }),
+            ("→", "tile right", {
+                WindowTiler.focusWindow(wid: wid, pid: entry.pid)
+                WindowTiler.tileWindowById(wid: wid, pid: entry.pid, to: .right)
+            }),
+            ("m", "maximize", {
+                WindowTiler.focusWindow(wid: wid, pid: entry.pid)
+                WindowTiler.tileWindowById(wid: wid, pid: entry.pid, to: .maximize)
+            }),
+            ("r", "rescan", {
+                OcrModel.shared.scanSingle(wid: wid)
+            }),
+            ("c", "copy info", { [controller] in
+                let info = [
+                    "wid: \(wid)",
+                    "app: \(entry.app)",
+                    "title: \(entry.title)",
+                    "pid: \(entry.pid)",
+                    "frame: \(Int(entry.frame.x)),\(Int(entry.frame.y)) \(Int(entry.frame.w))×\(Int(entry.frame.h))",
+                    entry.latticesSession.map { "session: \($0)" },
+                    DesktopModel.shared.windowLayerTags[wid].map { "layer: \($0)" },
+                ].compactMap { $0 }.joined(separator: "\n")
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(info, forType: .string)
+                controller.flash("Copied")
+            }),
+        ]
+
+        let columns = [GridItem(.flexible()), GridItem(.flexible())]
+
+        return VStack(spacing: 0) {
+            Rectangle().fill(Palette.border).frame(height: 0.5)
+                .padding(.horizontal, -10)
+                .padding(.top, 4)
+
+            LazyVGrid(columns: columns, spacing: 3) {
+                ForEach(Array(actions.enumerated()), id: \.offset) { _, item in
+                    let isHov = hoveredShelfAction == "w_\(wid)_\(item.label)"
+                    Button(action: item.action) {
+                        HStack(spacing: 4) {
+                            Text(item.key)
+                                .font(.system(size: 8))
+                                .foregroundColor(Self.shelfGreen)
+                                .frame(width: 14)
+                            Text(item.label)
+                                .font(Typo.mono(8))
+                                .foregroundColor(isHov ? Palette.text : Palette.textDim)
+                                .lineLimit(1)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(isHov ? Palette.surfaceHov : Palette.surface)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .strokeBorder(isHov ? Palette.borderLit : Palette.border, lineWidth: 0.5)
+                                )
+                        )
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .onHover { h in
+                        let key = "w_\(wid)_\(item.label)"
+                        hoveredShelfAction = h ? key : (hoveredShelfAction == key ? nil : hoveredShelfAction)
+                    }
+                }
+            }
+            .padding(.top, 6)
+        }
+    }
+
+    private func inspectorLabel(label: String, value: String) -> some View {
+        HStack(spacing: 3) {
+            Text(label)
+                .font(Typo.monoBold(8))
+                .foregroundColor(Palette.textMuted)
+            Text(value)
+                .font(Typo.mono(9))
+                .foregroundColor(Palette.textDim)
+        }
     }
 
     // MARK: - Floating Search Overlay
