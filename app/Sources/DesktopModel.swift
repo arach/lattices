@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import CoreGraphics
 
 final class DesktopModel: ObservableObject {
@@ -82,7 +83,7 @@ final class DesktopModel: ObservableObject {
 
             let title = info[kCGWindowName as String] as? String ?? ""
             let layer = info[kCGWindowLayer as String] as? Int ?? 0
-            let isOnScreen = info[kCGWindowIsOnscreen as String] as? Bool ?? true
+            let isOnScreen = info[kCGWindowIsOnscreen as String] as? Bool ?? false
 
             // Skip non-standard layers (menus, overlays)
             guard layer == 0 else { continue }
@@ -115,6 +116,9 @@ final class DesktopModel: ObservableObject {
             )
         }
 
+        // AX reconciliation: check which CG windows actually exist in Accessibility
+        reconcileWithAX(&fresh)
+
         // Diff
         let oldKeys = Set(windows.keys)
         let newKeys = Set(fresh.keys)
@@ -134,6 +138,62 @@ final class DesktopModel: ObservableObject {
                 removed: removed
             ))
         }
+    }
+
+    private func reconcileWithAX(_ fresh: inout [UInt32: WindowEntry]) {
+        // Get currently active Space IDs — AX only returns windows on these
+        let currentSpaceIds = Set(WindowTiler.getDisplaySpaces().map(\.currentSpaceId))
+        guard !currentSpaceIds.isEmpty else { return }
+
+        // Group CG windows by PID — only titled windows on current Spaces
+        var byPid: [Int32: [UInt32]] = [:]
+        for (wid, entry) in fresh where !entry.title.isEmpty {
+            let onCurrentSpace = entry.spaceIds.contains { currentSpaceIds.contains($0) }
+            if onCurrentSpace {
+                byPid[entry.pid, default: []].append(wid)
+            }
+        }
+
+        for (pid, wids) in byPid {
+            let axApp = AXUIElementCreateApplication(pid)
+            var axWindowsRef: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &axWindowsRef) == .success,
+                  let axWindows = axWindowsRef as? [AXUIElement] else { continue }
+
+            // Collect AX window titles
+            var axTitles: [String] = []
+            for axWin in axWindows {
+                var titleRef: CFTypeRef?
+                AXUIElementCopyAttributeValue(axWin, kAXTitleAttribute as CFString, &titleRef)
+                if let title = titleRef as? String, !title.isEmpty {
+                    axTitles.append(title)
+                }
+            }
+
+            // Mark CG windows that have no matching AX title.
+            // AX titles often have suffixes like " - Google Chrome - Profile"
+            // so check if any AX title starts with the CG title (stripped of emoji).
+            for wid in wids {
+                guard let entry = fresh[wid], !entry.title.isEmpty else { continue }
+                let cgClean = stripForMatch(entry.title)
+                let matched = axTitles.contains { axTitle in
+                    let axClean = stripForMatch(axTitle)
+                    return axClean.hasPrefix(cgClean) || axClean.contains(cgClean) || cgClean.hasPrefix(axClean)
+                }
+                if !matched {
+                    fresh[wid]?.axVerified = false
+                }
+            }
+        }
+    }
+
+    private func stripForMatch(_ text: String) -> String {
+        // Remove emoji and non-ASCII symbols, lowercase, collapse whitespace
+        let scalar = text.unicodeScalars.filter { scalar in
+            scalar.isASCII || CharacterSet.letters.contains(scalar)
+        }
+        return String(scalar).lowercased()
+            .split(separator: " ").joined(separator: " ")
     }
 
     private func windowsContentChanged(old: [UInt32: WindowEntry], new: [UInt32: WindowEntry]) -> Bool {

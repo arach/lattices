@@ -1608,7 +1608,8 @@ enum Encoders {
                 "h": .double(w.frame.h)
             ]),
             "spaceIds": .array(w.spaceIds.map { .int($0) }),
-            "isOnScreen": .bool(w.isOnScreen)
+            "isOnScreen": .bool(w.isOnScreen),
+            "axVerified": .bool(w.axVerified)
         ]
         if let session = w.latticesSession {
             obj["latticesSession"] = .string(session)

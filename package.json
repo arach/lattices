@@ -3,8 +3,8 @@
   "version": "0.3.0",
   "description": "Agentic window manager for macOS — programmable workspace, smart layouts, managed tmux sessions, and a 35+-method agent API",
   "bin": {
-    "lattices": "./bin/lattices.js",
-    "lattices-app": "./bin/lattices-app.js"
+    "lattices": "./bin/lattices.ts",
+    "lattices-app": "./bin/lattices-app.ts"
   },
   "keywords": [
     "tmux",
@@ -21,16 +21,14 @@
   },
   "license": "MIT",
   "exports": {
-    ".": "./bin/client.js",
-    "./daemon-client": "./bin/daemon-client.js"
+    ".": "./bin/client.ts",
+    "./daemon-client": "./bin/daemon-client.ts"
   },
   "scripts": {
-    "dev": "bun --cwd docs-site dev"
+    "dev": "bun --cwd docs-site dev",
+    "typecheck": "tsc --noEmit"
   },
   "type": "module",
-  "engines": {
-    "node": ">=18"
-  },
   "os": ["darwin"],
   "files": [
     "bin",
@@ -38,5 +36,9 @@
     "app/Sources",
     "app/Lattices.app/Contents/Info.plist",
     "docs"
-  ]
+  ],
+  "devDependencies": {
+    "bun-types": "^1.3.10",
+    "typescript": "^5.9.3"
+  }
 }

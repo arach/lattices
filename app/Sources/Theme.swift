@@ -3,17 +3,18 @@ import SwiftUI
 // MARK: - Colors
 
 enum Palette {
-    // Base surfaces — warm dark
-    static let bg         = Color(red: 0.11, green: 0.11, blue: 0.12)   // #1C1C1E
-    static let surface    = Color(red: 0.15, green: 0.15, blue: 0.16)   // Raised cards
-    static let surfaceHov = Color(red: 0.18, green: 0.18, blue: 0.19)   // Hovered cards
-    static let border     = Color.white.opacity(0.05)
-    static let borderLit  = Color.white.opacity(0.10)
+    // Base surfaces
+    static let bg         = Color(red: 0.08, green: 0.08, blue: 0.09)   // #141416
+    static let bgSidebar  = Color(red: 0.08, green: 0.08, blue: 0.09)   // same as bg
+    static let surface    = Color(white: 0.10)                           // Raised cards
+    static let surfaceHov = Color(white: 0.14)                           // Hovered cards
+    static let border     = Color.white.opacity(0.08)
+    static let borderLit  = Color.white.opacity(0.14)
 
     // Text
     static let text       = Color.white.opacity(0.92)
-    static let textDim    = Color.white.opacity(0.50)
-    static let textMuted  = Color.white.opacity(0.30)
+    static let textDim    = Color.white.opacity(0.58)
+    static let textMuted  = Color.white.opacity(0.40)
 
     // Functional accents
     static let running  = Color(red: 0.20, green: 0.78, blue: 0.45)   // Green

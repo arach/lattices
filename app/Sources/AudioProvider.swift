@@ -244,6 +244,7 @@ final class AudioLayer: ObservableObject {
 
 final class TalkieAudioProvider: AudioProvider {
     private var onTranscript: ((Transcription) -> Void)?
+    private var stopCompletion: ((Transcription?) -> Void)?
     private var _isListening = false
     private var startTime: Date?
 
@@ -320,8 +321,13 @@ final class TalkieAudioProvider: AudioProvider {
                             )
                             DiagnosticLog.shared.info("TalkieAudioProvider: transcribed → '\(text)'")
                             self.onTranscript?(t)
+                            // Also deliver via stopListening completion if waiting
+                            self.stopCompletion?(t)
+                            self.stopCompletion = nil
                         } else {
                             DiagnosticLog.shared.info("TalkieAudioProvider: no transcript in response")
+                            self.stopCompletion?(nil)
+                            self.stopCompletion = nil
                         }
 
                     case .failure(let error):
@@ -336,6 +342,8 @@ final class TalkieAudioProvider: AudioProvider {
                             text: "", confidence: 0, source: "talkie",
                             isPartial: false, durationMs: nil
                         ))
+                        self.stopCompletion?(nil)
+                        self.stopCompletion = nil
                     }
                 }
             }
@@ -353,18 +361,21 @@ final class TalkieAudioProvider: AudioProvider {
 
         DiagnosticLog.shared.info("TalkieAudioProvider: stopping dictation")
 
-        // stopDictation tells TalkieAgent to finalize — the transcript comes
-        // back through the streaming call's completion handler, not here.
-        // We just ack the stop.
+        // Store completion — the startDictation streaming completion will call it
+        // when the transcript arrives.
+        self.stopCompletion = completion
+
         client.call(method: "stopDictation") { result in
             DispatchQueue.main.async {
                 switch result {
                 case .success:
                     // Transcript arrives via the startDictation streaming completion
+                    // which will call stopCompletion
                     break
                 case .failure(let error):
                     DiagnosticLog.shared.warn("TalkieAudioProvider: stopDictation error — \(error.localizedDescription)")
-                    completion(nil)
+                    self.stopCompletion?(nil)
+                    self.stopCompletion = nil
                 }
             }
         }

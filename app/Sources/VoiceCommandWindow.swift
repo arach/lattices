@@ -2,12 +2,28 @@ import AppKit
 import Combine
 import SwiftUI
 
+// MARK: - Panel subclass (handles keyDown when focused)
+
+final class VoicePanel: NSPanel {
+    var onKeyDown: ((NSEvent) -> Void)?
+
+    override var canBecomeKey: Bool { true }
+
+    override func keyDown(with event: NSEvent) {
+        if let handler = onKeyDown {
+            handler(event)
+        } else {
+            super.keyDown(with: event)
+        }
+    }
+}
+
 // MARK: - Window Controller
 
 final class VoiceCommandWindow {
     static let shared = VoiceCommandWindow()
 
-    private(set) var panel: NSPanel?
+    private(set) var panel: VoicePanel?
     private var keyMonitor: Any?
     private var state: VoiceCommandState?
 
@@ -50,15 +66,18 @@ final class VoiceCommandWindow {
         let screen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }) ?? NSScreen.main ?? NSScreen.screens.first!
         let visible = screen.visibleFrame
 
-        let panelWidth: CGFloat = min(720, visible.width - 80)
+        let panelWidth: CGFloat = min(900, visible.width - 80)
         let panelHeight: CGFloat = min(560, visible.height - 80)
 
-        let p = NSPanel(
+        let p = VoicePanel(
             contentRect: NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight),
-            styleMask: [.borderless, .nonactivatingPanel],
+            styleMask: [.titled, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
+        p.onKeyDown = { [weak self] event in self?.handleKey(event) }
+        p.titlebarAppearsTransparent = true
+        p.titleVisibility = .hidden
         p.isOpaque = false
         p.backgroundColor = .clear
         p.level = .floating
@@ -105,34 +124,63 @@ final class VoiceCommandWindow {
         }
     }
 
-    private func installMonitors() {
-        keyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, let state = self.state else { return }
+    private func handleKey(_ event: NSEvent) {
+        guard let state else { return }
 
-            switch event.keyCode {
-            case 53: // Escape
+        switch event.keyCode {
+        case 53: // Escape
+            if state.phase == .listening {
+                state.cancelListening()
+                state.armed = false
+            } else {
+                dismiss()
+            }
+
+        case 48: // Tab — toggle armed
+            state.toggleArmed()
+
+        case 49: // Space — only when armed
+            guard state.armed else { break }
+            state.toggleListening()
+
+        default:
+            break
+        }
+    }
+
+    private var focusObservers: [NSObjectProtocol] = []
+
+    private func installMonitors() {
+        // Global monitor: catches keys when another app is focused
+        // When our panel is focused, VoicePanel.keyDown handles it instead
+        keyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            self?.handleKey(event)
+        }
+
+        // Focus/blur: auto-listen when focused, stop when blurred
+        let nc = NotificationCenter.default
+        focusObservers.append(
+            nc.addObserver(forName: NSWindow.didBecomeKeyNotification, object: panel, queue: .main) { [weak self] _ in
+                guard let self, let state = self.state else { return }
+                if state.armed, state.phase == .idle || state.phase == .result {
+                    state.startListening()
+                }
+            }
+        )
+        focusObservers.append(
+            nc.addObserver(forName: NSWindow.didResignKeyNotification, object: panel, queue: .main) { [weak self] _ in
+                guard let self, let state = self.state else { return }
                 if state.phase == .listening {
                     state.cancelListening()
-                    state.armed = false
-                } else {
-                    self.dismiss()
                 }
-
-            case 48: // Tab — toggle armed
-                state.toggleArmed()
-
-            case 49: // Space — only when armed
-                guard state.armed else { break }
-                state.toggleListening()
-
-            default:
-                break
             }
-        }
+        )
     }
 
     private func removeMonitors() {
         if let m = keyMonitor { NSEvent.removeMonitor(m); keyMonitor = nil }
+        for obs in focusObservers { NotificationCenter.default.removeObserver(obs) }
+        focusObservers.removeAll()
     }
 }
 
@@ -279,7 +327,7 @@ final class VoiceCommandState: ObservableObject {
     }
 
     func appendLog(_ msg: String) {
-        logLines.append(msg)
+        DiagnosticLog.shared.info(msg)
     }
 
     private func syncLogs() {
@@ -288,9 +336,7 @@ final class VoiceCommandState: ObservableObject {
         let entries = DiagnosticLog.shared.entries
         let start = min(logSnapshot, entries.count)
         let newLines = entries.suffix(from: start).map { $0.message }
-        if !newLines.isEmpty {
-            logLines = newLines
-        }
+        logLines = newLines
     }
 
     private func pollForAdvisor() {
@@ -314,6 +360,18 @@ final class VoiceCommandState: ObservableObject {
         }
     }
 
+    func restoreFromHistory(_ entry: TranscriptEntry) {
+        finalText = entry.text
+        intentName = entry.intent
+        intentSlots = entry.slots
+        executionResult = entry.result
+        resultItems = entry.resultItems
+        resultSummary = entry.resultItems.isEmpty ? "" : "\(entry.resultItems.count) result\(entry.resultItems.count == 1 ? "" : "s")"
+        logLines = entry.logLines
+        agentResponse = nil
+        phase = .result
+    }
+
     private func commitToHistory() {
         guard !finalText.isEmpty else { return }
         let entry = TranscriptEntry(
@@ -334,25 +392,27 @@ final class VoiceCommandState: ObservableObject {
         var checks = 0
         let maxChecks = 150
 
-        func poll() {
-            checks += 1
-
-            // Sync transcript
+        func syncState() {
+            // Sync transcript immediately
             if let transcript = audio.lastTranscript, !transcript.isEmpty {
                 self.finalText = transcript
             }
 
-            // Sync logs
-            syncLogs()
-
-            // Sync intent/slots
-            self.intentName = audio.matchedIntent
-            self.intentSlots = audio.matchedSlots
+            // Sync intent/slots as they become available
+            if let intent = audio.matchedIntent {
+                self.intentName = intent
+                self.intentSlots = audio.matchedSlots
+            }
 
             // Sync agent advisor response
             if let resp = audio.agentResponse {
                 self.agentResponse = resp
             }
+        }
+
+        func poll() {
+            checks += 1
+            syncState()
 
             let result = audio.executionResult
 
@@ -430,7 +490,9 @@ final class VoiceCommandState: ObservableObject {
             self.pollForAdvisor()
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { poll() }
+        // Sync immediately (no delay for transcript), then start polling
+        syncState()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { poll() }
     }
 }
 
@@ -444,32 +506,93 @@ struct VoiceCommandView: View {
 
     private var hasHistory: Bool { !state.history.isEmpty || !state.logLines.isEmpty || state.phase != .idle }
 
+    @State private var historyColumnWidth: CGFloat?
+    @State private var logColumnWidth: CGFloat?
+
     var body: some View {
         VStack(spacing: 0) {
             // Mic bar
             micBar
+            Rectangle().fill(Palette.borderLit).frame(height: 0.5)
 
-            // Main content
+            // Column headers — one row, full width divider underneath
             GeometryReader { geo in
-                HStack(alignment: .top, spacing: 0) {
-                    // Left: history + log — only shown when there's content
-                    if hasHistory {
-                        VStack(spacing: 0) {
-                            transcriptHistory
-                            logPane
+                let hasLog = !state.logLines.isEmpty
+                let histW = historyColumnWidth ?? geo.size.width * 0.15
+                let logW = logColumnWidth ?? geo.size.width * 0.15
+
+                VStack(spacing: 0) {
+                    // Shared header row — full width, intrinsic height only
+                    HStack(spacing: 0) {
+                        if hasHistory {
+                            Text("HISTORY")
+                                .font(Typo.geistMonoBold(9))
+                                .foregroundColor(Palette.textMuted)
+                                .tracking(1)
+                                .frame(width: histW, alignment: .leading)
+                                .padding(.horizontal, 14)
+
+                            Palette.border.frame(width: 0.5)
                         }
-                        .frame(width: geo.size.width * 0.4, height: geo.size.height, alignment: .top)
-                        .transition(.move(edge: .leading).combined(with: .opacity))
 
-                        Rectangle().fill(Palette.border).frame(width: 0.5)
+                        Text("VOICE COMMAND")
+                            .font(Typo.geistMonoBold(9))
+                            .foregroundColor(Palette.textMuted)
+                            .tracking(1)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 14)
+
+                        if hasLog {
+                            Palette.border.frame(width: 0.5)
+
+                            logHeader
+                                .frame(width: logW)
+                        }
                     }
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.vertical, 8)
 
-                    // Right: voice command — full height
-                    voiceCommandPane
-                        .frame(height: geo.size.height, alignment: .top)
+                    // Full-width divider
+                    Rectangle().fill(Palette.border).frame(height: 0.5)
+
+                    // Content row — fills remaining height
+                    HStack(spacing: 0) {
+                        if hasHistory {
+                            transcriptHistoryBody
+                                .frame(width: histW).frame(maxHeight: .infinity)
+                                .background(Palette.bgSidebar)
+
+                            columnDivider(
+                                width: $historyColumnWidth,
+                                defaultWidth: geo.size.width * 0.15,
+                                min: 140, max: geo.size.width * 0.5
+                            )
+                        }
+
+                        voiceCommandBody
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+                        if hasLog {
+                            columnDivider(
+                                width: $logColumnWidth,
+                                defaultWidth: geo.size.width * 0.15,
+                                min: 140, max: geo.size.width * 0.5,
+                                inverted: true
+                            )
+
+                            logBody
+                                .frame(width: logW).frame(maxHeight: .infinity)
+                                .background(Palette.bgSidebar)
+                        }
+                    }
+                    .frame(maxHeight: .infinity)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .animation(.easeInOut(duration: 0.25), value: hasHistory)
+                .animation(.easeInOut(duration: 0.25), value: hasLog)
             }
+
+            Rectangle().fill(Palette.borderLit).frame(height: 0.5)
 
             // Footer
             footerBar
@@ -553,20 +676,8 @@ struct VoiceCommandView: View {
 
     // MARK: - Transcript History (left pane)
 
-    private var transcriptHistory: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("HISTORY")
-                    .font(Typo.geistMonoBold(9))
-                    .foregroundColor(Palette.textMuted)
-                    .tracking(1)
-                Spacer()
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-
-            Rectangle().fill(Palette.border).frame(height: 0.5)
-
+    private var transcriptHistoryBody: some View {
+        Group {
             if !state.history.isEmpty {
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -586,111 +697,144 @@ struct VoiceCommandView: View {
                         }
                     }
                 }
+            } else {
+                Color.clear
             }
         }
-        .background(Palette.bg.opacity(0.5))
     }
 
     @State private var expandedEntries: Set<UUID> = []
 
     private func historyRow(_ entry: TranscriptEntry) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            // Timestamp + transcript
-            HStack(alignment: .top, spacing: 6) {
+        let isExpanded = expandedEntries.contains(entry.id)
+
+        return VStack(alignment: .leading, spacing: 4) {
+            // Always visible: compact row
+            HStack(alignment: .center, spacing: 6) {
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 7))
+                    .foregroundColor(Palette.textMuted)
+                    .frame(width: 8)
+
                 Text(entry.timestamp, style: .time)
                     .font(Typo.geistMono(9))
                     .foregroundColor(Palette.textMuted)
-                Text(entry.text)
-                    .font(Typo.geistMono(11))
-                    .foregroundColor(Palette.text)
-                    .lineLimit(3)
-                Spacer()
-            }
 
-            // Intent tag
-            if let intent = entry.intent {
-                HStack(spacing: 4) {
+                if let intent = entry.intent {
                     Text(intent)
                         .font(Typo.geistMonoBold(9))
                         .foregroundColor(Palette.running)
-                        .padding(.horizontal, 5)
+                } else {
+                    Text(entry.text)
+                        .font(Typo.geistMono(9))
+                        .foregroundColor(Palette.text)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                if !entry.resultItems.isEmpty {
+                    Text("\(entry.resultItems.count)")
+                        .font(Typo.geistMono(8))
+                        .foregroundColor(Palette.textMuted)
+                        .padding(.horizontal, 4)
                         .padding(.vertical, 1)
                         .background(
                             RoundedRectangle(cornerRadius: 3)
-                                .fill(Palette.running.opacity(0.1))
+                                .fill(Palette.surface)
                         )
-
-                    if !entry.slots.isEmpty {
-                        let slotText = entry.slots.map { "\($0.key)=\($0.value)" }.joined(separator: " ")
-                        Text(slotText)
-                            .font(Typo.geistMono(9))
-                            .foregroundColor(Palette.textDim)
-                    }
                 }
             }
 
-            // Result items (clickable)
-            if !entry.resultItems.isEmpty {
-                VStack(alignment: .leading, spacing: 2) {
-                    ForEach(Array(entry.resultItems.prefix(5).enumerated()), id: \.1.id) { idx, item in
-                        ResultRow(index: idx, item: item, onFocus: focusWindow, onTile: tileWindow)
-                    }
-                    if entry.resultItems.count > 5 {
-                        Text("+ \(entry.resultItems.count - 5) more")
-                            .font(Typo.geistMono(9))
-                            .foregroundColor(Palette.textMuted)
-                    }
-                }
-            } else if let result = entry.result, result != "ok" {
-                Text(result)
-                    .font(Typo.geistMono(9))
-                    .foregroundColor(Palette.detach)
-            }
+            // Expanded: full details
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 4) {
+                    // Transcript
+                    Text(entry.text)
+                        .font(Typo.geistMono(11))
+                        .foregroundColor(Palette.text)
+                        .lineLimit(3)
+                        .padding(.leading, 14)
 
-            // Expandable log lines
-            if expandedEntries.contains(entry.id), !entry.logLines.isEmpty {
-                VStack(alignment: .leading, spacing: 1) {
-                    ForEach(Array(entry.logLines.enumerated()), id: \.offset) { _, line in
-                        Text(line)
-                            .font(.system(size: 8, design: .monospaced))
-                            .foregroundColor(Palette.textMuted.opacity(0.7))
-                            .lineLimit(1)
+                    // Intent + slots
+                    if let intent = entry.intent {
+                        HStack(spacing: 4) {
+                            Text(intent)
+                                .font(Typo.geistMonoBold(9))
+                                .foregroundColor(Palette.running)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 3)
+                                        .fill(Palette.running.opacity(0.1))
+                                )
+
+                            if !entry.slots.isEmpty {
+                                let slotText = entry.slots.map { "\($0.key)=\($0.value)" }.joined(separator: " ")
+                                Text(slotText)
+                                    .font(Typo.geistMono(9))
+                                    .foregroundColor(Palette.textDim)
+                            }
+                        }
+                        .padding(.leading, 14)
+                    }
+
+                    // Result items
+                    if !entry.resultItems.isEmpty {
+                        VStack(alignment: .leading, spacing: 2) {
+                            ForEach(Array(entry.resultItems.prefix(5).enumerated()), id: \.1.id) { idx, item in
+                                ResultRow(index: idx, item: item, onFocus: focusWindow, onTile: tileWindow)
+                            }
+                            if entry.resultItems.count > 5 {
+                                Text("+ \(entry.resultItems.count - 5) more")
+                                    .font(Typo.geistMono(9))
+                                    .foregroundColor(Palette.textMuted)
+                            }
+                        }
+                        .padding(.leading, 14)
+                    } else if let result = entry.result, result != "ok" {
+                        Text(result)
+                            .font(Typo.geistMono(9))
+                            .foregroundColor(Palette.detach)
+                            .padding(.leading, 14)
+                    }
+
+                    // Log lines
+                    if !entry.logLines.isEmpty {
+                        VStack(alignment: .leading, spacing: 1) {
+                            ForEach(Array(entry.logLines.enumerated()), id: \.offset) { _, line in
+                                Text(line)
+                                    .font(.system(size: 8, design: .monospaced))
+                                    .foregroundColor(Palette.textMuted.opacity(0.7))
+                                    .lineLimit(1)
+                            }
+                        }
+                        .padding(.leading, 14)
+                        .padding(.top, 2)
                     }
                 }
-                .padding(.top, 2)
             }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.vertical, isExpanded ? 10 : 6)
+        .background(isExpanded ? Palette.surface.opacity(0.3) : Color.clear)
         .contentShape(Rectangle())
         .onTapGesture {
-            if entry.logLines.isEmpty { return }
-            if expandedEntries.contains(entry.id) {
-                expandedEntries.remove(entry.id)
-            } else {
-                expandedEntries.insert(entry.id)
+            withAnimation(.easeInOut(duration: 0.15)) {
+                if isExpanded {
+                    expandedEntries.remove(entry.id)
+                } else {
+                    expandedEntries.insert(entry.id)
+                }
             }
         }
     }
 
-    // MARK: - Voice Command (right pane, full height)
+    // MARK: - Voice Command (center pane)
 
-    private var voiceCommandPane: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("VOICE COMMAND")
-                    .font(Typo.geistMonoBold(9))
-                    .foregroundColor(Palette.textMuted)
-                    .tracking(1)
-                Spacer()
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-
-            Rectangle().fill(Palette.border).frame(height: 0.5)
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 10) {
+    private var voiceCommandBody: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
                     // Partial transcript (while listening)
                     if state.phase == .listening, !state.partialText.isEmpty {
                         commandSection("hearing...") {
@@ -780,9 +924,9 @@ struct VoiceCommandView: View {
                         advisorSection(agent)
                     }
                 }
-                .padding(14)
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-        }
     }
 
     // MARK: - Advisor (Claude says)
@@ -807,20 +951,20 @@ struct VoiceCommandView: View {
                 }) {
                     HStack(spacing: 6) {
                         Text(suggestion.label)
-                            .font(Typo.geistMono(10))
+                            .font(Typo.geistMonoBold(10))
                             .foregroundColor(Palette.text)
                         Image(systemName: "arrow.right")
-                            .font(.system(size: 8))
-                            .foregroundColor(Palette.textMuted)
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundColor(Palette.running)
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
                     .background(
                         RoundedRectangle(cornerRadius: 5)
-                            .fill(Palette.surface)
+                            .fill(Palette.running.opacity(0.08))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 5)
-                                    .strokeBorder(Palette.border, lineWidth: 0.5)
+                                    .strokeBorder(Palette.running.opacity(0.2), lineWidth: 0.5)
                             )
                     )
                 }
@@ -859,87 +1003,104 @@ struct VoiceCommandView: View {
         }
     }
 
-    // MARK: - Log (left pane, bottom)
+    // MARK: - Log (right pane)
 
-    private var logPane: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("LOG")
-                    .font(Typo.geistMonoBold(9))
+    private var logHeader: some View {
+        HStack {
+            Text("LOG")
+                .font(Typo.geistMonoBold(9))
+                .foregroundColor(Palette.textMuted)
+                .tracking(1)
+            Spacer()
+            if !DiagnosticLog.shared.entries.isEmpty {
+                Button(action: {
+                    let fmt = DateFormatter()
+                    fmt.dateFormat = "HH:mm:ss.SSS"
+                    let text = DiagnosticLog.shared.entries.map { entry in
+                        "\(fmt.string(from: entry.time)) \(entry.icon) \(entry.message)"
+                    }.joined(separator: "\n")
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(text, forType: .string)
+                }) {
+                    Text("copy")
+                        .font(Typo.geistMono(9))
+                        .foregroundColor(Palette.textMuted)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(Palette.surface)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 2)
+                                        .strokeBorder(Palette.border, lineWidth: 0.5)
+                                )
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+            Button(action: {
+                DiagnosticWindow.shared.toggle()
+            }) {
+                Image(systemName: "arrow.up.right.square")
+                    .font(.system(size: 9))
                     .foregroundColor(Palette.textMuted)
-                    .tracking(1)
-                Spacer()
-                if !state.logLines.isEmpty {
-                    Button(action: {
-                        let text = state.logLines.joined(separator: "\n")
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(text, forType: .string)
-                    }) {
-                        Text("copy")
-                            .font(Typo.geistMono(9))
-                            .foregroundColor(Palette.textMuted)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Palette.surface)
+                            .overlay(
                                 RoundedRectangle(cornerRadius: 2)
-                                    .fill(Palette.surface)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 2)
-                                            .strokeBorder(Palette.border, lineWidth: 0.5)
-                                    )
+                                    .strokeBorder(Palette.border, lineWidth: 0.5)
                             )
+                    )
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 14)
+    }
+
+    private var logBody: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 2) {
+                    ForEach(Array(state.logLines.enumerated()), id: \.offset) { idx, line in
+                        Text(line)
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundColor(Palette.textDim)
+                            .lineLimit(2)
+                            .id(idx)
                     }
-                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+            }
+            .onChange(of: state.logLines.count) { _ in
+                let last = state.logLines.count - 1
+                if last >= 0 {
+                    proxy.scrollTo(last, anchor: .bottom)
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
-
-            Rectangle().fill(Palette.border).frame(height: 0.5)
-
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 1) {
-                        ForEach(Array(state.logLines.enumerated()), id: \.offset) { idx, line in
-                            Text(line)
-                                .font(.system(size: 9, design: .monospaced))
-                                .foregroundColor(Palette.textMuted)
-                                .lineLimit(1)
-                                .id(idx)
-                        }
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 4)
-                }
-                .onChange(of: state.logLines.count) { _ in
-                    let last = state.logLines.count - 1
-                    if last >= 0 {
-                        proxy.scrollTo(last, anchor: .bottom)
-                    }
-                }
-            }
-            .frame(maxHeight: 100)
-            .background(Palette.bg.opacity(0.3))
         }
     }
 
     // MARK: - Section Helper
 
     private func commandSection<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(label)
                 .font(Typo.geistMono(9))
-                .foregroundColor(Palette.textMuted)
+                .foregroundColor(Palette.textDim)
             content()
         }
-        .padding(10)
+        .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 6)
-                .fill(Palette.surface.opacity(0.3))
+                .fill(Palette.surface.opacity(0.4))
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(Palette.border, lineWidth: 0.5)
+                        .strokeBorder(Palette.borderLit, lineWidth: 0.5)
                 )
         )
     }
@@ -947,23 +1108,20 @@ struct VoiceCommandView: View {
     // MARK: - Footer
 
     private var footerBar: some View {
-        VStack(spacing: 0) {
-            Rectangle().fill(Palette.border).frame(height: 0.5)
-            HStack(spacing: 12) {
-                footerHint("ESC", "Dismiss", dimmed: false)
-                footerHint("Tab", state.armed ? "Pause" : "Activate", dimmed: false)
-                footerHint("Space", state.phase == .listening ? "Stop" : "Speak", dimmed: !state.armed && state.phase != .listening)
+        HStack(spacing: 12) {
+            footerHint("ESC", "Dismiss", dimmed: false)
+            footerHint("Tab", state.armed ? "Pause" : "Activate", dimmed: false)
+            footerHint("Space", state.phase == .listening ? "Stop" : "Speak", dimmed: !state.armed && state.phase != .listening)
 
-                Spacer()
+            Spacer()
 
-                Text("find · show · open · tile · kill · scan")
-                    .font(Typo.geistMono(9))
-                    .foregroundColor(Palette.textMuted.opacity(0.5))
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
-            .background(Palette.surface.opacity(0.6))
+            Text("find · show · open · tile · kill · scan")
+                .font(Typo.geistMono(9))
+                .foregroundColor(Palette.textDim)
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        .background(Palette.surface.opacity(0.6))
     }
 
     private func footerHint(_ key: String, _ label: String, dimmed: Bool = false) -> some View {
@@ -985,6 +1143,24 @@ struct VoiceCommandView: View {
                 .font(Typo.caption(9))
                 .foregroundColor(dimmed ? Palette.textMuted.opacity(0.3) : Palette.textMuted)
         }
+    }
+
+    // MARK: - Resizable Column Divider
+
+    private func columnDivider(
+        width: Binding<CGFloat?>,
+        defaultWidth: CGFloat,
+        min minW: CGFloat,
+        max maxW: CGFloat,
+        inverted: Bool = false
+    ) -> some View {
+        DragDivider(
+            width: width,
+            defaultWidth: defaultWidth,
+            minWidth: minW,
+            maxWidth: maxW,
+            inverted: inverted
+        )
     }
 
     private func focusWindow(wid: UInt32) {
@@ -1080,7 +1256,7 @@ struct ResultRow: View {
     @State private var isHovered = false
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 8) {
             Text("\(index + 1)")
                 .font(Typo.geistMono(9))
                 .foregroundColor(Palette.textMuted)
@@ -1088,7 +1264,7 @@ struct ResultRow: View {
             Text(item.app)
                 .font(Typo.geistMonoBold(10))
                 .foregroundColor(Palette.textDim)
-                .frame(width: 60, alignment: .leading)
+                .frame(minWidth: 60, alignment: .leading)
             Text(item.title.isEmpty ? "(untitled)" : item.title)
                 .font(Typo.geistMono(10))
                 .foregroundColor(Palette.text)
@@ -1118,8 +1294,8 @@ struct ResultRow: View {
                 .transition(.opacity.combined(with: .move(edge: .trailing)))
             }
         }
-        .padding(.vertical, 3)
-        .padding(.horizontal, 6)
+        .padding(.vertical, 5)
+        .padding(.horizontal, 8)
         .background(
             RoundedRectangle(cornerRadius: 4)
                 .fill(isHovered ? Palette.surface : Color.clear)
@@ -1152,6 +1328,87 @@ struct ResultRow: View {
         }
         .buttonStyle(.plain)
         .help(label)
+    }
+}
+
+// MARK: - Drag Divider (NSView-backed to prevent window drag)
+
+struct DragDivider: NSViewRepresentable {
+    @Binding var width: CGFloat?
+    let defaultWidth: CGFloat
+    let minWidth: CGFloat
+    let maxWidth: CGFloat
+    var inverted: Bool = false
+
+    func makeNSView(context: Context) -> DragDividerNSView {
+        let view = DragDividerNSView()
+        view.onDrag = { delta in
+            let current = width ?? defaultWidth
+            let d = inverted ? -delta : delta
+            width = Swift.max(minWidth, Swift.min(maxWidth, current + d))
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: DragDividerNSView, context: Context) {
+        nsView.onDrag = { delta in
+            let current = width ?? defaultWidth
+            let d = inverted ? -delta : delta
+            width = Swift.max(minWidth, Swift.min(maxWidth, current + d))
+        }
+    }
+}
+
+final class DragDividerNSView: NSView {
+    var onDrag: ((CGFloat) -> Void)?
+    private var lastX: CGFloat = 0
+    private var trackingArea: NSTrackingArea?
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: 1, height: NSView.noIntrinsicMetric)
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let t = trackingArea { removeTrackingArea(t) }
+        let area = NSTrackingArea(
+            rect: bounds.insetBy(dx: -3, dy: 0),
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self
+        )
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let lineX = bounds.midX
+        NSColor.white.withAlphaComponent(0.10).setFill()
+        NSRect(x: lineX - 0.25, y: 0, width: 0.5, height: bounds.height).fill()
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        NSCursor.resizeLeftRight.push()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        NSCursor.pop()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        lastX = event.locationInWindow.x
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        let x = event.locationInWindow.x
+        let delta = x - lastX
+        lastX = x
+        onDrag?(delta)
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        // Expand hit area to 7pt wide
+        let expanded = frame.insetBy(dx: -3, dy: 0)
+        return expanded.contains(point) ? self : nil
     }
 }
 

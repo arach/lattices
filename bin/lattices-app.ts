@@ -1,12 +1,12 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 
 import { execSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, chmodSync, createWriteStream } from "node:fs";
-import { resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import { get } from "node:https";
+import type { IncomingMessage } from "node:http";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+const __dirname = import.meta.dir;
 const appDir = resolve(__dirname, "../app");
 const bundlePath = resolve(appDir, "Lattices.app");
 const binaryDir = resolve(bundlePath, "Contents/MacOS");
@@ -17,7 +17,7 @@ const ASSET_NAME = "Lattices-macos-arm64";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-function isRunning() {
+function isRunning(): boolean {
   try {
     execSync("pgrep -x Lattices", { stdio: "pipe" });
     return true;
@@ -26,7 +26,7 @@ function isRunning() {
   }
 }
 
-function quit() {
+function quit(): boolean {
   try {
     execSync("pkill -x Lattices", { stdio: "pipe" });
     // Wait briefly for process to exit
@@ -41,7 +41,7 @@ function quit() {
   }
 }
 
-function hasSwift() {
+function hasSwift(): boolean {
   try {
     execSync("which swift", { stdio: "pipe" });
     return true;
@@ -50,7 +50,7 @@ function hasSwift() {
   }
 }
 
-function launch(extraArgs = []) {
+function launch(extraArgs: string[] = []): void {
   if (isRunning()) {
     console.log("lattices app is already running.");
     return;
@@ -63,7 +63,7 @@ function launch(extraArgs = []) {
 
 // ── Build from source (current arch only) ────────────────────────────
 
-function buildFromSource() {
+function buildFromSource(): boolean {
   console.log("Building lattices app from source...");
   try {
     execSync("swift build -c release", {
@@ -108,7 +108,7 @@ function buildFromSource() {
       `codesign --force --sign ${signArg} ${entFlag} --identifier com.arach.lattices '${bundlePath}'`,
       { stdio: "pipe" }
     );
-  } catch (e) {
+  } catch {
     // Non-fatal — app still works, just permissions won't persist across rebuilds
     console.log("Warning: code signing failed — permissions may not persist across rebuilds.");
   }
@@ -120,10 +120,10 @@ function buildFromSource() {
 
 // ── Download from GitHub releases ────────────────────────────────────
 
-function httpsGet(url) {
+function httpsGet(url: string): Promise<IncomingMessage> {
   return new Promise((resolve, reject) => {
     get(url, { headers: { "User-Agent": "lattices" } }, (res) => {
-      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+      if (res.statusCode! >= 300 && res.statusCode! < 400 && res.headers.location) {
         return httpsGet(res.headers.location).then(resolve, reject);
       }
       if (res.statusCode !== 200) {
@@ -136,24 +136,24 @@ function httpsGet(url) {
   });
 }
 
-async function download() {
+async function download(): Promise<boolean> {
   console.log("Downloading pre-built binary...");
 
   try {
     const apiUrl = `https://api.github.com/repos/${REPO}/releases/latest`;
     const apiRes = await httpsGet(apiUrl);
-    const chunks = [];
-    for await (const chunk of apiRes) chunks.push(chunk);
+    const chunks: Buffer[] = [];
+    for await (const chunk of apiRes) chunks.push(chunk as Buffer);
     const release = JSON.parse(Buffer.concat(chunks).toString());
 
-    const asset = release.assets?.find((a) => a.name === ASSET_NAME);
+    const asset = release.assets?.find((a: { name: string }) => a.name === ASSET_NAME);
     if (!asset) throw new Error("Binary not found in release assets");
 
     const dlRes = await httpsGet(asset.browser_download_url);
 
     mkdirSync(binaryDir, { recursive: true });
     const ws = createWriteStream(binaryPath);
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       dlRes.pipe(ws);
       ws.on("finish", resolve);
       ws.on("error", reject);
@@ -163,14 +163,14 @@ async function download() {
     console.log("Download complete.");
     return true;
   } catch (e) {
-    console.log(`Download failed: ${e.message}`);
+    console.log(`Download failed: ${(e as Error).message}`);
     return false;
   }
 }
 
 // ── Commands ─────────────────────────────────────────────────────────
 
-async function ensureBinary() {
+async function ensureBinary(): Promise<void> {
   if (existsSync(binaryPath)) return;
 
   // 1. Try local compile (fast, matches exact system)
@@ -187,15 +187,15 @@ async function ensureBinary() {
   console.error(
     "Could not build or download the lattices app.\n" +
     "Options:\n" +
-    "  • Install Xcode CLI tools:  xcode-select --install\n" +
-    "  • Download manually from:   https://github.com/" + REPO + "/releases"
+    "  \u2022 Install Xcode CLI tools:  xcode-select --install\n" +
+    "  \u2022 Download manually from:   https://github.com/" + REPO + "/releases"
   );
   process.exit(1);
 }
 
 const cmd = process.argv[2];
 const flags = process.argv.slice(3);
-const launchFlags = [];
+const launchFlags: string[] = [];
 if (flags.includes("--diagnostics") || flags.includes("-d")) launchFlags.push("--diagnostics");
 if (flags.includes("--screen-map") || flags.includes("-m")) launchFlags.push("--screen-map");
 

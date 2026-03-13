@@ -9,6 +9,7 @@ struct WindowEntry: Codable, Identifiable {
     let spaceIds: [Int]
     let isOnScreen: Bool
     let latticesSession: String?
+    var axVerified: Bool = true
 
     var id: UInt32 { wid }
 }
