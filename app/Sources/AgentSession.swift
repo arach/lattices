@@ -10,10 +10,30 @@ import Foundation
 final class AgentSession: ObservableObject {
     let model: String
     let label: String
-    let sessionId: UUID
+    private(set) var sessionId: UUID
 
     @Published var isReady = false
     @Published var lastResponse: AgentResponse?
+    @Published var sessionStats: SessionStats = .empty
+
+    struct SessionStats {
+        let inputTokens: Int
+        let outputTokens: Int
+        let cacheReadTokens: Int
+        let cacheCreationTokens: Int
+        let contextWindow: Int
+        let costUSD: Double
+        let numTurns: Int
+
+        static let empty = SessionStats(inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, contextWindow: 0, costUSD: 0, numTurns: 0)
+
+        /// How full is the context? 0.0–1.0
+        var contextUsage: Double {
+            guard contextWindow > 0 else { return 0 }
+            let totalInput = inputTokens + cacheReadTokens + cacheCreationTokens
+            return Double(totalInput) / Double(contextWindow)
+        }
+    }
 
     private let claudePath = "/Users/arach/.local/bin/claude"
     private let queue = DispatchQueue(label: "agent-session", qos: .userInitiated)
@@ -83,18 +103,20 @@ final class AgentSession: ObservableObject {
             "-p", prompt,
             "--model", model,
             "--output-format", "stream-json",
-            "--session-id", sessionId.uuidString,
             "--max-budget-usd", "0.50",
             "--permission-mode", "plan",
             "--no-chrome",
         ]
 
         if callCount == 0 {
-            // First call: include system prompt
-            args.append(contentsOf: ["--system-prompt", buildSystemPrompt()])
+            // First call: create session with system prompt
+            args.append(contentsOf: [
+                "--session-id", sessionId.uuidString,
+                "--system-prompt", buildSystemPrompt(),
+            ])
         } else {
-            // Subsequent calls: continue the existing session
-            args.append(contentsOf: ["--continue", sessionId.uuidString])
+            // Subsequent calls: resume existing session (context carries over)
+            args.append(contentsOf: ["--resume", sessionId.uuidString])
         }
 
         proc.arguments = args
@@ -133,53 +155,104 @@ final class AgentSession: ObservableObject {
             return nil
         }
 
-        // Parse stream-json output — extract text from result line
-        let text = parseStreamJSON(output)
-        guard let text, !text.isEmpty else {
+        // Parse stream-json output — extract text and stats
+        let parsed = parseStreamJSON(output)
+
+        // Update session stats
+        let stats = parsed.stats
+        DispatchQueue.main.async {
+            self.sessionStats = stats
+        }
+
+        if stats.contextWindow > 0 {
+            let pct = Int(stats.contextUsage * 100)
+            DiagnosticLog.shared.info("AgentSession[\(label)]: context \(pct)% (\(stats.inputTokens + stats.cacheReadTokens + stats.cacheCreationTokens)/\(stats.contextWindow)) cost=$\(String(format: "%.4f", stats.costUSD))")
+        }
+
+        guard let text = parsed.text, !text.isEmpty else {
             DiagnosticLog.shared.info("AgentSession[\(label)]: no text in response")
             return nil
         }
 
-        callCount += 1
+        // Auto-reset session if context usage > 75%
+        if stats.contextUsage > 0.75 {
+            DiagnosticLog.shared.warn("AgentSession[\(label)]: context at \(Int(stats.contextUsage * 100))%, resetting session")
+            sessionId = UUID()  // Fresh session ID
+            callCount = 0       // Next call will create a fresh session
+        } else {
+            callCount += 1
+        }
+
         DiagnosticLog.shared.info("AgentSession[\(label)]: \(text.prefix(120))")
         return AgentResponse.parse(text: text)
     }
 
-    /// Parse stream-json output lines, extract the final result text.
-    private func parseStreamJSON(_ output: String) -> String? {
+    struct ParsedResponse {
+        let text: String?
+        let stats: SessionStats
+    }
+
+    /// Parse stream-json output lines, extract text and session stats from the result line.
+    private func parseStreamJSON(_ output: String) -> ParsedResponse {
         let lines = output.components(separatedBy: "\n")
+        var resultText: String?
+        var stats = SessionStats.empty
 
-        // Look for the "result" line which has the complete text
-        for line in lines.reversed() {
-            guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
-
-            let type = json["type"] as? String
-            if type == "result", let result = json["result"] as? String {
-                return result
-            }
-        }
-
-        // Fallback: accumulate text from content blocks
-        var text = ""
         for line in lines {
             guard let data = line.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
 
             let type = json["type"] as? String
-            if type == "assistant",
+
+            if type == "result" {
+                resultText = json["result"] as? String
+                let numTurns = json["num_turns"] as? Int ?? 0
+                let costUSD = json["total_cost_usd"] as? Double ?? 0
+
+                // Usage stats
+                let usage = json["usage"] as? [String: Any] ?? [:]
+                let inputTokens = usage["input_tokens"] as? Int ?? 0
+                let outputTokens = usage["output_tokens"] as? Int ?? 0
+                let cacheRead = usage["cache_read_input_tokens"] as? Int ?? 0
+                let cacheCreation = usage["cache_creation_input_tokens"] as? Int ?? 0
+
+                // Context window from modelUsage
+                var contextWindow = 0
+                if let modelUsage = json["modelUsage"] as? [String: Any] {
+                    for (_, v) in modelUsage {
+                        if let m = v as? [String: Any], let cw = m["contextWindow"] as? Int {
+                            contextWindow = cw
+                        }
+                    }
+                }
+
+                stats = SessionStats(
+                    inputTokens: inputTokens,
+                    outputTokens: outputTokens,
+                    cacheReadTokens: cacheRead,
+                    cacheCreationTokens: cacheCreation,
+                    contextWindow: contextWindow,
+                    costUSD: costUSD,
+                    numTurns: numTurns
+                )
+            }
+
+            // Fallback: accumulate text from assistant content blocks
+            if resultText == nil, type == "assistant",
                let message = json["message"] as? [String: Any],
                let content = message["content"] as? [[String: Any]] {
+                var text = ""
                 for block in content {
                     if block["type"] as? String == "text",
                        let t = block["text"] as? String {
                         text += t
                     }
                 }
+                if !text.isEmpty { resultText = text }
             }
         }
 
-        return text.isEmpty ? nil : text
+        return ParsedResponse(text: resultText, stats: stats)
     }
 
     // MARK: - System prompt
@@ -221,6 +294,7 @@ final class AgentSession: ObservableObject {
         - commentary: 1 sentence max. null if the matched command fully covers the request.
         - suggestion: a follow-up action. null if none needed.
         - Never suggest what was already executed.
+        - Suggestions MUST include all required slots. e.g. search requires {"query": "..."}.
         - Be terse and useful, not chatty.
         """
     }

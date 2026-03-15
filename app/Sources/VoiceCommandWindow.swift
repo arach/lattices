@@ -6,6 +6,7 @@ import SwiftUI
 
 final class VoicePanel: NSPanel {
     var onKeyDown: ((NSEvent) -> Void)?
+    var onFlagsChanged: ((NSEvent) -> Void)?
 
     override var canBecomeKey: Bool { true }
 
@@ -14,6 +15,14 @@ final class VoicePanel: NSPanel {
             handler(event)
         } else {
             super.keyDown(with: event)
+        }
+    }
+
+    override func flagsChanged(with event: NSEvent) {
+        if let handler = onFlagsChanged {
+            handler(event)
+        } else {
+            super.flagsChanged(with: event)
         }
     }
 }
@@ -47,10 +56,7 @@ final class VoiceCommandWindow {
                 p.animator().alphaValue = 1.0
             }
             installMonitors()
-            // Re-show respects the user's last armed state
-            if s.armed, s.phase == .idle || s.phase == .result {
-                s.startListening()
-            }
+            // Push-to-talk: user holds Option to start, no auto-listen
             return
         }
 
@@ -76,6 +82,7 @@ final class VoiceCommandWindow {
             defer: false
         )
         p.onKeyDown = { [weak self] event in self?.handleKey(event) }
+        p.onFlagsChanged = { [weak self] event in self?.handleFlags(event) }
         p.titlebarAppearsTransparent = true
         p.titleVisibility = .hidden
         p.isOpaque = false
@@ -139,34 +146,49 @@ final class VoiceCommandWindow {
         case 48: // Tab — toggle armed
             state.toggleArmed()
 
-        case 49: // Space — only when armed
-            guard state.armed else { break }
-            state.toggleListening()
-
         default:
             break
         }
     }
 
+    /// Push-to-talk: hold Option to record, release to stop. Only when panel is focused.
+    private func handleFlags(_ event: NSEvent) {
+        guard let state else { return }
+        let optionDown = event.modifierFlags.contains(.option)
+
+        if optionDown {
+            // Option pressed — start recording
+            if state.armed, state.phase == .idle || state.phase == .result {
+                state.startListening()
+            }
+        } else {
+            // Option released — stop recording
+            if state.phase == .listening {
+                state.stopListening()
+            }
+        }
+    }
+
     private var focusObservers: [NSObjectProtocol] = []
 
+    private var flagsMonitor: Any?
+
     private func installMonitors() {
-        // Global monitor: catches keys when another app is focused
-        // When our panel is focused, VoicePanel.keyDown handles it instead
+        // Global monitor: Escape/Tab only (no recording keys globally)
         keyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
             self?.handleKey(event)
         }
 
-        // Focus/blur: auto-listen when focused, stop when blurred
+        // Local flagsChanged monitor: push-to-talk with Option key (only when panel is focused)
+        flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            // Only handle when our panel is the key window
+            guard let self, event.window === self.panel else { return event }
+            self.handleFlags(event)
+            return event
+        }
+
+        // Focus/blur: cancel recording if window loses focus
         let nc = NotificationCenter.default
-        focusObservers.append(
-            nc.addObserver(forName: NSWindow.didBecomeKeyNotification, object: panel, queue: .main) { [weak self] _ in
-                guard let self, let state = self.state else { return }
-                if state.armed, state.phase == .idle || state.phase == .result {
-                    state.startListening()
-                }
-            }
-        )
         focusObservers.append(
             nc.addObserver(forName: NSWindow.didResignKeyNotification, object: panel, queue: .main) { [weak self] _ in
                 guard let self, let state = self.state else { return }
@@ -179,6 +201,7 @@ final class VoiceCommandWindow {
 
     private func removeMonitors() {
         if let m = keyMonitor { NSEvent.removeMonitor(m); keyMonitor = nil }
+        if let m = flagsMonitor { NSEvent.removeMonitor(m); flagsMonitor = nil }
         for obs in focusObservers { NotificationCenter.default.removeObserver(obs) }
         focusObservers.removeAll()
     }
@@ -504,8 +527,6 @@ struct VoiceCommandView: View {
 
     private let docsURL = "https://lattices.dev/docs/voice"
 
-    private var hasHistory: Bool { !state.history.isEmpty || !state.logLines.isEmpty || state.phase != .idle }
-
     @State private var historyColumnWidth: CGFloat?
     @State private var logColumnWidth: CGFloat?
 
@@ -513,86 +534,80 @@ struct VoiceCommandView: View {
         VStack(spacing: 0) {
             // Mic bar
             micBar
-            Rectangle().fill(Palette.borderLit).frame(height: 0.5)
+            Rectangle().fill(Palette.border).frame(height: 0.5)
 
-            // Column headers — one row, full width divider underneath
+            // Three-column layout — all widths computed explicitly
             GeometryReader { geo in
-                let hasLog = !state.logLines.isEmpty
-                let histW = historyColumnWidth ?? geo.size.width * 0.15
-                let logW = logColumnWidth ?? geo.size.width * 0.15
+                let histW = historyColumnWidth ?? geo.size.width * 0.20
+                let logW = logColumnWidth ?? geo.size.width * 0.28
+                let dividerW: CGFloat = 1
+                let voiceW = geo.size.width - histW - logW - (dividerW * 2)
 
-                VStack(spacing: 0) {
-                    // Shared header row — full width, intrinsic height only
-                    HStack(spacing: 0) {
-                        if hasHistory {
-                            Text("HISTORY")
-                                .font(Typo.geistMonoBold(9))
-                                .foregroundColor(Palette.textMuted)
-                                .tracking(1)
-                                .frame(width: histW, alignment: .leading)
-                                .padding(.horizontal, 14)
+                HStack(spacing: 0) {
+                    // HISTORY column
+                    VStack(spacing: 0) {
+                        Text("HISTORY")
+                            .font(Typo.geistMonoBold(9))
+                            .foregroundColor(Palette.textMuted)
+                            .tracking(1)
+                            .padding(.leading, 16)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 8)
+                        Rectangle().fill(Palette.border).frame(height: 0.5)
+                        transcriptHistoryBody
+                            .frame(width: histW, height: geo.size.height - 30)
+                    }
+                    .frame(width: histW, height: geo.size.height)
 
-                            Palette.border.frame(width: 0.5)
-                        }
+                    // Left divider — full height
+                    columnDivider(
+                        width: $historyColumnWidth,
+                        defaultWidth: geo.size.width * 0.20,
+                        min: 100, max: geo.size.width * 0.35
+                    )
+                    .frame(height: geo.size.height)
 
+                    // VOICE COMMAND column — explicit width
+                    VStack(spacing: 0) {
                         Text("VOICE COMMAND")
                             .font(Typo.geistMonoBold(9))
                             .foregroundColor(Palette.textMuted)
                             .tracking(1)
+                            .padding(.leading, 16)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 14)
-
-                        if hasLog {
-                            Palette.border.frame(width: 0.5)
-
-                            logHeader
-                                .frame(width: logW)
-                        }
-                    }
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.vertical, 8)
-
-                    // Full-width divider
-                    Rectangle().fill(Palette.border).frame(height: 0.5)
-
-                    // Content row — fills remaining height
-                    HStack(spacing: 0) {
-                        if hasHistory {
-                            transcriptHistoryBody
-                                .frame(width: histW).frame(maxHeight: .infinity)
-                                .background(Palette.bgSidebar)
-
-                            columnDivider(
-                                width: $historyColumnWidth,
-                                defaultWidth: geo.size.width * 0.15,
-                                min: 140, max: geo.size.width * 0.5
-                            )
-                        }
-
+                            .padding(.vertical, 8)
+                        Rectangle().fill(Palette.border).frame(height: 0.5)
                         voiceCommandBody
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-
-                        if hasLog {
-                            columnDivider(
-                                width: $logColumnWidth,
-                                defaultWidth: geo.size.width * 0.15,
-                                min: 140, max: geo.size.width * 0.5,
-                                inverted: true
-                            )
-
-                            logBody
-                                .frame(width: logW).frame(maxHeight: .infinity)
-                                .background(Palette.bgSidebar)
-                        }
+                            .frame(width: voiceW, height: geo.size.height - 30, alignment: .topLeading)
                     }
-                    .frame(maxHeight: .infinity)
+                    .frame(width: voiceW, height: geo.size.height)
+
+                    // Right divider — full height
+                    columnDivider(
+                        width: $logColumnWidth,
+                        defaultWidth: geo.size.width * 0.28,
+                        min: 140, max: geo.size.width * 0.40,
+                        inverted: true
+                    )
+                    .frame(height: geo.size.height)
+
+                    // LOG + AI column (split vertically)
+                    VStack(spacing: 0) {
+                        logHeader
+                            .frame(width: logW, alignment: .leading)
+                        Rectangle().fill(Palette.border).frame(height: 0.5)
+                        logBody
+                            .frame(width: logW, height: (geo.size.height - 30) * 0.55)
+                        Rectangle().fill(Palette.border).frame(height: 0.5)
+                        aiCorner
+                            .frame(width: logW, height: (geo.size.height - 30) * 0.45)
+                    }
+                    .frame(width: logW, height: geo.size.height)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .animation(.easeInOut(duration: 0.25), value: hasHistory)
-                .animation(.easeInOut(duration: 0.25), value: hasLog)
+                .frame(width: geo.size.width, height: geo.size.height)
             }
 
-            Rectangle().fill(Palette.borderLit).frame(height: 0.5)
+            Rectangle().fill(Palette.border).frame(height: 0.5)
 
             // Footer
             footerBar
@@ -642,7 +657,7 @@ struct VoiceCommandView: View {
             switch state.phase {
             case .idle:
                 if state.armed {
-                    Text("ready — Space to speak")
+                    Text("ready — hold ⌥ to speak")
                         .foregroundColor(Palette.textMuted)
                 } else {
                     Text("paused — Tab to activate")
@@ -662,13 +677,8 @@ struct VoiceCommandView: View {
                         .foregroundColor(Palette.textDim)
                 }
             case .result:
-                if state.armed {
-                    Text("done — Space for next")
-                        .foregroundColor(Palette.textMuted)
-                } else {
-                    Text("done — paused")
-                        .foregroundColor(Palette.textMuted.opacity(0.5))
-                }
+                Text("done")
+                    .foregroundColor(Palette.textMuted)
             }
         }
         .font(Typo.geistMono(10))
@@ -833,8 +843,10 @@ struct VoiceCommandView: View {
     // MARK: - Voice Command (center pane)
 
     private var voiceCommandBody: some View {
-        ScrollView {
+        ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: 14) {
+                    // Zero-height spacer forces VStack to fill ScrollView width
+                    Color.clear.frame(maxWidth: .infinity, maxHeight: 0)
                     // Partial transcript (while listening)
                     if state.phase == .listening, !state.partialText.isEmpty {
                         commandSection("hearing...") {
@@ -919,73 +931,71 @@ struct VoiceCommandView: View {
                         }
                     }
 
-                    // Claude advisor section
-                    if let agent = state.agentResponse {
-                        advisorSection(agent)
-                    }
+                    // Advisor now lives in the AI corner (bottom-right)
                 }
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
     }
 
-    // MARK: - Advisor (Claude says)
-
-    private func advisorSection(_ response: AgentResponse) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("CLAUDE")
-                .font(Typo.geistMono(9))
-                .foregroundColor(Palette.textMuted)
-                .tracking(1)
-
-            if let commentary = response.commentary {
-                Text(commentary)
-                    .font(Typo.geistMono(11))
-                    .foregroundColor(Palette.text)
-                    .lineLimit(3)
-            }
-
-            if let suggestion = response.suggestion {
-                Button(action: {
-                    executeSuggestion(suggestion)
-                }) {
-                    HStack(spacing: 6) {
-                        Text(suggestion.label)
-                            .font(Typo.geistMonoBold(10))
-                            .foregroundColor(Palette.text)
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundColor(Palette.running)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .background(
-                        RoundedRectangle(cornerRadius: 5)
-                            .fill(Palette.running.opacity(0.08))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 5)
-                                    .strokeBorder(Palette.running.opacity(0.2), lineWidth: 0.5)
-                            )
-                    )
-                }
-                .buttonStyle(.plain)
+    private func copyAIResponse() {
+        guard let response = state.agentResponse else { return }
+        var text = ""
+        if let commentary = response.commentary { text += commentary }
+        if let suggestion = response.suggestion {
+            if !text.isEmpty { text += "\n" }
+            text += "\(suggestion.label) → \(suggestion.intent)"
+            if !suggestion.slots.isEmpty {
+                text += " " + suggestion.slots.map { "\($0.key)=\($0.value)" }.joined(separator: ", ")
             }
         }
-        .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Palette.surface.opacity(0.4))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(Palette.border.opacity(0.5), lineWidth: 0.5)
-                )
-        )
-        .transition(.opacity.combined(with: .move(edge: .bottom)))
-        .animation(.easeInOut(duration: 0.3), value: response.raw)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    private func manuallyAskAdvisor() {
+        let transcript = state.finalText
+        let matched = state.intentName ?? "none"
+        let slots = state.intentSlots.map { "\($0.key)=\($0.value)" }.joined(separator: ", ")
+        let matchStr = slots.isEmpty ? matched : "\(matched)(\(slots))"
+
+        let haiku = AgentPool.shared.haiku
+        guard haiku.isReady else {
+            state.appendLog("AI not ready")
+            return
+        }
+
+        state.appendLog("Asking AI...")
+        let message = "Transcript: \"\(transcript)\"\nMatched: \(matchStr)"
+        haiku.send(message: message) { [weak state] response in
+            guard let state = state, let response = response else { return }
+            state.agentResponse = response
+        }
     }
 
     private func executeSuggestion(_ suggestion: AgentResponse.AgentSuggestion) {
-        let slots: [String: JSON] = suggestion.slots.reduce(into: [:]) { dict, pair in
+        var slotsDict = suggestion.slots
+
+        // If the intent needs a query slot and Haiku didn't include one,
+        // try to extract it from the label or fall back to the original query
+        if suggestion.intent == "search" && slotsDict["query"] == nil {
+            // Try extracting from label: "Deep search Talkie" → "Talkie"
+            let label = suggestion.label
+            let prefixes = ["Deep search ", "Search ", "Find ", "deep search ", "search ", "find "]
+            var extracted: String?
+            for prefix in prefixes {
+                if label.hasPrefix(prefix) {
+                    extracted = String(label.dropFirst(prefix.count))
+                    break
+                }
+            }
+            // Fall back to the original query slot from the local match
+            let query = extracted ?? state.intentSlots["query"] ?? state.finalText
+            slotsDict["query"] = query
+            DiagnosticLog.shared.info("Advisor: inferred query='\(query)' for search suggestion")
+        }
+
+        let slots: [String: JSON] = slotsDict.reduce(into: [:]) { dict, pair in
             dict[pair.key] = .string(pair.value)
         }
         let match = IntentMatch(
@@ -998,6 +1008,17 @@ struct VoiceCommandView: View {
             let result = try PhraseMatcher.shared.execute(match)
             state.appendLog("Advisor: executed \(suggestion.intent) → ok")
             DiagnosticLog.shared.info("Advisor suggestion executed: \(suggestion.intent) → \(result)")
+
+            // Capture the learning signal: advisor saved us, user engaged
+            AdvisorLearningStore.shared.record(
+                transcript: state.finalText,
+                localIntent: state.intentName,
+                localSlots: state.intentSlots,
+                localResultCount: state.resultItems.count,
+                advisorIntent: suggestion.intent,
+                advisorSlots: suggestion.slots,
+                advisorLabel: suggestion.label
+            )
         } catch {
             state.appendLog("Advisor: \(suggestion.intent) failed — \(error.localizedDescription)")
         }
@@ -1006,7 +1027,7 @@ struct VoiceCommandView: View {
     // MARK: - Log (right pane)
 
     private var logHeader: some View {
-        HStack {
+        HStack(spacing: 6) {
             Text("LOG")
                 .font(Typo.geistMonoBold(9))
                 .foregroundColor(Palette.textMuted)
@@ -1025,16 +1046,6 @@ struct VoiceCommandView: View {
                     Text("copy")
                         .font(Typo.geistMono(9))
                         .foregroundColor(Palette.textMuted)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
-                        .background(
-                            RoundedRectangle(cornerRadius: 2)
-                                .fill(Palette.surface)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .strokeBorder(Palette.border, lineWidth: 0.5)
-                                )
-                        )
                 }
                 .buttonStyle(.plain)
             }
@@ -1044,42 +1055,192 @@ struct VoiceCommandView: View {
                 Image(systemName: "arrow.up.right.square")
                     .font(.system(size: 9))
                     .foregroundColor(Palette.textMuted)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1)
-                    .background(
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(Palette.surface)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 2)
-                                    .strokeBorder(Palette.border, lineWidth: 0.5)
-                            )
-                    )
             }
             .buttonStyle(.plain)
         }
         .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+    }
+
+    @StateObject private var diagnosticLog = DiagnosticLog.shared
+
+    /// Rolling window: only show the tail of the log
+    private var visibleLogEntries: [DiagnosticLog.Entry] {
+        let entries = diagnosticLog.entries
+        let tail = 12
+        if entries.count <= tail { return entries }
+        return Array(entries.suffix(tail))
     }
 
     private var logBody: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 2) {
-                    ForEach(Array(state.logLines.enumerated()), id: \.offset) { idx, line in
-                        Text(line)
-                            .font(.system(size: 9, design: .monospaced))
-                            .foregroundColor(Palette.textDim)
-                            .lineLimit(2)
-                            .id(idx)
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(visibleLogEntries) { entry in
+                        HStack(spacing: 3) {
+                            Text(entry.icon)
+                                .font(.system(size: 8, design: .monospaced))
+                                .foregroundColor(logColor(entry.level))
+                                .frame(width: 8)
+                            Text(entry.message)
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundColor(logColor(entry.level))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 1)
+                        .id(entry.id)
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+            }
+            .onChange(of: diagnosticLog.entries.count) { _ in
+                if let last = visibleLogEntries.last {
+                    proxy.scrollTo(last.id, anchor: .bottom)
+                }
+            }
+        }
+    }
+
+    private func logColor(_ level: DiagnosticLog.Entry.Level) -> Color {
+        switch level {
+        case .info:    return Palette.textDim
+        case .success: return Palette.running
+        case .warning: return Palette.detach
+        case .error:   return Palette.kill
+        }
+    }
+
+    // MARK: - AI Corner (bottom-right)
+
+    @ObservedObject private var haikuSession = AgentPool.shared.haiku
+
+    private var aiCorner: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 8, weight: .medium))
+                    .foregroundColor(Palette.running)
+                Text("AI")
+                    .font(Typo.geistMonoBold(9))
+                    .foregroundColor(Palette.textMuted)
+                    .tracking(1)
+                Spacer()
+
+                // Context usage indicator
+                let stats = haikuSession.sessionStats
+                if stats.contextWindow > 0 {
+                    let pct = Int(stats.contextUsage * 100)
+                    Text("\(pct)%")
+                        .font(Typo.geistMono(8))
+                        .foregroundColor(pct > 60 ? Palette.detach : Palette.textMuted.opacity(0.6))
+                }
+
+                if stats.costUSD > 0 {
+                    Text("$\(String(format: "%.3f", stats.costUSD))")
+                        .font(Typo.geistMono(8))
+                        .foregroundColor(Palette.textMuted.opacity(0.6))
+                }
+
+                if state.agentResponse != nil {
+                    Button(action: { copyAIResponse() }) {
+                        Text("copy")
+                            .font(Typo.geistMono(9))
+                            .foregroundColor(Palette.textMuted)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if haikuSession.isReady {
+                    Circle()
+                        .fill(Palette.running.opacity(0.6))
+                        .frame(width: 4, height: 4)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            Rectangle().fill(Palette.border).frame(height: 0.5)
+
+            // Content
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    if let agent = state.agentResponse {
+                        // Commentary
+                        if let commentary = agent.commentary {
+                            Text(commentary)
+                                .font(Typo.geistMono(10))
+                                .foregroundColor(Palette.text)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        // Suggestion button
+                        if let suggestion = agent.suggestion {
+                            Button(action: { executeSuggestion(suggestion) }) {
+                                HStack(spacing: 5) {
+                                    Text(suggestion.label)
+                                        .font(Typo.geistMonoBold(9))
+                                        .foregroundColor(Palette.text)
+                                    Image(systemName: "arrow.right")
+                                        .font(.system(size: 8, weight: .medium))
+                                        .foregroundColor(Palette.running)
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .fill(Palette.running.opacity(0.08))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 4)
+                                                .strokeBorder(Palette.running.opacity(0.2), lineWidth: 0.5)
+                                        )
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    } else if state.phase == .transcribing {
+                        HStack(spacing: 6) {
+                            ProgressView()
+                                .controlSize(.mini)
+                                .scaleEffect(0.6)
+                            Text("thinking...")
+                                .font(Typo.geistMono(9))
+                                .foregroundColor(Palette.textMuted)
+                        }
+                    } else if state.phase == .result, !state.finalText.isEmpty {
+                        // No AI response yet — offer to ask
+                        HStack(spacing: 6) {
+                            Text("no AI needed")
+                                .font(Typo.geistMono(9))
+                                .foregroundColor(Palette.textMuted)
+                            Button(action: { manuallyAskAdvisor() }) {
+                                Text("ask AI")
+                                    .font(Typo.geistMonoBold(9))
+                                    .foregroundColor(Palette.text)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 3)
+                                            .fill(Palette.surface)
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 3)
+                                                    .strokeBorder(Palette.border, lineWidth: 0.5)
+                                            )
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    } else {
+                        Text("ready")
+                            .font(Typo.geistMono(9))
+                            .foregroundColor(Palette.textMuted.opacity(0.5))
                     }
                 }
                 .padding(.horizontal, 14)
-                .padding(.vertical, 6)
-            }
-            .onChange(of: state.logLines.count) { _ in
-                let last = state.logLines.count - 1
-                if last >= 0 {
-                    proxy.scrollTo(last, anchor: .bottom)
-                }
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
@@ -1111,7 +1272,11 @@ struct VoiceCommandView: View {
         HStack(spacing: 12) {
             footerHint("ESC", "Dismiss", dimmed: false)
             footerHint("Tab", state.armed ? "Pause" : "Activate", dimmed: false)
-            footerHint("Space", state.phase == .listening ? "Stop" : "Speak", dimmed: !state.armed && state.phase != .listening)
+            if state.phase == .listening {
+                footerHint("⌥", "Release to stop", dimmed: false)
+            } else {
+                footerHint("⌥", "Hold to speak", dimmed: !state.armed || state.phase == .result)
+            }
 
             Spacer()
 
@@ -1382,7 +1547,7 @@ final class DragDividerNSView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let lineX = bounds.midX
-        NSColor.white.withAlphaComponent(0.10).setFill()
+        NSColor.white.withAlphaComponent(0.22).setFill()
         NSRect(x: lineX - 0.25, y: 0, width: 0.5, height: bounds.height).fill()
     }
 
@@ -1411,4 +1576,5 @@ final class DragDividerNSView: NSView {
         return expanded.contains(point) ? self : nil
     }
 }
+
 

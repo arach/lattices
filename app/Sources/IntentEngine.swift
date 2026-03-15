@@ -326,19 +326,7 @@ final class IntentEngine {
                            description: "Text to search for", enumValues: nil),
             ],
             handler: { req in
-                guard let query = req.slots["query"]?.stringValue else {
-                    throw IntentError.missingSlot("query")
-                }
-                DiagnosticLog.shared.info("search: query='\(query)'")
-
-                let result = try LatticesApi.shared.dispatch(
-                    method: "lattices.search",
-                    params: .object(["query": .string(query)])
-                )
-                if case .array(let items) = result {
-                    DiagnosticLog.shared.info("search: \(items.count) results for '\(query)'")
-                }
-                return result
+                return try SearchIntent().perform(slots: req.slots)
             }
         ))
 

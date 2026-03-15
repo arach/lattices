@@ -62,6 +62,7 @@ final class AudioLayer: ObservableObject {
         matchedSlots = [:]
         matchConfidence = 0
         executionResult = nil
+        didExecuteIntent = false
 
         guard let provider = provider else {
             executionResult = "No voice provider — install Talkie"
@@ -97,6 +98,9 @@ final class AudioLayer: ObservableObject {
         }
     }
 
+    /// Track whether we already executed for this recording session.
+    private var didExecuteIntent = false
+
     func stopVoiceCommand() {
         guard let provider = provider, isListening else { return }
 
@@ -108,9 +112,11 @@ final class AudioLayer: ObservableObject {
                 guard let self = self else { return }
                 if let t = transcription {
                     self.lastTranscript = t.text
+                    // Skip if the streaming callback already executed the intent
+                    guard !self.didExecuteIntent else { return }
                     EventBus.shared.post(.voiceCommand(text: t.text, confidence: t.confidence))
                     self.executeVoiceIntent(t)
-                } else {
+                } else if !self.didExecuteIntent {
                     self.executionResult = "No speech detected"
                 }
             }
@@ -118,6 +124,7 @@ final class AudioLayer: ObservableObject {
     }
 
     private func executeVoiceIntent(_ transcription: Transcription) {
+        didExecuteIntent = true
         let matcher = PhraseMatcher.shared
 
         // Clear previous agent response
@@ -159,12 +166,6 @@ final class AudioLayer: ObservableObject {
 
     /// Fire the Haiku advisor in parallel — non-blocking, result arrives later.
     private func fireAdvisor(transcript: String, matched: String) {
-        let wordCount = transcript.split(separator: " ").count
-        guard wordCount >= 5 else {
-            DiagnosticLog.shared.info("AudioLayer: advisor skipped (\(wordCount) words, need 5+)")
-            return
-        }
-
         let haiku = AgentPool.shared.haiku
         guard haiku.isReady else {
             DiagnosticLog.shared.info("AudioLayer: advisor skipped (haiku not ready)")
@@ -172,7 +173,7 @@ final class AudioLayer: ObservableObject {
         }
 
         let message = "Transcript: \"\(transcript)\"\nMatched: \(matched)"
-        DiagnosticLog.shared.info("AudioLayer: firing haiku advisor (\(wordCount) words)")
+        DiagnosticLog.shared.info("AudioLayer: firing haiku advisor")
 
         haiku.send(message: message) { [weak self] response in
             guard let self = self, let response = response else { return }
