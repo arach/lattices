@@ -35,7 +35,7 @@ final class AgentSession: ObservableObject {
         }
     }
 
-    private let claudePath = "/Users/arach/.local/bin/claude"
+    private var claudePath: String?
     private let queue = DispatchQueue(label: "agent-session", qos: .userInitiated)
     private var callCount = 0
     private var busy = false
@@ -49,11 +49,12 @@ final class AgentSession: ObservableObject {
     // MARK: - Lifecycle
 
     func start() {
-        guard FileManager.default.isExecutableFile(atPath: claudePath) else {
+        guard let resolved = Preferences.resolveClaudePath() else {
             DiagnosticLog.shared.warn("AgentSession[\(label)]: claude CLI not found")
             return
         }
-        DiagnosticLog.shared.info("AgentSession[\(label)]: ready (model=\(model), session=\(sessionId.uuidString.prefix(8)))")
+        claudePath = resolved
+        DiagnosticLog.shared.info("AgentSession[\(label)]: ready (model=\(model), claude=\(resolved), session=\(sessionId.uuidString.prefix(8)))")
         DispatchQueue.main.async { self.isReady = true }
     }
 
@@ -96,6 +97,8 @@ final class AgentSession: ObservableObject {
     private func call(prompt: String) -> AgentResponse? {
         let timer = DiagnosticLog.shared.startTimed("AgentSession[\(label)] call")
 
+        guard let claudePath = claudePath else { return nil }
+
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: claudePath)
 
@@ -103,7 +106,7 @@ final class AgentSession: ObservableObject {
             "-p", prompt,
             "--model", model,
             "--output-format", "stream-json",
-            "--max-budget-usd", "0.50",
+            "--max-budget-usd", String(format: "%.2f", Preferences.shared.advisorBudgetUSD),
             "--permission-mode", "plan",
             "--no-chrome",
         ]
