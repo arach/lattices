@@ -141,6 +141,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         ProcessModel.shared.start()
         LatticesApi.setup()
         DaemonServer.shared.start()
+        AgentPool.shared.start()
         diag.finish(tBoot)
 
         // --diagnostics flag: auto-open diagnostics panel on launch
@@ -190,7 +191,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let p = NSPopover()
         p.contentViewController = NSHostingController(rootView: MainView(scanner: ProjectScanner.shared))
         p.behavior = .transient
-        p.contentSize = NSSize(width: 380, height: 520)
+        p.contentSize = NSSize(width: 380, height: 560)
         p.appearance = NSAppearance(named: .darkAqua)
         p.delegate = self
         popover = p

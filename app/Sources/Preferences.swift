@@ -20,6 +20,59 @@ class Preferences: ObservableObject {
         didSet { UserDefaults.standard.set(mode.rawValue, forKey: "mode") }
     }
 
+    // MARK: - AI / Claude
+
+    @Published var claudePath: String {
+        didSet { UserDefaults.standard.set(claudePath, forKey: "claude.path") }
+    }
+
+    @Published var advisorModel: String {
+        didSet { UserDefaults.standard.set(advisorModel, forKey: "claude.advisorModel") }
+    }
+
+    @Published var advisorBudgetUSD: Double {
+        didSet { UserDefaults.standard.set(advisorBudgetUSD, forKey: "claude.advisorBudget") }
+    }
+
+    /// Resolve claude CLI path: saved preference → well-known locations → `which`
+    static func resolveClaudePath() -> String? {
+        let saved = shared.claudePath
+        if !saved.isEmpty, FileManager.default.isExecutableFile(atPath: saved) {
+            return saved
+        }
+
+        let candidates = [
+            "\(NSHomeDirectory())/.local/bin/claude",
+            "/usr/local/bin/claude",
+            "/opt/homebrew/bin/claude",
+        ]
+        for path in candidates {
+            if FileManager.default.isExecutableFile(atPath: path) {
+                // Save for next time
+                DispatchQueue.main.async { shared.claudePath = path }
+                return path
+            }
+        }
+
+        // Last resort: `which claude`
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/bin/sh")
+        proc.arguments = ["-c", "which claude 2>/dev/null"]
+        let pipe = Pipe()
+        proc.standardOutput = pipe
+        proc.standardError = FileHandle.nullDevice
+        try? proc.run()
+        proc.waitUntilExit()
+        let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !output.isEmpty, FileManager.default.isExecutableFile(atPath: output) {
+            DispatchQueue.main.async { shared.claudePath = output }
+            return output
+        }
+
+        return nil
+    }
+
     // MARK: - Search & OCR
 
     @Published var ocrEnabled: Bool {
@@ -74,6 +127,12 @@ class Preferences: ObservableObject {
         } else {
             self.mode = .learning
         }
+
+        // AI / Claude
+        self.claudePath = UserDefaults.standard.string(forKey: "claude.path") ?? ""
+        self.advisorModel = UserDefaults.standard.string(forKey: "claude.advisorModel") ?? "haiku"
+        let savedBudgetUSD = UserDefaults.standard.double(forKey: "claude.advisorBudget")
+        self.advisorBudgetUSD = savedBudgetUSD > 0 ? savedBudgetUSD : 0.50
 
         // Search & OCR
         self.ocrEnabled = !UserDefaults.standard.bool(forKey: "ocr.disabled")

@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+# lattices-dev — convenience commands for Lattices development
+
+set -euo pipefail
+
+SCRIPT_PATH="$(readlink -f "$0" 2>/dev/null || python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$0")"
+APP_DIR="$(cd "$(dirname "$SCRIPT_PATH")/../app" && pwd)"
+LOG_FILE="$HOME/.lattices/lattices.log"
+BINARY="$APP_DIR/.build/release/Lattices"
+
+red()   { printf "\033[31m%s\033[0m\n" "$*"; }
+green() { printf "\033[32m%s\033[0m\n" "$*"; }
+dim()   { printf "\033[2m%s\033[0m\n" "$*"; }
+
+cmd_build() {
+    echo "Building release..."
+    cd "$APP_DIR" && swift build -c release
+    green "Build complete."
+}
+
+cmd_restart() {
+    echo "Restarting Lattices..."
+    pkill -x Lattices 2>/dev/null && sleep 1 || true
+    cmd_build
+    "$BINARY" &
+    disown
+    green "Lattices restarted."
+}
+
+cmd_quit() {
+    if pkill -x Lattices 2>/dev/null; then
+        green "Lattices stopped."
+    else
+        dim "Lattices is not running."
+    fi
+}
+
+cmd_launch() {
+    if pgrep -x Lattices >/dev/null 2>&1; then
+        dim "Lattices is already running."
+    else
+        "$BINARY" &
+        disown
+        green "Lattices launched."
+    fi
+}
+
+cmd_logs() {
+    if [ -f "$LOG_FILE" ]; then
+        tail -f "$LOG_FILE"
+    else
+        red "No log file at $LOG_FILE"
+    fi
+}
+
+cmd_log() {
+    # Show last N lines (default 30)
+    local n="${1:-30}"
+    if [ -f "$LOG_FILE" ]; then
+        tail -n "$n" "$LOG_FILE"
+    else
+        red "No log file at $LOG_FILE"
+    fi
+}
+
+cmd_clear_logs() {
+    if [ -f "$LOG_FILE" ]; then
+        > "$LOG_FILE"
+        green "Logs cleared."
+    else
+        dim "No log file to clear."
+    fi
+}
+
+cmd_status() {
+    if pgrep -x Lattices >/dev/null 2>&1; then
+        local pid=$(pgrep -x Lattices)
+        green "Lattices running (pid $pid)"
+    else
+        dim "Lattices is not running."
+    fi
+    if [ -f "$LOG_FILE" ]; then
+        local lines=$(wc -l < "$LOG_FILE" | tr -d ' ')
+        local size=$(du -h "$LOG_FILE" | cut -f1 | tr -d ' ')
+        dim "Log: $lines lines, $size"
+    fi
+    if [ -f "$HOME/.lattices/advisor-learning.jsonl" ]; then
+        local entries=$(wc -l < "$HOME/.lattices/advisor-learning.jsonl" | tr -d ' ')
+        dim "Advisor learning: $entries entries"
+    fi
+}
+
+cmd_help() {
+    echo "lattices-dev — Lattices development commands"
+    echo ""
+    echo "  restart      Quit + rebuild + relaunch"
+    echo "  build        Build release binary"
+    echo "  quit         Stop the running app"
+    echo "  launch       Start the app (if not running)"
+    echo "  logs         Tail the log file (live)"
+    echo "  log [N]      Show last N log lines (default 30)"
+    echo "  clear-logs   Clear the log file"
+    echo "  status       Show running state and stats"
+    echo "  help         Show this help"
+}
+
+case "${1:-help}" in
+    restart)    cmd_restart ;;
+    build)      cmd_build ;;
+    quit|stop)  cmd_quit ;;
+    launch|start) cmd_launch ;;
+    logs)       cmd_logs ;;
+    log)        cmd_log "${2:-30}" ;;
+    clear-logs) cmd_clear_logs ;;
+    status)     cmd_status ;;
+    help|--help|-h) cmd_help ;;
+    *) red "Unknown command: $1"; cmd_help; exit 1 ;;
+esac

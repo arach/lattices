@@ -371,6 +371,154 @@ final class LatticesApi {
             }
         ))
 
+        // MARK: - Unified Search
+
+        api.register(Endpoint(
+            method: "lattices.search",
+            description: "Unified search across windows, terminals, and OCR. Returns window-centric results sorted by score.",
+            access: .read,
+            params: [
+                Param(name: "query", type: "string", required: true, description: "Search text"),
+                Param(name: "mode", type: "string", required: false, description: "Search mode: 'quick' (title/app/session only), 'complete' (+ OCR + terminals, default), 'terminal' (terminals only)"),
+                Param(name: "limit", type: "int", required: false, description: "Max results (default 20)"),
+            ],
+            returns: .array(model: "SearchResult"),
+            handler: { params in
+                guard let query = params?["query"]?.stringValue?.lowercased(), !query.isEmpty else {
+                    throw RouterError.missingParam("query")
+                }
+                let mode = params?["mode"]?.stringValue ?? "complete"
+                let limit = params?["limit"]?.intValue ?? 20
+
+                // Accumulator: wid → (entry, score, sources, ocrSnippet, tabs)
+                struct Accum {
+                    let entry: WindowEntry
+                    var score: Int
+                    var sources: [String]
+                    var ocrSnippet: String?
+                    var tabs: [JSON]
+                }
+                var byWid: [UInt32: Accum] = [:]
+
+                let includeWindows = mode != "terminal"
+                let includeOcr = mode == "complete"
+                let includeTerminals = mode != "quick"
+
+                // ── Tier 1: Window index (title, app, session) ──
+
+                if includeWindows {
+                    let ocrResults = includeOcr ? OcrModel.shared.results : [:]
+
+                    for entry in DesktopModel.shared.allWindows() {
+                        var score = 0
+                        var sources: [String] = []
+                        var ocrSnippet: String? = nil
+
+                        if entry.title.lowercased().contains(query) { score += 3; sources.append("title") }
+                        if entry.app.lowercased().contains(query) { score += 2; sources.append("app") }
+                        if entry.latticesSession?.lowercased().contains(query) == true { score += 3; sources.append("session") }
+
+                        if includeOcr, let ocrResult = ocrResults[entry.wid] {
+                            let text = ocrResult.fullText
+                            if text.lowercased().contains(query) {
+                                score += 1; sources.append("ocr")
+                                // Extract snippet
+                                if let range = text.lowercased().range(of: query) {
+                                    let half = max(0, (80 - text.distance(from: range.lowerBound, to: range.upperBound)) / 2)
+                                    let start = text.index(range.lowerBound, offsetBy: -half, limitedBy: text.startIndex) ?? text.startIndex
+                                    let end = text.index(range.upperBound, offsetBy: half, limitedBy: text.endIndex) ?? text.endIndex
+                                    var snippet = String(text[start..<end])
+                                        .replacingOccurrences(of: "\n", with: " ")
+                                        .trimmingCharacters(in: .whitespaces)
+                                    if start > text.startIndex { snippet = "…" + snippet }
+                                    if end < text.endIndex { snippet += "…" }
+                                    ocrSnippet = snippet
+                                }
+                            }
+                        }
+
+                        if score > 0 {
+                            byWid[entry.wid] = Accum(entry: entry, score: score, sources: sources, ocrSnippet: ocrSnippet, tabs: [])
+                        }
+                    }
+
+                    // Early return for quick mode if we have strong matches
+                    if mode == "quick" || (!byWid.isEmpty && byWid.values.contains(where: { $0.score >= 3 }) && mode != "complete") {
+                        let sorted = byWid.values.sorted { $0.score > $1.score }
+                        return .array(Array(sorted.prefix(limit)).map { acc in
+                            var obj = Encoders.window(acc.entry)
+                            if case .object(var dict) = obj {
+                                dict["score"] = .int(acc.score)
+                                dict["matchSources"] = .array(acc.sources.map { .string($0) })
+                                if let snippet = acc.ocrSnippet { dict["ocrSnippet"] = .string(snippet) }
+                                obj = .object(dict)
+                            }
+                            return obj
+                        })
+                    }
+                }
+
+                // ── Tier 2: Terminal inspection (cwd, tab titles, tmux sessions) ──
+
+                if includeTerminals {
+                    let instances = ProcessModel.shared.synthesizeTerminals()
+                    for inst in instances {
+                        let cwdMatch = inst.cwd?.lowercased().contains(query) ?? false
+                        let tabMatch = inst.tabTitle?.lowercased().contains(query) ?? false
+                        let tmuxMatch = inst.tmuxSession?.lowercased().contains(query) ?? false
+                        guard cwdMatch || tabMatch || tmuxMatch else { continue }
+
+                        // Build tab info
+                        var tab: [String: JSON] = [:]
+                        if let idx = inst.tabIndex { tab["tabIndex"] = .int(idx) }
+                        if let cwd = inst.cwd { tab["cwd"] = .string(cwd) }
+                        if let title = inst.tabTitle { tab["tabTitle"] = .string(title) }
+                        tab["hasClaude"] = .bool(inst.hasClaude)
+                        if let session = inst.tmuxSession { tab["tmuxSession"] = .string(session) }
+
+                        let tabJson = JSON.object(tab)
+                        var tabScore = 0
+                        if cwdMatch { tabScore += 3 }  // cwd is intentional project context
+                        if tabMatch { tabScore += 2 }
+                        if tmuxMatch { tabScore += 3 }  // tmux session name is explicit
+
+                        if let wid = inst.windowId, var acc = byWid[wid] {
+                            // Merge into existing window entry
+                            acc.score += tabScore
+                            if cwdMatch && !acc.sources.contains("cwd") { acc.sources.append("cwd") }
+                            if tabMatch && !acc.sources.contains("tab") { acc.sources.append("tab") }
+                            if tmuxMatch && !acc.sources.contains("tmux") { acc.sources.append("tmux") }
+                            acc.tabs.append(tabJson)
+                            byWid[wid] = acc
+                        } else if let wid = inst.windowId, let entry = DesktopModel.shared.windows[wid] {
+                            // New window discovered via terminal data
+                            var sources: [String] = []
+                            if cwdMatch { sources.append("cwd") }
+                            if tabMatch { sources.append("tab") }
+                            if tmuxMatch { sources.append("tmux") }
+                            byWid[wid] = Accum(entry: entry, score: tabScore, sources: sources, ocrSnippet: nil, tabs: [tabJson])
+                        }
+                        // Terminal-only instances (tmux panes without a window) are skipped for now
+                    }
+                }
+
+                // ── Build results ──
+
+                let sorted = byWid.values.sorted { $0.score > $1.score }
+                return .array(Array(sorted.prefix(limit)).map { acc in
+                    var obj = Encoders.window(acc.entry)
+                    if case .object(var dict) = obj {
+                        dict["score"] = .int(acc.score)
+                        dict["matchSources"] = .array(acc.sources.map { .string($0) })
+                        if let snippet = acc.ocrSnippet { dict["ocrSnippet"] = .string(snippet) }
+                        if !acc.tabs.isEmpty { dict["terminalTabs"] = .array(acc.tabs) }
+                        obj = .object(dict)
+                    }
+                    return obj
+                })
+            }
+        ))
+
         // MARK: - Window Layer Tags
 
         api.register(Endpoint(
@@ -1396,8 +1544,8 @@ final class LatticesApi {
                 }
                 let shouldExecute = params?["execute"]?.boolValue ?? true
 
-                let catalog = IntentEngine.shared.catalog()
-                guard let extracted = IntentExtractor.extract(text: text, catalog: catalog) else {
+                let matcher = PhraseMatcher.shared
+                guard let matched = matcher.match(text: text) else {
                     return .object([
                         "parsed": .bool(false),
                         "text": .string(text),
@@ -1409,21 +1557,14 @@ final class LatticesApi {
                 var response: [String: JSON] = [
                     "parsed": .bool(true),
                     "text": .string(text),
-                    "intent": .string(extracted.name),
-                    "slots": .object(extracted.slots),
-                    "confidence": .double(extracted.confidence),
+                    "intent": .string(matched.intentName),
+                    "slots": .object(matched.slots),
+                    "confidence": .double(matched.confidence),
                 ]
 
                 if shouldExecute {
-                    let request = IntentRequest(
-                        intent: extracted.name,
-                        slots: extracted.slots,
-                        rawText: text,
-                        confidence: 1.0,
-                        source: "simulate"
-                    )
                     do {
-                        let result = try IntentEngine.shared.execute(request)
+                        let result = try matcher.execute(matched)
                         response["executed"] = .bool(true)
                         response["result"] = result
                     } catch {
@@ -1467,7 +1608,8 @@ enum Encoders {
                 "h": .double(w.frame.h)
             ]),
             "spaceIds": .array(w.spaceIds.map { .int($0) }),
-            "isOnScreen": .bool(w.isOnScreen)
+            "isOnScreen": .bool(w.isOnScreen),
+            "axVerified": .bool(w.axVerified)
         ]
         if let session = w.latticesSession {
             obj["latticesSession"] = .string(session)

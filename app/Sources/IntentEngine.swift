@@ -45,6 +45,10 @@ final class IntentEngine {
         }
     }
 
+    func definitions() -> [IntentDef] {
+        intentOrder.compactMap { intents[$0] }
+    }
+
     // MARK: - Execution
 
     func execute(_ request: IntentRequest) throws -> JSON {
@@ -322,19 +326,7 @@ final class IntentEngine {
                            description: "Text to search for", enumValues: nil),
             ],
             handler: { req in
-                guard let query = req.slots["query"]?.stringValue else {
-                    throw IntentError.missingSlot("query")
-                }
-                DiagnosticLog.shared.info("search: query='\(query)'")
-
-                let result = try LatticesApi.shared.dispatch(
-                    method: "windows.search",
-                    params: .object(["query": .string(query)])
-                )
-                if case .array(let items) = result {
-                    DiagnosticLog.shared.info("search: \(items.count) results for '\(query)'")
-                }
-                return result
+                return try SearchIntent().perform(slots: req.slots)
             }
         ))
 
@@ -505,9 +497,14 @@ struct ClaudeResolvedIntent {
     let slots: [String: JSON]
 }
 
+struct ClaudeAgentPlan {
+    let steps: [ClaudeResolvedIntent]
+    let reasoning: String
+}
+
 enum ClaudeFallback {
 
-    private static let claudePath = "/Users/arach/.local/bin/claude"
+    private static var claudePath: String? { Preferences.resolveClaudePath() }
 
     /// Shell out to Claude CLI to resolve a voice command transcript into an intent + slots.
     /// Runs synchronously — call from a background thread.
@@ -544,8 +541,14 @@ enum ClaudeFallback {
         Return ONLY a JSON object like {"intent":"search","slots":{"query":"dewey"},"reasoning":"user wants to find dewey windows"}. For search, extract the key term. Use window names from the list. If unclear, use intent "unknown".
         """
 
+        guard let path = claudePath else {
+            DiagnosticLog.shared.warn("ClaudeFallback: claude CLI not found")
+            DiagnosticLog.shared.finish(timer)
+            return nil
+        }
+
         let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: claudePath)
+        proc.executableURL = URL(fileURLWithPath: path)
 
         proc.arguments = [
             "-p", prompt,

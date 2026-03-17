@@ -143,10 +143,21 @@ highlight around it for ~1 second so you can spot it immediately.
 Grant Screen Recording and Accessibility permissions in System
 Settings > Privacy & Security for all three paths to work.
 
+## Voice commands
+
+> See [Voice Commands](/docs/voice) for the full guide.
+
+Press **Hyper+3** to open the voice command window. Hold **Option** to
+speak, release to stop. Lattices transcribes via Talkie, matches to an
+intent, and executes. Built-in commands: find, show, open, tile, kill, scan.
+
+A Claude Haiku advisor runs in parallel, offering follow-up suggestions
+in the AI corner. Configure the model and budget in Settings > AI.
+
 ## Settings
 
 Open via the command palette or the gear icon in the main view.
-The settings window has three tabs:
+The settings window has four tabs:
 
 ### General
 
@@ -162,6 +173,17 @@ The settings window has three tabs:
   (helpful while getting used to tmux)
 - **Auto** — detaches sessions automatically (fewer prompts)
 
+### AI
+
+| Setting              | Default        | Description                              |
+|----------------------|----------------|------------------------------------------|
+| Claude CLI path      | Auto-detected  | Path to `claude` binary                  |
+| Advisor model        | Haiku          | `haiku` (fast) or `sonnet` (smarter)     |
+| Budget per session   | $0.50          | Max spend per Claude CLI invocation      |
+
+Shows live session stats: context usage %, session cost, and learned
+pattern count.
+
 ### Shortcuts
 
 Shows keyboard shortcut reference:
@@ -169,6 +191,12 @@ Shows keyboard shortcut reference:
 | Shortcut          | Action              |
 |-------------------|----------------------|
 | Cmd+Shift+M       | Open command palette |
+| Hyper+1            | Screen map           |
+| Hyper+2            | Window bezel         |
+| Hyper+3            | Voice commands       |
+| Hyper+4            | Desktop inventory    |
+| Hyper+5            | Omni search          |
+| Hyper+6            | Cheat sheet          |
 | Cmd+Option+1/2/3  | Switch workspace layer |
 | Ctrl+B  D         | Detach from session  |
 | Ctrl+B  X         | Kill current pane    |

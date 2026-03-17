@@ -1,32 +1,37 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 
 import { createHash } from "node:crypto";
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, resolve, dirname } from "node:path";
+import { basename, resolve } from "node:path";
 import { homedir } from "node:os";
-import { fileURLToPath } from "node:url";
 
 // Daemon client (lazy-loaded to avoid blocking startup for TTY commands)
-let _daemonClient;
-async function getDaemonClient() {
+let _daemonClient: typeof import("./daemon-client.ts") | undefined;
+async function getDaemonClient(): Promise<typeof import("./daemon-client.ts")> {
   if (!_daemonClient) {
-    const __dirname = dirname(fileURLToPath(import.meta.url));
-    _daemonClient = await import(resolve(__dirname, "daemon-client.js"));
+    _daemonClient = await import("./daemon-client.ts");
   }
   return _daemonClient;
 }
 
-const args = process.argv.slice(2);
-const command = args[0];
+const args: string[] = process.argv.slice(2);
+const command: string | undefined = args[0];
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-function run(cmd, opts = {}) {
-  return execSync(cmd, { encoding: "utf8", ...opts }).trim();
+interface ExecOpts {
+  encoding?: string;
+  stdio?: string | string[];
+  cwd?: string;
+  [key: string]: any;
 }
 
-function runQuiet(cmd) {
+function run(cmd: string, opts: ExecOpts = {}): string {
+  return execSync(cmd, { encoding: "utf8", ...opts } as any).trim();
+}
+
+function runQuiet(cmd: string): string | null {
   try {
     return run(cmd, { stdio: "pipe" });
   } catch {
@@ -34,77 +39,83 @@ function runQuiet(cmd) {
   }
 }
 
-function hasTmux() {
+function hasTmux(): boolean {
   return runQuiet("which tmux") !== null;
 }
 
-function isInsideTmux() {
+function isInsideTmux(): boolean {
   return !!process.env.TMUX;
 }
 
-function sessionExists(name) {
+function sessionExists(name: string): boolean {
   return runQuiet(`tmux has-session -t "${name}" 2>&1`) !== null;
 }
 
-function pathHash(dir) {
+function pathHash(dir: string): string {
   return createHash("sha256").update(resolve(dir)).digest("hex").slice(0, 6);
 }
 
-function toSessionName(dir) {
+function toSessionName(dir: string): string {
   const base = basename(dir).replace(/[^a-zA-Z0-9_-]/g, "-");
   return `${base}-${pathHash(dir)}`;
 }
 
-function esc(str) {
+function esc(str: string): string {
   return str.replace(/'/g, "'\\''");
 }
 
 // ── Config ───────────────────────────────────────────────────────────
 
-function readConfig(dir) {
+function readConfig(dir: string): any | null {
   const configPath = resolve(dir, ".lattices.json");
   if (!existsSync(configPath)) return null;
   try {
     const raw = readFileSync(configPath, "utf8");
     return JSON.parse(raw);
-  } catch (e) {
-    console.warn(`Warning: invalid .lattices.json — ${e.message}`);
+  } catch (e: unknown) {
+    console.warn(`Warning: invalid .lattices.json — ${(e as Error).message}`);
     return null;
   }
 }
 
 // ── Workspace config (tab groups) ───────────────────────────────────
 
-function readWorkspaceConfig() {
+function readWorkspaceConfig(): any | null {
   const configPath = resolve(homedir(), ".lattices", "workspace.json");
   if (!existsSync(configPath)) return null;
   try {
     const raw = readFileSync(configPath, "utf8");
     return JSON.parse(raw);
-  } catch (e) {
-    console.warn(`Warning: invalid workspace.json — ${e.message}`);
+  } catch (e: unknown) {
+    console.warn(`Warning: invalid workspace.json — ${(e as Error).message}`);
     return null;
   }
 }
 
-function toGroupSessionName(groupId) {
+function toGroupSessionName(groupId: string): string {
   return `lattices-group-${groupId}`;
 }
 
 /** Get ordered pane IDs for a specific window within a session */
-function getPaneIdsForWindow(sessionName, windowIndex) {
+function getPaneIdsForWindow(sessionName: string, windowIndex: number): string[] {
   const out = runQuiet(
     `tmux list-panes -t "${sessionName}:${windowIndex}" -F "#{pane_id}"`
   );
   return out ? out.split("\n").filter(Boolean) : [];
 }
 
+interface PaneConfig {
+  name?: string;
+  cmd?: string;
+  size?: number;
+}
+
 /** Create a tmux window with pane layout for a project dir */
-function createWindowForProject(sessionName, windowIndex, dir, label) {
+function createWindowForProject(sessionName: string, windowIndex: number, dir: string, label?: string): void {
   const config = readConfig(dir);
   const d = esc(dir);
 
-  let panes;
+  let panes: PaneConfig[];
   if (config?.panes?.length) {
     panes = resolvePane(config.panes, dir);
   } else {
@@ -141,7 +152,7 @@ function createWindowForProject(sessionName, windowIndex, dir, label) {
   const paneIds = getPaneIdsForWindow(sessionName, windowIndex);
   for (let i = 0; i < panes.length && i < paneIds.length; i++) {
     if (panes[i].cmd) {
-      run(`tmux send-keys -t "${paneIds[i]}" '${esc(panes[i].cmd)}' Enter`);
+      run(`tmux send-keys -t "${paneIds[i]}" '${esc(panes[i].cmd!)}' Enter`);
     }
     if (panes[i].name) {
       runQuiet(`tmux select-pane -t "${paneIds[i]}" -T "${panes[i].name}"`);
@@ -154,8 +165,19 @@ function createWindowForProject(sessionName, windowIndex, dir, label) {
   }
 }
 
+interface TabConfig {
+  path: string;
+  label?: string;
+}
+
+interface GroupConfig {
+  id: string;
+  label?: string;
+  tabs?: TabConfig[];
+}
+
 /** Create a group session with one tmux window per tab */
-function createGroupSession(group) {
+function createGroupSession(group: GroupConfig): string | null {
   const name = toGroupSessionName(group.id);
   const tabs = group.tabs || [];
 
@@ -194,7 +216,7 @@ function createGroupSession(group) {
   return name;
 }
 
-function listGroups() {
+function listGroups(): void {
   const ws = readWorkspaceConfig();
   if (!ws?.groups?.length) {
     console.log("No tab groups configured in ~/.lattices/workspace.json");
@@ -204,12 +226,12 @@ function listGroups() {
   console.log("Tab Groups:\n");
   for (const group of ws.groups) {
     const tabs = group.tabs || [];
-    const runningCount = tabs.filter((t) => sessionExists(toSessionName(resolve(t.path)))).length;
+    const runningCount = tabs.filter((t: TabConfig) => sessionExists(toSessionName(resolve(t.path)))).length;
     const running = runningCount > 0;
     const status = running
       ? `\x1b[32m● ${runningCount}/${tabs.length} running\x1b[0m`
       : "\x1b[90m○ stopped\x1b[0m";
-    const tabLabels = tabs.map((t) => t.label || basename(t.path)).join(", ");
+    const tabLabels = tabs.map((t: TabConfig) => t.label || basename(t.path)).join(", ");
     console.log(`  ${group.label || group.id}  ${status}`);
     console.log(`    id: ${group.id}`);
     console.log(`    tabs: ${tabLabels}`);
@@ -217,7 +239,7 @@ function listGroups() {
   }
 }
 
-function groupCommand(id) {
+function groupCommand(id?: string): void {
   const ws = readWorkspaceConfig();
   if (!ws?.groups?.length) {
     console.log("No tab groups configured in ~/.lattices/workspace.json");
@@ -229,9 +251,9 @@ function groupCommand(id) {
     return;
   }
 
-  const group = ws.groups.find((g) => g.id === id);
+  const group = ws.groups.find((g: GroupConfig) => g.id === id);
   if (!group) {
-    console.log(`No group "${id}". Available: ${ws.groups.map((g) => g.id).join(", ")}`);
+    console.log(`No group "${id}". Available: ${ws.groups.map((g: GroupConfig) => g.id).join(", ")}`);
     return;
   }
 
@@ -267,7 +289,7 @@ function groupCommand(id) {
   attach(firstName);
 }
 
-function tabCommand(groupId, tabName) {
+function tabCommand(groupId?: string, tabName?: string): void {
   if (!groupId) {
     console.log("Usage: lattices tab <group-id> <tab-name|index>");
     return;
@@ -279,13 +301,13 @@ function tabCommand(groupId, tabName) {
     return;
   }
 
-  const group = ws.groups.find((g) => g.id === groupId);
+  const group = ws.groups.find((g: GroupConfig) => g.id === groupId);
   if (!group) {
     console.log(`No group "${groupId}".`);
     return;
   }
 
-  const tabs = group.tabs || [];
+  const tabs: TabConfig[] = group.tabs || [];
 
   if (!tabName) {
     // List tabs with their session status
@@ -301,7 +323,7 @@ function tabCommand(groupId, tabName) {
   }
 
   // Resolve tab target to an index
-  let tabIdx;
+  let tabIdx: number;
   if (/^\d+$/.test(tabName)) {
     tabIdx = parseInt(tabName, 10);
   } else {
@@ -337,7 +359,7 @@ function tabCommand(groupId, tabName) {
 
 // ── Detect dev command ───────────────────────────────────────────────
 
-function detectPackageManager(dir) {
+function detectPackageManager(dir: string): string {
   if (existsSync(resolve(dir, "pnpm-lock.yaml"))) return "pnpm";
   if (existsSync(resolve(dir, "bun.lockb")) || existsSync(resolve(dir, "bun.lock")))
     return "bun";
@@ -345,11 +367,11 @@ function detectPackageManager(dir) {
   return "npm";
 }
 
-function detectDevCommand(dir) {
+function detectDevCommand(dir: string): string | null {
   const pkgPath = resolve(dir, "package.json");
   if (!existsSync(pkgPath)) return null;
 
-  let pkg;
+  let pkg: any;
   try {
     pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
   } catch {
@@ -358,19 +380,19 @@ function detectDevCommand(dir) {
 
   const scripts = pkg.scripts || {};
   const pm = detectPackageManager(dir);
-  const run = pm === "npm" ? "npm run" : pm;
+  const runCmd = pm === "npm" ? "npm run" : pm;
 
-  if (scripts.dev) return `${run} dev`;
-  if (scripts.start) return `${run} start`;
-  if (scripts.serve) return `${run} serve`;
-  if (scripts.watch) return `${run} watch`;
+  if (scripts.dev) return `${runCmd} dev`;
+  if (scripts.start) return `${runCmd} start`;
+  if (scripts.serve) return `${runCmd} serve`;
+  if (scripts.watch) return `${runCmd} watch`;
   return null;
 }
 
 // ── Session creation ─────────────────────────────────────────────────
 
-function resolvePane(panes, dir) {
-  return panes.map((p) => ({
+function resolvePane(panes: any[], dir: string): PaneConfig[] {
+  return panes.map((p: any) => ({
     name: p.name || "",
     cmd: p.cmd || undefined,
     size: p.size || undefined,
@@ -378,19 +400,19 @@ function resolvePane(panes, dir) {
 }
 
 /** Get ordered pane IDs (e.g. ["%0", "%1"]) for a session */
-function getPaneIds(name) {
+function getPaneIds(name: string): string[] {
   const out = runQuiet(
     `tmux list-panes -t "${name}" -F "#{pane_id}"`
   );
   return out ? out.split("\n").filter(Boolean) : [];
 }
 
-function createSession(dir) {
+function createSession(dir: string): string {
   const name = toSessionName(dir);
   const config = readConfig(dir);
   const d = esc(dir);
 
-  let panes;
+  let panes: PaneConfig[];
   if (config?.panes?.length) {
     panes = resolvePane(config.panes, dir);
     console.log(`Using .lattices.json (${panes.length} panes)`);
@@ -425,7 +447,7 @@ function createSession(dir) {
   // Send commands and name each pane
   for (let i = 0; i < panes.length && i < paneIds.length; i++) {
     if (panes[i].cmd) {
-      run(`tmux send-keys -t "${paneIds[i]}" '${esc(panes[i].cmd)}' Enter`);
+      run(`tmux send-keys -t "${paneIds[i]}" '${esc(panes[i].cmd!)}' Enter`);
     }
     if (panes[i].name) {
       runQuiet(`tmux select-pane -t "${paneIds[i]}" -T "${panes[i].name}"`);
@@ -449,9 +471,9 @@ function createSession(dir) {
 /** Check each pane and prefill or restart commands that have exited.
  *  mode: "prefill" types the command without pressing Enter
  *  mode: "ensure" types the command and presses Enter */
-function restoreCommands(name, dir, mode) {
+function restoreCommands(name: string, dir: string, mode: "prefill" | "ensure"): void {
   const config = readConfig(dir);
-  let panes;
+  let panes: PaneConfig[];
   if (config?.panes?.length) {
     panes = resolvePane(config.panes, dir);
   } else {
@@ -469,9 +491,9 @@ function restoreCommands(name, dir, mode) {
     );
     if (cur && shells.has(cur)) {
       if (mode === "ensure") {
-        run(`tmux send-keys -t "${paneIds[i]}" '${esc(panes[i].cmd)}' Enter`);
+        run(`tmux send-keys -t "${paneIds[i]}" '${esc(panes[i].cmd!)}' Enter`);
       } else {
-        run(`tmux send-keys -t "${paneIds[i]}" '${esc(panes[i].cmd)}'`);
+        run(`tmux send-keys -t "${paneIds[i]}" '${esc(panes[i].cmd!)}'`);
       }
       count++;
     }
@@ -484,7 +506,7 @@ function restoreCommands(name, dir, mode) {
 
 // ── Sync / reconcile ────────────────────────────────────────────────
 
-function resolvePanes(dir) {
+function resolvePanes(dir: string): PaneConfig[] {
   const config = readConfig(dir);
   if (config?.panes?.length) {
     return resolvePane(config.panes, dir);
@@ -492,7 +514,117 @@ function resolvePanes(dir) {
   return defaultPanes(dir);
 }
 
-function defaultPanes(dir) {
+// ── Dev command ──────────────────────────────────────────────────────
+
+function detectProjectType(dir: string): string | null {
+  // Check for lattices-style hybrid project (Swift app + Node CLI)
+  if (existsSync(resolve(dir, "app/Package.swift")) && existsSync(resolve(dir, "bin/lattices-app.ts")))
+    return "lattices-app";
+  if (existsSync(resolve(dir, "Package.swift"))) return "swift";
+  if (existsSync(resolve(dir, "Cargo.toml"))) return "rust";
+  if (existsSync(resolve(dir, "go.mod"))) return "go";
+  if (existsSync(resolve(dir, "package.json"))) return "node";
+  if (existsSync(resolve(dir, "Makefile"))) return "make";
+  return null;
+}
+
+async function devCommand(sub?: string, ...flags: string[]): Promise<void> {
+  const dir = process.cwd();
+  const type = detectProjectType(dir);
+
+  // Helper to forward to lattices-app.ts
+  async function forwardToAppScript(cmd: string, extraFlags: string[] = []): Promise<void> {
+    const appScript = resolve(import.meta.dir, "lattices-app.ts");
+    const { execFileSync } = await import("node:child_process");
+    try {
+      execFileSync("bun", [appScript, cmd, ...extraFlags], { stdio: "inherit" });
+    } catch { /* exit code forwarded */ }
+  }
+
+  if (!sub) {
+    // bare `lattices dev` — run dev server
+    if (!type) {
+      console.log("No recognized project in current directory.");
+      return;
+    }
+    console.log(`Detected: ${type} project`);
+    if (type === "lattices-app") {
+      await forwardToAppScript("restart", flags);
+    } else if (type === "node") {
+      const cmd = detectDevCommand(dir);
+      if (cmd) {
+        console.log(`Running: ${cmd}`);
+        execSync(cmd, { cwd: dir, stdio: "inherit" });
+      } else {
+        console.log("No dev script found in package.json.");
+      }
+    } else if (type === "swift") {
+      console.log("Running: swift run");
+      execSync("swift run", { cwd: dir, stdio: "inherit" });
+    } else if (type === "rust") {
+      console.log("Running: cargo run");
+      execSync("cargo run", { cwd: dir, stdio: "inherit" });
+    } else if (type === "go") {
+      console.log("Running: go run .");
+      execSync("go run .", { cwd: dir, stdio: "inherit" });
+    } else if (type === "make") {
+      execSync("make", { cwd: dir, stdio: "inherit" });
+    }
+    return;
+  }
+
+  if (sub === "build") {
+    if (!type) {
+      console.log("No recognized project in current directory.");
+      return;
+    }
+    if (type === "lattices-app") {
+      await forwardToAppScript("build");
+    } else if (type === "swift") {
+      console.log("Building: swift build -c release");
+      execSync("swift build -c release", { cwd: dir, stdio: "inherit" });
+    } else if (type === "node") {
+      const pm = detectPackageManager(dir);
+      const runCmd = pm === "npm" ? "npm run" : pm;
+      const pkg = JSON.parse(readFileSync(resolve(dir, "package.json"), "utf8"));
+      if (pkg.scripts?.build) {
+        console.log(`Running: ${runCmd} build`);
+        execSync(`${runCmd} build`, { cwd: dir, stdio: "inherit" });
+      } else {
+        console.log("No build script found in package.json.");
+      }
+    } else if (type === "rust") {
+      console.log("Building: cargo build --release");
+      execSync("cargo build --release", { cwd: dir, stdio: "inherit" });
+    } else if (type === "go") {
+      console.log("Building: go build .");
+      execSync("go build .", { cwd: dir, stdio: "inherit" });
+    } else if (type === "make") {
+      execSync("make", { cwd: dir, stdio: "inherit" });
+    }
+    return;
+  }
+
+  if (sub === "restart") {
+    if (type === "lattices-app") {
+      await forwardToAppScript("restart", flags);
+    } else {
+      // For other project types, just rebuild
+      await devCommand("build");
+    }
+    return;
+  }
+
+  if (sub === "type") {
+    console.log(type || "unknown");
+    return;
+  }
+
+  console.log(`Unknown dev subcommand: ${sub}`);
+  console.log("Usage: lattices dev [build|restart|type]");
+}
+
+function defaultPanes(dir: string): PaneConfig[] {
   const devCmd = detectDevCommand(dir);
   if (devCmd) {
     return [
@@ -504,7 +636,7 @@ function defaultPanes(dir) {
   return [{ name: "claude", cmd: "claude" }];
 }
 
-function syncSession() {
+function syncSession(): void {
   const dir = process.cwd();
   const name = toSessionName(dir);
 
@@ -564,7 +696,7 @@ function syncSession() {
         `tmux display-message -t "${freshIds[i]}" -p "#{pane_current_command}"`
       );
       if (cur && shells.has(cur)) {
-        run(`tmux send-keys -t "${freshIds[i]}" '${esc(panes[i].cmd)}' Enter`);
+        run(`tmux send-keys -t "${freshIds[i]}" '${esc(panes[i].cmd!)}' Enter`);
         restored++;
       }
     }
@@ -583,7 +715,7 @@ function syncSession() {
 
 // ── Restart pane ────────────────────────────────────────────────────
 
-function restartPane(target) {
+function restartPane(target?: string): void {
   const dir = process.cwd();
   const name = toSessionName(dir);
 
@@ -596,7 +728,7 @@ function restartPane(target) {
   const paneIds = getPaneIds(name);
 
   // Resolve target to an index
-  let idx;
+  let idx: number;
   if (target === undefined || target === null || target === "") {
     // Default: first pane (claude)
     idx = 0;
@@ -665,10 +797,10 @@ function restartPane(target) {
 
 // ── Daemon-aware commands ────────────────────────────────────────────
 
-async function daemonStatusCommand() {
+async function daemonStatusCommand(): Promise<void> {
   try {
     const { daemonCall } = await getDaemonClient();
-    const status = await daemonCall("daemon.status");
+    const status = await daemonCall("daemon.status") as any;
     const uptime = Math.round(status.uptime);
     const h = Math.floor(uptime / 3600);
     const m = Math.floor((uptime % 3600) / 60);
@@ -685,10 +817,10 @@ async function daemonStatusCommand() {
   }
 }
 
-async function windowsCommand(jsonFlag) {
+async function windowsCommand(jsonFlag: boolean): Promise<void> {
   try {
     const { daemonCall } = await getDaemonClient();
-    const windows = await daemonCall("windows.list");
+    const windows = await daemonCall("windows.list") as any[];
     if (jsonFlag) {
       console.log(JSON.stringify(windows, null, 2));
       return;
@@ -712,7 +844,7 @@ async function windowsCommand(jsonFlag) {
   }
 }
 
-async function windowAssignCommand(wid, layerId) {
+async function windowAssignCommand(wid?: string, layerId?: string): Promise<void> {
   if (!wid || !layerId) {
     console.log("Usage: lattices window assign <wid> <layer-id>");
     return;
@@ -721,15 +853,15 @@ async function windowAssignCommand(wid, layerId) {
     const { daemonCall } = await getDaemonClient();
     await daemonCall("window.assignLayer", { wid: parseInt(wid), layer: layerId });
     console.log(`Tagged wid:${wid} → layer:${layerId}`);
-  } catch (e) {
-    console.log(`Error: ${e.message}`);
+  } catch (e: unknown) {
+    console.log(`Error: ${(e as Error).message}`);
   }
 }
 
-async function windowLayerMapCommand(jsonFlag) {
+async function windowLayerMapCommand(jsonFlag: boolean): Promise<void> {
   try {
     const { daemonCall } = await getDaemonClient();
-    const map = await daemonCall("window.layerMap");
+    const map = await daemonCall("window.layerMap") as any;
     if (jsonFlag) {
       console.log(JSON.stringify(map, null, 2));
       return;
@@ -748,119 +880,50 @@ async function windowLayerMapCommand(jsonFlag) {
   }
 }
 
-async function focusCommand(session) {
+async function focusCommand(session?: string): Promise<void> {
   if (!session) {
     console.log("Usage: lattices focus <session-name>");
     return;
   }
   try {
     const { daemonCall } = await getDaemonClient();
-    const name = await fuzzyMatchSession(session);
-    await daemonCall("window.focus", { session: name });
-    console.log(`Focused: ${name}`);
-  } catch (e) {
-    console.log(`Error: ${e.message}`);
+    await daemonCall("window.focus", { session });
+    console.log(`Focused: ${session}`);
+  } catch (e: unknown) {
+    console.log(`Error: ${(e as Error).message}`);
   }
 }
 
 // ── Search ───────────────────────────────────────────────────────────
 
+interface SearchResult {
+  score: number;
+  window: any;
+  tabs: { tab: number; cwd: string; title: string; hasClaude: boolean; tmuxSession: string }[];
+  reasons: string[];
+}
+
 // Window search — title, app, session tag, OCR content
-async function search(query) {
+// Unified search via lattices.search daemon API
+async function search(query: string, { mode = "complete" }: { mode?: string } = {}): Promise<SearchResult[]> {
   const { daemonCall } = await getDaemonClient();
-  const hits = await daemonCall("windows.search", { query }, 10000);
-  const sourceWeight = { title: 3, session: 3, app: 2, ocr: 1 };
-  return hits.map(w => ({
-    score: sourceWeight[w.matchSource] || 1,
+  const hits = await daemonCall("lattices.search", { query, mode }, 10000) as any[];
+  return hits.map((w: any) => ({
+    score: w.score || 0,
     window: w,
-    tabs: [],
-    reasons: [w.matchSource],
+    tabs: (w.terminalTabs || []).map((t: any) => ({
+      tab: t.tabIndex, cwd: t.cwd, title: t.tabTitle, hasClaude: t.hasClaude, tmuxSession: t.tmuxSession,
+    })),
+    reasons: w.matchSources || [],
   }));
 }
 
-// Terminal search — cwd, tab titles, tmux sessions, processes
-async function terminalSearch(query) {
-  const { daemonCall } = await getDaemonClient();
-  const q = query.toLowerCase();
-  let terminals = [];
-  try {
-    const t = await daemonCall("terminals.search", {}, 3000);
-    if (Array.isArray(t)) terminals = t;
-  } catch {}
-
-  const byWid = new Map();
-  for (const t of terminals) {
-    if (!t.windowId) continue;
-    const cwdMatch = (t.cwd || "").toLowerCase().includes(q);
-    const tabMatch = (t.tabTitle || "").toLowerCase().includes(q);
-    const tmuxMatch = (t.tmuxSession || "").toLowerCase().includes(q);
-    if (!cwdMatch && !tabMatch && !tmuxMatch) continue;
-
-    if (!byWid.has(t.windowId)) {
-      byWid.set(t.windowId, {
-        score: 0, window: { wid: t.windowId, app: t.app || "terminal", title: t.windowTitle || "" },
-        tabs: [], reasons: [],
-      });
-    }
-    const e = byWid.get(t.windowId);
-    e.score += 2;
-    e.tabs.push({ tab: t.tabIndex, cwd: t.cwd, title: t.tabTitle || t.displayName, hasClaude: t.hasClaude, tmuxSession: t.tmuxSession });
-    if (cwdMatch && !e.reasons.includes("cwd")) e.reasons.push("cwd");
-    if (tabMatch && !e.reasons.includes("tab")) e.reasons.push("tab");
-    if (tmuxMatch && !e.reasons.includes("tmux")) e.reasons.push("tmux");
-  }
-
-  return [...byWid.values()].sort((a, b) => b.score - a.score);
-}
-
-// Deep search — search the index, then inspect top candidates live
-async function deepSearch(query) {
-  const { daemonCall } = await getDaemonClient();
-  const q = query.toLowerCase();
-
-  // 1. Start with indexed results
-  const results = await search(query);
-
-  // 2. Inspect top candidates with live tools
-  const byWid = new Map();
-  for (const r of results) byWid.set(r.window.wid, r);
-
-  // Terminal inspection — enrich windows that are terminals
-  let terminals = [];
-  try {
-    const t = await daemonCall("terminals.search", {}, 3000);
-    if (Array.isArray(t)) terminals = t;
-  } catch {}
-
-  for (const t of terminals) {
-    if (!t.windowId) continue;
-    const cwdMatch = (t.cwd || "").toLowerCase().includes(q);
-    const tabMatch = (t.tabTitle || "").toLowerCase().includes(q);
-    const tmuxMatch = (t.tmuxSession || "").toLowerCase().includes(q);
-    if (!cwdMatch && !tabMatch && !tmuxMatch) continue;
-
-    if (!byWid.has(t.windowId)) {
-      byWid.set(t.windowId, {
-        score: 0, window: { wid: t.windowId, app: t.app || "terminal", title: t.windowTitle || "" },
-        tabs: [], reasons: [],
-      });
-    }
-    const e = byWid.get(t.windowId);
-    e.score += 2;
-    e.tabs.push({ tab: t.tabIndex, cwd: t.cwd, title: t.tabTitle || t.displayName, hasClaude: t.hasClaude, tmuxSession: t.tmuxSession });
-    if (cwdMatch && !e.reasons.includes("cwd")) e.reasons.push("cwd");
-    if (tabMatch && !e.reasons.includes("tab")) e.reasons.push("tab");
-    if (tmuxMatch && !e.reasons.includes("tmux")) e.reasons.push("tmux");
-  }
-
-  // TODO: AX live scan of top candidates for richer content
-  // TODO: OCR re-scan of ambiguous windows
-
-  return [...byWid.values()].sort((a, b) => b.score - a.score);
-}
+// Aliases for backward compatibility
+async function deepSearch(query: string): Promise<SearchResult[]> { return search(query, { mode: "complete" }); }
+async function terminalSearch(query: string): Promise<SearchResult[]> { return search(query, { mode: "terminal" }); }
 
 // Format and print search results
-function printResults(ranked) {
+function printResults(ranked: SearchResult[]): void {
   if (!ranked.length) return;
   for (const r of ranked) {
     const w = r.window;
@@ -877,14 +940,14 @@ function printResults(ranked) {
 
 // ── search command ───────────────────────────────────────────────────
 
-async function searchCommand(query, flags) {
+async function searchCommand(query: string | undefined, flags: Set<string>): Promise<void> {
   if (!query) {
-    console.log("Usage: lattices search <query> [--deep | --json | --wid]");
+    console.log("Usage: lattices search <query> [--quick | --terminal | --json | --wid]");
     return;
   }
 
-  const deep = flags.has("--deep");
-  const ranked = deep ? await deepSearch(query) : await search(query);
+  const mode = flags.has("--quick") ? "quick" : flags.has("--terminal") ? "terminal" : "complete";
+  const ranked = await search(query, { mode });
   const jsonOut = flags.has("--json");
   const widOnly = flags.has("--wid");
 
@@ -911,7 +974,7 @@ async function searchCommand(query, flags) {
 
 // ── place command ────────────────────────────────────────────────────
 
-async function placeCommand(query, tilePosition) {
+async function placeCommand(query?: string, tilePosition?: string): Promise<void> {
   if (!query) {
     console.log("Usage: lattices place <query> [position]");
     return;
@@ -933,15 +996,15 @@ async function placeCommand(query, tilePosition) {
       slots: { position: pos, wid: win.wid }
     }, 3000);
     console.log(`${win.app} "${win.title}" (wid:${win.wid}) → ${pos}`);
-  } catch (e) {
-    console.log(`Error: ${e.message}`);
+  } catch (e: unknown) {
+    console.log(`Error: ${(e as Error).message}`);
   }
 }
 
-async function sessionsCommand(jsonFlag) {
+async function sessionsCommand(jsonFlag: boolean): Promise<void> {
   try {
     const { daemonCall } = await getDaemonClient();
-    const sessions = await daemonCall("tmux.sessions");
+    const sessions = await daemonCall("tmux.sessions") as any[];
     if (jsonFlag) {
       console.log(JSON.stringify(sessions, null, 2));
       return;
@@ -960,12 +1023,12 @@ async function sessionsCommand(jsonFlag) {
   }
 }
 
-async function voiceCommand(subcommand, ...rest) {
+async function voiceCommand(subcommand?: string, ...rest: string[]): Promise<void> {
   const { daemonCall } = await getDaemonClient();
   try {
     switch (subcommand) {
       case "status": {
-        const status = await daemonCall("voice.status");
+        const status = await daemonCall("voice.status") as any;
         console.log(`Provider: ${status.provider}`);
         console.log(`Available: ${status.available}`);
         console.log(`Listening: ${status.listening}`);
@@ -982,7 +1045,7 @@ async function voiceCommand(subcommand, ...rest) {
         const execute = !rest.includes("--dry-run");
         const dryFlag = rest.includes("--dry-run");
         const cleanText = dryFlag ? rest.filter(r => r !== "--dry-run").join(" ") : text;
-        const result = await daemonCall("voice.simulate", { text: cleanText, execute }, 15000);
+        const result = await daemonCall("voice.simulate", { text: cleanText, execute }, 15000) as any;
         if (!result.parsed) {
           console.log(`\x1b[33mNo match:\x1b[0m "${cleanText}"`);
           return;
@@ -998,9 +1061,9 @@ async function voiceCommand(subcommand, ...rest) {
         break;
       }
       case "intents": {
-        const intents = await daemonCall("intents.list");
+        const intents = await daemonCall("intents.list") as any[];
         for (const intent of intents) {
-          const slots = intent.slots.map(s => `${s.name}:${s.type}${s.required ? "*" : ""}`).join(", ");
+          const slots = intent.slots.map((s: any) => `${s.name}:${s.type}${s.required ? "*" : ""}`).join(", ");
           console.log(`  \x1b[1m${intent.intent}\x1b[0m  ${intent.description}`);
           if (slots) console.log(`    slots: ${slots}`);
           console.log(`    e.g. "${intent.examples[0]}"`);
@@ -1017,12 +1080,12 @@ async function voiceCommand(subcommand, ...rest) {
         console.log('  lattices voice simulate "tile this left"');
         console.log('  lattices voice simulate "focus chrome" --dry-run');
     }
-  } catch (e) {
-    console.log(`Error: ${e.message}`);
+  } catch (e: unknown) {
+    console.log(`Error: ${(e as Error).message}`);
   }
 }
 
-async function callCommand(method, ...rest) {
+async function callCommand(method?: string, ...rest: string[]): Promise<void> {
   if (!method) {
     console.log("Usage: lattices call <method> [params-json]");
     console.log("\nExamples:");
@@ -1036,16 +1099,16 @@ async function callCommand(method, ...rest) {
     const params = rest[0] ? JSON.parse(rest[0]) : null;
     const result = await daemonCall(method, params, 15000);
     console.log(JSON.stringify(result, null, 2));
-  } catch (e) {
-    console.log(`Error: ${e.message}`);
+  } catch (e: unknown) {
+    console.log(`Error: ${(e as Error).message}`);
   }
 }
 
-async function layerCommand(index) {
+async function layerCommand(index?: string): Promise<void> {
   try {
     const { daemonCall } = await getDaemonClient();
     if (index === undefined || index === null || index === "") {
-      const result = await daemonCall("layers.list");
+      const result = await daemonCall("layers.list") as any;
       if (!result.layers.length) {
         console.log("No layers configured.");
         return;
@@ -1065,15 +1128,15 @@ async function layerCommand(index) {
       await daemonCall("layer.switch", { name: index });
       console.log(`Switched to layer "${index}"`);
     }
-  } catch (e) {
-    console.log(`Error: ${e.message}`);
+  } catch (e: unknown) {
+    console.log(`Error: ${(e as Error).message}`);
   }
 }
 
-async function diagCommand(limit) {
+async function diagCommand(limit?: string): Promise<void> {
   try {
     const { daemonCall } = await getDaemonClient();
-    const result = await daemonCall("diagnostics.list", { limit: parseInt(limit, 10) || 40 });
+    const result = await daemonCall("diagnostics.list", { limit: parseInt(limit || "", 10) || 40 }) as any;
     if (!result.entries || !result.entries.length) {
       console.log("No diagnostic entries.");
       return;
@@ -1084,12 +1147,12 @@ async function diagCommand(limit) {
                    entry.level === "error"   ? "\x1b[31m✗\x1b[0m" : "›";
       console.log(`  \x1b[90m${entry.time}\x1b[0m ${icon} ${entry.message}`);
     }
-  } catch (e) {
-    console.log(`Error: ${e.message}`);
+  } catch (e: unknown) {
+    console.log(`Error: ${(e as Error).message}`);
   }
 }
 
-async function distributeCommand() {
+async function distributeCommand(): Promise<void> {
   try {
     const { daemonCall } = await getDaemonClient();
     await daemonCall("layout.distribute");
@@ -1099,11 +1162,11 @@ async function distributeCommand() {
   }
 }
 
-async function daemonLsCommand() {
+async function daemonLsCommand(): Promise<boolean> {
   try {
     const { daemonCall, isDaemonRunning } = await getDaemonClient();
     if (!(await isDaemonRunning())) return false;
-    const sessions = await daemonCall("tmux.sessions");
+    const sessions = await daemonCall("tmux.sessions") as any[];
     if (!sessions.length) {
       console.log("No active tmux sessions.");
       return true;
@@ -1111,7 +1174,7 @@ async function daemonLsCommand() {
 
     // Annotate sessions with workspace group info
     const ws = readWorkspaceConfig();
-    const sessionGroupMap = new Map();
+    const sessionGroupMap = new Map<string, { group: string; tab: string }>();
     if (ws?.groups) {
       for (const g of ws.groups) {
         for (const tab of g.tabs || []) {
@@ -1137,14 +1200,14 @@ async function daemonLsCommand() {
   }
 }
 
-async function daemonStatusInventory() {
+async function daemonStatusInventory(): Promise<boolean> {
   try {
     const { daemonCall, isDaemonRunning } = await getDaemonClient();
     if (!(await isDaemonRunning())) return false;
-    const inv = await daemonCall("tmux.inventory");
+    const inv = await daemonCall("tmux.inventory") as any;
 
     // Build managed session name set
-    const managed = new Map();
+    const managed = new Map<string, string>();
     const ws = readWorkspaceConfig();
     if (ws?.groups) {
       for (const g of ws.groups) {
@@ -1158,7 +1221,7 @@ async function daemonStatusInventory() {
     for (const s of inv.all) {
       if (!managed.has(s.name)) {
         // Check if it matches a scanned project (via daemon)
-        const projects = await daemonCall("projects.list");
+        const projects = await daemonCall("projects.list") as any[];
         for (const p of projects) {
           managed.set(p.sessionName, p.name);
         }
@@ -1166,7 +1229,7 @@ async function daemonStatusInventory() {
       }
     }
 
-    const managedSessions = inv.all.filter((s) => managed.has(s.name));
+    const managedSessions = inv.all.filter((s: any) => managed.has(s.name));
     const orphanSessions = inv.orphans;
 
     if (managedSessions.length > 0) {
@@ -1205,14 +1268,14 @@ async function daemonStatusInventory() {
 
 // ── OCR commands ──────────────────────────────────────────────────────
 
-async function scanCommand(sub, ...rest) {
+async function scanCommand(sub?: string, ...rest: string[]): Promise<void> {
   const { daemonCall } = await getDaemonClient();
 
   if (!sub || sub === "snapshot" || sub === "ls" || sub === "--full" || sub === "-f" || sub === "--json") {
     const full = sub === "--full" || sub === "-f" || rest.includes("--full") || rest.includes("-f");
     const json = sub === "--json" || rest.includes("--json");
     try {
-      const results = await daemonCall("ocr.snapshot", null, 5000);
+      const results = await daemonCall("ocr.snapshot", null, 5000) as any[];
       if (!results.length) {
         console.log("No scan results yet. The first scan runs ~60s after launch.");
         return;
@@ -1236,7 +1299,7 @@ async function scanCommand(sub, ...rest) {
             }
           } else {
             const maxPreview = 5;
-            const preview = lines.slice(0, maxPreview).map(l => l.length > 100 ? l.slice(0, 97) + "..." : l);
+            const preview = lines.slice(0, maxPreview).map((l: string) => l.length > 100 ? l.slice(0, 97) + "..." : l);
             for (const line of preview) {
               console.log(`    \x1b[90m${line}\x1b[0m`);
             }
@@ -1262,7 +1325,7 @@ async function scanCommand(sub, ...rest) {
       return;
     }
     try {
-      const results = await daemonCall("ocr.search", { query }, 5000);
+      const results = await daemonCall("ocr.search", { query }, 5000) as any[];
       if (!results.length) {
         console.log(`No matches for "${query}".`);
         return;
@@ -1276,8 +1339,8 @@ async function scanCommand(sub, ...rest) {
         console.log(`    ${snippet}`);
         console.log();
       }
-    } catch (e) {
-      console.log(`Error: ${e.message}`);
+    } catch (e: unknown) {
+      console.log(`Error: ${(e as Error).message}`);
     }
     return;
   }
@@ -1285,9 +1348,9 @@ async function scanCommand(sub, ...rest) {
   if (sub === "recent" || sub === "log") {
     const full = rest.includes("--full") || rest.includes("-f");
     const numArg = rest.find(a => !a.startsWith("-"));
-    const limit = parseInt(numArg, 10) || 20;
+    const limit = parseInt(numArg || "", 10) || 20;
     try {
-      const results = await daemonCall("ocr.recent", { limit }, 5000);
+      const results = await daemonCall("ocr.recent", { limit }, 5000) as any[];
       if (!results.length) {
         console.log("No history yet. The first scan runs ~60s after launch.");
         return;
@@ -1305,7 +1368,7 @@ async function scanCommand(sub, ...rest) {
           }
         } else {
           const maxPreview = 5;
-          const preview = lines.slice(0, maxPreview).map(l => l.length > 100 ? l.slice(0, 97) + "..." : l);
+          const preview = lines.slice(0, maxPreview).map((l: string) => l.length > 100 ? l.slice(0, 97) + "..." : l);
           for (const line of preview) {
             console.log(`    \x1b[90m${line}\x1b[0m`);
           }
@@ -1326,8 +1389,8 @@ async function scanCommand(sub, ...rest) {
       console.log("Triggering deep scan (Vision OCR)...");
       await daemonCall("ocr.scan", null, 30000);
       console.log("Done.");
-    } catch (e) {
-      console.log(`Error: ${e.message}`);
+    } catch (e: unknown) {
+      console.log(`Error: ${(e as Error).message}`);
     }
     return;
   }
@@ -1339,7 +1402,7 @@ async function scanCommand(sub, ...rest) {
       return;
     }
     try {
-      const results = await daemonCall("ocr.history", { wid }, 5000);
+      const results = await daemonCall("ocr.history", { wid }, 5000) as any[];
       if (!results.length) {
         console.log(`No history for wid:${wid}.`);
         return;
@@ -1349,15 +1412,15 @@ async function scanCommand(sub, ...rest) {
         const ts = new Date(r.timestamp * 1000).toLocaleTimeString();
         const src = r.source === "accessibility" ? "\x1b[33mAX\x1b[0m" : "\x1b[35mOCR\x1b[0m";
         const lines = (r.fullText || "").split("\n").filter(Boolean);
-        const preview = lines.slice(0, 2).map(l => l.length > 80 ? l.slice(0, 77) + "..." : l);
+        const preview = lines.slice(0, 2).map((l: string) => l.length > 80 ? l.slice(0, 77) + "..." : l);
         console.log(`  \x1b[90m${ts}\x1b[0m  ${src}  \x1b[1m${r.app}\x1b[0m — "${r.title}"`);
         for (const line of preview) {
           console.log(`    \x1b[90m${line}\x1b[0m`);
         }
         console.log();
       }
-    } catch (e) {
-      console.log(`Error: ${e.message}`);
+    } catch (e: unknown) {
+      console.log(`Error: ${(e as Error).message}`);
     }
     return;
   }
@@ -1376,7 +1439,7 @@ Usage:
 `);
 }
 
-function printUsage() {
+function printUsage(): void {
   console.log(`lattices — Claude Code + dev server in tmux
 
 Usage:
@@ -1411,6 +1474,10 @@ Usage:
   lattices scan recent [n]    Show recent scans chronologically
   lattices scan deep          Trigger a deep Vision OCR scan
   lattices scan history <wid> Scan timeline for a specific window
+  lattices dev                Run dev server (auto-detected)
+  lattices dev build          Build the project (swift/node/rust/go/make)
+  lattices dev restart        Build + restart (swift app) or just build
+  lattices dev type           Print detected project type
   lattices daemon status      Show daemon status
   lattices diag [limit]       Show diagnostic log entries
   lattices app                Launch the menu bar companion app
@@ -1461,7 +1528,7 @@ Layouts:
 `);
 }
 
-function initConfig() {
+function initConfig(): void {
   const dir = process.cwd();
   const configPath = resolve(dir, ".lattices.json");
 
@@ -1481,7 +1548,7 @@ function initConfig() {
   console.log(JSON.stringify(config, null, 2));
 }
 
-function listSessions() {
+function listSessions(): void {
   const out = runQuiet(
     "tmux list-sessions -F '#{session_name}  (#{session_windows} windows, created #{session_created_string})'"
   );
@@ -1492,7 +1559,7 @@ function listSessions() {
 
   // Annotate sessions that belong to tab groups
   const ws = readWorkspaceConfig();
-  const sessionGroupMap = new Map();
+  const sessionGroupMap = new Map<string, { group: string; tab: string }>();
   if (ws?.groups) {
     for (const g of ws.groups) {
       for (const tab of g.tabs || []) {
@@ -1505,7 +1572,7 @@ function listSessions() {
     }
   }
 
-  const lines = out.split("\n").map((line) => {
+  const lines = out.split("\n").map((line: string) => {
     const sessionName = line.split("  ")[0];
     const info = sessionGroupMap.get(sessionName);
     return info
@@ -1517,7 +1584,7 @@ function listSessions() {
   console.log(lines.join("\n"));
 }
 
-function killSession(name) {
+function killSession(name?: string): void {
   if (!name) name = toSessionName(process.cwd());
   if (!sessionExists(name)) {
     console.log(`No session "${name}".`);
@@ -1529,7 +1596,14 @@ function killSession(name) {
 
 // ── Window tiling ────────────────────────────────────────────────────
 
-function getScreenBounds() {
+interface ScreenBounds {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+function getScreenBounds(): ScreenBounds {
   // Get the visible area (excludes menu bar and dock) in AppleScript coordinates (top-left origin)
   const script = `
     tell application "Finder"
@@ -1544,7 +1618,7 @@ function getScreenBounds() {
 }
 
 // Presets return AppleScript bounds: [left, top, right, bottom] within the visible area
-const tilePresets = {
+const tilePresets: Record<string, (s: ScreenBounds) => number[]> = {
   "left":         (s) => [s.x, s.y, s.x + s.w / 2, s.y + s.h],
   "left-half":    (s) => [s.x, s.y, s.x + s.w / 2, s.y + s.h],
   "right":        (s) => [s.x + s.w / 2, s.y, s.x + s.w, s.y + s.h],
@@ -1571,7 +1645,7 @@ const tilePresets = {
   "right-third":  (s) => [s.x + Math.round(s.w * 0.667), s.y, s.x + s.w, s.y + s.h],
 };
 
-function tileWindow(position) {
+function tileWindow(position: string): void {
   const preset = tilePresets[position];
   if (!preset) {
     console.log(`Unknown position: ${position}`);
@@ -1591,7 +1665,7 @@ function tileWindow(position) {
   console.log(`Tiled → ${position}`);
 }
 
-function createOrAttach() {
+function createOrAttach(): void {
   const dir = process.cwd();
   const name = toSessionName(dir);
 
@@ -1612,7 +1686,7 @@ function createOrAttach() {
   attach(name);
 }
 
-function attach(name) {
+function attach(name: string): void {
   if (isInsideTmux()) {
     execSync(`tmux switch-client -t "${name}"`, { stdio: "inherit" });
   } else {
@@ -1622,7 +1696,7 @@ function attach(name) {
 
 // ── Status / Inventory ───────────────────────────────────────────────
 
-function statusInventory() {
+function statusInventory(): void {
   // Query all tmux sessions
   const sessionsRaw = runQuiet(
     'tmux list-sessions -F "#{session_name}\t#{session_windows}\t#{session_attached}"'
@@ -1638,17 +1712,17 @@ function statusInventory() {
   );
 
   // Parse panes grouped by session
-  const panesBySession = new Map();
+  const panesBySession = new Map<string, { title: string; cmd: string }[]>();
   if (panesRaw) {
     for (const line of panesRaw.split("\n").filter(Boolean)) {
       const [sess, title, cmd] = line.split("\t");
       if (!panesBySession.has(sess)) panesBySession.set(sess, []);
-      panesBySession.get(sess).push({ title, cmd });
+      panesBySession.get(sess)!.push({ title, cmd });
     }
   }
 
   // Build managed session name set
-  const managed = new Map(); // name -> label
+  const managed = new Map<string, string>(); // name -> label
 
   // From workspace groups
   const ws = readWorkspaceConfig();
@@ -1680,7 +1754,7 @@ function statusInventory() {
   }
 
   // Parse sessions and classify
-  const sessions = sessionsRaw.split("\n").filter(Boolean).map((line) => {
+  const sessions = sessionsRaw.split("\n").filter(Boolean).map((line: string) => {
     const [name, windows, attached] = line.split("\t");
     return { name, windows: parseInt(windows) || 1, attached: attached !== "0" };
   });
@@ -1836,13 +1910,15 @@ switch (command) {
       console.log("Usage: lattices daemon status");
     }
     break;
+  case "dev":
+    await devCommand(args[1], ...args.slice(2));
+    break;
   case "app": {
     // Forward to lattices-app script
     const { execFileSync } = await import("node:child_process");
-    const __dirname2 = dirname(fileURLToPath(import.meta.url));
-    const appScript = resolve(__dirname2, "lattices-app.js");
+    const appScript = resolve(import.meta.dir, "lattices-app.ts");
     try {
-      execFileSync("node", [appScript, ...args.slice(1)], { stdio: "inherit" });
+      execFileSync("bun", [appScript, ...args.slice(1)], { stdio: "inherit" });
     } catch { /* exit code forwarded */ }
     break;
   }

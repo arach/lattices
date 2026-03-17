@@ -71,6 +71,7 @@ struct SettingsContentView: View {
             // Tab bar
             HStack(spacing: 2) {
                 settingsTab(label: "General", id: "general")
+                settingsTab(label: "AI", id: "ai")
                 settingsTab(label: "Search & OCR", id: "search")
                 settingsTab(label: "Shortcuts", id: "shortcuts")
                 Spacer()
@@ -84,6 +85,7 @@ struct SettingsContentView: View {
             switch selectedTab {
             case "shortcuts": shortcutsContent
             case "search":    searchOcrContent
+            case "ai":        aiContent
             default:          generalContent
             }
         }
@@ -261,6 +263,167 @@ struct SettingsContentView: View {
                                     )
                             }
                             .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+            .padding(16)
+        }
+    }
+
+    // MARK: - AI
+
+    private var aiContent: some View {
+        ScrollView {
+            VStack(spacing: 12) {
+                // ── Claude CLI ──
+                settingsCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(Palette.running)
+                            Text("Claude CLI")
+                                .font(Typo.mono(12))
+                                .foregroundColor(Palette.text)
+                        }
+
+                        HStack(spacing: 6) {
+                            TextField("Auto-detected", text: $prefs.claudePath)
+                                .textFieldStyle(.plain)
+                                .font(Typo.mono(11))
+                                .foregroundColor(Palette.text)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 5)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 5)
+                                        .fill(Color.white.opacity(0.06))
+                                        .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
+                                )
+
+                            Button {
+                                if let resolved = Preferences.resolveClaudePath() {
+                                    prefs.claudePath = resolved
+                                }
+                            } label: {
+                                Text("Detect")
+                                    .font(Typo.monoBold(10))
+                                    .foregroundColor(Palette.text)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 4)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(Palette.surfaceHov)
+                                            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        let resolved = Preferences.resolveClaudePath()
+                        if let path = resolved {
+                            Text("Found: \(path)")
+                                .font(Typo.caption(9))
+                                .foregroundColor(Palette.running.opacity(0.8))
+                        } else {
+                            Text("Not found — install with: npm i -g @anthropic-ai/claude-code")
+                                .font(Typo.caption(9))
+                                .foregroundColor(Palette.detach)
+                        }
+                    }
+                }
+
+                // ── Advisor ──
+                settingsCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Voice advisor")
+                            .font(Typo.mono(11))
+                            .foregroundColor(Palette.text)
+
+                        HStack {
+                            Text("Model")
+                                .font(Typo.mono(10))
+                                .foregroundColor(Palette.textDim)
+                            Spacer()
+                            Picker("", selection: $prefs.advisorModel) {
+                                Text("Haiku").tag("haiku")
+                                Text("Sonnet").tag("sonnet")
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+                            .frame(width: 160)
+                        }
+
+                        Text("Haiku is fast and cheap. Sonnet is smarter but slower.")
+                            .font(Typo.caption(9))
+                            .foregroundColor(Palette.textMuted.opacity(0.7))
+
+                        cardDivider
+
+                        HStack {
+                            Text("Budget per session")
+                                .font(Typo.mono(10))
+                                .foregroundColor(Palette.textDim)
+                            Spacer()
+                            HStack(spacing: 4) {
+                                Text("$")
+                                    .font(Typo.mono(11))
+                                    .foregroundColor(Palette.textDim)
+                                TextField("0.50", value: $prefs.advisorBudgetUSD, formatter: {
+                                    let f = NumberFormatter()
+                                    f.numberStyle = .decimal
+                                    f.minimumFractionDigits = 2
+                                    f.maximumFractionDigits = 2
+                                    return f
+                                }())
+                                .textFieldStyle(.plain)
+                                .font(Typo.monoBold(11))
+                                .foregroundColor(Palette.text)
+                                .multilineTextAlignment(.center)
+                                .frame(width: 50)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 3)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 5)
+                                        .fill(Color.white.opacity(0.06))
+                                        .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
+                                )
+                            }
+                        }
+
+                        Text("Max spend per Claude CLI invocation")
+                            .font(Typo.caption(9))
+                            .foregroundColor(Palette.textMuted.opacity(0.7))
+
+                        cardDivider
+
+                        // Session stats
+                        let stats = AgentPool.shared.haiku.sessionStats
+                        HStack(spacing: 12) {
+                            if stats.contextWindow > 0 {
+                                HStack(spacing: 4) {
+                                    Circle()
+                                        .fill(stats.contextUsage > 0.6 ? Palette.detach : Palette.running)
+                                        .frame(width: 5, height: 5)
+                                    Text("Context: \(Int(stats.contextUsage * 100))%")
+                                        .font(Typo.mono(10))
+                                        .foregroundColor(Palette.textMuted)
+                                }
+                            }
+                            if stats.costUSD > 0 {
+                                Text("Session cost: $\(String(format: "%.3f", stats.costUSD))")
+                                    .font(Typo.mono(10))
+                                    .foregroundColor(Palette.textMuted)
+                            }
+
+                            Spacer()
+
+                            let learningCount = AdvisorLearningStore.shared.entryCount
+                            if learningCount > 0 {
+                                Text("\(learningCount) learned")
+                                    .font(Typo.mono(9))
+                                    .foregroundColor(Palette.textMuted.opacity(0.6))
+                            }
                         }
                     }
                 }
@@ -945,6 +1108,26 @@ struct SettingsContentView: View {
                         flowStep("3", "Each pane gets its command (claude, dev server, etc.)")
                         flowStep("4", "Session persists in the background until you kill it")
                         flowStep("5", "Attach and detach from any terminal, any time")
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                }
+
+                Section(header: stickyHeader("Voice commands")) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        flowStep("⌥", "Hold Option key to speak, release to stop")
+                        flowStep("⇥", "Tab to arm/disarm the mic")
+                        flowStep("⎋", "Escape to dismiss")
+
+                        Text("Built-in commands: find, show, open, tile, kill, scan")
+                            .font(Typo.caption(10.5))
+                            .foregroundColor(Palette.textMuted)
+                            .padding(.top, 4)
+
+                        Text("When local matching fails, Claude Haiku advises with follow-up suggestions. Configure the AI model and budget in Settings → AI.")
+                            .font(Typo.caption(10.5))
+                            .foregroundColor(Palette.textMuted)
+                            .lineSpacing(2)
                     }
                     .padding(.horizontal, 20)
                     .padding(.vertical, 12)

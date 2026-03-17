@@ -60,8 +60,11 @@ final class OcrModel: ObservableObject {
             return
         }
         let deepInterval = prefs.ocrDeepInterval
-        // Defer initial scan — let the first timer tick handle it (grace period on launch)
         DiagnosticLog.shared.info("OcrModel: starting (quick=\(self.interval)s/\(prefs.ocrQuickLimit)win, deep=\(deepInterval)s/\(prefs.ocrDeepLimit)win)")
+        // Run initial scan immediately so search works right away
+        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 2) { [weak self] in
+            self?.quickScan()
+        }
         timer = Timer.scheduledTimer(withTimeInterval: self.interval, repeats: true) { [weak self] _ in
             guard let self, self.enabled else { return }
             self.quickScan()

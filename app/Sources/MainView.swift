@@ -31,7 +31,7 @@ struct MainView: View {
         VStack(spacing: 0) {
             mainContent
         }
-        .frame(minWidth: 380, idealWidth: 380, maxWidth: 600, minHeight: 460, idealHeight: 460, maxHeight: .infinity)
+        .frame(minWidth: 380, idealWidth: 380, maxWidth: 600, minHeight: 520, idealHeight: 560, maxHeight: .infinity)
         .background(PanelBackground())
         .preferredColorScheme(.dark)
         .onAppear {
@@ -63,22 +63,9 @@ struct MainView: View {
         VStack(spacing: 0) {
             // Title bar
             HStack {
-                Text("lattices")
-                    .font(Typo.title())
+                Text("Lattices")
+                    .font(Typo.mono(14))
                     .foregroundColor(Palette.text)
-
-                if runningCount > 0 || !inventory.orphans.isEmpty {
-                    let total = runningCount + inventory.orphans.count
-                    Text("\(total) session\(total == 1 ? "" : "s")")
-                        .font(Typo.mono(10))
-                        .foregroundColor(Palette.running)
-                        .padding(.leading, 4)
-                } else {
-                    Text("None")
-                        .font(Typo.mono(10))
-                        .foregroundColor(Palette.textMuted)
-                        .padding(.leading, 4)
-                }
 
                 Spacer()
 
@@ -89,8 +76,8 @@ struct MainView: View {
                 headerButton(icon: "arrow.clockwise") { scanner.scan(); inventory.refresh() }
             }
             .padding(.horizontal, 18)
-            .padding(.top, 14)
-            .padding(.bottom, 10)
+            .padding(.top, 18)
+            .padding(.bottom, 12)
 
             // Layer switcher
             if let config = workspace.config, let layers = config.layers, layers.count > 1 {
@@ -195,6 +182,13 @@ struct MainView: View {
 
             // Actions footer
             actionsSection
+
+            Rectangle()
+                .fill(Palette.border)
+                .frame(height: 0.5)
+
+            // Bottom bar
+            bottomBar
         }
     }
 
@@ -282,38 +276,50 @@ struct MainView: View {
                 let audio = AudioLayer.shared
                 if audio.isListening { audio.stopVoiceCommand() } else { audio.startVoiceCommand() }
             }
+        }
+        .padding(.vertical, 4)
+        .background(Palette.surface.opacity(0.4))
+    }
 
-            Rectangle()
-                .fill(Palette.border)
-                .frame(height: 0.5)
-                .padding(.horizontal, 10)
-
-            ActionRow(shortcut: "S", label: "Settings", icon: "gearshape") {
+    private var bottomBar: some View {
+        HStack(spacing: 16) {
+            bottomBarButton(icon: "gearshape", label: "Settings") {
                 SettingsWindowController.shared.show()
             }
-            HStack(spacing: 0) {
-                ActionRow(shortcut: "D", label: "Diagnostics", icon: "stethoscope") {
+
+            HStack(spacing: 4) {
+                bottomBarButton(icon: "stethoscope", label: "Diagnostics") {
                     DiagnosticWindow.shared.toggle()
                 }
                 if !permChecker.allGranted {
                     Circle()
                         .fill(Palette.detach)
-                        .frame(width: 6, height: 6)
-                        .padding(.trailing, 14)
+                        .frame(width: 5, height: 5)
                 }
             }
 
-            Rectangle()
-                .fill(Palette.border)
-                .frame(height: 0.5)
-                .padding(.horizontal, 10)
+            Spacer()
 
-            ActionRow(shortcut: "Q", label: "Quit", icon: "power", accentColor: Palette.kill) {
+            bottomBarButton(icon: "power", label: "Quit", color: Palette.kill) {
                 NSApp.terminate(nil)
             }
         }
-        .padding(.vertical, 4)
-        .background(Palette.surface.opacity(0.4))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Palette.bg)
+    }
+
+    private func bottomBarButton(icon: String, label: String, color: Color = Palette.textMuted, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 10, weight: .medium))
+                Text(label)
+                    .font(Typo.mono(9))
+            }
+            .foregroundColor(color)
+        }
+        .buttonStyle(.plain)
     }
 
     private func hotkeyLabel(_ action: HotkeyAction) -> String? {

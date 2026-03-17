@@ -1,21 +1,26 @@
 // Lightweight WebSocket client for lattices daemon (ws://127.0.0.1:9399)
 // Uses Node `net` module with manual HTTP upgrade + minimal WS framing.
-// Zero npm dependencies. Requires Node >= 18.
+// Zero npm dependencies.
 
-import { createConnection } from "node:net";
+import { createConnection, type Socket } from "node:net";
 import { randomBytes } from "node:crypto";
 
 const DAEMON_HOST = "127.0.0.1";
 const DAEMON_PORT = 9399;
 
+interface ParsedFrame {
+  payload: string;
+  rest: Buffer<ArrayBuffer>;
+}
+
 /**
  * Send a JSON-RPC-style request to the daemon and return the response.
- * @param {string} method
- * @param {object} [params]
- * @param {number} [timeoutMs=3000]
- * @returns {Promise<object>} The result field from the response
  */
-export async function daemonCall(method, params, timeoutMs = 3000) {
+export async function daemonCall(
+  method: string,
+  params?: Record<string, unknown> | null,
+  timeoutMs = 3000
+): Promise<unknown> {
   const id = randomBytes(4).toString("hex");
   const request = JSON.stringify({ id, method, params: params ?? null });
 
@@ -62,8 +67,8 @@ export async function daemonCall(method, params, timeoutMs = 3000) {
       socket.write(upgrade);
     });
 
-    socket.on("data", (chunk) => {
-      buffer = Buffer.concat([buffer, chunk]);
+    socket.on("data", (chunk: Buffer) => {
+      buffer = Buffer.concat([buffer, chunk]) as Buffer<ArrayBuffer>;
 
       if (!upgraded) {
         const headerEnd = buffer.indexOf("\r\n\r\n");
@@ -82,23 +87,38 @@ export async function daemonCall(method, params, timeoutMs = 3000) {
         sendFrame(socket, request);
       }
 
-      // Try to parse a WebSocket frame from the buffer
-      const result = parseFrame(buffer);
-      if (result) {
+      // The daemon can push broadcast events before the RPC response.
+      // Keep consuming frames until we see our matching response id.
+      while (true) {
+        const result = parseFrame(buffer);
+        if (!result) break;
         buffer = result.rest;
-        if (!settled) {
-          settled = true;
-          cleanup();
-          try {
-            const parsed = JSON.parse(result.payload);
+
+        try {
+          const parsed = JSON.parse(result.payload);
+          if (parsed.event) {
+            continue;
+          }
+          if (parsed.id !== id) {
+            continue;
+          }
+          if (!settled) {
+            settled = true;
+            cleanup();
             if (parsed.error) {
               reject(new Error(parsed.error));
             } else {
               resolve(parsed.result);
             }
-          } catch (e) {
+          }
+          return;
+        } catch {
+          if (!settled) {
+            settled = true;
+            cleanup();
             reject(new Error("Invalid JSON response from daemon"));
           }
+          return;
         }
       }
     });
@@ -107,9 +127,8 @@ export async function daemonCall(method, params, timeoutMs = 3000) {
 
 /**
  * Check if the daemon is reachable.
- * @returns {Promise<boolean>}
  */
-export async function isDaemonRunning() {
+export async function isDaemonRunning(): Promise<boolean> {
   try {
     await daemonCall("daemon.status", null, 1000);
     return true;
@@ -120,12 +139,12 @@ export async function isDaemonRunning() {
 
 // MARK: - WebSocket framing helpers
 
-function sendFrame(socket, text) {
+function sendFrame(socket: Socket, text: string): void {
   const payload = Buffer.from(text, "utf8");
   const mask = randomBytes(4);
   const len = payload.length;
 
-  let header;
+  let header: Buffer;
   if (len < 126) {
     header = Buffer.alloc(2);
     header[0] = 0x81; // FIN + text opcode
@@ -145,17 +164,17 @@ function sendFrame(socket, text) {
   // Mask payload
   const masked = Buffer.alloc(payload.length);
   for (let i = 0; i < payload.length; i++) {
-    masked[i] = payload[i] ^ mask[i % 4];
+    masked[i] = payload[i]! ^ mask[i % 4]!;
   }
 
   socket.write(Buffer.concat([header, mask, masked]));
 }
 
-function parseFrame(buf) {
+function parseFrame(buf: Buffer): ParsedFrame | null {
   if (buf.length < 2) return null;
 
-  const masked = (buf[1] & 0x80) !== 0;
-  let payloadLen = buf[1] & 0x7f;
+  const isMasked = (buf[1]! & 0x80) !== 0;
+  let payloadLen = buf[1]! & 0x7f;
   let offset = 2;
 
   if (payloadLen === 126) {
@@ -168,20 +187,20 @@ function parseFrame(buf) {
     offset = 10;
   }
 
-  if (masked) offset += 4;
+  if (isMasked) offset += 4;
   if (buf.length < offset + payloadLen) return null;
 
   let payload = buf.subarray(offset, offset + payloadLen);
-  if (masked) {
+  if (isMasked) {
     const maskKey = buf.subarray(offset - 4, offset);
     payload = Buffer.alloc(payloadLen);
     for (let i = 0; i < payloadLen; i++) {
-      payload[i] = buf[offset + i] ^ maskKey[i % 4];
+      payload[i] = buf[offset + i]! ^ maskKey[i % 4]!;
     }
   }
 
   return {
     payload: payload.toString("utf8"),
-    rest: buf.subarray(offset + payloadLen),
+    rest: buf.subarray(offset + payloadLen) as Buffer<ArrayBuffer>,
   };
 }
