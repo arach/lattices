@@ -118,9 +118,8 @@ final class VoiceCommandWindow {
         guard let p = panel else { return }
         removeMonitors()
 
-        if let s = state, s.phase == .listening {
-            AudioLayer.shared.stopVoiceCommand()
-        }
+        // Cancel any in-progress listening or processing
+        state?.cancelProcessing()
 
         // Hide panel but keep state — Hyper+3 will bring it back
         NSAnimationContext.runAnimationGroup({ ctx in
@@ -264,6 +263,7 @@ final class VoiceCommandState: ObservableObject {
 
     private var logSnapshot = 0
     private var logObserver: AnyCancellable?
+    private var cancelled = false
 
     func startListening() {
         let client = TalkieClient.shared
@@ -292,6 +292,7 @@ final class VoiceCommandState: ObservableObject {
     }
 
     private func beginListening() {
+        cancelled = false
         phase = .listening
         listenStartTime = Date()
         partialText = ""
@@ -325,9 +326,20 @@ final class VoiceCommandState: ObservableObject {
     }
 
     func cancelListening() {
+        cancelled = true
         phase = .idle
         AudioLayer.shared.stopVoiceCommand()
         appendLog("Cancelled")
+    }
+
+    /// Cancel any in-progress processing (polling loops will check this flag).
+    func cancelProcessing() {
+        cancelled = true
+        if phase == .listening || phase == .transcribing || phase == .connecting {
+            AudioLayer.shared.stopVoiceCommand()
+            appendLog("Processing cancelled")
+            phase = .idle
+        }
     }
 
     func toggleArmed() {
@@ -413,7 +425,7 @@ final class VoiceCommandState: ObservableObject {
     private func observeResult() {
         let audio = AudioLayer.shared
         var checks = 0
-        let maxChecks = 150
+        let maxChecks = 75  // 15 seconds at 0.2s intervals
 
         func syncState() {
             // Sync transcript immediately
@@ -434,6 +446,9 @@ final class VoiceCommandState: ObservableObject {
         }
 
         func poll() {
+            // Bail if cancelled (e.g. user dismissed or started a new command)
+            guard !self.cancelled else { return }
+
             checks += 1
             syncState()
 

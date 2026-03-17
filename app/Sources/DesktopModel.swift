@@ -5,6 +5,20 @@ import CoreGraphics
 final class DesktopModel: ObservableObject {
     static let shared = DesktopModel()
 
+    /// System helper processes that should never appear in search results or window lists.
+    /// These are XPC services, agents, and background helpers — not user-facing apps.
+    private static let systemHelperProcesses: Set<String> = [
+        "CredentialsProviderExtensionHost",
+        "AuthenticationServicesAgent",
+        "SafariPasswordExtension",
+        "com.apple.WebKit.WebAuthn",
+        "SharedWebCredentialRunner",
+        "ViewBridgeAuxiliary",
+        "universalaccessd",
+        "CoreServicesUIAgent",
+        "UserNotificationCenter",
+    ]
+
     @Published private(set) var windows: [UInt32: WindowEntry] = [:]
     /// In-memory layer tags: wid → layer id (e.g. "lattices", "talkie", "hudson")
     private(set) var windowLayerTags: [UInt32: String] = [:]
@@ -87,6 +101,15 @@ final class DesktopModel: ObservableObject {
 
             // Skip non-standard layers (menus, overlays)
             guard layer == 0 else { continue }
+
+            // Skip system helper processes (autofill, credential providers, etc.)
+            // These are XPC services / agents, not user-facing apps. Use process name
+            // (reliable) + size heuristic (small windows from known helpers).
+            let isSystemHelper = Self.systemHelperProcesses.contains(ownerName)
+            let isSmallWindow = rect.width <= 400 || rect.height <= 400
+            if isSystemHelper || (isSmallWindow && title.lowercased().contains("autofill")) {
+                continue
+            }
 
             let frame = WindowFrame(
                 x: Double(rect.origin.x),
