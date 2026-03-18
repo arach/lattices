@@ -1,0 +1,71 @@
+---
+// styles inline below
+
+export async function getStaticPaths() {
+  const posts = await import.meta.glob('../../../../content/blog/*.md', { eager: true }) as Record<string, any>
+
+  return Object.entries(posts).map(([path, mod]) => ({
+    params: { slug: path.split('/').pop()?.replace('.md', '') ?? '' },
+    props: { frontmatter: mod.frontmatter, Content: mod.Content },
+  }))
+}
+
+const { frontmatter, Content } = Astro.props
+const date = new Date(frontmatter.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+---
+
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{frontmatter.title} — Lattices</title>
+  <meta name="description" content={frontmatter.description} />
+  <style>
+    body { background: #0a0a0a; color: #d4d4d4; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif; margin: 0; padding: 0; line-height: 1.7; }
+    .container { max-width: 720px; margin: 0 auto; padding: 60px 24px 120px; }
+    .back { font-size: 0.85rem; color: #666; text-decoration: none; display: inline-block; margin-bottom: 32px; }
+    .back:hover { color: #aaa; }
+    h1 { font-size: 2rem; font-weight: 600; color: #fff; line-height: 1.25; margin-bottom: 12px; }
+    .meta { font-size: 0.9rem; color: #777; margin-bottom: 40px; }
+    .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+    .tag { font-size: 0.75rem; background: #1a1a1a; color: #888; padding: 2px 8px; border-radius: 4px; border: 1px solid #222; }
+
+    /* Prose */
+    .prose h2 { font-size: 1.4rem; font-weight: 600; color: #fff; margin-top: 48px; margin-bottom: 16px; }
+    .prose h3 { font-size: 1.15rem; font-weight: 500; color: #eee; margin-top: 36px; margin-bottom: 12px; }
+    .prose p { margin-bottom: 18px; color: #ccc; }
+    .prose a { color: #88b4ff; text-decoration: none; }
+    .prose a:hover { text-decoration: underline; }
+    .prose code { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.88em; background: #1a1a1a; padding: 2px 6px; border-radius: 3px; border: 1px solid #222; }
+    .prose pre { background: #111; border: 1px solid #222; border-radius: 8px; padding: 16px 20px; overflow-x: auto; margin: 24px 0; }
+    .prose pre code { background: none; border: none; padding: 0; font-size: 0.85em; }
+    .prose blockquote { border-left: 3px solid #333; padding-left: 16px; margin-left: 0; color: #999; font-style: italic; }
+    .prose table { width: 100%; border-collapse: collapse; margin: 24px 0; }
+    .prose th, .prose td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #222; font-size: 0.9rem; }
+    .prose th { color: #aaa; font-weight: 500; }
+    .prose td { color: #ccc; }
+    .prose ul, .prose ol { padding-left: 24px; margin-bottom: 18px; }
+    .prose li { margin-bottom: 6px; color: #ccc; }
+    .prose hr { border: none; border-top: 1px solid #222; margin: 48px 0; }
+    .prose strong { color: #fff; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <a href="/docs/blog" class="back">&larr; all posts</a>
+    <h1>{frontmatter.title}</h1>
+    <div class="meta">
+      {frontmatter.author && <span>{frontmatter.author} &middot; </span>}
+      {date}
+      <div class="tags">
+        {(frontmatter.tags ?? []).map((tag: string) => (
+          <span class="tag">{tag}</span>
+        ))}
+      </div>
+    </div>
+    <div class="prose">
+      <Content />
+    </div>
+  </div>
+</body>
+</html>

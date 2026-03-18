@@ -1,20 +1,15 @@
 import AppKit
 
-/// Hands-off voice mode: a warm sidecar agent with full Lattices context.
+/// Hands-off voice mode: hotkey → listen → worker handles everything.
 ///
 /// Architecture:
-///   - **System prompt** (loaded once): teaches the agent everything it can do —
-///     intents, tiling, stages, layers, search, focus. This is the "preparation".
-///   - **Per-turn snapshot**: each user message includes a structured context snapshot
-///     of the current desktop state — active stage windows, strip thumbnails, layers,
-///     SM preferences. The agent sees exactly what's relevant.
-///   - **Persistent session**: conversation carries over between turns. The agent
-///     builds understanding of the user's workflow over time (in-context learning).
-///   - **Context management**: AgentSession auto-resets at 75% context usage,
-///     so the sidecar never gets stuck.
+///   - Swift owns: hotkey, Talkie dictation, action execution
+///   - Worker owns: inference (Groq), TTS (streaming OpenAI), fast path matching, audio caching
+///   - Worker is a long-running bun process, started once, communicates via JSON lines over stdio
 ///
-/// The agent responds with JSON: actions to execute + optional spoken commentary.
-/// No panel, no UI. Sound feedback only.
+/// The worker handles the full turn orchestration in parallel:
+///   - Fast path: local match → cached ack + execute + cached confirm (~300ms)
+///   - Slow path: cached ack ∥ Groq inference → streaming TTS ∥ execute (~2s)
 
 final class HandsOffSession: ObservableObject {
     static let shared = HandsOffSession()
@@ -24,97 +19,186 @@ final class HandsOffSession: ObservableObject {
         case connecting
         case listening
         case thinking
-        case speaking
     }
 
     @Published var state: State = .idle
     @Published var lastTranscript: String?
     @Published var lastResponse: String?
 
-    private let agent: AgentSession
     private var turnCount = 0
+    private var conversationHistory: [[String: String]] = []
+    private let maxHistoryTurns = 10
 
-    private init() {
-        agent = AgentSession(model: "sonnet", label: "hands-off")
-        agent.customSystemPrompt = { Self.buildSidecarPrompt() }
-    }
+    // Long-running worker process
+    private var workerProcess: Process?
+    private var workerStdin: FileHandle?
+    private var workerBuffer = ""
+    private let workerQueue = DispatchQueue(label: "com.lattices.handsoff-worker", qos: .userInitiated)
+
+    /// JSONL log for full turn data — ~/.lattices/handsoff.jsonl
+    private let turnLogPath = NSHomeDirectory() + "/.lattices/handsoff.jsonl"
+
+    private init() {}
 
     // MARK: - Lifecycle
 
     func start() {
-        agent.start()
-        DiagnosticLog.shared.info("HandsOff: sidecar agent ready")
+        startWorker()
     }
 
-    // MARK: - Sidecar system prompt (loaded once, teaches the agent everything)
+    /// Append a full turn record to the JSONL log
+    private func logTurn(transcript: String, response: [String: Any], turnMs: Int) {
+        let snapshot = buildSnapshot()
+        var record: [String: Any] = [
+            "ts": ISO8601DateFormatter().string(from: Date()),
+            "turn": turnCount,
+            "transcript": transcript,
+            "turnMs": turnMs,
+            "snapshot": snapshot,
+        ]
+        if let data = response["data"] as? [String: Any] {
+            record["actions"] = data["actions"]
+            record["spoken"] = data["spoken"]
+            record["meta"] = data["_meta"]
+        }
 
-    private static func buildSidecarPrompt() -> String {
-        // Gather intent catalog
-        let intentList = PhraseMatcher.shared.catalog()
-        var intentDocs = ""
-        if case .array(let intents) = intentList {
-            intentDocs = intents.compactMap { intent -> String? in
-                guard let name = intent["intent"]?.stringValue else { return nil }
-                let desc = intent["description"]?.stringValue ?? ""
-                var slotDocs: [String] = []
-                if case .array(let slots) = intent["slots"] {
-                    slotDocs = slots.compactMap { slot -> String? in
-                        guard let sn = slot["name"]?.stringValue else { return nil }
-                        let req = slot["required"]?.boolValue == true ? " (required)" : ""
-                        return "    \(sn)\(req)"
-                    }
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: record),
+              var line = String(data: jsonData, encoding: .utf8) else { return }
+        line += "\n"
+
+        if let handle = FileHandle(forWritingAtPath: turnLogPath) {
+            handle.seekToEndOfFile()
+            handle.write(line.data(using: .utf8)!)
+            handle.closeFile()
+        } else {
+            FileManager.default.createFile(atPath: turnLogPath, contents: line.data(using: .utf8))
+        }
+    }
+
+    private func startWorker() {
+        let bunPaths = [
+            NSHomeDirectory() + "/.bun/bin/bun",
+            "/usr/local/bin/bun",
+            "/opt/homebrew/bin/bun",
+        ]
+        guard let bunPath = bunPaths.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
+            DiagnosticLog.shared.warn("HandsOff: bun not found, worker disabled")
+            return
+        }
+
+        let scriptPath = NSHomeDirectory() + "/dev/lattices/bin/handsoff-worker.ts"
+        guard FileManager.default.fileExists(atPath: scriptPath) else {
+            DiagnosticLog.shared.warn("HandsOff: worker script not found at \(scriptPath)")
+            return
+        }
+
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: bunPath)
+        proc.arguments = ["run", scriptPath]
+        proc.currentDirectoryURL = URL(fileURLWithPath: NSHomeDirectory() + "/dev/lattices")
+
+        var env = ProcessInfo.processInfo.environment
+        env.removeValue(forKey: "CLAUDECODE")
+        proc.environment = env
+
+        let inPipe = Pipe()
+        let outPipe = Pipe()
+        let errPipe = Pipe()
+        proc.standardInput = inPipe
+        proc.standardOutput = outPipe
+        proc.standardError = errPipe
+
+        do {
+            try proc.run()
+        } catch {
+            DiagnosticLog.shared.warn("HandsOff: failed to start worker — \(error)")
+            return
+        }
+
+        workerProcess = proc
+        workerStdin = inPipe.fileHandleForWriting
+
+        // Read stdout for responses
+        outPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+            let data = handle.availableData
+            guard !data.isEmpty, let str = String(data: data, encoding: .utf8) else { return }
+            self?.handleWorkerOutput(str)
+        }
+
+        // Log stderr
+        errPipe.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            guard !data.isEmpty, let str = String(data: data, encoding: .utf8) else { return }
+            for line in str.components(separatedBy: "\n") where !line.isEmpty {
+                DiagnosticLog.shared.info("HandsOff worker: \(line)")
+            }
+        }
+
+        // Handle worker crash → restart
+        proc.terminationHandler = { [weak self] proc in
+            DiagnosticLog.shared.warn("HandsOff: worker exited (code \(proc.terminationStatus)), restarting in 2s")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                self?.startWorker()
+            }
+        }
+
+        // Ping to verify
+        sendToWorker(["cmd": "ping"])
+        DiagnosticLog.shared.info("HandsOff: worker started (pid \(proc.processIdentifier))")
+    }
+
+    // MARK: - Worker communication
+
+    private var pendingCallback: (([String: Any]) -> Void)?
+
+    private func sendToWorker(_ dict: [String: Any]) {
+        guard let data = try? JSONSerialization.data(withJSONObject: dict),
+              var str = String(data: data, encoding: .utf8) else { return }
+        str += "\n"
+        workerQueue.async { [weak self] in
+            self?.workerStdin?.write(str.data(using: .utf8)!)
+        }
+    }
+
+    private func sendToWorkerWithCallback(_ dict: [String: Any], callback: @escaping ([String: Any]) -> Void) {
+        pendingCallback = callback
+        sendToWorker(dict)
+    }
+
+    private func handleWorkerOutput(_ str: String) {
+        workerBuffer += str
+        let lines = workerBuffer.components(separatedBy: "\n")
+        workerBuffer = lines.last ?? ""
+
+        for line in lines.dropLast() {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty,
+                  let data = trimmed.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else { continue }
+
+            DiagnosticLog.shared.info("HandsOff: worker response → \(trimmed)")
+
+            // Execute actions immediately when they arrive
+            if let dataObj = json["data"] as? [String: Any],
+               let actions = dataObj["actions"] as? [[String: Any]], !actions.isEmpty {
+                DispatchQueue.main.async {
+                    self.executeActions(actions)
                 }
-                let slotStr = slotDocs.isEmpty ? "" : "\n" + slotDocs.joined(separator: "\n")
-                return "  \(name): \(desc)\(slotStr)"
-            }.joined(separator: "\n")
+            }
+
+            if let cb = pendingCallback {
+                pendingCallback = nil
+                cb(json)
+            }
+
+            DispatchQueue.main.async {
+                self.state = .idle
+            }
         }
-
-        return """
-        You are the Lattices hands-off sidecar — a persistent voice assistant for a macOS workspace manager.
-
-        You receive voice transcripts (may contain typos from Whisper) with a desktop snapshot showing the current state. You can take actions and/or respond conversationally.
-
-        # Response format
-        Respond with ONLY a JSON object:
-        ```
-        {
-          "actions": [
-            {"intent": "intent_name", "slots": {"key": "value"}}
-          ],
-          "spoken": "Short spoken response (1-2 sentences max, conversational)"
-        }
-        ```
-        - "actions": array of intents to execute. Empty array [] if no action needed.
-        - "spoken": what to say back. null if silent execution is fine.
-        - Keep spoken responses SHORT — this is voice, not text.
-
-        # Available intents
-        \(intentDocs)
-
-        # Stage Manager
-        When Stage Manager is ON, windows are grouped into "stages". The snapshot shows:
-        - Active stage: windows currently visible and usable
-        - Strip: thumbnail previews of other stages on the left edge
-        - Other stages: apps hidden in inactive stages
-
-        You can tile windows within the active stage using tile_window with positions:
-        left, right, top, bottom, maximize, center, top-left, top-right, bottom-left, bottom-right, left-third, center-third, right-third
-
-        The "distribute" intent arranges all visible windows in a smart grid.
-
-        # Layers
-        Lattices has workspace layers (like virtual desktops with window arrangements).
-        Use switch_layer to change layers, create_layer to save current arrangement.
-
-        # Guidelines
-        - Parse voice transcripts generously — "tile chrome left" means tile_window with app=chrome, position=left
-        - If the request is conversational (question, observation), just respond with spoken text, no actions
-        - If the request is an action, execute it and optionally confirm with brief spoken feedback
-        - You have full conversation history — refer back to prior turns naturally
-        - When uncertain, ask for clarification via spoken response
-        - Be terse. This is hands-off mode — the user doesn't want to look at a screen.
-        """
     }
+
+    // MARK: - Toggle
 
     func toggle() {
         switch state {
@@ -122,7 +206,7 @@ final class HandsOffSession: ObservableObject {
             beginListening()
         case .listening:
             finishListening()
-        case .thinking, .speaking:
+        case .thinking:
             DiagnosticLog.shared.info("HandsOff: busy, ignoring toggle")
         case .connecting:
             cancel()
@@ -130,9 +214,6 @@ final class HandsOffSession: ObservableObject {
     }
 
     func cancel() {
-        if AudioLayer.shared.isListening {
-            AudioLayer.shared.provider?.stopListening { _ in }
-        }
         state = .idle
         DiagnosticLog.shared.info("HandsOff: cancelled")
     }
@@ -197,7 +278,7 @@ final class HandsOffSession: ObservableObject {
                         } else {
                             self.lastTranscript = text
                             DiagnosticLog.shared.info("HandsOff: heard → '\(text)'")
-                            self.sendToClaude(text)
+                            self.processTurn(text)
                         }
                     case .failure(let error):
                         self.state = .idle
@@ -211,212 +292,184 @@ final class HandsOffSession: ObservableObject {
 
     func finishListening() {
         guard state == .listening else { return }
+        playSound("Tink")
         TalkieClient.shared.call(method: "stopDictation") { _ in }
     }
 
-    // MARK: - Claude sidecar conversation
+    // MARK: - Turn processing (delegates to worker)
 
-    private func sendToClaude(_ text: String) {
+    private func processTurn(_ transcript: String) {
         state = .thinking
         turnCount += 1
 
-        let message = buildTurnMessage(text)
+        let turnStart = Date()
+        DiagnosticLog.shared.info("HandsOff: ⏱ turn \(turnCount) — '\(transcript)'")
 
-        agent.send(message: message) { [weak self] response in
+        // Build snapshot
+        let snapshot = buildSnapshot()
+
+        // Send turn to worker — it handles ack, inference, TTS, everything in parallel
+        let turnCmd: [String: Any] = [
+            "cmd": "turn",
+            "transcript": transcript,
+            "snapshot": snapshot,
+            "history": conversationHistory,
+        ]
+
+        sendToWorkerWithCallback(turnCmd) { [weak self] response in
             guard let self else { return }
 
-            if let response {
-                self.lastResponse = response.raw
-                DiagnosticLog.shared.info("HandsOff: Claude → \(response.raw.prefix(300))")
+            let turnMs = Int(Date().timeIntervalSince(turnStart) * 1000)
+            DiagnosticLog.shared.info("HandsOff: ⏱ turn \(self.turnCount) complete — \(turnMs)ms")
 
-                // Execute any actions
-                self.executeActions(from: response.raw)
+            // Log full turn to JSONL
+            self.logTurn(transcript: transcript, response: response, turnMs: turnMs)
 
-                // Speak commentary
-                let spoken = response.commentary ?? self.extractSpoken(from: response.raw)
-                if let spoken, !spoken.isEmpty {
-                    self.speakResponse(spoken)
-                } else {
-                    self.state = .idle
-                    self.playSound("Pop")
+            // Record history
+            if let data = response["data"] as? [String: Any] {
+                let responseStr = (try? String(data: JSONSerialization.data(withJSONObject: data), encoding: .utf8)) ?? ""
+                self.conversationHistory.append(["role": "user", "content": transcript])
+                self.conversationHistory.append(["role": "assistant", "content": responseStr])
+                if self.conversationHistory.count > self.maxHistoryTurns * 2 {
+                    self.conversationHistory = Array(self.conversationHistory.suffix(self.maxHistoryTurns * 2))
                 }
-            } else {
-                self.lastResponse = nil
-                self.state = .idle
-                DiagnosticLog.shared.warn("HandsOff: Claude returned nil")
-                self.playSound("Basso")
             }
         }
     }
 
-    // MARK: - Per-turn context snapshot
+    // MARK: - Desktop snapshot (full context — all windows, all screens)
 
-    private func buildTurnMessage(_ userText: String) -> String {
-        var msg = ""
-
-        // The user's request (voice transcript, may have typos)
-        msg += "USER: \"\(userText)\"\n\n"
-
-        // Desktop snapshot — only include what's relevant
-        msg += "--- DESKTOP SNAPSHOT ---\n"
-
-        let allWindows = Array(DesktopModel.shared.windows.values)
-
-        // Stage Manager state
+    private func buildSnapshot() -> [String: Any] {
+        let allWindows = DesktopModel.shared.allWindows()
         let smEnabled = UserDefaults(suiteName: "com.apple.WindowManager")?.bool(forKey: "GloballyEnabled") ?? false
-        if smEnabled {
-            let grouping = UserDefaults(suiteName: "com.apple.WindowManager")?.integer(forKey: "AppWindowGroupingBehavior") ?? 0
+        let grouping = UserDefaults(suiteName: "com.apple.WindowManager")?.integer(forKey: "AppWindowGroupingBehavior") ?? 0
 
-            // Active stage windows (large, onscreen)
-            let activeStage = allWindows.filter { $0.isOnScreen && $0.frame.w > 250 }
-            // Strip thumbnails (small, onscreen, left edge)
-            let stripThumbs = allWindows.filter {
-                $0.isOnScreen && $0.frame.w < 250 && $0.frame.w > 50 && $0.frame.x < 220 && $0.frame.x >= 0
+        // All windows — no filtering. Order is front-to-back (Z-order).
+        let windowList: [[String: Any]] = allWindows.enumerated().map { (zIndex, w) in
+            var entry: [String: Any] = [
+                "wid": w.wid,
+                "app": w.app,
+                "title": w.title,
+                "frame": "\(Int(w.frame.x)),\(Int(w.frame.y)) \(Int(w.frame.w))x\(Int(w.frame.h))",
+                "onScreen": w.isOnScreen,
+                "zIndex": zIndex, // 0 = frontmost
+            ]
+            if let session = w.latticesSession {
+                entry["session"] = session
             }
-            // Hidden in other stages
-            let hidden = allWindows.filter { !$0.isOnScreen && $0.frame.w > 250 }
-            let hiddenApps = Set(hidden.map(\.app)).sorted()
+            if !w.spaceIds.isEmpty {
+                entry["spaces"] = w.spaceIds
+            }
+            return entry
+        }
 
-            msg += "Stage Manager: ON (grouping: \(grouping == 0 ? "all-at-once" : "one-at-a-time"))\n"
-            msg += "\nActive stage (\(activeStage.count) windows):\n"
-            for w in activeStage {
-                msg += "  [\(w.wid)] \(w.app): \"\(w.title)\" — \(Int(w.frame.x)),\(Int(w.frame.y)) \(Int(w.frame.w))x\(Int(w.frame.h))\n"
-            }
-            msg += "\nStrip (\(stripThumbs.count) thumbnails): \(Set(stripThumbs.map(\.app)).sorted().joined(separator: ", "))\n"
-            msg += "Other stages: \(hiddenApps.joined(separator: ", "))\n"
-        } else {
-            let onscreen = allWindows.filter { $0.isOnScreen }
-            msg += "Stage Manager: OFF\n"
-            msg += "Visible windows (\(onscreen.count)):\n"
-            for w in onscreen.prefix(20) {
-                msg += "  [\(w.wid)] \(w.app): \"\(w.title)\" — \(Int(w.frame.x)),\(Int(w.frame.y)) \(Int(w.frame.w))x\(Int(w.frame.h))\n"
-            }
+        // All screens
+        let screens: [[String: Any]] = NSScreen.screens.enumerated().map { (i, s) in
+            [
+                "index": i + 1,
+                "width": Int(s.frame.width),
+                "height": Int(s.frame.height),
+                "isMain": s == NSScreen.main,
+                "visibleWidth": Int(s.visibleFrame.width),
+                "visibleHeight": Int(s.visibleFrame.height),
+            ]
         }
 
         // Layers
+        var layerInfo: [String: Any]?
         let layerStore = SessionLayerStore.shared
         if layerStore.activeIndex >= 0 && layerStore.activeIndex < layerStore.layers.count {
             let current = layerStore.layers[layerStore.activeIndex]
-            msg += "\nCurrent layer: \(current.name) (index: \(layerStore.activeIndex))\n"
+            layerInfo = ["name": current.name, "index": layerStore.activeIndex]
         }
 
-        // Screen info
-        if let screen = NSScreen.main {
-            let v = screen.visibleFrame
-            msg += "\nScreen: \(Int(screen.frame.width))x\(Int(screen.frame.height)), usable: \(Int(v.width))x\(Int(v.height))\n"
+        // Terminal enrichment — cwd, running commands, claude, tmux sessions
+        let terminals = ProcessModel.shared.synthesizeTerminals()
+        let terminalList: [[String: Any]] = terminals.compactMap { inst in
+            var entry: [String: Any] = [
+                "tty": inst.tty,
+                "hasClaude": inst.hasClaude,
+                "displayName": inst.displayName,
+                "isActiveTab": inst.isActiveTab,
+            ]
+            if let cwd = inst.cwd { entry["cwd"] = cwd }
+            if let app = inst.app { entry["app"] = app.rawValue }
+            if let session = inst.tmuxSession { entry["tmuxSession"] = session }
+            if let wid = inst.windowId { entry["windowId"] = Int(wid) }
+            if let title = inst.tabTitle { entry["tabTitle"] = title }
+            // Top running command (most useful for context)
+            let userProcesses = inst.processes.filter {
+                !["zsh", "bash", "fish", "login", "-zsh", "-bash"].contains($0.comm)
+            }
+            if !userProcesses.isEmpty {
+                entry["runningCommands"] = userProcesses.map { proc in
+                    var cmd: [String: Any] = ["command": proc.comm]
+                    if let cwd = proc.cwd { cmd["cwd"] = cwd }
+                    return cmd
+                }
+            }
+            return entry
         }
 
-        msg += "--- END SNAPSHOT ---\n"
+        // Tmux sessions
+        let tmuxSessions = TmuxModel.shared.sessions
+        let tmuxList: [[String: Any]] = tmuxSessions.map { s in
+            [
+                "name": s.name,
+                "windowCount": s.windowCount,
+                "attached": s.attached,
+            ]
+        }
 
-        return msg
+        var snapshot: [String: Any] = [
+            "stageManager": smEnabled,
+            "smGrouping": grouping == 0 ? "all-at-once" : "one-at-a-time",
+            "windows": windowList,
+            "terminals": terminalList,
+            "screens": screens,
+            "windowCount": allWindows.count,
+            "onScreenCount": allWindows.filter(\.isOnScreen).count,
+        ]
+        if !tmuxList.isEmpty { snapshot["tmuxSessions"] = tmuxList }
+        if let layerInfo { snapshot["currentLayer"] = layerInfo }
+
+        return snapshot
     }
 
     // MARK: - Action execution
 
-    /// Parse and execute actions from Claude's response.
-    /// Expected format: JSON with "actions" array and optional "spoken" text.
-    private func executeActions(from raw: String) {
-        guard let jsonStr = extractJSON(from: raw),
-              let data = jsonStr.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return }
+    private func executeActions(_ actions: [[String: Any]]) {
+        for action in actions {
+            guard let intent = action["intent"] as? String else { continue }
+            let slots = action["slots"] as? [String: Any] ?? [:]
 
-        // Single action
-        if let intent = json["intent"] as? String {
-            executeIntent(intent, slots: json["slots"] as? [String: Any] ?? [:])
-            return
-        }
-
-        // Multiple actions
-        if let actions = json["actions"] as? [[String: Any]] {
-            for action in actions {
-                guard let intent = action["intent"] as? String else { continue }
-                executeIntent(intent, slots: action["slots"] as? [String: Any] ?? [:])
-            }
-        }
-    }
-
-    private func executeIntent(_ intentName: String, slots: [String: Any]) {
-        let jsonSlots = slots.reduce(into: [String: JSON]()) { dict, pair in
-            if let s = pair.value as? String {
-                dict[pair.key] = .string(s)
-            } else if let n = pair.value as? Int {
-                dict[pair.key] = .int(n)
-            } else if let b = pair.value as? Bool {
-                dict[pair.key] = .bool(b)
-            }
-        }
-
-        let match = IntentMatch(
-            intentName: intentName,
-            slots: jsonSlots,
-            confidence: 0.95,
-            matchedPhrase: "hands-off-sidecar"
-        )
-
-        do {
-            let result = try PhraseMatcher.shared.execute(match)
-            DiagnosticLog.shared.info("HandsOff: executed '\(intentName)' → ok")
-
-            // Log result summary
-            if case .object(let obj) = result, let ok = obj["ok"]?.boolValue, ok {
-                DiagnosticLog.shared.success("HandsOff: \(intentName) succeeded")
-            }
-        } catch {
-            DiagnosticLog.shared.warn("HandsOff: \(intentName) failed — \(error.localizedDescription)")
-        }
-    }
-
-    /// Extract the "spoken" field from a JSON response, or return nil.
-    private func extractSpoken(from raw: String) -> String? {
-        guard let jsonStr = extractJSON(from: raw),
-              let data = jsonStr.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else {
-            // Not JSON — treat the whole response as spoken text
-            let cleaned = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            return cleaned.isEmpty ? nil : cleaned
-        }
-        return json["spoken"] as? String
-    }
-
-    private func extractJSON(from text: String) -> String? {
-        let cleaned = text
-            .replacingOccurrences(of: "```json", with: "")
-            .replacingOccurrences(of: "```", with: "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let start = cleaned.firstIndex(of: "{"),
-              let end = cleaned.lastIndex(of: "}") else { return nil }
-        return String(cleaned[start...end])
-    }
-
-    // MARK: - TTS
-
-    private func speakResponse(_ text: String) {
-        state = .speaking
-
-        let client = TalkieClient.shared
-        if client.connectionState == .connected {
-            client.call(method: "speak", params: ["text": text, "source": "lattices-handsoff"]) { [weak self] result in
-                DispatchQueue.main.async {
-                    if case .failure = result {
-                        // Talkie TTS not available — system fallback
-                        let synth = NSSpeechSynthesizer()
-                        synth.startSpeaking(text)
-                    }
-                    self?.state = .idle
-                    self?.playSound("Pop")
+            let jsonSlots = slots.reduce(into: [String: JSON]()) { dict, pair in
+                if let s = pair.value as? String {
+                    dict[pair.key] = .string(s)
+                } else if let n = pair.value as? Int {
+                    dict[pair.key] = .int(n)
+                } else if let b = pair.value as? Bool {
+                    dict[pair.key] = .bool(b)
                 }
             }
-        } else {
-            let synth = NSSpeechSynthesizer()
-            synth.startSpeaking(text)
-            state = .idle
-            playSound("Pop")
+
+            let match = IntentMatch(
+                intentName: intent,
+                slots: jsonSlots,
+                confidence: 0.95,
+                matchedPhrase: "hands-off"
+            )
+
+            do {
+                _ = try PhraseMatcher.shared.execute(match)
+                DiagnosticLog.shared.success("HandsOff: \(intent) executed")
+            } catch {
+                DiagnosticLog.shared.warn("HandsOff: \(intent) failed — \(error.localizedDescription)")
+            }
         }
     }
 
-    // MARK: - Sound feedback
+    // MARK: - Sound
 
     private func playSound(_ name: NSSound.Name) {
         NSSound(named: name)?.play()

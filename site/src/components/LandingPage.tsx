@@ -1,5 +1,4 @@
 import { useState } from "react";
-import "./index.css";
 
 type PkgManager = "npm" | "pnpm" | "bun";
 
@@ -153,6 +152,9 @@ export default function App() {
             <span className="nav-name">lattices</span>
           </a>
           <div className="nav-links">
+            <a href="/blog" className="nav-link">
+              Blog
+            </a>
             <a href="/docs/overview" className="nav-link">
               Docs
             </a>

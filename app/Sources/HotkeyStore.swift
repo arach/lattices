@@ -212,7 +212,8 @@ class HotkeyStore: ObservableObject {
         bind(.screenMap, 18, hyper)      // Hyper+1
         bind(.bezel,     19, hyper)      // Hyper+2
         bind(.voiceCommand, 20, hyper)      // Hyper+3
-        bind(.handsOff, 46, cmdOpt)          // Cmd+Option+M
+        let cmdCtrl = UInt32(cmdKey | controlKey)
+        bind(.handsOff, 46, cmdCtrl)          // Ctrl+Cmd+M
         bind(.desktopInventory, 21, hyper) // Hyper+4
         bind(.omniSearch, 23, hyper)       // Hyper+5
         bind(.cheatSheet, 22, hyper)       // Hyper+6

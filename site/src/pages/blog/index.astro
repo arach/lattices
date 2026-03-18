@@ -1,0 +1,50 @@
+---
+import { getCollection } from 'astro:content'
+import Base from '../../layouts/Base.astro'
+import '../../styles/prose.css'
+
+const posts = (await getCollection('blog'))
+  .filter(post => !post.data.draft)
+  .sort((a, b) => new Date(b.data.date).getTime() - new Date(a.data.date).getTime())
+---
+
+<Base title="Blog — Lattices" description="Ideas and engineering notes from the Lattices team.">
+  <nav class="post-nav">
+    <div class="post-nav-inner">
+      <a href="/" class="post-nav-brand">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          {[true, false, false, true, false, false, true, true, true].map((bright, i) => {
+            const pad = 2, gap = 1.2, cell = (20 - 2 * pad - 2 * gap) / 3
+            const row = Math.floor(i / 3), col = i % 3
+            return <rect x={pad + col * (cell + gap)} y={pad + row * (cell + gap)} width={cell} height={cell} rx={1} fill={bright ? '#f2f2f2' : 'rgba(255,255,255,0.18)'} />
+          })}
+        </svg>
+        <span>lattices</span>
+      </a>
+      <div class="post-nav-links">
+        <a href="/blog">Blog</a>
+        <a href="/docs/overview">Docs</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="blog-container">
+    <h1>Blog</h1>
+    {posts.map(post => (
+      <div class="blog-post">
+        <a href={`/blog/${post.id}`}>
+          <div class="blog-post-title">{post.data.title}</div>
+        </a>
+        <div class="blog-post-meta">
+          {new Date(post.data.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+        </div>
+        <div class="blog-post-desc">{post.data.description}</div>
+        <div class="blog-post-tags">
+          {post.data.tags.map((tag: string) => (
+            <span class="post-tag">{tag}</span>
+          ))}
+        </div>
+      </div>
+    ))}
+  </div>
+</Base>
