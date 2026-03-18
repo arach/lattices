@@ -21,6 +21,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
     case desktopInventory
     case omniSearch
     case voiceCommand
+    case handsOff
     // Layers
     case layer1, layer2, layer3, layer4, layer5, layer6, layer7, layer8, layer9
     case layerNext, layerPrev, layerTag
@@ -39,6 +40,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .desktopInventory: return "Desktop Inventory"
         case .omniSearch:      return "Omni Search"
         case .voiceCommand:    return "Voice Command"
+        case .handsOff:        return "Hands-Off Mode"
         case .layer1:          return "Layer 1"
         case .layer2:          return "Layer 2"
         case .layer3:          return "Layer 3"
@@ -70,7 +72,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
 
     var group: HotkeyGroup {
         switch self {
-        case .palette, .screenMap, .bezel, .cheatSheet, .desktopInventory, .omniSearch, .voiceCommand: return .app
+        case .palette, .screenMap, .bezel, .cheatSheet, .desktopInventory, .omniSearch, .voiceCommand, .handsOff: return .app
         case .layer1, .layer2, .layer3, .layer4, .layer5,
              .layer6, .layer7, .layer8, .layer9,
              .layerNext, .layerPrev, .layerTag: return .layers
@@ -87,6 +89,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .desktopInventory: return 203
         case .omniSearch:      return 204
         case .voiceCommand:    return 205
+        case .handsOff:        return 206
         case .layer1:          return 101
         case .layer2:          return 102
         case .layer3:          return 103
@@ -209,6 +212,7 @@ class HotkeyStore: ObservableObject {
         bind(.screenMap, 18, hyper)      // Hyper+1
         bind(.bezel,     19, hyper)      // Hyper+2
         bind(.voiceCommand, 20, hyper)      // Hyper+3
+        bind(.handsOff, 46, cmdOpt)          // Cmd+Option+M
         bind(.desktopInventory, 21, hyper) // Hyper+4
         bind(.omniSearch, 23, hyper)       // Hyper+5
         bind(.cheatSheet, 22, hyper)       // Hyper+6

@@ -88,6 +88,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             DiagnosticLog.shared.info("Hotkey: voiceCommand triggered")
             VoiceCommandWindow.shared.toggle()
         }
+        store.register(action: .handsOff) {
+            DiagnosticLog.shared.info("Hotkey: handsOff triggered")
+            HandsOffSession.shared.toggle()
+        }
         store.register(action: .desktopInventory) { CommandModeWindow.shared.toggle() }
         store.register(action: .omniSearch) { OmniSearchWindow.shared.toggle() }
 
@@ -142,6 +146,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         LatticesApi.setup()
         DaemonServer.shared.start()
         AgentPool.shared.start()
+        HandsOffSession.shared.start()
         diag.finish(tBoot)
 
         // --diagnostics flag: auto-open diagnostics panel on launch
