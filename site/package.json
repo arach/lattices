@@ -11,6 +11,7 @@
     "og": "node scripts/generate-og.js"
   },
   "dependencies": {
+    "@arach/arc": "file:../../arc",
     "@astrojs/mdx": "^5.0.1",
     "@astrojs/react": "^5.0.0",
     "astro": "^6.0.5",

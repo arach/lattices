@@ -20,13 +20,14 @@ interface Stage {
   color: string
   detail: string
   parallel?: string
+  link?: string
 }
 
 const stages: Stage[] = [
-  { id: 'hotkey', label: 'Hotkey', time: '0ms', Icon: KeyIcon, color: '#a78bfa', detail: 'Ctrl+Cmd+M activates push-to-talk. Vox begins streaming audio for transcription.' },
-  { id: 'vox', label: 'Vox (Parakeet)', time: '~400ms', Icon: MicIcon, color: '#60a5fa', detail: 'Speech-to-text via Vox, powered by NVIDIA Parakeet. Fast, local-quality transcription streams as the user speaks.' },
+  { id: 'hotkey', label: 'Hotkey', time: '0ms', Icon: KeyIcon, color: '#a78bfa', detail: 'Ctrl+Cmd+M activates push-to-talk. Talkie begins streaming audio for transcription.' },
+  { id: 'talkie', label: 'Talkie (STT)', time: '~400ms', Icon: MicIcon, color: '#60a5fa', detail: 'Speech-to-text via Talkie. Fast transcription streams as the user speaks.', link: 'https://usetalkie.com' },
   { id: 'ack', label: 'Ack sound', time: '<50ms', Icon: VolumeIcon, color: '#34d399', detail: 'Pre-cached PCM audio plays instantly from disk. No API call needed.', parallel: 'Plays while LLM thinks' },
-  { id: 'llm', label: 'LLM inference', time: '500\u20131200ms', Icon: CpuIcon, color: '#f59e0b', detail: 'Full desktop snapshot + transcript sent to Grok. Returns structured JSON with spoken text and window actions.' },
+  { id: 'llm', label: 'LLM inference', time: '500–1200ms', Icon: CpuIcon, color: '#f59e0b', detail: 'Full desktop snapshot + transcript sent to Grok. Returns structured JSON with spoken text and window actions.' },
   { id: 'tts', label: 'TTS narration', time: '~1s start', Icon: MessageIcon, color: '#33c773', detail: 'OpenAI TTS streams PCM audio directly into ffplay. User hears the plan before windows move.' },
   { id: 'act', label: 'Execute', time: '<1ms', Icon: ZapIcon, color: '#33c773', detail: 'Actions sent to Swift via stdout JSON. AX API calls tile/focus windows. Effectively instant.' },
   { id: 'done', label: 'Done', time: '<50ms', Icon: CheckCircleIcon, color: '#33c773', detail: 'Cached confirmation sound. Total: ~3s from speech to windows arranged.' },
@@ -73,7 +74,11 @@ export default function TurnPipeline() {
 
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 400, color: isHovered ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.6)', transition: 'color 0.15s' }}>
-                    {stage.label}
+                    {stage.link ? (
+                      <a href={stage.link} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none', borderBottom: '1px solid rgba(96,165,250,0.3)' }} onClick={e => e.stopPropagation()}>
+                        {stage.label}
+                      </a>
+                    ) : stage.label}
                     {stage.parallel && (
                       <span style={{
                         marginLeft: 8, fontSize: 10, fontWeight: 400, padding: '1px 6px',
@@ -111,9 +116,9 @@ export default function TurnPipeline() {
         display: 'flex', overflow: 'hidden',
         fontSize: 9, fontFamily: mono, fontWeight: 400,
       }}>
-        <div style={{ width: '16%', background: 'rgba(96,165,250,0.06)', borderRight: '1px solid rgba(255,255,255,0.04)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#60a5fa' }}>vox 500ms</div>
+        <div style={{ width: '16%', background: 'rgba(96,165,250,0.06)', borderRight: '1px solid rgba(255,255,255,0.04)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#60a5fa' }}>talkie 500ms</div>
         <div style={{ width: '2%', background: 'rgba(52,211,153,0.06)', borderRight: '1px solid rgba(255,255,255,0.04)' }} />
-        <div style={{ width: '30%', background: 'rgba(245,158,11,0.06)', borderRight: '1px solid rgba(255,255,255,0.04)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f59e0b' }}>LLM 500\u20131200ms</div>
+        <div style={{ width: '30%', background: 'rgba(245,158,11,0.06)', borderRight: '1px solid rgba(255,255,255,0.04)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f59e0b' }}>{'LLM 500–1200ms'}</div>
         <div style={{ width: '46%', background: 'rgba(51,199,115,0.05)', borderRight: '1px solid rgba(255,255,255,0.04)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#33c773' }}>TTS stream + act ~1.5s</div>
         <div style={{ width: '6%', background: 'rgba(51,199,115,0.1)' }} />
       </div>
