@@ -39,7 +39,7 @@ final class DesktopModel: ObservableObject {
     }
 
     func allWindows() -> [WindowEntry] {
-        Array(windows.values).sorted { $0.wid < $1.wid }
+        Array(windows.values).sorted { $0.zIndex < $1.zIndex }
     }
 
     func windowForSession(_ session: String) -> WindowEntry? {
@@ -82,6 +82,7 @@ final class DesktopModel: ObservableObject {
         ) as? [[String: Any]] else { return }
 
         var fresh: [UInt32: WindowEntry] = [:]
+        var zCounter = 0
 
         for info in list {
             guard let wid = info[kCGWindowNumber as String] as? UInt32,
@@ -127,7 +128,7 @@ final class DesktopModel: ObservableObject {
                 latticesSession = String(match.dropFirst(9).dropLast(1)) // drop "[lattices:" and "]"
             }
 
-            fresh[wid] = WindowEntry(
+            var entry = WindowEntry(
                 wid: wid,
                 app: ownerName,
                 pid: pid,
@@ -137,6 +138,9 @@ final class DesktopModel: ObservableObject {
                 isOnScreen: isOnScreen,
                 latticesSession: latticesSession
             )
+            entry.zIndex = zCounter
+            zCounter += 1
+            fresh[wid] = entry
         }
 
         // AX reconciliation: check which CG windows actually exist in Accessibility

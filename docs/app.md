@@ -148,7 +148,7 @@ Settings > Privacy & Security for all three paths to work.
 > See [Voice Commands](/docs/voice) for the full guide.
 
 Press **Hyper+3** to open the voice command window. Hold **Option** to
-speak, release to stop. Lattices transcribes via Talkie, matches to an
+speak, release to stop. Lattices transcribes via Vox, matches to an
 intent, and executes. Built-in commands: find, show, open, tile, kill, scan.
 
 A Claude Haiku advisor runs in parallel, offering follow-up suggestions

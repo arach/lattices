@@ -6,12 +6,12 @@ order: 7
 
 Voice commands let you control Lattices by speaking. Press **Hyper+3**
 to open the voice command window, hold **Option** to speak, release to
-stop. Lattices transcribes your speech via [Talkie](https://usetalkie.com),
+stop. Lattices transcribes your speech via Vox,
 matches it to an intent, and executes it.
 
 ## Quick start
 
-1. Install [Talkie](https://usetalkie.com) (provides mic + transcription)
+1. Install Vox (provides mic + transcription)
 2. Install [Claude Code](https://claude.ai/code) CLI (provides AI advisor)
 3. Press **Hyper+3** to open the voice command window
 4. Hold **Option** and speak a command
@@ -208,7 +208,7 @@ mappings and phrase pattern improvements.
 
 ## Requirements
 
-- **[Talkie](https://usetalkie.com)** — provides microphone access and
+- **Vox** — provides microphone access and
   speech-to-text transcription
 - **[Claude Code](https://claude.ai/code)** CLI — provides the AI advisor
   (optional, voice commands work without it but no AI suggestions)

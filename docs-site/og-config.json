@@ -1,0 +1,9 @@
+{
+  "template": "docs",
+  "title": "Lattices",
+  "subtitle": "Developer workspace manager for macOS. Tiling, search, layers, and voice commands.",
+  "tag": "Documentation",
+  "accent": "#10b981",
+  "accentSecondary": "#3b82f6",
+  "output": "public/og.png"
+}

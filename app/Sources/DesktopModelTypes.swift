@@ -10,6 +10,7 @@ struct WindowEntry: Codable, Identifiable {
     let isOnScreen: Bool
     let latticesSession: String?
     var axVerified: Bool = true
+    var zIndex: Int = 0 // 0 = frontmost, from CGWindowList order
 
     var id: UInt32 { wid }
 }

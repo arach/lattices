@@ -40,6 +40,9 @@ final class AgentSession: ObservableObject {
     private var callCount = 0
     private var busy = false
 
+    /// Optional override for the system prompt. If set, used instead of the default advisor prompt.
+    var customSystemPrompt: (() -> String)?
+
     init(model: String, label: String) {
         self.model = model
         self.label = label
@@ -115,7 +118,7 @@ final class AgentSession: ObservableObject {
             // First call: create session with system prompt
             args.append(contentsOf: [
                 "--session-id", sessionId.uuidString,
-                "--system-prompt", buildSystemPrompt(),
+                "--system-prompt", customSystemPrompt?() ?? buildSystemPrompt(),
             ])
         } else {
             // Subsequent calls: resume existing session (context carries over)

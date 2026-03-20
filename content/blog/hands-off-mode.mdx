@@ -1,0 +1,117 @@
+---
+title: "Building Hands-Off Mode: Voice-Controlled Window Management That Actually Works"
+description: "How we built a sub-second voice interface for macOS window management — direct API inference, streaming TTS, and a persistent worker architecture."
+date: "2026-03-18"
+tags: ["voice", "ai", "tts", "groq", "macos", "window-management"]
+author: "Arach Tchoupani"
+---
+
+import StatsRow from '../../site/src/components/blog/StatsRow'
+import LatencyJourney from '../../site/src/components/blog/LatencyJourney'
+import TurnPipeline from '../../site/src/components/blog/TurnPipeline'
+import ArchDiagram from '../../site/src/components/blog/ArchDiagram'
+import ContextExplorer from '../../site/src/components/blog/ContextExplorer'
+import TestResults from '../../site/src/components/blog/TestResults'
+
+I've been building Lattices, a macOS workspace manager, for a while now. It tiles windows, manages tmux sessions, does OCR search across your desktop.
+
+But I kept wanting to do things without reaching for a hotkey. Deep in code, thinking "I need Chrome next to this terminal" — I just wanted to *say* it.
+
+So I built hands-off mode.
+
+<StatsRow client:load />
+
+## The idea
+
+One hotkey. You speak. Things happen. No panel, no UI, no visual chrome.
+
+Press **Ctrl+Cmd+M**, say "tile Chrome left and iTerm right", press again. You hear a quick "Got it" followed by "Chrome left, iTerm right" and your windows slide into place. About 2 seconds total.
+
+The harder case: "I have too many terminals, organize them" — the system looks at your desktop, sees 8 iTerm windows scattered across two monitors, and distributes them in a grid. Or "set up for a code review" puts the GitHub PR on the left and your terminal on the right.
+
+## Six iterations to get here
+
+The early versions were slow. Even after moving past the initial prototypes, we were still at 6-7 seconds end-to-end. The user would speak, wait, and then their windows would silently rearrange. Not terrible, but not the instant-feeling interaction we wanted.
+
+Several iterations later, it feels natural — about 1 second to first response, 2 seconds end-to-end.
+
+<LatencyJourney client:load />
+
+The biggest single win was switching to direct API calls instead of shelling out to a CLI. After that, it was death by a thousand optimizations: persistent processes, streaming audio, cached phrases, and a narrate-before-act UX pattern that makes the whole thing feel intentional rather than magic.
+
+## How a turn works
+
+Every voice command follows the same pipeline. The key insight: **the user should hear feedback before anything moves**.
+
+<TurnPipeline client:load />
+
+The cached ack sound is important. It plays in under 50ms — before inference even starts — so the user knows the system heard them. Then the AI narrates what it's *about* to do, and only *then* do windows move. The user is never surprised.
+
+## The architecture
+
+The system spans three layers: a native Swift app that owns the desktop, a persistent bun worker for inference and TTS, and cloud APIs for the heavy lifting.
+
+<ArchDiagram client:load />
+
+Swift and the worker communicate over **stdin/stdout JSON lines**. The worker stays alive between turns — no cold starts. System prompts are loaded from `.md` files on disk and hot-reload on save, so prompt iteration doesn't require rebuilding.
+
+The inference layer wraps the Vercel AI SDK and supports five providers. Swapping models is one line:
+
+```typescript
+const { text } = await infer("tile chrome left", {
+  provider: "groq",
+  model: "llama-3.3-70b-versatile",
+  system: systemPrompt,
+  tag: "hands-off",
+});
+```
+
+For TTS, we stream OpenAI's response directly into `ffplay` via stdin pipe — PCM format, no decoding overhead. Playback begins on the first audio chunk:
+
+```typescript
+const player = spawn("ffplay", [
+  "-nodisp", "-autoexit", "-loglevel", "quiet",
+  "-f", "s16le", "-ar", "24000", "-ch_layout", "mono", "-"
+]);
+
+const reader = res.body.getReader();
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  player.stdin.write(value);
+}
+```
+
+## The context problem
+
+A voice assistant is only as good as the information it has. Our first snapshot sent window titles and positions. That's it. Two iTerm windows both named "Claude Code" looked identical to the AI.
+
+The fix: send *everything*.
+
+<ContextExplorer client:load />
+
+A typical snapshot is about 2,000 tokens — nothing for a modern LLM. But the intelligence difference is dramatic. Every window gets its frame, Z-order, and on-screen status. Every terminal tab gets its working directory, running processes, tmux session name, and whether Claude Code is active. All screens with their resolutions. The active layer.
+
+"Focus on the lattices Claude Code" goes from "I see several Claude Code windows" to correctly identifying the one in `~/dev/lattices` and focusing it.
+
+## Testing at scale
+
+We built an automated test suite: 100 scenarios, 8 categories, 202 individual assertions. Each scenario feeds a transcript and desktop snapshot through the inference pipeline and checks the response against specific conditions.
+
+<TestResults client:load />
+
+The weakest area — error handling at 67% — is a known issue. The model *says* Photoshop isn't running (correct) but still sends a focus action (wrong). Function calling with typed parameters would fix this: the model calls `tile_window()` with a validated window reference, and we reject impossible actions before execution.
+
+## What matters most
+
+The dual-model pattern is tempting: fire a fast model (Groq, 500ms) for a spoken ack while a smarter model (Grok, 1.2s) generates the actual actions. By the time the ack finishes playing, the smart response is ready.
+
+And Stage Manager awareness. We figured out how to detect stages, classify windows, and programmatically create new stages by simulating drag events. No other window manager does this. "Put Chrome and iTerm in a new stage" would just work.
+
+But honestly, the thing that matters most is the **prompt**. Every improvement to the system prompt has a bigger impact than any architectural change. When we added the rule "if spoken says you'll do something, actions must include it," empty-actions bugs nearly vanished. When we added concrete JSON examples for each scenario type, accuracy jumped across the board.
+
+The code is fast enough. The architecture is right. Now it's about making the AI genuinely helpful.
+
+---
+
+Lattices is open source. The hands-off mode code lives in `bin/handsoff-worker.ts` (the worker), `lib/infer.ts` (the inference wrapper), and `docs/prompts/hands-off-system.md` (the system prompt). The test suite is at `test/handsoff-tests.ts`.

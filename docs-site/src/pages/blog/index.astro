@@ -1,0 +1,56 @@
+---
+// styles inline below
+
+const posts = await import.meta.glob('../../../../content/blog/*.md', { eager: true }) as Record<string, any>
+
+const sortedPosts = Object.entries(posts)
+  .map(([path, mod]) => ({
+    slug: path.split('/').pop()?.replace('.md', '') ?? '',
+    frontmatter: mod.frontmatter,
+  }))
+  .filter(p => !p.frontmatter.draft)
+  .sort((a, b) => new Date(b.frontmatter.date).getTime() - new Date(a.frontmatter.date).getTime())
+---
+
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Blog — Lattices</title>
+  <style>
+    body { background: #0a0a0a; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif; margin: 0; padding: 0; }
+    .container { max-width: 720px; margin: 0 auto; padding: 80px 24px; }
+    h1 { font-size: 2rem; font-weight: 600; margin-bottom: 48px; color: #fff; }
+    .post { margin-bottom: 40px; }
+    .post a { text-decoration: none; color: inherit; }
+    .post-title { font-size: 1.25rem; font-weight: 500; color: #fff; margin-bottom: 6px; }
+    .post-title:hover { color: #88b4ff; }
+    .post-meta { font-size: 0.85rem; color: #777; margin-bottom: 8px; }
+    .post-desc { font-size: 0.95rem; color: #999; line-height: 1.5; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+    .tag { font-size: 0.75rem; background: #1a1a1a; color: #888; padding: 2px 8px; border-radius: 4px; border: 1px solid #222; }
+    .back { font-size: 0.85rem; color: #666; text-decoration: none; display: inline-block; margin-bottom: 24px; }
+    .back:hover { color: #aaa; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <a href="/docs" class="back">&larr; lattices docs</a>
+    <h1>Blog</h1>
+    {sortedPosts.map(post => (
+      <div class="post">
+        <a href={`/docs/blog/${post.slug}`}>
+          <div class="post-title">{post.frontmatter.title}</div>
+        </a>
+        <div class="post-meta">{new Date(post.frontmatter.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
+        <div class="post-desc">{post.frontmatter.description}</div>
+        <div class="post-tags">
+          {(post.frontmatter.tags ?? []).map((tag: string) => (
+            <span class="tag">{tag}</span>
+          ))}
+        </div>
+      </div>
+    ))}
+  </div>
+</body>
+</html>

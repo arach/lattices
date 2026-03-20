@@ -4,13 +4,17 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
     "lint": "eslint .",
-    "preview": "vite preview",
     "og": "node scripts/generate-og.js"
   },
   "dependencies": {
+    "@arach/arc": "file:../../arc",
+    "@astrojs/mdx": "^5.0.1",
+    "@astrojs/react": "^5.0.0",
+    "astro": "^6.0.5",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
@@ -18,7 +22,7 @@
     "@arach/og": "^0.3.0",
     "@eslint/js": "^9.39.1",
     "@types/node": "^24.10.1",
-    "@types/react": "^19.2.7",
+    "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
     "eslint": "^9.39.1",

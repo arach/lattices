@@ -8,6 +8,10 @@ let package = Package(
         .executableTarget(
             name: "Lattices",
             path: "Sources"
+        ),
+        .testTarget(
+            name: "LatticesTests",
+            path: "Tests"
         )
     ]
 )
