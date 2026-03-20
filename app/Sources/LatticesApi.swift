@@ -937,10 +937,16 @@ final class LatticesApi {
                     guard let entry = DesktopModel.shared.windows[wid] else {
                         throw RouterError.notFound("window \(wid)")
                     }
-                    DispatchQueue.main.async {
-                        WindowTiler.focusWindow(wid: wid, pid: entry.pid)
+                    var raised = false
+                    if Thread.isMainThread {
+                        raised = WindowTiler.focusWindow(wid: wid, pid: entry.pid)
+                    } else {
+                        DispatchQueue.main.sync {
+                            raised = WindowTiler.focusWindow(wid: wid, pid: entry.pid)
+                        }
                     }
-                    return .object(["ok": .bool(true), "wid": .int(Int(wid)), "app": .string(entry.app)])
+                    return .object(["ok": .bool(raised), "wid": .int(Int(wid)), "app": .string(entry.app),
+                                    "raised": .bool(raised)])
                 }
                 guard let session = params?["session"]?.stringValue else {
                     throw RouterError.missingParam("session or wid")
@@ -950,6 +956,64 @@ final class LatticesApi {
                     WindowTiler.navigateToWindow(session: session, terminal: terminal)
                 }
                 return .object(["ok": .bool(true)])
+            }
+        ))
+
+        // ── Present Window ────────────────────────────────────────────
+        api.register(Endpoint(
+            method: "window.present",
+            description: "Present a window: move to current space, bring to front, optionally position it",
+            access: .mutate,
+            params: [
+                Param(name: "wid", type: "uint32", required: true, description: "Window ID"),
+                Param(name: "x", type: "double", required: false, description: "Target x position"),
+                Param(name: "y", type: "double", required: false, description: "Target y position"),
+                Param(name: "w", type: "double", required: false, description: "Target width"),
+                Param(name: "h", type: "double", required: false, description: "Target height"),
+                Param(name: "position", type: "string", required: false,
+                      description: "Tile position (e.g. center, left, right, bottom-right)"),
+            ],
+            returns: .ok,
+            handler: { params in
+                guard let wid = params?["wid"]?.uint32Value else {
+                    throw RouterError.missingParam("wid")
+                }
+                guard let entry = DesktopModel.shared.windows[wid] else {
+                    throw RouterError.notFound("window \(wid)")
+                }
+
+                // Resolve position to fractional rect
+                var fractions: (CGFloat, CGFloat, CGFloat, CGFloat)? = nil
+                if let posStr = params?["position"]?.stringValue {
+                    if let pos = TilePosition(rawValue: posStr) {
+                        fractions = pos.rect
+                    } else {
+                        fractions = parseGridString(posStr)
+                    }
+                }
+
+                var frame: CGRect? = nil
+                if let fracs = fractions {
+                    // Compute pixel frame on main thread
+                    DispatchQueue.main.sync {
+                        frame = WindowTiler.tileFrame(fractions: fracs, inDisplay: WindowTiler.mainScreenFrame())
+                    }
+                } else if let x = params?["x"]?.intValue,
+                          let y = params?["y"]?.intValue,
+                          let w = params?["w"]?.intValue,
+                          let h = params?["h"]?.intValue {
+                    frame = CGRect(x: x, y: y, width: w, height: h)
+                }
+
+                var presented = false
+                if Thread.isMainThread {
+                    presented = WindowTiler.present(wid: wid, pid: entry.pid, frame: frame)
+                } else {
+                    DispatchQueue.main.sync {
+                        presented = WindowTiler.present(wid: wid, pid: entry.pid, frame: frame)
+                    }
+                }
+                return .object(["ok": .bool(presented), "wid": .int(Int(wid)), "app": .string(entry.app)])
             }
         ))
 

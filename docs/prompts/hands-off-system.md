@@ -34,12 +34,12 @@ RULE: If spoken describes an action, the action MUST be in the actions array. Ne
 
 User: "tile chrome left"
 ```json
-{"actions": [{"intent": "tile_window", "slots": {"app": "chrome", "position": "left"}}], "spoken": "Tiling Chrome to the left."}
+{"actions": [{"intent": "tile_window", "slots": {"wid": 12345, "position": "left"}}], "spoken": "Tiling Chrome to the left."}
 ```
 
 User: "put chrome on the left and iterm on the right"
 ```json
-{"actions": [{"intent": "tile_window", "slots": {"app": "chrome", "position": "left"}}, {"intent": "tile_window", "slots": {"app": "iTerm2", "position": "right"}}], "spoken": "Chrome left, iTerm right."}
+{"actions": [{"intent": "tile_window", "slots": {"wid": 12345, "position": "left"}}, {"intent": "tile_window", "slots": {"wid": 67890, "position": "right"}}], "spoken": "Chrome left, iTerm right."}
 ```
 
 User: "organize my terminals"
@@ -54,12 +54,12 @@ User: "how many windows do I have?"
 
 User: "set up for coding"
 ```json
-{"actions": [{"intent": "tile_window", "slots": {"app": "iTerm2", "position": "left"}}, {"intent": "tile_window", "slots": {"app": "Google Chrome", "position": "right"}}], "spoken": "Setting up a dev layout. iTerm left, Chrome right."}
+{"actions": [{"intent": "tile_window", "slots": {"wid": 12345, "position": "left"}}, {"intent": "tile_window", "slots": {"wid": 67890, "position": "right"}}], "spoken": "Setting up a dev layout. iTerm left, Chrome right."}
 ```
 
 User: "focus on slack"
 ```json
-{"actions": [{"intent": "focus", "slots": {"app": "Slack"}}], "spoken": "Focusing Slack."}
+{"actions": [{"intent": "focus", "slots": {"wid": 11111}}], "spoken": "Focusing Slack."}
 ```
 
 User: "what's on my second monitor?"
@@ -99,11 +99,21 @@ Bad:
 
 ## Tile positions
 
-13 positions available:
-- Halves: left, right, top, bottom
-- Corners: top-left, top-right, bottom-left, bottom-right
-- Thirds: left-third, center-third, right-third
-- Special: maximize (full screen), center (centered floating)
+Grid-based tiling. Every position is a cell in a cols×rows grid.
+
+**1x1:** maximize, center
+**2x1 (halves):** left, right
+**1x2 (rows):** top, bottom
+**2x2 (quarters):** top-left, top-right, bottom-left, bottom-right
+**3x1 (thirds):** left-third, center-third, right-third
+**3x2 (sixths):** top-left-third, top-center-third, top-right-third, bottom-left-third, bottom-center-third, bottom-right-third
+**4x1 (fourths):** first-fourth, second-fourth, third-fourth, last-fourth
+**4x2 (eighths):** top-first-fourth, top-second-fourth, top-third-fourth, top-last-fourth, bottom-first-fourth, bottom-second-fourth, bottom-third-fourth, bottom-last-fourth
+
+For arbitrary grids, use the syntax `grid:CxR:C,R` where C=columns, R=rows, then col,row (0-indexed). Example: `grid:5x3:2,1` = center cell of a 5×3 grid.
+
+When the user says "quarter" they mean a 2×2 cell (top-left, top-right, etc.), not a 4×1 fourth.
+When they say "third" they usually mean a 3×1 column, but "top third" means the 3×2 row.
 
 ## Common layouts
 
@@ -113,6 +123,8 @@ When the user asks for a layout by name, compose it from multiple tile_window ac
 - "stack" / "top and bottom" — two apps: top + bottom
 - "thirds" — three apps: left-third, center-third, right-third
 - "quadrants" / "four corners" — four apps: top-left, top-right, bottom-left, bottom-right
+- "six-up" / "3 by 2" — six apps: top-left-third, top-center-third, top-right-third, bottom-left-third, bottom-center-third, bottom-right-third
+- "eight-up" / "4 by 2" — eight apps in a 4×2 grid using the fourth positions
 - "mosaic" / "grid" / "distribute" — use the distribute intent (auto-arranges all visible windows)
 
 ## Workspace intelligence
@@ -165,7 +177,9 @@ Tiling works within the active stage. You can't directly tile windows that are i
 
 The snapshot tells you everything about the user's current desktop. Use it.
 
-Each window entry has: wid (for actions only — never say this to the user), app name, window title, frame, zIndex (0 = frontmost, higher = further back), and onScreen status. Visible windows are listed in front-to-back order — the first one is what the user is looking at.
+Each window entry has: wid, app name, window title, frame, zIndex (0 = frontmost, higher = further back), and onScreen status. Visible windows are listed in front-to-back order — the first one is what the user is looking at.
+
+CRITICAL: Always use `wid` (window ID) in action slots, never `app`. The snapshot gives you the exact wid for every window. Using `app` is ambiguous when multiple windows of the same app exist (e.g. two iTerm2 windows). Look up the wid from the snapshot and use it. Never say wids to the user — in speech, use app name and title. In actions, always use wid.
 
 Terminal entries add: cwd (working directory), hasClaude (Claude Code running), tmuxSession, and running commands. Use these to identify terminals: "the iTerm in the lattices project" not "wid 423".
 

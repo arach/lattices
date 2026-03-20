@@ -48,11 +48,21 @@ try {
 const intentCatalog = `
 tile_window: Tile a window to a screen position
   Slots:
-    position (required): left, right, top, bottom, top-left, top-right, bottom-left, bottom-right, left-third, center-third, right-third, maximize, center
+    position (required): Named position or grid:CxR:C,R syntax.
+      Halves: left, right, top, bottom
+      Quarters (2x2): top-left, top-right, bottom-left, bottom-right
+      Thirds (3x1): left-third, center-third, right-third
+      Sixths (3x2): top-left-third, top-center-third, top-right-third, bottom-left-third, bottom-center-third, bottom-right-third
+      Fourths (4x1): first-fourth, second-fourth, third-fourth, last-fourth
+      Eighths (4x2): top-first-fourth, top-second-fourth, top-third-fourth, top-last-fourth, bottom-first-fourth, bottom-second-fourth, bottom-third-fourth, bottom-last-fourth
+      Special: maximize (full screen), center (centered floating)
+      Grid syntax: grid:CxR:C,R (e.g. grid:5x3:2,1 = center cell of 5x3 grid)
     app (optional): Target app name — match loosely (e.g. "chrome" matches "Google Chrome")
     wid (optional): Target window ID (from snapshot)
     session (optional): Tmux session name
   If no app/wid/session given, tiles the frontmost window.
+  "quarter" = 2x2 cell (top-left etc.), NOT a 4x1 fourth.
+  "top quarter" = top-left or top-right (2x2). "top third" = top-left-third (3x2).
   Examples: "tile chrome left" → {intent:"tile_window", slots:{app:"chrome", position:"left"}}
 
 focus: Focus a window, app, or session
@@ -80,12 +90,14 @@ create_layer: Save current window arrangement as a named layer
     name (required): Layer name
 
 TILING PRESETS (use multiple tile_window actions):
-  "split screen" / "side by side" → tile first app left, second app right
-  "thirds" → tile three apps left-third, center-third, right-third
+  "split screen" / "side by side" → left + right
+  "thirds" → left-third, center-third, right-third
   "mosaic" / "grid" → use distribute intent
-  "main + sidebar" → tile main app to left (or maximize), others stacked right
-  "stack horizontally" → top and bottom halves
-  "corners" / "quadrants" → four apps in top-left, top-right, bottom-left, bottom-right
+  "main + sidebar" → main app left (or maximize), others stacked right
+  "stack" → top + bottom
+  "corners" / "quadrants" → top-left, top-right, bottom-left, bottom-right
+  "six-up" / "3 by 2" → 3x2 grid using sixth positions
+  "eight-up" / "4 by 2" → 4x2 grid using eighth positions
 `;
 
 systemPrompt = systemPrompt.replace("{{intent_catalog}}", intentCatalog);

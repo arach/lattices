@@ -25,6 +25,13 @@ private let _SLSMoveWindow: SLSMoveWindowFunc? = {
     return unsafeBitCast(sym, to: SLSMoveWindowFunc.self)
 }()
 
+private typealias SLSOrderWindowFunc = @convention(c) (Int32, UInt32, Int32, UInt32) -> CGError
+
+private let _SLSOrderWindow: SLSOrderWindowFunc? = {
+    guard let sl = skyLight, let sym = dlsym(sl, "SLSOrderWindow") ?? dlsym(sl, "CGSOrderWindow") else { return nil }
+    return unsafeBitCast(sym, to: SLSOrderWindowFunc.self)
+}()
+
 private let _SLSDisableUpdate: SLSDisableUpdateFunc? = {
     guard let sl = skyLight, let sym = dlsym(sl, "SLSDisableUpdate") else { return nil }
     return unsafeBitCast(sym, to: SLSDisableUpdateFunc.self)
@@ -122,25 +129,76 @@ private class HighlightBorderView: NSView {
     }
 }
 
+// MARK: - Grid Tiling
+
+/// Compute fractional (x, y, w, h) for a cell in a cols×rows grid.
+func tileGrid(cols: Int, rows: Int, col: Int, row: Int) -> (CGFloat, CGFloat, CGFloat, CGFloat) {
+    let w = 1.0 / CGFloat(cols)
+    let h = 1.0 / CGFloat(rows)
+    return (CGFloat(col) * w, CGFloat(row) * h, w, h)
+}
+
+/// Parse a grid string like "grid:3x2:0,0" → fractional (x, y, w, h).
+func parseGridString(_ str: String) -> (CGFloat, CGFloat, CGFloat, CGFloat)? {
+    let parts = str.split(separator: ":")
+    guard parts.count == 3, parts[0] == "grid" else { return nil }
+    let dims = parts[1].split(separator: "x")
+    let coords = parts[2].split(separator: ",")
+    guard dims.count == 2, coords.count == 2,
+          let cols = Int(dims[0]), let rows = Int(dims[1]),
+          let col = Int(coords[0]), let row = Int(coords[1]),
+          cols > 0, rows > 0, col >= 0, col < cols, row >= 0, row < rows
+    else { return nil }
+    return tileGrid(cols: cols, rows: rows, col: col, row: row)
+}
+
 enum TilePosition: String, CaseIterable, Identifiable {
+    // 1x1
+    case maximize    = "maximize"
+    case center      = "center"
+    // 2x1 (halves, full height)
     case left        = "left"
     case right       = "right"
+    // 1x2 (halves, full width)
     case top         = "top"
     case bottom      = "bottom"
+    // 2x2 (quarters)
     case topLeft     = "top-left"
     case topRight    = "top-right"
     case bottomLeft  = "bottom-left"
     case bottomRight = "bottom-right"
-    case maximize    = "maximize"
-    case center      = "center"
+    // 3x1 (thirds, full height)
     case leftThird   = "left-third"
     case centerThird = "center-third"
     case rightThird  = "right-third"
+    // 3x2 (sixths)
+    case topLeftThird      = "top-left-third"
+    case topCenterThird    = "top-center-third"
+    case topRightThird     = "top-right-third"
+    case bottomLeftThird   = "bottom-left-third"
+    case bottomCenterThird = "bottom-center-third"
+    case bottomRightThird  = "bottom-right-third"
+    // 4x1 (fourths, full height)
+    case firstFourth  = "first-fourth"
+    case secondFourth = "second-fourth"
+    case thirdFourth  = "third-fourth"
+    case lastFourth   = "last-fourth"
+    // 4x2 (eighths)
+    case topFirstFourth    = "top-first-fourth"
+    case topSecondFourth   = "top-second-fourth"
+    case topThirdFourth    = "top-third-fourth"
+    case topLastFourth     = "top-last-fourth"
+    case bottomFirstFourth  = "bottom-first-fourth"
+    case bottomSecondFourth = "bottom-second-fourth"
+    case bottomThirdFourth  = "bottom-third-fourth"
+    case bottomLastFourth   = "bottom-last-fourth"
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
+        case .maximize:    return "Max"
+        case .center:      return "Center"
         case .left:        return "Left"
         case .right:       return "Right"
         case .top:         return "Top"
@@ -149,11 +207,27 @@ enum TilePosition: String, CaseIterable, Identifiable {
         case .topRight:    return "Top Right"
         case .bottomLeft:  return "Bottom Left"
         case .bottomRight: return "Bottom Right"
-        case .maximize:    return "Max"
-        case .center:      return "Center"
-        case .leftThird:   return "Left Third"
-        case .centerThird: return "Center Third"
-        case .rightThird:  return "Right Third"
+        case .leftThird:   return "Left ⅓"
+        case .centerThird: return "Center ⅓"
+        case .rightThird:  return "Right ⅓"
+        case .topLeftThird:      return "Top Left ⅓"
+        case .topCenterThird:    return "Top Center ⅓"
+        case .topRightThird:     return "Top Right ⅓"
+        case .bottomLeftThird:   return "Bottom Left ⅓"
+        case .bottomCenterThird: return "Bottom Center ⅓"
+        case .bottomRightThird:  return "Bottom Right ⅓"
+        case .firstFourth:  return "1st ¼"
+        case .secondFourth: return "2nd ¼"
+        case .thirdFourth:  return "3rd ¼"
+        case .lastFourth:   return "4th ¼"
+        case .topFirstFourth:    return "Top 1st ¼"
+        case .topSecondFourth:   return "Top 2nd ¼"
+        case .topThirdFourth:    return "Top 3rd ¼"
+        case .topLastFourth:     return "Top 4th ¼"
+        case .bottomFirstFourth:  return "Bottom 1st ¼"
+        case .bottomSecondFourth: return "Bottom 2nd ¼"
+        case .bottomThirdFourth:  return "Bottom 3rd ¼"
+        case .bottomLastFourth:   return "Bottom 4th ¼"
         }
     }
 
@@ -172,25 +246,52 @@ enum TilePosition: String, CaseIterable, Identifiable {
         case .leftThird:   return "rectangle.leadingthird.inset.filled"
         case .centerThird: return "rectangle.center.inset.filled"
         case .rightThird:  return "rectangle.trailingthird.inset.filled"
+        default:           return "rectangle.split.3x3.fill"
         }
     }
 
     /// Returns (x, y, w, h) as fractions of screen
     var rect: (CGFloat, CGFloat, CGFloat, CGFloat) {
         switch self {
-        case .left:        return (0,     0,   0.5,   1.0)
-        case .right:       return (0.5,   0,   0.5,   1.0)
-        case .top:         return (0,     0,   1.0,   0.5)
-        case .bottom:      return (0,     0.5, 1.0,   0.5)
-        case .topLeft:     return (0,     0,   0.5,   0.5)
-        case .topRight:    return (0.5,   0,   0.5,   0.5)
-        case .bottomLeft:  return (0,     0.5, 0.5,   0.5)
-        case .bottomRight: return (0.5,   0.5, 0.5,   0.5)
+        // 1x1
         case .maximize:    return (0,     0,   1.0,   1.0)
         case .center:      return (0.15,  0.1, 0.7,   0.8)
-        case .leftThird:   return (0,     0,   0.333, 1.0)
-        case .centerThird: return (0.333, 0,   0.334, 1.0)
-        case .rightThird:  return (0.667, 0,   0.333, 1.0)
+        // 2x1
+        case .left:        return tileGrid(cols: 2, rows: 1, col: 0, row: 0)
+        case .right:       return tileGrid(cols: 2, rows: 1, col: 1, row: 0)
+        // 1x2
+        case .top:         return tileGrid(cols: 1, rows: 2, col: 0, row: 0)
+        case .bottom:      return tileGrid(cols: 1, rows: 2, col: 0, row: 1)
+        // 2x2
+        case .topLeft:     return tileGrid(cols: 2, rows: 2, col: 0, row: 0)
+        case .topRight:    return tileGrid(cols: 2, rows: 2, col: 1, row: 0)
+        case .bottomLeft:  return tileGrid(cols: 2, rows: 2, col: 0, row: 1)
+        case .bottomRight: return tileGrid(cols: 2, rows: 2, col: 1, row: 1)
+        // 3x1
+        case .leftThird:   return tileGrid(cols: 3, rows: 1, col: 0, row: 0)
+        case .centerThird: return tileGrid(cols: 3, rows: 1, col: 1, row: 0)
+        case .rightThird:  return tileGrid(cols: 3, rows: 1, col: 2, row: 0)
+        // 3x2
+        case .topLeftThird:      return tileGrid(cols: 3, rows: 2, col: 0, row: 0)
+        case .topCenterThird:    return tileGrid(cols: 3, rows: 2, col: 1, row: 0)
+        case .topRightThird:     return tileGrid(cols: 3, rows: 2, col: 2, row: 0)
+        case .bottomLeftThird:   return tileGrid(cols: 3, rows: 2, col: 0, row: 1)
+        case .bottomCenterThird: return tileGrid(cols: 3, rows: 2, col: 1, row: 1)
+        case .bottomRightThird:  return tileGrid(cols: 3, rows: 2, col: 2, row: 1)
+        // 4x1
+        case .firstFourth:  return tileGrid(cols: 4, rows: 1, col: 0, row: 0)
+        case .secondFourth: return tileGrid(cols: 4, rows: 1, col: 1, row: 0)
+        case .thirdFourth:  return tileGrid(cols: 4, rows: 1, col: 2, row: 0)
+        case .lastFourth:   return tileGrid(cols: 4, rows: 1, col: 3, row: 0)
+        // 4x2
+        case .topFirstFourth:    return tileGrid(cols: 4, rows: 2, col: 0, row: 0)
+        case .topSecondFourth:   return tileGrid(cols: 4, rows: 2, col: 1, row: 0)
+        case .topThirdFourth:    return tileGrid(cols: 4, rows: 2, col: 2, row: 0)
+        case .topLastFourth:     return tileGrid(cols: 4, rows: 2, col: 3, row: 0)
+        case .bottomFirstFourth:  return tileGrid(cols: 4, rows: 2, col: 0, row: 1)
+        case .bottomSecondFourth: return tileGrid(cols: 4, rows: 2, col: 1, row: 1)
+        case .bottomThirdFourth:  return tileGrid(cols: 4, rows: 2, col: 2, row: 1)
+        case .bottomLastFourth:   return tileGrid(cols: 4, rows: 2, col: 3, row: 1)
         }
     }
 }
@@ -288,6 +389,11 @@ enum WindowTiler {
         let x2 = x1 + Int(CGFloat(visW) * fw)
         let y2 = y1 + Int(CGFloat(visH) * fh)
         return (x1, y1, x2, y2)
+    }
+
+    /// Get the main screen's frame (safe to call from main thread only).
+    static func mainScreenFrame() -> CGRect {
+        return NSScreen.main?.frame ?? NSScreen.screens.first?.frame ?? CGRect(x: 0, y: 0, width: 1920, height: 1080)
     }
 
     /// Compute AX-coordinate frame for a tile position on a given screen
@@ -537,7 +643,7 @@ enum WindowTiler {
     }
 
     /// Attempt CGS-based window move. Returns nil if APIs are unavailable.
-    private static func moveViaCGS(wid: UInt32, fromSpaces: [Int], toSpace: Int) -> MoveResult? {
+    static func moveViaCGS(wid: UInt32, fromSpaces: [Int], toSpace: Int) -> MoveResult? {
         let diag = DiagnosticLog.shared
         guard let mainConn = CGS.mainConnectionID,
               let addToSpaces = CGS.addWindowsToSpaces,
@@ -997,53 +1103,55 @@ enum WindowTiler {
         DispatchQueue.main.async { WindowHighlight.shared.flash(frame: frame) }
     }
 
-    /// Tile any window by its CG window ID to a position using AX API
-    static func tileWindowById(wid: UInt32, pid: Int32, to position: TilePosition) {
+    /// Tile any window by its CG window ID to a position.
+    /// Delegates to `batchMoveAndRaiseWindows` which is the battle-tested path:
+    /// uses `_AXUIElementGetWindow` for direct wid→AX mapping, disables enhanced UI,
+    /// freezes screen rendering, and verifies+retries drifted windows.
+    /// Tile a window using raw fractional coordinates.
+    static func tileWindowById(wid: UInt32, pid: Int32, fractions: (CGFloat, CGFloat, CGFloat, CGFloat), on targetScreen: NSScreen? = nil) {
+        let screen = targetScreen ?? NSScreen.main ?? NSScreen.screens[0]
+        let frame = tileFrame(fractions: fractions, inDisplay: screen.frame)
+        DiagnosticLog.shared.info("tileWindowById: wid=\(wid) fractions=\(fractions) frame=(\(Int(frame.origin.x)),\(Int(frame.origin.y))) \(Int(frame.width))x\(Int(frame.height))")
+        if let app = NSRunningApplication(processIdentifier: pid) { app.activate() }
+        let moves = [(wid: wid, pid: pid, frame: frame)]
+        batchMoveAndRaiseWindows(moves)
+        let drifted = verifyMoves(moves)
+        if !drifted.isEmpty {
+            usleep(100_000)
+            batchMoveAndRaiseWindows(drifted.map { (wid: $0.wid, pid: $0.pid, frame: $0.frame) })
+        }
+    }
+
+    static func tileWindowById(wid: UInt32, pid: Int32, to position: TilePosition, on targetScreen: NSScreen? = nil) {
         let diag = DiagnosticLog.shared
-        diag.info("tileWindowById: wid=\(wid) pid=\(pid) pos=\(position.rawValue)")
+        let screen = targetScreen ?? NSScreen.main ?? NSScreen.screens[0]
+        let frame = tileFrame(for: position, on: screen)
 
-        // Find the screen the window is on
-        guard let windowFrame = cgWindowFrame(wid: wid) else {
-            diag.warn("tileWindowById: no frame for wid=\(wid)")
-            return
-        }
-        let screen = NSScreen.screens.first(where: {
-            $0.frame.contains(NSPoint(x: windowFrame.midX, y: windowFrame.midY))
-        }) ?? NSScreen.main ?? NSScreen.screens[0]
+        diag.info("tileWindowById: wid=\(wid) pid=\(pid) pos=\(position.rawValue) screen=\(screen.localizedName) frame=(\(Int(frame.origin.x)),\(Int(frame.origin.y))) \(Int(frame.width))x\(Int(frame.height))")
 
-        let visible = screen.visibleFrame
-        let (fx, fy, fw, fh) = position.rect
-
-        // Calculate target in NS coordinates (bottom-left origin)
-        let targetX = visible.origin.x + visible.width * fx
-        let targetY = visible.origin.y + visible.height * (1.0 - fy - fh)
-        let targetW = visible.width * fw
-        let targetH = visible.height * fh
-
-        // Convert NS bottom-left → AX top-left origin
-        guard let primaryScreen = NSScreen.screens.first else { return }
-        let primaryHeight = primaryScreen.frame.height
-        let axX = targetX
-        let axY = primaryHeight - targetY - targetH
-
-        // Find the AX window matching this CG wid by frame comparison
-        guard let axWindow = findAXWindowByFrame(wid: wid, pid: pid) else {
-            diag.warn("tileWindowById: couldn't match AX window for wid=\(wid)")
-            return
+        // Focus the app so windows on other Spaces come to the current one
+        if let app = NSRunningApplication(processIdentifier: pid) {
+            app.activate()
         }
 
-        // Set position and size via AX
-        var newPos = CGPoint(x: axX, y: axY)
-        var newSize = CGSize(width: targetW, height: targetH)
+        let moves = [(wid: wid, pid: pid, frame: frame)]
+        batchMoveAndRaiseWindows(moves)
 
-        if let posValue = AXValueCreate(.cgPoint, &newPos) {
-            AXUIElementSetAttributeValue(axWindow, kAXPositionAttribute as CFString, posValue)
+        // Verify and retry once if needed
+        let drifted = verifyMoves(moves)
+        if !drifted.isEmpty {
+            diag.info("tileWindowById: wid=\(wid) drifted, retrying...")
+            usleep(100_000)
+            batchMoveAndRaiseWindows(drifted)
+            let stillDrifted = verifyMoves(drifted)
+            if stillDrifted.isEmpty {
+                diag.success("tileWindowById: wid=\(wid) retry succeeded")
+            } else {
+                diag.warn("tileWindowById: wid=\(wid) still drifted after retry")
+            }
+        } else {
+            diag.success("tileWindowById: tiled wid=\(wid) to \(position.rawValue)")
         }
-        if let sizeValue = AXValueCreate(.cgSize, &newSize) {
-            AXUIElementSetAttributeValue(axWindow, kAXSizeAttribute as CFString, sizeValue)
-        }
-
-        diag.success("tileWindowById: tiled wid=\(wid) to \(position.rawValue)")
     }
 
     /// Distribute windows in a smart grid layout (delegates to batch operation)
@@ -1288,24 +1396,89 @@ enum WindowTiler {
     }
 
     /// Raise and focus a single window by its CGWindowID.
-    static func focusWindow(wid: UInt32, pid: Int32) {
-        let appRef = AXUIElementCreateApplication(pid)
-        var windowsRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &windowsRef) == .success,
-              let axWindows = windowsRef as? [AXUIElement] else { return }
+    @discardableResult
+    static func focusWindow(wid: UInt32, pid: Int32) -> Bool {
+        return present(wid: wid, pid: pid)
+    }
 
-        for axWin in axWindows {
-            var windowId: CGWindowID = 0
-            if _AXUIElementGetWindow(axWin, &windowId) == .success, windowId == wid {
-                AXUIElementPerformAction(axWin, kAXRaiseAction as CFString)
-                AXUIElementSetAttributeValue(axWin, kAXMainAttribute as CFString, kCFBooleanTrue)
-                break
+    // MARK: - Present
+
+    /// Present a window: move it to the current space, bring it to front, optionally position it.
+    /// This is the single entry point for "show me this window right now."
+    @discardableResult
+    static func present(wid: UInt32, pid: Int32, frame: CGRect? = nil) -> Bool {
+        let diag = DiagnosticLog.shared
+
+        // 1. Move to current space if needed
+        let windowSpaces = getSpacesForWindow(wid)
+        let currentSpace = getCurrentSpace()
+        if currentSpace != 0, !windowSpaces.isEmpty, !windowSpaces.contains(currentSpace) {
+            diag.info("present: wid \(wid) on space \(windowSpaces), moving to current space \(currentSpace)")
+            _ = moveViaCGS(wid: wid, fromSpaces: windowSpaces, toSpace: currentSpace)
+        }
+
+        // 2. Position if requested
+        if let frame = frame {
+            if let mainConn = _SLSMainConnectionID, let moveWindow = _SLSMoveWindow {
+                let cid = mainConn()
+                var origin = CGPoint(x: frame.origin.x, y: frame.origin.y)
+                moveWindow(cid, wid, &origin)
+            }
+            // Resize via AX
+            let appRef = AXUIElementCreateApplication(pid)
+            var windowsRef: CFTypeRef?
+            if AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &windowsRef) == .success,
+               let axWindows = windowsRef as? [AXUIElement] {
+                for axWin in axWindows {
+                    var windowId: CGWindowID = 0
+                    if _AXUIElementGetWindow(axWin, &windowId) == .success, windowId == wid {
+                        var size = CGSize(width: frame.width, height: frame.height)
+                        let sizeValue = AXValueCreate(.cgSize, &size)!
+                        AXUIElementSetAttributeValue(axWin, kAXSizeAttribute as CFString, sizeValue)
+                        break
+                    }
+                }
             }
         }
 
+        // 3. Activate the app first (this may bring the wrong window forward)
         if let app = NSRunningApplication(processIdentifier: pid) {
             app.activate()
         }
+
+        // 4. Then order OUR window to front — after activate so we get the last word
+        if let mainConn = _SLSMainConnectionID, let orderWindow = _SLSOrderWindow {
+            let cid = mainConn()
+            let err = orderWindow(cid, wid, 1, 0)
+            if err != .success {
+                diag.warn("present: SLSOrderWindow failed for wid \(wid): \(err)")
+            }
+        }
+
+        // 5. Set as main window via AX
+        let appRef = AXUIElementCreateApplication(pid)
+        var windowsRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &windowsRef) == .success,
+           let axWindows = windowsRef as? [AXUIElement] {
+            for axWin in axWindows {
+                var windowId: CGWindowID = 0
+                if _AXUIElementGetWindow(axWin, &windowId) == .success, windowId == wid {
+                    AXUIElementSetAttributeValue(axWin, kAXMainAttribute as CFString, kCFBooleanTrue)
+                    AXUIElementPerformAction(axWin, kAXRaiseAction as CFString)
+                    break
+                }
+            }
+        }
+
+        // 6. Re-raise after a short delay to defeat focus stealing from the caller
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            if let mainConn = _SLSMainConnectionID, let orderWindow = _SLSOrderWindow {
+                let cid = mainConn()
+                orderWindow(cid, wid, 1, 0)
+            }
+        }
+
+        return true
     }
 
     /// Move AND raise windows in a single CG+AX pass (avoids duplicate lookups).

@@ -382,11 +382,21 @@ try {
 const intentCatalog = `
 tile_window: Tile a window to a screen position
   Slots:
-    position (required): left, right, top, bottom, top-left, top-right, bottom-left, bottom-right, left-third, center-third, right-third, maximize, center
+    position (required): Named position or grid:CxR:C,R syntax.
+      Halves: left, right, top, bottom
+      Quarters (2x2): top-left, top-right, bottom-left, bottom-right
+      Thirds (3x1): left-third, center-third, right-third
+      Sixths (3x2): top-left-third, top-center-third, top-right-third, bottom-left-third, bottom-center-third, bottom-right-third
+      Fourths (4x1): first-fourth, second-fourth, third-fourth, last-fourth
+      Eighths (4x2): top-first-fourth, top-second-fourth, top-third-fourth, top-last-fourth, bottom-first-fourth, bottom-second-fourth, bottom-third-fourth, bottom-last-fourth
+      Special: maximize (full screen), center (centered floating)
+      Grid syntax: grid:CxR:C,R (e.g. grid:5x3:2,1 = center cell of 5x3 grid)
     app (optional): Target app name — match loosely (e.g. "chrome" matches "Google Chrome")
     wid (optional): Target window ID (from snapshot)
     session (optional): Tmux session name
   If no app/wid/session given, tiles the frontmost window.
+  "quarter" = 2x2 cell (top-left etc.), NOT a 4x1 fourth.
+  "top quarter" = top-left or top-right (2x2). "top third" = top-left-third (3x2).
 
 focus: Focus a window, app, or session
   Slots: app, session, or wid (at least one)
@@ -405,11 +415,13 @@ create_layer: Save current arrangement as a named layer
   Slots: name (required)
 
 TILING PRESETS (use multiple tile_window actions):
-  "split screen" → tile first app left, second app right
-  "thirds" → three apps: left-third, center-third, right-third
+  "split screen" → left + right
+  "thirds" → left-third, center-third, right-third
   "mosaic"/"grid" → use distribute
-  "corners"/"quadrants" → four apps: top-left, top-right, bottom-left, bottom-right
-  "stack" → top and bottom halves
+  "corners"/"quadrants" → top-left, top-right, bottom-left, bottom-right
+  "stack" → top + bottom
+  "six-up"/"3 by 2" → 3x2 grid using the sixth positions
+  "eight-up"/"4 by 2" → 4x2 grid using the eighth positions
 `;
 
 systemPrompt = systemPrompt.replace("{{intent_catalog}}", intentCatalog);

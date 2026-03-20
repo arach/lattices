@@ -95,6 +95,19 @@ final class IntentEngine {
 
     // MARK: - Built-in Intents
 
+    /// Track recently tiled wids so batch operations (e.g. "tile iTerm left, iTerm right")
+    /// don't pick the same window twice. Resets after 2 seconds.
+    private static var recentlyTiledWids: Set<UInt32> = []
+    private static var recentlyTiledTimer: Timer?
+
+    private static func markTiled(_ wid: UInt32) {
+        recentlyTiledWids.insert(wid)
+        recentlyTiledTimer?.invalidate()
+        recentlyTiledTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { _ in
+            recentlyTiledWids.removeAll()
+        }
+    }
+
     private func registerBuiltins() {
 
         // ── Window Tiling ───────────────────────────────────────
@@ -112,11 +125,8 @@ final class IntentEngine {
             ],
             slots: [
                 IntentSlot(name: "position", type: "position", required: true,
-                           description: "Target tile position",
-                           enumValues: ["left", "right", "top", "bottom",
-                                        "top-left", "top-right", "bottom-left", "bottom-right",
-                                        "left-third", "center-third", "right-third",
-                                        "maximize", "center"]),
+                           description: "Target tile position. Named positions or grid:CxR:C,R syntax.",
+                           enumValues: TilePosition.allCases.map(\.rawValue)),
                 IntentSlot(name: "app", type: "string", required: false,
                            description: "Target app name (defaults to frontmost)", enumValues: nil),
                 IntentSlot(name: "wid", type: "int", required: false,
@@ -125,9 +135,14 @@ final class IntentEngine {
                            description: "Target session name", enumValues: nil),
             ],
             handler: { req in
-                guard let posStr = req.slots["position"]?.stringValue,
-                      let position = TilePosition(rawValue: posStr) else {
+                guard let posStr = req.slots["position"]?.stringValue else {
                     throw IntentError.missingSlot("position")
+                }
+                // Try named position first, then grid string
+                let position: TilePosition? = TilePosition(rawValue: posStr)
+                let gridFractions: (CGFloat, CGFloat, CGFloat, CGFloat)? = position == nil ? parseGridString(posStr) : nil
+                guard position != nil || gridFractions != nil else {
+                    throw IntentError.invalidSlot("Unknown position: \(posStr)")
                 }
 
                 // Resolve target: explicit session, wid, app name, or frontmost
@@ -140,8 +155,13 @@ final class IntentEngine {
 
                 // For wid/app/frontmost: use WindowTiler directly
                 func tileEntry(_ entry: WindowEntry) {
+                    IntentEngine.markTiled(entry.wid)
                     DispatchQueue.main.async {
-                        WindowTiler.tileWindowById(wid: entry.wid, pid: entry.pid, to: position)
+                        if let pos = position {
+                            WindowTiler.tileWindowById(wid: entry.wid, pid: entry.pid, to: pos)
+                        } else if let fracs = gridFractions {
+                            WindowTiler.tileWindowById(wid: entry.wid, pid: entry.pid, fractions: fracs)
+                        }
                     }
                 }
 
@@ -152,18 +172,22 @@ final class IntentEngine {
                 }
 
                 if let app = req.slots["app"]?.stringValue {
+                    // Skip windows already tiled in this batch (e.g. two iTerm windows side by side)
+                    let alreadyTiled = IntentEngine.recentlyTiledWids
                     if let entry = DesktopModel.shared.windows.values.first(where: {
-                        $0.app.localizedCaseInsensitiveContains(app)
+                        $0.app.localizedCaseInsensitiveContains(app) && !alreadyTiled.contains($0.wid)
                     }) {
                         tileEntry(entry)
-                        return .object(["ok": .bool(true), "app": .string(entry.app), "position": .string(posStr)])
+                        return .object(["ok": .bool(true), "app": .string(entry.app), "wid": .int(Int(entry.wid)), "position": .string(posStr)])
                     }
                     throw IntentError.targetNotFound("No window found for app '\(app)'")
                 }
 
                 // Default: tile frontmost window
-                DispatchQueue.main.async {
-                    WindowTiler.tileFrontmost(to: position)
+                if let pos = position {
+                    DispatchQueue.main.async {
+                        WindowTiler.tileFrontmost(to: pos)
+                    }
                 }
                 return .object(["ok": .bool(true), "target": .string("frontmost"), "position": .string(posStr)])
             }
@@ -476,6 +500,7 @@ final class IntentEngine {
 enum IntentError: LocalizedError {
     case unknownIntent(String, available: [String])
     case missingSlot(String)
+    case invalidSlot(String)
     case targetNotFound(String)
 
     var errorDescription: String? {
@@ -484,6 +509,8 @@ enum IntentError: LocalizedError {
             return "Unknown intent '\(name)'. Available: \(available.joined(separator: ", "))"
         case .missingSlot(let name):
             return "Missing required slot: \(name)"
+        case .invalidSlot(let detail):
+            return detail
         case .targetNotFound(let detail):
             return detail
         }
