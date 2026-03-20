@@ -994,9 +994,13 @@ final class LatticesApi {
 
                 var frame: CGRect? = nil
                 if let fracs = fractions {
-                    // Compute pixel frame on main thread
-                    DispatchQueue.main.sync {
+                    // Compute pixel frame (needs main thread for NSScreen)
+                    if Thread.isMainThread {
                         frame = WindowTiler.tileFrame(fractions: fracs, inDisplay: WindowTiler.mainScreenFrame())
+                    } else {
+                        DispatchQueue.main.sync {
+                            frame = WindowTiler.tileFrame(fractions: fracs, inDisplay: WindowTiler.mainScreenFrame())
+                        }
                     }
                 } else if let x = params?["x"]?.intValue,
                           let y = params?["y"]?.intValue,

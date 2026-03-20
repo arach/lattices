@@ -643,7 +643,8 @@ enum WindowTiler {
     }
 
     /// Attempt CGS-based window move. Returns nil if APIs are unavailable.
-    static func moveViaCGS(wid: UInt32, fromSpaces: [Int], toSpace: Int) -> MoveResult? {
+    /// Move a window between spaces via CGS private APIs. Internal — used by present() and moveWindowToSpace().
+    internal static func moveViaCGS(wid: UInt32, fromSpaces: [Int], toSpace: Int) -> MoveResult? {
         let diag = DiagnosticLog.shared
         guard let mainConn = CGS.mainConnectionID,
               let addToSpaces = CGS.addWindowsToSpaces,
@@ -1470,11 +1471,14 @@ enum WindowTiler {
             }
         }
 
-        // 6. Re-raise after a short delay to defeat focus stealing from the caller
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            if let mainConn = _SLSMainConnectionID, let orderWindow = _SLSOrderWindow {
-                let cid = mainConn()
-                orderWindow(cid, wid, 1, 0)
+        // 6. Re-raise after delays to defeat focus stealing from the caller.
+        // Two passes: early catch (200ms) and late catch (600ms) for slower responses.
+        for delay in [0.2, 0.6] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                if let mainConn = _SLSMainConnectionID, let orderWindow = _SLSOrderWindow {
+                    let cid = mainConn()
+                    orderWindow(cid, wid, 1, 0)
+                }
             }
         }
 
