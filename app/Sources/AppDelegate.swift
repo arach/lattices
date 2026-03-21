@@ -132,8 +132,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         store.register(action: .tileDistribute) { WindowTiler.distributeVisible() }
 
-        // Check macOS permissions (Accessibility, Screen Recording)
-        PermissionChecker.shared.check()
+        // Onboarding on first launch; otherwise just check permissions
+        if !OnboardingWindowController.shared.showIfNeeded() {
+            PermissionChecker.shared.check()
+        }
 
         // Start daemon services
         let diag = DiagnosticLog.shared

@@ -2,5 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <!-- App sandbox disabled — Lattices needs direct access to tmux, processes, and the filesystem -->
+    <key>com.apple.security.app-sandbox</key>
+    <false/>
+
+    <!-- Network: localhost WebSocket daemon for CLI/agent communication -->
+    <key>com.apple.security.network.server</key>
+    <true/>
+    <key>com.apple.security.network.client</key>
+    <true/>
 </dict>
 </plist>
