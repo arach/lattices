@@ -26,3 +26,12 @@ docs-site/.astro/
 
 # Dewey reviews
 .dewey/
+
+# OpenScout relay
+.openscout/
+
+# Astro generated files
+site/.astro/
+
+# Scratch files
+find_talkie.js
