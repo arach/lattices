@@ -4,10 +4,17 @@ final class TmuxModel: ObservableObject {
     static let shared = TmuxModel()
 
     @Published private(set) var sessions: [TmuxSession] = []
+    @Published private(set) var isAvailable: Bool = TmuxQuery.isAvailable
     private var timer: Timer?
 
     func start(interval: TimeInterval = 3.0) {
         guard timer == nil else { return }
+
+        if !isAvailable {
+            DiagnosticLog.shared.warn("TmuxModel: tmux not found — session features disabled")
+            return
+        }
+
         DiagnosticLog.shared.info("TmuxModel: starting (interval=\(interval)s)")
         poll()
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in

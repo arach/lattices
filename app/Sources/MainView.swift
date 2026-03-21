@@ -9,6 +9,8 @@ struct MainView: View {
     @State private var searchText = ""
     @State private var hasCheckedSetup = false
     @State private var bannerDismissed = false
+    @State private var tmuxBannerDismissed = false
+    @ObservedObject private var tmuxModel = TmuxModel.shared
     @State private var orphanSectionCollapsed = true
     private var filtered: [Project] {
         if searchText.isEmpty { return scanner.projects }
@@ -114,6 +116,11 @@ struct MainView: View {
             // Permission banner
             if !permChecker.allGranted && !bannerDismissed {
                 permissionBanner
+            }
+
+            // tmux not-found banner
+            if !tmuxModel.isAvailable && !tmuxBannerDismissed {
+                tmuxBanner
             }
 
             Rectangle()
@@ -375,6 +382,70 @@ struct MainView: View {
             }
 
             Text("Click a row to request access.")
+                .font(Typo.mono(9))
+                .foregroundColor(Palette.textMuted)
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 5)
+                .fill(Palette.detach.opacity(0.08))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5)
+                        .strokeBorder(Palette.detach.opacity(0.20), lineWidth: 0.5)
+                )
+        )
+        .padding(.horizontal, 14)
+        .padding(.bottom, 10)
+    }
+
+    // MARK: - tmux banner
+
+    private var tmuxBanner: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Image(systemName: "terminal")
+                    .font(.system(size: 10))
+                    .foregroundColor(Palette.detach)
+                Text("TMUX NOT FOUND")
+                    .font(Typo.monoBold(10))
+                    .foregroundColor(Palette.detach)
+                Spacer()
+                Button { tmuxBannerDismissed = true } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(Palette.textMuted)
+                }
+                .buttonStyle(.plain)
+            }
+
+            Text("Session management requires tmux. Install it with Homebrew:")
+                .font(Typo.mono(10))
+                .foregroundColor(Palette.text)
+
+            Button {
+                let task = Process()
+                task.executableURL = URL(fileURLWithPath: "/bin/zsh")
+                task.arguments = ["-lc", "brew install tmux"]
+                task.standardOutput = FileHandle.nullDevice
+                task.standardError = FileHandle.nullDevice
+                try? task.run()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.down.circle")
+                        .font(.system(size: 10))
+                    Text("brew install tmux")
+                        .font(Typo.monoBold(10))
+                }
+                .padding(.vertical, 4)
+                .padding(.horizontal, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Palette.detach.opacity(0.06))
+                )
+            }
+            .buttonStyle(.plain)
+
+            Text("Window tiling, search, and OCR work without tmux.")
                 .font(Typo.mono(9))
                 .foregroundColor(Palette.textMuted)
         }

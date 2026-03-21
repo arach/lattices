@@ -23,20 +23,44 @@ struct TmuxPane: Identifiable {
 // MARK: - Query
 
 enum TmuxQuery {
-    private static let tmuxPath = "/opt/homebrew/bin/tmux"
+    /// Resolved path to the tmux binary, or nil if not found
+    static let resolvedPath: String? = {
+        let candidates = [
+            "/opt/homebrew/bin/tmux",   // Apple Silicon Homebrew
+            "/usr/local/bin/tmux",      // Intel Homebrew
+            "/usr/bin/tmux",            // unlikely on macOS, but check
+            "/opt/local/bin/tmux",      // MacPorts
+        ]
+        for path in candidates {
+            if FileManager.default.isExecutableFile(atPath: path) {
+                return path
+            }
+        }
+        // Fall back to PATH lookup via /usr/bin/which
+        let result = ProcessQuery.shell(["/usr/bin/which", "tmux"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        if !result.isEmpty && FileManager.default.isExecutableFile(atPath: result) {
+            return result
+        }
+        return nil
+    }()
+
+    /// Whether tmux is available on this system
+    static var isAvailable: Bool { resolvedPath != nil }
 
     /// List all tmux sessions with their panes in exactly 2 shell calls
     static func listSessions() -> [TmuxSession] {
+        guard let tmux = resolvedPath else { return [] }
+
         // Query 1: all sessions
         let sessionsRaw = shell([
-            tmuxPath, "list-sessions", "-F",
+            tmux, "list-sessions", "-F",
             "#{session_name}\t#{session_windows}\t#{session_created}\t#{session_attached}"
         ])
         guard !sessionsRaw.isEmpty else { return [] }
 
         // Query 2: all panes across all sessions
         let panesRaw = shell([
-            tmuxPath, "list-panes", "-a", "-F",
+            tmux, "list-panes", "-a", "-F",
             "#{session_name}\t#{window_index}\t#{window_name}\t#{pane_id}\t#{pane_title}\t#{pane_current_command}\t#{pane_pid}\t#{pane_active}"
         ])
 

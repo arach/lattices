@@ -43,6 +43,40 @@ function hasTmux(): boolean {
   return runQuiet("which tmux") !== null;
 }
 
+/** Commands that require tmux to be installed */
+const tmuxRequiredCommands = new Set([
+  "init", "ls", "list", "kill", "rm", "sync", "reconcile",
+  "restart", "respawn", "group", "groups", "tab", "status",
+  "inventory", "distribute", "sessions",
+]);
+
+function requireTmux(command: string | undefined): void {
+  if (hasTmux()) return;
+
+  const isImplicitCreate = command && !tmuxRequiredCommands.has(command)
+    && !["search", "s", "focus", "place", "tile", "t", "windows", "window",
+         "voice", "call", "layer", "layers", "diag", "diagnostics", "scan",
+         "ocr", "daemon", "dev", "app", "help", "-h", "--help"].includes(command);
+
+  if (command && !tmuxRequiredCommands.has(command) && !isImplicitCreate) return;
+
+  console.error(`
+\x1b[1;31m✘ tmux not found\x1b[0m
+
+Lattices uses tmux for terminal session management.
+Install it with Homebrew:
+
+    \x1b[1mbrew install tmux\x1b[0m
+
+If tmux is installed somewhere else, make sure it's on your PATH:
+
+    \x1b[90mexport PATH="/path/to/tmux/bin:$PATH"\x1b[0m
+
+Then run this command again.
+`.trim());
+  process.exit(1);
+}
+
 function isInsideTmux(): boolean {
   return !!process.env.TMUX;
 }
@@ -1800,10 +1834,7 @@ function statusInventory(): void {
 
 // ── Main ─────────────────────────────────────────────────────────────
 
-if (!hasTmux()) {
-  console.error("tmux is not installed. Install with: brew install tmux");
-  process.exit(1);
-}
+requireTmux(command);
 
 switch (command) {
   case "init":

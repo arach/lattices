@@ -2,7 +2,7 @@ import AppKit
 
 enum SessionManager {
     private static let latticesPath = "/opt/homebrew/bin/lattices"
-    private static let tmuxPath = "/opt/homebrew/bin/tmux"
+    private static var tmuxPath: String { TmuxQuery.resolvedPath ?? "/opt/homebrew/bin/tmux" }
 
     /// Launch or reattach — if session is running, find and focus the existing window
     static func launch(project: Project) {

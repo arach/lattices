@@ -78,7 +78,7 @@ class WorkspaceManager: ObservableObject {
 
     private let configPath: String
     private let gridConfigPath: String
-    private let tmuxPath = "/opt/homebrew/bin/tmux"
+    private var tmuxPath: String { TmuxQuery.resolvedPath ?? "/opt/homebrew/bin/tmux" }
     private let activeLayerKey = "lattices.activeLayerIndex"
 
     init() {

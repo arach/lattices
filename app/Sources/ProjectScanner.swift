@@ -113,7 +113,7 @@ class ProjectScanner: ObservableObject {
         return (panes.count, labels, labels.joined(separator: " · "))
     }
 
-    private static let tmuxPath = "/opt/homebrew/bin/tmux"
+    private static var tmuxPath: String { TmuxQuery.resolvedPath ?? "/opt/homebrew/bin/tmux" }
 
     private func isSessionRunning(_ name: String) -> Bool {
         let task = Process()

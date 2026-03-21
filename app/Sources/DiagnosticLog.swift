@@ -199,7 +199,7 @@ final class DiagnosticWindow {
 
         // Show running sessions
         let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/opt/homebrew/bin/tmux")
+        task.executableURL = URL(fileURLWithPath: TmuxQuery.resolvedPath ?? "/opt/homebrew/bin/tmux")
         task.arguments = ["list-sessions", "-F", "#{session_name}"]
         let pipe = Pipe()
         task.standardOutput = pipe
