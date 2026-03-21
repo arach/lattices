@@ -4,9 +4,13 @@
 
 # lattices
 
-A workspace control plane for macOS. Manage persistent terminal sessions,
-tile and organize your windows, and index the text on your screen — all
-controllable from the CLI or a 35-method daemon API.
+The agentic window manager for macOS.
+
+Tile windows with hotkeys, manage persistent tmux sessions, index screen
+text with OCR, and give AI agents a 35-method desktop API — all from a
+native menu bar app and CLI.
+
+**[lattices.dev](https://lattices.dev)** · [Docs](https://lattices.dev/docs/overview) · [Download](https://github.com/arach/lattices/releases/latest)
 
 ## Install
 
@@ -216,7 +220,11 @@ lattices help               Show help
 
 ## Docs
 
-[lattices.dev/docs](https://lattices.dev/docs/overview)
+Full documentation at [lattices.dev/docs](https://lattices.dev/docs/overview), including:
+
+- [API reference](https://lattices.dev/docs/api) — all 35 daemon methods
+- [Layers](https://lattices.dev/docs/layers) — workspace layers and tab groups
+- [Voice commands](https://lattices.dev/docs/voice) — Talkie integration
 
 ## License
 
