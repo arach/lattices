@@ -271,14 +271,12 @@ export default function App() {
                 <li>Voice commands via Vox integration <span className="beta-badge">beta</span></li>
               </ul>
               <a
-                href="https://github.com/arach/lattices/releases/latest"
-                target="_blank"
-                rel="noopener noreferrer"
+                href="https://github.com/arach/lattices/releases/latest/download/Lattices.dmg"
                 className="app-download"
               >
                 <AppleIcon />
                 Download for macOS
-                <span className="app-download-meta">Apple Silicon · Free</span>
+                <span className="app-download-meta">Apple Silicon · Free · .dmg</span>
               </a>
             </div>
             <div className="app-screenshot-wrap">
@@ -454,12 +452,10 @@ export default function App() {
               npm package
             </a>
             <a
-              href="https://github.com/arach/lattices/releases/latest"
-              target="_blank"
-              rel="noopener noreferrer"
+              href="https://github.com/arach/lattices/releases/latest/download/Lattices.dmg"
               className="btn btn-secondary"
             >
-              Download App
+              <AppleIcon /> Download .dmg
             </a>
             <a
               href="/docs/api"
