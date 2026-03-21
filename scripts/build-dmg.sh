@@ -10,10 +10,17 @@ DMG_NAME="Lattices.dmg"
 BUNDLE="$BUILD_DIR/$APP_NAME"
 VERSION="${1:-$(node -p "require('$ROOT/package.json').version" 2>/dev/null || echo '0.1.0')}"
 
-# Signing
-SIGN_IDENTITY="Developer ID Application: Arach Tchoupani (2U83JFPW66)"
-TEAM_ID="2U83JFPW66"
-NOTARY_PROFILE="notarytool"
+# Signing — override via environment or use defaults
+SIGN_IDENTITY="${LATTICES_SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | grep -o '"Developer ID Application:[^"]*"' | head -1 | tr -d '"' || echo "")}"
+TEAM_ID="${LATTICES_TEAM_ID:-}"
+NOTARY_PROFILE="${LATTICES_NOTARY_PROFILE:-notarytool}"
+
+if [ -z "$SIGN_IDENTITY" ]; then
+    echo "Error: No Developer ID signing identity found."
+    echo "Set LATTICES_SIGN_IDENTITY or install a Developer ID certificate."
+    exit 1
+fi
+echo "    Sign identity: $SIGN_IDENTITY"
 
 echo "==> Building Lattices v$VERSION (release)..."
 cd "$APP_DIR"

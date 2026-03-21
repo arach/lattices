@@ -10,8 +10,50 @@ controllable from the CLI or a 35-method daemon API.
 
 ## Install
 
+### Download the app
+
+Grab the signed DMG from the [latest release](https://github.com/arach/lattices/releases/latest):
+
+```sh
+# Or direct download:
+curl -LO https://github.com/arach/lattices/releases/latest/download/Lattices.dmg
+open Lattices.dmg
+```
+
+Drag **Lattices.app** into Applications. On first launch, a setup wizard
+walks you through granting Accessibility, Screen Recording, and choosing
+your project directory.
+
+### Install the CLI
+
 ```sh
 npm install -g @lattices/cli
+```
+
+The CLI and app work independently — use either or both.
+
+### Build from source
+
+```sh
+git clone https://github.com/arach/lattices.git
+cd lattices
+
+# Build the menu bar app (requires Swift 5.9+ / Xcode 15+)
+cd app && swift build -c release && cd ..
+
+# Install CLI dependencies
+npm install
+
+# Launch
+node bin/lattices-app.js build   # bundle the .app
+node bin/lattices-app.js         # launch it
+```
+
+To build a signed, notarized DMG for distribution:
+
+```sh
+# Requires a Developer ID certificate and notarytool keychain profile
+./scripts/build-dmg.sh
 ```
 
 ## Quick start

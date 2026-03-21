@@ -1198,13 +1198,13 @@ struct SettingsContentView: View {
     }
 
     private func resolveDocsFile(_ file: String) -> String {
-        let devPath = "/Users/arach/dev/lattice/docs/\(file)"
-        if FileManager.default.fileExists(atPath: devPath) { return devPath }
         let bundle = Bundle.main.bundlePath
         let appDir = (bundle as NSString).deletingLastPathComponent
         let docsPath = ((appDir as NSString).appendingPathComponent("../docs/\(file)") as NSString).standardizingPath
         if FileManager.default.fileExists(atPath: docsPath) { return docsPath }
-        return devPath
+        // Fallback: look relative to the repo root (dev builds)
+        let repoGuess = ((appDir as NSString).appendingPathComponent("../../docs/\(file)") as NSString).standardizingPath
+        return FileManager.default.fileExists(atPath: repoGuess) ? repoGuess : docsPath
     }
 
     // MARK: - Shared helpers
