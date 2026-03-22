@@ -8,6 +8,7 @@ final class DesktopModel: ObservableObject {
     /// System helper processes that should never appear in search results or window lists.
     /// These are XPC services, agents, and background helpers — not user-facing apps.
     private static let systemHelperProcesses: Set<String> = [
+        // Apple system helpers
         "CredentialsProviderExtensionHost",
         "AuthenticationServicesAgent",
         "SafariPasswordExtension",
@@ -17,6 +18,42 @@ final class DesktopModel: ObservableObject {
         "universalaccessd",
         "CoreServicesUIAgent",
         "UserNotificationCenter",
+        "AutoFillPanelService",
+        "AutoFill",
+        "CoreLocationAgent",
+        "SecurityAgent",
+        "coreautha",
+        "coreauth",
+        "talagent",
+        "CommCenter",
+        "AXVisualSupportAgent",
+        "SystemUIServer",
+        "Dock",
+        "Window Server",
+        "WindowManager",
+        "NotificationCenter",
+        "ControlCenter",
+        "Spotlight",
+        "Keychain Access",
+        "loginwindow",
+        "ScreenSaverEngine",
+        "SoftwareUpdateNotificationManager",
+        "WiFiAgent",
+        "pboard",
+        "storeuid",
+        // Third-party helpers
+        "CursorUIViewService",
+        "Electron Helper",
+        "Google Chrome Helper",
+    ]
+
+    /// Suffixes that indicate a helper/service process, not a user-facing app
+    private static let helperSuffixes = ["Service", "Agent", "Helper", "Extension", "Daemon", "XPCService"]
+
+    /// Real apps that happen to match helper suffixes — don't filter these
+    private static let knownRealApps: Set<String> = [
+        "Finder",
+        "Activity Monitor",
     ]
 
     @Published private(set) var windows: [UInt32: WindowEntry] = [:]
@@ -104,13 +141,17 @@ final class DesktopModel: ObservableObject {
             guard layer == 0 else { continue }
 
             // Skip system helper processes (autofill, credential providers, etc.)
-            // These are XPC services / agents, not user-facing apps. Use process name
-            // (reliable) + size heuristic (small windows from known helpers).
-            let isSystemHelper = Self.systemHelperProcesses.contains(ownerName)
-            let isSmallWindow = rect.width <= 400 || rect.height <= 400
-            if isSystemHelper || (isSmallWindow && title.lowercased().contains("autofill")) {
-                continue
-            }
+            if Self.systemHelperProcesses.contains(ownerName) { continue }
+
+            // Skip processes whose name ends with common helper suffixes
+            // (e.g. "CursorUIViewService", "AutoFillPanelService", "SecurityAgent")
+            // but not known real apps that happen to have these words
+            let isHelperByName = Self.helperSuffixes.contains(where: { ownerName.hasSuffix($0) })
+                && !Self.knownRealApps.contains(ownerName)
+            if isHelperByName { continue }
+
+            // Skip windows with no title from processes containing "com.apple."
+            if ownerName.hasPrefix("com.apple.") && title.isEmpty { continue }
 
             let frame = WindowFrame(
                 x: Double(rect.origin.x),

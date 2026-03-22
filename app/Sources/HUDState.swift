@@ -50,8 +50,27 @@ final class HUDState: ObservableObject {
     @Published var focus: HUDFocus = .search
     @Published var voiceActive: Bool = false
 
+    /// Multi-select for tiling — set of item IDs
+    @Published var selectedItems: Set<String> = []
+
     enum MinimapMode: Equatable { case hidden, docked, expanded }
     @Published var minimapMode: MinimapMode = .docked
+
+    // MARK: - Tile mode
+
+    @Published var tileMode: Bool = false
+
+    /// Snapshot of window positions taken when entering tile mode
+    struct WindowSnapshot {
+        let wid: UInt32
+        let pid: Int32
+        let frame: CGRect
+    }
+    var tileSnapshot: [WindowSnapshot] = []
+    var tiledWindows: Set<UInt32> = []
+
+    /// Pre-computed grid layout — calculated on HUD show, applied instantly on T press
+    var precomputedGrid: [(wid: UInt32, pid: Int32, frame: CGRect)] = []
 
     /// Snapshot of the flat item list — set by HUDLeftBar so key handler can index into it
     var flatItems: [HUDItem] = []

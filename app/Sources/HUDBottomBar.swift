@@ -9,7 +9,9 @@ struct HUDBottomBar: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            if !handsOff.recentActions.isEmpty {
+            if state.tileMode {
+                tileModeView
+            } else if !handsOff.recentActions.isEmpty {
                 actionPlayback
             } else if state.voiceActive {
                 voiceStatusView
@@ -136,6 +138,69 @@ struct HUDBottomBar: View {
         case .connecting: return "connecting..."
         case .listening:  return "listening..."
         case .thinking:   return "thinking..."
+        }
+    }
+
+    // MARK: - Tile mode
+
+    private var tileModeView: some View {
+        HStack(spacing: 8) {
+            // Mode indicator
+            HStack(spacing: 4) {
+                Image(systemName: "rectangle.split.2x2")
+                    .font(.system(size: 11))
+                    .foregroundColor(Palette.running)
+                Text("TILE")
+                    .font(Typo.monoBold(10))
+                    .foregroundColor(Palette.running)
+            }
+
+            Rectangle().fill(Palette.border).frame(width: 0.5, height: 20)
+
+            // Key hints
+            HStack(spacing: 6) {
+                tileKey("H", "←")
+                tileKey("J", "↓")
+                tileKey("K", "↑")
+                tileKey("L", "→")
+                tileKey("F", "max")
+            }
+
+            Rectangle().fill(Palette.border).frame(width: 0.5, height: 20)
+
+            HStack(spacing: 6) {
+                tileKey("Y", "◸")
+                tileKey("U", "◹")
+                tileKey("B", "◺")
+                tileKey("N", "◿")
+            }
+
+            Spacer()
+
+            Text("⎋ done")
+                .font(Typo.mono(9))
+                .foregroundColor(Palette.textMuted)
+        }
+        .padding(.horizontal, 16)
+    }
+
+    private func tileKey(_ key: String, _ hint: String) -> some View {
+        HStack(spacing: 2) {
+            Text(key)
+                .font(Typo.geistMonoBold(9))
+                .foregroundColor(Palette.text)
+                .frame(width: 16, height: 16)
+                .background(
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Palette.surface)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 3)
+                                .strokeBorder(Palette.border, lineWidth: 0.5)
+                        )
+                )
+            Text(hint)
+                .font(Typo.mono(8))
+                .foregroundColor(Palette.textDim)
         }
     }
 

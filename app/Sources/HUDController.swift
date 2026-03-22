@@ -79,6 +79,10 @@ final class HUDController {
         let screen = mouseScreen()
         if positionedScreen != screen { positionAllPanels(on: screen) }
 
+        // Pre-compute tile grid BEFORE showing panels (captures real z-order)
+        DesktopModel.shared.poll()
+        precomputeTileGrid(on: screen)
+
         // ── INSTANT SHOW ── alphaValue flip, zero animation
         let isExpanded = state.minimapMode == .expanded
         for p in allPanels {
@@ -98,6 +102,15 @@ final class HUDController {
     func dismiss() {
         guard isVisible else { return }
         removeMonitors()
+
+        // Restore untiled windows only if user actually tiled something
+        if !state.tiledWindows.isEmpty {
+            restoreUntiled()
+        } else {
+            // Just clean up tile state without moving anything
+            state.tileSnapshot = []
+            state.tileMode = false
+        }
 
         if state.voiceActive {
             if HandsOffSession.shared.state == .listening { HandsOffSession.shared.toggle() }
@@ -269,8 +282,12 @@ final class HUDController {
     private func handleKey(_ event: NSEvent) -> NSEvent? {
         let keyCode = event.keyCode
 
-        // Escape: search → list, otherwise dismiss
+        // Escape: tile mode → exit tile, search → list, otherwise dismiss
         if keyCode == 53 {
+            if state.tileMode {
+                exitTileMode()
+                return nil
+            }
             if state.focus == .search {
                 state.focus = .list
                 return nil
@@ -350,6 +367,36 @@ final class HUDController {
             return nil
         }
 
+        // T key (keyCode 17): toggle tile mode
+        if keyCode == 17 && state.focus != .search {
+            if state.tileMode {
+                exitTileMode()
+            } else {
+                enterTileMode()
+            }
+            return nil
+        }
+
+        // Tile mode keys — H/J/K/L/F for tiling selected window
+        if state.tileMode && state.focus != .search {
+            let tileMap: [UInt16: TilePosition] = [
+                4:  .left,       // H = left half
+                37: .right,      // L = right half
+                40: .top,        // K = top half
+                38: .bottom,     // J = bottom half
+                3:  .maximize,   // F = maximize/fullscreen
+                // Quadrants: Y U B N
+                16: .topLeft,    // Y = top-left
+                32: .topRight,   // U = top-right
+                11: .bottomLeft, // B = bottom-left
+                45: .bottomRight,// N = bottom-right
+            ]
+            if let position = tileMap[keyCode] {
+                tileSelectedWindow(to: position)
+                return nil
+            }
+        }
+
         // / key (keyCode 44): enter search mode
         if keyCode == 44 && state.focus != .search {
             state.focus = .search
@@ -422,6 +469,154 @@ final class HUDController {
     private func playTap() {
         tapSound?.stop()
         tapSound?.play()
+    }
+
+    // MARK: - Tile mode
+
+    /// Pre-compute tile grid on HUD show — top 10 frontmost windows, grid positions ready
+    private func precomputeTileGrid(on screen: NSScreen) {
+        let sf = screen.visibleFrame
+        let primaryH = NSScreen.screens.first?.frame.height ?? 900
+        let screenCGX = sf.origin.x
+        let screenCGY = primaryH - sf.origin.y - sf.height
+
+        // Get the focused window's wid via AX (always include it)
+        let focusedWid: UInt32? = {
+            guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
+            let axApp = AXUIElementCreateApplication(app.processIdentifier)
+            var focusedValue: AnyObject?
+            guard AXUIElementCopyAttributeValue(axApp, kAXFocusedWindowAttribute as CFString, &focusedValue) == .success else { return nil }
+            let axWin = focusedValue as! AXUIElement
+            var widValue: CGWindowID = 0
+            let result = _AXUIElementGetWindow(axWin, &widValue)
+            return result == .success ? UInt32(widValue) : nil
+        }()
+
+        // Front 6 by z-order (most recently used first).
+        let allOnScreen = DesktopModel.shared.allWindows()
+            .filter { $0.isOnScreen && $0.app != "Lattices" && !$0.title.isEmpty }
+            .filter { win in
+                let cx = win.frame.x + win.frame.w / 2
+                let cy = win.frame.y + win.frame.h / 2
+                return cx >= Double(screenCGX) && cx < Double(screenCGX + sf.width) &&
+                       cy >= Double(screenCGY) && cy < Double(screenCGY + sf.height)
+            }
+
+        let log = DiagnosticLog.shared
+        log.info("[TileGrid.input] screenSize=\(sf.width)x\(sf.height) onScreen=\(allOnScreen.count)")
+        for (i, w) in allOnScreen.prefix(10).enumerated() {
+            log.info("[TileGrid.eval] #\(i) z=\(w.zIndex) app=\(w.app) title=\(w.title.prefix(30))")
+        }
+
+        var windows = Array(allOnScreen.prefix(6))
+
+        // Ensure the focused window is always included
+        if let fwid = focusedWid,
+           !windows.contains(where: { $0.wid == fwid }),
+           let focusedWin = allOnScreen.first(where: { $0.wid == fwid }) {
+            if windows.count >= 6 {
+                windows[windows.count - 1] = focusedWin // swap out last
+            } else {
+                windows.append(focusedWin)
+            }
+            log.info("[TileGrid.focused] swapped in focusedWid=\(fwid) (\(focusedWin.app): \(focusedWin.title.prefix(30)))")
+        }
+
+        log.info("[TileGrid.result] picked=\(windows.count)")
+
+        let count = windows.count
+        guard count > 0 else { state.precomputedGrid = []; return }
+
+        let cols = Int(ceil(sqrt(Double(count))))
+        let rows = Int(ceil(Double(count) / Double(cols)))
+        let cellW = sf.width / CGFloat(cols)
+        let cellH = sf.height / CGFloat(rows)
+        let gap: CGFloat = 2
+
+        state.precomputedGrid = windows.enumerated().map { (i, win) in
+            let col = i % cols
+            let row = i / cols
+            let frame = CGRect(
+                x: screenCGX + CGFloat(col) * cellW + gap,
+                y: screenCGY + CGFloat(row) * cellH + gap,
+                width: cellW - gap * 2,
+                height: cellH - gap * 2
+            )
+            return (win.wid, win.pid, frame)
+        }
+    }
+
+    private func enterTileMode() {
+        guard !state.precomputedGrid.isEmpty else { return }
+
+        // Snapshot current positions (for restore on dismiss)
+        state.tileSnapshot = state.precomputedGrid.map { move in
+            // Look up current frame from DesktopModel
+            let win = DesktopModel.shared.windows[move.wid]
+            let currentFrame = win.map {
+                CGRect(x: $0.frame.x, y: $0.frame.y, width: $0.frame.w, height: $0.frame.h)
+            } ?? CGRect.zero
+            return HUDState.WindowSnapshot(wid: move.wid, pid: move.pid, frame: currentFrame)
+        }
+        state.tiledWindows = []
+        state.tileMode = true
+
+        // Apply pre-computed grid — instant
+        WindowTiler.batchMoveAndRaiseWindows(state.precomputedGrid)
+
+        // Auto-expand minimap
+        if state.minimapMode != .expanded {
+            state.minimapMode = .expanded
+        }
+
+        // Select first window
+        let firstWid = state.precomputedGrid.first?.wid
+        if let wid = firstWid,
+           let win = DesktopModel.shared.windows[wid],
+           let idx = state.flatItems.firstIndex(of: .window(win)) {
+            state.focus = .list
+            state.selectedIndex = idx
+            state.selectedItem = .window(win)
+        }
+
+        playTap()
+    }
+
+    private func exitTileMode() {
+        state.tileMode = false
+        playTap()
+    }
+
+    private func tileSelectedWindow(to position: TilePosition) {
+        guard let item = state.selectedItem,
+              case .window(let win) = item else { return }
+
+        let screen = positionedScreen ?? mouseScreen()
+        let frame = WindowTiler.tileFrame(for: position, on: screen)
+        WindowTiler.batchMoveAndRaiseWindows([(win.wid, win.pid, frame)])
+
+        state.tiledWindows.insert(win.wid)
+        playTap()
+    }
+
+    /// Restore windows that weren't explicitly tiled back to their original positions
+    private func restoreUntiled() {
+        guard !state.tileSnapshot.isEmpty else { return }
+
+        var restores: [(wid: UInt32, pid: Int32, frame: CGRect)] = []
+        for snap in state.tileSnapshot {
+            if !state.tiledWindows.contains(snap.wid) {
+                restores.append((snap.wid, snap.pid, snap.frame))
+            }
+        }
+
+        if !restores.isEmpty {
+            WindowTiler.batchMoveAndRaiseWindows(restores)
+        }
+
+        state.tileSnapshot = []
+        state.tiledWindows = []
+        state.tileMode = false
     }
 
     private func activateItem(_ item: HUDItem) {

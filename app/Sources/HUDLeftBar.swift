@@ -40,11 +40,14 @@ struct HUDLeftBar: View {
         }
     }
 
-    /// All desktop windows, sorted by z-order (front-to-back), excluding Lattices itself
+    /// All desktop windows, sorted by z-order (front-to-back)
+    /// Filters out: Lattices itself, windows with no title, and windows whose title is just the app name
     private var filteredWindows: [WindowEntry] {
         let q = state.query.lowercased()
         return desktop.allWindows()
             .filter { $0.app != "Lattices" }
+            .filter { !$0.title.isEmpty }
+            .filter { $0.title != $0.app } // skip helper windows titled "Cursor", "Codex", etc.
             .filter { q.isEmpty || $0.title.lowercased().contains(q) || $0.app.lowercased().contains(q) }
     }
 
@@ -55,6 +58,27 @@ struct HUDLeftBar: View {
             searchBar
 
             Rectangle().fill(Palette.border).frame(height: 0.5)
+
+            // Tile mode banner
+            if state.tileMode {
+                HStack(spacing: 8) {
+                    Image(systemName: "rectangle.split.2x2")
+                        .font(.system(size: 11))
+                        .foregroundColor(Palette.running)
+                    Text("TILE MODE")
+                        .font(Typo.monoBold(10))
+                        .foregroundColor(Palette.running)
+                    Spacer()
+                    Text("H/J/K/L to place · ⎋ done")
+                        .font(Typo.mono(9))
+                        .foregroundColor(Palette.textMuted)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Palette.running.opacity(0.08))
+
+                Rectangle().fill(Palette.running.opacity(0.3)).frame(height: 0.5)
+            }
 
             // Scrollable sections
             ScrollViewReader { proxy in
@@ -211,6 +235,10 @@ struct HUDLeftBar: View {
 
     private func itemRow(_ item: HUDItem) -> some View {
         let isSelected = state.selectedItem == item && state.focus == .list
+        let isTiled = state.tileMode && {
+            if case .window(let w) = item { return state.tiledWindows.contains(w.wid) }
+            return false
+        }()
 
         return Button {
             state.selectedItem = item
@@ -242,10 +270,12 @@ struct HUDLeftBar: View {
             .padding(.vertical, 7)
             .background(
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(isSelected ? Palette.surfaceHov : (state.selectedItem == item ? Palette.surface : Color.clear))
+                    .fill(isTiled ? Palette.running.opacity(0.1) :
+                          (isSelected ? Palette.surfaceHov : (state.selectedItem == item ? Palette.surface : Color.clear)))
                     .overlay(
                         RoundedRectangle(cornerRadius: 6)
-                            .strokeBorder(isSelected ? Palette.borderLit : Color.clear, lineWidth: 0.5)
+                            .strokeBorder(isTiled ? Palette.running.opacity(0.4) :
+                                          (isSelected ? Palette.borderLit : Color.clear), lineWidth: 0.5)
                     )
             )
         }
