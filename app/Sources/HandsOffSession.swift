@@ -25,8 +25,11 @@ final class HandsOffSession: ObservableObject {
     @Published var lastTranscript: String?
     @Published var lastResponse: String?
 
+    /// Recently executed actions — shown as playback in the HUD bottom bar
+    @Published var recentActions: [[String: Any]] = []
+
     private var turnCount = 0
-    private var conversationHistory: [[String: String]] = []
+    @Published private(set) var conversationHistory: [[String: String]] = []
     private let maxHistoryTurns = 10
 
     // Long-running worker process
@@ -179,10 +182,11 @@ final class HandsOffSession: ObservableObject {
 
             DiagnosticLog.shared.info("HandsOff: worker response → \(trimmed)")
 
-            // Execute actions immediately when they arrive
+            // Execute actions and publish to recentActions for HUD playback
             if let dataObj = json["data"] as? [String: Any],
                let actions = dataObj["actions"] as? [[String: Any]], !actions.isEmpty {
                 DispatchQueue.main.async {
+                    self.recentActions = actions
                     self.executeActions(actions)
                 }
             }

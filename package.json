@@ -22,7 +22,8 @@
   "license": "MIT",
   "exports": {
     ".": "./bin/client.ts",
-    "./daemon-client": "./bin/daemon-client.ts"
+    "./daemon-client": "./bin/daemon-client.ts",
+    "./project-twin": "./bin/project-twin.ts"
   },
   "scripts": {
     "dev": "bun --cwd docs-site dev",

@@ -7,7 +7,10 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "Lattices",
-            path: "Sources"
+            path: "Sources",
+            resources: [
+                .copy("../Resources/tap.wav"),
+            ]
         ),
         .testTarget(
             name: "LatticesTests",

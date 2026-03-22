@@ -27,6 +27,11 @@
           "description": "Core ideas, glossary, and architecture of lattices"
         },
         {
+          "id": "twins",
+          "title": "Project Twins",
+          "description": "Pi-backed project twins for mediated, persistent agent execution"
+        },
+        {
           "id": "api",
           "title": "Agent API",
           "description": "WebSocket API reference for programmatic control of lattices"

@@ -364,10 +364,11 @@ struct CheatSheetView: View {
             columnHeader("App")
 
             shortcutRow(action: .palette)
-            shortcutRow(action: .screenMap)
+            shortcutRow(action: .unifiedWindow)
             shortcutRow(action: .bezel)
+            shortcutRow(action: .hud)
+            shortcutRow(action: .voiceCommand)
             shortcutRow(action: .cheatSheet)
-            shortcutRow(action: .desktopInventory)
         }
     }
 

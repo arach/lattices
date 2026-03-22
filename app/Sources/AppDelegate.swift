@@ -81,7 +81,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         let store = HotkeyStore.shared
         store.register(action: .palette) { CommandPaletteWindow.shared.toggle() }
-        store.register(action: .screenMap) { ScreenMapWindowController.shared.toggle() }
+        store.register(action: .unifiedWindow) { ScreenMapWindowController.shared.toggle() }
         store.register(action: .bezel) { WindowBezel.showBezelForFrontmostWindow() }
         store.register(action: .cheatSheet) { CheatSheetHUD.shared.toggle() }
         store.register(action: .voiceCommand) {
@@ -92,7 +92,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             DiagnosticLog.shared.info("Hotkey: handsOff triggered")
             HandsOffSession.shared.toggle()
         }
-        store.register(action: .desktopInventory) { CommandModeWindow.shared.toggle() }
+        store.register(action: .hud) { HUDController.shared.toggle() }
+
+        // Pre-render HUD panels off-screen for instant first open
+        DispatchQueue.main.async { HUDController.shared.warmUp() }
         store.register(action: .omniSearch) { OmniSearchWindow.shared.toggle() }
 
         // Session layer cycling
@@ -219,8 +222,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         let actions: [(String, String, Selector)] = [
             ("Command Palette", "⌘⇧M", #selector(menuCommandPalette)),
-            ("Screen Map", "", #selector(menuScreenMap)),
-            ("Desktop Inventory", "", #selector(menuDesktopInventory)),
+            ("Unified Window", "", #selector(menuScreenMap)),
+            ("HUD", "", #selector(menuHUD)),
             ("Window Bezel", "", #selector(menuWindowBezel)),
             ("Cheat Sheet", "", #selector(menuCheatSheet)),
             ("Omni Search", "", #selector(menuOmniSearch)),
@@ -255,7 +258,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     @objc private func menuCommandPalette() { CommandPaletteWindow.shared.toggle() }
     @objc private func menuScreenMap() { ScreenMapWindowController.shared.toggle() }
-    @objc private func menuDesktopInventory() { CommandModeWindow.shared.toggle() }
+    @objc private func menuHUD() { HUDController.shared.toggle() }
     @objc private func menuWindowBezel() { WindowBezel.showBezelForFrontmostWindow() }
     @objc private func menuCheatSheet() { CheatSheetHUD.shared.toggle() }
     @objc private func menuOmniSearch() { OmniSearchWindow.shared.toggle() }

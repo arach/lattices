@@ -35,9 +35,10 @@ export default {
       { pattern: 'terminal', instruction: 'Check app/Sources/Terminal.swift for supported terminals and launch logic' },
       { pattern: 'daemon', instruction: 'Check app/Sources/DaemonServer.swift and app/Sources/LatticesApi.swift for WebSocket API' },
       { pattern: 'api', instruction: 'Check docs/api.md for the full 20-method RPC reference' },
+      { pattern: 'twin', instruction: 'Check docs/twins.md and bin/project-twin.ts for the Pi-backed project twin runtime' },
     ],
 
-    sections: ['overview', 'quickstart', 'concepts', 'config', 'app', 'api', 'layers'],
+    sections: ['overview', 'quickstart', 'concepts', 'twins', 'config', 'app', 'api', 'layers'],
   },
 
   docs: {

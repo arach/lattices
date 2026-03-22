@@ -2,3 +2,15 @@
 // Usage: import { daemonCall, isDaemonRunning } from '@lattices/cli'
 
 export { daemonCall, isDaemonRunning } from "./daemon-client.ts";
+export {
+  ProjectTwin,
+  createProjectTwin,
+  readOpenScoutRelayContext,
+  type OpenScoutRelayContext,
+  type ProjectTwinEvent,
+  type ProjectTwinInvokeRequest,
+  type ProjectTwinOptions,
+  type ProjectTwinResult,
+  type ProjectTwinState,
+  type ProjectTwinThinkingLevel,
+} from "./project-twin.ts";
