@@ -235,6 +235,7 @@ struct HUDLeftBar: View {
 
     private func itemRow(_ item: HUDItem) -> some View {
         let isSelected = state.selectedItem == item && state.focus == .list
+        let isMultiSelected = state.selectedItems.contains(item.id)
         let isTiled = state.tileMode && {
             if case .window(let w) = item { return state.tiledWindows.contains(w.wid) }
             return false
@@ -271,10 +272,12 @@ struct HUDLeftBar: View {
             .background(
                 RoundedRectangle(cornerRadius: 6)
                     .fill(isTiled ? Palette.running.opacity(0.1) :
+                          isMultiSelected ? Color.blue.opacity(0.12) :
                           (isSelected ? Palette.surfaceHov : (state.selectedItem == item ? Palette.surface : Color.clear)))
                     .overlay(
                         RoundedRectangle(cornerRadius: 6)
                             .strokeBorder(isTiled ? Palette.running.opacity(0.4) :
+                                          isMultiSelected ? Color.blue.opacity(0.4) :
                                           (isSelected ? Palette.borderLit : Color.clear), lineWidth: 0.5)
                     )
             )
@@ -566,7 +569,13 @@ struct HUDLeftBar: View {
 
     private var footer: some View {
         HStack(spacing: 10) {
-            keyBadge("1-2", label: "Jump")
+            if !state.selectedItems.isEmpty {
+                Text("\(state.selectedItems.count) selected")
+                    .font(Typo.monoBold(9))
+                    .foregroundColor(Color.blue)
+                keyBadge("T", label: "Tile")
+            }
+            keyBadge("⇧↕", label: "Select")
             keyBadge("⇥", label: "Focus")
             keyBadge("↵", label: "Go")
             keyBadge("[ ]", label: "Layer")

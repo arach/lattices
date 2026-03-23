@@ -15,10 +15,13 @@ final class TalkieClient: ObservableObject {
 
     @Published var connectionState: ConnectionState = .disconnected
 
+    private static let clientId = "lattices"
+
     private var pendingCalls: [String: PendingCall] = [:]
     private var eventHandler: ((String, [String: Any]) -> Void)?
     private var reconnectDelay: TimeInterval = 0.5
     private var reconnectTimer: DispatchSourceTimer?
+    private var heartbeatTimer: DispatchSourceTimer?
     private var intentionalDisconnect = false
     private let queue = DispatchQueue(label: "com.lattices.talkie-client")
 
@@ -114,6 +117,8 @@ final class TalkieClient: ObservableObject {
         intentionalDisconnect = true
         reconnectTimer?.cancel()
         reconnectTimer = nil
+        heartbeatTimer?.cancel()
+        heartbeatTimer = nil
         wsTask?.cancel(with: .goingAway, reason: nil)
         wsTask = nil
         wsSession?.invalidateAndCancel()
@@ -156,16 +161,55 @@ final class TalkieClient: ObservableObject {
                 self.handleDisconnect()
             } else {
                 self.reconnectDelay = 0.5
-                DispatchQueue.main.async {
-                    self.connectionState = .connected
-                }
                 DiagnosticLog.shared.info("TalkieClient: connected to TalkieAgent on port \(port) (\(ms)ms)")
                 self.receiveLoop()
+                self.startHeartbeat()
+                // Set state to .connected THEN register — register uses call() which guards on .connected
+                DispatchQueue.main.async {
+                    self.connectionState = .connected
+                    self.registerClient()
+                }
             }
         }
     }
 
+    /// Register with TalkieAgent after connecting. Sends a stable clientId so
+    /// Talkie can reclaim orphaned sessions on reconnect.
+    private func registerClient() {
+        call(method: "register", params: [
+            "clientId": Self.clientId,
+            "capabilities": ["dictation", "tts"],
+        ]) { result in
+            switch result {
+            case .success(let data):
+                DiagnosticLog.shared.info("TalkieClient: registered as '\(Self.clientId)' — \(data)")
+            case .failure(let error):
+                DiagnosticLog.shared.warn("TalkieClient: register failed — \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Periodic WebSocket ping every 30s to detect dead connections early.
+    private func startHeartbeat() {
+        heartbeatTimer?.cancel()
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + 30, repeating: 30)
+        timer.setEventHandler { [weak self] in
+            guard let self, let task = self.wsTask else { return }
+            task.sendPing { error in
+                if let error {
+                    DiagnosticLog.shared.warn("TalkieClient: heartbeat ping failed — \(error)")
+                    self.handleDisconnect()
+                }
+            }
+        }
+        timer.resume()
+        heartbeatTimer = timer
+    }
+
     private func handleDisconnect() {
+        heartbeatTimer?.cancel()
+        heartbeatTimer = nil
         wsTask?.cancel(with: .goingAway, reason: nil)
         wsTask = nil
 
@@ -386,6 +430,16 @@ final class TalkieClient: ObservableObject {
 
     // MARK: - Init
 
+    /// Force a full disconnect + reconnect cycle. Use when the connection is stuck.
+    func reconnect() {
+        DiagnosticLog.shared.info("TalkieClient: forced reconnect requested")
+        disconnect()
+        // Small delay to let the old socket fully close
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.connect()
+        }
+    }
+
     private init() {
         // Listen for Talkie coming online
         DistributedNotificationCenter.default().addObserver(
@@ -394,8 +448,13 @@ final class TalkieClient: ObservableObject {
             queue: .main
         ) { [weak self] notification in
             guard let self else { return }
-            guard case .disconnected = self.connectionState else { return }
-            guard case .unavailable = self.connectionState else { return }
+            // Reconnect if disconnected OR unavailable (not if already connected/connecting)
+            switch self.connectionState {
+            case .disconnected, .unavailable:
+                break // proceed
+            case .connected, .connecting:
+                return // already good
+            }
 
             var port = Self.defaultAgentPort
             if let info = notification.userInfo,

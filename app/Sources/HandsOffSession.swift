@@ -182,12 +182,18 @@ final class HandsOffSession: ObservableObject {
 
             DiagnosticLog.shared.info("HandsOff: worker response → \(trimmed)")
 
-            // Execute actions and publish to recentActions for HUD playback
-            if let dataObj = json["data"] as? [String: Any],
-               let actions = dataObj["actions"] as? [[String: Any]], !actions.isEmpty {
-                DispatchQueue.main.async {
-                    self.recentActions = actions
-                    self.executeActions(actions)
+            if let dataObj = json["data"] as? [String: Any] {
+                // Set spoken response for voice bar display
+                if let spoken = dataObj["spoken"] as? String {
+                    DispatchQueue.main.async { self.lastResponse = spoken }
+                }
+
+                // Execute actions and publish to recentActions for HUD playback
+                if let actions = dataObj["actions"] as? [[String: Any]], !actions.isEmpty {
+                    DispatchQueue.main.async {
+                        self.recentActions = actions
+                        self.executeActions(actions)
+                    }
                 }
             }
 
@@ -442,8 +448,26 @@ final class HandsOffSession: ObservableObject {
 
     // MARK: - Action execution
 
+    /// Hard cap on simultaneous actions. Rearranging 20+ windows is never right.
+    /// distribute is exempt because it's a single intent that handles all windows safely.
+    private static let maxActions = 6
+
     private func executeActions(_ actions: [[String: Any]]) {
-        for action in actions {
+        // Guard: refuse to execute bulk operations that would be disorienting
+        let nonDistributeActions = actions.filter { ($0["intent"] as? String) != "distribute" }
+        if nonDistributeActions.count > Self.maxActions {
+            DiagnosticLog.shared.warn(
+                "HandsOff: BLOCKED — \(nonDistributeActions.count) actions exceeds limit of \(Self.maxActions). " +
+                "Skipping execution to avoid disorienting window rearrangement."
+            )
+            return
+        }
+
+        // Smart distribution: when multiple tile_window actions target the same
+        // position, subdivide that region instead of stacking windows on top of each other.
+        let distributed = distributeTileActions(actions)
+
+        for action in distributed {
             guard let intent = action["intent"] as? String else { continue }
             let slots = action["slots"] as? [String: Any] ?? [:]
 
@@ -471,6 +495,82 @@ final class HandsOffSession: ObservableObject {
                 DiagnosticLog.shared.warn("HandsOff: \(intent) failed — \(error.localizedDescription)")
             }
         }
+    }
+
+    /// When multiple tile_window actions target the same position, distribute them
+    /// within that region. E.g., 3 windows → "left" becomes top-left, left, bottom-left.
+    private func distributeTileActions(_ actions: [[String: Any]]) -> [[String: Any]] {
+        // Group tile_window actions by position
+        var tileGroups: [String: [[String: Any]]] = [:]
+        var otherActions: [[String: Any]] = []
+
+        for action in actions {
+            let intent = action["intent"] as? String ?? ""
+            if intent == "tile_window",
+               let slots = action["slots"] as? [String: Any],
+               let position = slots["position"] as? String {
+                tileGroups[position, default: []].append(action)
+            } else {
+                otherActions.append(action)
+            }
+        }
+
+        var result = otherActions
+
+        for (position, group) in tileGroups {
+            if group.count == 1 {
+                // Single window — keep as-is
+                result.append(group[0])
+            } else {
+                // Multiple windows targeting the same position — subdivide
+                let subPositions = subdividePosition(position, count: group.count)
+                for (i, action) in group.enumerated() {
+                    var modified = action
+                    var slots = (action["slots"] as? [String: Any]) ?? [:]
+                    slots["position"] = subPositions[i]
+                    modified["slots"] = slots
+                    result.append(modified)
+                    DiagnosticLog.shared.info("HandsOff: distributed \(position) → \(subPositions[i]) for window \(slots["wid"] ?? "?")")
+                }
+            }
+        }
+
+        return result
+    }
+
+    /// Subdivide a tile position for N windows.
+    private func subdividePosition(_ position: String, count: Int) -> [String] {
+        // Vertical stacking within a half
+        let verticalSubs: [String: [String]] = [
+            "left":  ["top-left", "left", "bottom-left"],
+            "right": ["top-right", "right", "bottom-right"],
+        ]
+        // Horizontal stacking within a half
+        let horizontalSubs: [String: [String]] = [
+            "top":    ["top-left", "top", "top-right"],
+            "bottom": ["bottom-left", "bottom", "bottom-right"],
+        ]
+        // Full screen → grid
+        let fullSubs = ["top-left", "top-right", "bottom-left", "bottom-right", "left", "right"]
+
+        let subs: [String]
+        if let v = verticalSubs[position] {
+            subs = v
+        } else if let h = horizontalSubs[position] {
+            subs = h
+        } else if position == "maximize" || position == "center" {
+            subs = fullSubs
+        } else {
+            // Can't subdivide further — just repeat the position
+            return Array(repeating: position, count: count)
+        }
+
+        // Distribute windows across available sub-positions
+        var result: [String] = []
+        for i in 0..<count {
+            result.append(subs[i % subs.count])
+        }
+        return result
     }
 
     // MARK: - Sound

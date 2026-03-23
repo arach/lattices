@@ -132,8 +132,8 @@ struct HUDTopBar: View {
     // MARK: - Voice status
 
     private var voiceStatus: some View {
-        HStack(spacing: 6) {
-            // Pulsing dot
+        HStack(spacing: 8) {
+            // Pulsing dot + state
             Circle()
                 .fill(voiceColor)
                 .frame(width: 6, height: 6)
@@ -151,16 +151,38 @@ struct HUDTopBar: View {
                 )
 
             Text(voiceLabel)
-                .font(Typo.mono(10))
+                .font(Typo.monoBold(9))
                 .foregroundColor(voiceColor)
 
-            // Last transcript preview
+            // Dialogue: last user message → last response
             if let transcript = handsOff.lastTranscript {
-                Text(transcript)
-                    .font(Typo.mono(9))
-                    .foregroundColor(Palette.textMuted)
-                    .lineLimit(1)
-                    .frame(maxWidth: 200)
+                Rectangle().fill(Palette.border).frame(width: 0.5, height: 16)
+
+                // What user said
+                HStack(spacing: 3) {
+                    Text("you")
+                        .font(Typo.monoBold(8))
+                        .foregroundColor(Palette.textMuted)
+                    Text(transcript)
+                        .font(Typo.mono(9))
+                        .foregroundColor(Palette.text)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: 300, alignment: .leading)
+            }
+
+            if let response = handsOff.lastResponse {
+                // What Lattices said back
+                HStack(spacing: 3) {
+                    Text("→")
+                        .font(Typo.mono(9))
+                        .foregroundColor(Palette.running)
+                    Text(response)
+                        .font(Typo.mono(9))
+                        .foregroundColor(Palette.textMuted)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: 350, alignment: .leading)
             }
         }
         .padding(.horizontal, 10)

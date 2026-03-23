@@ -49,9 +49,66 @@ final class HUDController {
     private var positionedScreen: NSScreen?
 
     var isVisible: Bool { leftPanel?.alphaValue ?? 0 > 0.5 }
+    private(set) var voiceBarVisible: Bool = false
+    private var voiceBarObserver: AnyCancellable?
 
     func toggle() {
         if isVisible { dismiss() } else { show() }
+    }
+
+    // MARK: - Voice bar (top panel only, for HandsOff mode)
+
+    private var voiceBarKeyMonitor: Any?
+
+    func showVoiceBar() {
+        guard !isVisible else { return } // full HUD is showing, no need
+        ensurePanels()
+
+        state.voiceActive = true
+
+        let screen = mouseScreen()
+        if positionedScreen != screen { positionAllPanels(on: screen) }
+
+        // Show only top + bottom bars
+        topPanel?.alphaValue = 1
+        topPanel?.orderFront(nil)
+        bottomPanel?.alphaValue = 1
+        bottomPanel?.orderFront(nil)
+        voiceBarVisible = true
+
+        // Escape key dismisses the voice bar
+        if voiceBarKeyMonitor == nil {
+            voiceBarKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                if event.keyCode == 53 { // Escape
+                    DispatchQueue.main.async { self?.hideVoiceBar() }
+                }
+            }
+        }
+
+        // Auto-hide 3s after HandsOff goes idle (turn complete)
+        voiceBarObserver = HandsOffSession.shared.$state.sink { [weak self] hsState in
+            if hsState == .idle {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                    guard let self, self.voiceBarVisible,
+                          HandsOffSession.shared.state == .idle else { return }
+                    self.hideVoiceBar()
+                }
+            }
+        }
+    }
+
+    func hideVoiceBar() {
+        guard voiceBarVisible else { return }
+        voiceBarObserver = nil
+        if let m = voiceBarKeyMonitor { NSEvent.removeMonitor(m); voiceBarKeyMonitor = nil }
+        state.voiceActive = false
+        voiceBarVisible = false
+
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = 0.15
+            topPanel?.animator().alphaValue = 0
+            bottomPanel?.animator().alphaValue = 0
+        })
     }
 
     // MARK: - Warm up (call at launch)
@@ -74,6 +131,7 @@ final class HUDController {
         state.query = ""
         state.selectedIndex = 0
         state.selectedItem = nil
+        state.selectedItems = []
         state.focus = .list
 
         let screen = mouseScreen()
@@ -313,25 +371,44 @@ final class HUDController {
             return nil
         }
 
-        // Down arrow
+        // Down arrow (Shift = extend multi-select)
         if keyCode == 125 {
+            let shift = event.modifierFlags.contains(.shift)
             if state.focus == .search {
                 state.focus = .list
                 state.selectedIndex = 0
                 state.selectedItem = state.flatItems[safe: 0]
+                if shift, let item = state.selectedItem {
+                    state.selectedItems.insert(item.id)
+                    DiagnosticLog.shared.info("[Select] shift+down added \(item.id) total=\(state.selectedItems.count)")
+                }
             } else if state.focus == .list {
+                if shift, let current = state.selectedItem {
+                    state.selectedItems.insert(current.id)
+                }
                 moveSelection(1)
+                if shift, let item = state.selectedItem {
+                    state.selectedItems.insert(item.id)
+                    DiagnosticLog.shared.info("[Select] shift+down added \(item.id) total=\(state.selectedItems.count)")
+                }
             }
             return nil
         }
 
-        // Up arrow
+        // Up arrow (Shift = extend multi-select)
         if keyCode == 126 {
+            let shift = event.modifierFlags.contains(.shift)
             if state.focus == .list {
-                if state.selectedIndex == 0 {
+                if state.selectedIndex == 0 && !shift {
                     state.focus = .search
-                } else {
+                } else if state.selectedIndex > 0 {
+                    if shift, let current = state.selectedItem {
+                        state.selectedItems.insert(current.id)
+                    }
                     moveSelection(-1)
+                    if shift, let item = state.selectedItem {
+                        state.selectedItems.insert(item.id)
+                    }
                 }
             }
             return nil
@@ -367,10 +444,13 @@ final class HUDController {
             return nil
         }
 
-        // T key (keyCode 17): toggle tile mode
+        // T key (keyCode 17): tile selected windows or toggle tile mode
         if keyCode == 17 && state.focus != .search {
+            DiagnosticLog.shared.info("[TileKey] tileMode=\(state.tileMode) selectedItems=\(state.selectedItems.count) items=\(state.selectedItems)")
             if state.tileMode {
                 exitTileMode()
+            } else if !state.selectedItems.isEmpty {
+                tileSelectedItems()
             } else {
                 enterTileMode()
             }
@@ -617,6 +697,74 @@ final class HUDController {
         state.tileSnapshot = []
         state.tiledWindows = []
         state.tileMode = false
+    }
+
+    /// Tile only the multi-selected windows from the sidebar
+    private func tileSelectedItems() {
+        let screen = positionedScreen ?? mouseScreen()
+        let sf = screen.visibleFrame
+        let primaryH = NSScreen.screens.first?.frame.height ?? 900
+        let screenCGX = sf.origin.x
+        let screenCGY = primaryH - sf.origin.y - sf.height
+
+        // Collect windows matching selected item IDs
+        var windows: [WindowEntry] = []
+        for id in state.selectedItems {
+            if id.hasPrefix("window-"),
+               let widStr = id.components(separatedBy: "-").last,
+               let wid = UInt32(widStr),
+               let win = DesktopModel.shared.windows[wid] {
+                windows.append(win)
+            }
+        }
+        // Also include current cursor item if it's a window
+        if let item = state.selectedItem, case .window(let w) = item,
+           !windows.contains(where: { $0.wid == w.wid }) {
+            windows.append(w)
+        }
+
+        guard !windows.isEmpty else { return }
+
+        // Snapshot for restore
+        state.tileSnapshot = windows.map { win in
+            HUDState.WindowSnapshot(
+                wid: win.wid, pid: win.pid,
+                frame: CGRect(x: win.frame.x, y: win.frame.y,
+                              width: win.frame.w, height: win.frame.h)
+            )
+        }
+        state.tiledWindows = []
+        state.tileMode = true
+
+        // Grid layout
+        let count = windows.count
+        let cols = Int(ceil(sqrt(Double(count))))
+        let rows = Int(ceil(Double(count) / Double(cols)))
+        let cellW = sf.width / CGFloat(cols)
+        let cellH = sf.height / CGFloat(rows)
+        let gap: CGFloat = 2
+
+        var moves: [(wid: UInt32, pid: Int32, frame: CGRect)] = []
+        for (i, win) in windows.enumerated() {
+            let col = i % cols
+            let row = i / cols
+            let frame = CGRect(
+                x: screenCGX + CGFloat(col) * cellW + gap,
+                y: screenCGY + CGFloat(row) * cellH + gap,
+                width: cellW - gap * 2,
+                height: cellH - gap * 2
+            )
+            moves.append((win.wid, win.pid, frame))
+        }
+
+        WindowTiler.batchMoveAndRaiseWindows(moves)
+        state.precomputedGrid = moves
+
+        // Expand minimap
+        if state.minimapMode != .expanded { state.minimapMode = .expanded }
+
+        playTap()
+        DiagnosticLog.shared.info("[TileGrid.selected] tiled \(windows.count) selected windows")
     }
 
     private func activateItem(_ item: HUDItem) {

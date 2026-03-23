@@ -1567,6 +1567,20 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
+            method: "voice.reconnect",
+            description: "Force disconnect and reconnect to the Talkie voice service",
+            access: .mutate,
+            params: [],
+            returns: .ok,
+            handler: { _ in
+                DispatchQueue.main.async {
+                    TalkieClient.shared.reconnect()
+                }
+                return .object(["ok": .bool(true), "action": .string("reconnecting")])
+            }
+        ))
+
+        api.register(Endpoint(
             method: "voice.listen",
             description: "Start voice capture via the audio provider (e.g. Talkie)",
             access: .mutate,
@@ -1642,6 +1656,26 @@ final class LatticesApi {
                 }
 
                 return .object(response)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "voice.reconnect",
+            description: "Force disconnect and reconnect the Talkie WebSocket connection",
+            access: .mutate,
+            params: [],
+            returns: .custom("Reconnection initiated with previous and new connection state"),
+            handler: { _ in
+                let client = TalkieClient.shared
+                let previousState = "\(client.connectionState)"
+                DispatchQueue.main.async {
+                    client.reconnect()
+                }
+                return .object([
+                    "ok": .bool(true),
+                    "previousState": .string(previousState),
+                    "action": .string("reconnecting"),
+                ])
             }
         ))
 

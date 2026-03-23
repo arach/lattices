@@ -91,6 +91,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         store.register(action: .handsOff) {
             DiagnosticLog.shared.info("Hotkey: handsOff triggered")
             HandsOffSession.shared.toggle()
+            // Show voice bar when starting, hide when stopping
+            if HandsOffSession.shared.state != .idle {
+                HUDController.shared.showVoiceBar()
+            } else {
+                HUDController.shared.hideVoiceBar()
+            }
         }
         store.register(action: .hud) { HUDController.shared.toggle() }
 
