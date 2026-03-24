@@ -9,10 +9,46 @@ LOG_FILE="$HOME/.lattices/lattices.log"
 BINARY="$APP_DIR/.build/release/Lattices"
 BUNDLE="$APP_DIR/Lattices.app"
 BUNDLE_BIN="$BUNDLE/Contents/MacOS/Lattices"
+ENTITLEMENTS="$APP_DIR/Lattices.entitlements"
 
 red()   { printf "\033[31m%s\033[0m\n" "$*"; }
 green() { printf "\033[32m%s\033[0m\n" "$*"; }
 dim()   { printf "\033[2m%s\033[0m\n" "$*"; }
+
+select_sign_identity() {
+    local identities identity=""
+    identities="$(security find-identity -v -p codesigning 2>/dev/null || true)"
+    identity="$(printf '%s\n' "$identities" | sed -n 's/.*"\(Developer ID Application:[^"]*\)".*/\1/p' | head -n 1)"
+    if [ -z "$identity" ]; then
+        identity="$(printf '%s\n' "$identities" | sed -n 's/.*"\(Apple Development:[^"]*\)".*/\1/p' | head -n 1)"
+    fi
+    printf '%s' "$identity"
+}
+
+sign_bundle() {
+    local identity sign_status=0
+    local -a ent_flags=()
+
+    if [ -f "$ENTITLEMENTS" ]; then
+        ent_flags=(--entitlements "$ENTITLEMENTS")
+    fi
+
+    identity="$(select_sign_identity)"
+    if [ -n "$identity" ]; then
+        dim "Signing with: $identity"
+        if ! codesign --force --sign "$identity" "${ent_flags[@]}" --identifier com.arach.lattices "$BUNDLE"; then
+            red "Signing with '$identity' failed. Falling back to ad-hoc."
+            sign_status=1
+        fi
+    else
+        sign_status=1
+    fi
+
+    if [ "$sign_status" -ne 0 ]; then
+        dim "No usable signing identity found. Using ad-hoc signature."
+        codesign --force --sign - "${ent_flags[@]}" --identifier com.arach.lattices "$BUNDLE"
+    fi
+}
 
 cmd_build() {
     echo "Building release..."
@@ -22,7 +58,7 @@ cmd_build() {
     cp "$BINARY" "$BUNDLE_BIN"
     cp "$APP_DIR/Info.plist" "$BUNDLE/Contents/Info.plist" 2>/dev/null || true
     # Re-sign so TCC permissions persist across rebuilds
-    codesign --force --sign - --identifier com.arach.lattices "$BUNDLE" 2>/dev/null || true
+    sign_bundle
     green "Build complete."
 }
 

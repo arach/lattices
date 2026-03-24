@@ -140,16 +140,7 @@ func tileGrid(cols: Int, rows: Int, col: Int, row: Int) -> (CGFloat, CGFloat, CG
 
 /// Parse a grid string like "grid:3x2:0,0" → fractional (x, y, w, h).
 func parseGridString(_ str: String) -> (CGFloat, CGFloat, CGFloat, CGFloat)? {
-    let parts = str.split(separator: ":")
-    guard parts.count == 3, parts[0] == "grid" else { return nil }
-    let dims = parts[1].split(separator: "x")
-    let coords = parts[2].split(separator: ",")
-    guard dims.count == 2, coords.count == 2,
-          let cols = Int(dims[0]), let rows = Int(dims[1]),
-          let col = Int(coords[0]), let row = Int(coords[1]),
-          cols > 0, rows > 0, col >= 0, col < cols, row >= 0, row < rows
-    else { return nil }
-    return tileGrid(cols: cols, rows: rows, col: col, row: row)
+    GridPlacement.parse(str)?.fractions
 }
 
 enum TilePosition: String, CaseIterable, Identifiable {
@@ -192,6 +183,14 @@ enum TilePosition: String, CaseIterable, Identifiable {
     case bottomSecondFourth = "bottom-second-fourth"
     case bottomThirdFourth  = "bottom-third-fourth"
     case bottomLastFourth   = "bottom-last-fourth"
+    // Horizontal thirds / quarters
+    case topThird    = "top-third"
+    case middleThird = "middle-third"
+    case bottomThird = "bottom-third"
+    case leftQuarter   = "left-quarter"
+    case rightQuarter  = "right-quarter"
+    case topQuarter    = "top-quarter"
+    case bottomQuarter = "bottom-quarter"
 
     var id: String { rawValue }
 
@@ -228,6 +227,13 @@ enum TilePosition: String, CaseIterable, Identifiable {
         case .bottomSecondFourth: return "Bottom 2nd ¼"
         case .bottomThirdFourth:  return "Bottom 3rd ¼"
         case .bottomLastFourth:   return "Bottom 4th ¼"
+        case .topThird:    return "Top ⅓"
+        case .middleThird: return "Middle ⅓"
+        case .bottomThird: return "Bottom ⅓"
+        case .leftQuarter:   return "Left ¼"
+        case .rightQuarter:  return "Right ¼"
+        case .topQuarter:    return "Top ¼"
+        case .bottomQuarter: return "Bottom ¼"
         }
     }
 
@@ -246,6 +252,13 @@ enum TilePosition: String, CaseIterable, Identifiable {
         case .leftThird:   return "rectangle.leadingthird.inset.filled"
         case .centerThird: return "rectangle.center.inset.filled"
         case .rightThird:  return "rectangle.trailingthird.inset.filled"
+        case .topThird:    return "rectangle.topthird.inset.filled"
+        case .middleThird: return "rectangle.center.inset.filled"
+        case .bottomThird: return "rectangle.bottomthird.inset.filled"
+        case .leftQuarter: return "rectangle.leadinghalf.inset.filled"
+        case .rightQuarter:return "rectangle.trailinghalf.inset.filled"
+        case .topQuarter:  return "rectangle.tophalf.inset.filled"
+        case .bottomQuarter:return "rectangle.bottomhalf.inset.filled"
         default:           return "rectangle.split.3x3.fill"
         }
     }
@@ -292,6 +305,13 @@ enum TilePosition: String, CaseIterable, Identifiable {
         case .bottomSecondFourth: return tileGrid(cols: 4, rows: 2, col: 1, row: 1)
         case .bottomThirdFourth:  return tileGrid(cols: 4, rows: 2, col: 2, row: 1)
         case .bottomLastFourth:   return tileGrid(cols: 4, rows: 2, col: 3, row: 1)
+        case .topThird:    return tileGrid(cols: 1, rows: 3, col: 0, row: 0)
+        case .middleThird: return tileGrid(cols: 1, rows: 3, col: 0, row: 1)
+        case .bottomThird: return tileGrid(cols: 1, rows: 3, col: 0, row: 2)
+        case .leftQuarter:   return tileGrid(cols: 4, rows: 1, col: 0, row: 0)
+        case .rightQuarter:  return tileGrid(cols: 4, rows: 1, col: 3, row: 0)
+        case .topQuarter:    return tileGrid(cols: 1, rows: 4, col: 0, row: 0)
+        case .bottomQuarter: return tileGrid(cols: 1, rows: 4, col: 0, row: 3)
         }
     }
 }
@@ -373,6 +393,10 @@ enum WindowTiler {
     /// Convert fractional rect to AppleScript bounds {left, top, right, bottom}
     /// AppleScript uses top-left origin; NSScreen uses bottom-left origin
     private static func appleScriptBounds(for position: TilePosition, screen: NSScreen? = nil) -> (Int, Int, Int, Int) {
+        appleScriptBounds(for: position.rect, screen: screen)
+    }
+
+    private static func appleScriptBounds(for fractions: (CGFloat, CGFloat, CGFloat, CGFloat), screen: NSScreen? = nil) -> (Int, Int, Int, Int) {
         let targetScreen = screen ?? NSScreen.main
         guard let targetScreen else { return (0, 0, 960, 540) }
         let full = targetScreen.frame
@@ -383,7 +407,7 @@ enum WindowTiler {
         let visW = Int(visible.width)
         let visH = Int(visible.height)
 
-        let (fx, fy, fw, fh) = position.rect
+        let (fx, fy, fw, fh) = fractions
         let x1 = visLeft + Int(CGFloat(visW) * fx)
         let y1 = visTop + Int(CGFloat(visH) * fy)
         let x2 = x1 + Int(CGFloat(visW) * fw)
@@ -398,17 +422,26 @@ enum WindowTiler {
 
     /// Compute AX-coordinate frame for a tile position on a given screen
     static func tileFrame(for position: TilePosition, on screen: NSScreen) -> CGRect {
+        tileFrame(fractions: position.rect, on: screen)
+    }
+
+    /// Compute AX-coordinate frame for arbitrary fractional placement on a given screen.
+    static func tileFrame(fractions: (CGFloat, CGFloat, CGFloat, CGFloat), on screen: NSScreen) -> CGRect {
         let visible = screen.visibleFrame
         guard let primary = NSScreen.screens.first else { return .zero }
         let primaryH = primary.frame.height
         let axTop = primaryH - visible.maxY
-        let (fx, fy, fw, fh) = position.rect
+        let (fx, fy, fw, fh) = fractions
         return CGRect(
             x: visible.origin.x + visible.width * fx,
             y: axTop + visible.height * fy,
             width: visible.width * fw,
             height: visible.height * fh
         )
+    }
+
+    static func tileFrame(for placement: PlacementSpec, on screen: NSScreen) -> CGRect {
+        tileFrame(fractions: placement.fractions, on: screen)
     }
 
     /// Compute AX-coordinate frame for a tile position within a raw display CGRect (CG/AX coords)
@@ -436,12 +469,16 @@ enum WindowTiler {
     /// Tile a specific terminal window on a given screen.
     /// Fast path: DesktopModel → AX. Fallback: AX search → AppleScript last resort.
     static func tile(session: String, terminal: Terminal, to position: TilePosition, on screen: NSScreen) {
+        tile(session: session, terminal: terminal, to: .tile(position), on: screen)
+    }
+
+    static func tile(session: String, terminal: Terminal, to placement: PlacementSpec, on screen: NSScreen) {
         let diag = DiagnosticLog.shared
-        let t = diag.startTimed("tile: \(session) → \(position.rawValue)")
+        let t = diag.startTimed("tile: \(session) → \(placement.wireValue)")
 
         // Fast path: use DesktopModel cache → single AX move
         if let entry = DesktopModel.shared.windowForSession(session) {
-            let frame = tileFrame(for: position, on: screen)
+            let frame = tileFrame(for: placement, on: screen)
             batchMoveAndRaiseWindows([(wid: entry.wid, pid: entry.pid, frame: frame)])
             diag.success("tile fast path (DesktopModel): \(session)")
             diag.finish(t)
@@ -451,7 +488,7 @@ enum WindowTiler {
         // AX fallback: search terminal windows by title tag
         let tag = Terminal.windowTag(for: session)
         if let (pid, axWindow) = findWindowViaAX(terminal: terminal, tag: tag) {
-            let targetFrame = tileFrame(for: position, on: screen)
+            let targetFrame = tileFrame(for: placement, on: screen)
             var newPos = CGPoint(x: targetFrame.origin.x, y: targetFrame.origin.y)
             var newSize = CGSize(width: targetFrame.width, height: targetFrame.height)
             let win = axWindow
@@ -476,7 +513,7 @@ enum WindowTiler {
 
         // AppleScript last resort (slow, single-monitor)
         diag.warn("tile AppleScript last resort: \(session)")
-        let bounds = appleScriptBounds(for: position, screen: screen)
+        let bounds = appleScriptBounds(for: placement.fractions, screen: screen)
         switch terminal {
         case .terminal:
             tileAppleScript(app: "Terminal", tag: tag, bounds: bounds)
@@ -491,8 +528,12 @@ enum WindowTiler {
     /// Tile a specific terminal window (found by lattices session tag) to a position.
     /// Uses the same fast path strategy as tile(session:terminal:to:on:) with main screen.
     static func tile(session: String, terminal: Terminal, to position: TilePosition) {
+        tile(session: session, terminal: terminal, to: .tile(position))
+    }
+
+    static func tile(session: String, terminal: Terminal, to placement: PlacementSpec) {
         let screen = NSScreen.main ?? NSScreen.screens[0]
-        tile(session: session, terminal: terminal, to: position, on: screen)
+        tile(session: session, terminal: terminal, to: placement, on: screen)
     }
 
     /// Tile the frontmost window (works for any terminal)
@@ -1111,7 +1152,7 @@ enum WindowTiler {
     /// Tile a window using raw fractional coordinates.
     static func tileWindowById(wid: UInt32, pid: Int32, fractions: (CGFloat, CGFloat, CGFloat, CGFloat), on targetScreen: NSScreen? = nil) {
         let screen = targetScreen ?? NSScreen.main ?? NSScreen.screens[0]
-        let frame = tileFrame(fractions: fractions, inDisplay: screen.frame)
+        let frame = tileFrame(fractions: fractions, on: screen)
         DiagnosticLog.shared.info("tileWindowById: wid=\(wid) fractions=\(fractions) frame=(\(Int(frame.origin.x)),\(Int(frame.origin.y))) \(Int(frame.width))x\(Int(frame.height))")
         if let app = NSRunningApplication(processIdentifier: pid) { app.activate() }
         let moves = [(wid: wid, pid: pid, frame: frame)]
@@ -1124,11 +1165,15 @@ enum WindowTiler {
     }
 
     static func tileWindowById(wid: UInt32, pid: Int32, to position: TilePosition, on targetScreen: NSScreen? = nil) {
+        tileWindowById(wid: wid, pid: pid, to: .tile(position), on: targetScreen)
+    }
+
+    static func tileWindowById(wid: UInt32, pid: Int32, to placement: PlacementSpec, on targetScreen: NSScreen? = nil) {
         let diag = DiagnosticLog.shared
         let screen = targetScreen ?? NSScreen.main ?? NSScreen.screens[0]
-        let frame = tileFrame(for: position, on: screen)
+        let frame = tileFrame(for: placement, on: screen)
 
-        diag.info("tileWindowById: wid=\(wid) pid=\(pid) pos=\(position.rawValue) screen=\(screen.localizedName) frame=(\(Int(frame.origin.x)),\(Int(frame.origin.y))) \(Int(frame.width))x\(Int(frame.height))")
+        diag.info("tileWindowById: wid=\(wid) pid=\(pid) pos=\(placement.wireValue) screen=\(screen.localizedName) frame=(\(Int(frame.origin.x)),\(Int(frame.origin.y))) \(Int(frame.width))x\(Int(frame.height))")
 
         // Focus the app so windows on other Spaces come to the current one
         if let app = NSRunningApplication(processIdentifier: pid) {
@@ -1151,7 +1196,7 @@ enum WindowTiler {
                 diag.warn("tileWindowById: wid=\(wid) still drifted after retry")
             }
         } else {
-            diag.success("tileWindowById: tiled wid=\(wid) to \(position.rawValue)")
+            diag.success("tileWindowById: tiled wid=\(wid) to \(placement.wireValue)")
         }
     }
 
@@ -1847,6 +1892,10 @@ enum WindowTiler {
     /// Tile the frontmost window of any app to a position using AX API.
     /// Works for any application (Finder, Chrome, etc.), not just terminals.
     static func tileFrontmostViaAX(to position: TilePosition) {
+        tileFrontmostViaAX(to: .tile(position))
+    }
+
+    static func tileFrontmostViaAX(to placement: PlacementSpec) {
         guard let frontApp = NSWorkspace.shared.frontmostApplication,
               frontApp.bundleIdentifier != "com.arach.lattices" else { return }
 
@@ -1857,7 +1906,7 @@ enum WindowTiler {
         let win = axWindow as! AXUIElement
 
         let screen = screenForAXWindow(win)
-        let target = tileFrame(for: position, on: screen)
+        let target = tileFrame(for: placement, on: screen)
 
         // Disable enhanced UI on the APP element (not window) — breaks macOS tile lock
         AXUIElementSetAttributeValue(appRef, "AXEnhancedUserInterface" as CFString, false as CFTypeRef)
@@ -1911,6 +1960,20 @@ enum WindowTiler {
             })
             ?? NSScreen.main
             ?? NSScreen.screens[0]
+    }
+
+    static func screenForWindowFrame(_ frame: WindowFrame) -> NSScreen {
+        guard let primaryScreen = NSScreen.screens.first else {
+            return NSScreen.main ?? NSScreen.screens[0]
+        }
+
+        let centerX = frame.x + frame.w / 2
+        let centerY = frame.y + frame.h / 2
+        let nsCenterY = primaryScreen.frame.height - centerY
+
+        return NSScreen.screens.first(where: {
+            $0.frame.contains(NSPoint(x: centerX, y: nsCenterY))
+        }) ?? NSScreen.main ?? primaryScreen
     }
 
     // MARK: - Private

@@ -11,6 +11,7 @@ const appDir = resolve(__dirname, "../app");
 const bundlePath = resolve(appDir, "Lattices.app");
 const binaryDir = resolve(bundlePath, "Contents/MacOS");
 const binaryPath = resolve(binaryDir, "Lattices");
+const entitlementsPath = resolve(__dirname, "../app/Lattices.entitlements");
 
 const REPO = "arach/lattices";
 const ASSET_NAME = "Lattices-macos-arm64";
@@ -61,6 +62,42 @@ function launch(extraArgs: string[] = []): void {
   console.log("lattices app launched.");
 }
 
+function resolveSigningIdentity(): string | null {
+  try {
+    const identities = execSync("security find-identity -v -p codesigning", { stdio: "pipe" }).toString();
+    return identities.match(/"(Developer ID Application:[^"]+)"/)?.[1]
+        || identities.match(/"(Apple Development:[^"]+)"/)?.[1]
+        || null;
+  } catch {
+    return null;
+  }
+}
+
+function signBundle(): void {
+  const identity = resolveSigningIdentity();
+  const entFlag = existsSync(entitlementsPath) ? ` --entitlements '${entitlementsPath}'` : "";
+
+  if (identity) {
+    console.log(`Signing with: ${identity}`);
+    try {
+      execSync(
+        `codesign --force --sign '${identity}'${entFlag} --identifier com.arach.lattices '${bundlePath}'`,
+        { stdio: "pipe" }
+      );
+      return;
+    } catch {
+      console.log(`Warning: signing with '${identity}' failed — falling back to ad-hoc.`);
+    }
+  } else {
+    console.log("Warning: no local signing identity found — falling back to ad-hoc.");
+  }
+
+  execSync(
+    `codesign --force --sign -${entFlag} --identifier com.arach.lattices '${bundlePath}'`,
+    { stdio: "pipe" }
+  );
+}
+
 // ── Build from source (current arch only) ────────────────────────────
 
 function buildFromSource(): boolean {
@@ -95,19 +132,9 @@ function buildFromSource(): boolean {
   }
 
   // Re-sign the bundle so macOS TCC recognizes a stable identity across rebuilds.
-  // Without this, each build gets a new ad-hoc signature and permission grants are lost.
+  // Prefer a real local signing identity; only fall back to ad-hoc when necessary.
   try {
-    // Prefer a real signing identity for stable TCC grants; fall back to ad-hoc with fixed identifier
-    const identities = execSync("security find-identity -v -p codesigning", { stdio: "pipe" }).toString();
-    const devId = identities.match(/"(Developer ID Application:[^"]+)"/)?.[1]
-               || identities.match(/"(Apple Development:[^"]+)"/)?.[1];
-    const signArg = devId ? `'${devId}'` : "-";
-    const entitlements = resolve(__dirname, "../app/Lattices.entitlements");
-    const entFlag = existsSync(entitlements) ? `--entitlements '${entitlements}'` : "";
-    execSync(
-      `codesign --force --sign ${signArg} ${entFlag} --identifier com.arach.lattices '${bundlePath}'`,
-      { stdio: "pipe" }
-    );
+    signBundle();
   } catch {
     // Non-fatal — app still works, just permissions won't persist across rebuilds
     console.log("Warning: code signing failed — permissions may not persist across rebuilds.");

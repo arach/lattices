@@ -7,6 +7,8 @@ struct ScreenMapView: View {
     @ObservedObject var controller: ScreenMapController
     var onNavigate: ((AppPage) -> Void)? = nil
     @ObservedObject private var daemon = DaemonServer.shared
+    @ObservedObject private var handsOff = HandsOffSession.shared
+    @ObservedObject private var diagnosticLog = DiagnosticLog.shared
     @StateObject private var piChat = PiChatSession.shared
     @State private var eventMonitor: Any?
     @State private var mouseDownMonitor: Any?
@@ -71,13 +73,13 @@ struct ScreenMapView: View {
                     if controller.isSearchActive, let editor = controller.editor {
                         floatingSearchOverlay(editor: editor)
                     }
-                    // Zoom controls — bottom-right corner of canvas
+                    // Viewport controls — bottom-right corner of canvas
                     if let editor = controller.editor {
                         VStack {
                             Spacer()
                             HStack {
                                 Spacer()
-                                canvasZoomControls(editor: editor)
+                                canvasViewportDock(editor: editor)
                                     .padding(10)
                             }
                         }
@@ -116,6 +118,7 @@ struct ScreenMapView: View {
         HStack(spacing: 4) {
             Button {
                 editor.cyclePreviousDisplay()
+                controller.focusViewportPreset(editor.activeViewportPreset ?? .main, flashView: false)
                 controller.flash(editor.focusedDisplay?.label ?? "All displays")
                 controller.objectWillChange.send()
             } label: {
@@ -129,6 +132,7 @@ struct ScreenMapView: View {
 
             Button {
                 editor.focusDisplay(nil)
+                controller.focusViewportPreset(editor.activeViewportPreset ?? .main, flashView: false)
                 controller.objectWillChange.send()
             } label: {
                 displayToolbarPill(name: "All", isActive: editor.focusedDisplayIndex == nil)
@@ -139,6 +143,7 @@ struct ScreenMapView: View {
                 let isActive = editor.focusedDisplayIndex == disp.index
                 Button {
                     editor.focusDisplay(disp.index)
+                    controller.focusViewportPreset(editor.activeViewportPreset ?? .main, flashView: false)
                     controller.objectWillChange.send()
                 } label: {
                     displayToolbarPill(
@@ -152,6 +157,7 @@ struct ScreenMapView: View {
 
             Button {
                 editor.cycleNextDisplay()
+                controller.focusViewportPreset(editor.activeViewportPreset ?? .main, flashView: false)
                 controller.flash(editor.focusedDisplay?.label ?? "All displays")
                 controller.objectWillChange.send()
             } label: {
@@ -261,6 +267,8 @@ struct ScreenMapView: View {
                         .font(Typo.monoBold(9))
                         .foregroundColor(Palette.textMuted)
 
+                    inspectorCanvasContextCard(editor: editor, selectedCount: selectedWindows.count)
+
                     if selectedWindows.isEmpty {
                         VStack(spacing: 8) {
                             Text("No Selection")
@@ -273,7 +281,7 @@ struct ScreenMapView: View {
                                 .lineLimit(3)
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.top, 40)
+                        .padding(.top, 20)
                     }
 
                     ForEach(selectedWindows) { win in
@@ -287,6 +295,32 @@ struct ScreenMapView: View {
             inspectorActionTray(editor: editor)
         }
         .frame(width: inspectorWidth)
+    }
+
+    private func inspectorCanvasContextCard(editor: ScreenMapEditorState, selectedCount: Int) -> some View {
+        let viewport = editor.viewportWorldRect
+        let world = editor.canvasWorldBounds
+        let scope = editor.focusedDisplay.map { "\(editor.spatialNumber(for: $0.index)). \($0.label)" } ?? "All Displays"
+        let layers = editor.selectedLayers.isEmpty
+            ? "All Layers"
+            : editor.selectedLayers.sorted().map { editor.layerDisplayName(for: $0) }.joined(separator: ", ")
+
+        return VStack(alignment: .leading, spacing: 4) {
+            inspectorRow(label: "Scope", value: scope)
+            inspectorRow(label: "Layers", value: layers)
+            inspectorRow(label: "View", value: "\(Int(viewport.midX)), \(Int(viewport.midY)) · \(Int(viewport.width))×\(Int(viewport.height))")
+            inspectorRow(label: "World", value: "\(Int(world.width))×\(Int(world.height))")
+            inspectorRow(label: "Select", value: "\(selectedCount) window\(selectedCount == 1 ? "" : "s")")
+        }
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.black.opacity(0.25))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
+                )
+        )
     }
 
     // MARK: - Inspector Window Card
@@ -350,9 +384,9 @@ struct ScreenMapView: View {
                     return "Display \(win.displayIndex)"
                 }())
                 inspectorRow(label: "Size",
-                             value: "\(Int(win.editedFrame.width))×\(Int(win.editedFrame.height))")
+                             value: "\(Int(win.virtualFrame.width))×\(Int(win.virtualFrame.height))")
                 inspectorRow(label: "Position",
-                             value: "(\(Int(win.editedFrame.origin.x)), \(Int(win.editedFrame.origin.y)))")
+                             value: "(\(Int(win.virtualFrame.origin.x)), \(Int(win.virtualFrame.origin.y)))")
                 inspectorRow(label: "Z-Index", value: "\(win.zIndex)")
                 if win.hasEdits {
                     inspectorRow(label: "Original",
@@ -837,7 +871,7 @@ struct ScreenMapView: View {
         }
     }
 
-    // MARK: - Inspector Action Tray
+    // MARK: - Inspector Bottom Rail
 
     private func inspectorActionTray(editor: ScreenMapEditorState) -> some View {
         let actions: [(key: String, label: String, action: () -> Void)] = [
@@ -846,6 +880,7 @@ struct ScreenMapView: View {
             ("t", "tile", { [controller] in controller.tileLayer() }),
             ("d", "distrib", { [controller] in controller.distributeVisible() }),
             ("g", "grow", { [controller] in controller.fitAvailableSpace() }),
+            ("m", "project", { [controller] in controller.materializeViewport() }),
             ("c", "merge", { [controller] in controller.consolidateLayers() }),
             ("f", "flatten", { [controller] in controller.flattenLayers() }),
             ("v", "preview", { [controller] in controller.previewLayer() }),
@@ -925,8 +960,7 @@ struct ScreenMapView: View {
                 }
                 if isZoomed {
                     Button {
-                        editor.resetZoomPan()
-                        controller.flash("Fit all")
+                        controller.focusViewportPreset(.overview)
                     } label: {
                         HStack(spacing: 4) {
                             Text("r")
@@ -1024,8 +1058,169 @@ struct ScreenMapView: View {
             }
             .padding(.horizontal, 6)
             .padding(.bottom, 4)
+
+            Rectangle().fill(Palette.border).frame(height: 0.5)
+            inspectorVoiceTray
+
+            Rectangle().fill(Palette.border).frame(height: 0.5)
+            inspectorLogTray
         }
         .background(Color(red: 0.06, green: 0.06, blue: 0.07))
+    }
+
+    private var inspectorVoiceStateLabel: String {
+        switch handsOff.state {
+        case .idle: return handsOff.lastTranscript == nil ? "ready" : "idle"
+        case .connecting: return "connecting"
+        case .listening: return "listening"
+        case .thinking: return "thinking"
+        }
+    }
+
+    private var inspectorVoiceColor: Color {
+        switch handsOff.state {
+        case .idle: return Palette.textMuted.opacity(0.55)
+        case .connecting: return Palette.detach
+        case .listening: return Palette.running
+        case .thinking: return Palette.detach
+        }
+    }
+
+    private var visibleDiagnosticEntries: [DiagnosticLog.Entry] {
+        let entries = diagnosticLog.entries
+        let tail = 8
+        if entries.count <= tail { return entries }
+        return Array(entries.suffix(tail))
+    }
+
+    private var inspectorVoiceTray: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text("VOICE")
+                    .font(Typo.monoBold(8))
+                    .foregroundColor(Palette.textMuted)
+                Spacer()
+                Circle()
+                    .fill(inspectorVoiceColor)
+                    .frame(width: 6, height: 6)
+                Text(inspectorVoiceStateLabel)
+                    .font(Typo.mono(8))
+                    .foregroundColor(inspectorVoiceColor)
+                Text("V")
+                    .font(Typo.monoBold(7))
+                    .foregroundColor(Palette.textDim)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
+                    .background(
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Palette.surface)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 3)
+                                    .strokeBorder(Palette.border, lineWidth: 0.5)
+                            )
+                    )
+            }
+
+            if let transcript = handsOff.lastTranscript, !transcript.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("heard")
+                        .font(Typo.mono(7))
+                        .foregroundColor(Palette.textMuted)
+                    Text(transcript)
+                        .font(Typo.mono(8))
+                        .foregroundColor(Palette.text)
+                        .lineLimit(2)
+                }
+            } else {
+                Text("Voice activity will show up here. Press V to talk.")
+                    .font(Typo.mono(8))
+                    .foregroundColor(Palette.textMuted)
+                    .lineLimit(2)
+            }
+
+            if let response = handsOff.lastResponse, !response.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("response")
+                        .font(Typo.mono(7))
+                        .foregroundColor(Palette.textMuted)
+                    Text(response)
+                        .font(Typo.mono(8))
+                        .foregroundColor(Palette.textDim)
+                        .lineLimit(2)
+                }
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 8)
+    }
+
+    private var inspectorLogTray: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text("LOGS")
+                    .font(Typo.monoBold(8))
+                    .foregroundColor(Palette.textMuted)
+                Spacer()
+                if !visibleDiagnosticEntries.isEmpty {
+                    Button("copy") {
+                        let text = visibleDiagnosticEntries.map { entry in
+                            "\(Self.inspectorLogTimeFormatter.string(from: entry.time)) \(entry.icon) \(entry.message)"
+                        }.joined(separator: "\n")
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(text, forType: .string)
+                        controller.flash("Copied logs")
+                    }
+                    .font(Typo.mono(7))
+                    .foregroundColor(Palette.textMuted)
+                    .buttonStyle(.plain)
+                }
+                Button("open") {
+                    DiagnosticWindow.shared.toggle()
+                }
+                .font(Typo.mono(7))
+                .foregroundColor(Palette.textMuted)
+                .buttonStyle(.plain)
+            }
+
+            if visibleDiagnosticEntries.isEmpty {
+                Text("Waiting for diagnostic activity.")
+                    .font(Typo.mono(8))
+                    .foregroundColor(Palette.textMuted)
+            } else {
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(visibleDiagnosticEntries) { entry in
+                        HStack(alignment: .top, spacing: 6) {
+                            Text(Self.inspectorLogTimeFormatter.string(from: entry.time))
+                                .font(Typo.mono(7))
+                                .foregroundColor(Palette.textMuted)
+                                .frame(width: 52, alignment: .leading)
+                            Text(entry.icon)
+                                .font(Typo.monoBold(7))
+                                .foregroundColor(inspectorLogColor(entry.level))
+                                .frame(width: 8, alignment: .leading)
+                            Text(entry.message)
+                                .font(Typo.mono(8))
+                                .foregroundColor(inspectorLogColor(entry.level))
+                                .lineLimit(2)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func inspectorLogColor(_ level: DiagnosticLog.Entry.Level) -> Color {
+        switch level {
+        case .info: return Palette.textDim
+        case .success: return Palette.running
+        case .warning: return Palette.detach
+        case .error: return Palette.kill
+        }
     }
 
     private func inspectorRow(label: String, value: String) -> some View {
@@ -1064,6 +1259,13 @@ struct ScreenMapView: View {
                 Text("\(editor.focusedVisibleWindows.count) windows")
                     .font(Typo.mono(9))
                     .foregroundColor(Palette.textDim)
+
+                Text("·")
+                    .foregroundColor(Palette.textMuted)
+
+                Text(editor.viewportPresetSummary.uppercased())
+                    .font(Typo.monoBold(8))
+                    .foregroundColor(Palette.textMuted)
 
                 if let focused = editor.focusedDisplay {
                     Text("·")
@@ -1270,6 +1472,8 @@ struct ScreenMapView: View {
             .coordinateSpace(name: "layerSidebar")
 
             Spacer(minLength: 8)
+            canvasExplorer(editor: editor)
+            Spacer(minLength: 8)
             sidebarMiniMap(editor: editor)
         }
         .padding(.horizontal, 8)
@@ -1339,8 +1543,8 @@ struct ScreenMapView: View {
 
             let bboxPad: CGFloat = (!isFocused && displays.count > 1) ? 40 : 0
             let bbox: CGRect = {
-                if let focused = editor?.focusedDisplay {
-                    return focused.cgRect
+                if let editor {
+                    return editor.canvasWorldBounds
                 }
                 guard !displays.isEmpty else {
                     let s = NSScreen.main?.frame ?? CGRect(x: 0, y: 0, width: 1920, height: 1080)
@@ -1394,10 +1598,11 @@ struct ScreenMapView: View {
             .frame(width: mapW, height: mapH)
             .offset(x: centerX + panOffset.x, y: centerY + panOffset.y)
             .onAppear {
-                cacheGeometry(editor: editor, fitScale: fitScale, scale: effScale,
-                              offsetX: centerX, offsetY: centerY,
-                              screenSize: CGSize(width: screenW, height: screenH),
-                              bboxOrigin: bboxOriginPt)
+                syncCanvasGeometry(editor: editor, fitScale: fitScale, scale: effScale,
+                                   offsetX: centerX, offsetY: centerY,
+                                   viewportSize: CGSize(width: max(geo.size.width - 16, 1), height: max(geo.size.height - 16, 1)),
+                                   screenSize: CGSize(width: screenW, height: screenH),
+                                   bboxOrigin: bboxOriginPt)
             }
             .onChange(of: geo.size) { _ in
                 let newFitScale = min((geo.size.width - 24) / screenW, (geo.size.height - 16) / screenH)
@@ -1406,10 +1611,32 @@ struct ScreenMapView: View {
                 let newMapH = screenH * newEffScale
                 let newCX = (geo.size.width - newMapW) / 2
                 let newCY = (geo.size.height - newMapH) / 2
-                cacheGeometry(editor: editor, fitScale: newFitScale, scale: newEffScale,
-                              offsetX: newCX, offsetY: newCY,
-                              screenSize: CGSize(width: screenW, height: screenH),
-                              bboxOrigin: bboxOriginPt)
+                syncCanvasGeometry(editor: editor, fitScale: newFitScale, scale: newEffScale,
+                                   offsetX: newCX, offsetY: newCY,
+                                   viewportSize: CGSize(width: max(geo.size.width - 16, 1), height: max(geo.size.height - 16, 1)),
+                                   screenSize: CGSize(width: screenW, height: screenH),
+                                   bboxOrigin: bboxOriginPt)
+            }
+            .onChange(of: bbox) { _ in
+                syncCanvasGeometry(editor: editor, fitScale: fitScale, scale: effScale,
+                                   offsetX: centerX, offsetY: centerY,
+                                   viewportSize: CGSize(width: max(geo.size.width - 16, 1), height: max(geo.size.height - 16, 1)),
+                                   screenSize: CGSize(width: screenW, height: screenH),
+                                   bboxOrigin: bboxOriginPt)
+            }
+            .onChange(of: zoomLevel) { _ in
+                syncCanvasGeometry(editor: editor, fitScale: fitScale, scale: effScale,
+                                   offsetX: centerX, offsetY: centerY,
+                                   viewportSize: CGSize(width: max(geo.size.width - 16, 1), height: max(geo.size.height - 16, 1)),
+                                   screenSize: CGSize(width: screenW, height: screenH),
+                                   bboxOrigin: bboxOriginPt)
+            }
+            .onChange(of: editor?.canvasNavigationRevision ?? 0) { _ in
+                syncCanvasGeometry(editor: editor, fitScale: fitScale, scale: effScale,
+                                   offsetX: centerX, offsetY: centerY,
+                                   viewportSize: CGSize(width: max(geo.size.width - 16, 1), height: max(geo.size.height - 16, 1)),
+                                   screenSize: CGSize(width: screenW, height: screenH),
+                                   bboxOrigin: bboxOriginPt)
             }
         }
         .padding(8)
@@ -1545,7 +1772,7 @@ struct ScreenMapView: View {
 
     @ViewBuilder
     private func windowTile(win: ScreenMapWindowEntry, editor: ScreenMapEditorState?, scale: CGFloat, bboxOrigin: CGPoint = .zero) -> some View {
-        let f = win.editedFrame
+        let f = win.virtualFrame
         let x = (f.origin.x - bboxOrigin.x) * scale
         let y = (f.origin.y - bboxOrigin.y) * scale
         let w = max(f.width * scale, 4)
@@ -1600,7 +1827,7 @@ struct ScreenMapView: View {
                                     .lineLimit(1)
                             }
                             if h > 50 {
-                                Text("\(Int(win.originalFrame.width))x\(Int(win.originalFrame.height))")
+                                Text("\(Int(win.virtualFrame.width))x\(Int(win.virtualFrame.height))")
                                     .font(Typo.mono(6))
                                     .foregroundColor(Palette.textMuted)
                             }
@@ -1701,13 +1928,51 @@ struct ScreenMapView: View {
         .allowsHitTesting(false)
     }
 
-    // MARK: - Canvas Zoom Controls
+    // MARK: - Canvas Viewport Controls
+
+    private func canvasViewportDock(editor: ScreenMapEditorState) -> some View {
+        VStack(alignment: .trailing, spacing: 6) {
+            HStack(spacing: 4) {
+                ForEach(ScreenMapViewportPreset.allCases) { preset in
+                    canvasViewportPresetPill(preset, isActive: editor.activeViewportPreset == preset)
+                }
+            }
+            canvasZoomControls(editor: editor)
+        }
+    }
+
+    private func canvasViewportPresetPill(_ preset: ScreenMapViewportPreset, isActive: Bool) -> some View {
+        Button {
+            controller.focusViewportPreset(preset)
+        } label: {
+            HStack(spacing: 4) {
+                Text(preset.keyHint)
+                    .font(Typo.monoBold(8))
+                    .foregroundColor(isActive ? Color.black : Palette.textDim)
+                Text(preset.shortLabel)
+                    .font(Typo.monoBold(8))
+                    .foregroundColor(isActive ? Color.black : Palette.text)
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(isActive ? Self.shelfGreen.opacity(0.95) : Color(red: 0.1, green: 0.1, blue: 0.11).opacity(0.88))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 5)
+                            .strokeBorder(isActive ? Self.shelfGreen.opacity(0.95) : Palette.border, lineWidth: 0.5)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+    }
 
     private func canvasZoomControls(editor: ScreenMapEditorState) -> some View {
         let pct = Int(editor.zoomLevel * 100)
         return HStack(spacing: 0) {
             Button {
                 let newZoom = max(ScreenMapEditorState.minZoom, editor.zoomLevel - 0.25)
+                editor.activeViewportPreset = nil
                 editor.zoomLevel = newZoom
                 editor.objectWillChange.send()
                 controller.objectWillChange.send()
@@ -1722,9 +1987,7 @@ struct ScreenMapView: View {
             Rectangle().fill(Palette.border).frame(width: 0.5, height: 12)
 
             Button {
-                editor.resetZoomPan()
-                controller.flash("Fit all")
-                controller.objectWillChange.send()
+                controller.focusViewportPreset(.overview)
             } label: {
                 Text("\(pct)%")
                     .font(Typo.mono(9))
@@ -1737,6 +2000,7 @@ struct ScreenMapView: View {
 
             Button {
                 let newZoom = min(ScreenMapEditorState.maxZoom, editor.zoomLevel + 0.25)
+                editor.activeViewportPreset = nil
                 editor.zoomLevel = newZoom
                 editor.objectWillChange.send()
                 controller.objectWillChange.send()
@@ -1944,78 +2208,229 @@ struct ScreenMapView: View {
     @ViewBuilder
     private func sidebarMiniMap(editor: ScreenMapEditorState) -> some View {
         let displays = editor.displays
+        let windows = editor.focusedDisplayIndex != nil ? editor.focusedVisibleWindows : editor.visibleWindows
+        let world = editor.canvasWorldBounds
+        let viewport = editor.viewportWorldRect
+        let miniW: CGFloat = sidebarWidth - 28
+        let miniH: CGFloat = 118
+        let scaleW = miniW / max(world.width, 1)
+        let scaleH = miniH / max(world.height, 1)
+        let scale = min(scaleW, scaleH)
+        let drawW = world.width * scale
+        let drawH = world.height * scale
+        let offsetX = (miniW - drawW) / 2
+        let offsetY = (miniH - drawH) / 2
 
-        if displays.count > 1 {
-            let union: CGRect = {
-                var u = displays[0].cgRect
-                for d in displays.dropFirst() { u = u.union(d.cgRect) }
-                return u
-            }()
-            let miniW: CGFloat = sidebarWidth - 28
-            let scaleW = miniW / max(union.width, 1)
-            let scaleH: CGFloat = 80 / max(union.height, 1)
-            let scale = min(scaleW, scaleH)
-            let contentW = union.width * scale
-            let contentH = union.height * scale
-
-            VStack(spacing: 4) {
-                ZStack {
-                    ZStack(alignment: .topLeading) {
-                        ForEach(displays, id: \.index) { disp in
-                            let isFocused = editor.focusedDisplayIndex == disp.index
-                            let dx = (disp.cgRect.origin.x - union.origin.x) * scale
-                            let dy = (disp.cgRect.origin.y - union.origin.y) * scale
-                            let dw = disp.cgRect.width * scale
-                            let dh = disp.cgRect.height * scale
-                            let inset: CGFloat = 1.5
-                            let fontSize: CGFloat = min(dw, dh) > 28 ? 11 : (min(dw, dh) > 16 ? 9 : 7)
-
-                            Button {
-                                editor.focusDisplay(disp.index)
-                                controller.objectWillChange.send()
-                            } label: {
-                                ZStack {
-                                    RoundedRectangle(cornerRadius: 3)
-                                        .fill(isFocused ? Palette.running.opacity(0.15) : Color.white.opacity(0.06))
-                                    RoundedRectangle(cornerRadius: 3)
-                                        .strokeBorder(isFocused ? Palette.running.opacity(0.7) : Color.white.opacity(0.15), lineWidth: isFocused ? 1.5 : 0.5)
-                                    Text("\(editor.spatialNumber(for: disp.index))")
-                                        .font(.system(size: fontSize, weight: .bold, design: .monospaced))
-                                        .foregroundColor(isFocused ? Palette.running : Color.white.opacity(0.35))
-                                }
-                                .frame(width: max(dw - inset * 2, 12), height: max(dh - inset * 2, 12))
-                            }
-                            .buttonStyle(.plain)
-                            .offset(x: dx + inset, y: dy + inset)
-                        }
-                    }
-                    .frame(width: contentW, height: contentH)
-                }
-                .frame(width: miniW, height: max(contentH, 48), alignment: .topLeading)
-                .clipped()
-
-                Button {
-                    editor.focusDisplay(nil)
-                    controller.objectWillChange.send()
-                } label: {
-                    Text("ALL")
-                        .font(Typo.monoBold(7))
-                        .foregroundColor(editor.focusedDisplayIndex == nil ? Palette.running : Palette.textDim)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 2)
-                }
-                .buttonStyle(.plain)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text("MAP")
+                    .font(Typo.monoBold(8))
+                    .foregroundColor(Palette.textMuted)
+                Spacer()
+                Text("drag to pan")
+                    .font(Typo.mono(7))
+                    .foregroundColor(Palette.textMuted)
             }
-            .padding(6)
-            .background(
+
+            ZStack(alignment: .topLeading) {
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.black.opacity(0.4))
+                    .fill(Color.black.opacity(0.28))
+
+                ZStack(alignment: .topLeading) {
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(Palette.bg.opacity(0.35))
+                        .frame(width: drawW, height: drawH)
+                        .offset(x: offsetX, y: offsetY)
+
+                    ForEach(displays, id: \.index) { disp in
+                        let dx = (disp.cgRect.origin.x - world.origin.x) * scale + offsetX
+                        let dy = (disp.cgRect.origin.y - world.origin.y) * scale + offsetY
+                        let dw = disp.cgRect.width * scale
+                        let dh = disp.cgRect.height * scale
+                        let isFocused = editor.focusedDisplayIndex == nil || editor.focusedDisplayIndex == disp.index
+
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(isFocused ? Color.white.opacity(0.05) : Color.white.opacity(0.02))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 3)
+                                    .strokeBorder(
+                                        editor.focusedDisplayIndex == disp.index ? Palette.running.opacity(0.55) : Color.white.opacity(0.12),
+                                        lineWidth: editor.focusedDisplayIndex == disp.index ? 1 : 0.5
+                                    )
+                            )
+                            .frame(width: max(dw, 12), height: max(dh, 12))
+                            .offset(x: dx, y: dy)
+                    }
+
+                    ForEach(Array(windows.sorted(by: { $0.zIndex > $1.zIndex }).enumerated()), id: \.element.id) { _, win in
+                        let rect = win.virtualFrame
+                        let x = (rect.origin.x - world.origin.x) * scale + offsetX
+                        let y = (rect.origin.y - world.origin.y) * scale + offsetY
+                        let w = max(rect.width * scale, 2)
+                        let h = max(rect.height * scale, 2)
+                        let isSelected = controller.selectedWindowIds.contains(win.id)
+
+                        RoundedRectangle(cornerRadius: 1.5)
+                            .fill((isSelected ? Palette.running : Self.layerColor(for: win.layer)).opacity(isSelected ? 0.35 : 0.18))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 1.5)
+                                    .strokeBorder(isSelected ? Palette.running.opacity(0.85) : Color.white.opacity(0.12), lineWidth: isSelected ? 1 : 0.5)
+                            )
+                            .frame(width: w, height: h)
+                            .offset(x: x, y: y)
+                    }
+
+                    let viewportX = (viewport.origin.x - world.origin.x) * scale + offsetX
+                    let viewportY = (viewport.origin.y - world.origin.y) * scale + offsetY
+                    let viewportW = max(viewport.width * scale, 12)
+                    let viewportH = max(viewport.height * scale, 12)
+
+                    RoundedRectangle(cornerRadius: 4)
+                        .strokeBorder(Palette.running.opacity(0.9), lineWidth: 1.25)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Palette.running.opacity(0.08))
+                        )
+                        .frame(width: viewportW, height: viewportH)
+                        .offset(x: viewportX, y: viewportY)
+                }
+            }
+            .frame(width: miniW, height: miniH)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        let localX = min(max(value.location.x - offsetX, 0), drawW)
+                        let localY = min(max(value.location.y - offsetY, 0), drawH)
+                        let worldPoint = CGPoint(
+                            x: world.origin.x + localX / max(scale, 0.0001),
+                            y: world.origin.y + localY / max(scale, 0.0001)
+                        )
+                        controller.recenterViewport(at: worldPoint)
+                    }
+            )
+
+            HStack(spacing: 6) {
+                mapScopePill("ALL", isActive: editor.focusedDisplayIndex == nil) {
+                    controller.focusCanvas(on: editor.canvasWorldBounds, focusDisplay: nil, zoomToFit: true)
+                }
+                ForEach(editor.spatialDisplayOrder, id: \.index) { disp in
+                    mapScopePill("\(editor.spatialNumber(for: disp.index))", isActive: editor.focusedDisplayIndex == disp.index) {
+                        controller.focusCanvas(
+                            on: editor.canvasExplorerRegions.first(where: { $0.kind == .display && $0.displayIndex == disp.index })?.rect ?? disp.cgRect,
+                            focusDisplay: disp.index,
+                            zoomToFit: true
+                        )
+                    }
+                }
+            }
+        }
+        .padding(6)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.black.opacity(0.4))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
+                )
+        )
+    }
+
+    private func canvasExplorer(editor: ScreenMapEditorState) -> some View {
+        let regions = editor.canvasExplorerRegions
+
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("EXPLORER")
+                    .font(Typo.monoBold(8))
+                    .foregroundColor(Palette.textMuted)
+                Spacer()
+                if let viewport = controller.editor?.viewportWorldRect {
+                    Text("\(Int(viewport.midX)),\(Int(viewport.midY))")
+                        .font(Typo.mono(7))
+                        .foregroundColor(Palette.textMuted)
+                }
+            }
+
+            ForEach(regions.prefix(8)) { region in
+                canvasExplorerRow(region: region)
+            }
+        }
+        .padding(6)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.black.opacity(0.4))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
+                )
+        )
+    }
+
+    private func canvasExplorerRow(region: ScreenMapCanvasRegion) -> some View {
+        let tint: Color = {
+            switch region.kind {
+            case .overview: return Palette.running
+            case .display: return Color.blue.opacity(0.8)
+            case .layer: return Self.layerColor(for: region.layer ?? 0)
+            }
+        }()
+
+        return Button {
+            controller.jumpToCanvasRegion(region)
+            controller.flash(region.title)
+        } label: {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(tint)
+                    .frame(width: 6, height: 6)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(region.title)
+                        .font(Typo.monoBold(8))
+                        .foregroundColor(Palette.text)
+                        .lineLimit(1)
+                    Text(region.subtitle)
+                        .font(Typo.mono(7))
+                        .foregroundColor(Palette.textMuted)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Text("\(region.count)")
+                    .font(Typo.mono(7))
+                    .foregroundColor(Palette.textDim)
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(tint.opacity(0.08))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
+                        RoundedRectangle(cornerRadius: 4)
+                            .strokeBorder(tint.opacity(0.18), lineWidth: 0.5)
                     )
             )
         }
+        .buttonStyle(.plain)
+    }
+
+    private func mapScopePill(_ label: String, isActive: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(Typo.monoBold(7))
+                .foregroundColor(isActive ? Palette.running : Palette.textDim)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(isActive ? Palette.running.opacity(0.12) : Palette.surface.opacity(0.7))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .strokeBorder(isActive ? Palette.running.opacity(0.3) : Palette.border, lineWidth: 0.5)
+                        )
+                )
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Flash Overlay
@@ -2059,14 +2474,17 @@ struct ScreenMapView: View {
 
     // MARK: - Helpers
 
-    private func cacheGeometry(editor: ScreenMapEditorState?, fitScale: CGFloat? = nil, scale: CGFloat,
-                               offsetX: CGFloat, offsetY: CGFloat,
-                               screenSize: CGSize, bboxOrigin: CGPoint = .zero) {
+    private func syncCanvasGeometry(editor: ScreenMapEditorState?, fitScale: CGFloat? = nil, scale: CGFloat,
+                                    offsetX: CGFloat, offsetY: CGFloat,
+                                    viewportSize: CGSize,
+                                    screenSize: CGSize, bboxOrigin: CGPoint = .zero) {
         if let fs = fitScale { editor?.fitScale = fs }
         editor?.scale = scale
         editor?.mapOrigin = CGPoint(x: offsetX, y: offsetY)
+        editor?.viewportSize = viewportSize
         editor?.screenSize = screenSize
         editor?.bboxOrigin = bboxOrigin
+        controller.applyPendingCanvasNavigationIfNeeded()
     }
 
     // MARK: - Layer Colors
@@ -2074,6 +2492,12 @@ struct ScreenMapView: View {
     private static let layerColors: [Color] = [
         .green, .cyan, .orange, .purple, .pink, .yellow, .mint, .indigo
     ]
+
+    private static let inspectorLogTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss"
+        return formatter
+    }()
 
     private static func layerColor(for layer: Int) -> Color {
         layerColors[layer % layerColors.count]
@@ -2083,10 +2507,10 @@ struct ScreenMapView: View {
         guard let disp = displays.first(where: { $0.index == win.displayIndex }) else { return nil }
         let screenW = disp.cgRect.width
         let screenH = disp.cgRect.height
-        let relX = win.originalFrame.origin.x - disp.cgRect.origin.x
-        let relY = win.originalFrame.origin.y - disp.cgRect.origin.y
-        let winW = win.originalFrame.width
-        let winH = win.originalFrame.height
+        let relX = win.virtualFrame.origin.x - disp.cgRect.origin.x
+        let relY = win.virtualFrame.origin.y - disp.cgRect.origin.y
+        let winW = win.virtualFrame.width
+        let winH = win.virtualFrame.height
         let tolerance: CGFloat = 30
 
         for pos in TilePosition.allCases {
@@ -2234,6 +2658,7 @@ struct ScreenMapView: View {
             if isSpaceHeld, let start = spaceDragStart, let editor = controller.editor {
                 let dx = event.locationInWindow.x - start.x
                 let dy = event.locationInWindow.y - start.y
+                editor.activeViewportPreset = nil
                 editor.panOffset = CGPoint(x: spaceDragPanStart.x + dx, y: spaceDragPanStart.y - dy)
                 editor.objectWillChange.send()
                 controller.objectWillChange.send()
@@ -2249,7 +2674,7 @@ struct ScreenMapView: View {
             if editor.draggingWindowId != hitId {
                 editor.draggingWindowId = hitId
                 if let idx = editor.windows.firstIndex(where: { $0.id == hitId }) {
-                    editor.dragStartFrame = editor.windows[idx].editedFrame
+                    editor.dragStartFrame = editor.windows[idx].virtualFrame
                 }
                 controller.selectSingle(hitId)
             }
@@ -2306,7 +2731,7 @@ struct ScreenMapView: View {
                 newFrame.size.height = max(minH, startFrame.height + screenDy)
             }
 
-            editor.windows[idx].editedFrame = newFrame
+            editor.syncLayoutFrame(at: idx, to: newFrame)
             editor.objectWillChange.send()
             controller.objectWillChange.send()
             return nil
@@ -2393,11 +2818,13 @@ struct ScreenMapView: View {
                 let newPanX = cursorFromCenter.x - ratio * (cursorFromCenter.x - editor.panOffset.x)
                 let newPanY = cursorFromCenter.y - ratio * (cursorFromCenter.y - editor.panOffset.y)
 
+                editor.activeViewportPreset = nil
                 editor.zoomLevel = newZoom
                 editor.panOffset = CGPoint(x: newPanX, y: newPanY)
                 editor.objectWillChange.send()
                 controller.objectWillChange.send()
             } else {
+                editor.activeViewportPreset = nil
                 editor.panOffset = CGPoint(
                     x: editor.panOffset.x + event.scrollingDeltaX,
                     y: editor.panOffset.y - event.scrollingDeltaY
@@ -2485,7 +2912,7 @@ struct ScreenMapView: View {
         let windowPool = editor.focusedDisplayIndex != nil ? editor.focusedVisibleWindows : editor.windows
         let sorted = windowPool.sorted(by: { $0.zIndex < $1.zIndex })
         for win in sorted {
-            let f = win.editedFrame
+            let f = win.virtualFrame
             let mapRect = CGRect(
                 x: (f.origin.x - bboxOrig.x) * effScale,
                 y: (f.origin.y - bboxOrig.y) * effScale,
@@ -2516,7 +2943,7 @@ struct ScreenMapView: View {
         let windowPool = editor.focusedDisplayIndex != nil ? editor.focusedVisibleWindows : editor.windows
         let sorted = windowPool.sorted(by: { $0.zIndex < $1.zIndex })
         for win in sorted {
-            let f = win.editedFrame
+            let f = win.virtualFrame
             let mapRect = CGRect(
                 x: (f.origin.x - bboxOrig.x) * effScale,
                 y: (f.origin.y - bboxOrig.y) * effScale,
@@ -2664,7 +3091,7 @@ struct ScreenMapPreviewOverlay: View {
             Color.black.opacity(0.88)
 
             ForEach(windows) { win in
-                let f = win.editedFrame
+                let f = win.virtualFrame
                 let x = f.origin.x - screenCGOrigin.x
                 let y = f.origin.y - screenCGOrigin.y
                 let w = f.width

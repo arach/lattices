@@ -173,13 +173,15 @@ class WorkspaceManager: ObservableObject {
 
     /// Resolve a tile string to fractions: check user presets first, then built-in TilePosition
     func resolveTileFractions(_ tile: String) -> (CGFloat, CGFloat, CGFloat, CGFloat)? {
-        if let preset = gridPresets[tile] {
-            return preset.fractions
+        resolvePlacement(tile)?.fractions
+    }
+
+    func resolvePlacement(_ tile: String) -> PlacementSpec? {
+        if let preset = gridPresets[tile],
+           let placement = FractionalPlacement(x: preset.x, y: preset.y, w: preset.w, h: preset.h) {
+            return .fractions(placement)
         }
-        if let position = TilePosition(rawValue: tile) {
-            return position.rect
-        }
-        return nil
+        return PlacementSpec(string: tile)
     }
 
     // MARK: - Tab Groups
@@ -275,7 +277,7 @@ class WorkspaceManager: ObservableObject {
 
     /// Resolve a session name to a tile target: (wid, pid, frame).
     /// Returns nil if the window isn't tracked or has no tile position.
-    private func batchTarget(session: String, position: TilePosition, screen: NSScreen) -> (wid: UInt32, pid: Int32, frame: CGRect)? {
+    private func batchTarget(session: String, position: PlacementSpec, screen: NSScreen) -> (wid: UInt32, pid: Int32, frame: CGRect)? {
         guard let entry = windowForSession(session) else { return nil }
         let frame = WindowTiler.tileFrame(for: position, on: screen)
         return (entry.wid, entry.pid, frame)
@@ -405,8 +407,8 @@ class WorkspaceManager: ObservableObject {
 
         // Phase 1: classify each project
         var batchMoves: [(wid: UInt32, pid: Int32, frame: CGRect)] = []
-        var fallbacks: [(session: String, position: TilePosition, screen: NSScreen)] = []
-        var launchQueue: [(session: String, position: TilePosition?, screen: NSScreen, launchAction: () -> Void)] = []
+        var fallbacks: [(session: String, position: PlacementSpec, screen: NSScreen)] = []
+        var launchQueue: [(session: String, position: PlacementSpec?, screen: NSScreen, launchAction: () -> Void)] = []
 
         // Log screen info
         for (i, s) in NSScreen.screens.enumerated() {
@@ -418,7 +420,7 @@ class WorkspaceManager: ObservableObject {
 
             if let groupId = lp.group, let grp = group(byId: groupId) {
                 let firstTabSession = grp.tabs.first.map { Self.sessionName(for: $0.path) } ?? ""
-                let position = lp.tile.flatMap { TilePosition(rawValue: $0) }
+                let position = lp.tile.flatMap { resolvePlacement($0) }
                 let groupRunning = isGroupRunning(grp)
 
                 if groupRunning, let pos = position,
@@ -440,7 +442,7 @@ class WorkspaceManager: ObservableObject {
 
             // App-based window matching
             if let appName = lp.app {
-                let position = lp.tile.flatMap { TilePosition(rawValue: $0) }
+                let position = lp.tile.flatMap { resolvePlacement($0) }
                 if let entry = DesktopModel.shared.windowForApp(app: appName, title: lp.title) {
                     if let pos = position {
                         let frame = WindowTiler.tileFrame(for: pos, on: lpScreen)
@@ -481,13 +483,13 @@ class WorkspaceManager: ObservableObject {
             guard let path = lp.path else { continue }
             let sessionName = Self.sessionName(for: path)
             let project = scanner.projects.first(where: { $0.path == path })
-            let position = lp.tile.flatMap { TilePosition(rawValue: $0) }
+            let position = lp.tile.flatMap { resolvePlacement($0) }
             // Check scanner first, fall back to direct tmux check for projects without .lattices.json
             let isRunning = project?.isRunning == true || shell([tmuxPath, "has-session", "-t", sessionName]) == 0
 
             if isRunning {
                 let foundWindow = windowForSession(sessionName)
-                let msg = "  \(sessionName): running=\(isRunning) window=\(foundWindow?.wid ?? 0) tile=\(position?.rawValue ?? "nil") desktopCount=\(DesktopModel.shared.windows.count)"
+                let msg = "  \(sessionName): running=\(isRunning) window=\(foundWindow?.wid ?? 0) tile=\(position?.wireValue ?? "nil") desktopCount=\(DesktopModel.shared.windows.count)"
                 diag.info(msg)
                 debugLines.append(msg)
                 if let pos = position,
@@ -496,7 +498,7 @@ class WorkspaceManager: ObservableObject {
                     debugLines.append("    → batch move wid=\(target.wid) frame=\(target.frame)")
                 } else if let pos = position {
                     fallbacks.append((sessionName, pos, lpScreen))
-                    debugLines.append("    → fallback \(pos.rawValue)")
+                    debugLines.append("    → fallback \(pos.wireValue)")
                 }
             } else if launch {
                 if let project {
@@ -517,7 +519,7 @@ class WorkspaceManager: ObservableObject {
             for cw in companions {
                 guard let appName = cw.app else { continue }
                 let cwScreen = screen(for: cw.display ?? lp.display) ?? lpScreen
-                let cwPosition = cw.tile.flatMap { TilePosition(rawValue: $0) }
+                let cwPosition = cw.tile.flatMap { resolvePlacement($0) }
                 if let entry = DesktopModel.shared.windowForApp(app: appName, title: cw.title) {
                     if let pos = cwPosition {
                         let frame = WindowTiler.tileFrame(for: pos, on: cwScreen)
@@ -560,7 +562,7 @@ class WorkspaceManager: ObservableObject {
         for (i, fb) in fallbacks.enumerated() {
             let delay = Double(i) * 0.15 + 0.1
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                diag.info("  tile fallback: \(fb.session) → \(fb.position.rawValue)")
+                diag.info("  tile fallback: \(fb.session) → \(fb.position.wireValue)")
                 WindowTiler.navigateToWindow(session: fb.session, terminal: terminal)
                 WindowTiler.tile(session: fb.session, terminal: terminal, to: fb.position, on: fb.screen)
             }
@@ -572,7 +574,7 @@ class WorkspaceManager: ObservableObject {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                 item.launchAction()
                 if let pos = item.position {
-                    let t = diag.startTimed("tile launched: \(item.session) → \(pos.rawValue)")
+                    let t = diag.startTimed("tile launched: \(item.session) → \(pos.wireValue)")
                     WindowTiler.tile(session: item.session, terminal: terminal, to: pos, on: item.screen)
                     diag.finish(t)
                 }

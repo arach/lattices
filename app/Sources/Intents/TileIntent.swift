@@ -49,12 +49,12 @@ struct TileIntent: LatticeIntent {
 
     func perform(slots: [String: JSON]) throws -> JSON {
         let posName = slots["position"]?.stringValue ?? "center"
-        guard let position = TilePosition(rawValue: posName) else {
+        guard let placement = PlacementSpec(string: posName) else {
             return .object(["ok": .bool(false), "reason": .string("Unknown position '\(posName)'")])
         }
 
         DispatchQueue.main.async {
-            WindowTiler.tileFrontmostViaAX(to: position)
+            WindowTiler.tileFrontmostViaAX(to: placement)
         }
         return .object(["ok": .bool(true), "position": .string(posName)])
     }

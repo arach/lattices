@@ -13,14 +13,14 @@ final class PermissionChecker: ObservableObject {
 
     var allGranted: Bool { accessibility && screenRecording }
 
-    /// Check current permission state, prompting on first launch if not granted.
+    /// Check current permission state without prompting.
     func check() {
         let diag = DiagnosticLog.shared
 
         let ax = AXIsProcessTrusted()
         let sr = CGPreflightScreenCaptureAccess()
 
-        // First check: log identity info and prompt if needed
+        // First check: log identity info only
         if !hasLoggedInitial {
             hasLoggedInitial = true
             let bundleId = Bundle.main.bundleIdentifier ?? "<no bundle id>"
@@ -30,16 +30,6 @@ final class PermissionChecker: ObservableObject {
             diag.info("PermissionChecker: exec=\(execPath)")
             diag.info("AXIsProcessTrusted() → \(ax)")
             diag.info("CGPreflightScreenCaptureAccess() → \(sr)")
-
-            // Prompt for missing permissions on first check
-            if !ax {
-                requestAccessibility()
-                return
-            }
-            if !sr {
-                requestScreenRecording()
-                return
-            }
         }
 
         // Log on state changes

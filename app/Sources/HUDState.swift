@@ -49,6 +49,7 @@ final class HUDState: ObservableObject {
     @Published var selectedIndex: Int = 0
     @Published var focus: HUDFocus = .search
     @Published var voiceActive: Bool = false
+    @Published var expandedSections: Set<Int> = [2]
 
     /// Multi-select for tiling — set of item IDs
     @Published var selectedItems: Set<String> = []
@@ -79,6 +80,41 @@ final class HUDState: ObservableObject {
     var sectionOffsets: [Int: Int] = [:]
 
     private var selectionAnchorID: String?
+    private var touchedSections: Set<Int> = []
+
+    func isSectionExpanded(_ key: Int) -> Bool {
+        expandedSections.contains(key)
+    }
+
+    func toggleSection(_ key: Int) {
+        if expandedSections.contains(key) {
+            expandedSections.remove(key)
+        } else {
+            expandedSections.insert(key)
+        }
+        touchedSections.insert(key)
+    }
+
+    func resetSectionDefaults(hasRunningProjects: Bool) {
+        expandedSections = [2]
+        if hasRunningProjects {
+            expandedSections.insert(1)
+        }
+        touchedSections = []
+    }
+
+    func syncAutoSectionDefaults(hasRunningProjects: Bool) {
+        if !touchedSections.contains(2) {
+            expandedSections.insert(2)
+        }
+        if !touchedSections.contains(1) {
+            if hasRunningProjects {
+                expandedSections.insert(1)
+            } else {
+                expandedSections.remove(1)
+            }
+        }
+    }
 
     var effectiveSelectionIDs: Set<String> {
         if selectedItems.isEmpty {

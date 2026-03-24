@@ -138,18 +138,15 @@ final class IntentEngine {
                 guard let posStr = req.slots["position"]?.stringValue else {
                     throw IntentError.missingSlot("position")
                 }
-                // Try named position first, then grid string
-                let position: TilePosition? = TilePosition(rawValue: posStr)
-                let gridFractions: (CGFloat, CGFloat, CGFloat, CGFloat)? = position == nil ? parseGridString(posStr) : nil
-                guard position != nil || gridFractions != nil else {
+                guard let placement = PlacementSpec(string: posStr) else {
                     throw IntentError.invalidSlot("Unknown position: \(posStr)")
                 }
 
                 // Resolve target: explicit session, wid, app name, or frontmost
                 if let session = req.slots["session"]?.stringValue {
                     return try LatticesApi.shared.dispatch(
-                        method: "window.tile",
-                        params: .object(["session": .string(session), "position": .string(posStr)])
+                        method: "window.place",
+                        params: .object(["session": .string(session), "placement": placement.jsonValue])
                     )
                 }
 
@@ -157,11 +154,7 @@ final class IntentEngine {
                 func tileEntry(_ entry: WindowEntry) {
                     IntentEngine.markTiled(entry.wid)
                     DispatchQueue.main.async {
-                        if let pos = position {
-                            WindowTiler.tileWindowById(wid: entry.wid, pid: entry.pid, to: pos)
-                        } else if let fracs = gridFractions {
-                            WindowTiler.tileWindowById(wid: entry.wid, pid: entry.pid, fractions: fracs)
-                        }
+                        WindowTiler.tileWindowById(wid: entry.wid, pid: entry.pid, to: placement)
                     }
                 }
 
@@ -184,10 +177,8 @@ final class IntentEngine {
                 }
 
                 // Default: tile frontmost window
-                if let pos = position {
-                    DispatchQueue.main.async {
-                        WindowTiler.tileFrontmost(to: pos)
-                    }
+                DispatchQueue.main.async {
+                    WindowTiler.tileFrontmostViaAX(to: placement)
                 }
                 return .object(["ok": .bool(true), "target": .string("frontmost"), "position": .string(posStr)])
             }

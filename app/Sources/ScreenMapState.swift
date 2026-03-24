@@ -10,6 +10,71 @@ struct DisplayGeometry {
     let label: String    // e.g. "Built-in Retina Display", "LG UltraFine"
 }
 
+// MARK: - Canvas Region
+
+struct ScreenMapCanvasRegion: Identifiable {
+    enum Kind {
+        case overview
+        case display
+        case layer
+    }
+
+    let id: String
+    let kind: Kind
+    let title: String
+    let subtitle: String
+    let rect: CGRect
+    let count: Int
+    let displayIndex: Int?
+    let layer: Int?
+}
+
+struct ScreenMapCanvasNavigationTarget {
+    let center: CGPoint
+    let rect: CGRect?
+    let zoomToFit: Bool
+}
+
+enum ScreenMapViewportPreset: String, CaseIterable, Identifiable {
+    case overview
+    case main
+    case topRight
+    case bottomLeft
+    case bottomRight
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .overview: return "All"
+        case .main: return "Main"
+        case .topRight: return "Top Right"
+        case .bottomLeft: return "Bottom Left"
+        case .bottomRight: return "Bottom Right"
+        }
+    }
+
+    var shortLabel: String {
+        switch self {
+        case .overview: return "all"
+        case .main: return "main"
+        case .topRight: return "tr"
+        case .bottomLeft: return "bl"
+        case .bottomRight: return "br"
+        }
+    }
+
+    var keyHint: String {
+        switch self {
+        case .overview: return "0"
+        case .main: return "1"
+        case .topRight: return "2"
+        case .bottomLeft: return "3"
+        case .bottomRight: return "4"
+        }
+    }
+}
+
 // MARK: - Screen Map Window Entry
 
 struct ScreenMapWindowEntry: Identifiable {
@@ -19,6 +84,7 @@ struct ScreenMapWindowEntry: Identifiable {
     let title: String
     var originalFrame: CGRect   // frozen at snapshot time
     var editedFrame: CGRect     // mutated during drag
+    var virtualFrame: CGRect    // persistent canvas/world position
     let zIndex: Int             // 0 = frontmost
     var layer: Int              // assigned by iterative peeling (per-display)
     let displayIndex: Int       // which monitor this window belongs to
@@ -72,6 +138,7 @@ final class ScreenMapEditorState: ObservableObject {
     @Published var zoomLevel: CGFloat = 1.0   // 1.0 = fit-all
     @Published var panOffset: CGPoint = .zero  // canvas-local pixels
     @Published var focusedDisplayIndex: Int? = nil  // nil = all-displays view
+    @Published var activeViewportPreset: ScreenMapViewportPreset? = .main
     @Published var windowSearchQuery: String = ""
     @Published var isTilingMode: Bool = false
     var isSearching: Bool { !windowSearchQuery.isEmpty }
@@ -179,6 +246,16 @@ final class ScreenMapEditorState: ObservableObject {
 
     let actionLog = ScreenMapActionLog()
 
+    func syncLayoutFrame(at index: Int, to frame: CGRect) {
+        windows[index].virtualFrame = frame
+        windows[index].editedFrame = frame
+    }
+
+    func resetLayoutFrameToOriginal(at index: Int) {
+        windows[index].virtualFrame = windows[index].originalFrame
+        windows[index].editedFrame = windows[index].originalFrame
+    }
+
     /// Backward-compat: single active layer when exactly one is selected
     var activeLayer: Int? {
         selectedLayers.count == 1 ? selectedLayers.first : nil
@@ -197,6 +274,9 @@ final class ScreenMapEditorState: ObservableObject {
     var mapOrigin: CGPoint = .zero
     var screenSize: CGSize = .zero
     var bboxOrigin: CGPoint = .zero  // top-left of the bounding box in CG coords
+    var viewportSize: CGSize = .zero
+    var pendingCanvasNavigation: ScreenMapCanvasNavigationTarget?
+    var canvasNavigationRevision: Int = 0
 
     let displays: [DisplayGeometry]
 
@@ -263,6 +343,159 @@ final class ScreenMapEditorState: ObservableObject {
         return windows.filter { selectedLayers.contains($0.layer) }
     }
 
+    private var worldScopedDisplays: [DisplayGeometry] {
+        guard let focusedDisplayIndex else { return displays }
+        return displays.filter { $0.index == focusedDisplayIndex }
+    }
+
+    private var worldScopedWindows: [ScreenMapWindowEntry] {
+        guard let focusedDisplayIndex else { return windows }
+        return windows.filter { $0.displayIndex == focusedDisplayIndex }
+    }
+
+    var canvasWorldBounds: CGRect {
+        var rects = worldScopedDisplays.map(\.cgRect)
+        rects.append(contentsOf: worldScopedWindows.map(\.virtualFrame))
+
+        if rects.isEmpty {
+            return CGRect(origin: bboxOrigin, size: screenSize)
+        }
+
+        var union = rects[0]
+        for rect in rects.dropFirst() {
+            union = union.union(rect)
+        }
+
+        let pad: CGFloat = focusedDisplayIndex == nil ? 120 : 80
+        return union.insetBy(dx: -pad, dy: -pad)
+    }
+
+    var viewportWorldRect: CGRect {
+        guard scale > 0, viewportSize.width > 0, viewportSize.height > 0 else {
+            return canvasWorldBounds
+        }
+
+        let raw = CGRect(
+            x: bboxOrigin.x - (mapOrigin.x + panOffset.x) / scale,
+            y: bboxOrigin.y - (mapOrigin.y + panOffset.y) / scale,
+            width: viewportSize.width / scale,
+            height: viewportSize.height / scale
+        )
+
+        let world = canvasWorldBounds
+        let clipped = raw.intersection(world)
+        return clipped.isNull ? raw : clipped
+    }
+
+    func viewportRect(for preset: ScreenMapViewportPreset) -> CGRect {
+        let world = canvasWorldBounds
+        guard preset != .overview else { return world }
+
+        let halfWidth = max(world.width / 2, 1)
+        let halfHeight = max(world.height / 2, 1)
+
+        switch preset {
+        case .overview:
+            return world
+        case .main:
+            return CGRect(x: world.minX, y: world.minY, width: halfWidth, height: halfHeight)
+        case .topRight:
+            return CGRect(x: world.midX, y: world.minY, width: halfWidth, height: halfHeight)
+        case .bottomLeft:
+            return CGRect(x: world.minX, y: world.midY, width: halfWidth, height: halfHeight)
+        case .bottomRight:
+            return CGRect(x: world.midX, y: world.midY, width: halfWidth, height: halfHeight)
+        }
+    }
+
+    var viewportPresetSummary: String {
+        activeViewportPreset?.title ?? "Custom"
+    }
+
+    var canvasExplorerRegions: [ScreenMapCanvasRegion] {
+        let world = canvasWorldBounds
+        var regions: [ScreenMapCanvasRegion] = [
+            ScreenMapCanvasRegion(
+                id: "overview",
+                kind: .overview,
+                title: focusedDisplayIndex == nil ? "All Displays" : "Display Canvas",
+                subtitle: "\(worldScopedWindows.count) windows",
+                rect: world,
+                count: worldScopedWindows.count,
+                displayIndex: focusedDisplayIndex,
+                layer: nil
+            )
+        ]
+
+        if focusedDisplayIndex == nil {
+            for display in spatialDisplayOrder {
+                let displayWindows = windows.filter { $0.displayIndex == display.index }
+                let rect = regionRect(
+                    for: displayWindows,
+                    fallback: display.cgRect,
+                    padding: 60
+                )
+                regions.append(
+                    ScreenMapCanvasRegion(
+                        id: "display-\(display.index)",
+                        kind: .display,
+                        title: display.label,
+                        subtitle: "\(displayWindows.count) windows",
+                        rect: rect,
+                        count: displayWindows.count,
+                        displayIndex: display.index,
+                        layer: nil
+                    )
+                )
+            }
+        }
+
+        let layerScope = effectiveLayers.compactMap { layer -> ScreenMapCanvasRegion? in
+            let layerWindows = worldScopedWindows.filter { $0.layer == layer }
+            guard !layerWindows.isEmpty else { return nil }
+
+            let displayLabel: String = {
+                guard focusedDisplayIndex == nil,
+                      let displayIndex = layerWindows.first?.displayIndex,
+                      let display = displays.first(where: { $0.index == displayIndex }) else {
+                    return ""
+                }
+                return display.label
+            }()
+
+            let subtitleBase = "\(layerWindows.count) window\(layerWindows.count == 1 ? "" : "s")"
+            let subtitle = displayLabel.isEmpty ? subtitleBase : "\(subtitleBase) · \(displayLabel)"
+
+            return ScreenMapCanvasRegion(
+                id: "layer-\(layer)-\(focusedDisplayIndex.map(String.init) ?? "all")",
+                kind: .layer,
+                title: layerNames[layer] ?? "Layer \(layer)",
+                subtitle: subtitle,
+                rect: regionRect(for: layerWindows, fallback: layerWindows[0].virtualFrame, padding: 48),
+                count: layerWindows.count,
+                displayIndex: layerWindows.first?.displayIndex,
+                layer: layer
+            )
+        }
+        .sorted { lhs, rhs in
+            if lhs.count != rhs.count { return lhs.count > rhs.count }
+            return lhs.title < rhs.title
+        }
+
+        regions.append(contentsOf: layerScope.prefix(6))
+        return regions
+    }
+
+    private func regionRect(for windows: [ScreenMapWindowEntry], fallback: CGRect, padding: CGFloat) -> CGRect {
+        guard !windows.isEmpty else { return fallback.insetBy(dx: -padding, dy: -padding) }
+
+        var union = windows[0].virtualFrame
+        for win in windows.dropFirst() {
+            union = union.union(win.virtualFrame)
+        }
+        return union.insetBy(dx: -padding, dy: -padding)
+    }
+
     /// The focused display geometry (nil when showing all)
     var focusedDisplay: DisplayGeometry? {
         guard let idx = focusedDisplayIndex else { return nil }
@@ -300,6 +533,7 @@ final class ScreenMapEditorState: ObservableObject {
         focusedDisplayIndex = index
         selectedLayers = []  // reset to "All" for the new display scope
         resetZoomPan()
+        DiagnosticLog.shared.info("[Canvas] scope → \(canvasScopeSummary)")
     }
 
     /// Cycle to the next display in spatial (left-to-right) order
@@ -310,6 +544,7 @@ final class ScreenMapEditorState: ObservableObject {
             focusedDisplayIndex = order.first!.index
             selectedLayers = []
             resetZoomPan()
+            DiagnosticLog.shared.info("[Canvas] scope → \(canvasScopeSummary)")
             return
         }
         if let pos = order.firstIndex(where: { $0.index == current }) {
@@ -324,6 +559,7 @@ final class ScreenMapEditorState: ObservableObject {
         }
         selectedLayers = []
         resetZoomPan()
+        DiagnosticLog.shared.info("[Canvas] scope → \(canvasScopeSummary)")
     }
 
     /// Cycle to the previous display in spatial (right-to-left) order
@@ -334,6 +570,7 @@ final class ScreenMapEditorState: ObservableObject {
             focusedDisplayIndex = order.last!.index
             selectedLayers = []
             resetZoomPan()
+            DiagnosticLog.shared.info("[Canvas] scope → \(canvasScopeSummary)")
             return
         }
         if let pos = order.firstIndex(where: { $0.index == current }) {
@@ -347,6 +584,15 @@ final class ScreenMapEditorState: ObservableObject {
         }
         selectedLayers = []
         resetZoomPan()
+        DiagnosticLog.shared.info("[Canvas] scope → \(canvasScopeSummary)")
+    }
+
+    var canvasScopeSummary: String {
+        guard let focusedDisplayIndex,
+              let display = displays.first(where: { $0.index == focusedDisplayIndex }) else {
+            return "all displays"
+        }
+        return "display \(spatialNumber(for: focusedDisplayIndex)) · \(display.label)"
     }
 
     /// Number of windows with pending edits (position or size)
@@ -429,12 +675,12 @@ final class ScreenMapEditorState: ObservableObject {
     /// Move a window to a different layer
     func reassignLayer(windowId: UInt32, toLayer: Int, fitToAvailable: Bool) {
         guard let idx = windows.firstIndex(where: { $0.id == windowId }) else { return }
-        let oldFrame = windows[idx].editedFrame
+        let oldFrame = windows[idx].virtualFrame
         windows[idx].layer = toLayer
         if fitToAvailable {
             fitWindowIntoLayer(at: idx)
         }
-        let newFrame = windows[idx].editedFrame
+        let newFrame = windows[idx].virtualFrame
         if oldFrame != newFrame {
             DiagnosticLog.shared.info("[ScreenMap] reassign wid=\(windowId): fitted \(Int(oldFrame.origin.x)),\(Int(oldFrame.origin.y)) → \(Int(newFrame.origin.x)),\(Int(newFrame.origin.y))")
         }
@@ -444,10 +690,10 @@ final class ScreenMapEditorState: ObservableObject {
     func fitWindowIntoLayer(at idx: Int) {
         let win = windows[idx]
         let siblings = windows.enumerated().filter { $0.offset != idx && $0.element.layer == win.layer }
-        let siblingFrames = siblings.map(\.element.editedFrame)
+        let siblingFrames = siblings.map(\.element.virtualFrame)
         let screenRect = CGRect(origin: .zero, size: screenSize)
-        if let fitted = fitRect(win.editedFrame, avoiding: siblingFrames, within: screenRect) {
-            windows[idx].editedFrame = fitted
+        if let fitted = fitRect(win.virtualFrame, avoiding: siblingFrames, within: screenRect) {
+            syncLayoutFrame(at: idx, to: fitted)
         }
     }
 
@@ -508,7 +754,7 @@ final class ScreenMapEditorState: ObservableObject {
 
             if indices.count == 1 {
                 let frame = CGRect(x: visible.origin.x, y: axTop, width: visible.width, height: visible.height)
-                windows[indices[0]].editedFrame = frame
+                syncLayoutFrame(at: indices[0], to: frame)
                 totalTiled += 1
                 continue
             }
@@ -529,7 +775,7 @@ final class ScreenMapEditorState: ObservableObject {
                     let x0 = baseX + (col * totalW) / cols
                     let x1 = baseX + ((col + 1) * totalW) / cols
                     let frame = CGRect(x: CGFloat(x0), y: CGFloat(y0), width: CGFloat(x1 - x0), height: CGFloat(y1 - y0))
-                    windows[indices[slotIdx]].editedFrame = frame
+                    syncLayoutFrame(at: indices[slotIdx], to: frame)
                     slotIdx += 1
                 }
             }
@@ -568,7 +814,7 @@ final class ScreenMapEditorState: ObservableObject {
                 for col in 0..<cols {
                     guard slotIdx < indices.count else { break }
                     let idx = indices[slotIdx]
-                    let orig = windows[idx].originalFrame
+                    let orig = windows[idx].virtualFrame
 
                     let cellX = visible.origin.x + CGFloat(col) * colW + padding
                     let cellY = axY + padding
@@ -586,7 +832,7 @@ final class ScreenMapEditorState: ObservableObject {
                     let x = cellX + (cellW - fitW) / 2
                     let y = cellY + (cellH - fitH) / 2
 
-                    windows[idx].editedFrame = CGRect(x: x, y: y, width: fitW, height: fitH)
+                    syncLayoutFrame(at: idx, to: CGRect(x: x, y: y, width: fitW, height: fitH))
                     slotIdx += 1
                 }
             }
@@ -621,8 +867,8 @@ final class ScreenMapEditorState: ObservableObject {
                     for j in (i + 1)..<indices.count {
                         let idxA = indices[i]
                         let idxB = indices[j]
-                        let a = windows[idxA].editedFrame
-                        let b = windows[idxB].editedFrame
+                        let a = windows[idxA].virtualFrame
+                        let b = windows[idxB].virtualFrame
                         guard a.intersects(b) else { continue }
                         hadOverlap = true
 
@@ -631,22 +877,30 @@ final class ScreenMapEditorState: ObservableObject {
 
                         if overlapW < overlapH {
                             let push = (overlapW / 2).rounded(.up) + 1
+                            var newA = a
+                            var newB = b
                             if a.midX <= b.midX {
-                                windows[idxA].editedFrame.origin.x -= push
-                                windows[idxB].editedFrame.origin.x += push
+                                newA.origin.x -= push
+                                newB.origin.x += push
                             } else {
-                                windows[idxA].editedFrame.origin.x += push
-                                windows[idxB].editedFrame.origin.x -= push
+                                newA.origin.x += push
+                                newB.origin.x -= push
                             }
+                            syncLayoutFrame(at: idxA, to: newA)
+                            syncLayoutFrame(at: idxB, to: newB)
                         } else {
                             let push = (overlapH / 2).rounded(.up) + 1
+                            var newA = a
+                            var newB = b
                             if a.midY <= b.midY {
-                                windows[idxA].editedFrame.origin.y -= push
-                                windows[idxB].editedFrame.origin.y += push
+                                newA.origin.y -= push
+                                newB.origin.y += push
                             } else {
-                                windows[idxA].editedFrame.origin.y += push
-                                windows[idxB].editedFrame.origin.y -= push
+                                newA.origin.y += push
+                                newB.origin.y -= push
                             }
+                            syncLayoutFrame(at: idxA, to: newA)
+                            syncLayoutFrame(at: idxB, to: newB)
                         }
                         affected.insert(idxA)
                         affected.insert(idxB)
@@ -661,12 +915,12 @@ final class ScreenMapEditorState: ObservableObject {
     }
 
     private func clampToScreen(at idx: Int, bounds: CGRect) {
-        var f = windows[idx].editedFrame
+        var f = windows[idx].virtualFrame
         if f.minX < bounds.minX { f.origin.x = bounds.minX }
         if f.minY < bounds.minY { f.origin.y = bounds.minY }
         if f.maxX > bounds.maxX { f.origin.x = bounds.maxX - f.width }
         if f.maxY > bounds.maxY { f.origin.y = bounds.maxY - f.height }
-        windows[idx].editedFrame = f
+        syncLayoutFrame(at: idx, to: f)
     }
 
     /// Grow each window outward until it hits a neighbor or screen edge
@@ -691,7 +945,7 @@ final class ScreenMapEditorState: ObservableObject {
                                 width: screen.frame.width, height: screen.frame.height)
 
             // Snapshot original positions for neighbor detection
-            let origFrames = indices.map { windows[$0].editedFrame }
+            let origFrames = indices.map { windows[$0].virtualFrame }
 
             for (i, idx) in indices.enumerated() {
                 let me = origFrames[i]
@@ -726,8 +980,8 @@ final class ScreenMapEditorState: ObservableObject {
                 }
 
                 let newFrame = CGRect(x: left, y: top, width: right - left, height: bottom - top)
-                if newFrame != windows[idx].editedFrame {
-                    windows[idx].editedFrame = newFrame
+                if newFrame != windows[idx].virtualFrame {
+                    syncLayoutFrame(at: idx, to: newFrame)
                     totalAffected += 1
                 }
             }
@@ -767,7 +1021,7 @@ final class ScreenMapEditorState: ObservableObject {
             guard slots.count == indices.count else { continue }
 
             for (i, idx) in indices.enumerated() {
-                windows[idx].editedFrame = slots[i]
+                syncLayoutFrame(at: idx, to: slots[i])
             }
             totalDistributed += indices.count
         }
@@ -777,7 +1031,7 @@ final class ScreenMapEditorState: ObservableObject {
     /// Reset all edited frames back to original
     func discardEdits() {
         for i in windows.indices {
-            windows[i].editedFrame = windows[i].originalFrame
+            resetLayoutFrameToOriginal(at: i)
         }
     }
 
@@ -813,15 +1067,15 @@ final class ScreenMapEditorState: ObservableObject {
                     let siblings = windows.enumerated().filter {
                         $0.offset != idx && $0.element.layer == targetLayer &&
                         (dIdx == nil || $0.element.displayIndex == dIdx!)
-                    }.map(\.element.editedFrame)
+                    }.map(\.element.virtualFrame)
 
-                    let collisions = siblings.filter { $0.intersects(win.editedFrame) }
+                    let collisions = siblings.filter { $0.intersects(win.virtualFrame) }
                     if collisions.isEmpty {
                         windows[idx].layer = targetLayer
                         break
                     }
-                    if let fitted = fitRect(win.editedFrame, avoiding: siblings, within: screenRect) {
-                        windows[idx].editedFrame = fitted
+                    if let fitted = fitRect(win.virtualFrame, avoiding: siblings, within: screenRect) {
+                        syncLayoutFrame(at: idx, to: fitted)
                         windows[idx].layer = targetLayer
                         break
                     }
@@ -921,8 +1175,8 @@ final class ScreenMapActionLog {
             WindowSnapshot(
                 wid: win.id, app: win.app, title: win.title,
                 frame: .init(
-                    x: Int(win.editedFrame.origin.x), y: Int(win.editedFrame.origin.y),
-                    w: Int(win.editedFrame.width), h: Int(win.editedFrame.height)
+                    x: Int(win.virtualFrame.origin.x), y: Int(win.virtualFrame.origin.y),
+                    w: Int(win.virtualFrame.width), h: Int(win.virtualFrame.height)
                 ),
                 layer: win.layer
             )
@@ -1367,7 +1621,7 @@ final class ScreenMapController: ObservableObject {
 
             mapWindows.append(ScreenMapWindowEntry(
                 id: win.wid, pid: win.pid, app: win.app, title: win.title,
-                originalFrame: win.frame, editedFrame: win.frame,
+                originalFrame: win.frame, editedFrame: win.frame, virtualFrame: win.frame,
                 zIndex: i, layer: assignedLayer, displayIndex: win.displayIndex,
                 isOnScreen: win.isOnScreen,
                 latticesSession: latticesSession ?? ctx?.session,
@@ -1411,17 +1665,168 @@ final class ScreenMapController: ObservableObject {
 
         editor = newEditor
         selectedWindowIds = []
+        focusViewportPreset(.main, flashView: false)
     }
 
     /// Re-snapshot, preserving display/layer context
     func refresh() {
         let savedDisplay = editor?.focusedDisplayIndex
         let savedLayers = editor?.selectedLayers ?? []
+        let savedViewportPreset = editor?.activeViewportPreset
         enter()
         if let ed = editor {
             ed.focusedDisplayIndex = savedDisplay
             ed.selectedLayers = savedLayers
+            if let savedViewportPreset {
+                focusViewportPreset(savedViewportPreset, flashView: false)
+            }
         }
+    }
+
+    // MARK: - Canvas Navigation
+
+    func recenterViewport(at worldPoint: CGPoint) {
+        editor?.activeViewportPreset = nil
+        queueCanvasNavigation(centeredOn: worldPoint, rect: nil, zoomToFit: false)
+    }
+
+    func focusCanvas(on rect: CGRect, focusDisplay displayIndex: Int? = nil, resetDisplayFocus: Bool = false, zoomToFit: Bool = true) {
+        guard let ed = editor else { return }
+
+        if let displayIndex {
+            ed.focusDisplay(displayIndex)
+        } else if resetDisplayFocus {
+            ed.focusDisplay(nil)
+        }
+        ed.activeViewportPreset = nil
+
+        queueCanvasNavigation(
+            centeredOn: CGPoint(x: rect.midX, y: rect.midY),
+            rect: rect,
+            zoomToFit: zoomToFit
+        )
+    }
+
+    func focusViewportPreset(_ preset: ScreenMapViewportPreset, flashView: Bool = true) {
+        guard let ed = editor else { return }
+        ed.activeViewportPreset = preset
+        let rect = ed.viewportRect(for: preset)
+        DiagnosticLog.shared.info("[Canvas] preset → \(preset.title)")
+        queueCanvasNavigation(
+            centeredOn: CGPoint(x: rect.midX, y: rect.midY),
+            rect: rect,
+            zoomToFit: true
+        )
+        if flashView {
+            flash(preset.title)
+        }
+    }
+
+    func jumpToCanvasRegion(_ region: ScreenMapCanvasRegion) {
+        DiagnosticLog.shared.info("[Canvas] jump → \(region.title) · \(region.subtitle)")
+        switch region.kind {
+        case .overview:
+            focusViewportPreset(.overview)
+        case .display:
+            focusCanvas(on: region.rect, focusDisplay: region.displayIndex, zoomToFit: true)
+        case .layer:
+            focusCanvas(on: region.rect, zoomToFit: true)
+        }
+    }
+
+    func applyPendingCanvasNavigationIfNeeded() {
+        guard let ed = editor, let target = ed.pendingCanvasNavigation else { return }
+        ed.pendingCanvasNavigation = nil
+        let shouldLogView = target.rect != nil || target.zoomToFit
+
+        var targetZoom: CGFloat? = nil
+        if target.zoomToFit,
+           let rect = target.rect,
+           ed.fitScale > 0,
+           ed.viewportSize.width > 0,
+           ed.viewportSize.height > 0 {
+            let paddedW = max(rect.width, 120)
+            let paddedH = max(rect.height, 80)
+            let desiredScale = min(
+                (ed.viewportSize.width * 0.84) / paddedW,
+                (ed.viewportSize.height * 0.84) / paddedH
+            )
+            targetZoom = max(
+                ScreenMapEditorState.minZoom,
+                min(ScreenMapEditorState.maxZoom, desiredScale / ed.fitScale)
+            )
+        }
+
+        setViewport(centeredOn: target.center, zoomLevel: targetZoom)
+        if shouldLogView {
+            let viewport = ed.viewportWorldRect
+            DiagnosticLog.shared.info(
+                "[Canvas] view → \(ed.canvasScopeSummary) center=(\(Int(viewport.midX)),\(Int(viewport.midY))) viewport=\(Int(viewport.width))×\(Int(viewport.height)) zoom=\(Int(ed.zoomLevel * 100))%"
+            )
+        }
+    }
+
+    private func queueCanvasNavigation(centeredOn targetCenter: CGPoint, rect: CGRect?, zoomToFit: Bool) {
+        guard let ed = editor else { return }
+        ed.pendingCanvasNavigation = ScreenMapCanvasNavigationTarget(
+            center: targetCenter,
+            rect: rect,
+            zoomToFit: zoomToFit
+        )
+        ed.canvasNavigationRevision &+= 1
+        ed.objectWillChange.send()
+        objectWillChange.send()
+    }
+
+    private func setViewport(centeredOn targetCenter: CGPoint, zoomLevel targetZoom: CGFloat?) {
+        guard let ed = editor else { return }
+
+        if let targetZoom {
+            ed.zoomLevel = targetZoom
+            ed.scale = ed.fitScale * targetZoom
+        }
+
+        let effectiveScale = max(ed.fitScale * ed.zoomLevel, 0.0001)
+        let viewport = CGSize(
+            width: max(ed.viewportSize.width, 1),
+            height: max(ed.viewportSize.height, 1)
+        )
+        let viewportWorld = CGSize(
+            width: viewport.width / effectiveScale,
+            height: viewport.height / effectiveScale
+        )
+        let world = ed.canvasWorldBounds
+
+        let clampedCenter = CGPoint(
+            x: clampedViewportCenter(
+                target: targetCenter.x,
+                minEdge: world.minX,
+                maxEdge: world.maxX,
+                viewportExtent: viewportWorld.width
+            ),
+            y: clampedViewportCenter(
+                target: targetCenter.y,
+                minEdge: world.minY,
+                maxEdge: world.maxY,
+                viewportExtent: viewportWorld.height
+            )
+        )
+
+        ed.panOffset = CGPoint(
+            x: viewport.width / 2 - ed.mapOrigin.x - (clampedCenter.x - ed.bboxOrigin.x) * effectiveScale,
+            y: viewport.height / 2 - ed.mapOrigin.y - (clampedCenter.y - ed.bboxOrigin.y) * effectiveScale
+        )
+        ed.objectWillChange.send()
+        objectWillChange.send()
+    }
+
+    private func clampedViewportCenter(target: CGFloat, minEdge: CGFloat, maxEdge: CGFloat, viewportExtent: CGFloat) -> CGFloat {
+        if maxEdge - minEdge <= viewportExtent {
+            return (minEdge + maxEdge) / 2
+        }
+        let minCenter = minEdge + viewportExtent / 2
+        let maxCenter = maxEdge - viewportExtent / 2
+        return min(max(target, minCenter), maxCenter)
     }
 
     // MARK: - Key Handler
@@ -1555,6 +1960,7 @@ final class ScreenMapController: ObservableObject {
         case 4: // h → previous display
             if let ed = editor, ed.displays.count > 1 {
                 ed.cyclePreviousDisplay()
+                focusViewportPreset(ed.activeViewportPreset ?? .main, flashView: false)
                 let label = ed.focusedDisplay?.label ?? "All displays"
                 flash(label)
                 objectWillChange.send()
@@ -1564,6 +1970,7 @@ final class ScreenMapController: ObservableObject {
         case 37: // l → next display
             if let ed = editor, ed.displays.count > 1 {
                 ed.cycleNextDisplay()
+                focusViewportPreset(ed.activeViewportPreset ?? .main, flashView: false)
                 let label = ed.focusedDisplay?.label ?? "All displays"
                 flash(label)
                 objectWillChange.send()
@@ -1596,6 +2003,22 @@ final class ScreenMapController: ObservableObject {
             } else {
                 selectNextWindow()
             }
+            return true
+
+        case 18: // 1 → main viewport
+            focusViewportPreset(.main)
+            return true
+
+        case 19: // 2 → top-right viewport
+            focusViewportPreset(.topRight)
+            return true
+
+        case 20: // 3 → bottom-left viewport
+            focusViewportPreset(.bottomLeft)
+            return true
+
+        case 21: // 4 → bottom-right viewport
+            focusViewportPreset(.bottomRight)
             return true
 
         case 33: // [ → move to previous layer
@@ -1645,13 +2068,16 @@ final class ScreenMapController: ObservableObject {
             distributeVisible()
             return true
 
-        case 15: // r → reset zoom/pan
-            editor?.resetZoomPan()
-            flash("Fit all")
+        case 15: // r → overview
+            focusViewportPreset(.overview)
             return true
 
         case 5: // g → grow to fill
             fitAvailableSpace()
+            return true
+
+        case 46: // m → materialize current viewport
+            materializeViewport()
             return true
 
         case 3: // f → flatten
@@ -1684,14 +2110,14 @@ final class ScreenMapController: ObservableObject {
             }
             return true
 
-        case 29: // 0 → fit all (secondary)
-            editor?.resetZoomPan()
-            flash("Fit all")
+        case 29: // 0 → overview (secondary)
+            focusViewportPreset(.overview)
             return true
 
         case 123: // ← previous display (secondary)
             if let ed = editor, ed.displays.count > 1 {
                 ed.cyclePreviousDisplay()
+                focusViewportPreset(ed.activeViewportPreset ?? .main, flashView: false)
                 let label = ed.focusedDisplay?.label ?? "All displays"
                 flash(label)
                 objectWillChange.send()
@@ -1701,6 +2127,7 @@ final class ScreenMapController: ObservableObject {
         case 124: // → next display (secondary)
             if let ed = editor, ed.displays.count > 1 {
                 ed.cycleNextDisplay()
+                focusViewportPreset(ed.activeViewportPreset ?? .main, flashView: false)
                 let label = ed.focusedDisplay?.label ?? "All displays"
                 flash(label)
                 objectWillChange.send()
@@ -1724,11 +2151,11 @@ final class ScreenMapController: ObservableObject {
 
     // MARK: - Actions
 
-    func applyEdits() {
+    func applyEdits(showFlash: Bool = true) {
         guard let ed = editor else { return }
         let pendingEdits = ed.windows.filter(\.hasEdits)
         guard !pendingEdits.isEmpty else {
-            flash("No changes to apply")
+            if showFlash { flash("No changes to apply") }
             return
         }
 
@@ -1767,13 +2194,138 @@ final class ScreenMapController: ObservableObject {
             actionLog.verify()
         }
 
-        let noun = pendingEdits.count == 1 ? "edit" : "edits"
-        flash("Applied \(pendingEdits.count) \(noun)")
+        if showFlash {
+            let noun = pendingEdits.count == 1 ? "edit" : "edits"
+            flash("Applied \(pendingEdits.count) \(noun)")
+        }
     }
 
     func applyEditsFromButton() {
         if editor?.isPreviewing == true { endPreview() }
         applyEdits()
+    }
+
+    private func projectionTargetBounds(for editor: ScreenMapEditorState) -> CGRect {
+        if let focused = editor.focusedDisplay {
+            return focused.cgRect
+        }
+        guard let first = editor.displays.first else {
+            return editor.viewportWorldRect
+        }
+        return editor.displays.dropFirst().reduce(first.cgRect) { $0.union($1.cgRect) }
+    }
+
+    private func parkingBounds(for editor: ScreenMapEditorState) -> CGRect {
+        let target = projectionTargetBounds(for: editor)
+        let union = editor.displays.dropFirst().reduce(editor.displays.first?.cgRect ?? target) { $0.union($1.cgRect) }
+        let width: CGFloat = 420
+        return CGRect(
+            x: union.maxX + 120,
+            y: union.minY + 40,
+            width: width,
+            height: max(union.height - 80, 320)
+        )
+    }
+
+    private func projectedViewportFrames(
+        for windows: [ScreenMapWindowEntry],
+        source: CGRect,
+        target: CGRect
+    ) -> [UInt32: CGRect] {
+        guard source.width > 0, source.height > 0, target.width > 0, target.height > 0 else { return [:] }
+
+        let scale = min(target.width / source.width, target.height / source.height)
+        let projectedSize = CGSize(width: source.width * scale, height: source.height * scale)
+        let projectedOrigin = CGPoint(
+            x: target.minX + (target.width - projectedSize.width) / 2,
+            y: target.minY + (target.height - projectedSize.height) / 2
+        )
+
+        var frames: [UInt32: CGRect] = [:]
+        for win in windows {
+            let frame = win.virtualFrame
+            let mapped = CGRect(
+                x: projectedOrigin.x + (frame.minX - source.minX) * scale,
+                y: projectedOrigin.y + (frame.minY - source.minY) * scale,
+                width: max(frame.width * scale, 180),
+                height: max(frame.height * scale, 100)
+            )
+            frames[win.id] = mapped
+        }
+        return frames
+    }
+
+    private func parkedViewportFrames(
+        for windows: [ScreenMapWindowEntry],
+        parkingBounds: CGRect
+    ) -> [UInt32: CGRect] {
+        guard !windows.isEmpty else { return [:] }
+
+        let spacing: CGFloat = 20
+        let maxCardWidth = max(min(parkingBounds.width - spacing * 2, 320), 180)
+        var cursor = CGPoint(x: parkingBounds.minX, y: parkingBounds.minY)
+        var columnX = parkingBounds.minX
+        var frames: [UInt32: CGRect] = [:]
+
+        for win in windows.sorted(by: { $0.zIndex < $1.zIndex }) {
+            let aspect = max(win.virtualFrame.width / max(win.virtualFrame.height, 1), 0.6)
+            let width = min(max(win.virtualFrame.width * 0.55, 180), maxCardWidth)
+            let height = min(max(width / aspect, 100), 220)
+
+            if cursor.y + height > parkingBounds.maxY {
+                columnX += maxCardWidth + spacing
+                cursor = CGPoint(x: columnX, y: parkingBounds.minY)
+            }
+
+            frames[win.id] = CGRect(x: cursor.x, y: cursor.y, width: width, height: height)
+            cursor.y += height + spacing
+        }
+
+        return frames
+    }
+
+    func materializeViewport() {
+        guard let ed = editor else { return }
+
+        let scopedWindows = ed.focusedDisplayIndex != nil ? ed.focusedVisibleWindows : ed.visibleWindows
+        guard !scopedWindows.isEmpty else {
+            flash("No windows in scope")
+            return
+        }
+
+        let viewport = ed.viewportWorldRect
+        let projectable = scopedWindows.filter { win in
+            win.virtualFrame.intersects(viewport) ||
+            viewport.contains(CGPoint(x: win.virtualFrame.midX, y: win.virtualFrame.midY))
+        }
+        guard !projectable.isEmpty else {
+            flash("Viewport is empty")
+            return
+        }
+
+        let targetBounds = projectionTargetBounds(for: ed)
+        let parkingBounds = parkingBounds(for: ed)
+        let projectedFrames = projectedViewportFrames(
+            for: projectable,
+            source: viewport,
+            target: targetBounds
+        )
+        let parkedWindows = scopedWindows.filter { projectedFrames[$0.id] == nil }
+        let parkedFrames = parkedViewportFrames(for: parkedWindows, parkingBounds: parkingBounds)
+
+        for idx in ed.windows.indices {
+            let wid = ed.windows[idx].id
+            if let frame = projectedFrames[wid] ?? parkedFrames[wid] {
+                ed.windows[idx].editedFrame = frame
+            }
+        }
+
+        DiagnosticLog.shared.info(
+            "[Canvas] materialize → projected \(projectedFrames.count), parked \(parkedFrames.count), scope=\(ed.canvasScopeSummary)"
+        )
+        if ed.isPreviewing { endPreview() }
+        applyEdits(showFlash: false)
+        flash("Projected \(projectedFrames.count) windows")
     }
 
     func exitScreenMap() {
@@ -1901,7 +2453,7 @@ final class ScreenMapController: ObservableObject {
               let idx = ed.windows.firstIndex(where: { $0.id == winId }),
               let display = ed.displays.first(where: { $0.index == ed.windows[idx].displayIndex })
         else { return }
-        ed.windows[idx].editedFrame = WindowTiler.tileFrame(for: position, inDisplay: display.cgRect)
+        ed.syncLayoutFrame(at: idx, to: WindowTiler.tileFrame(for: position, inDisplay: display.cgRect))
         ed.isTilingMode = false
         ed.objectWillChange.send(); objectWillChange.send()
         flash(position.label)
@@ -1913,7 +2465,7 @@ final class ScreenMapController: ObservableObject {
               let idx = ed.windows.firstIndex(where: { $0.id == winId }),
               let display = ed.displays.first(where: { $0.index == ed.windows[idx].displayIndex })
         else { return }
-        ed.windows[idx].editedFrame = WindowTiler.tileFrame(fractions: fractions, inDisplay: display.cgRect)
+        ed.syncLayoutFrame(at: idx, to: WindowTiler.tileFrame(fractions: fractions, inDisplay: display.cgRect))
         ed.isTilingMode = false
         ed.objectWillChange.send(); objectWillChange.send()
         flash(label)
@@ -1957,7 +2509,7 @@ final class ScreenMapController: ObservableObject {
                 display = ed.displays.first(where: { $0.index == ed.windows[idx].displayIndex }) ?? ed.displays[0]
             }
 
-            ed.windows[idx].editedFrame = WindowTiler.tileFrame(fractions: fractions, inDisplay: display.cgRect)
+            ed.syncLayoutFrame(at: idx, to: WindowTiler.tileFrame(fractions: fractions, inDisplay: display.cgRect))
             // Update display index if layout spec moves to a different display
             if let spatialNum = spec.display {
                 let order = ed.spatialDisplayOrder
@@ -1968,6 +2520,7 @@ final class ScreenMapController: ObservableObject {
                         app: moved.app, title: moved.title,
                         originalFrame: moved.originalFrame,
                         editedFrame: moved.editedFrame,
+                        virtualFrame: moved.virtualFrame,
                         zIndex: moved.zIndex, layer: moved.layer,
                         displayIndex: order[spatialNum - 1].index,
                         isOnScreen: moved.isOnScreen,
@@ -2012,7 +2565,7 @@ final class ScreenMapController: ObservableObject {
                 [.boundsIgnoreFraming, .bestResolution]
             ) {
                 captures[win.id] = NSImage(cgImage: cgImage,
-                    size: NSSize(width: win.editedFrame.width, height: win.editedFrame.height))
+                    size: NSSize(width: win.virtualFrame.width, height: win.virtualFrame.height))
             }
         }
         previewCaptures = captures

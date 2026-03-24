@@ -1353,10 +1353,10 @@ struct VoiceCommandView: View {
 
     private func tileWindow(wid: UInt32, position: String) {
         guard let entry = DesktopModel.shared.windows[wid],
-              let pos = TilePosition(rawValue: position) else { return }
+              let placement = PlacementSpec(string: position) else { return }
         DispatchQueue.main.async {
             WindowTiler.focusWindow(wid: wid, pid: entry.pid)
-            WindowTiler.tileWindowById(wid: wid, pid: entry.pid, to: pos)
+            WindowTiler.tileWindowById(wid: wid, pid: entry.pid, to: placement)
             WindowTiler.highlightWindowById(wid: wid)
         }
     }
@@ -1591,5 +1591,4 @@ final class DragDividerNSView: NSView {
         return expanded.contains(point) ? self : nil
     }
 }
-
 

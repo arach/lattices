@@ -1,3 +1,5 @@
+import AppKit
+import ApplicationServices
 import Foundation
 
 // MARK: - Registry Types
@@ -904,22 +906,18 @@ final class LatticesApi {
             params: [
                 Param(name: "session", type: "string", required: true, description: "Tmux session name"),
                 Param(name: "position", type: "string", required: true,
-                      description: "Tile position (\(TilePosition.allCases.map(\.rawValue).joined(separator: ", ")))"),
+                      description: "Placement shorthand or grid syntax"),
             ],
             returns: .ok,
             handler: { params in
-                guard let session = params?["session"]?.stringValue else {
+                guard case .object(var dict) = params else {
                     throw RouterError.missingParam("session")
                 }
-                guard let posStr = params?["position"]?.stringValue,
-                      let position = TilePosition(rawValue: posStr) else {
-                    throw RouterError.missingParam("position (valid: \(TilePosition.allCases.map(\.rawValue).joined(separator: ", ")))")
+                guard dict["session"]?.stringValue != nil else {
+                    throw RouterError.missingParam("session")
                 }
-                let terminal = Preferences.shared.terminal
-                DispatchQueue.main.async {
-                    WindowTiler.tile(session: session, terminal: terminal, to: position)
-                }
-                return .object(["ok": .bool(true)])
+                dict["placement"] = dict["placement"] ?? dict["position"]
+                return try Self.executeWindowPlacement(params: .object(dict))
             }
         ))
 
@@ -959,6 +957,24 @@ final class LatticesApi {
             }
         ))
 
+        api.register(Endpoint(
+            method: "window.place",
+            description: "Place a window or session using a typed placement spec",
+            access: .mutate,
+            params: [
+                Param(name: "wid", type: "uint32", required: false, description: "Window ID"),
+                Param(name: "session", type: "string", required: false, description: "Tmux session name"),
+                Param(name: "app", type: "string", required: false, description: "Application name"),
+                Param(name: "title", type: "string", required: false, description: "Optional title substring for app matching"),
+                Param(name: "display", type: "int", required: false, description: "Target display index"),
+                Param(name: "placement", type: "string|object", required: true, description: "Placement shorthand or typed placement object"),
+            ],
+            returns: .custom("Execution receipt with target resolution, placement, and trace"),
+            handler: { params in
+                try Self.executeWindowPlacement(params: params)
+            }
+        ))
+
         // ── Present Window ────────────────────────────────────────────
         api.register(Endpoint(
             method: "window.present",
@@ -984,22 +1000,19 @@ final class LatticesApi {
 
                 // Resolve position to fractional rect
                 var fractions: (CGFloat, CGFloat, CGFloat, CGFloat)? = nil
-                if let posStr = params?["position"]?.stringValue {
-                    if let pos = TilePosition(rawValue: posStr) {
-                        fractions = pos.rect
-                    } else {
-                        fractions = parseGridString(posStr)
-                    }
+                if let placement = Self.parsePlacement(from: params?["placement"] ?? params?["position"]) {
+                    fractions = placement.fractions
                 }
 
                 var frame: CGRect? = nil
                 if let fracs = fractions {
+                    let screen = Self.resolveTargetScreen(for: entry, displayIndex: params?["display"]?.intValue)
                     // Compute pixel frame (needs main thread for NSScreen)
                     if Thread.isMainThread {
-                        frame = WindowTiler.tileFrame(fractions: fracs, inDisplay: WindowTiler.mainScreenFrame())
+                        frame = WindowTiler.tileFrame(fractions: fracs, on: screen)
                     } else {
                         DispatchQueue.main.sync {
-                            frame = WindowTiler.tileFrame(fractions: fracs, inDisplay: WindowTiler.mainScreenFrame())
+                            frame = WindowTiler.tileFrame(fractions: fracs, on: screen)
                         }
                     }
                 } else if let x = params?["x"]?.intValue,
@@ -1677,6 +1690,153 @@ final class LatticesApi {
                 api.schema()
             }
         ))
+    }
+}
+
+private extension LatticesApi {
+    static func parsePlacement(from json: JSON?) -> PlacementSpec? {
+        PlacementSpec(json: json)
+    }
+
+    static func resolveTargetScreen(for entry: WindowEntry?, displayIndex: Int?) -> NSScreen {
+        if let displayIndex, displayIndex >= 0, displayIndex < NSScreen.screens.count {
+            return NSScreen.screens[displayIndex]
+        }
+        if let entry {
+            return WindowTiler.screenForWindowFrame(entry.frame)
+        }
+        return NSScreen.main ?? NSScreen.screens[0]
+    }
+
+    static func frontmostWindowTarget() -> (wid: UInt32, pid: Int32)? {
+        guard let app = NSWorkspace.shared.frontmostApplication,
+              app.bundleIdentifier != "com.arach.lattices" else {
+            return nil
+        }
+
+        let appRef = AXUIElementCreateApplication(app.processIdentifier)
+        var focusedRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(appRef, kAXFocusedWindowAttribute as CFString, &focusedRef) == .success,
+              let focusedWindow = focusedRef else {
+            return nil
+        }
+
+        var wid: CGWindowID = 0
+        guard _AXUIElementGetWindow(focusedWindow as! AXUIElement, &wid) == .success else {
+            return nil
+        }
+        return (UInt32(wid), app.processIdentifier)
+    }
+
+    static func executeWindowPlacement(params: JSON?) throws -> JSON {
+        guard let placement = parsePlacement(from: params?["placement"] ?? params?["position"]) else {
+            throw RouterError.missingParam("placement")
+        }
+
+        let displayIndex = params?["display"]?.intValue
+        var trace: [JSON] = []
+
+        if let wid = params?["wid"]?.uint32Value {
+            guard let entry = DesktopModel.shared.windows[wid] else {
+                throw RouterError.notFound("window \(wid)")
+            }
+            let screen = resolveTargetScreen(for: entry, displayIndex: displayIndex)
+            trace.append(.string("resolved target by wid"))
+            trace.append(.string("placement \(placement.wireValue)"))
+            DispatchQueue.main.async {
+                WindowTiler.tileWindowById(wid: wid, pid: entry.pid, to: placement, on: screen)
+            }
+            return .object([
+                "ok": .bool(true),
+                "target": .string("wid"),
+                "wid": .int(Int(wid)),
+                "app": .string(entry.app),
+                "placement": placement.jsonValue,
+                "trace": .array(trace),
+            ])
+        }
+
+        if let session = params?["session"]?.stringValue {
+            let screen = resolveTargetScreen(
+                for: DesktopModel.shared.windowForSession(session),
+                displayIndex: displayIndex
+            )
+            trace.append(.string("resolved target by session"))
+            trace.append(.string("placement \(placement.wireValue)"))
+
+            if let entry = DesktopModel.shared.windowForSession(session) {
+                DispatchQueue.main.async {
+                    WindowTiler.tileWindowById(wid: entry.wid, pid: entry.pid, to: placement, on: screen)
+                }
+                return .object([
+                    "ok": .bool(true),
+                    "target": .string("session"),
+                    "session": .string(session),
+                    "wid": .int(Int(entry.wid)),
+                    "placement": placement.jsonValue,
+                    "trace": .array(trace),
+                ])
+            }
+
+            let terminal = Preferences.shared.terminal
+            trace.append(.string("session window not in DesktopModel; using terminal fallback"))
+            DispatchQueue.main.async {
+                WindowTiler.tile(session: session, terminal: terminal, to: placement, on: screen)
+            }
+            return .object([
+                "ok": .bool(true),
+                "target": .string("session"),
+                "session": .string(session),
+                "placement": placement.jsonValue,
+                "trace": .array(trace),
+            ])
+        }
+
+        if let app = params?["app"]?.stringValue {
+            let title = params?["title"]?.stringValue
+            guard let entry = DesktopModel.shared.windowForApp(app: app, title: title) else {
+                throw RouterError.notFound("window for app \(app)")
+            }
+            let screen = resolveTargetScreen(for: entry, displayIndex: displayIndex)
+            trace.append(.string("resolved target by app/title match"))
+            trace.append(.string("placement \(placement.wireValue)"))
+            DispatchQueue.main.async {
+                WindowTiler.tileWindowById(wid: entry.wid, pid: entry.pid, to: placement, on: screen)
+            }
+            return .object([
+                "ok": .bool(true),
+                "target": .string("app"),
+                "app": .string(entry.app),
+                "wid": .int(Int(entry.wid)),
+                "placement": placement.jsonValue,
+                "trace": .array(trace),
+            ])
+        }
+
+        if let target = frontmostWindowTarget() {
+            let wid = target.wid
+            let entry = DesktopModel.shared.windows[wid]
+            let screen = resolveTargetScreen(for: entry, displayIndex: displayIndex)
+            trace.append(.string("resolved target by frontmost window"))
+            trace.append(.string("placement \(placement.wireValue)"))
+            DispatchQueue.main.async {
+                WindowTiler.tileWindowById(wid: wid, pid: target.pid, to: placement, on: screen)
+            }
+
+            var response: [String: JSON] = [
+                "ok": .bool(true),
+                "target": .string("frontmost"),
+                "wid": .int(Int(wid)),
+                "placement": placement.jsonValue,
+                "trace": .array(trace),
+            ]
+            if let entry {
+                response["app"] = .string(entry.app)
+            }
+            return .object(response)
+        }
+
+        throw RouterError.custom("Could not resolve a window target for placement")
     }
 }
 
