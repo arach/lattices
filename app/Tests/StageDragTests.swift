@@ -122,9 +122,9 @@ final class StageDragTests: XCTestCase {
             return
         }
 
-        // Target specific apps: Chrome, iTerm2, Talkie
+        // Target specific apps: Chrome, iTerm2, Vox
         let activeApps = Set(active.map(\.app))
-        let preferred = ["Google Chrome", "iTerm2", "Talkie"]
+        let preferred = ["Google Chrome", "iTerm2", "Vox"]
         guard let thumb = thumbnails.first(where: { preferred.contains($0.app) && !activeApps.contains($0.app) })
               ?? thumbnails.first(where: { !activeApps.contains($0.app) }) else {
             print("No suitable strip thumbnail found")
@@ -161,7 +161,7 @@ final class StageDragTests: XCTestCase {
         guard !thumbnails.isEmpty, let anchor = active.first else { return }
 
         let activeApps = Set(active.map(\.app))
-        let preferred6 = ["Google Chrome", "iTerm2", "Talkie"]
+        let preferred6 = ["Google Chrome", "iTerm2", "Vox"]
         guard let thumb = thumbnails.first(where: { preferred6.contains($0.app) && !activeApps.contains($0.app) })
               ?? thumbnails.first(where: { !activeApps.contains($0.app) }) else { return }
 
@@ -195,7 +195,7 @@ final class StageDragTests: XCTestCase {
         guard !thumbnails.isEmpty, let anchor = active.first else { return }
 
         let activeApps = Set(active.map(\.app))
-        let preferred7 = ["Google Chrome", "iTerm2", "Talkie"]
+        let preferred7 = ["Google Chrome", "iTerm2", "Vox"]
         guard let thumb = thumbnails.first(where: { preferred7.contains($0.app) && !activeApps.contains($0.app) })
               ?? thumbnails.first(where: { !activeApps.contains($0.app) }) else { return }
 
@@ -244,7 +244,7 @@ final class StageDragTests: XCTestCase {
         guard !thumbnails.isEmpty else { return }
 
         let activeApps = Set(active.map(\.app))
-        let preferred8 = ["Google Chrome", "iTerm2", "Talkie"]
+        let preferred8 = ["Google Chrome", "iTerm2", "Vox"]
         guard let thumb = thumbnails.first(where: { preferred8.contains($0.app) && !activeApps.contains($0.app) })
               ?? thumbnails.first(where: { !activeApps.contains($0.app) }) else { return }
 
@@ -294,7 +294,7 @@ final class StageDragTests: XCTestCase {
         guard !thumbnails.isEmpty else { return }
 
         let activeApps = Set(active.map(\.app))
-        let preferred9 = ["Google Chrome", "iTerm2", "Talkie"]
+        let preferred9 = ["Google Chrome", "iTerm2", "Vox"]
         guard let thumb = thumbnails.first(where: { preferred9.contains($0.app) && !activeApps.contains($0.app) })
               ?? thumbnails.first(where: { !activeApps.contains($0.app) }) else { return }
 

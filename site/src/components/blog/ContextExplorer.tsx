@@ -22,7 +22,7 @@ const afterSnapshot = {
     {
       app: 'iTerm2', title: 'Claude Code', wid: 891,
       frame: '864,25 864×1092', screen: 1, zIndex: 1,
-      terminal: { cwd: '~/dev/talkie', hasClaude: true, processes: ['claude'], tmux: 'talkie' },
+      terminal: { cwd: '~/dev/vox', hasClaude: true, processes: ['claude'], tmux: 'vox' },
     },
     {
       app: 'Google Chrome', title: 'GitHub — lattices PR #42', wid: 205,

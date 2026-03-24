@@ -52,7 +52,7 @@ Two endpoints:
 | `slots` | object | no | Named parameters for the intent |
 | `rawText` | string | no | Original transcription text |
 | `confidence` | double | no | Transcription confidence (0.0-1.0) |
-| `source` | string | no | Source identifier (e.g. "talkie", "siri", "agent") |
+| `source` | string | no | Source identifier (e.g. "vox", "siri", "agent") |
 
 **Example request**:
 
@@ -65,7 +65,7 @@ Two endpoints:
     "slots": { "position": "left", "app": "Chrome" },
     "rawText": "tile Chrome to the left",
     "confidence": 0.95,
-    "source": "talkie"
+    "source": "vox"
   }
 }
 ```
@@ -123,7 +123,7 @@ Trigger an immediate screen text scan (OCR).
 
 ## Voice Integration Pattern
 
-A voice service like Talkie integrates in three steps:
+A voice service like Vox integrates in three steps:
 
 ### 1. Fetch the catalog
 
@@ -156,13 +156,13 @@ await daemonCall('intents.execute', {
   slots: result.slots,
   rawText: transcription,
   confidence: 0.95,
-  source: 'talkie'
+  source: 'vox'
 })
 ```
 
 ### Why this works
 
-- **No hardcoding**: Talkie doesn't know about Lattices-specific methods. It fetches the catalog dynamically.
+- **No hardcoding**: Vox doesn't know about Lattices-specific methods. It fetches the catalog dynamically.
 - **Any service**: Any app that exposes `intents.list` + `intents.execute` becomes voice-controllable.
 - **Few-shot examples**: The `examples` field acts as few-shot prompts for intent extraction.
 - **Typed slots**: The `values` field on enum slots (like tile positions) constrains the LLM's output.

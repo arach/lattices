@@ -7,6 +7,7 @@ struct ScreenMapView: View {
     @ObservedObject var controller: ScreenMapController
     var onNavigate: ((AppPage) -> Void)? = nil
     @ObservedObject private var daemon = DaemonServer.shared
+    @StateObject private var piChat = PiChatSession.shared
     @State private var eventMonitor: Any?
     @State private var mouseDownMonitor: Any?
     @State private var mouseDragMonitor: Any?
@@ -87,6 +88,10 @@ struct ScreenMapView: View {
                                       range: 220...480, edge: .leading)
                     inspectorPane(editor: editor)
                 }
+            }
+            if piChat.isVisible {
+                PiChatDock(session: piChat)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             footerBar
         }
@@ -1879,6 +1884,11 @@ struct ScreenMapView: View {
 
                 // Right: docs + logs
                 HStack(spacing: 10) {
+                    statusBarButton(icon: "terminal", label: piChat.isVisible ? "Hide Pi" : "Pi") {
+                        withAnimation(.easeOut(duration: 0.16)) {
+                            piChat.toggleVisibility()
+                        }
+                    }
                     statusBarButton(icon: "book", label: "Docs") {
                         onNavigate?(.docs)
                     }
@@ -2144,6 +2154,9 @@ struct ScreenMapView: View {
             // Only handle keys when our window is the key window
             guard let win = ScreenMapWindowController.shared.nsWindow,
                   win.isKeyWindow else { return event }
+            if isEditableTextResponder(win.firstResponder) {
+                return event
+            }
             // Track space key for canvas drag-to-pan
             if event.keyCode == 49 && !controller.isSearchActive {
                 if event.type == .keyDown && !event.isARepeat {
@@ -2161,6 +2174,20 @@ struct ScreenMapView: View {
             let consumed = controller.handleKey(event.keyCode, modifiers: event.modifierFlags)
             return consumed ? nil : event
         }
+    }
+
+    private func isEditableTextResponder(_ responder: NSResponder?) -> Bool {
+        if let textView = responder as? NSTextView {
+            return textView.isEditable || textView.isFieldEditor
+        }
+
+        if let textField = responder as? NSTextField {
+            return textField.isEditable
+        }
+
+        guard let responder else { return false }
+        let className = NSStringFromClass(type(of: responder))
+        return className.contains("FieldEditor") || className.contains("TextView")
     }
 
     private func removeKeyHandler() {

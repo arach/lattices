@@ -123,8 +123,8 @@ Bundle related repos as tabs in one session. Each tab gets its own
 pane layout from its `.lattices.json`.
 
 ```sh
-lattices group talkie      # Launch iOS, macOS, Web, API as tabs
-lattices tab talkie iOS    # Switch to the iOS tab
+lattices group vox         # Launch iOS, macOS, Web, API as tabs
+lattices tab vox iOS       # Switch to the iOS tab
 ```
 
 ## Window tiling and awareness
@@ -147,7 +147,7 @@ lattices scan deep             # Trigger a Vision OCR scan now
 
 Speak to control your workspace — tile windows, search, focus apps,
 and launch projects with natural language. Powered by
-[Talkie](https://github.com/arach/talkie) for transcription and
+[Vox](https://github.com/arach/vox) for transcription and
 local NLEmbedding for intent matching, with Claude fallback for
 ambiguous commands.
 
@@ -224,7 +224,7 @@ Full documentation at [lattices.dev/docs](https://lattices.dev/docs/overview), i
 
 - [API reference](https://lattices.dev/docs/api) — all 35 daemon methods
 - [Layers](https://lattices.dev/docs/layers) — workspace layers and tab groups
-- [Voice commands](https://lattices.dev/docs/voice) — Talkie integration
+- [Voice commands](https://lattices.dev/docs/voice) — Vox integration
 
 ## License
 

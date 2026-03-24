@@ -57,7 +57,7 @@ final class DesktopModel: ObservableObject {
     ]
 
     @Published private(set) var windows: [UInt32: WindowEntry] = [:]
-    /// In-memory layer tags: wid → layer id (e.g. "lattices", "talkie", "hudson")
+    /// In-memory layer tags: wid → layer id (e.g. "lattices", "vox", "hudson")
     private(set) var windowLayerTags: [UInt32: String] = [:]
     private var timer: Timer?
 

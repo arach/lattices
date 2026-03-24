@@ -201,7 +201,7 @@ await daemonCall('intents.execute', {
   intent: 'tile_window',
   slots: { position: 'left', app: 'Chrome' },
   rawText: 'put Chrome on the left',
-  source: 'talkie'
+  source: 'vox'
 })
 ```
 

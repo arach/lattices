@@ -7,6 +7,8 @@ SCRIPT_PATH="$(readlink -f "$0" 2>/dev/null || python3 -c "import os,sys; print(
 APP_DIR="$(cd "$(dirname "$SCRIPT_PATH")/../app" && pwd)"
 LOG_FILE="$HOME/.lattices/lattices.log"
 BINARY="$APP_DIR/.build/release/Lattices"
+BUNDLE="$APP_DIR/Lattices.app"
+BUNDLE_BIN="$BUNDLE/Contents/MacOS/Lattices"
 
 red()   { printf "\033[31m%s\033[0m\n" "$*"; }
 green() { printf "\033[32m%s\033[0m\n" "$*"; }
@@ -15,6 +17,12 @@ dim()   { printf "\033[2m%s\033[0m\n" "$*"; }
 cmd_build() {
     echo "Building release..."
     cd "$APP_DIR" && swift build -c release
+    # Copy into app bundle so it runs with the proper bundle ID
+    mkdir -p "$(dirname "$BUNDLE_BIN")" "$BUNDLE/Contents/Resources"
+    cp "$BINARY" "$BUNDLE_BIN"
+    cp "$APP_DIR/Info.plist" "$BUNDLE/Contents/Info.plist" 2>/dev/null || true
+    # Re-sign so TCC permissions persist across rebuilds
+    codesign --force --sign - --identifier com.arach.lattices "$BUNDLE" 2>/dev/null || true
     green "Build complete."
 }
 
@@ -22,8 +30,7 @@ cmd_restart() {
     echo "Restarting Lattices..."
     pkill -x Lattices 2>/dev/null && sleep 1 || true
     cmd_build
-    "$BINARY" &
-    disown
+    open "$BUNDLE"
     green "Lattices restarted."
 }
 
@@ -39,8 +46,7 @@ cmd_launch() {
     if pgrep -x Lattices >/dev/null 2>&1; then
         dim "Lattices is already running."
     else
-        "$BINARY" &
-        disown
+        open "$BUNDLE"
         green "Lattices launched."
     fi
 }

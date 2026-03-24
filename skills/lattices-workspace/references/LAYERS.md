@@ -24,13 +24,13 @@ Add `groups` to `~/.lattices/workspace.json`:
   "name": "my-setup",
   "groups": [
     {
-      "id": "talkie",
-      "label": "Talkie",
+      "id": "vox",
+      "label": "Vox",
       "tabs": [
-        { "path": "/Users/you/dev/talkie-ios", "label": "iOS" },
-        { "path": "/Users/you/dev/talkie-macos", "label": "macOS" },
-        { "path": "/Users/you/dev/talkie-web", "label": "Website" },
-        { "path": "/Users/you/dev/talkie-api", "label": "API" }
+        { "path": "/Users/you/dev/vox-ios", "label": "iOS" },
+        { "path": "/Users/you/dev/vox-macos", "label": "macOS" },
+        { "path": "/Users/you/dev/vox-web", "label": "Website" },
+        { "path": "/Users/you/dev/vox-api", "label": "API" }
       ]
     }
   ]
@@ -42,10 +42,10 @@ to per-project configs.
 
 ### How it works
 
-- Session name follows the pattern `lattices-group-<id>` (e.g. `lattices-group-talkie`)
+- Session name follows the pattern `lattices-group-<id>` (e.g. `lattices-group-vox`)
 - 1 group = 1 tmux session. Each tab is a tmux window, and each window
   gets its own panes from that project's `.lattices.json`
-- You can still launch projects independently: `cd talkie-ios && lattices`
+- You can still launch projects independently: `cd vox-ios && lattices`
   creates its own standalone session as before
 
 ### Tab group fields
@@ -69,9 +69,9 @@ lattices tab <group> [tab]  # Switch tab by label or index
 Examples:
 
 ```bash
-lattices group talkie       # Launch all Talkie tabs
-lattices tab talkie iOS     # Switch to the iOS tab
-lattices tab talkie 0       # Switch to first tab (by index)
+lattices group vox       # Launch all Vox tabs
+lattices tab vox iOS     # Switch to the iOS tab
+lattices tab vox 0       # Switch to first tab (by index)
 ```
 
 ### Menu bar app
@@ -147,7 +147,7 @@ fields instead of `path`:
       "label": "Main",
       "projects": [
         { "app": "Google Chrome", "title": "GitHub", "tile": "left" },
-        { "app": "Talkie", "tile": "top-right", "launch": "open -a Talkie" },
+        { "app": "Vox", "tile": "top-right", "launch": "open -a Vox" },
         { "path": "/Users/you/dev/frontend", "tile": "bottom-right" }
       ]
     },
@@ -178,11 +178,11 @@ This lets you tile a whole group into a screen position:
   "name": "my-setup",
   "groups": [
     {
-      "id": "talkie",
-      "label": "Talkie",
+      "id": "vox",
+      "label": "Vox",
       "tabs": [
-        { "path": "/Users/you/dev/talkie-ios", "label": "iOS" },
-        { "path": "/Users/you/dev/talkie-web", "label": "Website" }
+        { "path": "/Users/you/dev/vox-ios", "label": "iOS" },
+        { "path": "/Users/you/dev/vox-web", "label": "Website" }
       ]
     }
   ],
@@ -191,7 +191,7 @@ This lets you tile a whole group into a screen position:
       "id": "main",
       "label": "Main",
       "projects": [
-        { "group": "talkie", "tile": "top-left" },
+        { "group": "vox", "tile": "top-left" },
         { "path": "/Users/you/dev/design-system", "tile": "right" }
       ]
     }
@@ -200,7 +200,7 @@ This lets you tile a whole group into a screen position:
 ```
 
 When switching to this layer, lattices launches (or focuses) the
-"talkie" group session and tiles it to the top-left quarter, alongside
+"vox" group session and tiles it to the top-left quarter, alongside
 the design-system project on the right.
 
 ### Layer fields
@@ -336,7 +336,7 @@ header and search field in the menu bar panel:
 ```json
 {
   "projects": [
-    { "path": "/Users/you/dev/talkie" }
+    { "path": "/Users/you/dev/vox" }
   ]
 }
 ```
@@ -370,7 +370,7 @@ No `tile` — just focuses the window wherever it is.
 ```json
 {
   "projects": [
-    { "group": "talkie", "tile": "left" },
+    { "group": "vox", "tile": "left" },
     { "path": "/Users/you/dev/api", "tile": "right" }
   ]
 }

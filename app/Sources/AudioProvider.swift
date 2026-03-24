@@ -4,7 +4,7 @@ import AppKit
 
 /// A provider that can capture audio and return transcriptions.
 /// Lattices doesn't do transcription itself — it delegates to an external
-/// service (Talkie, Whisper, etc.) and maps the result to intents.
+/// service (Vox, Whisper, etc.) and maps the result to intents.
 protocol AudioProvider: AnyObject {
     var isAvailable: Bool { get }
     var isListening: Bool { get }
@@ -22,7 +22,7 @@ protocol AudioProvider: AnyObject {
 struct Transcription {
     let text: String
     let confidence: Double
-    let source: String           // "talkie", "whisper", etc.
+    let source: String           // "vox", "whisper", etc.
     let isPartial: Bool          // true for streaming partial results
     let durationMs: Int?
 }
@@ -45,9 +45,9 @@ final class AudioLayer: ObservableObject {
 
 
     private init() {
-        let talkie = TalkieAudioProvider()
-        provider = talkie
-        providerName = "talkie"
+        let vox = VoxAudioProvider()
+        provider = vox
+        providerName = "vox"
         // Connection is managed by VoiceCommandWindow — not here.
         // Connecting here would race with (and destroy) the existing WebSocket.
     }
@@ -65,7 +65,7 @@ final class AudioLayer: ObservableObject {
         didExecuteIntent = false
 
         guard let provider = provider else {
-            executionResult = "No voice provider — install Talkie"
+            executionResult = "No voice provider — install Vox"
             return
         }
 
@@ -236,30 +236,37 @@ final class AudioLayer: ObservableObject {
 // See app/Sources/Intents/LatticeIntent.swift
 
 
-// MARK: - Talkie Audio Provider (WebSocket JSON-RPC via TalkieClient)
+// MARK: - Vox Audio Provider (WebSocket JSON-RPC via VoxClient)
 //
-// Delegates recording and transcription entirely to TalkieAgent.
-// Lattices never touches the mic — TalkieAgent owns the mic lifecycle,
-// recording, and Whisper transcription. We just call startDictation
-// and listen for streaming events.
+// Delegates recording and transcription entirely to the Vox daemon (voxd).
+// Lattices never touches the mic — Vox owns the mic, recording, and
+// transcription. We call transcribe.startSession to begin recording
+// and transcribe.stopSession to stop and get the transcript.
+//
+// Session events flow on the startSession call ID:
+//   session.state: {state, sessionId, previous}
+//   session.final: {sessionId, text, words[], elapsedMs, metrics}
 
-final class TalkieAudioProvider: AudioProvider {
+final class VoxAudioProvider: AudioProvider {
     private var onTranscript: ((Transcription) -> Void)?
     private var stopCompletion: ((Transcription?) -> Void)?
     private var _isListening = false
     private var startTime: Date?
 
     var isAvailable: Bool {
-        TalkieClient.shared.connectionState == .connected
+        VoxClient.shared.connectionState == .connected
     }
 
     var isListening: Bool { _isListening }
 
     func checkHealth(completion: @escaping (Bool) -> Void) {
-        let client = TalkieClient.shared
+        let client = VoxClient.shared
         if client.connectionState == .connected {
-            client.ping { ok in
-                DispatchQueue.main.async { completion(ok) }
+            client.call(method: "health") { result in
+                switch result {
+                case .success: DispatchQueue.main.async { completion(true) }
+                case .failure: DispatchQueue.main.async { completion(false) }
+                }
             }
         } else {
             completion(false)
@@ -267,10 +274,10 @@ final class TalkieAudioProvider: AudioProvider {
     }
 
     func startListening(onTranscript: @escaping (Transcription) -> Void) {
-        let client = TalkieClient.shared
+        let client = VoxClient.shared
         guard client.connectionState == .connected else {
-            DiagnosticLog.shared.warn("TalkieAudioProvider: not connected to TalkieAgent")
-            onTranscript(Transcription(text: "", confidence: 0, source: "talkie", isPartial: false, durationMs: nil))
+            DiagnosticLog.shared.warn("VoxAudioProvider: not connected to Vox")
+            onTranscript(Transcription(text: "", confidence: 0, source: "vox", isPartial: false, durationMs: nil))
             return
         }
 
@@ -278,26 +285,30 @@ final class TalkieAudioProvider: AudioProvider {
         _isListening = true
         startTime = Date()
 
-        DiagnosticLog.shared.info("TalkieAudioProvider: starting dictation via TalkieAgent")
+        DiagnosticLog.shared.info("VoxAudioProvider: starting session via Vox")
 
-        // Call startDictation as a streaming RPC — TalkieAgent records and transcribes
-        client.callStreaming(
-            method: "startDictation",
-            params: ["persist": false, "source": "lattices"],
+        // transcribe.startSession — Vox records from mic, emits session events on this call ID
+        client.startSession(
             onProgress: { [weak self] event, data in
                 guard let self else { return }
                 DispatchQueue.main.async {
                     switch event {
-                    case "stateChange":
+                    case "session.state":
                         let state = data["state"] as? String ?? ""
-                        DiagnosticLog.shared.info("TalkieAudioProvider: state → \(state)")
+                        DiagnosticLog.shared.info("VoxAudioProvider: session → \(state)")
 
-                    case "partialTranscript":
-                        if let text = data["text"] as? String {
-                            self.onTranscript?(Transcription(
-                                text: text, confidence: 0.5, source: "talkie",
-                                isPartial: true, durationMs: nil
-                            ))
+                    case "session.final":
+                        // Final transcript arrived — deliver it
+                        if let text = data["text"] as? String, !text.isEmpty {
+                            let elapsed = data["elapsedMs"] as? Int
+                            let t = Transcription(
+                                text: text, confidence: 0.95, source: "vox",
+                                isPartial: false, durationMs: elapsed
+                            )
+                            DiagnosticLog.shared.info("VoxAudioProvider: transcribed → '\(text)' (\(elapsed ?? 0)ms)")
+                            self.onTranscript?(t)
+                            self.stopCompletion?(t)
+                            self.stopCompletion = nil
                         }
 
                     default:
@@ -309,38 +320,35 @@ final class TalkieAudioProvider: AudioProvider {
                 guard let self else { return }
                 DispatchQueue.main.async {
                     self._isListening = false
-                    let elapsed = self.startTime.map { Int(Date().timeIntervalSince($0) * 1000) }
 
                     switch result {
                     case .success(let data):
-                        DiagnosticLog.shared.info("TalkieAudioProvider: response keys → \(Array(data.keys))")
-                        if let text = (data["transcript"] as? String) ?? (data["text"] as? String) {
-                            let confidence = data["confidence"] as? Double ?? 0.9
+                        // Final result also comes here (same data as session.final)
+                        if let text = data["text"] as? String, !text.isEmpty,
+                           self.stopCompletion != nil {
+                            // Only deliver if session.final didn't already
+                            let elapsed = data["elapsedMs"] as? Int
                             let t = Transcription(
-                                text: text, confidence: confidence, source: "talkie",
+                                text: text, confidence: 0.95, source: "vox",
                                 isPartial: false, durationMs: elapsed
                             )
-                            DiagnosticLog.shared.info("TalkieAudioProvider: transcribed → '\(text)'")
                             self.onTranscript?(t)
-                            // Also deliver via stopListening completion if waiting
                             self.stopCompletion?(t)
                             self.stopCompletion = nil
-                        } else {
-                            DiagnosticLog.shared.info("TalkieAudioProvider: no transcript in response")
+                        } else if self.stopCompletion != nil {
                             self.stopCompletion?(nil)
                             self.stopCompletion = nil
                         }
 
                     case .failure(let error):
-                        DiagnosticLog.shared.warn("TalkieAudioProvider: dictation error — \(error.localizedDescription)")
-                        if case .micBusy(let owner) = error {
-                            AudioLayer.shared.executionResult = "Mic in use by \(owner)"
+                        DiagnosticLog.shared.warn("VoxAudioProvider: session error — \(error.localizedDescription)")
+                        if case .sessionBusy = error {
+                            AudioLayer.shared.executionResult = "Session already active"
                         } else {
                             AudioLayer.shared.executionResult = "Transcription failed"
                         }
-                        // Notify with empty transcript so the UI updates
                         self.onTranscript?(Transcription(
-                            text: "", confidence: 0, source: "talkie",
+                            text: "", confidence: 0, source: "vox",
                             isPartial: false, durationMs: nil
                         ))
                         self.stopCompletion?(nil)
@@ -354,27 +362,21 @@ final class TalkieAudioProvider: AudioProvider {
     func stopListening(completion: @escaping (Transcription?) -> Void) {
         _isListening = false
 
-        let client = TalkieClient.shared
+        let client = VoxClient.shared
         guard client.connectionState == .connected else {
             completion(nil)
             return
         }
 
-        DiagnosticLog.shared.info("TalkieAudioProvider: stopping dictation")
+        DiagnosticLog.shared.info("VoxAudioProvider: stopping session")
 
-        // Store completion — the startDictation streaming completion will call it
-        // when the transcript arrives.
+        // Store completion — the startSession's session.final event delivers the transcript
         self.stopCompletion = completion
 
-        client.call(method: "stopDictation") { result in
-            DispatchQueue.main.async {
-                switch result {
-                case .success:
-                    // Transcript arrives via the startDictation streaming completion
-                    // which will call stopCompletion
-                    break
-                case .failure(let error):
-                    DiagnosticLog.shared.warn("TalkieAudioProvider: stopDictation error — \(error.localizedDescription)")
+        client.stopSession { result in
+            if case .failure(let error) = result {
+                DiagnosticLog.shared.warn("VoxAudioProvider: stopSession error — \(error.localizedDescription)")
+                DispatchQueue.main.async {
                     self.stopCompletion?(nil)
                     self.stopCompletion = nil
                 }

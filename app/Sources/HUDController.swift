@@ -376,21 +376,11 @@ final class HUDController {
             let shift = event.modifierFlags.contains(.shift)
             if state.focus == .search {
                 state.focus = .list
-                state.selectedIndex = 0
-                state.selectedItem = state.flatItems[safe: 0]
-                if shift, let item = state.selectedItem {
-                    state.selectedItems.insert(item.id)
-                    DiagnosticLog.shared.info("[Select] shift+down added \(item.id) total=\(state.selectedItems.count)")
+                if let firstItem = state.flatItems[safe: 0] {
+                    state.selectSingle(firstItem, index: 0)
                 }
             } else if state.focus == .list {
-                if shift, let current = state.selectedItem {
-                    state.selectedItems.insert(current.id)
-                }
-                moveSelection(1)
-                if shift, let item = state.selectedItem {
-                    state.selectedItems.insert(item.id)
-                    DiagnosticLog.shared.info("[Select] shift+down added \(item.id) total=\(state.selectedItems.count)")
-                }
+                state.moveSelection(by: 1, extend: shift)
             }
             return nil
         }
@@ -402,13 +392,7 @@ final class HUDController {
                 if state.selectedIndex == 0 && !shift {
                     state.focus = .search
                 } else if state.selectedIndex > 0 {
-                    if shift, let current = state.selectedItem {
-                        state.selectedItems.insert(current.id)
-                    }
-                    moveSelection(-1)
-                    if shift, let item = state.selectedItem {
-                        state.selectedItems.insert(item.id)
-                    }
+                    state.moveSelection(by: -1, extend: shift)
                 }
             }
             return nil
@@ -446,15 +430,25 @@ final class HUDController {
 
         // T key (keyCode 17): tile selected windows or toggle tile mode
         if keyCode == 17 && state.focus != .search {
-            DiagnosticLog.shared.info("[TileKey] tileMode=\(state.tileMode) selectedItems=\(state.selectedItems.count) items=\(state.selectedItems)")
+            DiagnosticLog.shared.info("[TileKey] tileMode=\(state.tileMode) multiSelection=\(state.multiSelectionCount) items=\(state.effectiveSelectionIDs)")
             if state.tileMode {
                 exitTileMode()
-            } else if !state.selectedItems.isEmpty {
+            } else if !selectedWindowsForActions().isEmpty {
                 tileSelectedItems()
             } else {
                 enterTileMode()
             }
             return nil
+        }
+
+        // D key (keyCode 2): detach selected projects or distribute selected windows
+        if keyCode == 2 && state.focus != .search {
+            if detachSelectedProjects() {
+                return nil
+            }
+            if distributeSelectedWindows() {
+                return nil
+            }
         }
 
         // Tile mode keys — H/J/K/L/F for tiling selected window
@@ -508,8 +502,9 @@ final class HUDController {
             let numberMap: [UInt16: Int] = [18: 1, 19: 2]
             if let num = numberMap[keyCode], let offset = state.sectionOffsets[num] {
                 state.focus = .list
-                state.selectedIndex = offset
-                state.selectedItem = state.flatItems[safe: offset]
+                if let item = state.flatItems[safe: offset] {
+                    state.selectSingle(item, index: offset)
+                }
                 return nil
             }
         }
@@ -518,14 +513,6 @@ final class HUDController {
         if state.focus == .search { return event }
 
         return event
-    }
-
-    private func moveSelection(_ delta: Int) {
-        let items = state.flatItems
-        guard !items.isEmpty else { return }
-        let next = max(0, min(items.count - 1, state.selectedIndex + delta))
-        state.selectedIndex = next
-        state.selectedItem = items[safe: next]
     }
 
     private func toggleVoice() {
@@ -701,29 +688,14 @@ final class HUDController {
 
     /// Tile only the multi-selected windows from the sidebar
     private func tileSelectedItems() {
+        let windows = selectedWindowsForActions()
+        guard !windows.isEmpty else { return }
+
         let screen = positionedScreen ?? mouseScreen()
         let sf = screen.visibleFrame
         let primaryH = NSScreen.screens.first?.frame.height ?? 900
         let screenCGX = sf.origin.x
         let screenCGY = primaryH - sf.origin.y - sf.height
-
-        // Collect windows matching selected item IDs
-        var windows: [WindowEntry] = []
-        for id in state.selectedItems {
-            if id.hasPrefix("window-"),
-               let widStr = id.components(separatedBy: "-").last,
-               let wid = UInt32(widStr),
-               let win = DesktopModel.shared.windows[wid] {
-                windows.append(win)
-            }
-        }
-        // Also include current cursor item if it's a window
-        if let item = state.selectedItem, case .window(let w) = item,
-           !windows.contains(where: { $0.wid == w.wid }) {
-            windows.append(w)
-        }
-
-        guard !windows.isEmpty else { return }
 
         // Snapshot for restore
         state.tileSnapshot = windows.map { win in
@@ -765,6 +737,67 @@ final class HUDController {
 
         playTap()
         DiagnosticLog.shared.info("[TileGrid.selected] tiled \(windows.count) selected windows")
+    }
+
+    private func detachSelectedProjects() -> Bool {
+        let projects = selectedProjectsForActions().filter(\.isRunning)
+        guard !projects.isEmpty else { return false }
+
+        for project in projects {
+            SessionManager.detach(project: project)
+        }
+
+        playTap()
+        DiagnosticLog.shared.info("[Detach.selected] detached \(projects.count) project(s)")
+        dismiss()
+        return true
+    }
+
+    private func distributeSelectedWindows() -> Bool {
+        let windows = selectedWindowsForActions()
+        guard windows.count > 1 else { return false }
+
+        WindowTiler.batchRaiseAndDistribute(windows: windows.map { (wid: $0.wid, pid: $0.pid) })
+        playTap()
+        DiagnosticLog.shared.info("[Distribute.selected] distributed \(windows.count) window(s)")
+        return true
+    }
+
+    private func selectedProjectsForActions() -> [Project] {
+        let ids = state.effectiveSelectionIDs
+        guard !ids.isEmpty else { return [] }
+
+        return state.flatItems.compactMap { item in
+            guard ids.contains(item.id), case .project(let project) = item else { return nil }
+            return project
+        }
+    }
+
+    private func selectedWindowsForActions() -> [WindowEntry] {
+        let ids = state.effectiveSelectionIDs
+        guard !ids.isEmpty else { return [] }
+
+        var seen = Set<UInt32>()
+        var windows: [WindowEntry] = []
+
+        for item in state.flatItems {
+            guard ids.contains(item.id) else { continue }
+
+            switch item {
+            case .window(let window):
+                if seen.insert(window.wid).inserted {
+                    windows.append(window)
+                }
+            case .project(let project):
+                guard project.isRunning else { continue }
+                let projectWindows = DesktopModel.shared.allWindows().filter { $0.latticesSession == project.sessionName }
+                for window in projectWindows where seen.insert(window.wid).inserted {
+                    windows.append(window)
+                }
+            }
+        }
+
+        return windows
     }
 
     private func activateItem(_ item: HUDItem) {

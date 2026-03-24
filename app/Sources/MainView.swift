@@ -1,7 +1,13 @@
 import SwiftUI
 
+enum MainViewLayout {
+    case popover
+    case embedded
+}
+
 struct MainView: View {
     @ObservedObject var scanner: ProjectScanner
+    var layout: MainViewLayout = .popover
     @StateObject private var prefs = Preferences.shared
     @StateObject private var permChecker = PermissionChecker.shared
     @ObservedObject private var workspace = WorkspaceManager.shared
@@ -33,7 +39,14 @@ struct MainView: View {
         VStack(spacing: 0) {
             mainContent
         }
-        .frame(minWidth: 380, idealWidth: 380, maxWidth: 600, minHeight: 520, idealHeight: 560, maxHeight: .infinity)
+        .frame(
+            minWidth: layout == .popover ? 380 : 0,
+            idealWidth: layout == .popover ? 380 : nil,
+            maxWidth: .infinity,
+            minHeight: layout == .popover ? 520 : 0,
+            idealHeight: layout == .popover ? 560 : nil,
+            maxHeight: .infinity
+        )
         .background(PanelBackground())
         .preferredColorScheme(.dark)
         .onAppear {
@@ -63,23 +76,32 @@ struct MainView: View {
 
     private var mainContent: some View {
         VStack(spacing: 0) {
-            // Title bar
-            HStack {
-                Text("Lattices")
-                    .font(Typo.mono(14))
-                    .foregroundColor(Palette.text)
+            if layout == .popover {
+                HStack {
+                    Text("Lattices")
+                        .font(Typo.mono(14))
+                        .foregroundColor(Palette.text)
 
-                Spacer()
+                    Spacer()
 
-                headerButton(icon: "arrow.up.left.and.arrow.down.right") {
-                    (NSApp.delegate as? AppDelegate)?.dismissPopover()
-                    MainWindow.shared.show()
+                    headerButton(icon: "house") {
+                        (NSApp.delegate as? AppDelegate)?.dismissPopover()
+                        ScreenMapWindowController.shared.showPage(.home)
+                    }
+                    headerButton(icon: "terminal") {
+                        (NSApp.delegate as? AppDelegate)?.dismissPopover()
+                        ScreenMapWindowController.shared.showPage(.pi)
+                    }
+                    headerButton(icon: "arrow.up.left.and.arrow.down.right") {
+                        (NSApp.delegate as? AppDelegate)?.dismissPopover()
+                        MainWindow.shared.show()
+                    }
+                    headerButton(icon: "arrow.clockwise") { scanner.scan(); inventory.refresh() }
                 }
-                headerButton(icon: "arrow.clockwise") { scanner.scan(); inventory.refresh() }
+                .padding(.horizontal, 18)
+                .padding(.top, 18)
+                .padding(.bottom, 12)
             }
-            .padding(.horizontal, 18)
-            .padding(.top, 18)
-            .padding(.bottom, 12)
 
             // Layer switcher
             if let config = workspace.config, let layers = config.layers, layers.count > 1 {

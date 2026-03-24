@@ -527,7 +527,7 @@ final class LatticesApi {
             access: .mutate,
             params: [
                 Param(name: "wid", type: "uint32", required: true, description: "Window ID"),
-                Param(name: "layer", type: "string", required: true, description: "Layer id (e.g. 'lattices', 'talkie')")
+                Param(name: "layer", type: "string", required: true, description: "Layer id (e.g. 'lattices', 'vox')")
             ],
             returns: .ok,
             handler: { params in
@@ -1521,7 +1521,7 @@ final class LatticesApi {
                 Param(name: "slots", type: "object", required: false, description: "Named parameters for the intent"),
                 Param(name: "rawText", type: "string", required: false, description: "Original transcription text"),
                 Param(name: "confidence", type: "double", required: false, description: "Transcription confidence (0-1)"),
-                Param(name: "source", type: "string", required: false, description: "Source of the intent (e.g. 'talkie', 'siri', 'cli')"),
+                Param(name: "source", type: "string", required: false, description: "Source of the intent (e.g. 'vox', 'siri', 'cli')"),
             ],
             returns: .custom("Intent-specific result"),
             handler: { params in
@@ -1551,7 +1551,7 @@ final class LatticesApi {
 
         api.register(Endpoint(
             method: "voice.status",
-            description: "Check audio provider status (e.g. Talkie availability)",
+            description: "Check audio provider status (e.g. Vox availability)",
             access: .read,
             params: [],
             returns: .custom("Provider status with name and listening state"),
@@ -1567,28 +1567,14 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "voice.reconnect",
-            description: "Force disconnect and reconnect to the Talkie voice service",
-            access: .mutate,
-            params: [],
-            returns: .ok,
-            handler: { _ in
-                DispatchQueue.main.async {
-                    TalkieClient.shared.reconnect()
-                }
-                return .object(["ok": .bool(true), "action": .string("reconnecting")])
-            }
-        ))
-
-        api.register(Endpoint(
             method: "voice.listen",
-            description: "Start voice capture via the audio provider (e.g. Talkie)",
+            description: "Start voice capture via the audio provider (e.g. Vox)",
             access: .mutate,
             params: [],
             returns: .ok,
             handler: { _ in
                 guard AudioLayer.shared.provider != nil else {
-                    throw RouterError.custom("No audio provider available. Is Talkie running?")
+                    throw RouterError.custom("No audio provider available. Is Vox running?")
                 }
                 DispatchQueue.main.async {
                     AudioLayer.shared.startVoiceCommand()
@@ -1661,12 +1647,12 @@ final class LatticesApi {
 
         api.register(Endpoint(
             method: "voice.reconnect",
-            description: "Force disconnect and reconnect the Talkie WebSocket connection",
+            description: "Force disconnect and reconnect the Vox WebSocket connection",
             access: .mutate,
             params: [],
             returns: .custom("Reconnection initiated with previous and new connection state"),
             handler: { _ in
-                let client = TalkieClient.shared
+                let client = VoxClient.shared
                 let previousState = "\(client.connectionState)"
                 DispatchQueue.main.async {
                     client.reconnect()

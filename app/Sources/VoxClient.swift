@@ -1,10 +1,19 @@
 import AppKit
 
-/// WebSocket JSON-RPC client for connecting to TalkieAgent.
-/// Handles service discovery, persistent connection, auto-reconnect,
-/// and streaming dictation sessions.
-final class TalkieClient: ObservableObject {
-    static let shared = TalkieClient()
+/// WebSocket JSON-RPC client for the Vox transcription runtime.
+///
+/// Vox is a local-first transcription daemon (voxd) that runs on a configurable port
+/// (default 42137). Service discovery is file-based via ~/.vox/runtime.json.
+///
+/// Key differences from the old Talkie integration:
+///   - Discovery: ~/.vox/runtime.json (not ~/.talkie/services.json)
+///   - Port: 42137 (not 19823)
+///   - No distributed notifications — poll runtime.json or check on demand
+///   - API: transcribe.startSession/stopSession (not startDictation/stopDictation)
+///   - No register call — pass clientId per request
+///   - All session events flow on the startSession call ID
+final class VoxClient: ObservableObject {
+    static let shared = VoxClient()
 
     enum ConnectionState: Equatable {
         case disconnected
@@ -15,7 +24,7 @@ final class TalkieClient: ObservableObject {
 
     @Published var connectionState: ConnectionState = .disconnected
 
-    private static let clientId = "lattices"
+    static let clientId = "lattices"
 
     private var pendingCalls: [String: PendingCall] = [:]
     private var eventHandler: ((String, [String: Any]) -> Void)?
@@ -23,94 +32,82 @@ final class TalkieClient: ObservableObject {
     private var reconnectTimer: DispatchSourceTimer?
     private var heartbeatTimer: DispatchSourceTimer?
     private var intentionalDisconnect = false
-    private let queue = DispatchQueue(label: "com.lattices.talkie-client")
+    private let queue = DispatchQueue(label: "com.lattices.vox-client")
 
     private struct PendingCall {
-        let completion: (Result<[String: Any], TalkieError>) -> Void
+        let completion: (Result<[String: Any], VoxError>) -> Void
         let onProgress: ((String, [String: Any]) -> Void)?
         let timer: DispatchSourceTimer?
     }
 
-    enum TalkieError: LocalizedError {
+    enum VoxError: LocalizedError {
         case notConnected
         case callFailed(String)
         case timeout(String)
-        case micBusy(owner: String)
+        case sessionBusy
         case connectionDropped
+        case daemonNotRunning
 
         var errorDescription: String? {
             switch self {
-            case .notConnected: return "Not connected to TalkieAgent"
+            case .notConnected: return "Not connected to Vox"
             case .callFailed(let msg): return msg
             case .timeout(let method): return "Call to '\(method)' timed out"
-            case .micBusy(let owner): return "Mic in use by \(owner)"
-            case .connectionDropped: return "Connection to TalkieAgent dropped"
+            case .sessionBusy: return "A live session is already active"
+            case .connectionDropped: return "Connection to Vox dropped"
+            case .daemonNotRunning: return "Vox daemon not running — start with 'vox daemon start'"
             }
         }
     }
 
-    // MARK: - Service Discovery
+    // MARK: - Service Discovery (file-based via ~/.vox/runtime.json)
 
-    private static let defaultAgentPort: UInt16 = 19823
-    private static let servicesPath = NSHomeDirectory() + "/.talkie/services.json"
-    private static let talkieAppPath = "/Applications/Talkie.app"
+    private static let defaultPort: UInt16 = 42137
+    private static let runtimePath = NSHomeDirectory() + "/.vox/runtime.json"
 
-    enum TalkieAvailability {
-        case notInstalled
-        case installedNotRunning
-        case running(port: UInt16)
+    struct RuntimeInfo {
+        let port: UInt16
+        let pid: Int
+        let version: String
     }
 
-    func discoverAgent() -> TalkieAvailability {
-        // Try services.json first
-        if let data = FileManager.default.contents(atPath: Self.servicesPath),
-           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            // Support both flat and versioned format
-            let services = (json["services"] as? [String: Any]) ?? json
-            if let agent = services["agent"] as? [String: Any],
-               let port = agent["port"] as? Int {
-                return .running(port: UInt16(port))
-            }
+    /// Read ~/.vox/runtime.json and check if the daemon is alive.
+    func discoverDaemon() -> RuntimeInfo? {
+        guard let data = FileManager.default.contents(atPath: Self.runtimePath),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let port = json["port"] as? Int,
+              let pid = json["pid"] as? Int else {
+            return nil
         }
 
-        // Check if Talkie is installed — fall back to default port
-        if FileManager.default.fileExists(atPath: Self.talkieAppPath) ||
-           FileManager.default.fileExists(atPath: NSHomeDirectory() + "/.talkie") {
-            // services.json may not exist yet — try the default port
-            return .running(port: Self.defaultAgentPort)
+        // Verify the PID is still alive
+        let alive = kill(Int32(pid), 0) == 0
+        guard alive else {
+            DiagnosticLog.shared.warn("VoxClient: stale runtime.json — pid \(pid) not running")
+            return nil
         }
 
-        return .notInstalled
+        let version = json["version"] as? String ?? "unknown"
+        return RuntimeInfo(port: UInt16(port), pid: pid, version: version)
     }
 
     // MARK: - Connection
 
     func connect() {
-        // Don't replace an active or in-progress connection
         if connectionState == .connected || connectionState == .connecting { return }
 
         intentionalDisconnect = false
 
-        let availability = discoverAgent()
-        DiagnosticLog.shared.info("TalkieClient: discovery result — \(availability)")
-        switch availability {
-        case .notInstalled:
+        guard let runtime = discoverDaemon() else {
+            DiagnosticLog.shared.warn("VoxClient: daemon not found — check ~/.vox/runtime.json")
             DispatchQueue.main.async {
-                self.connectionState = .unavailable(reason: "Talkie not installed")
+                self.connectionState = .unavailable(reason: "Vox daemon not running")
             }
             return
-
-        case .installedNotRunning:
-            DispatchQueue.main.async {
-                self.connectionState = .unavailable(reason: "Talkie not running")
-            }
-            // Try launching
-            launchTalkie()
-            return
-
-        case .running(let port):
-            connectToPort(port)
         }
+
+        DiagnosticLog.shared.info("VoxClient: discovered daemon v\(runtime.version) on port \(runtime.port) (pid \(runtime.pid))")
+        connectToPort(runtime.port)
     }
 
     func disconnect() {
@@ -129,6 +126,15 @@ final class TalkieClient: ObservableObject {
         }
     }
 
+    /// Force a full disconnect + reconnect cycle.
+    func reconnect() {
+        DiagnosticLog.shared.info("VoxClient: forced reconnect requested")
+        disconnect()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.connect()
+        }
+    }
+
     private var wsTask: URLSessionWebSocketTask?
     private var wsSession: URLSession?
 
@@ -138,10 +144,9 @@ final class TalkieClient: ObservableObject {
         }
 
         let connectStart = Date()
-        DiagnosticLog.shared.info("TalkieClient: connecting to ws://127.0.0.1:\(port)")
+        DiagnosticLog.shared.info("VoxClient: connecting to ws://127.0.0.1:\(port)")
 
         let url = URL(string: "ws://127.0.0.1:\(port)")!
-        // Skip proxy/DNS lookup for localhost — shaves ~100ms
         let config = URLSessionConfiguration.default
         config.connectionProxyDictionary = [:]
         let session = URLSession(configuration: config)
@@ -149,42 +154,34 @@ final class TalkieClient: ObservableObject {
 
         self.wsSession = session
         self.wsTask = task
-
         task.resume()
 
-        // Verify connection with a single WebSocket ping
+        // Verify with a health check instead of raw ping
         task.sendPing { [weak self] error in
             guard let self else { return }
             let ms = Int(Date().timeIntervalSince(connectStart) * 1000)
             if let error {
-                DiagnosticLog.shared.warn("TalkieClient: WebSocket ping failed (\(ms)ms) — \(error)")
+                DiagnosticLog.shared.warn("VoxClient: WebSocket ping failed (\(ms)ms) — \(error)")
                 self.handleDisconnect()
             } else {
                 self.reconnectDelay = 0.5
-                DiagnosticLog.shared.info("TalkieClient: connected to TalkieAgent on port \(port) (\(ms)ms)")
+                DiagnosticLog.shared.info("VoxClient: connected on port \(port) (\(ms)ms)")
                 self.receiveLoop()
                 self.startHeartbeat()
-                // Set state to .connected THEN register — register uses call() which guards on .connected
                 DispatchQueue.main.async {
                     self.connectionState = .connected
-                    self.registerClient()
                 }
-            }
-        }
-    }
-
-    /// Register with TalkieAgent after connecting. Sends a stable clientId so
-    /// Talkie can reclaim orphaned sessions on reconnect.
-    private func registerClient() {
-        call(method: "register", params: [
-            "clientId": Self.clientId,
-            "capabilities": ["dictation", "tts"],
-        ]) { result in
-            switch result {
-            case .success(let data):
-                DiagnosticLog.shared.info("TalkieClient: registered as '\(Self.clientId)' — \(data)")
-            case .failure(let error):
-                DiagnosticLog.shared.warn("TalkieClient: register failed — \(error.localizedDescription)")
+                // Verify with a health RPC
+                self.call(method: "health") { result in
+                    switch result {
+                    case .success(let data):
+                        let svc = data["serviceName"] as? String ?? "?"
+                        let ver = data["version"] as? String ?? "?"
+                        DiagnosticLog.shared.info("VoxClient: health OK — \(svc) v\(ver)")
+                    case .failure(let error):
+                        DiagnosticLog.shared.warn("VoxClient: health check failed — \(error.localizedDescription)")
+                    }
+                }
             }
         }
     }
@@ -198,7 +195,7 @@ final class TalkieClient: ObservableObject {
             guard let self, let task = self.wsTask else { return }
             task.sendPing { error in
                 if let error {
-                    DiagnosticLog.shared.warn("TalkieClient: heartbeat ping failed — \(error)")
+                    DiagnosticLog.shared.warn("VoxClient: heartbeat failed — \(error)")
                     self.handleDisconnect()
                 }
             }
@@ -213,7 +210,6 @@ final class TalkieClient: ObservableObject {
         wsTask?.cancel(with: .goingAway, reason: nil)
         wsTask = nil
 
-        // Cancel all pending calls
         for (_, pending) in pendingCalls {
             pending.timer?.cancel()
             pending.completion(.failure(.connectionDropped))
@@ -226,11 +222,9 @@ final class TalkieClient: ObservableObject {
 
         guard !intentionalDisconnect else { return }
 
-        // Auto-reconnect with exponential backoff
         let delay = reconnectDelay
         reconnectDelay = min(reconnectDelay * 2, 10)
-
-        DiagnosticLog.shared.info("TalkieClient: reconnecting in \(delay)s")
+        DiagnosticLog.shared.info("VoxClient: reconnecting in \(delay)s")
 
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(deadline: .now() + delay)
@@ -241,40 +235,6 @@ final class TalkieClient: ObservableObject {
         reconnectTimer = timer
     }
 
-    private func launchTalkie() {
-        guard FileManager.default.fileExists(atPath: Self.talkieAppPath) else { return }
-
-        DiagnosticLog.shared.info("TalkieClient: launching Talkie.app")
-        NSWorkspace.shared.open(URL(fileURLWithPath: Self.talkieAppPath))
-
-        // Listen for live.ready notification
-        DistributedNotificationCenter.default().addObserver(
-            forName: Notification.Name("com.jdi.talkie.agent.live.ready"),
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in
-            guard let self else { return }
-            var port = Self.defaultAgentPort
-
-            if let info = notification.userInfo,
-               let agentPort = info["agentPort"] as? Int {
-                port = UInt16(agentPort)
-            }
-
-            DiagnosticLog.shared.info("TalkieClient: Talkie came online on port \(port)")
-            self.connectToPort(port)
-        }
-
-        // Timeout after 10s
-        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
-            guard let self else { return }
-            if case .unavailable = self.connectionState {
-                // Still not connected — give up on auto-launch
-                DiagnosticLog.shared.warn("TalkieClient: Talkie launch timed out")
-            }
-        }
-    }
-
     // MARK: - WebSocket I/O
 
     private func receiveLoop() {
@@ -282,24 +242,17 @@ final class TalkieClient: ObservableObject {
 
         task.receive { [weak self] result in
             guard let self else { return }
-
             switch result {
             case .success(let message):
                 switch message {
-                case .string(let text):
-                    self.handleMessage(text)
+                case .string(let text): self.handleMessage(text)
                 case .data(let data):
-                    if let text = String(data: data, encoding: .utf8) {
-                        self.handleMessage(text)
-                    }
-                @unknown default:
-                    break
+                    if let text = String(data: data, encoding: .utf8) { self.handleMessage(text) }
+                @unknown default: break
                 }
-                // Continue receiving
                 self.receiveLoop()
-
             case .failure(let error):
-                DiagnosticLog.shared.warn("TalkieClient: receive error — \(error)")
+                DiagnosticLog.shared.warn("VoxClient: receive error — \(error)")
                 self.handleDisconnect()
             }
         }
@@ -307,28 +260,25 @@ final class TalkieClient: ObservableObject {
 
     private func handleMessage(_ text: String) {
         guard let data = text.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return
-        }
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
 
-        // Response to a pending call (has "id")
+        // Match by request ID
         if let id = json["id"] as? String, let pending = pendingCalls.removeValue(forKey: id) {
             pending.timer?.cancel()
 
-            // Check for progress event (has both "id" and "event")
+            // Streaming event — has "event" key alongside "id"
             if let event = json["event"] as? String {
                 let eventData = json["data"] as? [String: Any] ?? [:]
                 pending.onProgress?(event, eventData)
-                // Re-add — still pending until we get result/error
+                // Re-add — still pending until final result/error
                 pendingCalls[id] = pending
                 return
             }
 
+            // Final result or error
             if let errorStr = json["error"] as? String {
-                // Parse mic_busy error
-                if errorStr.hasPrefix("mic_busy") {
-                    let owner = errorStr.contains(":") ? String(errorStr.split(separator: ":").last ?? "unknown") : "unknown"
-                    pending.completion(.failure(.micBusy(owner: owner)))
+                if errorStr == "live_session_busy" {
+                    pending.completion(.failure(.sessionBusy))
                 } else {
                     pending.completion(.failure(.callFailed(errorStr)))
                 }
@@ -339,7 +289,7 @@ final class TalkieClient: ObservableObject {
             return
         }
 
-        // Push event (has "event" but no "id")
+        // Push event (no matching ID)
         if let event = json["event"] as? String {
             let eventData = json["data"] as? [String: Any] ?? [:]
             DispatchQueue.main.async {
@@ -349,30 +299,21 @@ final class TalkieClient: ObservableObject {
     }
 
     private func sendJSON(_ dict: [String: Any]) {
-        guard let task = wsTask else { return }
-
-        guard let data = try? JSONSerialization.data(withJSONObject: dict),
+        guard let task = wsTask,
+              let data = try? JSONSerialization.data(withJSONObject: dict),
               let text = String(data: data, encoding: .utf8) else { return }
 
         task.send(.string(text)) { error in
             if let error {
-                DiagnosticLog.shared.warn("TalkieClient: send error — \(error)")
+                DiagnosticLog.shared.warn("VoxClient: send error — \(error)")
             }
         }
     }
 
-    // MARK: - RPC
+    // MARK: - RPC (fire-and-forget and request-response)
 
-    func ping(completion: @escaping (Bool) -> Void) {
-        call(method: "ping") { result in
-            switch result {
-            case .success: completion(true)
-            case .failure: completion(false)
-            }
-        }
-    }
-
-    func call(method: String, params: [String: Any]? = nil, timeout: TimeInterval = 30, completion: @escaping (Result<[String: Any], TalkieError>) -> Void) {
+    func call(method: String, params: [String: Any]? = nil, timeout: TimeInterval = 30,
+              completion: @escaping (Result<[String: Any], VoxError>) -> Void) {
         guard wsTask != nil, connectionState == .connected else {
             completion(.failure(.notConnected))
             return
@@ -380,9 +321,14 @@ final class TalkieClient: ObservableObject {
 
         let id = UUID().uuidString
         var payload: [String: Any] = ["id": id, "method": method]
-        if let params { payload["params"] = params }
+        if var p = params {
+            // Inject clientId into all calls
+            if p["clientId"] == nil { p["clientId"] = Self.clientId }
+            payload["params"] = p
+        } else {
+            payload["params"] = ["clientId": Self.clientId]
+        }
 
-        // Timeout timer
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(deadline: .now() + timeout)
         timer.setEventHandler { [weak self] in
@@ -396,7 +342,11 @@ final class TalkieClient: ObservableObject {
         sendJSON(payload)
     }
 
-    func callStreaming(method: String, params: [String: Any]? = nil, timeout: TimeInterval = 120, onProgress: @escaping (String, [String: Any]) -> Void, completion: @escaping (Result<[String: Any], TalkieError>) -> Void) {
+    /// Streaming RPC — receives progress events before the final result.
+    /// Used for transcribe.startSession where events flow on the start call ID.
+    func callStreaming(method: String, params: [String: Any]? = nil, timeout: TimeInterval = 120,
+                       onProgress: @escaping (String, [String: Any]) -> Void,
+                       completion: @escaping (Result<[String: Any], VoxError>) -> Void) {
         guard wsTask != nil, connectionState == .connected else {
             completion(.failure(.notConnected))
             return
@@ -404,7 +354,12 @@ final class TalkieClient: ObservableObject {
 
         let id = UUID().uuidString
         var payload: [String: Any] = ["id": id, "method": method]
-        if let params { payload["params"] = params }
+        if var p = params {
+            if p["clientId"] == nil { p["clientId"] = Self.clientId }
+            payload["params"] = p
+        } else {
+            payload["params"] = ["clientId": Self.clientId]
+        }
 
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(deadline: .now() + timeout)
@@ -416,8 +371,7 @@ final class TalkieClient: ObservableObject {
         timer.resume()
 
         pendingCalls[id] = PendingCall(completion: completion, onProgress: { event, data in
-            // Reset timeout on progress
-            timer.schedule(deadline: .now() + timeout)
+            timer.schedule(deadline: .now() + timeout) // Reset timeout on activity
             onProgress(event, data)
         }, timer: timer)
 
@@ -428,40 +382,73 @@ final class TalkieClient: ObservableObject {
         eventHandler = handler
     }
 
-    // MARK: - Init
+    // MARK: - High-level session helpers
 
-    /// Force a full disconnect + reconnect cycle. Use when the connection is stuck.
-    func reconnect() {
-        DiagnosticLog.shared.info("TalkieClient: forced reconnect requested")
-        disconnect()
-        // Small delay to let the old socket fully close
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-            self?.connect()
+    /// Current active session ID, if any.
+    @Published var activeSessionId: String?
+
+    /// Start a live transcription session. Vox records from the mic and transcribes on stop.
+    ///
+    /// Events arrive on this call's ID:
+    ///   - session.state: {state: "starting"|"recording"|"processing"|"done", sessionId, previous}
+    ///   - session.final: {sessionId, text, words[], elapsedMs, metrics}
+    func startSession(
+        modelId: String = "parakeet:v3",
+        onProgress: @escaping (String, [String: Any]) -> Void,
+        completion: @escaping (Result<[String: Any], VoxError>) -> Void
+    ) {
+        callStreaming(
+            method: "transcribe.startSession",
+            params: ["modelId": modelId],
+            onProgress: { [weak self] event, data in
+                if event == "session.state", let sid = data["sessionId"] as? String {
+                    DispatchQueue.main.async { self?.activeSessionId = sid }
+                }
+                onProgress(event, data)
+            },
+            completion: { [weak self] result in
+                DispatchQueue.main.async { self?.activeSessionId = nil }
+                completion(result)
+            }
+        )
+    }
+
+    /// Stop the current live session. The final transcript arrives via the startSession callback.
+    func stopSession(completion: ((Result<[String: Any], VoxError>) -> Void)? = nil) {
+        guard let sessionId = activeSessionId else {
+            completion?(.failure(.callFailed("No active session")))
+            return
+        }
+        call(method: "transcribe.stopSession", params: ["sessionId": sessionId]) { result in
+            completion?(result)
         }
     }
 
-    private init() {
-        // Listen for Talkie coming online
-        DistributedNotificationCenter.default().addObserver(
-            forName: Notification.Name("com.jdi.talkie.agent.live.ready"),
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in
-            guard let self else { return }
-            // Reconnect if disconnected OR unavailable (not if already connected/connecting)
-            switch self.connectionState {
-            case .disconnected, .unavailable:
-                break // proceed
-            case .connected, .connecting:
-                return // already good
-            }
-
-            var port = Self.defaultAgentPort
-            if let info = notification.userInfo,
-               let agentPort = info["agentPort"] as? Int {
-                port = UInt16(agentPort)
-            }
-            self.connectToPort(port)
+    /// Cancel the current session without waiting for transcription.
+    func cancelSession(completion: ((Result<[String: Any], VoxError>) -> Void)? = nil) {
+        guard let sessionId = activeSessionId else {
+            completion?(.failure(.callFailed("No active session")))
+            return
         }
+        call(method: "transcribe.cancelSession", params: ["sessionId": sessionId]) { result in
+            completion?(result)
+        }
+    }
+
+    /// Request model warm-up so first transcription is fast.
+    func warmup(modelId: String = "parakeet:v3") {
+        call(method: "warmup.start", params: ["modelId": modelId]) { result in
+            switch result {
+            case .success: DiagnosticLog.shared.info("VoxClient: warmup started")
+            case .failure(let e): DiagnosticLog.shared.warn("VoxClient: warmup failed — \(e.localizedDescription)")
+            }
+        }
+    }
+
+    // MARK: - Init
+
+    private init() {
+        // No distributed notifications for Vox — discovery is file-based.
+        // We connect on demand when voice mode activates.
     }
 }

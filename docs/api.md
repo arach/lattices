@@ -282,7 +282,7 @@ Search windows by text query across title, app name, session tags, and OCR conte
     "app": "iTerm2",
     "title": "✳ Claude Code",
     "matchSource": "ocr",
-    "ocrSnippet": "…~/dev/talkie StatusBarIconFolder…",
+    "ocrSnippet": "…~/dev/vox StatusBarIconFolder…",
     "frame": { "x": 688, "y": 3, "w": 1720, "h": 720 },
     "isOnScreen": true
   }
@@ -295,17 +295,17 @@ Search windows by text query across title, app name, session tags, and OCR conte
 
 ```bash
 # Basic search (uses windows.search)
-lattices search talkie
+lattices search vox
 
 # Deep search — adds terminal tab/process inspection for ranking
-lattices search talkie --deep
+lattices search vox --deep
 
 # Pipeable output
-lattices search talkie --wid
-lattices search talkie --json
+lattices search vox --wid
+lattices search vox --json
 
 # Search + focus + tile in one step
-lattices place talkie right
+lattices place vox right
 ```
 
 #### `spaces.list`

@@ -23,7 +23,7 @@ struct IntentRequest {
     let slots: [String: JSON]
     let rawText: String?             // Original transcription, for fallback matching
     let confidence: Double?          // Transcription confidence from voice service
-    let source: String?              // "talkie", "siri", "cli", etc.
+    let source: String?              // "vox", "siri", "cli", etc.
 }
 
 // MARK: - Intent Engine

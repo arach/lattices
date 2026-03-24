@@ -1,0 +1,364 @@
+import SwiftUI
+
+struct PiWorkspaceView: View {
+    @StateObject private var session = PiChatSession.shared
+    @FocusState private var composerFocused: Bool
+    @FocusState private var authFieldFocused: Bool
+
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }()
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+
+            Rectangle()
+                .fill(Palette.border)
+                .frame(height: 0.5)
+
+            if session.isAuthPanelVisible {
+                authPanel
+
+                Rectangle()
+                    .fill(Palette.border)
+                    .frame(height: 0.5)
+            }
+
+            transcript
+
+            Rectangle()
+                .fill(Palette.border)
+                .frame(height: 0.5)
+
+            composer
+        }
+        .background(Palette.bg)
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                composerFocused = true
+            }
+        }
+    }
+
+    private var header: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(session.hasPiBinary ? Palette.running : Palette.kill)
+                        .frame(width: 7, height: 7)
+
+                    Text("PI WORKSPACE")
+                        .font(Typo.geistMonoBold(11))
+                        .foregroundColor(Palette.text)
+
+                    capsuleLabel(session.statusText.uppercased(), tint: session.isSending ? Palette.detach : Palette.running)
+                }
+
+                Text("Full conversation surface for longer prompts, auth, and provider switching.")
+                    .font(Typo.mono(10))
+                    .foregroundColor(Palette.textDim)
+            }
+
+            Spacer()
+
+            HStack(spacing: 6) {
+                capsuleLabel(session.currentProvider.name.uppercased(), tint: Palette.textDim)
+
+                actionChip(session.isAuthPanelVisible ? "AUTH -" : "AUTH +") {
+                    session.toggleAuthPanel()
+                }
+
+                actionChip("RESET") {
+                    session.clearConversation()
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+    }
+
+    private var authPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Text("provider")
+                    .font(Typo.geistMonoBold(9))
+                    .foregroundColor(Palette.textMuted)
+
+                Picker("Provider", selection: $session.authProviderID) {
+                    ForEach(session.providerOptions) { provider in
+                        Text(provider.name).tag(provider.id)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .font(Typo.mono(10))
+
+                Spacer()
+
+                capsuleLabel(
+                    session.currentProvider.authMode == .oauth ? "OAUTH" : "TOKEN",
+                    tint: session.currentProvider.authMode == .oauth ? Palette.detach : Palette.running
+                )
+            }
+
+            Text(session.currentProvider.helpText)
+                .font(Typo.mono(10))
+                .foregroundColor(Palette.textDim)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if session.currentProvider.authMode == .apiKey {
+                HStack(spacing: 8) {
+                    SecureField(session.currentProvider.tokenPlaceholder, text: $session.authToken)
+                        .textFieldStyle(.plain)
+                        .font(Typo.mono(11))
+                        .foregroundColor(Palette.text)
+                        .focused($authFieldFocused)
+                        .onSubmit {
+                            session.saveSelectedToken()
+                        }
+
+                    actionChip("SAVE") {
+                        session.saveSelectedToken()
+                    }
+
+                    if session.hasSelectedCredential {
+                        actionChip("CLEAR") {
+                            session.removeSelectedCredential()
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(authCardBackground(tint: Palette.running))
+            } else {
+                HStack(spacing: 8) {
+                    actionChip(session.isAuthenticating ? "CANCEL" : "LOGIN") {
+                        if session.isAuthenticating {
+                            session.cancelAuthFlow()
+                        } else {
+                            session.startSelectedAuthFlow()
+                        }
+                    }
+
+                    if session.hasSelectedCredential {
+                        actionChip("CLEAR") {
+                            session.removeSelectedCredential()
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(authCardBackground(tint: session.isAuthenticating ? Palette.detach : Palette.running))
+
+                if let prompt = session.pendingAuthPrompt {
+                    HStack(spacing: 8) {
+                        TextField(prompt.placeholder ?? prompt.message, text: $session.authPromptInput)
+                            .textFieldStyle(.plain)
+                            .font(Typo.mono(11))
+                            .foregroundColor(Palette.text)
+                            .focused($authFieldFocused)
+                            .onSubmit {
+                                session.submitAuthPrompt()
+                            }
+
+                        actionChip("CONTINUE") {
+                            session.submitAuthPrompt()
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(authCardBackground(tint: Palette.detach))
+                }
+            }
+
+            if let notice = session.authNoticeText, !notice.isEmpty {
+                Text(notice)
+                    .font(Typo.mono(9))
+                    .foregroundColor(Palette.textDim)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let error = session.authErrorText, !error.isEmpty {
+                Text(error)
+                    .font(Typo.mono(9))
+                    .foregroundColor(Palette.kill)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(Palette.surface.opacity(0.35))
+    }
+
+    private var transcript: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.vertical, showsIndicators: true) {
+                LazyVStack(alignment: .leading, spacing: 10) {
+                    ForEach(session.messages) { message in
+                        row(message)
+                            .id(message.id)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 16)
+            }
+            .onAppear {
+                if let last = session.messages.last?.id {
+                    proxy.scrollTo(last, anchor: .bottom)
+                }
+            }
+            .onChange(of: session.messages.count) { _ in
+                if let last = session.messages.last?.id {
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        proxy.scrollTo(last, anchor: .bottom)
+                    }
+                }
+            }
+        }
+    }
+
+    private func row(_ message: PiChatMessage) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                capsuleLabel(roleLabel(for: message.role).uppercased(), tint: roleColor(for: message.role))
+                Text(Self.timeFormatter.string(from: message.timestamp))
+                    .font(Typo.mono(8))
+                    .foregroundColor(Palette.textMuted)
+            }
+            .frame(width: 62, alignment: .leading)
+
+            Text(message.text)
+                .font(Typo.mono(12))
+                .foregroundColor(Palette.text)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(roleColor(for: message.role).opacity(message.role == .assistant ? 0.10 : 0.06))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(roleColor(for: message.role).opacity(0.22), lineWidth: 0.5)
+                )
+        )
+    }
+
+    private var composer: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
+                Text(">")
+                    .font(Typo.geistMonoBold(12))
+                    .foregroundColor(Palette.running)
+
+                TextField("Ask Pi something heavier...", text: $session.draft, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(Typo.mono(12))
+                    .foregroundColor(Palette.text)
+                    .lineLimit(1...6)
+                    .focused($composerFocused)
+                    .onSubmit {
+                        session.sendDraft()
+                    }
+
+                actionChip(session.isSending ? "..." : "SEND") {
+                    session.sendDraft()
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.black.opacity(0.28))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .strokeBorder(Palette.running.opacity(0.18), lineWidth: 0.5)
+                    )
+            )
+
+            HStack {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(session.hasPiBinary ? Palette.running : Palette.kill)
+                        .frame(width: 6, height: 6)
+
+                    Text(session.currentProvider.name)
+                        .font(Typo.mono(10))
+                        .foregroundColor(Palette.textMuted)
+                }
+
+                Spacer()
+
+                Text("Return to send")
+                    .font(Typo.mono(9))
+                    .foregroundColor(Palette.textMuted)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(Palette.surface.opacity(0.22))
+    }
+
+    private func roleLabel(for role: PiChatMessage.Role) -> String {
+        switch role {
+        case .system: return "system"
+        case .user: return "you"
+        case .assistant: return "pi"
+        }
+    }
+
+    private func roleColor(for role: PiChatMessage.Role) -> Color {
+        switch role {
+        case .system: return Palette.detach
+        case .user: return Palette.textDim
+        case .assistant: return Palette.running
+        }
+    }
+
+    private func capsuleLabel(_ text: String, tint: Color) -> some View {
+        Text(text)
+            .font(Typo.geistMonoBold(9))
+            .foregroundColor(tint.opacity(0.95))
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(tint.opacity(0.10))
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(tint.opacity(0.28), lineWidth: 0.5)
+                    )
+            )
+    }
+
+    private func actionChip(_ label: String, action: @escaping () -> Void) -> some View {
+        Button(label, action: action)
+            .buttonStyle(.plain)
+            .font(Typo.geistMonoBold(9))
+            .foregroundColor(Palette.textMuted)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(
+                Capsule()
+                    .fill(Color.white.opacity(0.03))
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(Palette.border, lineWidth: 0.5)
+                    )
+            )
+    }
+
+    private func authCardBackground(tint: Color) -> some View {
+        RoundedRectangle(cornerRadius: 8)
+            .fill(tint.opacity(0.06))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(tint.opacity(0.22), lineWidth: 0.5)
+            )
+    }
+}

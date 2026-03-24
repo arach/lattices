@@ -141,17 +141,7 @@ struct HUDLeftBar: View {
         }
         state.flatItems = flat
         state.sectionOffsets = offsets
-
-        // Keep selection in bounds
-        if flat.isEmpty {
-            state.selectedItem = nil
-            state.selectedIndex = 0
-        } else if state.selectedIndex >= flat.count {
-            state.selectedIndex = flat.count - 1
-            state.selectedItem = flat[state.selectedIndex]
-        } else if state.selectedItem == nil {
-            state.selectedItem = flat[safe: state.selectedIndex]
-        }
+        state.reconcileSelection(with: flat)
     }
 
     // MARK: - Search bar
@@ -242,10 +232,16 @@ struct HUDLeftBar: View {
         }()
 
         return Button {
-            state.selectedItem = item
             state.focus = .list
-            if let idx = allItems.firstIndex(of: item) {
-                state.selectedIndex = idx
+            guard let idx = allItems.firstIndex(of: item) else { return }
+
+            let modifiers = NSEvent.modifierFlags.intersection([.shift, .command])
+            if modifiers.contains(.shift) {
+                state.selectRange(to: item, index: idx, in: allItems)
+            } else if modifiers.contains(.command) {
+                state.toggleSelection(item, index: idx, in: allItems)
+            } else {
+                state.selectSingle(item, index: idx)
             }
         } label: {
             HStack(spacing: 10) {
@@ -509,10 +505,9 @@ struct HUDLeftBar: View {
                             .frame(width: max(rw, 3), height: max(rh, 2))
                             .offset(x: rx, y: ry)
                             .onTapGesture {
-                                state.selectedItem = .window(win)
                                 state.focus = .list
                                 if let flatIdx = allItems.firstIndex(of: .window(win)) {
-                                    state.selectedIndex = flatIdx
+                                    state.selectSingle(.window(win), index: flatIdx)
                                 }
                             }
                     }
@@ -568,14 +563,33 @@ struct HUDLeftBar: View {
     // MARK: - Footer
 
     private var footer: some View {
-        HStack(spacing: 10) {
-            if !state.selectedItems.isEmpty {
-                Text("\(state.selectedItems.count) selected")
+        let selectedIDs = state.effectiveSelectionIDs
+        let selectionCount = state.multiSelectionCount
+        let selectedProjects = allItems.compactMap { item -> Project? in
+            guard selectedIDs.contains(item.id), case .project(let project) = item else { return nil }
+            return project
+        }
+        let selectedWindows = allItems.compactMap { item -> WindowEntry? in
+            guard selectedIDs.contains(item.id), case .window(let window) = item else { return nil }
+            return window
+        }
+
+        return HStack(spacing: 10) {
+            if selectionCount > 1 {
+                Text("\(selectionCount) selected")
                     .font(Typo.monoBold(9))
                     .foregroundColor(Color.blue)
-                keyBadge("T", label: "Tile")
+                if !selectedWindows.isEmpty || !selectedProjects.isEmpty {
+                    keyBadge("T", label: "Tile")
+                }
+                if !selectedProjects.isEmpty {
+                    keyBadge("D", label: "Detach")
+                } else if selectedWindows.count > 1 {
+                    keyBadge("D", label: "Distrib")
+                }
             }
-            keyBadge("⇧↕", label: "Select")
+            keyBadge("⇧↕", label: "Range")
+            keyBadge("⌘", label: "Multi")
             keyBadge("⇥", label: "Focus")
             keyBadge("↵", label: "Go")
             keyBadge("[ ]", label: "Layer")

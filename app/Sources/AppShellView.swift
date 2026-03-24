@@ -3,15 +3,19 @@ import SwiftUI
 // MARK: - Navigation Pages
 
 enum AppPage: String, CaseIterable {
+    case home
     case screenMap
     case desktopInventory
+    case pi
     case settings
     case docs
 
     var label: String {
         switch self {
+        case .home:             return "Home"
         case .screenMap:        return "Screen Map"
         case .desktopInventory: return "Desktop Inventory"
+        case .pi:               return "Pi"
         case .settings:         return "Settings"
         case .docs:             return "Docs"
         }
@@ -19,15 +23,17 @@ enum AppPage: String, CaseIterable {
 
     var icon: String {
         switch self {
+        case .home:             return "house"
         case .screenMap:        return "rectangle.3.group"
         case .desktopInventory: return "macwindow.on.rectangle"
+        case .pi:               return "terminal"
         case .settings:         return "gearshape"
         case .docs:             return "book"
         }
     }
 
     /// Pages shown as primary tabs in the unified window
-    static var primaryTabs: [AppPage] { [.screenMap, .desktopInventory] }
+    static var primaryTabs: [AppPage] { [.home, .screenMap, .desktopInventory, .pi] }
 }
 
 // MARK: - App Shell View
@@ -49,7 +55,7 @@ struct AppShellView: View {
         }
         .background(Palette.bg)
         .onAppear {
-            commandState.onDismiss = { windowController.activePage = .screenMap }
+            commandState.onDismiss = { windowController.activePage = .home }
         }
     }
 
@@ -97,12 +103,20 @@ struct AppShellView: View {
     @ViewBuilder
     private var contentArea: some View {
         switch windowController.activePage {
+        case .home:
+            HomeDashboardView(onNavigate: { page in
+                windowController.activePage = page
+                if page == .screenMap { controller.enter() }
+                if page == .desktopInventory { commandState.enter() }
+            })
         case .screenMap:
             ScreenMapView(controller: controller, onNavigate: { page in
                 windowController.activePage = page
             })
         case .desktopInventory:
             CommandModeView(state: commandState)
+        case .pi:
+            PiWorkspaceView()
         case .settings:
             SettingsContentView(
                 prefs: Preferences.shared,

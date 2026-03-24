@@ -5,7 +5,7 @@ const diagram: ArcDiagramData = {
   layout: { width: 900, height: 380 },
 
   nodes: {
-    talkie:   { x: 40,  y: 50,  size: 'm' },
+    vox:   { x: 40,  y: 50,  size: 'm' },
     swift:    { x: 40,  y: 180, size: 'l' },
     worker:   { x: 320, y: 150, size: 'l' },
     prompt:   { x: 320, y: 290, size: 's' },
@@ -17,7 +17,7 @@ const diagram: ArcDiagramData = {
   },
 
   nodeData: {
-    talkie:   { icon: 'Mic',       name: 'Talkie',      subtitle: 'Push-to-talk',     description: 'Voice capture + STT', color: 'violet' },
+    vox:   { icon: 'Mic',       name: 'Vox',      subtitle: 'Push-to-talk',     description: 'Voice capture + STT', color: 'violet' },
     swift:    { icon: 'Monitor',   name: 'Swift App',   subtitle: 'Menu bar + AX',    description: 'Desktop control',     color: 'amber' },
     worker:   { icon: 'Terminal',  name: 'Bun Worker',  subtitle: 'stdin/stdout',      description: 'Inference + TTS',     color: 'emerald' },
     prompt:   { icon: 'FileText',  name: 'System Prompt', subtitle: 'Hot-reload .md',                                     color: 'amber' },
@@ -29,7 +29,7 @@ const diagram: ArcDiagramData = {
   },
 
   connectors: [
-    { from: 'talkie', to: 'swift',   fromAnchor: 'bottom',     toAnchor: 'top',   style: 'ws' },
+    { from: 'vox', to: 'swift',   fromAnchor: 'bottom',     toAnchor: 'top',   style: 'ws' },
     { from: 'swift',  to: 'worker',  fromAnchor: 'right',      toAnchor: 'left',  style: 'json' },
     { from: 'worker', to: 'swift',   fromAnchor: 'bottomLeft', toAnchor: 'bottomRight', style: 'actions' },
     { from: 'worker', to: 'groq',    fromAnchor: 'right',      toAnchor: 'left',  style: 'inference' },

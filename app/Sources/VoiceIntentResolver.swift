@@ -657,7 +657,7 @@ final class VoiceIntentResolver {
     private let supplementalExamples: [String: [String]] = [
         "tile_window": ["put this on the left side", "move this over to the right", "maximize", "center it"],
         "focus": ["i need to see chrome", "can i get safari up", "show me visual studio code"],
-        "launch": ["fire up talkie", "start working on lattices", "open my notes app"],
+        "launch": ["fire up vox", "start working on lattices", "open my notes app"],
         "switch_layer": ["next layer", "previous layer", "switch to review"],
         "search": ["where d my slack go", "pull up everything with dewey in it", "show me all the chrome windows", "dewey"],
         "list_windows": ["what do i have open", "what windows do i have"],

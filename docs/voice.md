@@ -33,7 +33,7 @@ matches it to an intent, and executes it.
 Find windows by app name, title, content, or category.
 
 ```
-"Find all talkie windows"
+"Find all vox windows"
 "Find terminals"           → expands to iTerm, Terminal, Warp, etc.
 "Show me all browsers"     → expands to Safari, Chrome, Firefox, Arc, etc.
 "Where is my editor?"      → expands to VS Code, Cursor, Xcode, etc.
@@ -70,7 +70,7 @@ Open applications or project workspaces.
 
 ```
 "Open Spotify"
-"Launch the talkie project"
+"Launch the vox project"
 ```
 
 ### Kill

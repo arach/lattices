@@ -1125,7 +1125,7 @@ async function callCommand(method?: string, ...rest: string[]): Promise<void> {
     console.log("\nExamples:");
     console.log("  lattices call daemon.status");
     console.log("  lattices call windows.list");
-    console.log('  lattices call window.tile \'{"session":"talkie","position":"left"}\'');
+    console.log('  lattices call window.tile \'{"session":"vox","position":"left"}\'');
     return;
   }
   try {

@@ -3,7 +3,7 @@ import AppKit
 /// Hands-off voice mode: hotkey → listen → worker handles everything.
 ///
 /// Architecture:
-///   - Swift owns: hotkey, Talkie dictation, action execution
+///   - Swift owns: hotkey, Vox dictation, action execution
 ///   - Worker owns: inference (Groq), TTS (streaming OpenAI), fast path matching, audio caching
 ///   - Worker is a long-running bun process, started once, communicates via JSON lines over stdio
 ///
@@ -231,7 +231,7 @@ final class HandsOffSession: ObservableObject {
     // MARK: - Voice capture
 
     private func beginListening() {
-        let client = TalkieClient.shared
+        let client = VoxClient.shared
 
         if client.connectionState != .connected {
             state = .connecting
@@ -246,7 +246,7 @@ final class HandsOffSession: ObservableObject {
     }
 
     private func retryListenIfConnected(attempts: Int) {
-        if TalkieClient.shared.connectionState == .connected {
+        if VoxClient.shared.connectionState == .connected {
             startDictation()
         } else if attempts > 0 {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
@@ -254,7 +254,7 @@ final class HandsOffSession: ObservableObject {
             }
         } else {
             state = .idle
-            DiagnosticLog.shared.warn("HandsOff: Talkie not available")
+            DiagnosticLog.shared.warn("HandsOff: Vox not available")
             playSound("Basso")
         }
     }
@@ -266,12 +266,16 @@ final class HandsOffSession: ObservableObject {
 
         DiagnosticLog.shared.info("HandsOff: listening...")
 
-        TalkieClient.shared.callStreaming(
-            method: "startDictation",
-            params: ["persist": false, "source": "lattices-handsoff"],
+        // Vox live session: startSession opens the mic, events flow on the start call ID.
+        // No partial transcripts — Vox transcribes after recording stops.
+        VoxClient.shared.startSession(
             onProgress: { [weak self] event, data in
                 DispatchQueue.main.async {
-                    if event == "partialTranscript", let text = data["text"] as? String {
+                    if event == "session.state" {
+                        let sessionState = data["state"] as? String ?? ""
+                        DiagnosticLog.shared.info("HandsOff: session → \(sessionState)")
+                    }
+                    if event == "session.final", let text = data["text"] as? String {
                         self?.lastTranscript = text
                     }
                 }
@@ -281,7 +285,7 @@ final class HandsOffSession: ObservableObject {
                     guard let self else { return }
                     switch result {
                     case .success(let data):
-                        let text = (data["transcript"] as? String) ?? (data["text"] as? String) ?? ""
+                        let text = data["text"] as? String ?? ""
                         if text.isEmpty {
                             self.state = .idle
                             DiagnosticLog.shared.info("HandsOff: no speech detected")
@@ -292,7 +296,7 @@ final class HandsOffSession: ObservableObject {
                         }
                     case .failure(let error):
                         self.state = .idle
-                        DiagnosticLog.shared.warn("HandsOff: dictation error — \(error.localizedDescription)")
+                        DiagnosticLog.shared.warn("HandsOff: session error — \(error.localizedDescription)")
                         self.playSound("Basso")
                     }
                 }
@@ -303,7 +307,7 @@ final class HandsOffSession: ObservableObject {
     func finishListening() {
         guard state == .listening else { return }
         playSound("Tink")
-        TalkieClient.shared.call(method: "stopDictation") { _ in }
+        VoxClient.shared.stopSession()
     }
 
     // MARK: - Turn processing (delegates to worker)

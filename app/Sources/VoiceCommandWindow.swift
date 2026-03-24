@@ -266,7 +266,7 @@ final class VoiceCommandState: ObservableObject {
     private var cancelled = false
 
     func startListening() {
-        let client = TalkieClient.shared
+        let client = VoxClient.shared
 
         if client.connectionState == .connected {
             beginListening()
@@ -278,7 +278,7 @@ final class VoiceCommandState: ObservableObject {
     }
 
     private func waitForConnection(attempts: Int) {
-        let client = TalkieClient.shared
+        let client = VoxClient.shared
         if client.connectionState == .connected {
             beginListening()
         } else if attempts < 20 {
@@ -286,7 +286,7 @@ final class VoiceCommandState: ObservableObject {
                 self?.waitForConnection(attempts: attempts + 1)
             }
         } else {
-            appendLog("Connection to Talkie failed after 2s")
+            appendLog("Connection to Vox failed after 2s")
             phase = .idle
         }
     }
@@ -994,7 +994,7 @@ struct VoiceCommandView: View {
         // If the intent needs a query slot and Haiku didn't include one,
         // try to extract it from the label or fall back to the original query
         if suggestion.intent == "search" && slotsDict["query"] == nil {
-            // Try extracting from label: "Deep search Talkie" → "Talkie"
+            // Try extracting from label: "Deep search Vox" → "Vox"
             let label = suggestion.label
             let prefixes = ["Deep search ", "Search ", "Find ", "deep search ", "search ", "find "]
             var extracted: String?

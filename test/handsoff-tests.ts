@@ -63,7 +63,7 @@ Visible windows (12, front-to-back order):
   wid:27062 Google Chrome: "Lattices PR #12 - GitHub" — -1592,-122 573x375
   wid:27168 Finder: "Applications" — 1146,360 573x360
   wid:33301 Finder: "Hudson" — 1720,360 573x360
-  wid:97308 Talkie: "Talkie" — 1988,721 900x640
+  wid:97308 Vox: "Vox" — 1988,721 900x640
   wid:47788 Finder: "public" — 2866,360 573x360
   wid:109838 iTerm2: "tail -f ~/.lattices/lattices.log" — -1750,159 1515x2125
   wid:112439 iTerm2: "tail -f ~/.lattices/handsoff.jsonl | jq" — -1080,-1556 1080x3840
@@ -74,14 +74,14 @@ Hidden windows: Activity Monitor(1), ChatGPT(1), Codex(1), Slack(1), Messages(1)
 Terminal tabs (8):
   Claude Code (lattices) cwd:~/dev/lattices running:claude [Claude Code, tmux:lattices] (wid:423)
   Claude Code (hudson) cwd:~/dev/hudson running:claude [Claude Code, tmux:hudson] (wid:10439)
-  Claude Code (talkie) cwd:~/dev/talkie running:claude [Claude Code, tmux:talkie] (wid:94520)
+  Claude Code (vox) cwd:~/dev/vox running:claude [Claude Code, tmux:vox] (wid:94520)
   server (lattices) cwd:~/dev/lattices running:bun [tmux:lattices] (wid:423)
   server (hudson) cwd:~/dev/hudson running:node [tmux:hudson] (wid:10439)
   log tail cwd:~/dev/lattices running:tail (wid:109838)
   jsonl tail cwd:~/dev/lattices running:tail (wid:112439)
   scratch cwd:~/dev running:zsh (wid:94520)
 
-Tmux sessions: lattices (3 windows, attached), hudson (2 windows, attached), talkie (2 windows, attached)
+Tmux sessions: lattices (3 windows, attached), hudson (2 windows, attached), vox (2 windows, attached)
 `;
 
 // ── Test definitions ───────────────────────────────────────────────
@@ -152,7 +152,7 @@ const tests: Test[] = [
     checks: [
       { desc: "mentions lattices", fn: spokenIncludes("lattices") },
       { desc: "mentions hudson", fn: spokenIncludes("hudson") },
-      { desc: "mentions talkie", fn: spokenIncludes("talkie") },
+      { desc: "mentions vox", fn: spokenIncludes("vox") },
       { desc: "mentions three", fn: (r) => /three|3/.test(r.spoken ?? "") },
     ]},
   { id: "1.05", category: "awareness", say: "What's on my second monitor?",
@@ -198,7 +198,7 @@ const tests: Test[] = [
     checks: [
       { desc: "mentions lattices", fn: spokenIncludes("lattices") },
       { desc: "mentions hudson", fn: spokenIncludes("hudson") },
-      { desc: "mentions talkie", fn: spokenIncludes("talkie") },
+      { desc: "mentions vox", fn: spokenIncludes("vox") },
     ]},
   { id: "1.14", category: "awareness", say: "Which window is running bun?",
     checks: [
@@ -238,7 +238,7 @@ const tests: Test[] = [
       { desc: "has tile action", fn: hasAction("tile_window") },
       { desc: "position is top-left", fn: hasActionWithSlot("tile_window", "position", "top-left") },
     ]},
-  { id: "2.06", category: "tile", say: "Put Talkie in the bottom right",
+  { id: "2.06", category: "tile", say: "Put Vox in the bottom right",
     checks: [
       { desc: "has tile action", fn: hasAction("tile_window") },
       { desc: "position is bottom-right", fn: hasActionWithSlot("tile_window", "position", "bottom-right") },
@@ -345,7 +345,7 @@ const tests: Test[] = [
       { desc: "has center-third", fn: hasActionWithSlot("tile_window", "position", "center-third") },
       { desc: "has right-third", fn: hasActionWithSlot("tile_window", "position", "right-third") },
     ]},
-  { id: "3.11", category: "layout", say: "Put Chrome top left, iTerm top right, Finder bottom left, Talkie bottom right",
+  { id: "3.11", category: "layout", say: "Put Chrome top left, iTerm top right, Finder bottom left, Vox bottom right",
     checks: [
       { desc: "four actions", fn: actionCount(4) },
       { desc: "has all four corners", fn: (r) => {
@@ -388,10 +388,10 @@ const tests: Test[] = [
     checks: [
       { desc: "has focus action", fn: hasAction("focus") },
     ]},
-  { id: "4.04", category: "focus", say: "Show me Talkie",
+  { id: "4.04", category: "focus", say: "Show me Vox",
     checks: [
       { desc: "has focus action", fn: hasAction("focus") },
-      { desc: "targets talkie", fn: (r) => (r.actions ?? []).some((a: any) => /talkie/i.test(JSON.stringify(a.slots))) },
+      { desc: "targets vox", fn: (r) => (r.actions ?? []).some((a: any) => /vox/i.test(JSON.stringify(a.slots))) },
     ]},
   { id: "4.05", category: "focus", say: "Bring up ChatGPT",
     checks: [
@@ -429,10 +429,10 @@ const tests: Test[] = [
     checks: [
       { desc: "has focus action", fn: hasAction("focus") },
     ]},
-  { id: "4.13", category: "focus", say: "Switch to the talkie project",
+  { id: "4.13", category: "focus", say: "Switch to the vox project",
     checks: [
       { desc: "has focus action", fn: hasAction("focus") },
-      { desc: "targets talkie", fn: (r) => (r.actions ?? []).some((a: any) => /talkie/i.test(JSON.stringify(a.slots))) },
+      { desc: "targets vox", fn: (r) => (r.actions ?? []).some((a: any) => /vox/i.test(JSON.stringify(a.slots))) },
     ]},
   { id: "4.14", category: "focus", say: "Show me the Slack window",
     checks: [
@@ -476,11 +476,11 @@ const tests: Test[] = [
   { id: "5.04", category: "context", say: "What about the other Claude Code windows?",
     history: [
       { role: "user", content: 'USER: "Which terminals are running Claude Code?"\n--- DESKTOP SNAPSHOT ---\n' + snapshot },
-      { role: "assistant", content: '{"actions":[],"spoken":"Three terminals running Claude Code: lattices, hudson, and talkie."}' },
+      { role: "assistant", content: '{"actions":[],"spoken":"Three terminals running Claude Code: lattices, hudson, and vox."}' },
     ],
     checks: [
       { desc: "has spoken", fn: hasSpoken },
-      { desc: "doesn't re-list all three", fn: (r) => !/three.*lattices.*hudson.*talkie/i.test(r.spoken ?? "") },
+      { desc: "doesn't re-list all three", fn: (r) => !/three.*lattices.*hudson.*vox/i.test(r.spoken ?? "") },
     ]},
   { id: "5.05", category: "context", say: "Swap them",
     history: [
@@ -637,7 +637,7 @@ const tests: Test[] = [
     checks: [
       { desc: "no wids", fn: noWidsInSpeech },
       { desc: "has spoken", fn: hasSpoken },
-      { desc: "uses app names", fn: (r) => /chrome|iterm|finder|talkie/i.test(r.spoken ?? "") },
+      { desc: "uses app names", fn: (r) => /chrome|iterm|finder|vox/i.test(r.spoken ?? "") },
     ]},
   { id: "8.02", category: "speech", say: "Tile Chrome left",
     checks: [
@@ -675,7 +675,7 @@ const tests: Test[] = [
   { id: "8.08", category: "speech", say: "What's happening on screen?",
     checks: [
       { desc: "no wids", fn: noWidsInSpeech },
-      { desc: "uses project names", fn: (r) => /lattices|hudson|talkie/i.test(r.spoken ?? "") },
+      { desc: "uses project names", fn: (r) => /lattices|hudson|vox/i.test(r.spoken ?? "") },
     ]},
   { id: "8.09", category: "speech", say: "Distribute everything",
     checks: [
