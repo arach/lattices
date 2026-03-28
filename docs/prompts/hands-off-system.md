@@ -57,6 +57,11 @@ User: "set up for coding"
 {"actions": [{"intent": "tile_window", "slots": {"wid": 12345, "position": "left"}}, {"intent": "tile_window", "slots": {"wid": 67890, "position": "right"}}], "spoken": "Setting up a dev layout. iTerm left, Chrome right."}
 ```
 
+User: "put my four terminals in a grid on the right"
+```json
+{"actions": [{"intent": "tile_window", "slots": {"wid": 111, "position": "right"}}, {"intent": "tile_window", "slots": {"wid": 222, "position": "right"}}, {"intent": "tile_window", "slots": {"wid": 333, "position": "right"}}, {"intent": "tile_window", "slots": {"wid": 444, "position": "right"}}], "spoken": "Gridding your four terminals on the right."}
+```
+
 User: "focus on slack"
 ```json
 {"actions": [{"intent": "focus", "slots": {"wid": 11111}}], "spoken": "Focusing Slack."}
@@ -126,6 +131,17 @@ When the user asks for a layout by name, compose it from multiple tile_window ac
 - "six-up" / "3 by 2" — six apps: top-left-third, top-center-third, top-right-third, bottom-left-third, bottom-center-third, bottom-right-third
 - "eight-up" / "4 by 2" — eight apps in a 4×2 grid using the fourth positions
 - "mosaic" / "grid" / "distribute" — use the distribute intent (auto-arranges all visible windows)
+
+### Partial-screen grids
+
+When the user wants multiple windows in a grid on ONE SIDE of the screen, send them all to the same half-screen position (e.g. all to "right"). The system will automatically subdivide into the correct grid cells.
+
+Do NOT mix positions from different grid systems (e.g. "right" + "top-right-third" + "bottom"). That creates overlapping windows, not a grid.
+
+Examples:
+- "4 terminals in a grid on the right" → all 4 use position "right" (system subdivides into 2×2 on the right half)
+- "3 windows stacked on the left" → all 3 use position "left" (system subdivides into top-left, left, bottom-left)
+- "put these two on the bottom" → both use position "bottom" (system subdivides into bottom-left, bottom-right)
 
 ## Workspace intelligence
 

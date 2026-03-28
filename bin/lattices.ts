@@ -937,11 +937,37 @@ interface SearchResult {
   reasons: string[];
 }
 
-// Window search — title, app, session tag, OCR content
-// Unified search via lattices.search daemon API
-async function search(query: string, { mode = "complete" }: { mode?: string } = {}): Promise<SearchResult[]> {
+function relativeTime(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return "just now";
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  return `${d}d ago`;
+}
+
+// Unified search via lattices.search daemon API.
+// All search surfaces should go through this one function.
+interface SearchOptions {
+  sources?: string[];    // e.g. ["titles", "apps", "cwd", "ocr"] — omit for smart default
+  after?: string;        // ISO8601 — only windows interacted after this time
+  before?: string;       // ISO8601 — only windows interacted before this time
+  recency?: boolean;     // boost recently-focused windows (default true)
+  mode?: string;         // legacy compat: "quick", "complete", "terminal"
+}
+
+async function search(query: string, opts: SearchOptions = {}): Promise<SearchResult[]> {
   const { daemonCall } = await getDaemonClient();
-  const hits = await daemonCall("lattices.search", { query, mode }, 10000) as any[];
+  const params: Record<string, any> = { query };
+  if (opts.sources) params.sources = opts.sources;
+  if (opts.after) params.after = opts.after;
+  if (opts.before) params.before = opts.before;
+  if (opts.recency !== undefined) params.recency = opts.recency;
+  if (opts.mode) params.mode = opts.mode; // legacy fallback
+  const hits = await daemonCall("lattices.search", params, 10000) as any[];
   return hits.map((w: any) => ({
     score: w.score || 0,
     window: w,
@@ -952,16 +978,17 @@ async function search(query: string, { mode = "complete" }: { mode?: string } = 
   }));
 }
 
-// Aliases for backward compatibility
-async function deepSearch(query: string): Promise<SearchResult[]> { return search(query, { mode: "complete" }); }
-async function terminalSearch(query: string): Promise<SearchResult[]> { return search(query, { mode: "terminal" }); }
+// Convenience aliases
+async function deepSearch(query: string): Promise<SearchResult[]> { return search(query, { sources: ["all"] }); }
+async function terminalSearch(query: string): Promise<SearchResult[]> { return search(query, { sources: ["terminals"] }); }
 
 // Format and print search results
 function printResults(ranked: SearchResult[]): void {
   if (!ranked.length) return;
   for (const r of ranked) {
     const w = r.window;
-    console.log(`  \x1b[1m${w.app}\x1b[0m  "${w.title}"  wid:${w.wid}  score:${r.score}  (${r.reasons.join(", ")})`);
+    const age = w.lastInteraction ? ` \x1b[2m${relativeTime(w.lastInteraction)}\x1b[0m` : "";
+    console.log(`  \x1b[1m${w.app}\x1b[0m  "${w.title}"  wid:${w.wid}  score:${r.score}  (${r.reasons.join(", ")})${age}`);
     for (const t of r.tabs) {
       const claude = t.hasClaude ? " \x1b[32m●\x1b[0m" : "";
       const tmux = t.tmuxSession ? ` \x1b[36m[${t.tmuxSession}]\x1b[0m` : "";
@@ -974,14 +1001,38 @@ function printResults(ranked: SearchResult[]): void {
 
 // ── search command ───────────────────────────────────────────────────
 
-async function searchCommand(query: string | undefined, flags: Set<string>): Promise<void> {
+async function searchCommand(query: string | undefined, flags: Set<string>, rawArgs: string[] = []): Promise<void> {
   if (!query) {
-    console.log("Usage: lattices search <query> [--quick | --terminal | --json | --wid]");
+    console.log("Usage: lattices search <query> [--quick | --terminal | --all | --sources=... | --after=... | --before=... | --json | --wid]");
     return;
   }
 
-  const mode = flags.has("--quick") ? "quick" : flags.has("--terminal") ? "terminal" : "complete";
-  const ranked = await search(query, { mode });
+  // Build search options from flags
+  const opts: SearchOptions = {};
+
+  // Source selection: explicit --sources, or legacy --quick/--terminal, or default
+  const sourcesFlag = rawArgs.find(a => a.startsWith("--sources="));
+  if (sourcesFlag) {
+    opts.sources = sourcesFlag.slice("--sources=".length).split(",");
+  } else if (flags.has("--all")) {
+    opts.sources = ["all"];
+  } else if (flags.has("--quick")) {
+    opts.sources = ["titles", "apps", "sessions"];
+  } else if (flags.has("--terminal")) {
+    opts.sources = ["terminals"];
+  }
+  // else: omit → smart default on daemon side
+
+  // Time filters
+  const afterFlag = rawArgs.find(a => a.startsWith("--after="));
+  if (afterFlag) opts.after = afterFlag.slice("--after=".length);
+  const beforeFlag = rawArgs.find(a => a.startsWith("--before="));
+  if (beforeFlag) opts.before = beforeFlag.slice("--before=".length);
+
+  // No-recency flag
+  if (flags.has("--no-recency")) opts.recency = false;
+
+  const ranked = await search(query, opts);
   const jsonOut = flags.has("--json");
   const widOnly = flags.has("--wid");
 
@@ -1124,8 +1175,8 @@ async function callCommand(method?: string, ...rest: string[]): Promise<void> {
     console.log("Usage: lattices call <method> [params-json]");
     console.log("\nExamples:");
     console.log("  lattices call daemon.status");
-    console.log("  lattices call windows.list");
-    console.log('  lattices call window.tile \'{"session":"vox","position":"left"}\'');
+    console.log("  lattices call api.schema");
+    console.log('  lattices call window.place \'{"session":"vox","placement":"left"}\'');
     return;
   }
   try {
@@ -1156,11 +1207,11 @@ async function layerCommand(index?: string): Promise<void> {
     }
     const idx = parseInt(index, 10);
     if (!isNaN(idx)) {
-      await daemonCall("layer.switch", { index: idx });
-      console.log(`Switched to layer ${idx}`);
+      await daemonCall("layer.activate", { index: idx, mode: "launch" });
+      console.log(`Activated layer ${idx}`);
     } else {
-      await daemonCall("layer.switch", { name: index });
-      console.log(`Switched to layer "${index}"`);
+      await daemonCall("layer.activate", { name: index, mode: "launch" });
+      console.log(`Activated layer "${index}"`);
     }
   } catch (e: unknown) {
     console.log(`Error: ${(e as Error).message}`);
@@ -1189,7 +1240,7 @@ async function diagCommand(limit?: string): Promise<void> {
 async function distributeCommand(): Promise<void> {
   try {
     const { daemonCall } = await getDaemonClient();
-    await daemonCall("layout.distribute");
+    await daemonCall("space.optimize", { scope: "visible", strategy: "balanced" });
     console.log("Distributed visible windows into grid");
   } catch {
     console.log("Daemon not running. Start with: lattices app");

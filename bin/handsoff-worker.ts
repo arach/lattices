@@ -572,6 +572,11 @@ async function processLine(line: string) {
       streamSpeak(cmd.text).catch((e) => log(`ack TTS error: ${e.message}`));
       break;
 
+    case "play_cached":
+      respond({ ok: true, data: { queued: true, cached: true } });
+      playCached(cmd.text).catch((e) => log(`play_cached error: ${e.message}`));
+      break;
+
     case "infer":
       try {
         const userMessage = buildContextMessage(cmd.transcript, cmd.snapshot ?? {});

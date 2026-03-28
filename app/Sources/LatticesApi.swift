@@ -377,54 +377,143 @@ final class LatticesApi {
 
         api.register(Endpoint(
             method: "lattices.search",
-            description: "Unified search across windows, terminals, and OCR. Returns window-centric results sorted by score.",
+            description: "Unified search across windows, terminals, and OCR. Single entry point for all search surfaces.",
             access: .read,
             params: [
                 Param(name: "query", type: "string", required: true, description: "Search text"),
-                Param(name: "mode", type: "string", required: false, description: "Search mode: 'quick' (title/app/session only), 'complete' (+ OCR + terminals, default), 'terminal' (terminals only)"),
+                Param(name: "sources", type: "array<string>", required: false, description: "Data sources to include: titles, apps, sessions, cwd, tabs, tmux, ocr, processes. Omit for smart default (everything except ocr). Use ['all'] for everything."),
+                Param(name: "after", type: "string", required: false, description: "ISO8601 timestamp — only windows interacted with after this time"),
+                Param(name: "before", type: "string", required: false, description: "ISO8601 timestamp — only windows interacted with before this time"),
+                Param(name: "recency", type: "bool", required: false, description: "Boost score for recently-focused windows (default true)"),
                 Param(name: "limit", type: "int", required: false, description: "Max results (default 20)"),
+                // Legacy compat
+                Param(name: "mode", type: "string", required: false, description: "Legacy: 'quick', 'complete', 'terminal'. Mapped to sources internally."),
             ],
             returns: .array(model: "SearchResult"),
             handler: { params in
                 guard let query = params?["query"]?.stringValue?.lowercased(), !query.isEmpty else {
                     throw RouterError.missingParam("query")
                 }
-                let mode = params?["mode"]?.stringValue ?? "complete"
                 let limit = params?["limit"]?.intValue ?? 20
+                let useRecency = params?["recency"]?.boolValue ?? true
 
-                // Accumulator: wid → (entry, score, sources, ocrSnippet, tabs)
+                // ── Resolve sources ──
+
+                // All available source names
+                let allSources: Set<String> = ["titles", "apps", "sessions", "cwd", "tabs", "tmux", "ocr", "processes"]
+                // Smart default: everything except OCR (fast)
+                let defaultSources: Set<String> = ["titles", "apps", "sessions", "cwd", "tabs", "tmux"]
+
+                var sources: Set<String>
+                if let arr = params?["sources"]?.arrayValue {
+                    let names = arr.compactMap(\.stringValue)
+                    if names.contains("all") {
+                        sources = allSources
+                    } else if names.contains("terminals") {
+                        // Shorthand expansion
+                        sources = Set(names).subtracting(["terminals"]).union(["cwd", "tabs", "tmux", "processes"])
+                    } else {
+                        sources = Set(names).intersection(allSources)
+                        if sources.isEmpty { sources = defaultSources }
+                    }
+                } else if let mode = params?["mode"]?.stringValue {
+                    // Legacy mode param → sources mapping
+                    switch mode {
+                    case "quick":    sources = ["titles", "apps", "sessions"]
+                    case "terminal": sources = ["cwd", "tabs", "tmux", "processes"]
+                    default:         sources = allSources  // "complete"
+                    }
+                } else {
+                    sources = defaultSources
+                }
+
+                let includeWindowIndex = !sources.isDisjoint(with: ["titles", "apps", "sessions"])
+                let includeOcr = sources.contains("ocr")
+                let includeTerminals = !sources.isDisjoint(with: ["cwd", "tabs", "tmux", "processes"])
+
+                // ── Resolve time filters ──
+
+                let isoFormatter = ISO8601DateFormatter()
+                isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                let isoFormatterNoFrac = ISO8601DateFormatter()
+
+                func parseDate(_ str: String?) -> Date? {
+                    guard let str else { return nil }
+                    return isoFormatter.date(from: str) ?? isoFormatterNoFrac.date(from: str)
+                }
+
+                let afterDate = parseDate(params?["after"]?.stringValue)
+                let beforeDate = parseDate(params?["before"]?.stringValue)
+
+                // Default time window: 2 days (only applies when no explicit time filters given)
+                let defaultCutoff = (afterDate == nil && beforeDate == nil)
+                    ? Date().addingTimeInterval(-2 * 24 * 3600)
+                    : nil
+
+                let now = Date()
+                let desktop = DesktopModel.shared
+
+                /// Check if a window passes the time filter.
+                /// Windows with no interaction date are included if they're currently on screen (live windows).
+                func passesTimeFilter(wid: UInt32, entry: WindowEntry) -> Bool {
+                    if let interacted = desktop.lastInteractionDate(for: wid) {
+                        if let after = afterDate, interacted < after { return false }
+                        if let before = beforeDate, interacted > before { return false }
+                        if let cutoff = defaultCutoff, interacted < cutoff { return false }
+                        return true
+                    }
+                    // No interaction date — include if currently visible (it's a live window we just haven't tracked yet)
+                    return entry.isOnScreen
+                }
+
+                /// Recency boost: windows focused recently score higher.
+                /// Frontmost (zIndex 0) gets +4, last 5 min +3, last hour +2, last day +1.
+                func recencyBoost(wid: UInt32, zIndex: Int) -> Int {
+                    guard useRecency else { return 0 }
+                    if zIndex == 0 { return 4 }
+                    guard let last = desktop.lastInteractionDate(for: wid) else { return 0 }
+                    let ago = now.timeIntervalSince(last)
+                    if ago < 300 { return 3 }    // 5 min
+                    if ago < 3600 { return 2 }   // 1 hour
+                    if ago < 86400 { return 1 }  // 1 day
+                    return 0
+                }
+
+                // ── Accumulator ──
+
                 struct Accum {
                     let entry: WindowEntry
                     var score: Int
                     var sources: [String]
                     var ocrSnippet: String?
                     var tabs: [JSON]
+                    var lastInteraction: Date?
                 }
                 var byWid: [UInt32: Accum] = [:]
 
-                let includeWindows = mode != "terminal"
-                let includeOcr = mode == "complete"
-                let includeTerminals = mode != "quick"
-
                 // ── Tier 1: Window index (title, app, session) ──
 
-                if includeWindows {
+                if includeWindowIndex {
                     let ocrResults = includeOcr ? OcrModel.shared.results : [:]
+                    let checkTitles = sources.contains("titles")
+                    let checkApps = sources.contains("apps")
+                    let checkSessions = sources.contains("sessions")
 
-                    for entry in DesktopModel.shared.allWindows() {
+                    for entry in desktop.allWindows() {
+                        guard passesTimeFilter(wid: entry.wid, entry: entry) else { continue }
+
                         var score = 0
-                        var sources: [String] = []
+                        var matchSources: [String] = []
                         var ocrSnippet: String? = nil
 
-                        if entry.title.lowercased().contains(query) { score += 3; sources.append("title") }
-                        if entry.app.lowercased().contains(query) { score += 2; sources.append("app") }
-                        if entry.latticesSession?.lowercased().contains(query) == true { score += 3; sources.append("session") }
+                        if checkTitles && entry.title.lowercased().contains(query) { score += 3; matchSources.append("title") }
+                        if checkApps && entry.app.lowercased().contains(query) { score += 2; matchSources.append("app") }
+                        if checkSessions && entry.latticesSession?.lowercased().contains(query) == true { score += 3; matchSources.append("session") }
 
                         if includeOcr, let ocrResult = ocrResults[entry.wid] {
                             let text = ocrResult.fullText
                             if text.lowercased().contains(query) {
-                                score += 1; sources.append("ocr")
-                                // Extract snippet
+                                score += 1; matchSources.append("ocr")
                                 if let range = text.lowercased().range(of: query) {
                                     let half = max(0, (80 - text.distance(from: range.lowerBound, to: range.upperBound)) / 2)
                                     let start = text.index(range.lowerBound, offsetBy: -half, limitedBy: text.startIndex) ?? text.startIndex
@@ -440,67 +529,78 @@ final class LatticesApi {
                         }
 
                         if score > 0 {
-                            byWid[entry.wid] = Accum(entry: entry, score: score, sources: sources, ocrSnippet: ocrSnippet, tabs: [])
+                            score += recencyBoost(wid: entry.wid, zIndex: entry.zIndex)
+                            byWid[entry.wid] = Accum(
+                                entry: entry, score: score, sources: matchSources,
+                                ocrSnippet: ocrSnippet, tabs: [],
+                                lastInteraction: desktop.lastInteractionDate(for: entry.wid)
+                            )
                         }
-                    }
-
-                    // Early return for quick mode if we have strong matches
-                    if mode == "quick" || (!byWid.isEmpty && byWid.values.contains(where: { $0.score >= 3 }) && mode != "complete") {
-                        let sorted = byWid.values.sorted { $0.score > $1.score }
-                        return .array(Array(sorted.prefix(limit)).map { acc in
-                            var obj = Encoders.window(acc.entry)
-                            if case .object(var dict) = obj {
-                                dict["score"] = .int(acc.score)
-                                dict["matchSources"] = .array(acc.sources.map { .string($0) })
-                                if let snippet = acc.ocrSnippet { dict["ocrSnippet"] = .string(snippet) }
-                                obj = .object(dict)
-                            }
-                            return obj
-                        })
                     }
                 }
 
-                // ── Tier 2: Terminal inspection (cwd, tab titles, tmux sessions) ──
+                // ── Tier 2: Terminal inspection (cwd, tab titles, tmux sessions, processes) ──
 
                 if includeTerminals {
+                    let checkCwd = sources.contains("cwd")
+                    let checkTabs = sources.contains("tabs")
+                    let checkTmux = sources.contains("tmux")
+                    let checkProcesses = sources.contains("processes")
+
                     let instances = ProcessModel.shared.synthesizeTerminals()
                     for inst in instances {
-                        let cwdMatch = inst.cwd?.lowercased().contains(query) ?? false
-                        let tabMatch = inst.tabTitle?.lowercased().contains(query) ?? false
-                        let tmuxMatch = inst.tmuxSession?.lowercased().contains(query) ?? false
-                        guard cwdMatch || tabMatch || tmuxMatch else { continue }
+                        let cwdMatch = checkCwd && (inst.cwd?.lowercased().contains(query) ?? false)
+                        let tabMatch = checkTabs && (inst.tabTitle?.lowercased().contains(query) ?? false)
+                        let tmuxMatch = checkTmux && (inst.tmuxSession?.lowercased().contains(query) ?? false)
+                        let processMatch = checkProcesses && inst.processes.contains {
+                            $0.comm.lowercased().contains(query) || $0.args.lowercased().contains(query)
+                        }
+                        guard cwdMatch || tabMatch || tmuxMatch || processMatch else { continue }
 
-                        // Build tab info
                         var tab: [String: JSON] = [:]
                         if let idx = inst.tabIndex { tab["tabIndex"] = .int(idx) }
                         if let cwd = inst.cwd { tab["cwd"] = .string(cwd) }
                         if let title = inst.tabTitle { tab["tabTitle"] = .string(title) }
                         tab["hasClaude"] = .bool(inst.hasClaude)
                         if let session = inst.tmuxSession { tab["tmuxSession"] = .string(session) }
+                        if processMatch {
+                            let matched = inst.processes.filter {
+                                $0.comm.lowercased().contains(query) || $0.args.lowercased().contains(query)
+                            }
+                            tab["matchedProcesses"] = .array(matched.map { .string($0.comm) })
+                        }
 
                         let tabJson = JSON.object(tab)
                         var tabScore = 0
-                        if cwdMatch { tabScore += 3 }  // cwd is intentional project context
+                        if cwdMatch { tabScore += 3 }
                         if tabMatch { tabScore += 2 }
-                        if tmuxMatch { tabScore += 3 }  // tmux session name is explicit
+                        if tmuxMatch { tabScore += 3 }
+                        if processMatch { tabScore += 2 }
 
-                        if let wid = inst.windowId, var acc = byWid[wid] {
-                            // Merge into existing window entry
-                            acc.score += tabScore
-                            if cwdMatch && !acc.sources.contains("cwd") { acc.sources.append("cwd") }
-                            if tabMatch && !acc.sources.contains("tab") { acc.sources.append("tab") }
-                            if tmuxMatch && !acc.sources.contains("tmux") { acc.sources.append("tmux") }
-                            acc.tabs.append(tabJson)
-                            byWid[wid] = acc
-                        } else if let wid = inst.windowId, let entry = DesktopModel.shared.windows[wid] {
-                            // New window discovered via terminal data
-                            var sources: [String] = []
-                            if cwdMatch { sources.append("cwd") }
-                            if tabMatch { sources.append("tab") }
-                            if tmuxMatch { sources.append("tmux") }
-                            byWid[wid] = Accum(entry: entry, score: tabScore, sources: sources, ocrSnippet: nil, tabs: [tabJson])
+                        if let wid = inst.windowId {
+                            if var acc = byWid[wid] {
+                                acc.score += tabScore
+                                if cwdMatch && !acc.sources.contains("cwd") { acc.sources.append("cwd") }
+                                if tabMatch && !acc.sources.contains("tab") { acc.sources.append("tab") }
+                                if tmuxMatch && !acc.sources.contains("tmux") { acc.sources.append("tmux") }
+                                if processMatch && !acc.sources.contains("process") { acc.sources.append("process") }
+                                acc.tabs.append(tabJson)
+                                byWid[wid] = acc
+                            } else if let entry = desktop.windows[wid] {
+                                guard passesTimeFilter(wid: wid, entry: entry) else { continue }
+                                var matchSources: [String] = []
+                                if cwdMatch { matchSources.append("cwd") }
+                                if tabMatch { matchSources.append("tab") }
+                                if tmuxMatch { matchSources.append("tmux") }
+                                if processMatch { matchSources.append("process") }
+                                let score = tabScore + recencyBoost(wid: wid, zIndex: entry.zIndex)
+                                byWid[wid] = Accum(
+                                    entry: entry, score: score, sources: matchSources,
+                                    ocrSnippet: nil, tabs: [tabJson],
+                                    lastInteraction: desktop.lastInteractionDate(for: wid)
+                                )
+                            }
                         }
-                        // Terminal-only instances (tmux panes without a window) are skipped for now
                     }
                 }
 
@@ -514,6 +614,9 @@ final class LatticesApi {
                         dict["matchSources"] = .array(acc.sources.map { .string($0) })
                         if let snippet = acc.ocrSnippet { dict["ocrSnippet"] = .string(snippet) }
                         if !acc.tabs.isEmpty { dict["terminalTabs"] = .array(acc.tabs) }
+                        if let last = acc.lastInteraction {
+                            dict["lastInteraction"] = .string(ISO8601DateFormatter().string(from: last))
+                        }
                         obj = .object(dict)
                     }
                     return obj
@@ -1158,20 +1261,27 @@ final class LatticesApi {
             ],
             returns: .ok,
             handler: { params in
-                let wm = WorkspaceManager.shared
-                let index: Int
-                if let i = params?["index"]?.intValue {
-                    index = i
-                } else if let n = params?["name"]?.stringValue, let i = wm.layerIndex(named: n) {
-                    index = i
-                } else {
-                    throw RouterError.missingParam("index or name")
+                var dict: [String: JSON] = [:]
+                if case .object(let obj) = params {
+                    dict = obj
                 }
-                DispatchQueue.main.async {
-                    wm.tileLayer(index: index, launch: true, force: true)
-                    EventBus.shared.post(.layerSwitched(index: index))
-                }
-                return .object(["ok": .bool(true)])
+                dict["mode"] = dict["mode"] ?? .string("launch")
+                return try Self.executeLayerActivation(params: .object(dict))
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "layer.activate",
+            description: "Activate a workspace layer using an explicit activation mode",
+            access: .mutate,
+            params: [
+                Param(name: "index", type: "int", required: false, description: "Layer index"),
+                Param(name: "name", type: "string", required: false, description: "Layer id or label (case-insensitive)"),
+                Param(name: "mode", type: "string", required: false, description: "Activation mode: launch, focus, or retile"),
+            ],
+            returns: .custom("Execution receipt with resolved layer, activation mode, and trace"),
+            handler: { params in
+                try Self.executeLayerActivation(params: params)
             }
         ))
 
@@ -1233,11 +1343,31 @@ final class LatticesApi {
             access: .mutate,
             params: [],
             returns: .ok,
-            handler: { _ in
-                DispatchQueue.main.async {
-                    WindowTiler.distributeVisible()
+            handler: { params in
+                var dict: [String: JSON] = [:]
+                if case .object(let obj) = params {
+                    dict = obj
                 }
-                return .object(["ok": .bool(true)])
+                dict["scope"] = dict["scope"] ?? .string("visible")
+                dict["strategy"] = dict["strategy"] ?? .string("balanced")
+                return try Self.executeSpaceOptimization(params: .object(dict))
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "space.optimize",
+            description: "Optimize a set of windows using an explicit scope and strategy",
+            access: .mutate,
+            params: [
+                Param(name: "scope", type: "string", required: false, description: "Optimization scope: visible, active-app, app, or selection"),
+                Param(name: "strategy", type: "string", required: false, description: "Optimization strategy: balanced or mosaic"),
+                Param(name: "app", type: "string", required: false, description: "App name for app-scoped optimization"),
+                Param(name: "title", type: "string", required: false, description: "Optional title substring for app-scoped optimization"),
+                Param(name: "windowIds", type: "[uint32]", required: false, description: "Explicit window selection for selection scope"),
+            ],
+            returns: .custom("Execution receipt with scope, strategy, resolved windows, and trace"),
+            handler: { params in
+                try Self.executeSpaceOptimization(params: params)
             }
         ))
 
@@ -1837,6 +1967,218 @@ private extension LatticesApi {
         }
 
         throw RouterError.custom("Could not resolve a window target for placement")
+    }
+
+    static func executeLayerActivation(params: JSON?) throws -> JSON {
+        let wm = WorkspaceManager.shared
+        guard let layers = wm.config?.layers, !layers.isEmpty else {
+            throw RouterError.notFound("workspace layers")
+        }
+
+        let index: Int
+        var trace: [JSON] = []
+
+        if let value = params?["index"]?.intValue {
+            index = value
+            trace.append(.string("resolved layer by index"))
+        } else if let name = params?["name"]?.stringValue, let value = wm.layerIndex(named: name) {
+            index = value
+            trace.append(.string("resolved layer by name"))
+        } else {
+            throw RouterError.missingParam("index or name")
+        }
+
+        guard index >= 0, index < layers.count else {
+            throw RouterError.notFound("layer \(index)")
+        }
+
+        let mode = try parseLayerActivationMode(params?["mode"]?.stringValue)
+        let layer = layers[index]
+        let previousIndex = wm.activeLayerIndex
+        trace.append(.string("activation mode \(mode)"))
+
+        DispatchQueue.main.async {
+            switch mode {
+            case "focus":
+                wm.focusLayer(index: index)
+            case "retile":
+                wm.tileLayer(index: index, launch: false, force: true)
+            default:
+                wm.tileLayer(index: index, launch: true, force: true)
+            }
+
+            if previousIndex != index || mode != "focus" {
+                EventBus.shared.post(.layerSwitched(index: index))
+            }
+        }
+
+        return .object([
+            "ok": .bool(true),
+            "index": .int(index),
+            "id": .string(layer.id),
+            "label": .string(layer.label),
+            "mode": .string(mode),
+            "trace": .array(trace),
+        ])
+    }
+
+    static func executeSpaceOptimization(params: JSON?) throws -> JSON {
+        let scope = try parseOptimizationScope(from: params)
+        let strategy = try parseOptimizationStrategy(params?["strategy"]?.stringValue)
+        var trace: [JSON] = [.string("resolved scope \(scope)"), .string("resolved strategy \(strategy)")]
+        let windows = resolveOptimizationTargets(scope: scope, params: params, trace: &trace)
+
+        if strategy == "mosaic" {
+            trace.append(.string("strategy mosaic currently uses the smart-grid distributor"))
+        }
+
+        guard !windows.isEmpty else {
+            trace.append(.string("no eligible windows resolved"))
+            return .object([
+                "ok": .bool(true),
+                "scope": .string(scope),
+                "strategy": .string(strategy),
+                "windowCount": .int(0),
+                "wids": .array([]),
+                "trace": .array(trace),
+            ])
+        }
+
+        let targets = windows.map { (wid: $0.wid, pid: $0.pid) }
+        DispatchQueue.main.async {
+            WindowTiler.batchRaiseAndDistribute(windows: targets)
+        }
+
+        return .object([
+            "ok": .bool(true),
+            "scope": .string(scope),
+            "strategy": .string(strategy),
+            "windowCount": .int(windows.count),
+            "wids": .array(windows.map { .int(Int($0.wid)) }),
+            "trace": .array(trace),
+        ])
+    }
+
+    static func parseLayerActivationMode(_ raw: String?) throws -> String {
+        let mode = normalizeToken(raw ?? "launch")
+        switch mode {
+        case "launch", "focus", "retile":
+            return mode
+        default:
+            throw RouterError.custom("Unsupported layer activation mode: \(raw ?? mode)")
+        }
+    }
+
+    static func parseOptimizationScope(from params: JSON?) throws -> String {
+        if params?["windowIds"] != nil {
+            return "selection"
+        }
+        if params?["app"] != nil {
+            return "app"
+        }
+
+        let scope = normalizeToken(params?["scope"]?.stringValue ?? "visible")
+        switch scope {
+        case "visible", "selection", "app", "active-app", "frontmost-app", "current-app":
+            return scope
+        default:
+            throw RouterError.custom("Unsupported optimization scope: \(params?["scope"]?.stringValue ?? scope)")
+        }
+    }
+
+    static func parseOptimizationStrategy(_ raw: String?) throws -> String {
+        let strategy = normalizeToken(raw ?? "balanced")
+        switch strategy {
+        case "balanced", "mosaic":
+            return strategy
+        default:
+            throw RouterError.custom("Unsupported optimization strategy: \(raw ?? strategy)")
+        }
+    }
+
+    static func resolveOptimizationTargets(scope: String, params: JSON?, trace: inout [JSON]) -> [WindowEntry] {
+        let visible = distributableWindows()
+        let titleFilter = params?["title"]?.stringValue
+
+        switch scope {
+        case "selection":
+            let ids = selectedWindowIds(from: params?["windowIds"])
+            trace.append(.string("selection size \(ids.count)"))
+            return dedupeWindows(visible.filter { ids.contains($0.wid) })
+
+        case "app":
+            guard let app = params?["app"]?.stringValue else {
+                trace.append(.string("missing app for app scope"))
+                return []
+            }
+            trace.append(.string("filtered by app \(app)"))
+            if let titleFilter {
+                trace.append(.string("title contains \(titleFilter)"))
+            }
+            return dedupeWindows(visible.filter {
+                $0.app.localizedCaseInsensitiveCompare(app) == .orderedSame &&
+                (titleFilter == nil || $0.title.localizedCaseInsensitiveContains(titleFilter!))
+            })
+
+        case "active-app", "frontmost-app", "current-app":
+            let activeApp = params?["app"]?.stringValue ?? frontmostOptimizableApp()
+            guard let activeApp else {
+                trace.append(.string("no active app available"))
+                return []
+            }
+            trace.append(.string("resolved active app \(activeApp)"))
+            if let titleFilter {
+                trace.append(.string("title contains \(titleFilter)"))
+            }
+            return dedupeWindows(visible.filter {
+                $0.app.localizedCaseInsensitiveCompare(activeApp) == .orderedSame &&
+                (titleFilter == nil || $0.title.localizedCaseInsensitiveContains(titleFilter!))
+            })
+
+        default:
+            trace.append(.string("using visible window scope"))
+            return dedupeWindows(visible)
+        }
+    }
+
+    static func selectedWindowIds(from json: JSON?) -> [UInt32] {
+        guard case .array(let values) = json else { return [] }
+        return values.compactMap(\.uint32Value)
+    }
+
+    static func distributableWindows() -> [WindowEntry] {
+        DesktopModel.shared.allWindows().filter { entry in
+            entry.isOnScreen &&
+            entry.app != "Lattices" &&
+            entry.frame.w > 50 &&
+            entry.frame.h > 50
+        }
+    }
+
+    static func dedupeWindows(_ windows: [WindowEntry]) -> [WindowEntry] {
+        var seen: Set<UInt32> = []
+        var result: [WindowEntry] = []
+        for window in windows where !seen.contains(window.wid) {
+            seen.insert(window.wid)
+            result.append(window)
+        }
+        return result
+    }
+
+    static func frontmostOptimizableApp() -> String? {
+        if let app = NSWorkspace.shared.frontmostApplication?.localizedName,
+           !app.localizedCaseInsensitiveContains("lattices") {
+            return app
+        }
+        return distributableWindows().first?.app
+    }
+
+    static func normalizeToken(_ raw: String) -> String {
+        raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "_", with: "-")
+            .replacingOccurrences(of: " ", with: "-")
     }
 }
 

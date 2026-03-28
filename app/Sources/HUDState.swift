@@ -1,5 +1,6 @@
-import Foundation
 import Combine
+import CoreGraphics
+import Foundation
 
 // MARK: - HUDItem
 
@@ -44,12 +45,27 @@ enum HUDFocus: Equatable {
 // MARK: - HUDState
 
 final class HUDState: ObservableObject {
+    private static let leftSidebarWidthKey = "hud.leftSidebarWidth"
+    private static let defaultLeftSidebarWidth: CGFloat = 320
+    private static let minLeftSidebarWidth: CGFloat = 260
+    private static let maxLeftSidebarWidth: CGFloat = 420
+
     @Published var selectedItem: HUDItem?
+    @Published var pinnedItem: HUDItem?
+    @Published var hoveredPreviewItem: HUDItem?
+    @Published var feedbackMessage: String?
     @Published var query: String = ""
     @Published var selectedIndex: Int = 0
     @Published var focus: HUDFocus = .search
     @Published var voiceActive: Bool = false
     @Published var expandedSections: Set<Int> = [2]
+    @Published var leftSidebarWidth: CGFloat = {
+        let saved = UserDefaults.standard.double(forKey: HUDState.leftSidebarWidthKey)
+        if saved > 0 {
+            return min(max(CGFloat(saved), HUDState.minLeftSidebarWidth), HUDState.maxLeftSidebarWidth)
+        }
+        return HUDState.defaultLeftSidebarWidth
+    }()
 
     /// Multi-select for tiling — set of item IDs
     @Published var selectedItems: Set<String> = []
@@ -76,11 +92,26 @@ final class HUDState: ObservableObject {
     /// Snapshot of the flat item list — set by HUDLeftBar so key handler can index into it
     var flatItems: [HUDItem] = []
 
+    var hoverPreviewAnchorScreenY: CGFloat?
+    var previewInteractionActive: Bool = false
+
     /// Section offsets for number-key jumping (1=Projects, 2=Terminals, 3=Chrome, 4=Claude)
     var sectionOffsets: [Int: Int] = [:]
 
     private var selectionAnchorID: String?
     private var touchedSections: Set<Int> = []
+    private var feedbackClearWorkItem: DispatchWorkItem?
+
+    var leftSidebarWidthRange: ClosedRange<CGFloat> {
+        Self.minLeftSidebarWidth...Self.maxLeftSidebarWidth
+    }
+
+    func setLeftSidebarWidth(_ width: CGFloat) {
+        let clamped = min(max(width, Self.minLeftSidebarWidth), Self.maxLeftSidebarWidth)
+        guard abs(clamped - leftSidebarWidth) > 0.5 else { return }
+        leftSidebarWidth = clamped
+        UserDefaults.standard.set(Double(clamped), forKey: Self.leftSidebarWidthKey)
+    }
 
     func isSectionExpanded(_ key: Int) -> Bool {
         expandedSections.contains(key)
@@ -136,6 +167,26 @@ final class HUDState: ObservableObject {
         return count > 1 ? count : 0
     }
 
+    var transientPreviewItem: HUDItem? {
+        if let hoveredPreviewItem {
+            return hoveredPreviewItem
+        }
+        if pinnedItem == nil && focus == .list {
+            return selectedItem
+        }
+        return nil
+    }
+
+    var inspectorCandidateItem: HUDItem? {
+        if let pinnedItem {
+            return pinnedItem
+        }
+        if let hoveredPreviewItem {
+            return hoveredPreviewItem
+        }
+        return selectedItem
+    }
+
     func clearMultiSelection() {
         selectedItems = []
         if let selectedItem {
@@ -150,6 +201,43 @@ final class HUDState: ObservableObject {
         selectedIndex = index
         selectedItems = []
         selectionAnchorID = item.id
+    }
+
+    func showFeedback(_ message: String, autoClearAfter delay: TimeInterval = 0.9) {
+        feedbackClearWorkItem?.cancel()
+        feedbackMessage = message
+
+        let clearWorkItem = DispatchWorkItem { [weak self] in
+            guard self?.feedbackMessage == message else { return }
+            self?.feedbackMessage = nil
+        }
+        feedbackClearWorkItem = clearWorkItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: clearWorkItem)
+    }
+
+    func pinInspector(_ item: HUDItem, source: String = "selection") {
+        let timed = AppFeedback.shared.beginTimed(
+            "HUD inspect (\(source))",
+            state: self,
+            feedback: "Inspecting \(item.displayName)"
+        )
+        if let idx = flatItems.firstIndex(of: item) {
+            selectedIndex = idx
+        }
+        selectedItem = item
+        pinnedItem = item
+        hoveredPreviewItem = nil
+        selectedItems = []
+        selectionAnchorID = item.id
+        focus = .inspector
+        DispatchQueue.main.async {
+            AppFeedback.shared.finish(timed)
+        }
+    }
+
+    func pinInspectorCandidate(source: String = "preview") {
+        guard let item = inspectorCandidateItem else { return }
+        pinInspector(item, source: source)
     }
 
     func toggleSelection(_ item: HUDItem, index: Int, in items: [HUDItem]) {
@@ -231,12 +319,20 @@ final class HUDState: ObservableObject {
         if let selectedItem, !validIDs.contains(selectedItem.id) {
             self.selectedItem = nil
         }
+        if let pinnedItem, !validIDs.contains(pinnedItem.id) {
+            self.pinnedItem = nil
+        }
+        if let hoveredPreviewItem, !validIDs.contains(hoveredPreviewItem.id) {
+            self.hoveredPreviewItem = nil
+        }
         if let selectionAnchorID, !validIDs.contains(selectionAnchorID) {
             self.selectionAnchorID = selectedItem?.id
         }
 
         guard !items.isEmpty else {
             selectedItem = nil
+            pinnedItem = nil
+            hoveredPreviewItem = nil
             selectedIndex = 0
             selectedItems = []
             selectionAnchorID = nil

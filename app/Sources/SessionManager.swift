@@ -8,6 +8,9 @@ enum SessionManager {
     static func launch(project: Project) {
         let terminal = Preferences.shared.terminal
         if project.isRunning {
+            if let window = DesktopModel.shared.windowForSession(project.sessionName) {
+                DesktopModel.shared.markInteraction(wid: window.wid)
+            }
             terminal.focusOrAttach(session: project.sessionName)
         } else {
             terminal.launch(command: latticesPath, in: project.path)

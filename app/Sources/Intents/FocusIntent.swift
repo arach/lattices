@@ -47,21 +47,23 @@ struct FocusIntent: LatticeIntent {
             throw IntentError.missingSlot("app")
         }
 
-        // Search for the app in windows
+        // Use unified search — single source of truth
         let result = try LatticesApi.shared.dispatch(
-            method: "windows.search",
-            params: .object(["query": .string(app)])
+            method: "lattices.search",
+            params: .object([
+                "query": .string(app),
+                "sources": .array([.string("titles"), .string("apps"), .string("sessions"), .string("cwd"), .string("tmux")]),
+            ])
         )
         if case .array(let items) = result, let first = items.first,
-           let wid = first["wid"]?.uint32Value,
-           let pid = first["pid"]?.intValue {
+           let wid = first["wid"]?.uint32Value {
+            let pid = first["pid"]?.intValue ?? Int(DesktopModel.shared.windows[wid]?.pid ?? 0)
             DispatchQueue.main.async {
                 WindowTiler.focusWindow(wid: wid, pid: Int32(pid))
             }
             return .object(["ok": .bool(true), "focused": .string(app), "wid": .int(Int(wid))])
         }
 
-        // Try launching the app if not found as a window
         return .object(["ok": .bool(false), "reason": .string("No window found for '\(app)'")])
     }
 }

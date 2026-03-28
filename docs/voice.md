@@ -54,6 +54,9 @@ Move windows to screen positions.
 "Put this in the top right corner"
 ```
 
+Voice tiling should resolve into the same canonical daemon mutation used
+by other agent surfaces: `window.place`.
+
 ### Focus
 
 Bring a window or app to the front.

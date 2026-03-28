@@ -84,24 +84,53 @@ final class OmniSearchState: ObservableObject {
         refreshSummary()
     }
 
-    // MARK: - Search
+    // MARK: - Search (delegates to unified lattices.search API)
 
     private func search(_ query: String) {
         let q = query.lowercased()
         var all: [OmniResult] = []
 
-        // Windows
-        let desktop = DesktopModel.shared
-        for win in desktop.allWindows() {
-            let score = scoreMatch(q, against: [win.app, win.title])
-            if score > 0 {
-                let wid = win.wid
-                let pid = win.pid
+        // ── Daemon search: windows, terminals, OCR — single source of truth ──
+        // This is synchronous on the daemon's in-process API, not a network call.
+        if let json = try? LatticesApi.shared.dispatch(
+            method: "lattices.search",
+            params: .object(["query": .string(q)])
+        ), case .array(let hits) = json {
+            let desktop = DesktopModel.shared
+            for hit in hits {
+                guard let wid = hit["wid"]?.uint32Value else { continue }
+                let app = hit["app"]?.stringValue ?? ""
+                let title = hit["title"]?.stringValue ?? ""
+                let score = hit["score"]?.intValue ?? 0
+                let pid = desktop.windows[wid]?.pid ?? 0
+                let sources = (hit["matchSources"]?.arrayValue ?? []).compactMap(\.stringValue)
+
+                // Determine kind from match sources
+                let hasOcr = sources.contains("ocr")
+                let hasTerminal = !Set(sources).isDisjoint(with: ["cwd", "tab", "tmux", "process"])
+                let kind: OmniResultKind = hasOcr ? .ocrContent : hasTerminal ? .session : .window
+
+                let icon: String
+                let subtitle: String
+                switch kind {
+                case .ocrContent:
+                    icon = "doc.text.magnifyingglass"
+                    subtitle = hit["ocrSnippet"]?.stringValue ?? title
+                case .session:
+                    icon = "terminal"
+                    let tabs = hit["terminalTabs"]?.arrayValue ?? []
+                    let cwds = tabs.compactMap { $0["cwd"]?.stringValue }
+                    subtitle = cwds.first ?? title
+                default:
+                    icon = "macwindow"
+                    subtitle = title.isEmpty ? "Window \(wid)" : title
+                }
+
                 all.append(OmniResult(
-                    kind: .window,
-                    title: win.app,
-                    subtitle: win.title.isEmpty ? "Window \(win.wid)" : win.title,
-                    icon: "macwindow",
+                    kind: kind,
+                    title: app,
+                    subtitle: subtitle,
+                    icon: icon,
                     score: score
                 ) {
                     WindowTiler.focusWindow(wid: wid, pid: pid)
@@ -109,10 +138,9 @@ final class OmniSearchState: ObservableObject {
             }
         }
 
-        // Projects
-        let scanner = ProjectScanner.shared
-        for project in scanner.projects {
-            let score = scoreMatch(q, against: [project.name, project.path])
+        // ── Projects: local-only (not window-centric, so not in daemon search) ──
+        for project in ProjectScanner.shared.projects {
+            let score = scoreProjectMatch(q, name: project.name, path: project.path)
             if score > 0 {
                 let proj = project
                 all.append(OmniResult(
@@ -127,93 +155,20 @@ final class OmniSearchState: ObservableObject {
             }
         }
 
-        // Tmux Sessions
-        let tmux = TmuxModel.shared
-        for session in tmux.sessions {
-            let paneCommands = session.panes.map(\.currentCommand)
-            let score = scoreMatch(q, against: [session.name] + paneCommands)
-            if score > 0 {
-                let name = session.name
-                all.append(OmniResult(
-                    kind: .session,
-                    title: session.name,
-                    subtitle: "\(session.windowCount) windows, \(session.panes.count) panes\(session.attached ? " (attached)" : "")",
-                    icon: "terminal",
-                    score: score
-                ) {
-                    let terminal = Preferences.shared.terminal
-                    terminal.focusOrAttach(session: name)
-                })
-            }
-        }
-
-        // Processes
-        let processes = ProcessModel.shared
-        for proc in processes.interesting {
-            let score = scoreMatch(q, against: [proc.comm, proc.args, proc.cwd ?? ""])
-            if score > 0 {
-                all.append(OmniResult(
-                    kind: .process,
-                    title: proc.comm,
-                    subtitle: proc.cwd ?? proc.args,
-                    icon: "gearshape",
-                    score: score
-                ) {
-                    // No direct action for processes — just informational
-                })
-            }
-        }
-
-        // OCR content
-        let ocr = OcrModel.shared
-        for (_, result) in ocr.results {
-            let ocrScore = scoreOcr(q, fullText: result.fullText)
-            if ocrScore > 0 {
-                let wid = result.wid
-                let pid = desktop.windows[wid]?.pid ?? 0
-                // Find matching line for subtitle
-                let matchLine = result.texts
-                    .first { $0.text.lowercased().contains(q) }?
-                    .text ?? String(result.fullText.prefix(80))
-                all.append(OmniResult(
-                    kind: .ocrContent,
-                    title: "\(result.app) — \(result.title)",
-                    subtitle: matchLine,
-                    icon: "doc.text.magnifyingglass",
-                    score: ocrScore
-                ) {
-                    WindowTiler.focusWindow(wid: wid, pid: pid)
-                })
-            }
-        }
-
-        // Sort by score descending
         all.sort { $0.score > $1.score }
-
         results = all
         selectedIndex = 0
     }
 
-    // MARK: - Scoring
+    // MARK: - Project scoring (local — projects aren't windows)
 
-    private func scoreMatch(_ query: String, against fields: [String]) -> Int {
-        var best = 0
-        for field in fields {
-            let lower = field.lowercased()
-            if lower == query {
-                best = max(best, 100)  // exact
-            } else if lower.hasPrefix(query) {
-                best = max(best, 80)   // prefix
-            } else if lower.contains(query) {
-                best = max(best, 60)   // contains
-            }
-        }
-        return best
-    }
-
-    private func scoreOcr(_ query: String, fullText: String) -> Int {
-        let lower = fullText.lowercased()
-        if lower.contains(query) { return 40 }
+    private func scoreProjectMatch(_ query: String, name: String, path: String) -> Int {
+        let lowerName = name.lowercased()
+        let lowerPath = path.lowercased()
+        if lowerName == query { return 100 }
+        if lowerName.hasPrefix(query) { return 80 }
+        if lowerName.contains(query) { return 60 }
+        if lowerPath.contains(query) { return 40 }
         return 0
     }
 

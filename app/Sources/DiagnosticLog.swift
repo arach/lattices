@@ -115,6 +115,54 @@ final class DiagnosticLog: ObservableObject {
     }
 }
 
+// MARK: - Interaction Feedback
+
+final class AppFeedback {
+    static let shared = AppFeedback()
+
+    private lazy var tapSound: NSSound? = {
+        guard let url = Bundle.main.url(forResource: "tap", withExtension: "wav") else { return nil }
+        return NSSound(contentsOf: url, byReference: true)
+    }()
+
+    private init() {}
+
+    @discardableResult
+    func beginTimed(_ label: String, state: HUDState? = nil, feedback: String? = nil, playSound: Bool = true) -> DiagnosticLog.TimedAction {
+        if playSound {
+            playTap()
+        }
+        if let feedback, let state {
+            state.showFeedback(feedback)
+        }
+        return DiagnosticLog.shared.startTimed(label)
+    }
+
+    func finish(_ action: DiagnosticLog.TimedAction, state: HUDState? = nil, feedback: String? = nil) {
+        if let feedback, let state {
+            state.showFeedback(feedback)
+        }
+        DiagnosticLog.shared.finish(action)
+    }
+
+    func acknowledge(_ label: String, state: HUDState? = nil, feedback: String? = nil, playSound: Bool = true) {
+        if playSound {
+            playTap()
+        }
+        if let feedback, let state {
+            state.showFeedback(feedback)
+        }
+        DiagnosticLog.shared.info(label)
+    }
+
+    private func playTap() {
+        DispatchQueue.main.async {
+            self.tapSound?.stop()
+            self.tapSound?.play()
+        }
+    }
+}
+
 // MARK: - Diagnostic Window
 
 final class DiagnosticWindow {

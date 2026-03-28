@@ -13,6 +13,8 @@ struct HUDBottomBar: View {
                 tileModeView
             } else if !handsOff.recentActions.isEmpty {
                 actionPlayback
+            } else if let feedback = state.feedbackMessage {
+                feedbackView(feedback)
             } else if state.voiceActive {
                 voiceStatusView
             } else {
@@ -139,6 +141,25 @@ struct HUDBottomBar: View {
         case .listening:  return "listening..."
         case .thinking:   return "thinking..."
         }
+    }
+
+    // MARK: - Interaction feedback
+
+    private func feedbackView(_ message: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "cursorarrow.click.2")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(Palette.running)
+            Text(message)
+                .font(Typo.monoBold(10))
+                .foregroundColor(Palette.text)
+                .lineLimit(1)
+            Spacer()
+            Text("working")
+                .font(Typo.mono(9))
+                .foregroundColor(Palette.textDim)
+        }
+        .padding(.horizontal, 16)
     }
 
     // MARK: - Tile mode

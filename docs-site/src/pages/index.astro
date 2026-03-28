@@ -31,13 +31,13 @@ const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span cla
   query: <span class="hl-str">'myproject'</span>
 })
 
-<span class="hl-cmt">// Launch a session and tile it</span>
+<span class="hl-cmt">// Launch a session and place it</span>
 <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'session.launch'</span>, {
   path: <span class="hl-str">'/Users/you/dev/frontend'</span>
 })
-<span class="hl-kw">await</span> daemonCall(<span class="hl-str">'window.tile'</span>, {
+<span class="hl-kw">await</span> daemonCall(<span class="hl-str">'window.place'</span>, {
   session: <span class="hl-str">'frontend-a1b2c3'</span>,
-  position: <span class="hl-str">'left'</span>
+  placement: <span class="hl-str">'left'</span>
 })
 
 <span class="hl-cmt">// Search screen text</span>
@@ -285,10 +285,10 @@ const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span cla
                 <li><code>terminals.search</code> — inspect terminal tabs, processes, cwds</li>
                 <li><code>ocr.search</code> — full-text search across all screen content</li>
                 <li><code>session.launch</code> — start a project session</li>
-                <li><code>window.tile</code> — snap windows to screen positions</li>
+                <li><code>window.place</code> — place windows with typed layout contracts</li>
                 <li>35+ methods + 5 real-time events</li>
               </ul>
-              <a href="/docs/api" class="agent-api-link">Full API reference &rarr;</a>
+              <a href="/docs/agents" class="agent-api-link">Agent guide &rarr;</a>
             </div>
 
             <div class="code-block">

@@ -371,6 +371,7 @@ class WorkspaceManager: ObservableObject {
 
         let allLabels = layers.map(\.label)
         LayerBezel.shared.show(label: targetLayer.label, index: index, total: layers.count, allLabels: allLabels)
+        HandsOffSession.shared.playCachedCue("Switched.")
 
         diag.finish(t)
     }

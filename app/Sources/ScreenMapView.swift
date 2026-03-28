@@ -310,6 +310,7 @@ struct ScreenMapView: View {
             inspectorRow(label: "Layers", value: layers)
             inspectorRow(label: "View", value: "\(Int(viewport.midX)), \(Int(viewport.midY)) · \(Int(viewport.width))×\(Int(viewport.height))")
             inspectorRow(label: "World", value: "\(Int(world.width))×\(Int(world.height))")
+            inspectorRow(label: "Set", value: controller.activeWindowSet?.name ?? "None")
             inspectorRow(label: "Select", value: "\(selectedCount) window\(selectedCount == 1 ? "" : "s")")
         }
         .padding(8)
@@ -880,6 +881,7 @@ struct ScreenMapView: View {
             ("t", "tile", { [controller] in controller.tileLayer() }),
             ("d", "distrib", { [controller] in controller.distributeVisible() }),
             ("g", "grow", { [controller] in controller.fitAvailableSpace() }),
+            ("u", "set", { [controller] in controller.createWindowSetFromSelection() }),
             ("m", "project", { [controller] in controller.materializeViewport() }),
             ("c", "merge", { [controller] in controller.consolidateLayers() }),
             ("f", "flatten", { [controller] in controller.flattenLayers() }),
@@ -1472,6 +1474,8 @@ struct ScreenMapView: View {
             .coordinateSpace(name: "layerSidebar")
 
             Spacer(minLength: 8)
+            windowSetsSection(editor: editor)
+            Spacer(minLength: 8)
             canvasExplorer(editor: editor)
             Spacer(minLength: 8)
             sidebarMiniMap(editor: editor)
@@ -1488,6 +1492,119 @@ struct ScreenMapView: View {
             wins = wins.filter { $0.displayIndex == dIdx }
         }
         return wins.sorted { $0.zIndex < $1.zIndex }
+    }
+
+    private func windowSetsSection(editor: ScreenMapEditorState) -> some View {
+        let sets = controller.windowSets
+        let canSave = !controller.selectedWindowIds.isEmpty
+
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Text("SETS")
+                    .font(Typo.monoBold(8))
+                    .foregroundColor(Palette.textMuted)
+                Text("\(sets.count)")
+                    .font(Typo.mono(7))
+                    .foregroundColor(Palette.textDim)
+                Spacer()
+                Button {
+                    controller.createWindowSetFromSelection()
+                } label: {
+                    Text("u save")
+                        .font(Typo.monoBold(7))
+                        .foregroundColor(canSave ? Self.shelfGreen : Palette.textMuted)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 3)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(canSave ? Self.shelfGreen.opacity(0.12) : Palette.surface.opacity(0.7))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .strokeBorder(canSave ? Self.shelfGreen.opacity(0.25) : Palette.border, lineWidth: 0.5)
+                                )
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(!canSave)
+            }
+
+            if sets.isEmpty {
+                Text("Save a selection to create a reusable cluster.")
+                    .font(Typo.mono(7))
+                    .foregroundColor(Palette.textMuted)
+                    .padding(.top, 2)
+            } else {
+                ForEach(sets) { set in
+                    windowSetRow(set: set, editor: editor)
+                }
+            }
+        }
+        .padding(6)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.black.opacity(0.4))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
+                )
+        )
+    }
+
+    private func windowSetRow(set: ScreenMapWindowSet, editor: ScreenMapEditorState) -> some View {
+        let liveCount = editor.windows(matching: set.windowIds).count
+        let isActive = controller.activeWindowSetID == set.id
+
+        return HStack(spacing: 6) {
+            Button {
+                controller.focusWindowSet(set)
+            } label: {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(isActive ? Self.shelfGreen : Palette.textMuted.opacity(0.7))
+                        .frame(width: 6, height: 6)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(set.name)
+                            .font(Typo.monoBold(8))
+                            .foregroundColor(isActive ? Palette.text : Palette.textDim)
+                            .lineLimit(1)
+                        Text("\(liveCount) window\(liveCount == 1 ? "" : "s")")
+                            .font(Typo.mono(7))
+                            .foregroundColor(Palette.textMuted)
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(isActive ? Self.shelfGreen.opacity(0.08) : Palette.surface.opacity(0.35))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .strokeBorder(isActive ? Self.shelfGreen.opacity(0.2) : Color.white.opacity(0.04), lineWidth: 0.5)
+                        )
+                )
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                controller.deleteWindowSet(set)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 7, weight: .bold))
+                    .foregroundColor(Palette.textMuted)
+                    .frame(width: 16, height: 16)
+                    .background(
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Palette.surface.opacity(0.8))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 3)
+                                    .strokeBorder(Palette.border, lineWidth: 0.5)
+                            )
+                    )
+            }
+            .buttonStyle(.plain)
+        }
     }
 
     private func layerTreeHeader(label: String, count: Int, isActive: Bool, color: Color,

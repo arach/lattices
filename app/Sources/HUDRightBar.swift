@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 // MARK: - HUDRightBar (inspector + conversation)
@@ -5,6 +6,8 @@ import SwiftUI
 struct HUDRightBar: View {
     @ObservedObject var state: HUDState
     @ObservedObject private var handsOff = HandsOffSession.shared
+    @ObservedObject private var desktop = DesktopModel.shared
+    @ObservedObject private var previewModel = WindowPreviewStore.shared
     var onDismiss: () -> Void
 
     var body: some View {
@@ -29,7 +32,7 @@ struct HUDRightBar: View {
 
     @ViewBuilder
     private var inspectorPane: some View {
-        if let item = state.selectedItem {
+        if let item = state.pinnedItem {
             detailView(for: item)
         } else {
             inspectorEmpty
@@ -79,6 +82,10 @@ struct HUDRightBar: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
 
+            if let previewWindow = projectPreviewWindow(project) {
+                previewSection(for: previewWindow, title: "Window Preview")
+            }
+
             Rectangle().fill(Palette.border).frame(height: 0.5)
 
             ScrollView {
@@ -96,6 +103,7 @@ struct HUDRightBar: View {
                 actionButton(project.isRunning ? "Focus" : "Launch",
                              icon: project.isRunning ? "eye" : "play.fill") {
                     SessionManager.launch(project: project)
+                    HandsOffSession.shared.playCachedCue(project.isRunning ? "Focused." : "Done.")
                     onDismiss()
                 }
             }
@@ -118,12 +126,17 @@ struct HUDRightBar: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
 
+            previewSection(for: window, title: "Live Preview")
+
             Rectangle().fill(Palette.border).frame(height: 0.5)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
                     metaRow("WID", value: "\(window.wid)")
                     metaRow("Frame", value: "\(Int(window.frame.x)),\(Int(window.frame.y)) \(Int(window.frame.w))×\(Int(window.frame.h))")
+                    if let lastUsed = desktop.lastInteractionDate(for: window.wid) {
+                        metaRow("Last used", value: relativeTime(lastUsed))
+                    }
                     if let session = window.latticesSession { metaRow("Session", value: session) }
                 }
                 .padding(.horizontal, 16)
@@ -133,12 +146,86 @@ struct HUDRightBar: View {
             HStack(spacing: 8) {
                 actionButton("Focus", icon: "eye") {
                     _ = WindowTiler.focusWindow(wid: window.wid, pid: window.pid)
+                    HandsOffSession.shared.playCachedCue("Focused.")
                     onDismiss()
                 }
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 10)
         }
+    }
+
+    @ViewBuilder
+    private func previewSection(for window: WindowEntry, title: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Text(title)
+                    .font(Typo.monoBold(10))
+                    .foregroundColor(Palette.textMuted)
+                Spacer()
+                Text("no focus")
+                    .font(Typo.mono(9))
+                    .foregroundColor(Palette.textDim)
+            }
+
+            ZStack {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Palette.surface.opacity(0.8))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .strokeBorder(Palette.border, lineWidth: 0.5)
+                    )
+
+                if let image = previewModel.image(for: window.wid) {
+                    Image(nsImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .padding(8)
+                } else if previewModel.isLoading(window.wid) {
+                    previewPlaceholder(
+                        icon: "photo",
+                        title: "Capturing preview",
+                        subtitle: window.app
+                    )
+                } else {
+                    previewPlaceholder(
+                        icon: "eye.slash",
+                        title: "Preview unavailable",
+                        subtitle: window.app
+                    )
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 190)
+            .clipped()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .task(id: window.wid) {
+            previewModel.load(window: window)
+        }
+    }
+
+    private func previewPlaceholder(icon: String, title: String, subtitle: String) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 18, weight: .medium))
+                .foregroundColor(Palette.textMuted.opacity(0.7))
+            Text(title)
+                .font(Typo.monoBold(10))
+                .foregroundColor(Palette.textMuted)
+            Text(subtitle)
+                .font(Typo.mono(9))
+                .foregroundColor(Palette.textDim)
+                .lineLimit(1)
+        }
+        .padding(16)
+    }
+
+    private func projectPreviewWindow(_ project: Project) -> WindowEntry? {
+        guard project.isRunning else { return nil }
+        return desktop.windowForSession(project.sessionName)
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -346,5 +433,342 @@ struct HUDRightBar: View {
             )
         }
         .buttonStyle(.plain)
+    }
+
+    private func relativeTime(_ date: Date) -> String {
+        let seconds = max(0, Int(Date().timeIntervalSince(date)))
+        if seconds < 60 { return "\(seconds)s ago" }
+        if seconds < 3600 { return "\(seconds / 60)m ago" }
+        if seconds < 86_400 { return "\(seconds / 3600)h ago" }
+        return "\(seconds / 86_400)d ago"
+    }
+}
+
+struct HUDHoverPreviewView: View {
+    @ObservedObject var state: HUDState
+    @ObservedObject private var previewModel = WindowPreviewStore.shared
+    @ObservedObject private var desktop = DesktopModel.shared
+    @State private var renderedWindow: WindowEntry?
+    @State private var renderedWindowID: UInt32?
+    @State private var renderedImage: NSImage?
+
+    private var activeWindow: WindowEntry? {
+        guard let item = state.transientPreviewItem else { return nil }
+        return previewWindow(for: item)
+    }
+
+    private var previewToken: String {
+        guard let window = activeWindow else { return "none" }
+        return "\(window.wid)-\(previewModel.image(for: window.wid) != nil)"
+    }
+
+    var body: some View {
+        Group {
+            if let window = renderedWindow ?? activeWindow {
+                Button {
+                    state.pinInspectorCandidate(source: "preview")
+                } label: {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 8) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(window.title)
+                                    .font(Typo.monoBold(12))
+                                    .foregroundColor(Palette.text)
+                                    .lineLimit(1)
+                                Text(window.app)
+                                    .font(Typo.mono(10))
+                                    .foregroundColor(Palette.textMuted)
+                                    .lineLimit(1)
+                            }
+                            Spacer()
+                            Text("inspect")
+                                .font(Typo.mono(9))
+                                .foregroundColor(Palette.textDim)
+                        }
+
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Palette.bg.opacity(0.96))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .strokeBorder(Palette.border, lineWidth: 0.5)
+                                )
+
+                            if let renderedImage {
+                                Image(nsImage: renderedImage)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .clipShape(RoundedRectangle(cornerRadius: 9))
+                                    .padding(10)
+                                    .id(renderedWindowID ?? window.wid)
+                                    .transition(.opacity)
+                                    .opacity(isHoldingPreviousPreview(for: window) ? 0.88 : 1)
+                            } else if previewModel.isLoading(window.wid) {
+                                previewPlaceholder(
+                                    icon: "photo",
+                                    title: "Capturing preview",
+                                    subtitle: window.app
+                                )
+                            } else {
+                                previewPlaceholder(
+                                    icon: "eye.slash",
+                                    title: "Preview unavailable",
+                                    subtitle: window.app
+                                )
+                            }
+
+                            if isHoldingPreviousPreview(for: window) {
+                                loadingOverlay(label: "Loading next preview")
+                            }
+                        }
+                        .frame(height: 190)
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .background(
+                        UnevenRoundedRectangle(
+                            cornerRadii: .init(
+                                topLeading: 6,
+                                bottomLeading: 6,
+                                bottomTrailing: 16,
+                                topTrailing: 16
+                            ),
+                            style: .continuous
+                        )
+                            .fill(Palette.bg.opacity(0.94))
+                            .overlay(
+                                UnevenRoundedRectangle(
+                                    cornerRadii: .init(
+                                        topLeading: 6,
+                                        bottomLeading: 6,
+                                        bottomTrailing: 16,
+                                        topTrailing: 16
+                                    ),
+                                    style: .continuous
+                                )
+                                    .strokeBorder(Palette.border, lineWidth: 0.5)
+                            )
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .shadow(color: Color.black.opacity(0.22), radius: 18, x: 0, y: 10)
+                .onHover { isHovering in
+                    state.previewInteractionActive = isHovering
+                    guard !isHovering else { return }
+                    let hoveredItemID = state.hoveredPreviewItem?.id
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                        guard hoveredItemID == self.state.hoveredPreviewItem?.id,
+                              !self.state.previewInteractionActive else { return }
+                        self.state.hoveredPreviewItem = nil
+                        self.state.hoverPreviewAnchorScreenY = nil
+                    }
+                }
+            } else {
+                Color.clear
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.clear)
+        .onAppear {
+            syncRenderedPreview(animated: false)
+        }
+        .onChange(of: state.transientPreviewItem?.id) { _ in
+            syncRenderedPreview(animated: true)
+        }
+        .onChange(of: previewToken) { _ in
+            syncRenderedPreview(animated: true)
+        }
+    }
+
+    private func previewWindow(for item: HUDItem) -> WindowEntry? {
+        switch item {
+        case .window(let window):
+            return window
+        case .project(let project):
+            guard project.isRunning else { return nil }
+            return desktop.windowForSession(project.sessionName)
+        }
+    }
+
+    private func previewPlaceholder(icon: String, title: String, subtitle: String) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 18, weight: .medium))
+                .foregroundColor(Palette.textMuted.opacity(0.7))
+            Text(title)
+                .font(Typo.monoBold(10))
+                .foregroundColor(Palette.textMuted)
+            Text(subtitle)
+                .font(Typo.mono(9))
+                .foregroundColor(Palette.textDim)
+                .lineLimit(1)
+        }
+        .padding(16)
+    }
+
+    private func loadingOverlay(label: String) -> some View {
+        VStack {
+            Spacer()
+            HStack {
+                Spacer()
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(Palette.text)
+                    Text(label)
+                        .font(Typo.mono(9))
+                        .foregroundColor(Palette.text)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    Capsule()
+                        .fill(Palette.bg.opacity(0.88))
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(Palette.border, lineWidth: 0.5)
+                        )
+                )
+                .padding(14)
+            }
+        }
+    }
+
+    private func isHoldingPreviousPreview(for window: WindowEntry) -> Bool {
+        guard let renderedWindowID else { return false }
+        return renderedWindowID != window.wid && previewModel.image(for: window.wid) == nil
+    }
+
+    private func syncRenderedPreview(animated: Bool) {
+        guard let window = activeWindow else { return }
+
+        previewModel.load(window: window)
+
+        guard let image = previewModel.image(for: window.wid) else { return }
+        guard renderedWindowID != window.wid || renderedImage == nil || renderedWindow?.title != window.title else { return }
+
+        let apply = {
+            renderedWindow = window
+            renderedWindowID = window.wid
+            renderedImage = image
+        }
+
+        if animated {
+            withAnimation(.easeInOut(duration: 0.16)) {
+                apply()
+            }
+        } else {
+            apply()
+        }
+    }
+}
+
+final class WindowPreviewStore: ObservableObject {
+    static let shared = WindowPreviewStore()
+
+    @Published private var images: [UInt32: NSImage] = [:]
+    @Published private var loading: Set<UInt32> = []
+
+    private var lastAttemptAt: [UInt32: Date] = [:]
+    private var accessOrder: [UInt32] = []  // LRU: oldest first
+    private let maxCached = 15
+    private let queue = DispatchQueue(label: "com.arach.lattices.hud-preview", qos: .userInitiated)
+    private let previewMaxSize = NSSize(width: 360, height: 190)
+
+    func image(for wid: UInt32) -> NSImage? {
+        if images[wid] != nil { touchLRU(wid) }
+        return images[wid]
+    }
+
+    private func touchLRU(_ wid: UInt32) {
+        accessOrder.removeAll { $0 == wid }
+        accessOrder.append(wid)
+    }
+
+    private func evictIfNeeded() {
+        while images.count > maxCached, let oldest = accessOrder.first {
+            accessOrder.removeFirst()
+            images.removeValue(forKey: oldest)
+            lastAttemptAt.removeValue(forKey: oldest)
+        }
+    }
+
+    func hasSettled(_ wid: UInt32) -> Bool {
+        images[wid] != nil || (lastAttemptAt[wid] != nil && !loading.contains(wid))
+    }
+
+    func isLoading(_ wid: UInt32) -> Bool {
+        loading.contains(wid)
+    }
+
+    func prewarm(windows: [WindowEntry], limit: Int = 4) {
+        for window in windows.prefix(limit) {
+            load(window: window)
+        }
+    }
+
+    func load(window: WindowEntry) {
+        if images[window.wid] != nil || loading.contains(window.wid) {
+            return
+        }
+
+        let now = Date()
+        if let lastAttemptAt = lastAttemptAt[window.wid], now.timeIntervalSince(lastAttemptAt) < 1.0 {
+            return
+        }
+        lastAttemptAt[window.wid] = now
+
+        loading.insert(window.wid)
+        let wid = window.wid
+        let frame = window.frame
+        let startedAt = Date()
+
+        queue.async { [weak self] in
+            guard let self else { return }
+
+            let cgImage = CGWindowListCreateImage(
+                .null,
+                .optionIncludingWindow,
+                CGWindowID(wid),
+                [.boundsIgnoreFraming, .nominalResolution]
+            )
+
+            let image = cgImage.map {
+                NSImage(
+                    cgImage: $0,
+                    size: self.previewSize(for: frame)
+                )
+            }
+
+            DispatchQueue.main.async {
+                self.loading.remove(wid)
+                let elapsedMs = Int(Date().timeIntervalSince(startedAt) * 1000)
+                if let image {
+                    self.images[wid] = image
+                    self.touchLRU(wid)
+                    self.evictIfNeeded()
+                    if elapsedMs >= 80 {
+                        DiagnosticLog.shared.info("HUDPreview: captured wid=\(wid) in \(elapsedMs)ms")
+                    }
+                } else {
+                    DiagnosticLog.shared.info("HUDPreview: capture unavailable wid=\(wid) after \(elapsedMs)ms")
+                }
+            }
+        }
+    }
+
+    private func previewSize(for frame: WindowFrame) -> NSSize {
+        let width = max(CGFloat(frame.w), CGFloat(1))
+        let height = max(CGFloat(frame.h), CGFloat(1))
+        let scale = min(
+            previewMaxSize.width / width,
+            previewMaxSize.height / height,
+            CGFloat(1)
+        )
+        return NSSize(
+            width: max(CGFloat(1), width * scale),
+            height: max(CGFloat(1), height * scale)
+        )
     }
 }

@@ -198,6 +198,14 @@ class HotkeyStore: ObservableObject {
     @Published var bindings: [HotkeyAction: KeyBinding]
     private var callbacks: [HotkeyAction: () -> Void] = [:]
 
+    private func instrumentedCallback(for action: HotkeyAction, callback: @escaping () -> Void) -> () -> Void {
+        {
+            let timed = DiagnosticLog.shared.startTimed("Hotkey \(action.label)")
+            callback()
+            DiagnosticLog.shared.finish(timed)
+        }
+    }
+
     static let defaultBindings: [HotkeyAction: KeyBinding] = {
         var d = [HotkeyAction: KeyBinding]()
         let hyper = UInt32(cmdKey | controlKey | optionKey | shiftKey)
@@ -291,7 +299,7 @@ class HotkeyStore: ObservableObject {
             id: action.carbonID,
             keyCode: binding.keyCode,
             modifiers: binding.carbonModifiers,
-            callback: callback
+            callback: instrumentedCallback(for: action, callback: callback)
         )
     }
 
@@ -311,7 +319,7 @@ class HotkeyStore: ObservableObject {
                 id: action.carbonID,
                 keyCode: binding.keyCode,
                 modifiers: binding.carbonModifiers,
-                callback: callback
+                callback: instrumentedCallback(for: action, callback: callback)
             )
         }
     }
@@ -328,7 +336,7 @@ class HotkeyStore: ObservableObject {
                 id: action.carbonID,
                 keyCode: defaultBinding.keyCode,
                 modifiers: defaultBinding.carbonModifiers,
-                callback: callback
+                callback: instrumentedCallback(for: action, callback: callback)
             )
         }
     }
@@ -346,7 +354,7 @@ class HotkeyStore: ObservableObject {
                 id: action.carbonID,
                 keyCode: binding.keyCode,
                 modifiers: binding.carbonModifiers,
-                callback: callback
+                callback: instrumentedCallback(for: action, callback: callback)
             )
         }
     }

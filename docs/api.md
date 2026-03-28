@@ -112,7 +112,10 @@ const win = await daemonCall('windows.get', { wid: 1234 })
 
 // Mutations
 await daemonCall('session.launch', { path: '/Users/you/dev/myapp' })
-await daemonCall('window.tile', { session: 'myapp-a1b2c3', position: 'left' })
+await daemonCall('window.place', {
+  session: 'myapp-a1b2c3',
+  placement: { kind: 'tile', value: 'left' }
+})
 
 // Custom timeout (default: 3000ms)
 await daemonCall('projects.scan', null, 10000)
@@ -190,6 +193,12 @@ Useful for agent self-discovery.
 
 **Params**: none
 
+CLI shortcut:
+
+```bash
+lattices call api.schema
+```
+
 #### `diagnostics.list`
 
 Return recent diagnostic log entries from the daemon.
@@ -210,13 +219,15 @@ Return recent diagnostic log entries from the daemon.
 | `windows.get` | read | Single window by ID |
 | `windows.search` | read | Search windows by query |
 | `spaces.list` | read | macOS display spaces |
-| `window.tile` | write | Tile a window to a position |
+| `window.place` | write | Place a window or session using a typed placement spec |
+| `window.tile` | write | Compatibility wrapper for session tiling |
 | `window.focus` | write | Focus a window / switch Spaces |
 | `window.move` | write | Move a window to another Space |
 | `window.assignLayer` | write | Tag a window to a layer |
 | `window.removeLayer` | write | Remove a window's layer tag |
 | `window.layerMap` | read | All window→layer assignments |
-| `layout.distribute` | write | Distribute windows evenly |
+| `space.optimize` | write | Optimize a set of windows using an explicit scope and strategy |
+| `layout.distribute` | write | Compatibility wrapper for visible-window balancing |
 
 #### `windows.list`
 
@@ -330,20 +341,53 @@ List macOS display spaces (virtual desktops).
 ]
 ```
 
-#### `window.tile`
+#### `window.place`
 
-Tile a session's terminal window to a screen position.
+Canonical window placement mutation. Use this when an agent needs a
+single, typed placement contract across voice, CLI, and daemon clients.
 
 **Params**:
 
-| Field      | Type   | Required | Description                         |
-|------------|--------|----------|-------------------------------------|
-| `session`  | string | yes      | Session name                        |
-| `position` | string | yes      | Tile position (see below)           |
+| Field       | Type            | Required | Description                              |
+|-------------|-----------------|----------|------------------------------------------|
+| `wid`       | number          | no       | Target window ID                          |
+| `session`   | string          | no       | Target lattices session                   |
+| `app`       | string          | no       | Target app name                           |
+| `title`     | string          | no       | Optional title substring for app matching |
+| `display`   | number          | no       | Target display index                      |
+| `placement` | string \| object | yes     | Placement shorthand or typed object       |
 
-**Positions**: `left`, `right`, `top`, `bottom`, `top-left`, `top-right`,
+Target resolution priority is `wid` → `session` → `app/title` → frontmost window.
+
+**Placement strings**: `left`, `right`, `top`, `bottom`, `top-left`, `top-right`,
 `bottom-left`, `bottom-right`, `left-third`, `center-third`, `right-third`,
-`maximize`, `center`
+`top-third`, `middle-third`, `bottom-third`, `left-quarter`, `right-quarter`,
+`top-quarter`, `bottom-quarter`, `maximize`, `center`, or `grid:CxR:C,R`.
+
+**Typed placement examples**:
+
+```json
+{ "kind": "tile", "value": "top-right" }
+{ "kind": "grid", "columns": 3, "rows": 2, "column": 2, "row": 0 }
+{ "kind": "fractions", "x": 0.5, "y": 0, "w": 0.5, "h": 1 }
+```
+
+**Returns**: execution receipt including resolved target, placement, and trace.
+
+#### `window.tile`
+
+Compatibility wrapper for `window.place` when the target is a lattices
+session window.
+
+**Params**:
+
+| Field      | Type   | Required | Description                             |
+|------------|--------|----------|-----------------------------------------|
+| `session`  | string | yes      | Session name                            |
+| `position` | string | yes      | Placement shorthand or grid syntax      |
+
+This method exists for compatibility. New integrations should prefer
+`window.place`.
 
 #### `window.focus`
 
@@ -408,9 +452,31 @@ Return all current window→layer assignments.
 
 Keys are CGWindowIDs (as strings), values are layer IDs.
 
+#### `space.optimize`
+
+Canonical space-balancing mutation. Use this when the goal is to make
+the current workspace coherent rather than placing one specific window.
+
+**Params**:
+
+| Field       | Type     | Required | Description                                         |
+|-------------|----------|----------|-----------------------------------------------------|
+| `scope`     | string   | no       | `visible`, `active-app`, `app`, or `selection`      |
+| `strategy`  | string   | no       | `balanced` or `mosaic`                              |
+| `app`       | string   | no       | App name for `app` scope                            |
+| `title`     | string   | no       | Optional title substring for app matching           |
+| `windowIds` | number[] | no       | Explicit window IDs for `selection` scope           |
+
+If `windowIds` is provided, scope is inferred as `selection`.
+If `app` is provided and `scope` is omitted, scope is inferred as `app`.
+
+**Returns**: execution receipt including resolved scope, strategy,
+affected window IDs, and trace.
+
 #### `layout.distribute`
 
-Distribute all visible lattices windows evenly across the screen.
+Compatibility wrapper for `space.optimize` with `scope=visible` and
+`strategy=balanced`.
 
 **Params**: none
 
@@ -545,7 +611,8 @@ Restart a specific pane's process within a session.
 | `projects.list` | read | Discovered projects |
 | `projects.scan` | write | Re-scan project directory |
 | `layers.list` | read | Workspace layers and active index |
-| `layer.switch` | write | Switch workspace layer |
+| `layer.activate` | write | Activate a workspace layer using an explicit mode |
+| `layer.switch` | write | Compatibility wrapper for launch-style layer activation |
 | `group.launch` | write | Launch a tab group |
 | `group.kill` | write | Kill a tab group |
 
@@ -602,20 +669,33 @@ List configured workspace layers and the active index.
 
 Returns empty `layers` array if no workspace config is loaded.
 
-#### `layer.switch`
+#### `layer.activate`
 
-Switch the active workspace layer. Focuses and tiles all windows in the
-target layer, launches any projects that aren't running yet, and posts
-a `layer.switched` event.
+Canonical layer mutation. Use this when an agent wants an explicit
+activation mode instead of implicit "switch" behavior.
 
 **Params**:
 
-| Field   | Type   | Required | Description                    |
-|---------|--------|----------|--------------------------------|
-| `index` | number | no       | Layer index (0-based)          |
-| `name`  | string | no       | Layer ID or label              |
+| Field   | Type   | Required | Description                                 |
+|---------|--------|----------|---------------------------------------------|
+| `index` | number | no       | Layer index (0-based)                       |
+| `name`  | string | no       | Layer ID or label                           |
+| `mode`  | string | no       | `launch`, `focus`, or `retile`              |
 
-Provide either `index` or `name`. If both are given, `name` takes priority.
+Provide either `index` or `name`.
+
+**Modes**:
+
+- `launch` — bring up the layer, launching missing projects and retiling
+- `focus` — raise the layer's windows in place
+- `retile` — re-apply the layer layout without launch semantics
+
+**Returns**: execution receipt including resolved layer, mode, and trace.
+
+#### `layer.switch`
+
+Compatibility wrapper for `layer.activate` with `mode=launch`.
+It keeps the old semantics and still posts a `layer.switched` event.
 
 #### `group.launch`
 
@@ -880,9 +960,10 @@ is available at ws://127.0.0.1:9399.
 
 ### Actions
 - Focus a window: `daemonCall('window.focus', { wid: 1234 })`
-- Tile a window: `daemonCall('window.tile', { session: 'name', position: 'left' })`
+- Place a window: `daemonCall('window.place', { session: 'name', placement: 'left' })`
 - Launch a project: `daemonCall('session.launch', { path: '/absolute/path' })`
-- Switch layer: `daemonCall('layer.switch', { name: 'web' })`
+- Activate a layer: `daemonCall('layer.activate', { name: 'web', mode: 'launch' })`
+- Optimize the workspace: `daemonCall('space.optimize', { scope: 'visible', strategy: 'balanced' })`
 - CLI: `lattices place myproject left` (search + focus + tile in one step)
 
 ### Import
@@ -910,8 +991,8 @@ const sessions = await daemonCall('tmux.sessions')
 const fe = sessions.find(s => s.name.startsWith('frontend'))
 const api = sessions.find(s => s.name.startsWith('api'))
 
-await daemonCall('window.tile', { session: fe.name, position: 'left' })
-await daemonCall('window.tile', { session: api.name, position: 'right' })
+await daemonCall('window.place', { session: fe.name, placement: 'left' })
+await daemonCall('window.place', { session: api.name, placement: 'right' })
 ```
 
 ### Reactive event pattern

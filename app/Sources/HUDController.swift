@@ -32,21 +32,33 @@ final class HUDController {
     private var bottomPanel: NSPanel?
     private var leftPanel: NSPanel?
     private var rightPanel: NSPanel?
+    private var previewPanel: NSPanel?
     private var minimapPanels: [NSPanel] = []
     private var keyMonitor: Any?
     private var clickMonitor: Any?
     private var minimapObserver: AnyCancellable?
+    private var sidebarWidthObserver: AnyCancellable?
+    private var selectionObserver: AnyCancellable?
+    private var previewObserver: AnyCancellable?
+    private var previewImageObserver: AnyCancellable?
     private let state = HUDState()
+    private let previewModel = WindowPreviewStore.shared
 
     private let topHeight: CGFloat = 44
     private let bottomHeight: CGFloat = 48
-    private let leftWidth: CGFloat = 320
     private let rightWidth: CGFloat = 400
+    private let previewWidth: CGFloat = 380
+    private let previewHeight: CGFloat = 240
+    private let previewGap: CGFloat = 14
     private let expandedMapWidth: CGFloat = 380
     private let expandedMapHeight: CGFloat = 240
 
+    private var leftWidth: CGFloat { state.leftSidebarWidth }
+
     /// Track which screen panels are positioned on (for multi-monitor repositioning)
     private var positionedScreen: NSScreen?
+    private var previewSettledItemID: String?
+    private var previewSettledAnchorScreenY: CGFloat?
 
     var isVisible: Bool { leftPanel?.alphaValue ?? 0 > 0.5 }
     private(set) var voiceBarVisible: Bool = false
@@ -120,7 +132,11 @@ final class HUDController {
         positionAllPanels(on: screen)
 
         // Order into window server at alpha 0 — instant show later
-        for p in allPanels { p.orderFrontRegardless(); p.alphaValue = 0 }
+        for p in allPanels {
+            p.orderFrontRegardless()
+            p.alphaValue = 0
+            p.ignoresMouseEvents = true
+        }
     }
 
     // MARK: - Show (instant first paint)
@@ -131,8 +147,15 @@ final class HUDController {
         state.query = ""
         state.selectedIndex = 0
         state.selectedItem = nil
+        state.pinnedItem = nil
+        state.hoveredPreviewItem = nil
+        state.hoverPreviewAnchorScreenY = nil
+        state.previewInteractionActive = false
         state.selectedItems = []
-        state.focus = .list
+        state.focus = .search
+        previewSettledItemID = nil
+        previewSettledAnchorScreenY = nil
+        state.resetSectionDefaults(hasRunningProjects: ProjectScanner.shared.projects.contains(where: \.isRunning))
 
         let screen = mouseScreen()
         if positionedScreen != screen { positionAllPanels(on: screen) }
@@ -140,13 +163,27 @@ final class HUDController {
         // Pre-compute tile grid BEFORE showing panels (captures real z-order)
         DesktopModel.shared.poll()
         precomputeTileGrid(on: screen)
+        prewarmLikelyPreviews()
 
         // ── INSTANT SHOW ── alphaValue flip, zero animation
         let isExpanded = state.minimapMode == .expanded
-        for p in allPanels {
-            // Minimap panels only show when expanded
-            if minimapPanels.contains(where: { $0 === p }) && !isExpanded { continue }
-            p.alphaValue = 1
+        topPanel?.alphaValue = 1
+        topPanel?.ignoresMouseEvents = false
+        bottomPanel?.alphaValue = 1
+        bottomPanel?.ignoresMouseEvents = false
+        leftPanel?.alphaValue = 1
+        leftPanel?.ignoresMouseEvents = false
+        updateRightPanelVisibility(animated: false)
+        updatePreviewPanelVisibility(animated: false)
+        if isExpanded {
+            for panel in minimapPanels {
+                panel.alphaValue = 1
+                panel.ignoresMouseEvents = false
+            }
+        } else {
+            for panel in minimapPanels {
+                panel.ignoresMouseEvents = true
+            }
         }
         leftPanel?.makeKey()
 
@@ -181,42 +218,50 @@ final class HUDController {
             guard let self else { return }
             ctx.duration = 0.12
             ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            let sideHeight = max(0, sf.height - topHeight - bottomHeight)
 
             topPanel?.animator().setFrame(
-                NSRect(x: sf.minX + leftWidth, y: sf.maxY,
-                       width: sf.width - leftWidth - rightWidth, height: topHeight), display: false)
+                NSRect(x: sf.minX, y: sf.maxY,
+                       width: sf.width, height: topHeight), display: false)
             bottomPanel?.animator().setFrame(
-                NSRect(x: sf.minX + leftWidth, y: sf.minY - bottomHeight,
-                       width: sf.width - leftWidth - rightWidth, height: bottomHeight), display: false)
+                NSRect(x: sf.minX, y: sf.minY - bottomHeight,
+                       width: sf.width, height: bottomHeight), display: false)
             leftPanel?.animator().setFrame(
-                NSRect(x: sf.minX - leftWidth * 0.3, y: sf.minY, width: leftWidth, height: sf.height), display: false)
+                NSRect(x: sf.minX - leftWidth * 0.3, y: sf.minY + bottomHeight, width: leftWidth, height: sideHeight), display: false)
             rightPanel?.animator().setFrame(
-                NSRect(x: sf.maxX + rightWidth * 0.3 - rightWidth, y: sf.minY, width: rightWidth, height: sf.height), display: false)
+                NSRect(x: sf.maxX + rightWidth * 0.3 - rightWidth, y: sf.minY + bottomHeight, width: rightWidth, height: sideHeight), display: false)
             for p in allPanels { p.animator().alphaValue = 0 }
         }) { [weak self] in
             guard let self, let screen = self.positionedScreen else { return }
             self.positionAllPanels(on: screen)
+            for panel in self.allPanels {
+                panel.ignoresMouseEvents = true
+            }
         }
     }
 
     // MARK: - Position panels on screen
 
     private var allPanels: [NSPanel] {
-        [topPanel, bottomPanel, leftPanel, rightPanel].compactMap { $0 } + minimapPanels
+        [topPanel, bottomPanel, leftPanel, rightPanel, previewPanel].compactMap { $0 } + minimapPanels
     }
 
     private func positionAllPanels(on screen: NSScreen) {
         let sf = screen.visibleFrame
-        let midWidth = sf.width - leftWidth - rightWidth
+        let sideHeight = max(0, sf.height - topHeight - bottomHeight)
 
-        topPanel?.setFrame(NSRect(x: sf.minX + leftWidth, y: sf.maxY - topHeight,
-                                  width: midWidth, height: topHeight), display: false)
-        bottomPanel?.setFrame(NSRect(x: sf.minX + leftWidth, y: sf.minY,
-                                     width: midWidth, height: bottomHeight), display: false)
-        leftPanel?.setFrame(NSRect(x: sf.minX, y: sf.minY,
-                                   width: leftWidth, height: sf.height), display: false)
-        rightPanel?.setFrame(NSRect(x: sf.maxX - rightWidth, y: sf.minY,
-                                    width: rightWidth, height: sf.height), display: false)
+        topPanel?.setFrame(NSRect(x: sf.minX, y: sf.maxY - topHeight,
+                                  width: sf.width, height: topHeight), display: false)
+        bottomPanel?.setFrame(NSRect(x: sf.minX, y: sf.minY,
+                                     width: sf.width, height: bottomHeight), display: false)
+        leftPanel?.setFrame(NSRect(x: sf.minX, y: sf.minY + bottomHeight,
+                                   width: leftWidth, height: sideHeight), display: false)
+        rightPanel?.setFrame(NSRect(x: sf.maxX - rightWidth, y: sf.minY + bottomHeight,
+                                    width: rightWidth, height: sideHeight), display: false)
+        if let previewPanel,
+           let frame = previewFrame(on: screen, itemID: previewSettledItemID ?? state.transientPreviewItem?.id) {
+            previewPanel.setFrame(frame, display: false)
+        }
         positionMinimapPanels()
         positionedScreen = screen
     }
@@ -227,8 +272,10 @@ final class HUDController {
 
         for i in 0..<NSScreen.screens.count {
             let mp = makePanel()
-            mp.contentView = NSHostingView(rootView:
+            let hosting = NSHostingView(rootView:
                 HUDMinimap(state: state, onDismiss: dismiss, screenIndex: i).preferredColorScheme(.dark))
+            hosting.sizingOptions = []
+            mp.contentView = hosting
             mp.alphaValue = 0
             minimapPanels.append(mp)
         }
@@ -265,31 +312,50 @@ final class HUDController {
 
     // MARK: - Build panels (once)
 
-    @discardableResult
     private func ensurePanels() -> Void {
         guard topPanel == nil else { return }
         let dismiss: () -> Void = { [weak self] in self?.dismiss() }
 
         let tp = makePanel()
-        tp.contentView = NSHostingView(rootView:
+        let tpHosting = NSHostingView(rootView:
             HUDTopBar(state: state, onDismiss: dismiss).preferredColorScheme(.dark))
+        tpHosting.sizingOptions = []
+        tp.contentView = tpHosting
 
         let bp = makePanel()
-        bp.contentView = NSHostingView(rootView:
+        let bpHosting = NSHostingView(rootView:
             HUDBottomBar(state: state, onDismiss: dismiss).preferredColorScheme(.dark))
+        bpHosting.sizingOptions = []
+        bp.contentView = bpHosting
 
         let lp = makePanel(keyable: true)
-        lp.contentView = NSHostingView(rootView:
+        let lpHosting = NSHostingView(rootView:
             HUDLeftBar(state: state, onDismiss: dismiss).preferredColorScheme(.dark))
+        lpHosting.sizingOptions = []
+        lp.contentView = lpHosting
 
         let rp = makePanel()
-        rp.contentView = NSHostingView(rootView:
+        let rpHosting = NSHostingView(rootView:
             HUDRightBar(state: state, onDismiss: dismiss).preferredColorScheme(.dark))
+        rpHosting.sizingOptions = []
+        rp.contentView = rpHosting
+
+        let pp = makePanel()
+        pp.hasShadow = true
+        pp.contentMinSize = NSSize(width: previewWidth, height: previewHeight)
+        pp.contentMaxSize = NSSize(width: previewWidth, height: previewHeight)
+        let ppHosting = NSHostingView(rootView:
+            HUDHoverPreviewView(state: state)
+                .frame(width: previewWidth, height: previewHeight)
+                .preferredColorScheme(.dark))
+        ppHosting.sizingOptions = []
+        pp.contentView = ppHosting
 
         self.topPanel = tp
         self.bottomPanel = bp
         self.leftPanel = lp
         self.rightPanel = rp
+        self.previewPanel = pp
 
         // Create one minimap panel per screen
         buildMinimapPanels(dismiss: dismiss)
@@ -306,6 +372,98 @@ final class HUDController {
             } else {
                 for mp in self.minimapPanels { mp.alphaValue = 0 }
             }
+        }
+
+        sidebarWidthObserver = state.$leftSidebarWidth
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                guard let self, let screen = self.positionedScreen ?? NSScreen.main ?? NSScreen.screens.first else { return }
+                self.positionAllPanels(on: screen)
+            }
+
+        selectionObserver = state.$pinnedItem
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                self?.updateRightPanelVisibility(animated: true)
+            }
+
+        previewObserver = Publishers.CombineLatest4(
+            state.$hoveredPreviewItem
+                .map { $0?.id }
+                .removeDuplicates(),
+            state.$pinnedItem
+                .map { $0?.id }
+                .removeDuplicates(),
+            state.$selectedItem
+                .map { $0?.id }
+                .removeDuplicates(),
+            state.$focus
+                .removeDuplicates()
+        )
+        .sink { [weak self] _, _, _, _ in
+            DispatchQueue.main.async {
+                self?.updatePreviewPanelVisibility(animated: true)
+            }
+        }
+
+        previewImageObserver = previewModel.objectWillChange
+            .sink { [weak self] _ in
+                DispatchQueue.main.async {
+                    self?.updatePreviewPanelVisibility(animated: true)
+                }
+            }
+    }
+
+    private func updateRightPanelVisibility(animated: Bool) {
+        guard let rightPanel else { return }
+        let shouldShow = isVisible && state.pinnedItem != nil
+        let targetAlpha: CGFloat = shouldShow ? 1 : 0
+        rightPanel.ignoresMouseEvents = !shouldShow
+
+        guard rightPanel.alphaValue != targetAlpha else { return }
+
+        if animated {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.12
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                rightPanel.animator().alphaValue = targetAlpha
+            }
+        } else {
+            rightPanel.alphaValue = targetAlpha
+        }
+    }
+
+    private func updatePreviewPanelVisibility(animated: Bool) {
+        guard let previewPanel else { return }
+        let targetItem = state.transientPreviewItem
+        let motionItem = commitPreviewMotionTarget(from: targetItem)
+
+        if let screen = positionedScreen ?? NSScreen.main ?? NSScreen.screens.first,
+           let frame = previewFrame(on: screen, itemID: motionItem?.id) {
+            if animated {
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0.18
+                    context.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1.0, 0.36, 1.0)
+                    previewPanel.animator().setFrame(frame, display: false)
+                }
+            } else {
+                previewPanel.setFrame(frame, display: false)
+            }
+        }
+        let shouldShow = isVisible && motionItem != nil
+        let targetAlpha: CGFloat = shouldShow ? 1 : 0
+        previewPanel.ignoresMouseEvents = !shouldShow
+
+        guard previewPanel.alphaValue != targetAlpha else { return }
+
+        if animated {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.14
+                context.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1.0, 0.36, 1.0)
+                previewPanel.animator().alphaValue = targetAlpha
+            }
+        } else {
+            previewPanel.alphaValue = targetAlpha
         }
     }
 
@@ -335,6 +493,72 @@ final class HUDController {
         return p
     }
 
+    private func previewFrame(on screen: NSScreen, itemID: String?) -> NSRect? {
+        guard itemID != nil else { return nil }
+        let sf = screen.visibleFrame
+        let leftFrame = leftPanel?.frame ?? NSRect(
+            x: sf.minX,
+            y: sf.minY + bottomHeight,
+            width: leftWidth,
+            height: max(0, sf.height - topHeight - bottomHeight)
+        )
+
+        let proposedX = leftFrame.maxX - 1
+        let maxX = sf.maxX - previewWidth - previewGap
+        let previewX = min(proposedX, maxX)
+
+        let anchorY = previewAnchorY(fallbackFrame: leftFrame)
+        let minY = leftFrame.minY + previewGap
+        let maxY = leftFrame.maxY - previewHeight - previewGap
+        let previewY = min(max(anchorY - previewHeight / 2, minY), maxY)
+
+        return NSRect(x: previewX, y: previewY, width: previewWidth, height: previewHeight)
+    }
+
+    private func previewAnchorY(fallbackFrame: NSRect) -> CGFloat {
+        previewSettledAnchorScreenY ?? state.hoverPreviewAnchorScreenY ?? fallbackFrame.midY
+    }
+
+    private func commitPreviewMotionTarget(from targetItem: HUDItem?) -> HUDItem? {
+        guard let targetItem else {
+            previewSettledItemID = nil
+            previewSettledAnchorScreenY = nil
+            return nil
+        }
+
+        let targetID = targetItem.id
+
+        if previewCanSettle(for: targetItem) {
+            previewSettledItemID = targetID
+            previewSettledAnchorScreenY = state.hoverPreviewAnchorScreenY ?? previewSettledAnchorScreenY
+        }
+
+        if previewSettledItemID == nil {
+            return previewCanSettle(for: targetItem) ? targetItem : nil
+        }
+
+        if previewSettledItemID == targetID {
+            return targetItem
+        }
+
+        return state.flatItems.first(where: { $0.id == previewSettledItemID }) ?? targetItem
+    }
+
+    private func previewCanSettle(for item: HUDItem) -> Bool {
+        guard let window = previewWindow(for: item) else { return false }
+        return previewModel.hasSettled(window.wid)
+    }
+
+    private func previewWindow(for item: HUDItem) -> WindowEntry? {
+        switch item {
+        case .window(let window):
+            return window
+        case .project(let project):
+            guard project.isRunning else { return nil }
+            return DesktopModel.shared.windowForSession(project.sessionName)
+        }
+    }
+
     // MARK: - Keyboard routing
 
     private func handleKey(_ event: NSEvent) -> NSEvent? {
@@ -354,7 +578,7 @@ final class HUDController {
             return nil
         }
 
-        // Tab: cycle focus
+        // Tab: cycle between search and list
         if keyCode == 48 {
             switch state.focus {
             case .search:
@@ -365,8 +589,8 @@ final class HUDController {
                         state.selectedItem = state.flatItems[safe: 0]
                     }
                 }
-            case .list:      state.focus = .inspector
-            case .inspector: state.focus = .search
+            case .list, .inspector:
+                state.focus = .search
             }
             return nil
         }
@@ -500,10 +724,15 @@ final class HUDController {
         // Number keys 1-2: jump to section (when not in search)
         if state.focus != .search {
             let numberMap: [UInt16: Int] = [18: 1, 19: 2]
-            if let num = numberMap[keyCode], let offset = state.sectionOffsets[num] {
-                state.focus = .list
-                if let item = state.flatItems[safe: offset] {
-                    state.selectSingle(item, index: offset)
+            if let num = numberMap[keyCode] {
+                if !state.isSectionExpanded(num) {
+                    state.toggleSection(num)
+                }
+                if let offset = state.sectionOffsets[num] {
+                    state.focus = .list
+                    if let item = state.flatItems[safe: offset] {
+                        state.selectSingle(item, index: offset)
+                    }
                 }
                 return nil
             }
@@ -516,8 +745,14 @@ final class HUDController {
     }
 
     private func toggleVoice() {
-        playTap()
+        let enabling = !state.voiceActive
+        let timed = AppFeedback.shared.beginTimed(
+            "HUD voice toggle",
+            state: state,
+            feedback: enabling ? "Voice on" : "Voice off"
+        )
         state.voiceActive.toggle()
+        HandsOffSession.shared.setAudibleFeedbackEnabled(state.voiceActive)
         if state.voiceActive {
             HandsOffSession.shared.start()
             HandsOffSession.shared.toggle()
@@ -526,16 +761,9 @@ final class HUDController {
                 HandsOffSession.shared.toggle()
             }
         }
-    }
-
-    private var tapSound: NSSound? = {
-        guard let url = Bundle.main.url(forResource: "tap", withExtension: "wav") else { return nil }
-        return NSSound(contentsOf: url, byReference: true)
-    }()
-
-    private func playTap() {
-        tapSound?.stop()
-        tapSound?.play()
+        DispatchQueue.main.async {
+            AppFeedback.shared.finish(timed)
+        }
     }
 
     // MARK: - Tile mode
@@ -613,8 +841,31 @@ final class HUDController {
         }
     }
 
+    private func prewarmLikelyPreviews() {
+        let desktop = DesktopModel.shared
+        let windows = desktop.allWindows()
+            .filter { $0.app != "Lattices" }
+            .filter { !$0.title.isEmpty }
+            .filter { $0.title != $0.app }
+            .sorted { lhs, rhs in
+                let lhsDate = desktop.lastInteractionDate(for: lhs.wid) ?? .distantPast
+                let rhsDate = desktop.lastInteractionDate(for: rhs.wid) ?? .distantPast
+                if lhsDate != rhsDate {
+                    return lhsDate > rhsDate
+                }
+                return lhs.zIndex < rhs.zIndex
+            }
+
+        previewModel.prewarm(windows: windows, limit: 4)
+    }
+
     private func enterTileMode() {
         guard !state.precomputedGrid.isEmpty else { return }
+        let timed = AppFeedback.shared.beginTimed(
+            "HUD enter tile mode",
+            state: state,
+            feedback: "Tile mode"
+        )
 
         // Snapshot current positions (for restore on dismiss)
         state.tileSnapshot = state.precomputedGrid.map { move in
@@ -646,24 +897,39 @@ final class HUDController {
             state.selectedItem = .window(win)
         }
 
-        playTap()
+        DispatchQueue.main.async {
+            AppFeedback.shared.finish(timed)
+        }
+        playCue("Tiled.")
     }
 
     private func exitTileMode() {
+        AppFeedback.shared.acknowledge(
+            "HUD exit tile mode",
+            state: state,
+            feedback: "Tile mode off"
+        )
         state.tileMode = false
-        playTap()
     }
 
     private func tileSelectedWindow(to position: TilePosition) {
         guard let item = state.selectedItem,
               case .window(let win) = item else { return }
+        let timed = AppFeedback.shared.beginTimed(
+            "HUD tile window",
+            state: state,
+            feedback: "Tiling \(win.title)"
+        )
 
         let screen = positionedScreen ?? mouseScreen()
         let frame = WindowTiler.tileFrame(for: position, on: screen)
         WindowTiler.batchMoveAndRaiseWindows([(win.wid, win.pid, frame)])
 
         state.tiledWindows.insert(win.wid)
-        playTap()
+        DispatchQueue.main.async {
+            AppFeedback.shared.finish(timed)
+        }
+        playCue("Tiled.")
     }
 
     /// Restore windows that weren't explicitly tiled back to their original positions
@@ -690,6 +956,11 @@ final class HUDController {
     private func tileSelectedItems() {
         let windows = selectedWindowsForActions()
         guard !windows.isEmpty else { return }
+        let timed = AppFeedback.shared.beginTimed(
+            "HUD tile selection",
+            state: state,
+            feedback: "Tiling \(windows.count) window\(windows.count == 1 ? "" : "s")"
+        )
 
         let screen = positionedScreen ?? mouseScreen()
         let sf = screen.visibleFrame
@@ -735,19 +1006,30 @@ final class HUDController {
         // Expand minimap
         if state.minimapMode != .expanded { state.minimapMode = .expanded }
 
-        playTap()
+        DispatchQueue.main.async {
+            AppFeedback.shared.finish(timed)
+        }
+        playCue("Tiled.")
         DiagnosticLog.shared.info("[TileGrid.selected] tiled \(windows.count) selected windows")
     }
 
     private func detachSelectedProjects() -> Bool {
         let projects = selectedProjectsForActions().filter(\.isRunning)
         guard !projects.isEmpty else { return false }
+        let timed = AppFeedback.shared.beginTimed(
+            "HUD detach selection",
+            state: state,
+            feedback: "Detaching \(projects.count) project\(projects.count == 1 ? "" : "s")"
+        )
 
         for project in projects {
             SessionManager.detach(project: project)
         }
 
-        playTap()
+        DispatchQueue.main.async {
+            AppFeedback.shared.finish(timed)
+        }
+        playCue("Done.")
         DiagnosticLog.shared.info("[Detach.selected] detached \(projects.count) project(s)")
         dismiss()
         return true
@@ -756,9 +1038,17 @@ final class HUDController {
     private func distributeSelectedWindows() -> Bool {
         let windows = selectedWindowsForActions()
         guard windows.count > 1 else { return false }
+        let timed = AppFeedback.shared.beginTimed(
+            "HUD distribute selection",
+            state: state,
+            feedback: "Distributing \(windows.count) windows"
+        )
 
         WindowTiler.batchRaiseAndDistribute(windows: windows.map { (wid: $0.wid, pid: $0.pid) })
-        playTap()
+        DispatchQueue.main.async {
+            AppFeedback.shared.finish(timed)
+        }
+        playCue("Distributed.")
         DiagnosticLog.shared.info("[Distribute.selected] distributed \(windows.count) window(s)")
         return true
     }
@@ -801,11 +1091,32 @@ final class HUDController {
     }
 
     private func activateItem(_ item: HUDItem) {
+        let (label, feedback): (String, String) = {
+            switch item {
+            case .project(let p):
+                let verb = p.isRunning ? "Focus" : "Launch"
+                return ("HUD \(verb.lowercased()) project", "\(verb) \(p.name)")
+            case .window(let w):
+                return ("HUD focus window", "Focus \(w.title)")
+            }
+        }()
+        let timed = AppFeedback.shared.beginTimed(label, state: state, feedback: feedback)
         switch item {
-        case .project(let p):  SessionManager.launch(project: p)
-        case .window(let w):   _ = WindowTiler.focusWindow(wid: w.wid, pid: w.pid)
+        case .project(let p):
+            SessionManager.launch(project: p)
+            playCue(p.isRunning ? "Focused." : "Done.")
+        case .window(let w):
+            _ = WindowTiler.focusWindow(wid: w.wid, pid: w.pid)
+            playCue("Focused.")
+        }
+        DispatchQueue.main.async {
+            AppFeedback.shared.finish(timed)
         }
         dismiss()
+    }
+
+    private func playCue(_ phrase: String) {
+        HandsOffSession.shared.playCachedCue(phrase)
     }
 
     // MARK: - Event monitors

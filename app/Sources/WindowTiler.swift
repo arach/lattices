@@ -1282,6 +1282,7 @@ enum WindowTiler {
                 }
             }
         }
+        DesktopModel.shared.markInteraction(wids: windows.map(\.wid))
         diag.success("raiseWindowsAndReactivate: raised \(windows.count) windows")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             NSApp.activate(ignoringOtherApps: true)
@@ -1320,6 +1321,7 @@ enum WindowTiler {
         } else {
             doRaise()
         }
+        DesktopModel.shared.markInteraction(wid: wid)
     }
 
     // MARK: - Batch Window Operations
@@ -1527,6 +1529,7 @@ enum WindowTiler {
             }
         }
 
+        DesktopModel.shared.markInteraction(wid: wid)
         return true
     }
 
@@ -1605,6 +1608,7 @@ enum WindowTiler {
 
         // Unfreeze screen rendering
         if let cid { _ = _SLSReenableUpdate?(cid) }
+        DesktopModel.shared.markInteraction(wids: moves.map(\.wid))
         diag.success("batchMoveAndRaiseWindows: processed \(processed)/\(moves.count) windows")
     }
 
@@ -1815,6 +1819,7 @@ enum WindowTiler {
         if !failed.isEmpty {
             diag.warn("batchRaiseAndDistribute: failed wids=\(failed)")
         }
+        DesktopModel.shared.markInteraction(wids: windows.map(\.wid))
         diag.success("batchRaiseAndDistribute: moved \(moved)/\(windows.count) [\(desc) grid]")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
             NSApp.activate(ignoringOtherApps: true)

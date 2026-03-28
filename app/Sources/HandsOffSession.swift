@@ -11,6 +11,28 @@ import AppKit
 ///   - Fast path: local match → cached ack + execute + cached confirm (~300ms)
 ///   - Slow path: cached ack ∥ Groq inference → streaming TTS ∥ execute (~2s)
 
+// MARK: - Chat Log Entry
+
+struct VoiceChatEntry: Identifiable, Equatable {
+    let id = UUID()
+    let timestamp: Date
+    let role: Role
+    let text: String
+    /// Optional structured data — actions taken, search results, etc.
+    /// Displayable in the chat log but not spoken.
+    let detail: String?
+
+    enum Role: String, Equatable {
+        case user       // what the user said
+        case assistant  // spoken response
+        case system     // silent info (actions executed, search results, etc.)
+    }
+
+    static func == (lhs: VoiceChatEntry, rhs: VoiceChatEntry) -> Bool {
+        lhs.id == rhs.id
+    }
+}
+
 final class HandsOffSession: ObservableObject {
     static let shared = HandsOffSession()
 
@@ -24,9 +46,14 @@ final class HandsOffSession: ObservableObject {
     @Published var state: State = .idle
     @Published var lastTranscript: String?
     @Published var lastResponse: String?
+    @Published var audibleFeedbackEnabled: Bool = false
 
     /// Recently executed actions — shown as playback in the HUD bottom bar
     @Published var recentActions: [[String: Any]] = []
+
+    /// Running chat log — visible in the voice chat panel. Persists across turns.
+    @Published private(set) var chatLog: [VoiceChatEntry] = []
+    private let maxChatEntries = 50
 
     private var turnCount = 0
     @Published private(set) var conversationHistory: [[String: String]] = []
@@ -37,16 +64,49 @@ final class HandsOffSession: ObservableObject {
     private var workerStdin: FileHandle?
     private var workerBuffer = ""
     private let workerQueue = DispatchQueue(label: "com.lattices.handsoff-worker", qos: .userInitiated)
+    private var lastCueAt: Date = .distantPast
 
     /// JSONL log for full turn data — ~/.lattices/handsoff.jsonl
     private let turnLogPath = NSHomeDirectory() + "/.lattices/handsoff.jsonl"
 
     private init() {}
 
+    // MARK: - Chat Log
+
+    func appendChat(_ role: VoiceChatEntry.Role, text: String, detail: String? = nil) {
+        let entry = VoiceChatEntry(timestamp: Date(), role: role, text: text, detail: detail)
+        DispatchQueue.main.async {
+            self.chatLog.append(entry)
+            if self.chatLog.count > self.maxChatEntries {
+                self.chatLog.removeFirst(self.chatLog.count - self.maxChatEntries)
+            }
+        }
+    }
+
+    func clearChatLog() {
+        DispatchQueue.main.async { self.chatLog.removeAll() }
+    }
+
     // MARK: - Lifecycle
 
     func start() {
         startWorker()
+    }
+
+    func setAudibleFeedbackEnabled(_ enabled: Bool) {
+        audibleFeedbackEnabled = enabled
+        if enabled {
+            startWorker()
+        }
+    }
+
+    func playCachedCue(_ phrase: String) {
+        guard audibleFeedbackEnabled else { return }
+        let now = Date()
+        guard now.timeIntervalSince(lastCueAt) >= 0.2 else { return }
+        lastCueAt = now
+        startWorker()
+        sendToWorker(["cmd": "play_cached", "text": phrase])
     }
 
     /// Append a full turn record to the JSONL log
@@ -79,6 +139,10 @@ final class HandsOffSession: ObservableObject {
     }
 
     private func startWorker() {
+        if workerProcess?.isRunning == true, workerStdin != nil {
+            return
+        }
+
         let bunPaths = [
             NSHomeDirectory() + "/.bun/bin/bun",
             "/usr/local/bin/bun",
@@ -140,6 +204,8 @@ final class HandsOffSession: ObservableObject {
         // Handle worker crash → restart
         proc.terminationHandler = { [weak self] proc in
             DiagnosticLog.shared.warn("HandsOff: worker exited (code \(proc.terminationStatus)), restarting in 2s")
+            self?.workerProcess = nil
+            self?.workerStdin = nil
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                 self?.startWorker()
             }
@@ -182,29 +248,49 @@ final class HandsOffSession: ObservableObject {
 
             DiagnosticLog.shared.info("HandsOff: worker response → \(trimmed)")
 
-            if let dataObj = json["data"] as? [String: Any] {
-                // Set spoken response for voice bar display
-                if let spoken = dataObj["spoken"] as? String {
-                    DispatchQueue.main.async { self.lastResponse = spoken }
-                }
+            // Parse everything on the background thread, then do ONE main-queue dispatch
+            // to update all @Published properties atomically. Scattered dispatches cause
+            // Combine deadlocks (os_unfair_lock contention with SwiftUI rendering).
+            let dataObj = json["data"] as? [String: Any]
+            let spoken = dataObj?["spoken"] as? String
+            let actions = dataObj?["actions"] as? [[String: Any]]
+            let cb = pendingCallback
+            pendingCallback = nil
 
-                // Execute actions and publish to recentActions for HUD playback
-                if let actions = dataObj["actions"] as? [[String: Any]], !actions.isEmpty {
-                    DispatchQueue.main.async {
-                        self.recentActions = actions
-                        self.executeActions(actions)
-                    }
+            // Build chat entries off-main
+            var chatEntries: [(VoiceChatEntry.Role, String)] = []
+            if let spoken { chatEntries.append((.assistant, spoken)) }
+            if let actions, !actions.isEmpty {
+                let summaries = actions.compactMap { action -> String? in
+                    guard let intent = action["intent"] as? String else { return nil }
+                    let slots = action["slots"] as? [String: Any] ?? [:]
+                    let target = slots["app"] as? String ?? slots["query"] as? String ?? ""
+                    let pos = slots["position"] as? String ?? ""
+                    return [intent, target, pos].filter { !$0.isEmpty }.joined(separator: " ")
+                }
+                if !summaries.isEmpty {
+                    chatEntries.append((.system, summaries.joined(separator: ", ")))
                 }
             }
 
-            if let cb = pendingCallback {
-                pendingCallback = nil
-                cb(json)
-            }
-
-            DispatchQueue.main.async {
+            // Single dispatch — all @Published mutations in one block
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                if let spoken { self.lastResponse = spoken }
+                for (role, text) in chatEntries {
+                    self.chatLog.append(VoiceChatEntry(timestamp: Date(), role: role, text: text, detail: nil))
+                }
+                if self.chatLog.count > self.maxChatEntries {
+                    self.chatLog.removeFirst(self.chatLog.count - self.maxChatEntries)
+                }
+                if let actions, !actions.isEmpty {
+                    self.recentActions = actions
+                    self.executeActions(actions)
+                }
                 self.state = .idle
             }
+
+            cb?(json)
         }
     }
 
@@ -292,6 +378,7 @@ final class HandsOffSession: ObservableObject {
                         } else {
                             self.lastTranscript = text
                             DiagnosticLog.shared.info("HandsOff: heard → '\(text)'")
+                            self.appendChat(.user, text: text)
                             self.processTurn(text)
                         }
                     case .failure(let error):
@@ -544,22 +631,36 @@ final class HandsOffSession: ObservableObject {
 
     /// Subdivide a tile position for N windows.
     private func subdividePosition(_ position: String, count: Int) -> [String] {
-        // Vertical stacking within a half
+        // 2-3 windows in a half → vertical stack
         let verticalSubs: [String: [String]] = [
-            "left":  ["top-left", "left", "bottom-left"],
-            "right": ["top-right", "right", "bottom-right"],
+            "left":  ["top-left", "bottom-left"],
+            "right": ["top-right", "bottom-right"],
+        ]
+        // 4+ windows in a half → 2×2 grid using the eighths
+        let gridSubs: [String: [String]] = [
+            "left":  ["top-first-fourth", "top-second-fourth", "bottom-first-fourth", "bottom-second-fourth"],
+            "right": ["top-third-fourth", "top-last-fourth", "bottom-third-fourth", "bottom-last-fourth"],
         ]
         // Horizontal stacking within a half
         let horizontalSubs: [String: [String]] = [
-            "top":    ["top-left", "top", "top-right"],
-            "bottom": ["bottom-left", "bottom", "bottom-right"],
+            "top":    ["top-left", "top-right"],
+            "bottom": ["bottom-left", "bottom-right"],
+        ]
+        // 4+ windows horizontal → use fourths
+        let horizontalGridSubs: [String: [String]] = [
+            "top":    ["top-first-fourth", "top-second-fourth", "top-third-fourth", "top-last-fourth"],
+            "bottom": ["bottom-first-fourth", "bottom-second-fourth", "bottom-third-fourth", "bottom-last-fourth"],
         ]
         // Full screen → grid
         let fullSubs = ["top-left", "top-right", "bottom-left", "bottom-right", "left", "right"]
 
         let subs: [String]
-        if let v = verticalSubs[position] {
+        if count >= 4, let g = gridSubs[position] {
+            subs = g
+        } else if let v = verticalSubs[position] {
             subs = v
+        } else if count >= 4, let hg = horizontalGridSubs[position] {
+            subs = hg
         } else if let h = horizontalSubs[position] {
             subs = h
         } else if position == "maximize" || position == "center" {

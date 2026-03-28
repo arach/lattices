@@ -75,6 +75,20 @@ enum ScreenMapViewportPreset: String, CaseIterable, Identifiable {
     }
 }
 
+struct ScreenMapWindowSet: Identifiable, Equatable {
+    let id: UUID
+    var name: String
+    var windowIds: Set<UInt32>
+
+    init(id: UUID = UUID(), name: String, windowIds: Set<UInt32>) {
+        self.id = id
+        self.name = name
+        self.windowIds = windowIds
+    }
+
+    var count: Int { windowIds.count }
+}
+
 // MARK: - Screen Map Window Entry
 
 struct ScreenMapWindowEntry: Identifiable {
@@ -410,6 +424,16 @@ final class ScreenMapEditorState: ObservableObject {
 
     var viewportPresetSummary: String {
         activeViewportPreset?.title ?? "Custom"
+    }
+
+    func windows(matching ids: Set<UInt32>) -> [ScreenMapWindowEntry] {
+        windows.filter { ids.contains($0.id) }
+    }
+
+    func rectForWindowIDs(_ ids: Set<UInt32>) -> CGRect? {
+        let matched = windows(matching: ids)
+        guard let first = matched.first else { return nil }
+        return matched.dropFirst().reduce(first.virtualFrame) { $0.union($1.virtualFrame) }
     }
 
     var canvasExplorerRegions: [ScreenMapCanvasRegion] {
@@ -1328,6 +1352,8 @@ final class ScreenMapActionLog {
 final class ScreenMapController: ObservableObject {
     @Published var editor: ScreenMapEditorState?
     @Published var selectedWindowIds: Set<UInt32> = []
+    @Published var windowSets: [ScreenMapWindowSet] = []
+    @Published var activeWindowSetID: UUID? = nil
     @Published var flashMessage: String? = nil
     @Published var previewCaptures: [UInt32: NSImage] = [:]
     @Published var savedPositions: [UInt32: (pid: Int32, frame: WindowFrame)]? = nil
@@ -1349,9 +1375,15 @@ final class ScreenMapController: ObservableObject {
 
     func isSelected(_ id: UInt32) -> Bool { selectedWindowIds.contains(id) }
 
+    var activeWindowSet: ScreenMapWindowSet? {
+        guard let activeWindowSetID else { return nil }
+        return windowSets.first(where: { $0.id == activeWindowSetID })
+    }
+
     func selectSingle(_ id: UInt32) {
         navigateToWindowDisplay(id)
         selectedWindowIds = [id]
+        activeWindowSetID = nil
     }
 
     func toggleSelection(_ id: UInt32) {
@@ -1360,10 +1392,12 @@ final class ScreenMapController: ObservableObject {
         } else {
             selectedWindowIds.insert(id)
         }
+        activeWindowSetID = nil
     }
 
     func clearSelection() {
         selectedWindowIds = []
+        activeWindowSetID = nil
     }
 
     func selectNextWindow() {
@@ -1377,6 +1411,7 @@ final class ScreenMapController: ObservableObject {
         } else {
             selectedWindowIds = [wins[0].id]
         }
+        activeWindowSetID = nil
         objectWillChange.send()
     }
 
@@ -1391,6 +1426,7 @@ final class ScreenMapController: ObservableObject {
         } else {
             selectedWindowIds = [wins[wins.count - 1].id]
         }
+        activeWindowSetID = nil
         objectWillChange.send()
     }
 
@@ -1398,7 +1434,55 @@ final class ScreenMapController: ObservableObject {
         guard let ed = editor else { return }
         let allIds = Set(ed.focusedVisibleWindows.map(\.id))
         selectedWindowIds = allIds
+        activeWindowSetID = nil
         flash("Selected \(allIds.count) windows")
+        objectWillChange.send()
+    }
+
+    // MARK: - Window Sets
+
+    func createWindowSetFromSelection() {
+        let ids = selectedWindowIds
+        guard !ids.isEmpty else {
+            flash("Select windows first")
+            return
+        }
+        if let existing = windowSets.first(where: { $0.windowIds == ids }) {
+            activeWindowSetID = existing.id
+            flash("\(existing.name) already saved")
+            return
+        }
+
+        let set = ScreenMapWindowSet(name: "Set \(windowSets.count + 1)", windowIds: ids)
+        windowSets.append(set)
+        activeWindowSetID = set.id
+        flash("Saved \(set.name)")
+        objectWillChange.send()
+    }
+
+    func focusWindowSet(_ set: ScreenMapWindowSet) {
+        guard let ed = editor else { return }
+        let liveIds = Set(ed.windows(matching: set.windowIds).map(\.id))
+        guard !liveIds.isEmpty else {
+            flash("\(set.name) is empty")
+            return
+        }
+
+        selectedWindowIds = liveIds
+        activeWindowSetID = set.id
+        if let rect = ed.rectForWindowIDs(liveIds) {
+            focusCanvas(on: rect.insetBy(dx: -80, dy: -80), zoomToFit: true)
+        }
+        flash(set.name)
+        objectWillChange.send()
+    }
+
+    func deleteWindowSet(_ set: ScreenMapWindowSet) {
+        windowSets.removeAll { $0.id == set.id }
+        if activeWindowSetID == set.id {
+            activeWindowSetID = nil
+        }
+        flash("Removed \(set.name)")
         objectWillChange.send()
     }
 
@@ -1483,6 +1567,7 @@ final class ScreenMapController: ObservableObject {
     // MARK: - Enter
 
     func enter() {
+        let existingSets = windowSets
         guard let windowList = CGWindowListCopyWindowInfo(
             [.optionAll, .excludeDesktopElements], kCGNullWindowID
         ) as? [[String: Any]] else { return }
@@ -1664,6 +1749,15 @@ final class ScreenMapController: ObservableObject {
         }
 
         editor = newEditor
+        let liveIds = Set(mapWindows.map(\.id))
+        windowSets = existingSets.compactMap { set in
+            let filtered = set.windowIds.intersection(liveIds)
+            guard !filtered.isEmpty else { return nil }
+            return ScreenMapWindowSet(id: set.id, name: set.name, windowIds: filtered)
+        }
+        if let activeWindowSetID, !windowSets.contains(where: { $0.id == activeWindowSetID }) {
+            self.activeWindowSetID = nil
+        }
         selectedWindowIds = []
         focusViewportPreset(.main, flashView: false)
     }
@@ -2074,6 +2168,10 @@ final class ScreenMapController: ObservableObject {
 
         case 5: // g → grow to fill
             fitAvailableSpace()
+            return true
+
+        case 32: // u → save current selection as set
+            createWindowSetFromSelection()
             return true
 
         case 46: // m → materialize current viewport

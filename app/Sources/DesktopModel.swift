@@ -57,9 +57,11 @@ final class DesktopModel: ObservableObject {
     ]
 
     @Published private(set) var windows: [UInt32: WindowEntry] = [:]
+    @Published private(set) var interactionDates: [UInt32: Date] = [:]
     /// In-memory layer tags: wid → layer id (e.g. "lattices", "vox", "hudson")
     private(set) var windowLayerTags: [UInt32: String] = [:]
     private var timer: Timer?
+    private var lastFrontmostWid: UInt32?
 
     func start(interval: TimeInterval = 1.5) {
         guard timer == nil else { return }
@@ -77,6 +79,26 @@ final class DesktopModel: ObservableObject {
 
     func allWindows() -> [WindowEntry] {
         Array(windows.values).sorted { $0.zIndex < $1.zIndex }
+    }
+
+    func lastInteractionDate(for wid: UInt32) -> Date? {
+        interactionDates[wid]
+    }
+
+    func markInteraction(wid: UInt32, at date: Date = Date()) {
+        DispatchQueue.main.async {
+            self.interactionDates[wid] = date
+        }
+    }
+
+    func markInteraction(wids: [UInt32], at date: Date = Date()) {
+        guard !wids.isEmpty else { return }
+        let unique = Set(wids)
+        DispatchQueue.main.async {
+            for wid in unique {
+                self.interactionDates[wid] = date
+            }
+        }
     }
 
     func windowForSession(_ session: String) -> WindowEntry? {
@@ -194,9 +216,18 @@ final class DesktopModel: ObservableObject {
         let removed = Array(oldKeys.subtracting(newKeys))
 
         let changed = added.count > 0 || removed.count > 0 || windowsContentChanged(old: windows, new: fresh)
+        let frontmostWid = fresh.values.min(by: { $0.zIndex < $1.zIndex })?.wid
+        let markFrontmost = frontmostWid != nil && frontmostWid != lastFrontmostWid
+        let interactionTime = Date()
 
         DispatchQueue.main.async {
+            var interactions = self.interactionDates.filter { fresh[$0.key] != nil }
+            if markFrontmost, let frontmostWid {
+                interactions[frontmostWid] = interactionTime
+            }
             self.windows = fresh
+            self.interactionDates = interactions
+            self.lastFrontmostWid = frontmostWid
         }
 
         if changed {

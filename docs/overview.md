@@ -65,7 +65,10 @@ Agents get the same control programmatically:
 ```js
 import { daemonCall } from '@lattices/cli'
 await daemonCall('session.launch', { path: '/Users/you/dev/frontend' })
-await daemonCall('window.tile', { session: 'frontend-a1b2c3', position: 'left' })
+await daemonCall('window.place', {
+  session: 'frontend-a1b2c3',
+  placement: { kind: 'tile', value: 'left' }
+})
 ```
 
 ## Who it's for
@@ -91,4 +94,5 @@ await daemonCall('window.tile', { session: 'frontend-a1b2c3', position: 'left' }
 - [Configuration](/docs/config): `.lattices.json` format and CLI commands
 - [Screen scanning](/docs/ocr): AX text extraction, Vision OCR, and full-text search
 - [Concepts](/docs/concepts): architecture, glossary, and how it all works
+- [Agent Guide](/docs/agents): canonical action contracts for voice, CLI, and daemon clients
 - [Agent API](/docs/api): RPC method reference for agents and scripts

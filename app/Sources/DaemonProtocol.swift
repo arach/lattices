@@ -99,6 +99,11 @@ enum JSON: Codable, Equatable {
         return b
     }
 
+    var arrayValue: [JSON]? {
+        guard case .array(let a) = self else { return nil }
+        return a
+    }
+
     var numericDouble: Double? {
         switch self {
         case .double(let d): return d
