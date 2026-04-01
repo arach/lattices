@@ -51,6 +51,38 @@ final class HandsOffSession: ObservableObject {
     /// Recently executed actions — shown as playback in the HUD bottom bar
     @Published var recentActions: [[String: Any]] = []
 
+    /// Frame history for undo — stores pre-move frames of windows touched by the last turn
+    struct FrameSnapshot {
+        let wid: UInt32
+        let pid: Int32
+        let frame: WindowFrame
+    }
+    private(set) var frameHistory: [FrameSnapshot] = []
+
+    /// Snapshot current frames for all windows that are about to be moved.
+    /// Stores frames in CG/AX coordinates (top-left origin) for direct use with batchRestoreWindows.
+    func snapshotFrames(wids: [UInt32]) {
+        frameHistory.removeAll()
+        guard let windowList = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return }
+        for wid in wids {
+            guard let entry = DesktopModel.shared.windows[wid] else { continue }
+            for info in windowList {
+                guard let num = info[kCGWindowNumber as String] as? UInt32, num == wid,
+                      let dict = info[kCGWindowBounds as String] as? NSDictionary else { continue }
+                var rect = CGRect.zero
+                if CGRectMakeWithDictionaryRepresentation(dict, &rect) {
+                    let frame = WindowFrame(x: rect.origin.x, y: rect.origin.y, w: rect.width, h: rect.height)
+                    frameHistory.append(FrameSnapshot(wid: wid, pid: entry.pid, frame: frame))
+                }
+                break
+            }
+        }
+    }
+
+    func clearFrameHistory() {
+        frameHistory.removeAll()
+    }
+
     /// Running chat log — visible in the voice chat panel. Persists across turns.
     @Published private(set) var chatLog: [VoiceChatEntry] = []
     private let maxChatEntries = 50
@@ -544,6 +576,21 @@ final class HandsOffSession: ObservableObject {
     private static let maxActions = 6
 
     private func executeActions(_ actions: [[String: Any]]) {
+        // Snapshot frames of all windows about to be moved (for undo)
+        let movingWids: [UInt32] = actions.compactMap { action in
+            let intent = action["intent"] as? String ?? ""
+            guard ["tile_window", "swap", "distribute", "move_to_display"].contains(intent) else { return nil }
+            let slots = action["slots"] as? [String: Any] ?? [:]
+            return (slots["wid"] as? NSNumber)?.uint32Value
+                ?? (slots["wid_a"] as? NSNumber)?.uint32Value
+        }
+        // Also grab wid_b from swap actions
+        let swapBWids: [UInt32] = actions.compactMap { action in
+            let slots = action["slots"] as? [String: Any] ?? [:]
+            return (slots["wid_b"] as? NSNumber)?.uint32Value
+        }
+        snapshotFrames(wids: movingWids + swapBWids)
+
         // Guard: refuse to execute bulk operations that would be disorienting
         let nonDistributeActions = actions.filter { ($0["intent"] as? String) != "distribute" }
         if nonDistributeActions.count > Self.maxActions {

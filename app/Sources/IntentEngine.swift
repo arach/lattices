@@ -381,16 +381,36 @@ final class IntentEngine {
 
         register(IntentDef(
             name: "distribute",
-            description: "Distribute all windows evenly across the screen",
+            description: "Distribute windows evenly in a grid, optionally filtered by app and constrained to a screen region",
             examples: [
                 "spread out the windows",
                 "distribute everything",
                 "organize the windows",
-                "clean up the layout"
+                "clean up the layout",
+                "grid the terminals on the right",
+                "tile all iTerm windows on the left half",
+                "arrange my chrome windows in the bottom"
             ],
-            slots: [],
-            handler: { _ in
-                try LatticesApi.shared.dispatch(method: "layout.distribute", params: nil)
+            slots: [
+                IntentSlot(name: "app", type: "string", required: false,
+                           description: "Filter to windows of this app (e.g. 'iTerm2', 'Google Chrome')", enumValues: nil),
+                IntentSlot(name: "region", type: "position", required: false,
+                           description: "Constrain the grid to a screen region. Uses tile position names.",
+                           enumValues: ["left", "right", "top", "bottom", "top-left", "top-right", "bottom-left", "bottom-right",
+                                        "left-third", "center-third", "right-third"]),
+            ],
+            handler: { req in
+                var params: [String: JSON] = [:]
+                if let app = req.slots["app"]?.stringValue {
+                    params["app"] = .string(app)
+                }
+                if let region = req.slots["region"]?.stringValue {
+                    params["region"] = .string(region)
+                }
+                return try LatticesApi.shared.dispatch(
+                    method: "layout.distribute",
+                    params: params.isEmpty ? nil : .object(params)
+                )
             }
         ))
 
@@ -481,6 +501,255 @@ final class IntentEngine {
             slots: [],
             handler: { _ in
                 try LatticesApi.shared.dispatch(method: "ocr.scan", params: nil)
+            }
+        ))
+
+        // ── Swap Windows ───────────────────────────────────────
+
+        register(IntentDef(
+            name: "swap",
+            description: "Swap the positions of two windows",
+            examples: [
+                "swap Chrome and iTerm",
+                "switch those two",
+                "swap the left and right windows"
+            ],
+            slots: [
+                IntentSlot(name: "wid_a", type: "int", required: true,
+                           description: "Window ID of the first window", enumValues: nil),
+                IntentSlot(name: "wid_b", type: "int", required: true,
+                           description: "Window ID of the second window", enumValues: nil),
+            ],
+            handler: { req in
+                guard let widA = req.slots["wid_a"]?.uint32Value,
+                      let widB = req.slots["wid_b"]?.uint32Value else {
+                    throw IntentError.missingSlot("wid_a and wid_b")
+                }
+                guard let entryA = DesktopModel.shared.windows[widA],
+                      let entryB = DesktopModel.shared.windows[widB] else {
+                    throw IntentError.targetNotFound("One or both windows not found")
+                }
+
+                // Read current CG frames (top-left origin) directly from CGWindowList
+                guard let windowList = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
+                    throw IntentError.targetNotFound("Couldn't read window list")
+                }
+                var cgFrames: [UInt32: CGRect] = [:]
+                for info in windowList {
+                    guard let num = info[kCGWindowNumber as String] as? UInt32,
+                          (num == widA || num == widB),
+                          let dict = info[kCGWindowBounds as String] as? NSDictionary else { continue }
+                    var rect = CGRect.zero
+                    if CGRectMakeWithDictionaryRepresentation(dict, &rect) {
+                        cgFrames[num] = rect
+                    }
+                }
+                guard let frameA = cgFrames[widA], let frameB = cgFrames[widB] else {
+                    throw IntentError.targetNotFound("Couldn't read window frames")
+                }
+
+                // Swap: move A to B's frame, B to A's frame
+                let moves: [(wid: UInt32, pid: Int32, frame: CGRect)] = [
+                    (wid: widA, pid: entryA.pid, frame: frameB),
+                    (wid: widB, pid: entryB.pid, frame: frameA),
+                ]
+                DispatchQueue.main.async {
+                    WindowTiler.batchMoveAndRaiseWindows(moves)
+                }
+                return .object([
+                    "ok": .bool(true),
+                    "swapped": .array([.int(Int(widA)), .int(Int(widB))]),
+                ])
+            }
+        ))
+
+        // ── Hide / Minimize ────────────────────────────────────
+
+        register(IntentDef(
+            name: "hide",
+            description: "Hide or minimize a window or app",
+            examples: [
+                "hide Slack",
+                "minimize that",
+                "put away Messages",
+                "hide the browser"
+            ],
+            slots: [
+                IntentSlot(name: "app", type: "string", required: false,
+                           description: "App name to hide", enumValues: nil),
+                IntentSlot(name: "wid", type: "int", required: false,
+                           description: "Window ID to minimize", enumValues: nil),
+            ],
+            handler: { req in
+                // Hide by wid — minimize just that window via AX
+                if let wid = req.slots["wid"]?.uint32Value,
+                   let entry = DesktopModel.shared.windows[wid] {
+                    let appRef = AXUIElementCreateApplication(entry.pid)
+                    var windowsRef: CFTypeRef?
+                    if AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &windowsRef) == .success,
+                       let axWindows = windowsRef as? [AXUIElement] {
+                        for axWin in axWindows {
+                            var windowId: CGWindowID = 0
+                            if _AXUIElementGetWindow(axWin, &windowId) == .success, windowId == wid {
+                                AXUIElementSetAttributeValue(axWin, kAXMinimizedAttribute as CFString, kCFBooleanTrue)
+                                return .object(["ok": .bool(true), "action": .string("minimized"), "wid": .int(Int(wid))])
+                            }
+                        }
+                    }
+                    throw IntentError.targetNotFound("Couldn't find AX window for wid \(wid)")
+                }
+
+                // Hide by app name — hide the entire app
+                if let appName = req.slots["app"]?.stringValue {
+                    let apps = NSWorkspace.shared.runningApplications
+                    if let app = apps.first(where: {
+                        ($0.localizedName ?? "").localizedCaseInsensitiveContains(appName)
+                    }) {
+                        app.hide()
+                        return .object(["ok": .bool(true), "action": .string("hidden"), "app": .string(app.localizedName ?? appName)])
+                    }
+                    throw IntentError.targetNotFound("No running app matching '\(appName)'")
+                }
+
+                throw IntentError.missingSlot("app or wid")
+            }
+        ))
+
+        // ── Highlight ──────────────────────────────────────────
+
+        register(IntentDef(
+            name: "highlight",
+            description: "Flash a window's border to identify it visually",
+            examples: [
+                "which one is the lattices terminal",
+                "highlight Chrome",
+                "show me that window",
+                "flash the iTerm window"
+            ],
+            slots: [
+                IntentSlot(name: "wid", type: "int", required: false,
+                           description: "Window ID to highlight", enumValues: nil),
+                IntentSlot(name: "app", type: "string", required: false,
+                           description: "App name to highlight", enumValues: nil),
+            ],
+            handler: { req in
+                if let wid = req.slots["wid"]?.uint32Value {
+                    DispatchQueue.main.async {
+                        WindowTiler.highlightWindowById(wid: wid)
+                    }
+                    return .object(["ok": .bool(true), "wid": .int(Int(wid))])
+                }
+
+                if let appName = req.slots["app"]?.stringValue {
+                    if let entry = DesktopModel.shared.windows.values.first(where: {
+                        $0.app.localizedCaseInsensitiveContains(appName)
+                    }) {
+                        DispatchQueue.main.async {
+                            WindowTiler.highlightWindowById(wid: entry.wid)
+                        }
+                        return .object(["ok": .bool(true), "wid": .int(Int(entry.wid)), "app": .string(entry.app)])
+                    }
+                    throw IntentError.targetNotFound("No window found for app '\(appName)'")
+                }
+
+                throw IntentError.missingSlot("wid or app")
+            }
+        ))
+
+        // ── Move to Display ────────────────────────────────────
+
+        register(IntentDef(
+            name: "move_to_display",
+            description: "Move a window to another monitor/display, optionally positioning it",
+            examples: [
+                "put this on the vertical monitor",
+                "move Chrome to the second display",
+                "send iTerm to the other screen",
+                "move that to my main monitor"
+            ],
+            slots: [
+                IntentSlot(name: "wid", type: "int", required: false,
+                           description: "Window ID to move", enumValues: nil),
+                IntentSlot(name: "app", type: "string", required: false,
+                           description: "App name to move", enumValues: nil),
+                IntentSlot(name: "display", type: "int", required: true,
+                           description: "Target display index (0 = main, 1 = second, etc.)", enumValues: nil),
+                IntentSlot(name: "position", type: "position", required: false,
+                           description: "Tile position on the target display (e.g. 'left', 'maximize')",
+                           enumValues: ["left", "right", "top", "bottom", "maximize", "center",
+                                        "top-left", "top-right", "bottom-left", "bottom-right"]),
+            ],
+            handler: { req in
+                guard let display = req.slots["display"]?.intValue else {
+                    throw IntentError.missingSlot("display")
+                }
+
+                // Resolve window target
+                let wid: UInt32
+                if let w = req.slots["wid"]?.uint32Value {
+                    wid = w
+                } else if let appName = req.slots["app"]?.stringValue,
+                          let entry = DesktopModel.shared.windows.values.first(where: {
+                              $0.app.localizedCaseInsensitiveContains(appName)
+                          }) {
+                    wid = entry.wid
+                } else {
+                    // Frontmost window
+                    guard let frontApp = NSWorkspace.shared.frontmostApplication,
+                          frontApp.bundleIdentifier != "com.arach.lattices" else {
+                        throw IntentError.targetNotFound("No frontmost window")
+                    }
+                    let appRef = AXUIElementCreateApplication(frontApp.processIdentifier)
+                    var focusedRef: CFTypeRef?
+                    guard AXUIElementCopyAttributeValue(appRef, kAXFocusedWindowAttribute as CFString, &focusedRef) == .success else {
+                        throw IntentError.targetNotFound("No focused window")
+                    }
+                    var frontWid: CGWindowID = 0
+                    guard _AXUIElementGetWindow(focusedRef as! AXUIElement, &frontWid) == .success else {
+                        throw IntentError.targetNotFound("Couldn't get frontmost window ID")
+                    }
+                    wid = frontWid
+                }
+
+                // Use window.present with display + optional position
+                var params: [String: JSON] = [
+                    "wid": .int(Int(wid)),
+                    "display": .int(display),
+                ]
+                if let pos = req.slots["position"]?.stringValue {
+                    params["position"] = .string(pos)
+                }
+                return try LatticesApi.shared.dispatch(method: "window.present", params: .object(params))
+            }
+        ))
+
+        // ── Undo / Restore ─────────────────────────────────────
+
+        register(IntentDef(
+            name: "undo",
+            description: "Undo the last window move — restore windows to their previous positions",
+            examples: [
+                "put it back",
+                "undo that",
+                "restore the windows",
+                "that was wrong, undo"
+            ],
+            slots: [],
+            handler: { _ in
+                let history = HandsOffSession.shared.frameHistory
+                guard !history.isEmpty else {
+                    throw IntentError.targetNotFound("No window moves to undo")
+                }
+
+                let restores = history.map { (wid: $0.wid, pid: $0.pid, frame: $0.frame) }
+                DispatchQueue.main.async {
+                    WindowTiler.batchRestoreWindows(restores)
+                }
+                HandsOffSession.shared.clearFrameHistory()
+                return .object([
+                    "ok": .bool(true),
+                    "restored": .int(restores.count),
+                ])
             }
         ))
     }

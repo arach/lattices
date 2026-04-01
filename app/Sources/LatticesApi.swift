@@ -1339,16 +1339,24 @@ final class LatticesApi {
 
         api.register(Endpoint(
             method: "layout.distribute",
-            description: "Distribute visible windows evenly across the screen",
+            description: "Distribute windows evenly in a grid, optionally filtered by app and constrained to a screen region",
             access: .mutate,
-            params: [],
+            params: [
+                Param(name: "app", type: "string", required: false, description: "Filter to windows of this app (e.g. 'iTerm2')"),
+                Param(name: "region", type: "string", required: false, description: "Constrain grid to a screen region (e.g. 'right', 'left', 'top-right'). Uses tile position names."),
+            ],
             returns: .ok,
             handler: { params in
                 var dict: [String: JSON] = [:]
                 if case .object(let obj) = params {
                     dict = obj
                 }
-                dict["scope"] = dict["scope"] ?? .string("visible")
+                // If app is provided, switch to app scope
+                if dict["app"] != nil && dict["scope"] == nil {
+                    dict["scope"] = .string("app")
+                } else {
+                    dict["scope"] = dict["scope"] ?? .string("visible")
+                }
                 dict["strategy"] = dict["strategy"] ?? .string("balanced")
                 return try Self.executeSpaceOptimization(params: .object(dict))
             }
@@ -2028,6 +2036,17 @@ private extension LatticesApi {
         var trace: [JSON] = [.string("resolved scope \(scope)"), .string("resolved strategy \(strategy)")]
         let windows = resolveOptimizationTargets(scope: scope, params: params, trace: &trace)
 
+        // Resolve optional region constraint (e.g. "right" → right half of screen)
+        var region: (CGFloat, CGFloat, CGFloat, CGFloat)? = nil
+        if let regionStr = params?["region"]?.stringValue {
+            if let spec = PlacementSpec(string: regionStr) {
+                region = spec.fractions
+                trace.append(.string("region \(regionStr) → fractions \(spec.fractions)"))
+            } else {
+                trace.append(.string("unknown region \(regionStr), using full screen"))
+            }
+        }
+
         if strategy == "mosaic" {
             trace.append(.string("strategy mosaic currently uses the smart-grid distributor"))
         }
@@ -2046,7 +2065,7 @@ private extension LatticesApi {
 
         let targets = windows.map { (wid: $0.wid, pid: $0.pid) }
         DispatchQueue.main.async {
-            WindowTiler.batchRaiseAndDistribute(windows: targets)
+            WindowTiler.batchRaiseAndDistribute(windows: targets, region: region)
         }
 
         return .object([

@@ -1228,7 +1228,7 @@ enum WindowTiler {
     }
 
     /// Get NSRect (bottom-left origin) for a known CG window ID
-    private static func cgWindowFrame(wid: UInt32) -> NSRect? {
+    static func cgWindowFrame(wid: UInt32) -> NSRect? {
         guard let windowList = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return nil }
         for info in windowList {
             if let num = info[kCGWindowNumber as String] as? UInt32, num == wid,
@@ -1644,33 +1644,48 @@ enum WindowTiler {
         }
     }
 
-    /// Compute grid slot rects in AX coordinates (top-left origin) for N windows
-    static func computeGridSlots(count: Int, screen: NSScreen) -> [CGRect] {
+    /// Compute grid slot rects in AX coordinates (top-left origin) for N windows.
+    /// If `region` is provided (fractional x, y, w, h), slots are constrained to that sub-area of the screen.
+    static func computeGridSlots(count: Int, screen: NSScreen, region: (CGFloat, CGFloat, CGFloat, CGFloat)? = nil) -> [CGRect] {
         guard count > 0 else { return [] }
         let visible = screen.visibleFrame
         guard let primaryScreen = NSScreen.screens.first else { return [] }
         let primaryHeight = primaryScreen.frame.height
 
-        // AX Y of visible top edge
-        let axTop = primaryHeight - visible.maxY
+        // Compute the target area — full visible frame or a fractional sub-region
+        let targetArea: CGRect
+        if let (rx, ry, rw, rh) = region {
+            targetArea = CGRect(
+                x: visible.origin.x + visible.width * rx,
+                y: visible.origin.y + visible.height * (1.0 - ry - rh),  // NSRect is bottom-left origin
+                width: visible.width * rw,
+                height: visible.height * rh
+            )
+        } else {
+            targetArea = visible
+        }
+
+        // AX Y of target area's top edge
+        let axTop = primaryHeight - targetArea.maxY
         let shape = gridShape(for: count)
         let rowCount = shape.count
-        let rowH = visible.height / CGFloat(rowCount)
+        let rowH = targetArea.height / CGFloat(rowCount)
 
         var slots: [CGRect] = []
         for (row, cols) in shape.enumerated() {
-            let colW = visible.width / CGFloat(cols)
+            let colW = targetArea.width / CGFloat(cols)
             let axY = axTop + CGFloat(row) * rowH
             for col in 0..<cols {
-                let x = visible.origin.x + CGFloat(col) * colW
+                let x = targetArea.origin.x + CGFloat(col) * colW
                 slots.append(CGRect(x: x, y: axY, width: colW, height: rowH))
             }
         }
         return slots
     }
 
-    /// Raise multiple windows and arrange in smart grid — single CG query, single AX query per process
-    static func batchRaiseAndDistribute(windows: [(wid: UInt32, pid: Int32)]) {
+    /// Raise multiple windows and arrange in smart grid — single CG query, single AX query per process.
+    /// If `region` is provided (fractional x, y, w, h), the grid is constrained to that sub-area.
+    static func batchRaiseAndDistribute(windows: [(wid: UInt32, pid: Int32)], region: (CGFloat, CGFloat, CGFloat, CGFloat)? = nil) {
         guard !windows.isEmpty else { return }
         let diag = DiagnosticLog.shared
 
@@ -1692,10 +1707,11 @@ enum WindowTiler {
         diag.info("Grid layout: \(windows.count) windows → [\(desc)]")
         diag.info("  Screen: \(screen.localizedName) \(Int(screenFrame.width))x\(Int(screenFrame.height))")
         diag.info("  Visible: origin=(\(Int(visible.origin.x)),\(Int(visible.origin.y))) size=\(Int(visible.width))x\(Int(visible.height))")
+        if let region { diag.info("  Region: x=\(region.0) y=\(region.1) w=\(region.2) h=\(region.3)") }
         diag.info("  Primary height: \(Int(primaryHeight))")
 
         // Pre-compute all target slots
-        let slots = computeGridSlots(count: windows.count, screen: screen)
+        let slots = computeGridSlots(count: windows.count, screen: screen, region: region)
         guard slots.count == windows.count else {
             diag.warn("  Slot count mismatch: \(slots.count) slots for \(windows.count) windows")
             return
