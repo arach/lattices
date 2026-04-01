@@ -69,19 +69,61 @@ final class OmniSearchState: ObservableObject {
     private var debounceTimer: AnyCancellable?
 
     init() {
-        // Debounce search by 150ms
+        // Single-char queries fire immediately with a lightweight search;
+        // longer queries debounce 150ms and run the full search.
         debounceTimer = $query
-            .debounce(for: .milliseconds(150), scheduler: RunLoop.main)
+            .removeDuplicates()
             .sink { [weak self] q in
+                guard let self else { return }
+                self.fullSearchTask?.cancel()
                 if q.isEmpty {
-                    self?.results = []
-                    self?.refreshSummary()
+                    self.results = []
+                    self.refreshSummary()
+                } else if q.count == 1 {
+                    self.quickSearch(q)
                 } else {
-                    self?.search(q)
+                    self.fullSearchTask = DispatchWorkItem { [weak self] in
+                        self?.search(q)
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: self.fullSearchTask!)
                 }
             }
 
         refreshSummary()
+    }
+
+    private var fullSearchTask: DispatchWorkItem?
+
+    // MARK: - Quick search (first character — window index only, no terminal/OCR/projects)
+
+    private func quickSearch(_ query: String) {
+        let q = query.lowercased()
+        let desktop = DesktopModel.shared
+        var all: [OmniResult] = []
+
+        for entry in desktop.allWindows() {
+            var score = 0
+            if entry.title.lowercased().contains(q) { score += 3 }
+            if entry.app.lowercased().contains(q) { score += 2 }
+            if entry.latticesSession?.lowercased().contains(q) == true { score += 3 }
+            guard score > 0 else { continue }
+
+            let wid = entry.wid
+            let pid = entry.pid
+            all.append(OmniResult(
+                kind: .window,
+                title: entry.app,
+                subtitle: entry.title.isEmpty ? "Window \(wid)" : entry.title,
+                icon: "macwindow",
+                score: score
+            ) {
+                WindowTiler.focusWindow(wid: wid, pid: pid)
+            })
+        }
+
+        all.sort { $0.score > $1.score }
+        results = Array(all.prefix(12))
+        selectedIndex = 0
     }
 
     // MARK: - Search (delegates to unified lattices.search API)
