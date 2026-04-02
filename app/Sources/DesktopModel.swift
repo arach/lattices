@@ -134,7 +134,24 @@ final class DesktopModel: ObservableObject {
 
     // MARK: - Polling
 
+    private var lastPollTime: Date = .distantPast
+    private static let minPollInterval: TimeInterval = 1.0
+
+    /// Poll only if stale. Call `forcePoll()` to bypass the freshness check.
     func poll() {
+        let now = Date()
+        guard now.timeIntervalSince(lastPollTime) >= Self.minPollInterval else { return }
+        lastPollTime = now
+        performPoll()
+    }
+
+    /// Force a poll regardless of freshness — use sparingly.
+    func forcePoll() {
+        lastPollTime = Date()
+        performPoll()
+    }
+
+    private func performPoll() {
         guard let list = CGWindowListCopyWindowInfo(
             [.optionAll, .excludeDesktopElements],
             kCGNullWindowID
@@ -225,8 +242,11 @@ final class DesktopModel: ObservableObject {
             if markFrontmost, let frontmostWid {
                 interactions[frontmostWid] = interactionTime
             }
-            self.windows = fresh
-            self.interactionDates = interactions
+            // Only publish if something actually changed — avoids unnecessary SwiftUI re-renders
+            if changed || markFrontmost {
+                self.windows = fresh
+                self.interactionDates = interactions
+            }
             self.lastFrontmostWid = frontmostWid
         }
 
@@ -255,6 +275,10 @@ final class DesktopModel: ObservableObject {
 
         for (pid, wids) in byPid {
             let axApp = AXUIElementCreateApplication(pid)
+
+            // Set a timeout so unresponsive apps (video calls, etc.) don't block the poll
+            AXUIElementSetMessagingTimeout(axApp, 0.3)
+
             var axWindowsRef: CFTypeRef?
             guard AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &axWindowsRef) == .success,
                   let axWindows = axWindowsRef as? [AXUIElement] else { continue }

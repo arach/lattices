@@ -15,53 +15,66 @@ class ProjectScanner: ObservableObject {
         self.scanRoot = root
     }
 
+    private static let scanQueue = DispatchQueue(label: "com.lattices.project-scanner", qos: .userInitiated)
+    private var scanInFlight = false
+
     func scan() {
-        let diag = DiagnosticLog.shared
+        guard !scanInFlight else { return }
+        scanInFlight = true
+        let root = scanRoot
 
-        // Use find to locate all .lattices.json files — no manual directory walking
-        let tFind = diag.startTimed("ProjectScanner: find .lattices.json")
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/find")
-        task.arguments = [scanRoot, "-name", ".lattices.json", "-maxdepth", "3", "-not", "-path", "*/.git/*", "-not", "-path", "*/node_modules/*"]
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = FileHandle.nullDevice
-        try? task.run()
-        task.waitUntilExit()
-        diag.finish(tFind)
+        Self.scanQueue.async { [weak self] in
+            guard let self else { return }
+            let diag = DiagnosticLog.shared
 
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        let output = String(data: data, encoding: .utf8) ?? ""
-        let configPaths = output.split(separator: "\n").map(String.init).filter { !$0.isEmpty }
+            // Use find to locate all .lattices.json files — no manual directory walking
+            let tFind = diag.startTimed("ProjectScanner: find .lattices.json")
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/usr/bin/find")
+            task.arguments = [root, "-name", ".lattices.json", "-maxdepth", "3", "-not", "-path", "*/.git/*", "-not", "-path", "*/node_modules/*"]
+            let pipe = Pipe()
+            task.standardOutput = pipe
+            task.standardError = FileHandle.nullDevice
+            try? task.run()
+            task.waitUntilExit()
+            diag.finish(tFind)
 
-        let tParse = diag.startTimed("ProjectScanner: parse \(configPaths.count) configs")
-        var found: [Project] = []
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8) ?? ""
+            let configPaths = output.split(separator: "\n").map(String.init).filter { !$0.isEmpty }
 
-        for configPath in configPaths.sorted() {
-            let projectPath = (configPath as NSString).deletingLastPathComponent
-            let name = (projectPath as NSString).lastPathComponent
-            let (devCmd, pm) = detectDevCommand(at: projectPath)
-            let paneInfo = readPaneInfo(at: configPath)
+            let tParse = diag.startTimed("ProjectScanner: parse \(configPaths.count) configs")
+            var found: [Project] = []
 
-            var project = Project(
-                id: projectPath,
-                path: projectPath,
-                name: name,
-                devCommand: devCmd,
-                packageManager: pm,
-                hasConfig: true,
-                paneCount: paneInfo.count,
-                paneNames: paneInfo.names,
-                paneSummary: paneInfo.summary,
-                isRunning: false
-            )
-            project.isRunning = isSessionRunning(project.sessionName)
-            found.append(project)
+            for configPath in configPaths.sorted() {
+                let projectPath = (configPath as NSString).deletingLastPathComponent
+                let name = (projectPath as NSString).lastPathComponent
+                let (devCmd, pm) = self.detectDevCommand(at: projectPath)
+                let paneInfo = self.readPaneInfo(at: configPath)
+
+                var project = Project(
+                    id: projectPath,
+                    path: projectPath,
+                    name: name,
+                    devCommand: devCmd,
+                    packageManager: pm,
+                    hasConfig: true,
+                    paneCount: paneInfo.count,
+                    paneNames: paneInfo.names,
+                    paneSummary: paneInfo.summary,
+                    isRunning: false
+                )
+                project.isRunning = self.isSessionRunning(project.sessionName)
+                found.append(project)
+            }
+            diag.finish(tParse)
+
+            diag.info("ProjectScanner: found \(found.count) projects (\(found.filter(\.isRunning).count) running)")
+            DispatchQueue.main.async {
+                self.projects = found
+                self.scanInFlight = false
+            }
         }
-        diag.finish(tParse)
-
-        diag.info("ProjectScanner: found \(found.count) projects (\(found.filter(\.isRunning).count) running)")
-        DispatchQueue.main.async { self.projects = found }
     }
 
     func refreshStatus() {
