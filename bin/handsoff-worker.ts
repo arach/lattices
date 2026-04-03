@@ -18,9 +18,18 @@
 
 import { infer, inferJSON } from "../lib/infer.ts";
 
+const INFER_TIMEOUT_MS = 15_000;
+
 /** Call infer and parse JSON if possible, otherwise treat as spoken-only response */
 async function inferSmart(prompt: string, options: any): Promise<{ data: any; raw: any }> {
-  const raw = await infer(prompt, options);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), INFER_TIMEOUT_MS);
+  let raw: any;
+  try {
+    raw = await infer(prompt, { ...options, abortSignal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
 
   // Try to parse as JSON
   let cleaned = raw.text

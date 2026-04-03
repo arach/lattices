@@ -251,6 +251,8 @@ final class HandsOffSession: ObservableObject {
     // MARK: - Worker communication
 
     private var pendingCallback: (([String: Any]) -> Void)?
+    private var turnTimeoutWork: DispatchWorkItem?
+    private static let turnTimeoutSeconds: TimeInterval = 30
 
     private func sendToWorker(_ dict: [String: Any]) {
         guard let data = try? JSONSerialization.data(withJSONObject: dict),
@@ -335,15 +337,32 @@ final class HandsOffSession: ObservableObject {
         case .listening:
             finishListening()
         case .thinking:
-            DiagnosticLog.shared.info("HandsOff: busy, ignoring toggle")
+            cancelTurn()
         case .connecting:
             cancel()
         }
     }
 
     func cancel() {
+        cancelVoxSession()
         state = .idle
         DiagnosticLog.shared.info("HandsOff: cancelled")
+    }
+
+    private func cancelTurn() {
+        turnTimeoutWork?.cancel()
+        turnTimeoutWork = nil
+        pendingCallback = nil
+        state = .idle
+        DiagnosticLog.shared.warn("HandsOff: turn cancelled by user")
+        playSound("Funk")
+    }
+
+    /// Cancel any active Vox recording session without transcribing.
+    private func cancelVoxSession() {
+        guard VoxClient.shared.activeSessionId != nil else { return }
+        DiagnosticLog.shared.info("HandsOff: cancelling Vox session")
+        VoxClient.shared.cancelSession()
     }
 
     // MARK: - Voice capture
@@ -377,24 +396,46 @@ final class HandsOffSession: ObservableObject {
         }
     }
 
+    /// Guard against double-processing the transcript (session.final + completion can both deliver it).
+    private var turnProcessed = false
+
     private func startDictation() {
         state = .listening
         lastTranscript = nil
+        turnProcessed = false
         playSound("Tink")
 
         DiagnosticLog.shared.info("HandsOff: listening...")
 
         // Vox live session: startSession opens the mic, events flow on the start call ID.
-        // No partial transcripts — Vox transcribes after recording stops.
+        // session.final arrives via onProgress, then the same data arrives via completion.
+        // We process the transcript from whichever arrives first to be resilient against
+        // connection drops between the two.
         VoxClient.shared.startSession(
             onProgress: { [weak self] event, data in
                 DispatchQueue.main.async {
-                    if event == "session.state" {
+                    guard let self else { return }
+                    switch event {
+                    case "session.state":
                         let sessionState = data["state"] as? String ?? ""
                         DiagnosticLog.shared.info("HandsOff: session → \(sessionState)")
-                    }
-                    if event == "session.final", let text = data["text"] as? String {
-                        self?.lastTranscript = text
+                        // Vox cancelled the session (e.g. recording timeout)
+                        if sessionState == "cancelled" {
+                            let reason = data["reason"] as? String ?? "unknown"
+                            DiagnosticLog.shared.warn("HandsOff: Vox cancelled session — \(reason)")
+                            if self.state == .listening {
+                                self.state = .idle
+                                self.playSound("Basso")
+                            }
+                        }
+                    case "session.final":
+                        // Primary transcript delivery — process immediately
+                        if let text = data["text"] as? String, !text.isEmpty {
+                            self.lastTranscript = text
+                            self.deliverTranscript(text)
+                        }
+                    default:
+                        break
                     }
                 }
             },
@@ -405,22 +446,34 @@ final class HandsOffSession: ObservableObject {
                     case .success(let data):
                         let text = data["text"] as? String ?? ""
                         if text.isEmpty {
-                            self.state = .idle
-                            DiagnosticLog.shared.info("HandsOff: no speech detected")
+                            if !self.turnProcessed {
+                                self.state = .idle
+                                DiagnosticLog.shared.info("HandsOff: no speech detected")
+                            }
                         } else {
+                            // Fallback — deliver if session.final didn't already
                             self.lastTranscript = text
-                            DiagnosticLog.shared.info("HandsOff: heard → '\(text)'")
-                            self.appendChat(.user, text: text)
-                            self.processTurn(text)
+                            self.deliverTranscript(text)
                         }
                     case .failure(let error):
-                        self.state = .idle
-                        DiagnosticLog.shared.warn("HandsOff: session error — \(error.localizedDescription)")
-                        self.playSound("Basso")
+                        if !self.turnProcessed {
+                            self.state = .idle
+                            DiagnosticLog.shared.warn("HandsOff: session error — \(error.localizedDescription)")
+                            self.playSound("Basso")
+                        }
                     }
                 }
             }
         )
+    }
+
+    /// Deliver transcript exactly once — called from both session.final and completion.
+    private func deliverTranscript(_ text: String) {
+        guard !turnProcessed else { return }
+        turnProcessed = true
+        DiagnosticLog.shared.info("HandsOff: heard → '\(text)'")
+        appendChat(.user, text: text)
+        processTurn(text)
     }
 
     func finishListening() {
@@ -449,8 +502,24 @@ final class HandsOffSession: ObservableObject {
             "history": conversationHistory,
         ]
 
+        // Start turn timeout — forcibly reset if worker never responds
+        turnTimeoutWork?.cancel()
+        let timeout = DispatchWorkItem { [weak self] in
+            guard let self, self.state == .thinking else { return }
+            DiagnosticLog.shared.warn("HandsOff: ⏱ turn \(self.turnCount) timed out after \(Int(Self.turnTimeoutSeconds))s")
+            self.pendingCallback = nil
+            self.state = .idle
+            self.playSound("Basso")
+        }
+        turnTimeoutWork = timeout
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.turnTimeoutSeconds, execute: timeout)
+
         sendToWorkerWithCallback(turnCmd) { [weak self] response in
             guard let self else { return }
+
+            // Cancel the timeout — we got a response
+            self.turnTimeoutWork?.cancel()
+            self.turnTimeoutWork = nil
 
             let turnMs = Int(Date().timeIntervalSince(turnStart) * 1000)
             DiagnosticLog.shared.info("HandsOff: ⏱ turn \(self.turnCount) complete — \(turnMs)ms")

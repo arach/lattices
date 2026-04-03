@@ -30,6 +30,8 @@ export interface InferOptions {
   maxTokens?: number;
   /** Tag for logging — e.g. "hands-off", "voice-fallback" */
   tag?: string;
+  /** Abort signal for cancellation/timeout */
+  abortSignal?: AbortSignal;
 }
 
 export interface InferResult {
@@ -232,6 +234,7 @@ export async function infer(
       messages,
       temperature: options.temperature ?? 0.3,
       maxTokens: options.maxTokens ?? 1024,
+      abortSignal: options.abortSignal,
     });
 
     const durationMs = Math.round(performance.now() - start);
