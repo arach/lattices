@@ -1818,6 +1818,46 @@ final class LatticesApi {
 
         // ── Meta endpoint ───────────────────────────────────────
 
+        // ── Mouse Finder ────────────────────────────────────────
+
+        api.register(Endpoint(
+            method: "mouse.find",
+            description: "Show a sonar pulse at the current mouse cursor position",
+            access: .read,
+            params: [],
+            returns: .ok,
+            handler: { _ in
+                DispatchQueue.main.async { MouseFinder.shared.find() }
+                let pos = NSEvent.mouseLocation
+                return .object(["ok": .bool(true), "x": .int(Int(pos.x)), "y": .int(Int(pos.y))])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "mouse.summon",
+            description: "Warp the mouse cursor to screen center (or a given point) and show a sonar pulse",
+            access: .mutate,
+            params: [
+                Param(name: "x", type: "int", required: false, description: "Target X coordinate (screen, bottom-left origin)"),
+                Param(name: "y", type: "int", required: false, description: "Target Y coordinate (screen, bottom-left origin)"),
+            ],
+            returns: .ok,
+            handler: { params in
+                let target: CGPoint?
+                if let x = params?["x"]?.intValue, let y = params?["y"]?.intValue {
+                    target = CGPoint(x: CGFloat(x), y: CGFloat(y))
+                } else {
+                    target = nil
+                }
+                DispatchQueue.main.async { MouseFinder.shared.summon(to: target) }
+                let pos = target ?? {
+                    let screen = NSScreen.main ?? NSScreen.screens[0]
+                    return CGPoint(x: screen.frame.midX, y: screen.frame.midY)
+                }()
+                return .object(["ok": .bool(true), "x": .int(Int(pos.x)), "y": .int(Int(pos.y))])
+            }
+        ))
+
         api.register(Endpoint(
             method: "api.schema",
             description: "Get the full API schema including all methods and models",

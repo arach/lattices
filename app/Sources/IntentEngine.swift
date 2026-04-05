@@ -723,6 +723,43 @@ final class IntentEngine {
             }
         ))
 
+        // ── Find / Summon Mouse ────────────────────────────────
+
+        register(IntentDef(
+            name: "find_mouse",
+            description: "Show a sonar pulse at the current mouse cursor position",
+            examples: [
+                "where's my mouse",
+                "find the cursor",
+                "I lost my mouse",
+                "find mouse",
+                "show cursor"
+            ],
+            slots: [],
+            handler: { _ in
+                DispatchQueue.main.async { MouseFinder.shared.find() }
+                let pos = NSEvent.mouseLocation
+                return .object(["ok": .bool(true), "x": .int(Int(pos.x)), "y": .int(Int(pos.y))])
+            }
+        ))
+
+        register(IntentDef(
+            name: "summon_mouse",
+            description: "Warp the mouse cursor to the center of the screen",
+            examples: [
+                "summon mouse",
+                "bring the cursor here",
+                "center the mouse",
+                "mouse come here",
+                "bring mouse back"
+            ],
+            slots: [],
+            handler: { _ in
+                DispatchQueue.main.async { MouseFinder.shared.summon() }
+                return .object(["ok": .bool(true)])
+            }
+        ))
+
         // ── Undo / Restore ─────────────────────────────────────
 
         register(IntentDef(

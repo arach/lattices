@@ -56,7 +56,7 @@ function requireTmux(command: string | undefined): void {
   const isImplicitCreate = command && !tmuxRequiredCommands.has(command)
     && !["search", "s", "focus", "place", "tile", "t", "windows", "window",
          "voice", "call", "layer", "layers", "diag", "diagnostics", "scan",
-         "ocr", "daemon", "dev", "app", "help", "-h", "--help"].includes(command);
+         "ocr", "daemon", "dev", "app", "mouse", "help", "-h", "--help"].includes(command);
 
   if (command && !tmuxRequiredCommands.has(command) && !isImplicitCreate) return;
 
@@ -830,6 +830,18 @@ function restartPane(target?: string): void {
 // ── Commands ─────────────────────────────────────────────────────────
 
 // ── Daemon-aware commands ────────────────────────────────────────────
+
+async function mouseCommand(sub?: string): Promise<void> {
+  const { daemonCall } = await getDaemonClient();
+  if (sub === "summon") {
+    const result = await daemonCall("mouse.summon") as any;
+    console.log(`🎯 Mouse summoned to (${result.x}, ${result.y})`);
+  } else {
+    // Default: find
+    const result = await daemonCall("mouse.find") as any;
+    console.log(`🔍 Mouse at (${result.x}, ${result.y})`);
+  }
+}
 
 async function daemonStatusCommand(): Promise<void> {
   try {
@@ -1720,6 +1732,8 @@ Usage:
   lattices dev build          Build the project (swift/node/rust/go/make)
   lattices dev restart        Build + restart (swift app) or just build
   lattices dev type           Print detected project type
+  lattices mouse              Find mouse — sonar pulse at cursor position
+  lattices mouse summon       Summon mouse to screen center
   lattices daemon status      Show daemon status
   lattices diag [limit]       Show diagnostic log entries
   lattices app                Launch the menu bar companion app
@@ -2141,6 +2155,9 @@ switch (command) {
   case "scan":
   case "ocr":
     await scanCommand(args[1], ...args.slice(2));
+    break;
+  case "mouse":
+    await mouseCommand(args[1]);
     break;
   case "daemon":
     if (args[1] === "status") {

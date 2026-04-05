@@ -24,6 +24,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
     case handsOff
     case unifiedWindow
     case hud
+    case mouseFinder
     // Layers
     case layer1, layer2, layer3, layer4, layer5, layer6, layer7, layer8, layer9
     case layerNext, layerPrev, layerTag
@@ -45,6 +46,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .handsOff:        return "Hands-Off Mode"
         case .unifiedWindow:   return "Unified Window"
         case .hud:             return "HUD"
+        case .mouseFinder:     return "Find Mouse"
         case .layer1:          return "Layer 1"
         case .layer2:          return "Layer 2"
         case .layer3:          return "Layer 3"
@@ -76,7 +78,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
 
     var group: HotkeyGroup {
         switch self {
-        case .palette, .screenMap, .bezel, .cheatSheet, .desktopInventory, .omniSearch, .voiceCommand, .handsOff, .unifiedWindow, .hud: return .app
+        case .palette, .screenMap, .bezel, .cheatSheet, .desktopInventory, .omniSearch, .voiceCommand, .handsOff, .unifiedWindow, .hud, .mouseFinder: return .app
         case .layer1, .layer2, .layer3, .layer4, .layer5,
              .layer6, .layer7, .layer8, .layer9,
              .layerNext, .layerPrev, .layerTag: return .layers
@@ -96,6 +98,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .handsOff:        return 206
         case .unifiedWindow:   return 207
         case .hud:             return 208
+        case .mouseFinder:     return 209
         case .layer1:          return 101
         case .layer2:          return 102
         case .layer3:          return 103
@@ -231,6 +234,7 @@ class HotkeyStore: ObservableObject {
         bind(.handsOff, 46, cmdCtrl)          // Ctrl+Cmd+M
         bind(.omniSearch, 23, hyper)       // Hyper+5
         bind(.cheatSheet, 22, hyper)       // Hyper+6
+        bind(.mouseFinder, 26, hyper)      // Hyper+7
 
         // Layers: Cmd+Option+1-9
         let layerKeyCodes: [UInt32] = [18, 19, 20, 21, 23, 22, 26, 28, 25]

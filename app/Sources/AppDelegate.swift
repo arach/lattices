@@ -99,6 +99,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             }
         }
         store.register(action: .hud) { HUDController.shared.toggle() }
+        store.register(action: .mouseFinder) { MouseFinder.shared.find() }
 
         // Pre-render HUD panels off-screen for instant first open
         DispatchQueue.main.async { HUDController.shared.warmUp() }
