@@ -94,7 +94,7 @@ struct MainView: View {
                     }
                     headerButton(icon: "arrow.up.left.and.arrow.down.right") {
                         (NSApp.delegate as? AppDelegate)?.dismissPopover()
-                        MainWindow.shared.show()
+                        ScreenMapWindowController.shared.showPage(.home)
                     }
                     headerButton(icon: "arrow.clockwise") { scanner.scan(); inventory.refresh() }
                 }
@@ -283,27 +283,50 @@ struct MainView: View {
 
     private var actionsSection: some View {
         VStack(spacing: 0) {
-            ActionRow(shortcut: "1", label: "Command Palette", hotkey: hotkeyLabel(.palette), icon: "command", accentColor: Palette.running) {
+            HStack {
+                Text("Quick Actions")
+                    .font(Typo.monoBold(10))
+                    .foregroundColor(Palette.textMuted)
+
+                Spacer()
+
+                Button("Help & shortcuts") {
+                    SettingsWindowController.shared.show()
+                }
+                .buttonStyle(.plain)
+                .font(Typo.mono(9))
+                .foregroundColor(Palette.textMuted)
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 10)
+            .padding(.bottom, 6)
+
+            ActionRow(
+                label: "Command Palette",
+                detail: "Launch, attach, and control projects",
+                hotkeyTokens: hotkeyTokens(.palette),
+                icon: "command",
+                accentColor: Palette.running
+            ) {
                 CommandPaletteWindow.shared.toggle()
             }
-            ActionRow(shortcut: "2", label: "Screen Map", hotkey: hotkeyLabel(.screenMap), icon: "rectangle.3.group") {
-                ScreenMapWindowController.shared.toggle()
+            ActionRow(
+                label: "Workspace",
+                detail: "Screen map, inventory, and window context",
+                hotkeyTokens: hotkeyTokens(.unifiedWindow),
+                icon: "square.grid.2x2",
+                accentColor: Palette.text
+            ) {
+                ScreenMapWindowController.shared.showPage(.home)
             }
-            ActionRow(shortcut: "3", label: "Desktop Inventory", hotkey: hotkeyLabel(.desktopInventory), icon: "rectangle.split.2x1") {
-                CommandModeWindow.shared.toggle()
-            }
-            ActionRow(shortcut: "4", label: "Window Bezel", hotkey: hotkeyLabel(.bezel), icon: "macwindow") {
-                WindowBezel.showBezelForFrontmostWindow()
-            }
-            ActionRow(shortcut: "5", label: "Cheat Sheet", hotkey: hotkeyLabel(.cheatSheet), icon: "keyboard") {
-                CheatSheetHUD.shared.toggle()
-            }
-            ActionRow(shortcut: "6", label: "Omni Search", hotkey: hotkeyLabel(.omniSearch), icon: "magnifyingglass", accentColor: Palette.running) {
-                OmniSearchWindow.shared.toggle()
-            }
-            ActionRow(shortcut: "7", label: "Voice Command", hotkey: hotkeyLabel(.voiceCommand), icon: "mic", accentColor: AudioLayer.shared.isListening ? Palette.running : Palette.textDim) {
-                let audio = AudioLayer.shared
-                if audio.isListening { audio.stopVoiceCommand() } else { audio.startVoiceCommand() }
+            ActionRow(
+                label: "Assistant",
+                detail: "Search now, or use voice when you need it",
+                hotkeyTokens: hotkeyTokens(.omniSearch),
+                icon: "magnifyingglass",
+                accentColor: AudioLayer.shared.isListening ? Palette.running : Palette.textDim
+            ) {
+                showAssistant()
             }
         }
         .padding(.vertical, 4)
@@ -317,9 +340,6 @@ struct MainView: View {
             }
 
             HStack(spacing: 4) {
-                bottomBarButton(icon: "stethoscope", label: "Diagnostics") {
-                    DiagnosticWindow.shared.toggle()
-                }
                 if !permChecker.allGranted {
                     Circle()
                         .fill(Palette.detach)
@@ -351,9 +371,38 @@ struct MainView: View {
         .buttonStyle(.plain)
     }
 
-    private func hotkeyLabel(_ action: HotkeyAction) -> String? {
-        guard let binding = HotkeyStore.shared.bindings[action] else { return nil }
-        return binding.displayParts.joined(separator: "")
+    private func hotkeyTokens(_ action: HotkeyAction) -> [String] {
+        guard let binding = HotkeyStore.shared.bindings[action],
+              let key = binding.displayParts.last else { return [] }
+
+        let modifiers = Set(binding.displayParts.dropLast())
+        if modifiers == Set(["Ctrl", "Option", "Shift", "Cmd"]) {
+            return ["Hyper", shortenHotkeyToken(key)]
+        }
+
+        return binding.displayParts.map(shortenHotkeyToken)
+    }
+
+    private func shortenHotkeyToken(_ token: String) -> String {
+        switch token {
+        case "Cmd": return "⌘"
+        case "Shift": return "⇧"
+        case "Option": return "⌥"
+        case "Ctrl": return "⌃"
+        case "Return": return "↩"
+        case "Escape": return "Esc"
+        case "Space": return "Space"
+        default: return token
+        }
+    }
+
+    private func showAssistant() {
+        if AudioLayer.shared.isListening || VoiceCommandWindow.shared.isVisible {
+            VoiceCommandWindow.shared.toggle()
+            return
+        }
+
+        OmniSearchWindow.shared.show()
     }
 
     // MARK: - Empty state
@@ -368,12 +417,33 @@ struct MainView: View {
                 .font(Typo.heading(14))
                 .foregroundColor(Palette.textDim)
 
-            Text("Run  lattices init  in a project\nto add it here")
+            Text("Choose a repo and we’ll hand off to the CLI\nin your terminal.")
                 .font(Typo.mono(11))
                 .foregroundColor(Palette.textMuted)
                 .multilineTextAlignment(.center)
                 .lineSpacing(3)
+
+            HStack(spacing: 10) {
+                Button(action: CliActionLauncher.initializeProjectInTerminal) {
+                    Text("Initialize Project")
+                        .angularButton(Palette.running)
+                }
+                .buttonStyle(.plain)
+
+                Button(action: CliActionLauncher.launchProjectInTerminal) {
+                    Text("Launch Project")
+                        .angularButton(.white, filled: false)
+                }
+                .buttonStyle(.plain)
+            }
+
+            Text("Initialize runs  lattices init && lattices  in the folder you choose.")
+                .font(Typo.mono(9))
+                .foregroundColor(Palette.textMuted)
+                .multilineTextAlignment(.center)
+                .lineSpacing(2)
         }
+        .padding(.horizontal, 20)
     }
 
     // MARK: - Permission banner
@@ -399,11 +469,11 @@ struct MainView: View {
             permissionRow("Accessibility", granted: permChecker.accessibility) {
                 permChecker.requestAccessibility()
             }
-            permissionRow("Screen Recording", granted: permChecker.screenRecording) {
+            permissionRow("Screen Capture", granted: permChecker.screenRecording) {
                 permChecker.requestScreenRecording()
             }
 
-            Text("Click a row to request access.")
+            Text("Click a row to continue the permission flow in macOS.")
                 .font(Typo.mono(9))
                 .foregroundColor(Palette.textMuted)
         }

@@ -81,6 +81,10 @@ final class DesktopModel: ObservableObject {
         Array(windows.values).sorted { $0.zIndex < $1.zIndex }
     }
 
+    func frontmostWindow() -> WindowEntry? {
+        windows.values.min { $0.zIndex < $1.zIndex }
+    }
+
     func lastInteractionDate(for wid: UInt32) -> Date? {
         interactionDates[wid]
     }

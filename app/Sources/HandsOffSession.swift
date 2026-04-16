@@ -97,6 +97,15 @@ final class HandsOffSession: ObservableObject {
     private var workerBuffer = ""
     private let workerQueue = DispatchQueue(label: "com.lattices.handsoff-worker", qos: .userInitiated)
     private var lastCueAt: Date = .distantPast
+    private var workerRoot: String? {
+        if let idx = CommandLine.arguments.firstIndex(of: "--lattices-cli-root"),
+           CommandLine.arguments.indices.contains(idx + 1) {
+            return CommandLine.arguments[idx + 1]
+        }
+
+        let devRoot = NSHomeDirectory() + "/dev/lattices"
+        return FileManager.default.fileExists(atPath: devRoot) ? devRoot : nil
+    }
 
     /// JSONL log for full turn data — ~/.lattices/handsoff.jsonl
     private let turnLogPath = NSHomeDirectory() + "/.lattices/handsoff.jsonl"
@@ -122,7 +131,7 @@ final class HandsOffSession: ObservableObject {
     // MARK: - Lifecycle
 
     func start() {
-        startWorker()
+        // Worker startup is lazy — only start it when a voice turn or cached cue needs it.
     }
 
     func setAudibleFeedbackEnabled(_ enabled: Bool) {
@@ -170,9 +179,10 @@ final class HandsOffSession: ObservableObject {
         }
     }
 
-    private func startWorker() {
+    @discardableResult
+    private func startWorker() -> Bool {
         if workerProcess?.isRunning == true, workerStdin != nil {
-            return
+            return true
         }
 
         let bunPaths = [
@@ -182,19 +192,24 @@ final class HandsOffSession: ObservableObject {
         ]
         guard let bunPath = bunPaths.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
             DiagnosticLog.shared.warn("HandsOff: bun not found, worker disabled")
-            return
+            return false
         }
 
-        let scriptPath = NSHomeDirectory() + "/dev/lattices/bin/handsoff-worker.ts"
+        guard let workerRoot else {
+            DiagnosticLog.shared.warn("HandsOff: worker root not found, worker disabled")
+            return false
+        }
+
+        let scriptPath = workerRoot + "/bin/handsoff-worker.ts"
         guard FileManager.default.fileExists(atPath: scriptPath) else {
             DiagnosticLog.shared.warn("HandsOff: worker script not found at \(scriptPath)")
-            return
+            return false
         }
 
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: bunPath)
         proc.arguments = ["run", scriptPath]
-        proc.currentDirectoryURL = URL(fileURLWithPath: NSHomeDirectory() + "/dev/lattices")
+        proc.currentDirectoryURL = URL(fileURLWithPath: workerRoot)
 
         var env = ProcessInfo.processInfo.environment
         env.removeValue(forKey: "CLAUDECODE")
@@ -211,7 +226,7 @@ final class HandsOffSession: ObservableObject {
             try proc.run()
         } catch {
             DiagnosticLog.shared.warn("HandsOff: failed to start worker — \(error)")
-            return
+            return false
         }
 
         workerProcess = proc
@@ -235,17 +250,22 @@ final class HandsOffSession: ObservableObject {
 
         // Handle worker crash → restart
         proc.terminationHandler = { [weak self] proc in
-            DiagnosticLog.shared.warn("HandsOff: worker exited (code \(proc.terminationStatus)), restarting in 2s")
-            self?.workerProcess = nil
-            self?.workerStdin = nil
+            guard let self else { return }
+            let keepWarm = self.audibleFeedbackEnabled || self.state != .idle
+            let suffix = keepWarm ? ", restarting in 2s" : ", staying idle"
+            DiagnosticLog.shared.warn("HandsOff: worker exited (code \(proc.terminationStatus))\(suffix)")
+            self.workerProcess = nil
+            self.workerStdin = nil
+            guard keepWarm else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                self?.startWorker()
+                self.startWorker()
             }
         }
 
         // Ping to verify
         sendToWorker(["cmd": "ping"])
         DiagnosticLog.shared.info("HandsOff: worker started (pid \(proc.processIdentifier))")
+        return true
     }
 
     // MARK: - Worker communication
@@ -486,6 +506,12 @@ final class HandsOffSession: ObservableObject {
 
     private func processTurn(_ transcript: String) {
         state = .thinking
+        guard startWorker() else {
+            state = .idle
+            DiagnosticLog.shared.warn("HandsOff: worker unavailable")
+            playSound("Basso")
+            return
+        }
         turnCount += 1
 
         let turnStart = Date()

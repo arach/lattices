@@ -371,7 +371,7 @@ enum CommandBuilder {
             icon: "rectangle.split.2x1",
             category: .app,
             badge: nil,
-            action: { CommandModeWindow.shared.show() }
+            action: { ScreenMapWindowController.shared.showPage(.desktopInventory) }
         ))
 
         commands.append(PaletteCommand(
@@ -381,7 +381,7 @@ enum CommandBuilder {
             icon: "rectangle.3.group",
             category: .app,
             badge: nil,
-            action: { ScreenMapWindowController.shared.show() }
+            action: { ScreenMapWindowController.shared.showPage(.screenMap) }
         ))
 
         commands.append(PaletteCommand(

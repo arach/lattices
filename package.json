@@ -1,6 +1,6 @@
 {
   "name": "@lattices/cli",
-  "version": "0.4.0",
+  "version": "0.4.2",
   "description": "Agentic window manager for macOS — programmable workspace, smart layouts, managed tmux sessions, and a 35+-method agent API",
   "bin": {
     "lattices": "./bin/lattices.ts",
@@ -27,15 +27,22 @@
   },
   "scripts": {
     "dev": "bun --cwd docs-site dev",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:app-bundle": "bash ./bin/lattices-dev build",
+    "prepack": "bash ./bin/lattices-dev build"
   },
   "type": "module",
   "os": ["darwin"],
   "files": [
     "bin",
+    "app/Info.plist",
+    "app/Lattices.app",
+    "app/Lattices.entitlements",
     "app/Package.swift",
+    "app/Resources",
     "app/Sources",
-    "app/Lattices.app/Contents/Info.plist",
+    "app/Tests",
+    "assets/AppIcon.icns",
     "docs"
   ],
   "devDependencies": {
@@ -48,6 +55,7 @@
     "@ai-sdk/openai": "^3.0.41",
     "@ai-sdk/xai": "^3.0.67",
     "@arach/speakeasy": "^0.2.8",
-    "ai": "^6.0.116"
+    "ai": "^6.0.116",
+    "zod": "^3.25.76"
   }
 }

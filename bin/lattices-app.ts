@@ -1,20 +1,27 @@
 #!/usr/bin/env bun
 
 import { execSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, chmodSync, createWriteStream } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, mkdirSync, chmodSync, createWriteStream, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { get } from "node:https";
 import type { IncomingMessage } from "node:http";
 
 const __dirname = import.meta.dir;
 const appDir = resolve(__dirname, "../app");
+const cliRoot = resolve(__dirname, "..");
 const bundlePath = resolve(appDir, "Lattices.app");
 const binaryDir = resolve(bundlePath, "Contents/MacOS");
 const binaryPath = resolve(binaryDir, "Lattices");
 const entitlementsPath = resolve(__dirname, "../app/Lattices.entitlements");
+const resourcesDir = resolve(bundlePath, "Contents/Resources");
+const iconPath = resolve(__dirname, "../assets/AppIcon.icns");
+const tapSoundPath = resolve(__dirname, "../app/Resources/tap.wav");
 
 const REPO = "arach/lattices";
-const ASSET_NAME = "Lattices-macos-arm64";
+const RELEASE_APP_ASSET_NAMES = ["Lattices.dmg"];
+const RELEASE_BINARY_ASSET_NAMES = ["Lattices-macos-arm64", "LatticeApp-macos-arm64"];
+type ReleaseAsset = { name: string; browser_download_url: string };
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -51,13 +58,23 @@ function hasSwift(): boolean {
   }
 }
 
+function packageVersion(): string {
+  try {
+    const pkg = JSON.parse(readFileSync(resolve(__dirname, "../package.json"), "utf8"));
+    return typeof pkg.version === "string" ? pkg.version : "0.1.0";
+  } catch {
+    return "0.1.0";
+  }
+}
+
 function launch(extraArgs: string[] = []): void {
   if (isRunning()) {
     console.log("lattices app is already running.");
     return;
   }
   const args = [bundlePath];
-  if (extraArgs.length) args.push("--args", ...extraArgs);
+  const appArgs = ["--lattices-cli-root", cliRoot, ...extraArgs];
+  if (appArgs.length) args.push("--args", ...appArgs);
   spawn("open", args, { detached: true, stdio: "ignore" }).unref();
   console.log("lattices app launched.");
 }
@@ -76,6 +93,11 @@ function resolveSigningIdentity(): string | null {
 function signBundle(): void {
   const identity = resolveSigningIdentity();
   const entFlag = existsSync(entitlementsPath) ? ` --entitlements '${entitlementsPath}'` : "";
+  const tempBinaryPath = `${binaryPath}.cstemp`;
+
+  try {
+    if (existsSync(tempBinaryPath)) rmSync(tempBinaryPath, { force: true });
+  } catch {}
 
   if (identity) {
     console.log(`Signing with: ${identity}`);
@@ -96,6 +118,57 @@ function signBundle(): void {
     `codesign --force --sign -${entFlag} --identifier com.arach.lattices '${bundlePath}'`,
     { stdio: "pipe" }
   );
+
+  try {
+    if (existsSync(tempBinaryPath)) rmSync(tempBinaryPath, { force: true });
+  } catch {}
+}
+
+function writeInfoPlist(): void {
+  mkdirSync(resolve(bundlePath, "Contents"), { recursive: true });
+  const version = packageVersion();
+  const plist = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.arach.lattices</string>
+    <key>CFBundleName</key>
+    <string>Lattices</string>
+    <key>CFBundleDisplayName</key>
+    <string>Lattices</string>
+    <key>CFBundleExecutable</key>
+    <string>Lattices</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleVersion</key>
+    <string>${version}</string>
+    <key>CFBundleShortVersionString</key>
+    <string>${version}</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>13.0</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSSupportsAutomaticTermination</key>
+    <true/>
+</dict>
+</plist>
+`;
+  writeFileSync(resolve(bundlePath, "Contents/Info.plist"), plist);
+}
+
+function syncBundleResources(): void {
+  mkdirSync(resourcesDir, { recursive: true });
+  if (existsSync(iconPath)) {
+    execSync(`cp '${iconPath}' '${resolve(resourcesDir, "AppIcon.icns")}'`);
+  }
+  if (existsSync(tapSoundPath)) {
+    execSync(`cp '${tapSoundPath}' '${resolve(resourcesDir, "tap.wav")}'`);
+  }
 }
 
 // ── Build from source (current arch only) ────────────────────────────
@@ -116,20 +189,8 @@ function buildFromSource(): boolean {
 
   mkdirSync(binaryDir, { recursive: true });
   execSync(`cp '${builtPath}' '${binaryPath}'`);
-
-  // Copy Info.plist into bundle
-  const plistSrc = resolve(__dirname, "../app/Info.plist");
-  if (existsSync(plistSrc)) {
-    execSync(`cp '${plistSrc}' '${resolve(bundlePath, "Contents/Info.plist")}'`);
-  }
-
-  // Copy app icon into bundle
-  const iconSrc = resolve(__dirname, "../assets/AppIcon.icns");
-  const resourcesDir = resolve(bundlePath, "Contents/Resources");
-  mkdirSync(resourcesDir, { recursive: true });
-  if (existsSync(iconSrc)) {
-    execSync(`cp '${iconSrc}' '${resolve(resourcesDir, "AppIcon.icns")}'`);
-  }
+  writeInfoPlist();
+  syncBundleResources();
 
   // Re-sign the bundle so macOS TCC recognizes a stable identity across rebuilds.
   // Prefer a real local signing identity; only fall back to ad-hoc when necessary.
@@ -163,8 +224,36 @@ function httpsGet(url: string): Promise<IncomingMessage> {
   });
 }
 
+async function downloadToFile(url: string, destination: string): Promise<void> {
+  const res = await httpsGet(url);
+  const ws = createWriteStream(destination);
+  await new Promise<void>((resolve, reject) => {
+    res.pipe(ws);
+    ws.on("finish", resolve);
+    ws.on("error", reject);
+  });
+}
+
+function installBundleFromDmg(dmgPath: string): void {
+  const mountPoint = mkdtempSync(join(tmpdir(), "lattices-mount-"));
+  try {
+    execSync(`hdiutil attach -nobrowse -readonly -mountpoint '${mountPoint}' '${dmgPath}'`, { stdio: "pipe" });
+    const mountedBundle = resolve(mountPoint, "Lattices.app");
+    if (!existsSync(mountedBundle)) {
+      throw new Error("Lattices.app not found in mounted disk image");
+    }
+    rmSync(bundlePath, { recursive: true, force: true });
+    execSync(`cp -R '${mountedBundle}' '${bundlePath}'`);
+  } finally {
+    try {
+      execSync(`hdiutil detach '${mountPoint}' -quiet`, { stdio: "pipe" });
+    } catch {}
+    rmSync(mountPoint, { recursive: true, force: true });
+  }
+}
+
 async function download(): Promise<boolean> {
-  console.log("Downloading pre-built binary...");
+  console.log("Downloading pre-built lattices app...");
 
   try {
     const apiUrl = `https://api.github.com/repos/${REPO}/releases/latest`;
@@ -173,20 +262,31 @@ async function download(): Promise<boolean> {
     for await (const chunk of apiRes) chunks.push(chunk as Buffer);
     const release = JSON.parse(Buffer.concat(chunks).toString());
 
-    const asset = release.assets?.find((a: { name: string }) => a.name === ASSET_NAME);
-    if (!asset) throw new Error("Binary not found in release assets");
+    const assets: ReleaseAsset[] = Array.isArray(release.assets) ? release.assets : [];
+    const appAsset = assets.find((a) =>
+      RELEASE_APP_ASSET_NAMES.includes(a.name) || (a.name.endsWith(".dmg") && a.name.startsWith("Lattices"))
+    );
+    if (appAsset) {
+      const tempDir = mkdtempSync(join(tmpdir(), "lattices-download-"));
+      const dmgPath = resolve(tempDir, appAsset.name);
+      try {
+        await downloadToFile(appAsset.browser_download_url, dmgPath);
+        installBundleFromDmg(dmgPath);
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+      console.log("Download complete.");
+      return true;
+    }
 
-    const dlRes = await httpsGet(asset.browser_download_url);
+    const binaryAsset = assets.find((a) => RELEASE_BINARY_ASSET_NAMES.includes(a.name));
+    if (!binaryAsset) throw new Error("App bundle not found in release assets");
 
     mkdirSync(binaryDir, { recursive: true });
-    const ws = createWriteStream(binaryPath);
-    await new Promise<void>((resolve, reject) => {
-      dlRes.pipe(ws);
-      ws.on("finish", resolve);
-      ws.on("error", reject);
-    });
-
+    await downloadToFile(binaryAsset.browser_download_url, binaryPath);
     chmodSync(binaryPath, 0o755);
+    writeInfoPlist();
+    syncBundleResources();
     console.log("Download complete.");
     return true;
   } catch (e) {
@@ -200,21 +300,14 @@ async function download(): Promise<boolean> {
 async function ensureBinary(): Promise<void> {
   if (existsSync(binaryPath)) return;
 
-  // 1. Try local compile (fast, matches exact system)
-  if (hasSwift()) {
-    if (buildFromSource()) return;
-    console.log("Local build failed, trying download...");
-  }
-
-  // 2. Fall back to pre-built binary from GitHub releases
   const downloaded = await download();
   if (downloaded) return;
 
-  // 3. Nothing worked
   console.error(
-    "Could not build or download the lattices app.\n" +
+    "Could not find a bundled lattices app or download one.\n" +
     "Options:\n" +
-    "  \u2022 Install Xcode CLI tools:  xcode-select --install\n" +
+    "  \u2022 Reinstall or update @lattices/cli\n" +
+    "  \u2022 Developers can build from source with: lattices-app build\n" +
     "  \u2022 Download manually from:   https://github.com/" + REPO + "/releases"
   );
   process.exit(1);

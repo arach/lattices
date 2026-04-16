@@ -82,8 +82,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let store = HotkeyStore.shared
         store.register(action: .palette) { CommandPaletteWindow.shared.toggle() }
         store.register(action: .unifiedWindow) { ScreenMapWindowController.shared.toggle() }
-        store.register(action: .bezel) { WindowBezel.showBezelForFrontmostWindow() }
-        store.register(action: .cheatSheet) { CheatSheetHUD.shared.toggle() }
+        store.register(action: .bezel) { Self.showWorkspaceInspector() }
+        store.register(action: .cheatSheet) { SettingsWindowController.shared.show() }
         store.register(action: .voiceCommand) {
             DiagnosticLog.shared.info("Hotkey: voiceCommand triggered")
             VoiceCommandWindow.shared.toggle()
@@ -158,7 +158,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         LatticesApi.setup()
         DaemonServer.shared.start()
         AgentPool.shared.start()
-        HandsOffSession.shared.start()
         diag.finish(tBoot)
 
         // --diagnostics flag: auto-open diagnostics panel on launch
@@ -229,11 +228,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         let actions: [(String, String, Selector)] = [
             ("Command Palette", "⌘⇧M", #selector(menuCommandPalette)),
-            ("Unified Window", "", #selector(menuScreenMap)),
-            ("HUD", "", #selector(menuHUD)),
-            ("Window Bezel", "", #selector(menuWindowBezel)),
-            ("Cheat Sheet", "", #selector(menuCheatSheet)),
-            ("Omni Search", "", #selector(menuOmniSearch)),
+            ("Workspace", "", #selector(menuWorkspace)),
+            ("Assistant", "", #selector(menuAssistant)),
+            ("Help & Shortcuts", "", #selector(menuDocs)),
         ]
         for (title, shortcut, action) in actions {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
@@ -246,13 +243,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         menu.addItem(.separator())
 
-        let settings = NSMenuItem(title: "Settings…", action: #selector(menuSettings), keyEquivalent: ",")
+        let cliActions: [(String, Selector)] = [
+            ("Initialize Project in Terminal…", #selector(menuInitializeProject)),
+            ("Launch Project in Terminal…", #selector(menuLaunchProject)),
+        ]
+        for (title, action) in cliActions {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+            item.target = self
+            menu.addItem(item)
+        }
+
+        menu.addItem(.separator())
+
+        let settings = NSMenuItem(title: "Help & Settings…", action: #selector(menuSettings), keyEquivalent: ",")
         settings.target = self
         menu.addItem(settings)
-
-        let diag = NSMenuItem(title: "Diagnostics", action: #selector(menuDiagnostics), keyEquivalent: "")
-        diag.target = self
-        menu.addItem(diag)
 
         menu.addItem(.separator())
 
@@ -264,12 +269,31 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     @objc private func menuCommandPalette() { CommandPaletteWindow.shared.toggle() }
-    @objc private func menuScreenMap() { ScreenMapWindowController.shared.toggle() }
+    @objc private func menuWorkspace() { ScreenMapWindowController.shared.showPage(.home) }
+    @objc private func menuAssistant() {
+        if AudioLayer.shared.isListening || VoiceCommandWindow.shared.isVisible {
+            VoiceCommandWindow.shared.toggle()
+        } else {
+            OmniSearchWindow.shared.show()
+        }
+    }
+    @objc private func menuDocs() { SettingsWindowController.shared.show() }
+    @objc private func menuInitializeProject() { CliActionLauncher.initializeProjectInTerminal() }
+    @objc private func menuLaunchProject() { CliActionLauncher.launchProjectInTerminal() }
     @objc private func menuHUD() { HUDController.shared.toggle() }
-    @objc private func menuWindowBezel() { WindowBezel.showBezelForFrontmostWindow() }
-    @objc private func menuCheatSheet() { CheatSheetHUD.shared.toggle() }
+    @objc private func menuWindowBezel() { Self.showWorkspaceInspector() }
+    @objc private func menuCheatSheet() { SettingsWindowController.shared.show() }
     @objc private func menuOmniSearch() { OmniSearchWindow.shared.toggle() }
     @objc private func menuSettings() { SettingsWindowController.shared.show() }
-    @objc private func menuDiagnostics() { DiagnosticWindow.shared.toggle() }
     @objc private func menuQuit() { NSApp.terminate(nil) }
+
+    private static func showWorkspaceInspector() {
+        guard let entry = DesktopModel.shared.frontmostWindow(),
+              entry.app != "Lattices" else {
+            ScreenMapWindowController.shared.showPage(.screenMap)
+            return
+        }
+
+        ScreenMapWindowController.shared.showWindow(wid: entry.wid)
+    }
 }

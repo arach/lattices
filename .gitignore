@@ -4,7 +4,7 @@ node_modules/
 app/.build/
 app/.swiftpm/
 
-# Built .app bundle artifacts (rebuilt on install)
+# Built .app bundle artifacts (generated for dev/publish, not tracked)
 Lattices.app/
 app/Lattices.app/
 

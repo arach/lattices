@@ -77,7 +77,7 @@ struct OnboardingView: View {
             .padding(.horizontal, 40)
             .padding(.bottom, 28)
         }
-        .frame(width: 480, height: 420)
+        .frame(width: 480, height: 470)
         .background(Palette.bg)
         .preferredColorScheme(.dark)
     }
@@ -111,8 +111,8 @@ struct OnboardingView: View {
     private var screenRecordingStep: some View {
         permissionStep(
             icon: "rectangle.dashed.badge.record",
-            title: "Screen Recording",
-            description: "Allows Lattices to index on-screen text with OCR so you can search across all your windows.",
+            title: "Screen Capture",
+            description: "Allows Lattices to index on-screen text with OCR so you can search across all your windows. On newer macOS versions this finishes in System Settings under Screen & System Audio Recording.",
             granted: permChecker.screenRecording,
             action: { permChecker.requestScreenRecording() }
         )
@@ -220,18 +220,11 @@ struct OnboardingView: View {
                     .multilineTextAlignment(.center)
                     .lineSpacing(3)
 
-                Button(action: {
-                    let task = Process()
-                    task.executableURL = URL(fileURLWithPath: "/bin/zsh")
-                    task.arguments = ["-lc", "brew install tmux"]
-                    task.standardOutput = FileHandle.nullDevice
-                    task.standardError = FileHandle.nullDevice
-                    try? task.run()
-                }) {
+                Button(action: CliActionLauncher.installTmuxInTerminal) {
                     HStack(spacing: 6) {
                         Image(systemName: "arrow.down.circle")
                             .font(.system(size: 11))
-                        Text("brew install tmux")
+                        Text("Install tmux in Terminal")
                             .font(Typo.monoBold(11))
                     }
                     .angularButton(.white, filled: false)
@@ -274,6 +267,27 @@ struct OnboardingView: View {
                             .strokeBorder(Palette.border, lineWidth: 0.5)
                     )
             )
+
+            VStack(spacing: 10) {
+                Text("Pick a repo and let the CLI do the setup in your terminal.")
+                    .font(Typo.mono(10))
+                    .foregroundColor(Palette.textMuted)
+                    .multilineTextAlignment(.center)
+
+                HStack(spacing: 10) {
+                    Button(action: CliActionLauncher.initializeProjectInTerminal) {
+                        Text("Initialize Project")
+                            .angularButton(Palette.running)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button(action: CliActionLauncher.launchProjectInTerminal) {
+                        Text("Launch Project")
+                            .angularButton(.white, filled: false)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         }
     }
 
@@ -310,7 +324,7 @@ struct OnboardingView: View {
                 }
                 .buttonStyle(.plain)
 
-                Text("macOS will ask you to toggle this on in System Settings.")
+                Text("macOS may send you to System Settings to finish this step.")
                     .font(Typo.mono(10))
                     .foregroundColor(Palette.textMuted)
                     .multilineTextAlignment(.center)
@@ -431,9 +445,9 @@ final class OnboardingWindowController {
             config: .init(
                 title: "Welcome to Lattices",
                 titleVisible: false,
-                initialSize: NSSize(width: 480, height: 420),
-                minSize: NSSize(width: 480, height: 420),
-                maxSize: NSSize(width: 480, height: 420),
+                initialSize: NSSize(width: 480, height: 470),
+                minSize: NSSize(width: 480, height: 470),
+                maxSize: NSSize(width: 480, height: 470),
                 miniaturizable: false
             ),
             rootView: view

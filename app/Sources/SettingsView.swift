@@ -865,7 +865,18 @@ struct SettingsContentView: View {
             separator
 
             HStack {
+                HStack(spacing: 8) {
+                    footerActionButton(icon: "book", label: "Docs") {
+                        ScreenMapWindowController.shared.showPage(.docs)
+                    }
+
+                    footerActionButton(icon: "stethoscope", label: "Diagnostics") {
+                        DiagnosticWindow.shared.show()
+                    }
+                }
+
                 Spacer()
+
                 Button {
                     hotkeyStore.resetAll()
                 } label: {
@@ -1137,6 +1148,9 @@ struct SettingsContentView: View {
                     HStack(spacing: 8) {
                         docsLinkButton(icon: "doc.text", label: "Config format", file: "config.md")
                         docsLinkButton(icon: "book", label: "Full concepts", file: "concepts.md")
+                        footerActionButton(icon: "stethoscope", label: "Diagnostics") {
+                            DiagnosticWindow.shared.show()
+                        }
                     }
                     .padding(.horizontal, 20)
                     .padding(.vertical, 12)
@@ -1176,25 +1190,36 @@ struct SettingsContentView: View {
             let path = resolveDocsFile(file)
             NSWorkspace.shared.open(URL(fileURLWithPath: path))
         } label: {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: 10))
-                Text(label)
-                    .font(Typo.caption(11))
-            }
-            .foregroundColor(Palette.textDim)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(Palette.surface)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 3)
-                            .strokeBorder(Palette.border, lineWidth: 0.5)
-                    )
-            )
+            footerActionLabel(icon: icon, label: label)
         }
         .buttonStyle(.plain)
+    }
+
+    private func footerActionButton(icon: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            footerActionLabel(icon: icon, label: label)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func footerActionLabel(icon: String, label: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 10))
+            Text(label)
+                .font(Typo.caption(11))
+        }
+        .foregroundColor(Palette.textDim)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 3)
+                .fill(Palette.surface)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 3)
+                        .strokeBorder(Palette.border, lineWidth: 0.5)
+                )
+        )
     }
 
     private func resolveDocsFile(_ file: String) -> String {

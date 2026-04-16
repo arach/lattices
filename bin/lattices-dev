@@ -5,11 +5,16 @@ set -euo pipefail
 
 SCRIPT_PATH="$(readlink -f "$0" 2>/dev/null || python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$0")"
 APP_DIR="$(cd "$(dirname "$SCRIPT_PATH")/../app" && pwd)"
+ROOT="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
 LOG_FILE="$HOME/.lattices/lattices.log"
 BINARY="$APP_DIR/.build/release/Lattices"
 BUNDLE="$APP_DIR/Lattices.app"
 BUNDLE_BIN="$BUNDLE/Contents/MacOS/Lattices"
+RESOURCES_DIR="$BUNDLE/Contents/Resources"
 ENTITLEMENTS="$APP_DIR/Lattices.entitlements"
+ICON="$ROOT/assets/AppIcon.icns"
+TAP_SOUND="$APP_DIR/Resources/tap.wav"
+VERSION="$(node -p "require('$ROOT/package.json').version" 2>/dev/null || echo '0.1.0')"
 
 red()   { printf "\033[31m%s\033[0m\n" "$*"; }
 green() { printf "\033[32m%s\033[0m\n" "$*"; }
@@ -28,6 +33,8 @@ select_sign_identity() {
 sign_bundle() {
     local identity sign_status=0
     local -a ent_flags=()
+
+    rm -f "$BUNDLE_BIN".cstemp
 
     if [ -f "$ENTITLEMENTS" ]; then
         ent_flags=(--entitlements "$ENTITLEMENTS")
@@ -48,15 +55,60 @@ sign_bundle() {
         dim "No usable signing identity found. Using ad-hoc signature."
         codesign --force --sign - "${ent_flags[@]}" --identifier com.arach.lattices "$BUNDLE"
     fi
+
+    rm -f "$BUNDLE_BIN".cstemp
+}
+
+write_info_plist() {
+    mkdir -p "$BUNDLE/Contents"
+    cat > "$BUNDLE/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.arach.lattices</string>
+    <key>CFBundleName</key>
+    <string>Lattices</string>
+    <key>CFBundleDisplayName</key>
+    <string>Lattices</string>
+    <key>CFBundleExecutable</key>
+    <string>Lattices</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleVersion</key>
+    <string>$VERSION</string>
+    <key>CFBundleShortVersionString</key>
+    <string>$VERSION</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>13.0</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSSupportsAutomaticTermination</key>
+    <true/>
+</dict>
+</plist>
+PLIST
 }
 
 cmd_build() {
     echo "Building release..."
     cd "$APP_DIR" && swift build -c release
-    # Copy into app bundle so it runs with the proper bundle ID
-    mkdir -p "$(dirname "$BUNDLE_BIN")" "$BUNDLE/Contents/Resources"
+    # Refresh the bundle so dev builds and published bundles are complete.
+    rm -rf "$BUNDLE/Contents/MacOS" "$RESOURCES_DIR"
+    mkdir -p "$(dirname "$BUNDLE_BIN")" "$RESOURCES_DIR"
     cp "$BINARY" "$BUNDLE_BIN"
-    cp "$APP_DIR/Info.plist" "$BUNDLE/Contents/Info.plist" 2>/dev/null || true
+    if [ -f "$ICON" ]; then
+        cp "$ICON" "$RESOURCES_DIR/AppIcon.icns"
+    fi
+    if [ -f "$TAP_SOUND" ]; then
+        cp "$TAP_SOUND" "$RESOURCES_DIR/tap.wav"
+    fi
+    write_info_plist
     # Re-sign so TCC permissions persist across rebuilds
     sign_bundle
     green "Build complete."

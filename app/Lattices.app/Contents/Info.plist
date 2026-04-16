@@ -6,6 +6,8 @@
     <string>com.arach.lattices</string>
     <key>CFBundleName</key>
     <string>Lattices</string>
+    <key>CFBundleDisplayName</key>
+    <string>Lattices</string>
     <key>CFBundleExecutable</key>
     <string>Lattices</string>
     <key>CFBundleIconFile</key>
@@ -13,10 +15,14 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>0.4.2</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.1.0</string>
+    <string>0.4.2</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>13.0</string>
     <key>LSUIElement</key>
+    <true/>
+    <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSSupportsAutomaticTermination</key>
     <true/>

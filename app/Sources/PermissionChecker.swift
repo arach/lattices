@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import Combine
+import ScreenCaptureKit
 
 final class PermissionChecker: ObservableObject {
     static let shared = PermissionChecker()
@@ -71,12 +72,46 @@ final class PermissionChecker: ObservableObject {
     func requestScreenRecording() {
         let diag = DiagnosticLog.shared
         let beforeCheck = CGPreflightScreenCaptureAccess()
-        diag.info("requestScreenRecording: before=\(beforeCheck), prompting…")
+        diag.info("requestScreenRecording: before=\(beforeCheck), probing…")
+
+        // On newer macOS releases TCC no longer reliably prompts for screen capture
+        // through the legacy CoreGraphics request API. Warm up ScreenCaptureKit first,
+        // then fall back to opening System Settings if access is still denied.
+        if #available(macOS 15.0, *) {
+            NSApp.activate(ignoringOtherApps: true)
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+
+                let shareableProbe = await self.probeScreenCaptureShareableContent()
+                diag.info("ScreenCaptureKit shareable probe → \(shareableProbe)")
+
+                if #available(macOS 15.2, *) {
+                    let afterShareable = CGPreflightScreenCaptureAccess()
+                    if !afterShareable {
+                        let screenshotProbe = await self.probeScreenCaptureScreenshot()
+                        diag.info("ScreenCaptureKit screenshot probe → \(screenshotProbe)")
+                    }
+                }
+
+                let afterCheck = CGPreflightScreenCaptureAccess()
+                diag.info("requestScreenRecording: after=\(afterCheck)")
+                self.screenRecording = afterCheck
+
+                if !afterCheck {
+                    diag.warn("Screen capture not granted — opening System Settings. On newer macOS versions this may require enabling Lattices in Privacy → Screen & System Audio Recording.")
+                    self.openScreenRecordingSettings()
+                    self.startPolling()
+                }
+            }
+            return
+        }
+
+        diag.info("requestScreenRecording: using legacy CoreGraphics request API")
         let result = CGRequestScreenCaptureAccess()
         diag.info("CGRequestScreenCaptureAccess() → \(result)")
         screenRecording = result
         if !result {
-            diag.warn("Screen Recording not granted — opening System Settings. Toggle ON in Privacy → Screen Recording.")
+            diag.warn("Screen capture not granted — opening System Settings. Toggle ON in Privacy → Screen Recording.")
             openScreenRecordingSettings()
             startPolling()
         }
@@ -94,6 +129,45 @@ final class PermissionChecker: ObservableObject {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
             NSWorkspace.shared.open(url)
         }
+    }
+
+    @available(macOS 15.0, *)
+    private func probeScreenCaptureShareableContent() async -> String {
+        await withCheckedContinuation { continuation in
+            SCShareableContent.getExcludingDesktopWindows(true, onScreenWindowsOnly: true) { content, error in
+                if let error {
+                    continuation.resume(returning: "error \(Self.describe(error))")
+                    return
+                }
+
+                let windows = content?.windows.count ?? 0
+                let displays = content?.displays.count ?? 0
+                let apps = content?.applications.count ?? 0
+                continuation.resume(returning: "ok windows=\(windows) displays=\(displays) apps=\(apps)")
+            }
+        }
+    }
+
+    @available(macOS 15.2, *)
+    private func probeScreenCaptureScreenshot() async -> String {
+        let rect = CGRect(x: 0, y: 0, width: 1, height: 1)
+        return await withCheckedContinuation { continuation in
+            SCScreenshotManager.captureImage(in: rect) { _, error in
+                if let error {
+                    continuation.resume(returning: "error \(Self.describe(error))")
+                } else {
+                    continuation.resume(returning: "ok")
+                }
+            }
+        }
+    }
+
+    private static func describe(_ error: Error) -> String {
+        let nsError = error as NSError
+        if nsError.localizedDescription.isEmpty {
+            return "\(nsError.domain)#\(nsError.code)"
+        }
+        return "\(nsError.domain)#\(nsError.code) \(nsError.localizedDescription)"
     }
 
     // MARK: - Polling
