@@ -2,6 +2,7 @@ node_modules/
 
 # Swift build artifacts
 app/.build/
+app/.build-codex/
 app/.swiftpm/
 
 # Built .app bundle artifacts (generated for dev/publish, not tracked)
