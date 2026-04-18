@@ -50,28 +50,36 @@ struct MainView: View {
         .background(PanelBackground())
         .preferredColorScheme(.dark)
         .onAppear {
-            let tTotal = DiagnosticLog.shared.startTimed("MainView.onAppear (total)")
             if needsSetup && !hasCheckedSetup {
                 hasCheckedSetup = true
                 SettingsWindowController.shared.show()
             }
-            scanner.updateRoot(prefs.scanRoot)
-
-            let tScan = DiagnosticLog.shared.startTimed("ProjectScanner.scan")
-            scanner.scan()
-            DiagnosticLog.shared.finish(tScan)
-
-            let tInv = DiagnosticLog.shared.startTimed("InventoryManager.refresh")
-            inventory.refresh()
-            DiagnosticLog.shared.finish(tInv)
-
-            let tPerm = DiagnosticLog.shared.startTimed("PermissionChecker.check")
-            permChecker.check()
-            DiagnosticLog.shared.finish(tPerm)
-
-            bannerDismissed = false
-            DiagnosticLog.shared.finish(tTotal)
+            runRefresh()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .latticesPopoverWillShow)) { _ in
+            guard layout == .popover else { return }
+            runRefresh()
+        }
+    }
+
+    private func runRefresh() {
+        let tTotal = DiagnosticLog.shared.startTimed("MainView.refresh (total)")
+        scanner.updateRoot(prefs.scanRoot)
+
+        let tScan = DiagnosticLog.shared.startTimed("ProjectScanner.scan")
+        scanner.scan()
+        DiagnosticLog.shared.finish(tScan)
+
+        let tInv = DiagnosticLog.shared.startTimed("InventoryManager.refresh")
+        inventory.refresh()
+        DiagnosticLog.shared.finish(tInv)
+
+        let tPerm = DiagnosticLog.shared.startTimed("PermissionChecker.check")
+        permChecker.check()
+        DiagnosticLog.shared.finish(tPerm)
+
+        bannerDismissed = false
+        DiagnosticLog.shared.finish(tTotal)
     }
 
     private var mainContent: some View {
@@ -101,11 +109,6 @@ struct MainView: View {
                 .padding(.horizontal, 18)
                 .padding(.top, 18)
                 .padding(.bottom, 12)
-            }
-
-            // Layer switcher
-            if let config = workspace.config, let layers = config.layers, layers.count > 1 {
-                layerBar(config: config)
             }
 
             // Search
@@ -588,54 +591,6 @@ struct MainView: View {
         }
         .buttonStyle(.plain)
         .disabled(granted)
-    }
-
-    // MARK: - Layer Bar
-
-    private func layerBar(config: WorkspaceConfig) -> some View {
-        HStack(spacing: 6) {
-            ForEach(Array((config.layers ?? []).enumerated()), id: \.element.id) { i, layer in
-                let isActive = i == workspace.activeLayerIndex
-                let counts = workspace.layerRunningCount(index: i)
-                Button {
-                    workspace.tileLayer(index: i)
-                } label: {
-                    VStack(spacing: 2) {
-                        HStack(spacing: 5) {
-                            Circle()
-                                .fill(isActive ? Palette.running : Palette.textMuted.opacity(0.4))
-                                .frame(width: 6, height: 6)
-                            Text(layer.label)
-                                .font(Typo.mono(11))
-                                .foregroundColor(isActive ? Palette.text : Palette.textDim)
-                            if counts.total > 0 {
-                                Text("\(counts.running)/\(counts.total)")
-                                    .font(Typo.mono(8))
-                                    .foregroundColor(counts.running > 0 ? Palette.running : Palette.textMuted)
-                            }
-                        }
-                        Text("\u{2325}\(i + 1)")
-                            .font(Typo.mono(8))
-                            .foregroundColor(Palette.textMuted.opacity(0.6))
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(
-                        RoundedRectangle(cornerRadius: 5)
-                            .fill(isActive ? Palette.running.opacity(0.1) : Color.clear)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 5)
-                            .strokeBorder(isActive ? Palette.running.opacity(0.3) : Palette.border, lineWidth: 0.5)
-                    )
-                }
-                .buttonStyle(.plain)
-                .disabled(workspace.isSwitching)
-            }
-            Spacer()
-        }
-        .padding(.horizontal, 14)
-        .padding(.bottom, 8)
     }
 
     // MARK: - Helpers

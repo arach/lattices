@@ -1,6 +1,10 @@
 import AppKit
 import SwiftUI
 
+extension Notification.Name {
+    static let latticesPopoverWillShow = Notification.Name("latticesPopoverWillShow")
+}
+
 /// Manages the NSStatusItem (menu bar icon), left-click popover, and right-click context menu.
 /// Replaces the previous SwiftUI MenuBarExtra approach for full click-event control.
 class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
@@ -103,6 +107,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         // Pre-render HUD panels off-screen for instant first open
         DispatchQueue.main.async { HUDController.shared.warmUp() }
+        // Pre-build the menu bar popover so the first click doesn't pay the SwiftUI mount cost.
+        // Touching `.view` forces NSHostingController to materialize the SwiftUI view tree.
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            let p = self.makePopover()
+            _ = p.contentViewController?.view
+        }
         store.register(action: .omniSearch) { OmniSearchWindow.shared.toggle() }
 
         // Session layer cycling
@@ -200,9 +211,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover?.performClose(nil)
     }
 
-    /// Create a fresh popover each time so the SwiftUI view tree isn't kept alive
-    /// when the popover is closed — prevents continuous CPU usage from @Published updates.
+    /// Cached popover — built lazily on first click, reused on every subsequent open.
+    /// Keeping the SwiftUI view tree alive avoids rebuilding on each click (slow first paint).
+    /// Data refresh is driven from `popoverWillShow` + a notification MainView listens to.
     private func makePopover() -> NSPopover {
+        if let p = popover { return p }
         let t = DiagnosticLog.shared.startTimed("makePopover")
         let p = NSPopover()
         p.contentViewController = NSHostingController(rootView: MainView(scanner: ProjectScanner.shared))
@@ -215,10 +228,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         return p
     }
 
-    func popoverDidClose(_ notification: Notification) {
-        // Tear down the SwiftUI view tree so observed models stop driving re-renders
-        popover?.contentViewController = nil
-        popover = nil
+    func popoverWillShow(_ notification: Notification) {
+        NotificationCenter.default.post(name: .latticesPopoverWillShow, object: nil)
     }
 
     // MARK: - Context menu
