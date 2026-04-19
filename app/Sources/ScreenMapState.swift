@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Foundation
 import SwiftUI
 
@@ -251,7 +252,8 @@ final class ScreenMapEditorState: ObservableObject {
     static let minZoom: CGFloat = 0.3
     static let maxZoom: CGFloat = 5.0
 
-    var effectiveScale: CGFloat { scale * zoomLevel }
+    /// `scale` is the synced effective canvas scale (fit scale × zoom).
+    var effectiveScale: CGFloat { scale }
 
     func resetZoomPan() {
         zoomLevel = 1.0
@@ -330,12 +332,39 @@ final class ScreenMapEditorState: ObservableObject {
         effectiveLayers.count
     }
 
+    /// Total windows in the current display scope before any layer filter is applied.
+    var scopedWindowCount: Int {
+        guard let dIdx = focusedDisplayIndex else { return windows.count }
+        return windows.filter { $0.displayIndex == dIdx }.count
+    }
+
     /// Window count for a layer, scoped to the focused display
     func effectiveWindowCount(for layer: Int) -> Int {
         guard let dIdx = focusedDisplayIndex else {
             return windowCount(for: layer)
         }
         return windows.filter { $0.layer == layer && $0.displayIndex == dIdx }.count
+    }
+
+    /// Windows currently rendered in the main canvas.
+    var renderedCanvasWindows: [ScreenMapWindowEntry] {
+        focusedDisplayIndex != nil ? focusedVisibleWindows : visibleWindows
+    }
+
+    var namedEffectiveLayers: [Int] {
+        effectiveLayers.filter { layerNames[$0] != nil }
+    }
+
+    var unnamedEffectiveLayers: [Int] {
+        effectiveLayers.filter { layerNames[$0] == nil }
+    }
+
+    func layerTreeWindows(for layer: Int) -> [ScreenMapWindowEntry] {
+        var scoped = windows.filter { $0.layer == layer }
+        if let dIdx = focusedDisplayIndex {
+            scoped = scoped.filter { $0.displayIndex == dIdx }
+        }
+        return scoped.sorted { $0.zIndex < $1.zIndex }
     }
 
     /// Visible window count per display index
@@ -508,6 +537,12 @@ final class ScreenMapEditorState: ObservableObject {
 
         regions.append(contentsOf: layerScope.prefix(6))
         return regions
+    }
+
+    func displayRegion(for displayIndex: Int) -> ScreenMapCanvasRegion? {
+        canvasExplorerRegions.first {
+            $0.kind == .display && $0.displayIndex == displayIndex
+        }
     }
 
     private func regionRect(for windows: [ScreenMapWindowEntry], fallback: CGRect, padding: CGFloat) -> CGRect {
@@ -1350,7 +1385,9 @@ final class ScreenMapActionLog {
 // MARK: - Screen Map Controller
 
 final class ScreenMapController: ObservableObject {
-    @Published var editor: ScreenMapEditorState?
+    @Published var editor: ScreenMapEditorState? {
+        didSet { bindEditor() }
+    }
     @Published var selectedWindowIds: Set<UInt32> = []
     @Published var windowSets: [ScreenMapWindowSet] = []
     @Published var activeWindowSetID: UUID? = nil
@@ -1364,12 +1401,59 @@ final class ScreenMapController: ObservableObject {
         case left, right, none
     }
     @Published var displayTransition: DisplayTransitionDirection = .none
+    private var editorObserver: AnyCancellable?
 
     var previewWindow: NSWindow? = nil
     private var previewGlobalMonitor: Any? = nil
     private var previewLocalMonitor: Any? = nil
 
     var onDismiss: (() -> Void)?
+
+    enum DisplayFocusDirection {
+        case previous
+        case next
+    }
+
+    private func bindEditor() {
+        editorObserver = editor?.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
+    }
+
+    private func finalizeDisplayFocusChange(flashLabel: Bool) {
+        guard let ed = editor else { return }
+        focusViewportPreset(ed.activeViewportPreset ?? .main, flashView: false)
+        if flashLabel {
+            flash(ed.focusedDisplay?.label ?? "All displays")
+        }
+        objectWillChange.send()
+    }
+
+    func setDisplayFocus(_ index: Int?, flashLabel: Bool = false) {
+        guard let ed = editor else { return }
+        ed.focusDisplay(index)
+        finalizeDisplayFocusChange(flashLabel: flashLabel)
+    }
+
+    func stepDisplayFocus(_ direction: DisplayFocusDirection, flashLabel: Bool = true) {
+        guard let ed = editor, ed.displays.count > 1 else { return }
+        switch direction {
+        case .previous:
+            ed.cyclePreviousDisplay()
+        case .next:
+            ed.cycleNextDisplay()
+        }
+        finalizeDisplayFocusChange(flashLabel: flashLabel)
+    }
+
+    func adjustZoom(by delta: CGFloat) {
+        guard let ed = editor else { return }
+        let newZoom = max(ScreenMapEditorState.minZoom, min(ScreenMapEditorState.maxZoom, ed.zoomLevel + delta))
+        guard newZoom != ed.zoomLevel else { return }
+        ed.activeViewportPreset = nil
+        ed.zoomLevel = newZoom
+        objectWillChange.send()
+    }
 
     // MARK: - Selection
 
@@ -1616,7 +1700,7 @@ final class ScreenMapController: ObservableObject {
             guard CGRectMakeWithDictionaryRepresentation(boundsDict, &rect) else { continue }
             guard rect.width >= 100 && rect.height >= 50 else { continue }
             let app = info[kCGWindowOwnerName as String] as? String ?? ""
-            if app == "Lattices" || app == "lattices" || app == "Lattices" { continue }
+            if app == "Lattices" || app == "lattices" || app == "AutoFill" { continue }
             let pid = info[kCGWindowOwnerPID as String] as? Int32 ?? 0
             let title = info[kCGWindowName as String] as? String ?? ""
             let dIdx = displayIndex(for: rect)
@@ -2052,23 +2136,11 @@ final class ScreenMapController: ObservableObject {
         // MARK: Right hand — Navigation
 
         case 4: // h → previous display
-            if let ed = editor, ed.displays.count > 1 {
-                ed.cyclePreviousDisplay()
-                focusViewportPreset(ed.activeViewportPreset ?? .main, flashView: false)
-                let label = ed.focusedDisplay?.label ?? "All displays"
-                flash(label)
-                objectWillChange.send()
-            }
+            stepDisplayFocus(.previous)
             return true
 
         case 37: // l → next display
-            if let ed = editor, ed.displays.count > 1 {
-                ed.cycleNextDisplay()
-                focusViewportPreset(ed.activeViewportPreset ?? .main, flashView: false)
-                let label = ed.focusedDisplay?.label ?? "All displays"
-                flash(label)
-                objectWillChange.send()
-            }
+            stepDisplayFocus(.next)
             return true
 
         case 38: // j → next layer
@@ -2213,23 +2285,11 @@ final class ScreenMapController: ObservableObject {
             return true
 
         case 123: // ← previous display (secondary)
-            if let ed = editor, ed.displays.count > 1 {
-                ed.cyclePreviousDisplay()
-                focusViewportPreset(ed.activeViewportPreset ?? .main, flashView: false)
-                let label = ed.focusedDisplay?.label ?? "All displays"
-                flash(label)
-                objectWillChange.send()
-            }
+            stepDisplayFocus(.previous)
             return true
 
         case 124: // → next display (secondary)
-            if let ed = editor, ed.displays.count > 1 {
-                ed.cycleNextDisplay()
-                focusViewportPreset(ed.activeViewportPreset ?? .main, flashView: false)
-                let label = ed.focusedDisplay?.label ?? "All displays"
-                flash(label)
-                objectWillChange.send()
-            }
+            stepDisplayFocus(.next)
             return true
 
         case 44: // / → open window search

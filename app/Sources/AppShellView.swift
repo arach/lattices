@@ -13,9 +13,9 @@ enum AppPage: String, CaseIterable {
     var label: String {
         switch self {
         case .home:             return "Home"
-        case .screenMap:        return "Screen Map"
-        case .desktopInventory: return "Desktop Inventory"
-        case .pi:               return "Pi"
+        case .screenMap:        return "Layout"
+        case .desktopInventory: return "Windows"
+        case .pi:               return "Assistant"
         case .settings:         return "Settings"
         case .docs:             return "Docs"
         }
@@ -90,6 +90,7 @@ struct AppShellView: View {
             .foregroundColor(isActive ? Palette.text : Palette.textMuted)
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
+            .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: 6)
                     .fill(isActive ? Palette.surfaceHov : Color.clear)
