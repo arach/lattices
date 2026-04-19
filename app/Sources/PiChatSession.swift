@@ -272,12 +272,18 @@ final class PiChatSession: ObservableObject {
 
             let proc = Process()
             proc.executableURL = URL(fileURLWithPath: piPath)
-            proc.arguments = [
+            var args = [
                 "--provider", provider.id,
                 "-p",
                 "--session", self.sessionFileURL.path,
-                trimmed,
             ]
+
+            if let extPath = Self.resolveExtensionPath() {
+                args += ["-e", extPath]
+            }
+
+            args.append(trimmed)
+            proc.arguments = args
 
             var env = ProcessInfo.processInfo.environment
             env.removeValue(forKey: "CLAUDECODE")
@@ -670,6 +676,18 @@ final class PiChatSession: ObservableObject {
         let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return output.isEmpty ? nil : output
+    }
+
+    static func resolveExtensionPath() -> String? {
+        let fm = FileManager.default
+        let candidates = [
+            NSHomeDirectory() + "/.lattices/pi-extension/lattices.ts",
+            Bundle.main.bundlePath + "/../pi-extension/lattices.ts",
+        ]
+        for path in candidates where fm.fileExists(atPath: path) {
+            return path
+        }
+        return nil
     }
 
     private func resolveOAuthModuleURL() -> URL? {
