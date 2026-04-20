@@ -266,6 +266,35 @@ struct SettingsContentView: View {
                         }
                     }
                 }
+
+                settingsCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Window drag snap")
+                            .font(Typo.mono(11))
+                            .foregroundColor(Palette.text)
+
+                        HStack {
+                            Text("Drag-to-snap")
+                                .font(Typo.mono(10))
+                                .foregroundColor(Palette.textDim)
+                            Spacer()
+                            Toggle("", isOn: $prefs.dragSnapEnabled)
+                                .toggleStyle(.switch)
+                                .controlSize(.small)
+                                .labelsHidden()
+                        }
+
+                        Text("Hold the configured snap modifier while dragging to reveal landing targets and a live preview, then release it to go back to a free drag. Default: Command.")
+                            .font(Typo.caption(9))
+                            .foregroundColor(Palette.textMuted.opacity(0.7))
+
+                        cardDivider
+
+                        Text("Agent-editable rules live in ~/.lattices/snap-zones.json. Changes are picked up on the next drag.")
+                            .font(Typo.caption(9))
+                            .foregroundColor(Palette.textMuted.opacity(0.7))
+                    }
+                }
             }
             .padding(16)
         }

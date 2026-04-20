@@ -51,10 +51,10 @@ final class WindowHighlight {
     private var fadeTimer: Timer?
 
     /// Flash a green border overlay at the given screen frame
-    func flash(frame: NSRect, duration: TimeInterval = 1.2) {
+    func flash(frame: NSRect, duration: TimeInterval = 0.9) {
         dismiss()
 
-        let inset: CGFloat = -8  // slightly larger than the window
+        let inset: CGFloat = -6  // slightly larger than the window
         let expandedFrame = frame.insetBy(dx: inset, dy: inset)
 
         let window = NSWindow(
@@ -110,22 +110,28 @@ final class WindowHighlight {
 
 private class HighlightBorderView: NSView {
     override func draw(_ dirtyRect: NSRect) {
-        let borderWidth: CGFloat = 4
+        let borderWidth: CGFloat = 3
         let cornerRadius: CGFloat = 12
 
         // Outer glow
         let glowRect = bounds.insetBy(dx: 1, dy: 1)
         let glowPath = NSBezierPath(roundedRect: glowRect, xRadius: cornerRadius + 2, yRadius: cornerRadius + 2)
-        glowPath.lineWidth = borderWidth + 4
-        NSColor(calibratedRed: 0.2, green: 0.9, blue: 0.4, alpha: 0.15).setStroke()
+        glowPath.lineWidth = borderWidth + 2
+        NSColor(calibratedRed: 0.2, green: 0.9, blue: 0.4, alpha: 0.07).setStroke()
         glowPath.stroke()
 
         // Main border
         let rect = bounds.insetBy(dx: borderWidth / 2 + 2, dy: borderWidth / 2 + 2)
         let path = NSBezierPath(roundedRect: rect, xRadius: cornerRadius, yRadius: cornerRadius)
         path.lineWidth = borderWidth
-        NSColor(calibratedRed: 0.2, green: 0.9, blue: 0.4, alpha: 0.9).setStroke()
+        NSColor(calibratedRed: 0.2, green: 0.9, blue: 0.4, alpha: 0.58).setStroke()
         path.stroke()
+
+        let innerRect = rect.insetBy(dx: 3, dy: 3)
+        let innerPath = NSBezierPath(roundedRect: innerRect, xRadius: max(cornerRadius - 3, 6), yRadius: max(cornerRadius - 3, 6))
+        innerPath.lineWidth = 1
+        NSColor.white.withAlphaComponent(0.10).setStroke()
+        innerPath.stroke()
     }
 }
 

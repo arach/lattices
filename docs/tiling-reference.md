@@ -81,6 +81,56 @@ typed placement model internally:
 
 That is what keeps CLI, daemon, voice, and hands-off execution aligned.
 
+## Drag Snap Zones
+
+The menu bar app can also use placement specs as drag-to-snap targets.
+When you drag a window, Lattices shows faint landing zones plus a live
+preview of the resulting frame. Releasing over a zone tiles the dragged
+window to that placement. Hold `Command` while dragging to reveal snap
+mode, and release `Command` to drop back to a normal free drag without
+ending the gesture.
+
+The recommended agent-owned config lives in `~/.lattices/snap-zones.json`:
+
+```json
+{
+  "enabled": true,
+  "modifier": "command",
+  "zoneOpacity": 0.08,
+  "highlightOpacity": 0.18,
+  "previewOpacity": 0.14,
+  "rules": [
+    {
+      "id": "left-edge",
+      "label": "Left",
+      "placement": "left",
+      "trigger": { "x": 0.0, "y": 0.18, "w": 0.12, "h": 0.64 },
+      "priority": 10
+    },
+    {
+      "id": "notes-rail",
+      "label": "Notes",
+      "placement": { "x": 0.68, "y": 0.0, "w": 0.32, "h": 1.0 },
+      "trigger": { "x": 0.88, "y": 0.18, "w": 0.12, "h": 0.64 },
+      "priority": 30
+    }
+  ]
+}
+```
+
+Notes:
+
+- `rules` is the preferred list key. `zones` is still accepted for backward compatibility.
+- `modifier` accepts `command`, `option`, `control`, or `shift`.
+- `placement` can be a named placement/preset string or raw fractions.
+- `trigger` uses normalized `(x, y, w, h)` fractions of the screen's
+  visible area, with `y = 0` at the top.
+- `priority` breaks ties when trigger regions overlap.
+- `trigger` can also be a named placement or preset string if you want
+  the trigger region itself to reuse an existing tile definition.
+- The older `~/.lattices/grid.json` `snapZones` section still works, but
+  `~/.lattices/snap-zones.json` is the cleaner file for agents to edit.
+
 ## Execution Paths
 
 The old split-brain tiling logic has been collapsed toward a shared path.

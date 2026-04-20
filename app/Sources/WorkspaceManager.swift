@@ -63,6 +63,273 @@ struct LayoutConfig: Codable {
 struct GridFile: Codable {
     let presets: [String: GridPreset]?
     let layouts: [String: LayoutConfig]?
+    let snapZones: SnapZonesConfig?
+}
+
+enum SnapModifierKey: String, Codable, Equatable {
+    case command
+    case option
+    case control
+    case shift
+
+    var eventFlags: NSEvent.ModifierFlags {
+        switch self {
+        case .command:
+            return .command
+        case .option:
+            return .option
+        case .control:
+            return .control
+        case .shift:
+            return .shift
+        }
+    }
+
+    var cgEventFlags: CGEventFlags {
+        switch self {
+        case .command:
+            return .maskCommand
+        case .option:
+            return .maskAlternate
+        case .control:
+            return .maskControl
+        case .shift:
+            return .maskShift
+        }
+    }
+
+    var label: String {
+        rawValue.capitalized
+    }
+}
+
+enum SnapZoneTriggerSpec: Codable, Equatable {
+    case named(String)
+    case fractions(FractionalPlacement)
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let named = try? container.decode(String.self) {
+            self = .named(named)
+            return
+        }
+
+        let preset = try container.decode(GridPreset.self)
+        guard let placement = FractionalPlacement(x: preset.x, y: preset.y, w: preset.w, h: preset.h) else {
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "snap zone trigger fractions must stay within 0...1"
+            )
+        }
+        self = .fractions(placement)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .named(let name):
+            try container.encode(name)
+        case .fractions(let placement):
+            try container.encode(GridPreset(x: placement.x, y: placement.y, w: placement.w, h: placement.h))
+        }
+    }
+}
+
+enum SnapZonePlacementSpec: Codable, Equatable {
+    case named(String)
+    case fractions(FractionalPlacement)
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let named = try? container.decode(String.self) {
+            self = .named(named)
+            return
+        }
+
+        let preset = try container.decode(GridPreset.self)
+        guard let placement = FractionalPlacement(x: preset.x, y: preset.y, w: preset.w, h: preset.h) else {
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "snap zone placement fractions must stay within 0...1"
+            )
+        }
+        self = .fractions(placement)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .named(let name):
+            try container.encode(name)
+        case .fractions(let placement):
+            try container.encode(GridPreset(x: placement.x, y: placement.y, w: placement.w, h: placement.h))
+        }
+    }
+}
+
+struct SnapZoneDefinition: Codable, Equatable, Identifiable {
+    let rawID: String?
+    let label: String?
+    let placement: SnapZonePlacementSpec
+    let trigger: SnapZoneTriggerSpec
+    let priority: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case rawID = "id"
+        case label
+        case placement
+        case trigger
+        case priority
+    }
+
+    var id: String {
+        let trimmed = rawID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? fallbackID : trimmed
+    }
+
+    private var fallbackID: String {
+        switch placement {
+        case .named(let name):
+            return name
+        case .fractions(let fractions):
+            return "fractions-\(fractions.x)-\(fractions.y)-\(fractions.w)-\(fractions.h)"
+        }
+    }
+}
+
+struct SnapZonesConfig: Codable, Equatable {
+    let enabled: Bool?
+    let modifier: SnapModifierKey?
+    let zoneOpacity: Double?
+    let highlightOpacity: Double?
+    let previewOpacity: Double?
+    let cornerRadius: CGFloat?
+    let rules: [SnapZoneDefinition]?
+
+    enum CodingKeys: String, CodingKey {
+        case enabled
+        case modifier
+        case zoneOpacity
+        case highlightOpacity
+        case previewOpacity
+        case cornerRadius
+        case rules
+        case zones
+    }
+
+    init(
+        enabled: Bool?,
+        modifier: SnapModifierKey?,
+        zoneOpacity: Double?,
+        highlightOpacity: Double?,
+        previewOpacity: Double?,
+        cornerRadius: CGFloat?,
+        rules: [SnapZoneDefinition]?
+    ) {
+        self.enabled = enabled
+        self.modifier = modifier
+        self.zoneOpacity = zoneOpacity
+        self.highlightOpacity = highlightOpacity
+        self.previewOpacity = previewOpacity
+        self.cornerRadius = cornerRadius
+        self.rules = rules
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled)
+        modifier = try container.decodeIfPresent(SnapModifierKey.self, forKey: .modifier)
+        zoneOpacity = try container.decodeIfPresent(Double.self, forKey: .zoneOpacity)
+        highlightOpacity = try container.decodeIfPresent(Double.self, forKey: .highlightOpacity)
+        previewOpacity = try container.decodeIfPresent(Double.self, forKey: .previewOpacity)
+        cornerRadius = try container.decodeIfPresent(CGFloat.self, forKey: .cornerRadius)
+        let decodedRules = try container.decodeIfPresent([SnapZoneDefinition].self, forKey: .rules)
+        let decodedZones = try container.decodeIfPresent([SnapZoneDefinition].self, forKey: .zones)
+        rules = decodedRules ?? decodedZones
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(enabled, forKey: .enabled)
+        try container.encodeIfPresent(modifier, forKey: .modifier)
+        try container.encodeIfPresent(zoneOpacity, forKey: .zoneOpacity)
+        try container.encodeIfPresent(highlightOpacity, forKey: .highlightOpacity)
+        try container.encodeIfPresent(previewOpacity, forKey: .previewOpacity)
+        try container.encodeIfPresent(cornerRadius, forKey: .cornerRadius)
+        try container.encodeIfPresent(rules, forKey: .rules)
+    }
+
+    static let defaults = SnapZonesConfig(
+        enabled: true,
+        modifier: .command,
+        zoneOpacity: 0.10,
+        highlightOpacity: 0.22,
+        previewOpacity: 0.18,
+        cornerRadius: 18,
+        rules: [
+            SnapZoneDefinition(
+                rawID: "top-left",
+                label: "Top Left",
+                placement: .named("top-left"),
+                trigger: .fractions(FractionalPlacement(x: 0.00, y: 0.00, w: 0.24, h: 0.18)!),
+                priority: 40
+            ),
+            SnapZoneDefinition(
+                rawID: "maximize",
+                label: "Maximize",
+                placement: .named("maximize"),
+                trigger: .fractions(FractionalPlacement(x: 0.24, y: 0.00, w: 0.52, h: 0.12)!),
+                priority: 20
+            ),
+            SnapZoneDefinition(
+                rawID: "top-right",
+                label: "Top Right",
+                placement: .named("top-right"),
+                trigger: .fractions(FractionalPlacement(x: 0.76, y: 0.00, w: 0.24, h: 0.18)!),
+                priority: 40
+            ),
+            SnapZoneDefinition(
+                rawID: "left",
+                label: "Left",
+                placement: .named("left"),
+                trigger: .fractions(FractionalPlacement(x: 0.00, y: 0.18, w: 0.12, h: 0.64)!),
+                priority: 10
+            ),
+            SnapZoneDefinition(
+                rawID: "right",
+                label: "Right",
+                placement: .named("right"),
+                trigger: .fractions(FractionalPlacement(x: 0.88, y: 0.18, w: 0.12, h: 0.64)!),
+                priority: 10
+            ),
+            SnapZoneDefinition(
+                rawID: "bottom-left",
+                label: "Bottom Left",
+                placement: .named("bottom-left"),
+                trigger: .fractions(FractionalPlacement(x: 0.00, y: 0.82, w: 0.24, h: 0.18)!),
+                priority: 40
+            ),
+            SnapZoneDefinition(
+                rawID: "bottom-right",
+                label: "Bottom Right",
+                placement: .named("bottom-right"),
+                trigger: .fractions(FractionalPlacement(x: 0.76, y: 0.82, w: 0.24, h: 0.18)!),
+                priority: 40
+            ),
+        ]
+    )
+
+    func merged(over defaults: SnapZonesConfig = .defaults) -> SnapZonesConfig {
+        SnapZonesConfig(
+            enabled: enabled ?? defaults.enabled,
+            modifier: modifier ?? defaults.modifier,
+            zoneOpacity: zoneOpacity ?? defaults.zoneOpacity,
+            highlightOpacity: highlightOpacity ?? defaults.highlightOpacity,
+            previewOpacity: previewOpacity ?? defaults.previewOpacity,
+            cornerRadius: cornerRadius ?? defaults.cornerRadius,
+            rules: rules ?? defaults.rules
+        )
+    }
 }
 
 // MARK: - Manager
@@ -75,9 +342,11 @@ class WorkspaceManager: ObservableObject {
     @Published var isSwitching: Bool = false
     @Published var gridPresets: [String: GridPreset] = [:]
     @Published var gridLayouts: [String: LayoutConfig] = [:]
+    @Published var snapZonesConfig: SnapZonesConfig = .defaults
 
     private let configPath: String
     private let gridConfigPath: String
+    private let snapZonesConfigPath: String
     private var tmuxPath: String { TmuxQuery.resolvedPath ?? "/opt/homebrew/bin/tmux" }
     private let activeLayerKey = "lattices.activeLayerIndex"
 
@@ -85,6 +354,7 @@ class WorkspaceManager: ObservableObject {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         self.configPath = (home as NSString).appendingPathComponent(".lattices/workspace.json")
         self.gridConfigPath = (home as NSString).appendingPathComponent(".lattices/grid.json")
+        self.snapZonesConfigPath = (home as NSString).appendingPathComponent(".lattices/snap-zones.json")
         self.activeLayerIndex = UserDefaults.standard.integer(forKey: activeLayerKey)
         loadConfig()
         loadGridConfig()
@@ -137,6 +407,7 @@ class WorkspaceManager: ObservableObject {
     func loadGridConfig() {
         var presets: [String: GridPreset] = [:]
         var layouts: [String: LayoutConfig] = [:]
+        var snapZones = SnapZonesConfig.defaults
 
         // Load global ~/.lattices/grid.json
         if FileManager.default.fileExists(atPath: gridConfigPath),
@@ -145,8 +416,21 @@ class WorkspaceManager: ObservableObject {
                 let gridFile = try JSONDecoder().decode(GridFile.self, from: data)
                 if let p = gridFile.presets { presets.merge(p) { _, new in new } }
                 if let l = gridFile.layouts { layouts.merge(l) { _, new in new } }
+                if let snap = gridFile.snapZones {
+                    snapZones = snap.merged(over: snapZones)
+                }
             } catch {
                 DiagnosticLog.shared.error("WorkspaceManager: failed to decode grid.json — \(error.localizedDescription)")
+            }
+        }
+
+        if FileManager.default.fileExists(atPath: snapZonesConfigPath),
+           let data = FileManager.default.contents(atPath: snapZonesConfigPath) {
+            do {
+                let config = try JSONDecoder().decode(SnapZonesConfig.self, from: data)
+                snapZones = config.merged(over: snapZones)
+            } catch {
+                DiagnosticLog.shared.error("WorkspaceManager: failed to decode snap-zones.json — \(error.localizedDescription)")
             }
         }
 
@@ -161,6 +445,9 @@ class WorkspaceManager: ObservableObject {
                     let gridFile = try JSONDecoder().decode(GridFile.self, from: gridData)
                     if let p = gridFile.presets { presets.merge(p) { _, new in new } }
                     if let l = gridFile.layouts { layouts.merge(l) { _, new in new } }
+                    if let snap = gridFile.snapZones {
+                        snapZones = snap.merged(over: snapZones)
+                    }
                 }
             } catch {
                 DiagnosticLog.shared.error("WorkspaceManager: failed to decode .lattices.json grid — \(error.localizedDescription)")
@@ -169,6 +456,7 @@ class WorkspaceManager: ObservableObject {
 
         self.gridPresets = presets
         self.gridLayouts = layouts
+        self.snapZonesConfig = snapZones
     }
 
     /// Resolve a tile string to fractions: check user presets first, then built-in TilePosition

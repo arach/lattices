@@ -20,6 +20,10 @@ class Preferences: ObservableObject {
         didSet { UserDefaults.standard.set(mode.rawValue, forKey: "mode") }
     }
 
+    @Published var dragSnapEnabled: Bool {
+        didSet { UserDefaults.standard.set(dragSnapEnabled, forKey: "windowSnap.enabled") }
+    }
+
     // MARK: - AI / Claude
 
     @Published var claudePath: String {
@@ -126,6 +130,12 @@ class Preferences: ObservableObject {
             self.mode = m
         } else {
             self.mode = .learning
+        }
+
+        if UserDefaults.standard.object(forKey: "windowSnap.enabled") != nil {
+            self.dragSnapEnabled = UserDefaults.standard.bool(forKey: "windowSnap.enabled")
+        } else {
+            self.dragSnapEnabled = true
         }
 
         // AI / Claude
