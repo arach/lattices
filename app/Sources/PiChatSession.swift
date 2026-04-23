@@ -123,6 +123,7 @@ struct PiProvider: Identifiable, Equatable {
 
 final class PiChatSession: ObservableObject {
     static let shared = PiChatSession()
+    private static let installCommand = "npm install -g @mariozechner/pi-coding-agent@latest"
 
     @Published private(set) var messages: [PiChatMessage] = [
         PiChatMessage(
@@ -142,32 +143,50 @@ final class PiChatSession: ObservableObject {
         }
     }
     @Published var isAuthPanelVisible: Bool = false
-    @Published var authProviderID: String = "minimax" {
+    @Published var authProviderID: String = "openai-codex" {
         didSet {
             guard oldValue != authProviderID else { return }
+            if isAuthenticating {
+                cancelAuthFlow(silently: true)
+            }
             UserDefaults.standard.set(authProviderID, forKey: Self.selectedProviderDefaultsKey)
             authToken = ""
             authPromptInput = ""
             pendingAuthPrompt = nil
             authNoticeText = nil
             authErrorText = nil
+            latestAuthURL = nil
+            latestAuthInstructions = nil
+            authVerificationCodeCopied = false
+            lastCopiedAuthVerificationCode = nil
+            prepareForDisplay()
         }
     }
     @Published var authToken: String = ""
     @Published var authPromptInput: String = ""
     @Published private(set) var isAuthenticating: Bool = false
+    @Published private(set) var authenticatingProviderID: String?
     @Published private(set) var pendingAuthPrompt: PiAuthPrompt?
     @Published private(set) var authNoticeText: String?
     @Published private(set) var authErrorText: String?
     @Published private(set) var storedCredentialKinds: [String: String] = [:]
+    @Published private(set) var piBinaryPath: String?
+    @Published private(set) var latestAuthURL: URL?
+    @Published private(set) var latestAuthInstructions: String?
+    @Published private(set) var authVerificationCodeCopied: Bool = false
 
     private let queue = DispatchQueue(label: "pi-chat-session", qos: .userInitiated)
     private let sessionFileURL: URL
     private let authFileURL: URL
     private var authProcess: Process?
+    private var authProcessIdentifier: Int32?
     private var authInputHandle: FileHandle?
+    private var authStdoutPipe: Pipe?
+    private var authStderrPipe: Pipe?
     private var authStdoutBuffer: String = ""
     private var authStderrBuffer: String = ""
+    private var nodeBinaryPath: String?
+    private var lastCopiedAuthVerificationCode: String?
 
     private static let selectedProviderDefaultsKey = "PiChatSelectedProvider"
     private static let dockHeightDefaultsKey = "PiChatDockHeight"
@@ -191,10 +210,16 @@ final class PiChatSession: ObservableObject {
         }
 
         reloadAuthState()
+        refreshBinaryAvailability()
+        cleanupLingeringAuthHelpers()
     }
 
     var hasPiBinary: Bool {
-        resolvePiPath() != nil
+        piBinaryPath != nil
+    }
+
+    var piInstallCommand: String {
+        Self.installCommand
     }
 
     var providerOptions: [PiProvider] {
@@ -205,6 +230,19 @@ final class PiChatSession: ObservableObject {
         PiProvider.provider(id: authProviderID)
     }
 
+    var authenticatingProvider: PiProvider? {
+        guard let authenticatingProviderID else { return nil }
+        return PiProvider.provider(id: authenticatingProviderID)
+    }
+
+    var needsProviderSetup: Bool {
+        hasPiBinary && !hasSelectedCredential
+    }
+
+    var hasConversationHistory: Bool {
+        messages.contains { $0.role != .system }
+    }
+
     var selectedCredentialSummary: String {
         guard let kind = storedCredentialKinds[authProviderID] else { return "not authenticated" }
         return kind == "oauth" ? "oauth saved" : "token saved"
@@ -212,6 +250,78 @@ final class PiChatSession: ObservableObject {
 
     var hasSelectedCredential: Bool {
         storedCredentialKinds[authProviderID] != nil
+    }
+
+    var authVerificationCode: String? {
+        guard let latestAuthInstructions else { return nil }
+        let prefix = "Enter code:"
+        guard let range = latestAuthInstructions.range(of: prefix, options: [.caseInsensitive]) else { return nil }
+        let value = latestAuthInstructions[range.upperBound...]
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
+    }
+
+    var authStepLabel: String {
+        if pendingAuthPrompt != nil || latestAuthURL == nil {
+            return "STEP 1"
+        }
+        return "STEP 2"
+    }
+
+    var authStepTitle: String {
+        if pendingAuthPrompt != nil {
+            return "Answer one quick question"
+        }
+        if latestAuthURL == nil {
+            return "Opening your sign-in page"
+        }
+        if authVerificationCode != nil {
+            return authVerificationCodeCopied
+                ? "Paste the copied code in your browser"
+                : "Copy the code, then paste it in your browser"
+        }
+        return "Finish sign-in in your browser"
+    }
+
+    var authStepDescription: String {
+        if let prompt = pendingAuthPrompt {
+            return prompt.message
+        }
+        if latestAuthURL == nil {
+            return "Stay here for a second while Pi prepares the browser step."
+        }
+        if authVerificationCode != nil {
+            return authVerificationCodeCopied
+                ? "The code is already on your clipboard. Switch to the browser page and paste it."
+                : "Use the code below on the browser page, or copy it here first."
+        }
+        return "Your browser sign-in page is ready. Finish the provider flow there."
+    }
+
+    var authStepShortText: String {
+        if pendingAuthPrompt != nil {
+            return "Answer one quick question"
+        }
+        if latestAuthURL == nil {
+            return "Opening browser sign-in"
+        }
+        if authVerificationCode != nil {
+            return authVerificationCodeCopied ? "Paste the copied code" : "Copy the code and paste it"
+        }
+        return "Finish sign-in in browser"
+    }
+
+    var setupStatusSummary: String {
+        if !hasPiBinary {
+            return "Install Pi to enable the assistant"
+        }
+        if isAuthenticating {
+            return authStepShortText
+        }
+        if needsProviderSetup {
+            return "Next: connect \(currentProvider.name)"
+        }
+        return currentProvider.name
     }
 
     var canSubmitAuthPrompt: Bool {
@@ -225,6 +335,11 @@ final class PiChatSession: ObservableObject {
     }
 
     func toggleAuthPanel() {
+        if needsProviderSetup || isAuthenticating {
+            isAuthPanelVisible = true
+            dockHeight = max(dockHeight, 300)
+            return
+        }
         isAuthPanelVisible.toggle()
         if isAuthPanelVisible {
             dockHeight = max(dockHeight, 300)
@@ -233,14 +348,53 @@ final class PiChatSession: ObservableObject {
 
     func clearConversation() {
         try? FileManager.default.removeItem(at: sessionFileURL)
-        messages = [
-            PiChatMessage(
-                role: .system,
-                text: "Started a fresh Pi conversation.",
-                timestamp: Date()
-            )
-        ]
-        statusText = "idle"
+        messages = []
+        prepareForDisplay()
+    }
+
+    func prepareForDisplay() {
+        reconcileAuthState()
+        refreshBinaryAvailability()
+
+        if isAuthenticating {
+            isAuthPanelVisible = true
+            statusText = "connecting..."
+        } else if needsProviderSetup {
+            isAuthPanelVisible = true
+            statusText = "setup ai"
+        } else if hasPiBinary && (statusText == "setup ai" || statusText == "missing pi") {
+            statusText = "idle"
+        }
+
+        syncStructuredWelcomeMessage()
+    }
+
+    func refreshBinaryAvailability() {
+        piBinaryPath = resolvePiPath()
+        nodeBinaryPath = resolveNodePath()
+
+        if piBinaryPath == nil {
+            if statusText == "idle" || statusText == "missing pi" {
+                statusText = "missing pi"
+            }
+        } else if !hasSelectedCredential {
+            if statusText == "idle" || statusText == "setup ai" {
+                statusText = "setup ai"
+            }
+        } else if statusText == "missing pi" {
+            statusText = "idle"
+        }
+    }
+
+    func copyPiInstallCommand() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(piInstallCommand, forType: .string)
+        appendSystemMessage("Copied the Pi install command to the clipboard.")
+    }
+
+    func installPiInTerminal() {
+        Preferences.shared.terminal.launch(command: piInstallCommand, in: NSHomeDirectory())
+        appendSystemMessage("Opened \(Preferences.shared.terminal.rawValue) and started the Pi install.")
     }
 
     func sendDraft() {
@@ -255,13 +409,20 @@ final class PiChatSession: ObservableObject {
         guard !trimmed.isEmpty else { return }
         guard !isSending else { return }
 
-        messages.append(PiChatMessage(role: .user, text: trimmed, timestamp: Date()))
+        refreshBinaryAvailability()
 
-        guard let piPath = resolvePiPath() else {
-            appendSystemMessage("Pi CLI not found. Install `pi` or add it to PATH.")
+        guard let piPath = piBinaryPath else {
+            prepareForDisplay()
             statusText = "missing pi"
             return
         }
+
+        guard !needsProviderSetup else {
+            prepareForDisplay()
+            return
+        }
+
+        messages.append(PiChatMessage(role: .user, text: trimmed, timestamp: Date()))
 
         let provider = currentProvider
         isSending = true
@@ -327,6 +488,13 @@ final class PiChatSession: ObservableObject {
                 }
 
                 let message = !stderr.isEmpty ? stderr : (stdout.isEmpty ? "Pi returned no output." : stdout)
+                if let friendly = self.friendlyAuthFailureMessage(for: message) {
+                    self.statusText = "setup ai"
+                    self.authErrorText = friendly
+                    self.isAuthPanelVisible = true
+                    self.syncStructuredWelcomeMessage()
+                    return
+                }
                 self.statusText = "error"
                 self.appendSystemMessage(message)
                 if Self.looksLikeAuthError(message) {
@@ -355,6 +523,8 @@ final class PiChatSession: ObservableObject {
             authErrorText = nil
             reloadAuthState()
             appendSystemMessage("Saved \(currentProvider.name) credentials to Pi auth storage.")
+            isAuthPanelVisible = false
+            prepareForDisplay()
         } catch {
             authErrorText = "Failed to save token: \(error.localizedDescription)"
         }
@@ -369,6 +539,7 @@ final class PiChatSession: ObservableObject {
             authErrorText = nil
             reloadAuthState()
             appendSystemMessage("Removed saved \(currentProvider.name) credentials from Pi auth storage.")
+            prepareForDisplay()
         } catch {
             authErrorText = "Failed to remove credentials: \(error.localizedDescription)"
         }
@@ -387,7 +558,10 @@ final class PiChatSession: ObservableObject {
         guard let prompt = pendingAuthPrompt else { return }
         let value = authPromptInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard prompt.allowEmpty || !value.isEmpty else { return }
+        submitAuthPromptValue(value)
+    }
 
+    private func submitAuthPromptValue(_ value: String) {
         guard let handle = authInputHandle else {
             authErrorText = "Pi auth input pipe is no longer available."
             return
@@ -405,20 +579,71 @@ final class PiChatSession: ObservableObject {
         }
     }
 
-    func cancelAuthFlow() {
-        authProcess?.terminate()
-        cleanupAuthProcess()
-        isAuthenticating = false
-        authNoticeText = "Cancelled auth flow."
-    }
-
-    private func startOAuthLogin(for provider: PiProvider) {
-        guard !isAuthenticating else {
-            authErrorText = "An auth flow is already running."
+    func reopenLatestAuthURL() {
+        guard let latestAuthURL else {
+            authNoticeText = "Still preparing the browser sign-in link..."
             return
         }
 
-        guard let nodePath = resolveNodePath() else {
+        autoCopyAuthVerificationCodeIfNeeded()
+        NSWorkspace.shared.open(latestAuthURL)
+        authNoticeText = authVerificationCode != nil
+            ? "Reopened the sign-in page. Paste the copied code there."
+            : "Reopened \(authenticatingProvider?.name ?? currentProvider.name) sign-in in your browser."
+    }
+
+    func copyAuthVerificationCode() {
+        copyAuthVerificationCode(silently: false)
+    }
+
+    private func copyAuthVerificationCode(silently: Bool) {
+        guard let authVerificationCode else {
+            authNoticeText = "No sign-in code is ready yet."
+            return
+        }
+
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(authVerificationCode, forType: .string)
+        authVerificationCodeCopied = true
+        lastCopiedAuthVerificationCode = authVerificationCode
+        if !silently {
+            authNoticeText = "Copied the sign-in code. Paste it into the browser page."
+        }
+    }
+
+    private func autoCopyAuthVerificationCodeIfNeeded() {
+        guard let authVerificationCode else { return }
+        guard !authVerificationCodeCopied || lastCopiedAuthVerificationCode != authVerificationCode else { return }
+        copyAuthVerificationCode(silently: true)
+    }
+
+    func cancelAuthFlow(silently: Bool = false) {
+        let process = authProcess
+        cleanupAuthProcess()
+        terminateProcess(process, escalateAfter: 0.8)
+        isAuthenticating = false
+        statusText = hasPiBinary && !hasSelectedCredential ? "setup ai" : "idle"
+        if !silently {
+            authNoticeText = "Cancelled auth flow."
+        }
+    }
+
+    private func startOAuthLogin(for provider: PiProvider) {
+        reconcileAuthState()
+        cleanupLingeringAuthHelpers()
+
+        if isAuthenticating {
+            cancelAuthFlow(silently: true)
+        }
+
+        refreshBinaryAvailability()
+
+        guard hasPiBinary else {
+            authErrorText = "Install Pi before starting auth."
+            return
+        }
+
+        guard let nodePath = nodeBinaryPath else {
             authErrorText = "Node.js is required for Pi OAuth login."
             return
         }
@@ -449,9 +674,15 @@ final class PiChatSession: ObservableObject {
         authStderrBuffer = ""
         authPromptInput = ""
         pendingAuthPrompt = nil
-        authNoticeText = "Starting \(provider.name) login..."
+        latestAuthURL = nil
+        latestAuthInstructions = nil
+        authVerificationCodeCopied = false
+        lastCopiedAuthVerificationCode = nil
+        authNoticeText = "Preparing \(provider.name) sign-in..."
         authErrorText = nil
         isAuthenticating = true
+        authenticatingProviderID = provider.id
+        statusText = "connecting..."
 
         stdoutPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
@@ -467,18 +698,23 @@ final class PiChatSession: ObservableObject {
 
         proc.terminationHandler = { [weak self] process in
             DispatchQueue.main.async {
-                self?.handleAuthProcessExit(status: process.terminationStatus)
+                self?.handleAuthProcessExit(processID: process.processIdentifier, status: process.terminationStatus)
             }
         }
 
         do {
             try proc.run()
             authProcess = proc
+            authProcessIdentifier = proc.processIdentifier
             authInputHandle = stdinPipe.fileHandleForWriting
+            authStdoutPipe = stdoutPipe
+            authStderrPipe = stderrPipe
+            recordAuthHelperProcess(proc.processIdentifier)
             appendSystemMessage("Started \(provider.name) auth flow.")
         } catch {
             cleanupAuthProcess()
             isAuthenticating = false
+            statusText = hasPiBinary && !hasSelectedCredential ? "setup ai" : "idle"
             authErrorText = "Failed to launch auth flow: \(error.localizedDescription)"
         }
     }
@@ -519,22 +755,39 @@ final class PiChatSession: ObservableObject {
 
         switch type {
         case "prompt":
-            pendingAuthPrompt = PiAuthPrompt(
+            let prompt = PiAuthPrompt(
                 message: json["message"] as? String ?? "Continue",
                 placeholder: json["placeholder"] as? String,
                 allowEmpty: json["allowEmpty"] as? Bool ?? false
             )
-            authNoticeText = pendingAuthPrompt?.message
+            pendingAuthPrompt = prompt
+            authNoticeText = prompt.message
+            if shouldAutoSubmitPrompt(prompt) {
+                authNoticeText = "Using github.com. If you need GitHub Enterprise, cancel and enter your domain instead."
+                submitAuthPromptValue("")
+            }
 
         case "auth":
             let urlString = json["url"] as? String ?? ""
             let instructions = json["instructions"] as? String
-            authNoticeText = instructions ?? "Continue in your browser."
-            if let url = URL(string: urlString) {
+            latestAuthURL = URL(string: urlString)
+            latestAuthInstructions = instructions
+            if authVerificationCode != lastCopiedAuthVerificationCode {
+                authVerificationCodeCopied = false
+            }
+            autoCopyAuthVerificationCodeIfNeeded()
+            authNoticeText = authVerificationCode != nil
+                ? "The sign-in code is copied. Paste it into the browser page."
+                : "Your browser sign-in page is ready."
+            if let url = latestAuthURL {
                 NSWorkspace.shared.open(url)
             }
-            if let instructions, !instructions.isEmpty {
-                appendSystemMessage("Pi auth: \(instructions)")
+            if authVerificationCode != nil {
+                appendSystemMessage("Pi auth is ready. The sign-in code is copied, and you can reopen the browser page here if needed.")
+            } else if let instructions, !instructions.isEmpty {
+                appendSystemMessage("Pi auth: \(instructions) If nothing opened, use OPEN AGAIN.")
+            } else {
+                appendSystemMessage("Pi auth is ready in your browser. If nothing opened, use OPEN AGAIN.")
             }
 
         case "progress":
@@ -545,15 +798,19 @@ final class PiChatSession: ObservableObject {
                 authErrorText = "Pi auth completed but returned no credentials."
                 return
             }
+            let providerID = authenticatingProviderID ?? authProviderID
+            let provider = PiProvider.provider(id: providerID)
             credentials["type"] = "oauth"
             do {
                 try mutateAuthFile { auth in
-                    auth[authProviderID] = credentials
+                    auth[providerID] = credentials
                 }
                 reloadAuthState()
-                authNoticeText = "Saved OAuth credentials for \(currentProvider.name)."
+                authNoticeText = "Saved OAuth credentials for \(provider.name)."
                 authErrorText = nil
-                appendSystemMessage("Saved \(currentProvider.name) OAuth credentials to Pi auth storage.")
+                appendSystemMessage("Saved \(provider.name) OAuth credentials to Pi auth storage.")
+                isAuthPanelVisible = false
+                prepareForDisplay()
             } catch {
                 authErrorText = "Failed to save OAuth credentials: \(error.localizedDescription)"
             }
@@ -568,7 +825,9 @@ final class PiChatSession: ObservableObject {
         }
     }
 
-    private func handleAuthProcessExit(status: Int32) {
+    private func handleAuthProcessExit(processID: Int32, status: Int32) {
+        guard authProcessIdentifier == processID else { return }
+
         let hadExplicitError = authErrorText != nil
         cleanupAuthProcess()
         isAuthenticating = false
@@ -581,22 +840,117 @@ final class PiChatSession: ObservableObject {
         } else if !hadExplicitError {
             authErrorText = "Auth flow exited with status \(status)."
         }
+
+        if status == 0, hasSelectedCredential {
+            statusText = "idle"
+        } else if hasPiBinary && !hasSelectedCredential {
+            statusText = "setup ai"
+        }
     }
 
     private func cleanupAuthProcess() {
-        authProcess?.standardInput = nil
-        if let output = authProcess?.standardOutput as? Pipe {
-            output.fileHandleForReading.readabilityHandler = nil
-        }
-        if let error = authProcess?.standardError as? Pipe {
-            error.fileHandleForReading.readabilityHandler = nil
-        }
+        authProcess?.terminationHandler = nil
+        authStdoutPipe?.fileHandleForReading.readabilityHandler = nil
+        authStderrPipe?.fileHandleForReading.readabilityHandler = nil
+        try? authInputHandle?.close()
         authInputHandle = nil
+        authStdoutPipe = nil
+        authStderrPipe = nil
+        authStdoutBuffer = ""
+        authStderrBuffer = ""
+        latestAuthURL = nil
+        latestAuthInstructions = nil
+        authVerificationCodeCopied = false
+        lastCopiedAuthVerificationCode = nil
         authProcess = nil
+        authProcessIdentifier = nil
+        authenticatingProviderID = nil
+        clearRecordedAuthHelperProcess()
     }
 
     private func appendSystemMessage(_ text: String) {
         messages.append(PiChatMessage(role: .system, text: text, timestamp: Date()))
+    }
+
+    private func syncStructuredWelcomeMessage() {
+        guard !hasConversationHistory else { return }
+        messages = [
+            PiChatMessage(
+                role: .system,
+                text: structuredWelcomeMessage(),
+                timestamp: Date()
+            )
+        ]
+    }
+
+    private func structuredWelcomeMessage() -> String {
+        if !hasPiBinary {
+            return """
+            Welcome to Pi Workspace.
+
+            Pi powers the in-app assistant. Install it first, then come back here and refresh.
+
+            Install command:
+            \(piInstallCommand)
+            """
+        }
+
+        if isAuthenticating {
+            return """
+            Welcome to Pi Workspace.
+
+            \(authStepTitle)
+
+            \(authStepDescription)
+            """
+        }
+
+        if needsProviderSetup {
+            return """
+            Welcome to Pi Workspace.
+
+            Next step: connect \(currentProvider.name).
+
+            The setup panel above is open. Once you finish that one step, the chat box unlocks automatically.
+            """
+        }
+
+        return """
+        Welcome to Pi Workspace.
+
+        You're connected with \(currentProvider.name). Ask for code help, planning, debugging, or a second opinion.
+        """
+    }
+
+    private func friendlyAuthFailureMessage(for message: String) -> String? {
+        let lowercased = message.lowercased()
+        let authHints = [
+            "use /login",
+            "set an api key environment variable",
+            "authentication",
+            "unauthorized",
+            "api key",
+            "oauth",
+            "token",
+        ]
+
+        guard authHints.contains(where: lowercased.contains) else { return nil }
+
+        if currentProvider.authMode == .oauth {
+            return "This provider is not connected yet. Use the setup panel to sign in with \(currentProvider.name), then come back and send your first prompt."
+        }
+
+        return "This provider still needs an API key. Paste your \(currentProvider.tokenLabel.lowercased()) into the setup panel above, save it, and then try again."
+    }
+
+    private func shouldAutoSubmitPrompt(_ prompt: PiAuthPrompt) -> Bool {
+        guard authenticatingProviderID == "github-copilot" else { return false }
+        guard prompt.allowEmpty else { return false }
+
+        let message = prompt.message.lowercased()
+        return message.contains("github enterprise url")
+            || message.contains("github enterprise")
+            || message.contains("blank for github.com")
     }
 
     private func reloadAuthState() {
@@ -610,6 +964,21 @@ final class PiChatSession: ObservableObject {
         }
 
         storedCredentialKinds = kinds
+    }
+
+    private func reconcileAuthState() {
+        guard isAuthenticating else { return }
+
+        if let authProcess, authProcess.isRunning {
+            return
+        }
+
+        cleanupAuthProcess()
+        isAuthenticating = false
+        pendingAuthPrompt = nil
+        if hasPiBinary && !hasSelectedCredential {
+            statusText = "setup ai"
+        }
     }
 
     private func loadAuthFile() -> [String: Any] {
@@ -639,6 +1008,7 @@ final class PiChatSession: ObservableObject {
                 "/opt/homebrew/bin/pi",
                 "/usr/local/bin/pi",
                 NSHomeDirectory() + "/.local/bin/pi",
+                NSHomeDirectory() + "/.bun/bin/pi",
             ]
         )
     }
@@ -650,26 +1020,78 @@ final class PiChatSession: ObservableObject {
                 "/opt/homebrew/bin/node",
                 "/usr/local/bin/node",
                 "/usr/bin/node",
+                NSHomeDirectory() + "/.local/bin/node",
             ]
         )
     }
 
     private func resolveCommandPath(named command: String, candidates: [String]) -> String? {
-        for path in candidates where FileManager.default.isExecutableFile(atPath: path) {
+        var orderedCandidates: [String] = []
+        var seen: Set<String> = []
+
+        for rawPath in candidates + managedInstallCandidates(for: command) {
+            let path = (rawPath as NSString).expandingTildeInPath
+            guard !path.isEmpty else { continue }
+            guard seen.insert(path).inserted else { continue }
+            orderedCandidates.append(path)
+        }
+
+        for path in orderedCandidates where FileManager.default.isExecutableFile(atPath: path) {
             return path
         }
 
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/bin/sh")
-        proc.arguments = ["-c", "which \(command) 2>/dev/null"]
-        let pipe = Pipe()
-        proc.standardOutput = pipe
-        proc.standardError = FileHandle.nullDevice
-        try? proc.run()
-        proc.waitUntilExit()
-        let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return output.isEmpty ? nil : output
+        let lookups = [
+            ProcessQuery.shell(["/usr/bin/which", command]),
+            ProcessQuery.shell(["/bin/sh", "-lc", "command -v \(command) 2>/dev/null"]),
+            ProcessQuery.shell(["/bin/zsh", "-lc", "command -v \(command) 2>/dev/null"]),
+        ]
+
+        for output in lookups {
+            let path = output.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !path.isEmpty, FileManager.default.isExecutableFile(atPath: path) {
+                return path
+            }
+        }
+
+        return nil
+    }
+
+    private func managedInstallCandidates(for command: String) -> [String] {
+        let home = NSHomeDirectory()
+        var candidates = [
+            "\(home)/.bun/bin/\(command)",
+            "\(home)/.npm-global/bin/\(command)",
+            "\(home)/Library/pnpm/\(command)",
+            "\(home)/.local/share/mise/shims/\(command)",
+        ]
+
+        let fnmRoot = URL(fileURLWithPath: home, isDirectory: true)
+            .appendingPathComponent(".local", isDirectory: true)
+            .appendingPathComponent("share", isDirectory: true)
+            .appendingPathComponent("fnm", isDirectory: true)
+            .appendingPathComponent("node-versions", isDirectory: true)
+
+        if let installs = try? FileManager.default.contentsOfDirectory(
+            at: fnmRoot,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) {
+            let sortedInstalls = installs.sorted {
+                $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedDescending
+            }
+
+            for install in sortedInstalls {
+                candidates.append(
+                    install
+                        .appendingPathComponent("installation", isDirectory: true)
+                        .appendingPathComponent("bin", isDirectory: true)
+                        .appendingPathComponent(command)
+                        .path
+                )
+            }
+        }
+
+        return candidates
     }
 
     private func resolveOAuthModuleURL() -> URL? {
@@ -693,6 +1115,74 @@ final class PiChatSession: ObservableObject {
         return resolved.deletingLastPathComponent().deletingLastPathComponent()
     }
 
+    private func recordAuthHelperProcess(_ pid: Int32) {
+        let payload: [String: Any] = [
+            "pid": Int(pid),
+            "recordedAt": Date().timeIntervalSince1970,
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys]) else {
+            return
+        }
+        try? data.write(to: authRuntimeURL, options: .atomic)
+    }
+
+    private func clearRecordedAuthHelperProcess() {
+        try? FileManager.default.removeItem(at: authRuntimeURL)
+    }
+
+    private func cleanupLingeringAuthHelpers() {
+        let fm = FileManager.default
+
+        if let data = try? Data(contentsOf: authRuntimeURL),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let pid = json["pid"] as? Int {
+            terminateRecordedAuthHelper(pid)
+            try? fm.removeItem(at: authRuntimeURL)
+        }
+
+        let currentPID = Int(ProcessInfo.processInfo.processIdentifier)
+        for entry in ProcessQuery.snapshot().values where Self.looksLikePiOAuthHelper(entry.args) {
+            guard entry.pid != currentPID else { continue }
+            guard authProcess?.processIdentifier != Int32(entry.pid) else { continue }
+            terminateRecordedAuthHelper(entry.pid)
+        }
+    }
+
+    private func terminateRecordedAuthHelper(_ pid: Int) {
+        guard pid > 1 else { return }
+        guard kill(Int32(pid), 0) == 0 else { return }
+
+        let args = ProcessQuery.shell(["/bin/ps", "-p", "\(pid)", "-o", "args="])
+        guard Self.looksLikePiOAuthHelper(args) else { return }
+
+        _ = kill(Int32(pid), SIGTERM)
+        let deadline = Date().addingTimeInterval(1.0)
+        while Date() < deadline {
+            if kill(Int32(pid), 0) != 0 {
+                return
+            }
+            usleep(100_000)
+        }
+
+        _ = kill(Int32(pid), SIGKILL)
+    }
+
+    private func terminateProcess(_ process: Process?, escalateAfter delay: TimeInterval) {
+        guard let process else { return }
+        let pid = process.processIdentifier
+        process.terminate()
+
+        let deadline = Date().addingTimeInterval(delay)
+        while Date() < deadline {
+            if kill(pid, 0) != 0 {
+                return
+            }
+            usleep(100_000)
+        }
+
+        _ = kill(pid, SIGKILL)
+    }
+
     private static func piAgentDirURL() -> URL {
         if let override = ProcessInfo.processInfo.environment["PI_CODING_AGENT_DIR"],
            !override.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -712,6 +1202,12 @@ final class PiChatSession: ObservableObject {
             || lowercased.contains("authentication")
             || lowercased.contains("unauthorized")
             || lowercased.contains("bad request")
+    }
+
+    private static func looksLikePiOAuthHelper(_ args: String) -> Bool {
+        args.contains("node:readline")
+            && args.contains("getOAuthProvider")
+            && args.contains("oauthModuleUrl")
     }
 
     private static func clampDockHeight(_ height: CGFloat) -> CGFloat {
@@ -746,70 +1242,74 @@ final class PiChatSession: ObservableObject {
     }
 
     private static let oauthDriverScript = #"""
-import readline from 'node:readline';
+    import readline from 'node:readline';
 
-const providerId = process.argv[1];
-const oauthModuleUrl = process.argv[2];
-const { getOAuthProvider } = await import(oauthModuleUrl);
+    const providerId = process.argv[1];
+    const oauthModuleUrl = process.argv[2];
+    const { getOAuthProvider } = await import(oauthModuleUrl);
 
-const provider = getOAuthProvider(providerId);
-if (!provider) {
-  process.stdout.write(JSON.stringify({ type: 'error', message: `Unknown OAuth provider: ${providerId}` }) + '\n');
-  process.exit(1);
-}
+    const provider = getOAuthProvider(providerId);
+    if (!provider) {
+      process.stdout.write(JSON.stringify({ type: 'error', message: `Unknown OAuth provider: ${providerId}` }) + '\n');
+      process.exit(1);
+    }
 
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stderr,
-  terminal: false,
-});
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stderr,
+      terminal: false,
+    });
 
-function emit(event) {
-  process.stdout.write(JSON.stringify(event) + '\n');
-}
+    function emit(event) {
+      process.stdout.write(JSON.stringify(event) + '\n');
+    }
 
-function readLine() {
-  return new Promise((resolve) => {
-    rl.once('line', (line) => resolve(line));
-  });
-}
-
-try {
-  const credentials = await provider.login({
-    onAuth: (info) => emit({
-      type: 'auth',
-      url: info.url,
-      instructions: info.instructions ?? null,
-    }),
-    onPrompt: async (prompt) => {
-      emit({
-        type: 'prompt',
-        message: prompt.message,
-        placeholder: prompt.placeholder ?? null,
-        allowEmpty: Boolean(prompt.allowEmpty),
+    function readLine() {
+      return new Promise((resolve) => {
+        rl.once('line', (line) => resolve(line));
       });
-      const input = await readLine();
-      return typeof input === 'string' ? input : '';
-    },
-    onProgress: (message) => emit({
-      type: 'progress',
-      message,
-    }),
-  });
+    }
 
-  emit({
-    type: 'success',
-    credentials,
-  });
-  rl.close();
-  process.exit(0);
-} catch (error) {
-  emit({
-    type: 'error',
-    message: error instanceof Error ? error.message : String(error),
-  });
-  rl.close();
-  process.exit(1);
-}
-"""#
+    try {
+      const credentials = await provider.login({
+        onAuth: (info) => emit({
+          type: 'auth',
+          url: info.url,
+          instructions: info.instructions ?? null,
+        }),
+        onPrompt: async (prompt) => {
+          emit({
+            type: 'prompt',
+            message: prompt.message,
+            placeholder: prompt.placeholder ?? null,
+            allowEmpty: Boolean(prompt.allowEmpty),
+          });
+          const input = await readLine();
+          return typeof input === 'string' ? input : '';
+        },
+        onProgress: (message) => emit({
+          type: 'progress',
+          message,
+        }),
+      });
+
+      emit({
+        type: 'success',
+        credentials,
+      });
+      rl.close();
+      process.exit(0);
+    } catch (error) {
+      emit({
+        type: 'error',
+        message: error instanceof Error ? error.message : String(error),
+      });
+      rl.close();
+      process.exit(1);
+    }
+    """#
+
+    private var authRuntimeURL: URL {
+        sessionFileURL.deletingLastPathComponent().appendingPathComponent("oauth-runtime.json")
+    }
 }

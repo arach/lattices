@@ -8,6 +8,7 @@ extension Notification.Name {
 /// Manages the NSStatusItem (menu bar icon), left-click popover, and right-click context menu.
 /// Replaces the previous SwiftUI MenuBarExtra approach for full click-event control.
 class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
+    private static weak var shared: AppDelegate?
 
     private var statusItem: NSStatusItem!
     private var popover: NSPopover?
@@ -49,6 +50,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// based on whether any managed windows are open.
     static func updateActivationPolicy() {
         let hasVisibleWindow =
+            (Self.shared?.popover?.isShown == true) ||
             CommandModeWindow.shared.isVisible ||
             CommandPaletteWindow.shared.isVisible ||
             MainWindow.shared.isVisible ||
@@ -64,6 +66,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Self.shared = self
         NSApp.setActivationPolicy(.accessory)
         NSApp.appearance = NSAppearance(named: .darkAqua)
 
@@ -230,7 +233,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     func popoverWillShow(_ notification: Notification) {
+        Self.updateActivationPolicy()
         NotificationCenter.default.post(name: .latticesPopoverWillShow, object: nil)
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        Self.updateActivationPolicy()
     }
 
     // MARK: - Context menu

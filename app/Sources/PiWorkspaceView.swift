@@ -19,7 +19,7 @@ struct PiWorkspaceView: View {
                 .fill(Palette.border)
                 .frame(height: 0.5)
 
-            if session.isAuthPanelVisible {
+            if session.hasPiBinary && session.isAuthPanelVisible {
                 authPanel
 
                 Rectangle()
@@ -33,12 +33,31 @@ struct PiWorkspaceView: View {
                 .fill(Palette.border)
                 .frame(height: 0.5)
 
-            composer
+            if session.hasPiBinary && !session.needsProviderSetup {
+                composer
+            } else if session.needsProviderSetup {
+                if session.isAuthPanelVisible {
+                    setupLockedPanel
+                } else {
+                    PiProviderSetupCallout(session: session, compact: false)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
+                        .background(Palette.surface.opacity(0.22))
+                }
+            } else {
+                PiInstallCallout(session: session, compact: false)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                    .background(Palette.surface.opacity(0.22))
+            }
         }
         .background(Palette.bg)
         .onAppear {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                composerFocused = true
+            session.prepareForDisplay()
+            if session.hasPiBinary && !session.needsProviderSetup {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    composerFocused = true
+                }
             }
         }
     }
@@ -55,10 +74,23 @@ struct PiWorkspaceView: View {
                         .font(Typo.geistMonoBold(11))
                         .foregroundColor(Palette.text)
 
-                    capsuleLabel(session.statusText.uppercased(), tint: session.isSending ? Palette.detach : Palette.running)
+                    capsuleLabel(
+                        session.statusText.uppercased(),
+                        tint: session.statusText == "missing pi"
+                            ? Palette.kill
+                            : ((session.statusText == "setup ai" || session.statusText == "connecting...")
+                                ? Palette.detach
+                                : (session.isSending ? Palette.detach : Palette.running))
+                    )
                 }
 
-                Text("Full conversation surface for longer prompts, auth, and provider switching.")
+                Text(session.hasPiBinary
+                    ? (session.isAuthenticating
+                        ? session.authStepDescription
+                        : (session.needsProviderSetup
+                            ? "Next step: connect a provider to unlock chat."
+                            : "Full conversation surface for longer prompts, auth, and provider switching."))
+                    : "Install Pi to unlock longer prompts, provider auth, and the full in-app assistant surface.")
                     .font(Typo.mono(10))
                     .foregroundColor(Palette.textDim)
             }
@@ -68,12 +100,16 @@ struct PiWorkspaceView: View {
             HStack(spacing: 6) {
                 capsuleLabel(session.currentProvider.name.uppercased(), tint: Palette.textDim)
 
-                actionChip(session.isAuthPanelVisible ? "AUTH -" : "AUTH +") {
-                    session.toggleAuthPanel()
+                if session.hasPiBinary && !session.needsProviderSetup {
+                    actionChip(session.isAuthPanelVisible ? "AUTH -" : "AUTH +") {
+                        session.toggleAuthPanel()
+                    }
                 }
 
-                actionChip("RESET") {
-                    session.clearConversation()
+                if session.hasConversationHistory {
+                    actionChip("RESET") {
+                        session.clearConversation()
+                    }
                 }
             }
         }
@@ -83,99 +119,113 @@ struct PiWorkspaceView: View {
 
     private var authPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Text("provider")
-                    .font(Typo.geistMonoBold(9))
-                    .foregroundColor(Palette.textMuted)
-
-                Picker("Provider", selection: $session.authProviderID) {
-                    ForEach(session.providerOptions) { provider in
-                        Text(provider.name).tag(provider.id)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .font(Typo.mono(10))
-
-                Spacer()
-
-                capsuleLabel(
-                    session.currentProvider.authMode == .oauth ? "OAUTH" : "TOKEN",
-                    tint: session.currentProvider.authMode == .oauth ? Palette.detach : Palette.running
-                )
-            }
-
-            Text(session.currentProvider.helpText)
-                .font(Typo.mono(10))
-                .foregroundColor(Palette.textDim)
-                .fixedSize(horizontal: false, vertical: true)
-
-            if session.currentProvider.authMode == .apiKey {
-                HStack(spacing: 8) {
-                    SecureField(session.currentProvider.tokenPlaceholder, text: $session.authToken)
-                        .textFieldStyle(.plain)
-                        .font(Typo.mono(11))
+            if session.isAuthenticating {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Finish Setup")
+                        .font(Typo.geistMonoBold(11))
                         .foregroundColor(Palette.text)
-                        .focused($authFieldFocused)
-                        .onSubmit {
-                            session.saveSelectedToken()
-                        }
 
-                    actionChip("SAVE") {
-                        session.saveSelectedToken()
-                    }
-
-                    if session.hasSelectedCredential {
-                        actionChip("CLEAR") {
-                            session.removeSelectedCredential()
-                        }
-                    }
+                    Text("Ignore the rest for a second and just do the next step below.")
+                        .font(Typo.mono(10))
+                        .foregroundColor(Palette.textDim)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(authCardBackground(tint: Palette.running))
-            } else {
+
                 HStack(spacing: 8) {
-                    actionChip(session.isAuthenticating ? "CANCEL" : "LOGIN") {
-                        if session.isAuthenticating {
-                            session.cancelAuthFlow()
-                        } else {
-                            session.startSelectedAuthFlow()
-                        }
-                    }
-
-                    if session.hasSelectedCredential {
-                        actionChip("CLEAR") {
-                            session.removeSelectedCredential()
-                        }
-                    }
+                    capsuleLabel(session.currentProvider.name.uppercased(), tint: Palette.text)
+                    capsuleLabel("IN PROGRESS", tint: Palette.detach)
+                    Spacer()
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(authCardBackground(tint: session.isAuthenticating ? Palette.detach : Palette.running))
 
                 if let prompt = session.pendingAuthPrompt {
+                    PiAuthPromptCard(session: session, prompt: prompt, compact: false, focus: $authFieldFocused)
+                } else {
+                    PiAuthNextStepCard(session: session, compact: false)
+                }
+            } else {
+                if session.needsProviderSetup {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Set Up Your AI")
+                            .font(Typo.geistMonoBold(11))
+                            .foregroundColor(Palette.text)
+
+                        Text("Choose a provider, connect it once, and the chat box unlocks automatically.")
+                            .font(Typo.mono(10))
+                            .foregroundColor(Palette.textDim)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                HStack(spacing: 8) {
+                    Text(session.needsProviderSetup ? "choose provider" : "provider")
+                        .font(Typo.geistMonoBold(9))
+                        .foregroundColor(Palette.textMuted)
+
+                    Picker("Provider", selection: $session.authProviderID) {
+                        ForEach(session.providerOptions) { provider in
+                            Text(provider.name).tag(provider.id)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .font(Typo.mono(10))
+
+                    Spacer()
+
+                    capsuleLabel(
+                        session.currentProvider.authMode == .oauth ? "OAUTH" : "TOKEN",
+                        tint: session.currentProvider.authMode == .oauth ? Palette.detach : Palette.running
+                    )
+                }
+
+                Text(session.currentProvider.helpText)
+                    .font(Typo.mono(10))
+                    .foregroundColor(Palette.textDim)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if session.currentProvider.authMode == .apiKey {
                     HStack(spacing: 8) {
-                        TextField(prompt.placeholder ?? prompt.message, text: $session.authPromptInput)
+                        SecureField(session.currentProvider.tokenPlaceholder, text: $session.authToken)
                             .textFieldStyle(.plain)
                             .font(Typo.mono(11))
                             .foregroundColor(Palette.text)
                             .focused($authFieldFocused)
                             .onSubmit {
-                                session.submitAuthPrompt()
+                                session.saveSelectedToken()
                             }
 
-                        actionChip("CONTINUE") {
-                            session.submitAuthPrompt()
+                        actionChip("SAVE KEY") {
+                            session.saveSelectedToken()
+                        }
+
+                        if session.hasSelectedCredential {
+                            actionChip("CLEAR") {
+                                session.removeSelectedCredential()
+                            }
                         }
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 10)
-                    .background(authCardBackground(tint: Palette.detach))
+                    .background(authCardBackground(tint: Palette.running))
+                } else {
+                    HStack(spacing: 8) {
+                        actionChip("CONNECT") {
+                            session.startSelectedAuthFlow()
+                        }
+
+                        if session.hasSelectedCredential {
+                            actionChip("CLEAR") {
+                                session.removeSelectedCredential()
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(authCardBackground(tint: Palette.running))
                 }
             }
 
-            if let notice = session.authNoticeText, !notice.isEmpty {
+            if !session.isAuthenticating, let notice = session.authNoticeText, !notice.isEmpty {
                 Text(notice)
                     .font(Typo.mono(9))
                     .foregroundColor(Palette.textDim)
@@ -192,6 +242,43 @@ struct PiWorkspaceView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
         .background(Palette.surface.opacity(0.35))
+        .onAppear {
+            focusAuthFieldIfNeeded()
+        }
+        .onChange(of: session.authProviderID) { _ in
+            focusAuthFieldIfNeeded()
+        }
+        .onChange(of: session.pendingAuthPrompt?.message) { prompt in
+            if prompt != nil {
+                focusAuthFieldIfNeeded()
+            }
+        }
+    }
+
+    private var setupLockedPanel: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Circle()
+                .fill(Palette.detach)
+                .frame(width: 7, height: 7)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("SETUP IN PROGRESS")
+                    .font(Typo.geistMonoBold(10))
+                    .foregroundColor(Palette.text)
+
+                Text(session.isAuthenticating
+                    ? "Stay with the setup panel above for now. The chat box unlocks as soon as you finish that step."
+                    : "Finish the setup panel above to unlock the chat box.")
+                    .font(Typo.mono(10))
+                    .foregroundColor(Palette.textDim)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(Palette.surface.opacity(0.22))
     }
 
     private var transcript: some View {
@@ -312,6 +399,14 @@ struct PiWorkspaceView: View {
         }
     }
 
+    private func focusAuthFieldIfNeeded() {
+        if session.currentProvider.authMode == .apiKey || session.pendingAuthPrompt != nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                authFieldFocused = true
+            }
+        }
+    }
+
     private func roleColor(for role: PiChatMessage.Role) -> Color {
         switch role {
         case .system: return Palette.detach
@@ -336,11 +431,11 @@ struct PiWorkspaceView: View {
             )
     }
 
-    private func actionChip(_ label: String, action: @escaping () -> Void) -> some View {
+    private func actionChip(_ label: String, tint: Color = Palette.textMuted, disabled: Bool = false, action: @escaping () -> Void) -> some View {
         Button(label, action: action)
             .buttonStyle(.plain)
             .font(Typo.geistMonoBold(9))
-            .foregroundColor(Palette.textMuted)
+            .foregroundColor(disabled ? Palette.textMuted : tint)
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
             .background(
@@ -351,6 +446,8 @@ struct PiWorkspaceView: View {
                             .strokeBorder(Palette.border, lineWidth: 0.5)
                     )
             )
+            .opacity(disabled ? 0.65 : 1)
+            .disabled(disabled)
     }
 
     private func authCardBackground(tint: Color) -> some View {

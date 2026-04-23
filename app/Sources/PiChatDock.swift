@@ -16,7 +16,7 @@ struct PiChatDock: View {
         VStack(spacing: 0) {
             topHandle
 
-            if session.isAuthPanelVisible {
+            if session.hasPiBinary && session.isAuthPanelVisible {
                 Rectangle()
                     .fill(Palette.border)
                     .frame(height: 0.5)
@@ -34,7 +34,23 @@ struct PiChatDock: View {
                 .fill(Palette.border)
                 .frame(height: 0.5)
 
-            composer
+            if session.hasPiBinary && !session.needsProviderSetup {
+                composer
+            } else if session.needsProviderSetup {
+                if session.isAuthPanelVisible {
+                    setupLockedBar
+                } else {
+                    PiProviderSetupCallout(session: session, compact: true)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 10)
+                        .background(Color.black.opacity(0.62))
+                }
+            } else {
+                PiInstallCallout(session: session, compact: true)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 10)
+                    .background(Color.black.opacity(0.62))
+            }
 
             Rectangle()
                 .fill(Palette.border)
@@ -59,8 +75,11 @@ struct PiChatDock: View {
                 .strokeBorder(Palette.border, lineWidth: 0.5)
         )
         .onAppear {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                composerFocused = true
+            session.prepareForDisplay()
+            if session.hasPiBinary && !session.needsProviderSetup {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    composerFocused = true
+                }
             }
         }
     }
@@ -113,99 +132,113 @@ struct PiChatDock: View {
 
     private var authPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Text("provider")
-                    .font(Typo.geistMonoBold(9))
-                    .foregroundColor(Palette.textMuted)
-
-                Picker("Provider", selection: $session.authProviderID) {
-                    ForEach(session.providerOptions) { provider in
-                        Text(provider.name).tag(provider.id)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .font(Typo.mono(10))
-
-                Spacer()
-
-                capsuleLabel(
-                    session.currentProvider.authMode == .oauth ? "OAUTH" : "TOKEN",
-                    tint: session.currentProvider.authMode == .oauth ? Palette.detach : Palette.running
-                )
-            }
-
-            Text(session.currentProvider.helpText)
-                .font(Typo.mono(10))
-                .foregroundColor(Palette.textDim)
-                .fixedSize(horizontal: false, vertical: true)
-
-            if session.currentProvider.authMode == .apiKey {
-                HStack(spacing: 8) {
-                    SecureField(session.currentProvider.tokenPlaceholder, text: $session.authToken)
-                        .textFieldStyle(.plain)
-                        .font(Typo.mono(11))
+            if session.isAuthenticating {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Finish Setup")
+                        .font(Typo.geistMonoBold(10))
                         .foregroundColor(Palette.text)
-                        .focused($authFieldFocused)
-                        .onSubmit {
-                            session.saveSelectedToken()
-                        }
 
-                    footerButton("save") {
-                        session.saveSelectedToken()
-                    }
-
-                    if session.hasSelectedCredential {
-                        footerButton("clear") {
-                            session.removeSelectedCredential()
-                        }
-                    }
+                    Text("Ignore the rest for a second and just do the next step below.")
+                        .font(Typo.mono(9))
+                        .foregroundColor(Palette.textDim)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .background(authCardBackground(tint: Palette.running))
-            } else {
+
                 HStack(spacing: 8) {
-                    footerButton(session.isAuthenticating ? "cancel" : "login") {
-                        if session.isAuthenticating {
-                            session.cancelAuthFlow()
-                        } else {
-                            session.startSelectedAuthFlow()
-                        }
-                    }
-
-                    if session.hasSelectedCredential {
-                        footerButton("clear") {
-                            session.removeSelectedCredential()
-                        }
-                    }
+                    capsuleLabel(session.currentProvider.name.uppercased(), tint: Palette.text)
+                    capsuleLabel("IN PROGRESS", tint: Palette.detach)
+                    Spacer()
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .background(authCardBackground(tint: session.isAuthenticating ? Palette.detach : Palette.running))
 
                 if let prompt = session.pendingAuthPrompt {
+                    PiAuthPromptCard(session: session, prompt: prompt, compact: true, focus: $authFieldFocused)
+                } else {
+                    PiAuthNextStepCard(session: session, compact: true)
+                }
+            } else {
+                if session.needsProviderSetup {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Set Up Your AI")
+                            .font(Typo.geistMonoBold(10))
+                            .foregroundColor(Palette.text)
+
+                        Text("Choose a provider, connect it once, and the chat box unlocks automatically.")
+                            .font(Typo.mono(9))
+                            .foregroundColor(Palette.textDim)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                HStack(spacing: 8) {
+                    Text(session.needsProviderSetup ? "choose provider" : "provider")
+                        .font(Typo.geistMonoBold(9))
+                        .foregroundColor(Palette.textMuted)
+
+                    Picker("Provider", selection: $session.authProviderID) {
+                        ForEach(session.providerOptions) { provider in
+                            Text(provider.name).tag(provider.id)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .font(Typo.mono(10))
+
+                    Spacer()
+
+                    capsuleLabel(
+                        session.currentProvider.authMode == .oauth ? "OAUTH" : "TOKEN",
+                        tint: session.currentProvider.authMode == .oauth ? Palette.detach : Palette.running
+                    )
+                }
+
+                Text(session.currentProvider.helpText)
+                    .font(Typo.mono(10))
+                    .foregroundColor(Palette.textDim)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if session.currentProvider.authMode == .apiKey {
                     HStack(spacing: 8) {
-                        TextField(prompt.placeholder ?? prompt.message, text: $session.authPromptInput)
+                        SecureField(session.currentProvider.tokenPlaceholder, text: $session.authToken)
                             .textFieldStyle(.plain)
                             .font(Typo.mono(11))
                             .foregroundColor(Palette.text)
                             .focused($authFieldFocused)
                             .onSubmit {
-                                session.submitAuthPrompt()
+                                session.saveSelectedToken()
                             }
 
-                        footerButton("continue") {
-                            session.submitAuthPrompt()
+                        footerButton("save key") {
+                            session.saveSelectedToken()
+                        }
+
+                        if session.hasSelectedCredential {
+                            footerButton("clear") {
+                                session.removeSelectedCredential()
+                            }
                         }
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
-                    .background(authCardBackground(tint: Palette.detach))
+                    .background(authCardBackground(tint: Palette.running))
+                } else {
+                    HStack(spacing: 8) {
+                        footerButton("connect") {
+                            session.startSelectedAuthFlow()
+                        }
+
+                        if session.hasSelectedCredential {
+                            footerButton("clear") {
+                                session.removeSelectedCredential()
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(authCardBackground(tint: Palette.running))
                 }
             }
 
-            if let notice = session.authNoticeText, !notice.isEmpty {
+            if !session.isAuthenticating, let notice = session.authNoticeText, !notice.isEmpty {
                 Text(notice)
                     .font(Typo.mono(9))
                     .foregroundColor(Palette.textDim)
@@ -362,8 +395,10 @@ struct PiChatDock: View {
 
             Spacer()
 
-            footerButton(session.isAuthPanelVisible ? "auth -" : "auth +") {
-                session.toggleAuthPanel()
+            if session.hasPiBinary && !session.needsProviderSetup {
+                footerButton(session.isAuthPanelVisible ? "auth -" : "auth +") {
+                    session.toggleAuthPanel()
+                }
             }
 
             footerButton("reset") {
@@ -376,8 +411,8 @@ struct PiChatDock: View {
     }
 
     private var footerStatusText: String {
-        if session.statusText == "idle" {
-            return session.currentProvider.name
+        if session.statusText == "idle" || session.needsProviderSetup || session.isAuthenticating || !session.hasPiBinary {
+            return session.setupStatusSummary
         }
         return "\(session.currentProvider.name) · \(session.statusText)"
     }
@@ -388,6 +423,32 @@ struct PiChatDock: View {
                 authFieldFocused = true
             }
         }
+    }
+
+    private var setupLockedBar: some View {
+        HStack(alignment: .center, spacing: 8) {
+            Circle()
+                .fill(Palette.detach)
+                .frame(width: 6, height: 6)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("SETUP IN PROGRESS")
+                    .font(Typo.geistMonoBold(9))
+                    .foregroundColor(Palette.text)
+
+                Text(session.isAuthenticating
+                    ? "Stay with the setup panel above for now. The chat box unlocks as soon as you finish that step."
+                    : "Finish the setup panel above to unlock the chat box.")
+                    .font(Typo.mono(9))
+                    .foregroundColor(Palette.textDim)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .background(Color.black.opacity(0.62))
     }
 
     private func roleLabel(for role: PiChatMessage.Role) -> String {
@@ -426,11 +487,11 @@ struct PiChatDock: View {
             )
     }
 
-    private func footerButton(_ label: String, tint: Color = Palette.textMuted, action: @escaping () -> Void) -> some View {
+    private func footerButton(_ label: String, tint: Color = Palette.textMuted, disabled: Bool = false, action: @escaping () -> Void) -> some View {
         Button(label, action: action)
             .buttonStyle(.plain)
             .font(Typo.geistMonoBold(9))
-            .foregroundColor(tint)
+            .foregroundColor(disabled ? Palette.textMuted : tint)
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
             .background(
@@ -441,6 +502,8 @@ struct PiChatDock: View {
                             .strokeBorder(Palette.border, lineWidth: 0.5)
                     )
             )
+            .opacity(disabled ? 0.65 : 1)
+            .disabled(disabled)
     }
 
     private func authCardBackground(tint: Color) -> some View {

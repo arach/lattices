@@ -4,6 +4,7 @@ struct HomeDashboardView: View {
     var onNavigate: ((AppPage) -> Void)? = nil
 
     @ObservedObject private var scanner = ProjectScanner.shared
+    @ObservedObject private var piSession = PiChatSession.shared
 
     var body: some View {
         VStack(spacing: 0) {
@@ -16,6 +17,9 @@ struct HomeDashboardView: View {
             MainView(scanner: scanner, layout: .embedded)
         }
         .background(Palette.bg)
+        .onAppear {
+            piSession.refreshBinaryAvailability()
+        }
     }
 
     private var hero: some View {
@@ -56,9 +60,13 @@ struct HomeDashboardView: View {
 
                 homeActionCard(
                     title: "Pi Workspace",
-                    subtitle: "Standalone conversation surface",
+                    subtitle: piSession.hasPiBinary
+                        ? (piSession.needsProviderSetup || piSession.isAuthenticating
+                            ? piSession.setupStatusSummary
+                            : "Standalone conversation surface")
+                        : "Install Pi to enable the assistant",
                     icon: "terminal",
-                    tint: Palette.text
+                    tint: piSession.hasPiBinary ? Palette.text : Palette.kill
                 ) {
                     onNavigate?(.pi)
                 }
