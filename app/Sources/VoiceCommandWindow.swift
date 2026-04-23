@@ -9,6 +9,19 @@ final class VoicePanel: NSPanel {
     var onFlagsChanged: ((NSEvent) -> Void)?
 
     override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .leftMouseDown || event.type == .rightMouseDown {
+            if !NSApp.isActive {
+                NSApp.activate(ignoringOtherApps: true)
+            }
+            if !isKeyWindow {
+                makeKey()
+            }
+        }
+        super.sendEvent(event)
+    }
 
     override func keyDown(with event: NSEvent) {
         if let handler = onKeyDown {
@@ -25,6 +38,11 @@ final class VoicePanel: NSPanel {
             super.flagsChanged(with: event)
         }
     }
+}
+
+private final class VoiceHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override var focusRingType: NSFocusRingType { get { .none } set {} }
 }
 
 // MARK: - Window Controller
@@ -92,7 +110,9 @@ final class VoiceCommandWindow {
         p.hidesOnDeactivate = false
         p.isReleasedWhenClosed = false
         p.isMovableByWindowBackground = true
-        p.contentView = NSHostingView(rootView: view)
+        let hosting = VoiceHostingView(rootView: view)
+        hosting.translatesAutoresizingMaskIntoConstraints = false
+        p.contentView = hosting
 
         // Position: top-center of screen
         let x = visible.midX - panelWidth / 2
@@ -101,6 +121,8 @@ final class VoiceCommandWindow {
 
         p.alphaValue = 0
         p.orderFrontRegardless()
+        p.makeKey()
+        NSApp.activate(ignoringOtherApps: true)
 
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.15
@@ -1591,4 +1613,3 @@ final class DragDividerNSView: NSView {
         return expanded.contains(point) ? self : nil
     }
 }
-

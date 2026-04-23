@@ -1,6 +1,28 @@
 import AppKit
 import SwiftUI
 
+private final class OmniSearchPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .leftMouseDown || event.type == .rightMouseDown {
+            if !NSApp.isActive {
+                NSApp.activate(ignoringOtherApps: true)
+            }
+            if !isKeyWindow {
+                makeKey()
+            }
+        }
+        super.sendEvent(event)
+    }
+}
+
+private final class OmniSearchHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override var focusRingType: NSFocusRingType { get { .none } set {} }
+}
+
 final class OmniSearchWindow {
     static let shared = OmniSearchWindow()
 
@@ -34,16 +56,15 @@ final class OmniSearchWindow {
         }
         .preferredColorScheme(.dark)
 
-        let hosting = NSHostingController(rootView: view)
-        hosting.preferredContentSize = NSSize(width: 520, height: 480)
+        let hosting = OmniSearchHostingView(rootView: view)
+        hosting.translatesAutoresizingMaskIntoConstraints = false
 
-        let p = NSPanel(
+        let p = OmniSearchPanel(
             contentRect: NSRect(x: 0, y: 0, width: 520, height: 480),
             styleMask: [.titled, .closable, .resizable, .utilityWindow, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
-        p.contentViewController = hosting
         p.title = "Omni Search"
         p.titlebarAppearsTransparent = true
         p.titleVisibility = .hidden
@@ -56,6 +77,24 @@ final class OmniSearchWindow {
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         p.minSize = NSSize(width: 400, height: 300)
         p.maxSize = NSSize(width: 700, height: 700)
+        p.hidesOnDeactivate = false
+        p.becomesKeyOnlyIfNeeded = false
+
+        let effectView = NSVisualEffectView()
+        effectView.blendingMode = .behindWindow
+        effectView.material = .popover
+        effectView.state = .active
+        effectView.wantsLayer = true
+        effectView.maskImage = Self.maskImage(cornerRadius: 14)
+        p.contentView = effectView
+
+        effectView.addSubview(hosting)
+        NSLayoutConstraint.activate([
+            hosting.leadingAnchor.constraint(equalTo: effectView.leadingAnchor),
+            hosting.trailingAnchor.constraint(equalTo: effectView.trailingAnchor),
+            hosting.topAnchor.constraint(equalTo: effectView.topAnchor),
+            hosting.bottomAnchor.constraint(equalTo: effectView.bottomAnchor),
+        ])
 
         // Center on screen
         if let screen = NSScreen.main {
@@ -101,5 +140,26 @@ final class OmniSearchWindow {
             NSEvent.removeMonitor(monitor)
             keyMonitor = nil
         }
+    }
+
+    private static func maskImage(cornerRadius: CGFloat) -> NSImage {
+        let edgeLength = 2.0 * cornerRadius + 1.0
+        let maskImage = NSImage(
+            size: NSSize(width: edgeLength, height: edgeLength),
+            flipped: false
+        ) { rect in
+            let path = NSBezierPath(roundedRect: rect, xRadius: cornerRadius, yRadius: cornerRadius)
+            NSColor.black.set()
+            path.fill()
+            return true
+        }
+        maskImage.capInsets = NSEdgeInsets(
+            top: cornerRadius,
+            left: cornerRadius,
+            bottom: cornerRadius,
+            right: cornerRadius
+        )
+        maskImage.resizingMode = .stretch
+        return maskImage
     }
 }
