@@ -16,7 +16,14 @@
  *   {"ok":false,"error":"..."}
  */
 
-import { infer, inferJSON } from "../lib/infer.ts";
+import {
+  assistantPromptPath,
+  buildAssistantContextMessage,
+  buildAssistantSystemPrompt,
+  normalizeAssistantPlan,
+  tryLocalAssistantPlan,
+} from "./assistant-intelligence.ts";
+import { infer } from "../lib/infer.ts";
 
 const INFER_TIMEOUT_MS = 15_000;
 
@@ -55,7 +62,7 @@ async function inferSmart(prompt: string, options: any): Promise<{ data: any; ra
   };
 }
 import { readFileSync } from "fs";
-import { join, dirname } from "path";
+import { join } from "path";
 import { spawn } from "child_process";
 
 // ── Streaming TTS via OpenAI API → ffplay ──────────────────────────
@@ -275,100 +282,6 @@ function playConfirm(intent: string): Promise<number> {
   return playCached(map[intent] ?? "Done.");
 }
 
-// ── Fast path: local intent matching (no LLM needed) ──────────────
-
-interface FastMatch {
-  actions: Array<{ intent: string; slots: Record<string, string> }>;
-  confirm: string; // which confirmation to play
-}
-
-function tryFastMatch(transcript: string, snapshot: any): FastMatch | null {
-  const t = transcript.toLowerCase().trim();
-  const activeApps = (snapshot.activeStage ?? []).map((w: any) => ({
-    app: w.app as string,
-    wid: w.wid as number,
-  }));
-
-  // Tile patterns
-  const tileMatch = t.match(
-    /(?:tile|snap|put|move)\s+(\w+)\s+(?:to\s+)?(?:the\s+)?(left|right|top|bottom|maximize|center|top.?left|top.?right|bottom.?left|bottom.?right|left.?third|center.?third|right.?third)/
-  );
-  if (tileMatch) {
-    const app = tileMatch[1];
-    const pos = tileMatch[2].replace(/\s+/g, "-");
-    return {
-      actions: [{ intent: "tile_window", slots: { app, position: pos } }],
-      confirm: "tile_window",
-    };
-  }
-
-  // Split screen: "split X and Y" or "X left Y right"
-  const splitMatch = t.match(/split\s+(\w+)\s+(?:and|&)\s+(\w+)/);
-  if (splitMatch) {
-    return {
-      actions: [
-        { intent: "tile_window", slots: { app: splitMatch[1], position: "left" } },
-        { intent: "tile_window", slots: { app: splitMatch[2], position: "right" } },
-      ],
-      confirm: "tile_window",
-    };
-  }
-
-  // Focus: "focus X" / "focus on X" / "switch to X" / "go to X"
-  const focusMatch = t.match(/(?:focus(?:\s+on)?|switch\s+to|go\s+to|show)\s+(?:the\s+)?(?:on\s+)?(\w+)/);
-  if (focusMatch && !t.includes("tile") && !t.includes("split")) {
-    const app = focusMatch[1];
-    if (app && app !== "on" && app !== "the") {
-      return {
-        actions: [{ intent: "focus", slots: { app } }],
-        confirm: "focus",
-      };
-    }
-  }
-
-  // Maximize: "maximize" / "full screen" / "make it big"
-  if (/maximize|full\s*screen|make\s+it\s+big/.test(t)) {
-    return {
-      actions: [{ intent: "tile_window", slots: { position: "maximize" } }],
-      confirm: "tile_window",
-    };
-  }
-
-  // Distribute: "grid" / "mosaic" / "distribute" / "even"
-  if (/grid|mosaic|distribute|even\s+(?:out|grid)|arrange/.test(t)) {
-    return {
-      actions: [{ intent: "distribute", slots: {} }],
-      confirm: "distribute",
-    };
-  }
-
-  // Corners: "quadrants" / "four corners"
-  if (/quadrants?|four\s+corners?|corners/.test(t) && activeApps.length >= 4) {
-    const positions = ["top-left", "top-right", "bottom-left", "bottom-right"];
-    return {
-      actions: activeApps.slice(0, 4).map((a: any, i: number) => ({
-        intent: "tile_window",
-        slots: { app: a.app, position: positions[i] },
-      })),
-      confirm: "tile_window",
-    };
-  }
-
-  // Thirds: "thirds"
-  if (/thirds/.test(t) && activeApps.length >= 3) {
-    const positions = ["left-third", "center-third", "right-third"];
-    return {
-      actions: activeApps.slice(0, 3).map((a: any, i: number) => ({
-        intent: "tile_window",
-        slots: { app: a.app, position: positions[i] },
-      })),
-      confirm: "tile_window",
-    };
-  }
-
-  return null; // No fast match — fall through to LLM
-}
-
 // Warm up cache on startup
 ensureVoiceCache().then(() => log("voice cache ready"));
 
@@ -376,70 +289,14 @@ log("worker started, streaming TTS ready");
 
 // ── Load system prompt once ────────────────────────────────────────
 
-const promptDir = join(dirname(import.meta.dir), "docs", "prompts");
-let systemPrompt: string;
-try {
-  systemPrompt = readFileSync(join(promptDir, "hands-off-system.md"), "utf-8")
-    .split("\n")
-    .filter((l) => !l.startsWith("# "))
-    .join("\n")
-    .trim();
-} catch {
-  systemPrompt = "You are a workspace assistant. Respond with JSON: {actions, spoken}.";
-}
-
-const intentCatalog = `
-tile_window: Tile a window to a screen position
-  Slots:
-    position (required): Named position or grid:CxR:C,R syntax.
-      Halves: left, right, top, bottom
-      Quarters (2x2): top-left, top-right, bottom-left, bottom-right
-      Thirds (3x1): left-third, center-third, right-third
-      Sixths (3x2): top-left-third, top-center-third, top-right-third, bottom-left-third, bottom-center-third, bottom-right-third
-      Fourths (4x1): first-fourth, second-fourth, third-fourth, last-fourth
-      Eighths (4x2): top-first-fourth, top-second-fourth, top-third-fourth, top-last-fourth, bottom-first-fourth, bottom-second-fourth, bottom-third-fourth, bottom-last-fourth
-      Special: maximize (full screen), center (centered floating)
-      Grid syntax: grid:CxR:C,R (e.g. grid:5x3:2,1 = center cell of 5x3 grid)
-    app (optional): Target app name — match loosely (e.g. "chrome" matches "Google Chrome")
-    wid (optional): Target window ID (from snapshot)
-    session (optional): Tmux session name
-  If no app/wid/session given, tiles the frontmost window.
-  "quarter" = 2x2 cell (top-left etc.), NOT a 4x1 fourth.
-  "top quarter" = top-left or top-right (2x2). "top third" = top-left-third (3x2).
-
-focus: Focus a window, app, or session
-  Slots: app, session, or wid (at least one)
-
-distribute: Arrange all visible windows in an even grid. No slots.
-
-search: Search windows by text
-  Slots: query (required)
-
-list_windows: List all visible windows. No slots.
-
-switch_layer: Switch to a workspace layer
-  Slots: layer (required) — name or index
-
-create_layer: Save current arrangement as a named layer
-  Slots: name (required)
-
-TILING PRESETS (use multiple tile_window actions):
-  "split screen" → left + right
-  "thirds" → left-third, center-third, right-third
-  "mosaic"/"grid" → use distribute
-  "corners"/"quadrants" → top-left, top-right, bottom-left, bottom-right
-  "stack" → top + bottom
-  "six-up"/"3 by 2" → 3x2 grid using the sixth positions
-  "eight-up"/"4 by 2" → 4x2 grid using the eighth positions
-`;
-
-systemPrompt = systemPrompt.replace("{{intent_catalog}}", intentCatalog);
+const systemPrompt = buildAssistantSystemPrompt();
 log("system prompt loaded");
 
 // ── Auto-restart on file changes ───────────────────────────────────
 
 const watchFiles = [
-  join(promptDir, "hands-off-system.md"),
+  assistantPromptPath,
+  join(import.meta.dir, "assistant-intelligence.ts"),
   import.meta.path, // this script itself
 ];
 
@@ -456,89 +313,6 @@ for (const f of watchFiles) {
     });
     log(`watching: ${f.split("/").pop()}`);
   } catch {}
-}
-
-// ── Build context message from snapshot ─────────────────────────────
-
-function buildContextMessage(transcript: string, snap: any): string {
-  let msg = `USER: "${transcript}"\n\n`;
-  msg += "--- DESKTOP SNAPSHOT ---\n";
-
-  // Screens
-  const screens = snap.screens ?? [];
-  if (screens.length > 1) {
-    msg += `Displays: ${screens.map((s: any) => `${s.width}x${s.height}${s.isMain ? " (main)" : ""}`).join(", ")}\n`;
-  } else if (screens.length === 1) {
-    msg += `Screen: ${screens[0].width}x${screens[0].height}\n`;
-  }
-
-  // Stage Manager
-  if (snap.stageManager) {
-    msg += `Stage Manager: ON (grouping: ${snap.smGrouping ?? "all-at-once"})\n`;
-  }
-
-  // All windows — full inventory, ordered front-to-back (zIndex 0 = frontmost)
-  const windows = snap.windows ?? snap.activeStage ?? [];
-  const onScreen = windows.filter((w: any) => w.onScreen !== false);
-  const offScreen = windows.filter((w: any) => w.onScreen === false);
-
-  msg += `\nVisible windows (${onScreen.length}, front-to-back order):\n`;
-  for (const w of onScreen) {
-    const flags: string[] = [];
-    if (w.zIndex === 0) flags.push("FRONTMOST");
-    if (w.session) flags.push(`session:${w.session}`);
-    const flagStr = flags.length ? ` [${flags.join(", ")}]` : "";
-    msg += `  wid:${w.wid} ${w.app}: "${w.title}" — ${w.frame}${flagStr}\n`;
-  }
-
-  if (offScreen.length > 0) {
-    // Summarize hidden windows by app instead of listing all
-    const hiddenByApp: Record<string, number> = {};
-    for (const w of offScreen) {
-      const app = w.app;
-      hiddenByApp[app] = (hiddenByApp[app] || 0) + 1;
-    }
-    const summary = Object.entries(hiddenByApp)
-      .filter(([app]) => !["WindowManager", "Spotlight", "CursorUIViewService", "AutoFill", "coreautha", "loginwindow", "Open and Save Panel Service"].includes(app))
-      .map(([app, count]) => `${app}(${count})`)
-      .join(", ");
-    if (summary) {
-      msg += `\nHidden windows: ${summary}\n`;
-    }
-  }
-
-  // Terminals — cwd, running commands, claude, tmux
-  const terminals = snap.terminals ?? [];
-  if (terminals.length > 0) {
-    msg += `\nTerminal tabs (${terminals.length}):\n`;
-    for (const t of terminals) {
-      const flags: string[] = [];
-      if (t.hasClaude) flags.push("Claude Code");
-      if (t.tmuxSession) flags.push(`tmux:${t.tmuxSession}`);
-      if (!t.isActiveTab) flags.push("background tab");
-      const flagStr = flags.length ? ` [${flags.join(", ")}]` : "";
-      const cwd = t.cwd ? ` cwd:${t.cwd.replace(/^\/Users\/\w+\//, "~/")}` : "";
-      const cmds = (t.runningCommands ?? []).map((c: any) => c.command).join(", ");
-      const cmdStr = cmds ? ` running:${cmds}` : "";
-      msg += `  ${t.displayName}${cwd}${cmdStr}${flagStr}`;
-      if (t.windowId) msg += ` (wid:${t.windowId})`;
-      msg += "\n";
-    }
-  }
-
-  // Tmux sessions
-  const tmux = snap.tmuxSessions ?? [];
-  if (tmux.length > 0) {
-    msg += `\nTmux sessions: ${tmux.map((s: any) => `${s.name} (${s.windows} windows${s.attached ? ", attached" : ""})`).join(", ")}\n`;
-  }
-
-  // Layer
-  if (snap.currentLayer) {
-    msg += `\nCurrent layer: ${snap.currentLayer.name} (index: ${snap.currentLayer.index})\n`;
-  }
-
-  msg += "--- END SNAPSHOT ---\n";
-  return msg;
 }
 
 // ── Command loop ───────────────────────────────────────────────────
@@ -588,7 +362,13 @@ async function processLine(line: string) {
 
     case "infer":
       try {
-        const userMessage = buildContextMessage(cmd.transcript, cmd.snapshot ?? {});
+        const localPlan = tryLocalAssistantPlan(cmd.transcript, cmd.snapshot ?? {});
+        if (localPlan) {
+          respond({ ok: true, data: localPlan });
+          break;
+        }
+
+        const userMessage = buildAssistantContextMessage(cmd.transcript, cmd.snapshot ?? {});
 
         const messages = (cmd.history ?? []).map((h: any) => ({
           role: h.role as "user" | "assistant",
@@ -605,11 +385,13 @@ async function processLine(line: string) {
           tag: "hands-off",
         });
 
+        const plan = normalizeAssistantPlan(data, cmd.transcript);
         respond({
           ok: true,
           data: {
-            ...data,
+            ...plan,
             _meta: {
+              ...plan._meta,
               provider: raw.provider,
               model: raw.model,
               durationMs: raw.durationMs,
@@ -649,30 +431,35 @@ async function processLine(line: string) {
       // Fire cached ack sound + inference in PARALLEL
       const ackPromise = playAck().catch((e) => log(`ack error: ${e.message}`));
 
-      // Build full context message from snapshot
-      const userMessage = buildContextMessage(transcript, snap);
-
       const messages = history.map((h: any) => ({
         role: h.role as "user" | "assistant",
         content: typeof h.content === "string" ? h.content : JSON.stringify(h.content),
       })).filter((m: any) => m.content && m.content.length > 0);
 
       let inferResult: any = null;
-      try {
-        const { data, raw } = await inferSmart(userMessage, {
-          provider: "xai",
-          model: "grok-4.20-beta-0309-non-reasoning",
-          system: systemPrompt,
-          messages,
-          temperature: 0.2,
-          maxTokens: 512,
-          tag: "hands-off",
-        });
-        inferResult = { ...data, _meta: { provider: raw.provider, model: raw.model, durationMs: raw.durationMs, tokens: raw.usage?.totalTokens } };
-        log(`⏱ inference done in ${raw.durationMs}ms`);
-      } catch (err: any) {
-        log(`⏱ inference error: ${err.message}`);
-        inferResult = { actions: [], spoken: "Sorry, I had trouble with that.", _meta: { error: err.message } };
+      const localPlan = tryLocalAssistantPlan(transcript, snap);
+      if (localPlan) {
+        inferResult = localPlan;
+        log("local planner matched");
+      } else {
+        const userMessage = buildAssistantContextMessage(transcript, snap);
+        try {
+          const { data, raw } = await inferSmart(userMessage, {
+            provider: "xai",
+            model: "grok-4.20-beta-0309-non-reasoning",
+            system: systemPrompt,
+            messages,
+            temperature: 0.2,
+            maxTokens: 512,
+            tag: "hands-off",
+          });
+          const plan = normalizeAssistantPlan(data, transcript);
+          inferResult = { ...plan, _meta: { ...plan._meta, provider: raw.provider, model: raw.model, durationMs: raw.durationMs, tokens: raw.usage?.totalTokens } };
+          log(`⏱ inference done in ${raw.durationMs}ms`);
+        } catch (err: any) {
+          log(`⏱ inference error: ${err.message}`);
+          inferResult = { actions: [], spoken: "Sorry, I had trouble with that.", _meta: { error: err.message } };
+        }
       }
 
       // Wait for ack to finish before narrating (don't overlap speech)

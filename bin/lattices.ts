@@ -56,7 +56,8 @@ function requireTmux(command: string | undefined): void {
   const isImplicitCreate = command && !tmuxRequiredCommands.has(command)
     && !["search", "s", "focus", "place", "tile", "t", "windows", "window",
          "voice", "call", "layer", "layers", "diag", "diagnostics", "scan",
-         "ocr", "daemon", "dev", "app", "mouse", "help", "-h", "--help"].includes(command);
+         "ocr", "daemon", "dev", "app", "mouse", "assistant",
+         "help", "-h", "--help"].includes(command);
 
   if (command && !tmuxRequiredCommands.has(command) && !isImplicitCreate) return;
 
@@ -1182,6 +1183,34 @@ async function voiceCommand(subcommand?: string, ...rest: string[]): Promise<voi
   }
 }
 
+async function assistantCommand(subcommand?: string, ...rest: string[]): Promise<void> {
+  if (subcommand !== "plan") {
+    console.log("Usage: lattices assistant plan <text> [--json]");
+    return;
+  }
+
+  const jsonOut = rest.includes("--json");
+  const text = rest.filter((arg) => arg !== "--json").join(" ").trim();
+  if (!text) {
+    console.log("Usage: lattices assistant plan <text> [--json]");
+    return;
+  }
+
+  const { tryLocalAssistantPlan } = await import("./assistant-intelligence.ts");
+  const result = tryLocalAssistantPlan(text) ?? {
+    actions: [],
+    spoken: "No local TS plan matched.",
+    _meta: { source: "local-rule", matched: false },
+  };
+
+  if (jsonOut) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  console.log(result.spoken);
+}
+
 async function callCommand(method?: string, ...rest: string[]): Promise<void> {
   if (!method) {
     console.log("Usage: lattices call <method> [params-json]");
@@ -1721,6 +1750,7 @@ Usage:
   lattices voice status       Voice provider status
   lattices voice simulate <t> Parse and execute a voice command
   lattices voice intents      List all available intents
+  lattices assistant plan <t> Preview the TS assistant planner
   lattices call <method> [p]  Raw daemon API call (params as JSON)
   lattices scan               Show text from all visible windows
   lattices scan --full        Full text dump
@@ -2140,6 +2170,9 @@ switch (command) {
     break;
   case "voice":
     await voiceCommand(args[1], ...args.slice(2));
+    break;
+  case "assistant":
+    await assistantCommand(args[1], ...args.slice(2));
     break;
   case "call":
     await callCommand(args[1], ...args.slice(2));

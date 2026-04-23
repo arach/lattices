@@ -140,3 +140,17 @@ same canonical actions:
 
 That keeps the interaction layer flexible while the executor stays
 predictable.
+
+## Assistant intelligence boundary
+
+Assistant planning lives in TypeScript where possible:
+
+- `bin/assistant-intelligence.ts` owns the intent catalog, prompt assembly,
+  local rule planner, desktop snapshot formatting, and plan normalization.
+- `bin/handsoff-worker.ts` and `bin/handsoff-infer.ts` call that module before
+  falling back to model inference.
+- Swift should remain the macOS execution layer: hotkeys, windows, AX/CG,
+  SkyLight, panels, and visual feedback.
+
+Use `lattices assistant plan <text> --json` to inspect the TS planner without
+launching the app or mutating the desktop.

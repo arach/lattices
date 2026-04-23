@@ -8,7 +8,7 @@
  *  - Simple API: `await infer("do something", { provider: "groq" })`
  */
 
-import { generateText, type CoreMessage } from "ai";
+import { generateText, type ModelMessage } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
@@ -25,7 +25,7 @@ export interface InferOptions {
   provider?: ProviderName;
   model?: string;
   system?: string;
-  messages?: CoreMessage[];
+  messages?: ModelMessage[];
   temperature?: number;
   maxTokens?: number;
   /** Tag for logging — e.g. "hands-off", "voice-fallback" */
@@ -161,7 +161,6 @@ function getModel(provider: ProviderName, modelId: string) {
       const minimax = createOpenAI({
         baseURL: "https://api.minimax.io/v1",
         apiKey: creds.minimax,
-        compatibility: "compatible",
       });
       return minimax.chat(modelId);
     }
@@ -219,7 +218,7 @@ export async function infer(
   const model = getModel(provider, modelId);
 
   // Build messages
-  const messages: CoreMessage[] = [
+  const messages: ModelMessage[] = [
     ...(options.messages ?? []),
     { role: "user", content: prompt },
   ];
@@ -233,7 +232,7 @@ export async function infer(
       system: options.system,
       messages,
       temperature: options.temperature ?? 0.3,
-      maxTokens: options.maxTokens ?? 1024,
+      maxOutputTokens: options.maxTokens ?? 1024,
       abortSignal: options.abortSignal,
     });
 
@@ -241,8 +240,8 @@ export async function infer(
 
     const usage = result.usage
       ? {
-          promptTokens: result.usage.promptTokens,
-          completionTokens: result.usage.completionTokens,
+          promptTokens: result.usage.inputTokens,
+          completionTokens: result.usage.outputTokens,
           totalTokens: result.usage.totalTokens,
         }
       : undefined;
