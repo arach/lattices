@@ -18,6 +18,12 @@ struct MainView: View {
     @State private var tmuxBannerDismissed = false
     @ObservedObject private var tmuxModel = TmuxModel.shared
     @State private var orphanSectionCollapsed = true
+    private let embeddedProjectColumns = Array(
+        repeating: GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 10, alignment: .top),
+        count: 3
+    )
+    private let embeddedProjectCardHeight: CGFloat = 94
+    private let embeddedProjectGridSpacing: CGFloat = 10
     private var filtered: [Project] {
         if searchText.isEmpty { return scanner.projects }
         return scanner.projects.filter {
@@ -34,6 +40,16 @@ struct MainView: View {
 
     private var needsSetup: Bool { prefs.scanRoot.isEmpty }
     private var runningCount: Int { scanner.projects.filter(\.isRunning).count }
+    private var hasVisibleGroups: Bool {
+        guard let groups = workspace.config?.groups else { return false }
+        return !groups.isEmpty && searchText.isEmpty
+    }
+    private var embeddedProjectGridHeight: CGFloat {
+        guard !filtered.isEmpty else { return 0 }
+        let rowCount = min(Int(ceil(Double(filtered.count) / 3.0)), 3)
+        return CGFloat(rowCount) * embeddedProjectCardHeight
+            + CGFloat(max(0, rowCount - 1)) * embeddedProjectGridSpacing
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -168,60 +184,12 @@ struct MainView: View {
                     .fill(Palette.border)
                     .frame(height: 0.5)
 
-                // List
-                if filtered.isEmpty && (workspace.config?.groups ?? []).isEmpty {
+                if filtered.isEmpty && !hasVisibleGroups {
                     Spacer()
                     emptyState
                     Spacer()
                 } else {
-                    ScrollView {
-                        LazyVStack(spacing: 4) {
-                            // Tab groups section
-                            if let groups = workspace.config?.groups, !groups.isEmpty, searchText.isEmpty {
-                                ForEach(groups) { group in
-                                    TabGroupRow(group: group, workspace: workspace)
-                                }
-
-                                if !filtered.isEmpty {
-                                    Rectangle()
-                                        .fill(Palette.border)
-                                        .frame(height: 0.5)
-                                        .padding(.vertical, 4)
-                                }
-                            }
-
-                            // Projects
-                            ForEach(filtered) { project in
-                                ProjectRow(project: project) {
-                                    SessionManager.launch(project: project)
-                                } onDetach: {
-                                    SessionManager.detach(project: project)
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                        scanner.refreshStatus()
-                                    }
-                                } onKill: {
-                                    SessionManager.kill(project: project)
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                        scanner.refreshStatus()
-                                    }
-                                } onSync: {
-                                    SessionManager.sync(project: project)
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                                        scanner.refreshStatus()
-                                    }
-                                } onRestart: { paneName in
-                                    SessionManager.restart(project: project, paneName: paneName)
-                                }
-                            }
-
-                            // Orphan sessions
-                            if !filteredOrphans.isEmpty {
-                                orphanSection
-                            }
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 8)
-                    }
+                    embeddedProjectsSection
                 }
 
                 Rectangle()
@@ -237,6 +205,71 @@ struct MainView: View {
 
                 // Bottom bar
                 bottomBar
+            }
+        }
+    }
+
+    private var embeddedProjectsSection: some View {
+        VStack(spacing: 0) {
+            if hasVisibleGroups, let groups = workspace.config?.groups {
+                LazyVStack(spacing: 4) {
+                    ForEach(groups) { group in
+                        TabGroupRow(group: group, workspace: workspace)
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.top, 8)
+                .padding(.bottom, filtered.isEmpty ? 8 : 6)
+            }
+
+            if !filtered.isEmpty {
+                VStack(spacing: 0) {
+                    HStack(spacing: 8) {
+                        Text(searchText.isEmpty ? "Projects" : "Matches")
+                            .font(Typo.monoBold(10))
+                            .foregroundColor(Palette.textMuted)
+
+                        if searchText.isEmpty {
+                            Text("\(runningCount) live")
+                                .font(Typo.mono(9))
+                                .foregroundColor(Palette.running.opacity(0.8))
+                        }
+
+                        Spacer()
+
+                        Text("\(filtered.count)")
+                            .font(Typo.mono(9))
+                            .foregroundColor(Palette.textMuted)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.top, 10)
+                    .padding(.bottom, 8)
+
+                    ScrollView(.vertical, showsIndicators: filtered.count > 9) {
+                        LazyVGrid(columns: embeddedProjectColumns, spacing: embeddedProjectGridSpacing) {
+                            ForEach(filtered) { project in
+                                HomeProjectCard(
+                                    project: project,
+                                    onLaunch: { launchProject(project) },
+                                    onDetach: { detachProject(project) },
+                                    onKill: { killProject(project) },
+                                    onSync: { syncProject(project) },
+                                    onRestart: { paneName in restartProject(project, paneName: paneName) }
+                                )
+                                .frame(height: embeddedProjectCardHeight)
+                            }
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.bottom, 10)
+                    }
+                    .frame(maxHeight: embeddedProjectGridHeight)
+                }
+            }
+
+            if !filteredOrphans.isEmpty {
+                orphanSection
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 8)
             }
         }
     }
@@ -620,5 +653,142 @@ struct MainView: View {
                 .frame(width: 28, height: 28)
         }
         .buttonStyle(.plain)
+    }
+
+    private func launchProject(_ project: Project) {
+        SessionManager.launch(project: project)
+    }
+
+    private func detachProject(_ project: Project) {
+        SessionManager.detach(project: project)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            scanner.refreshStatus()
+        }
+    }
+
+    private func killProject(_ project: Project) {
+        SessionManager.kill(project: project)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            scanner.refreshStatus()
+        }
+    }
+
+    private func syncProject(_ project: Project) {
+        SessionManager.sync(project: project)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            scanner.refreshStatus()
+        }
+    }
+
+    private func restartProject(_ project: Project, paneName: String?) {
+        SessionManager.restart(project: project, paneName: paneName)
+    }
+}
+
+private struct HomeProjectCard: View {
+    let project: Project
+    let onLaunch: () -> Void
+    let onDetach: () -> Void
+    let onKill: () -> Void
+    let onSync: () -> Void
+    let onRestart: (String?) -> Void
+
+    @State private var isHovered = false
+
+    private var summaryText: String {
+        if !project.paneSummary.isEmpty { return project.paneSummary }
+        if let cmd = project.devCommand, !cmd.isEmpty { return cmd }
+        return project.hasConfig
+            ? "\(project.paneCount) pane\(project.paneCount == 1 ? "" : "s")"
+            : "No config"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 8) {
+                Circle()
+                    .fill(project.isRunning ? Palette.running : Palette.borderLit)
+                    .frame(width: 7, height: 7)
+                    .padding(.top, 4)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(project.name)
+                        .font(Typo.heading(13))
+                        .foregroundColor(Palette.text)
+                        .lineLimit(1)
+
+                    Text(summaryText)
+                        .font(Typo.mono(10))
+                        .foregroundColor(Palette.textMuted)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+
+                if project.isRunning {
+                    Text("LIVE")
+                        .font(Typo.monoBold(8))
+                        .foregroundColor(Palette.running)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(
+                            Capsule()
+                                .fill(Palette.running.opacity(0.10))
+                        )
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            HStack(spacing: 6) {
+                if project.isRunning {
+                    Button(action: onDetach) {
+                        Image(systemName: "rectangle.portrait.and.arrow.right")
+                            .font(.system(size: 10, weight: .medium))
+                            .angularButton(Palette.detach, filled: false)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Spacer(minLength: 0)
+
+                Button(action: onLaunch) {
+                    Text(project.isRunning ? "Attach" : "Launch")
+                        .angularButton(project.isRunning ? Palette.running : Palette.launch)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .glassCard(hovered: isHovered)
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
+        .contextMenu {
+            if project.isRunning {
+                Button("Attach") { onLaunch() }
+                Button("Detach") { onDetach() }
+                Button {
+                    WindowTiler.navigateToWindow(
+                        session: project.sessionName,
+                        terminal: Preferences.shared.terminal
+                    )
+                } label: {
+                    Label("Go to Window", systemImage: "macwindow")
+                }
+                Divider()
+                Button("Sync Session") { onSync() }
+                Menu("Restart Pane") {
+                    ForEach(project.paneNames, id: \.self) { name in
+                        Button(name) { onRestart(name) }
+                    }
+                }
+                Divider()
+                Button("Kill Session") { onKill() }
+            } else {
+                Button("Launch") { onLaunch() }
+            }
+        }
     }
 }
