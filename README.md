@@ -58,6 +58,9 @@ To build a signed, notarized DMG for distribution:
 ```sh
 # Requires a Developer ID certificate and notarytool keychain profile
 ./scripts/build-dmg.sh
+
+# Update v<package.json version> and upload the DMG to GitHub Releases
+./scripts/ship.sh
 ```
 
 ## Quick start

@@ -1,14 +1,14 @@
 import AppKit
 import SwiftUI
 
-/// Manages the unified app window (Screen Map + Settings).
+/// Manages the unified app window (Home + Layout + Search + Settings).
 /// Singleton with show/close/toggle, plus showPage() for navigation.
 final class ScreenMapWindowController: ObservableObject {
     static let shared = ScreenMapWindowController()
 
     private var window: NSWindow?
     private var controller: ScreenMapController?
-    @Published var activePage: AppPage = .screenMap
+    @Published var activePage: AppPage = .home
 
     var isVisible: Bool { window?.isVisible ?? false }
 
@@ -23,7 +23,7 @@ final class ScreenMapWindowController: ObservableObject {
         }
     }
 
-    /// Show the window on the current page (defaults to Screen Map).
+    /// Show the window on the current page (defaults to Home).
     func show() {
         if let existing = window {
             if activePage == .screenMap {
@@ -105,7 +105,7 @@ final class ScreenMapWindowController: ObservableObject {
         window?.orderOut(nil)
         window = nil
         controller = nil
-        activePage = .screenMap
+        activePage = .home
         AppDelegate.updateActivationPolicy()
     }
 }

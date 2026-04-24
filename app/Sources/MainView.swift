@@ -86,7 +86,7 @@ struct MainView: View {
         VStack(spacing: 0) {
             if layout == .popover {
                 HStack {
-                    Text("Lattices")
+                    Text("Projects")
                         .font(Typo.mono(14))
                         .foregroundColor(Palette.text)
 
@@ -96,13 +96,17 @@ struct MainView: View {
                         (NSApp.delegate as? AppDelegate)?.dismissPopover()
                         ScreenMapWindowController.shared.showPage(.home)
                     }
-                    headerButton(icon: "terminal") {
+                    headerButton(icon: "rectangle.3.group") {
                         (NSApp.delegate as? AppDelegate)?.dismissPopover()
-                        ScreenMapWindowController.shared.showPage(.pi)
+                        ScreenMapWindowController.shared.showPage(.screenMap)
                     }
-                    headerButton(icon: "arrow.up.left.and.arrow.down.right") {
+                    headerButton(icon: "magnifyingglass") {
                         (NSApp.delegate as? AppDelegate)?.dismissPopover()
-                        ScreenMapWindowController.shared.showPage(.home)
+                        ScreenMapWindowController.shared.showPage(.desktopInventory)
+                    }
+                    headerButton(icon: "command") {
+                        (NSApp.delegate as? AppDelegate)?.dismissPopover()
+                        CommandPaletteWindow.shared.toggle()
                     }
                     headerButton(icon: "arrow.clockwise") { scanner.scan(); inventory.refresh() }
                 }
@@ -314,22 +318,31 @@ struct MainView: View {
                 CommandPaletteWindow.shared.toggle()
             }
             ActionRow(
-                label: "Workspace",
-                detail: "Screen map, inventory, and window context",
+                label: "Home",
+                detail: "Workspace overview and project launcher",
                 hotkeyTokens: hotkeyTokens(.unifiedWindow),
-                icon: "square.grid.2x2",
+                icon: "house",
                 accentColor: Palette.text
             ) {
                 ScreenMapWindowController.shared.showPage(.home)
             }
             ActionRow(
-                label: "Assistant",
-                detail: "Search now, or use voice when you need it",
+                label: "Layout",
+                detail: "Arrange windows and layers",
+                hotkeyTokens: [],
+                icon: "rectangle.3.group",
+                accentColor: Palette.running
+            ) {
+                ScreenMapWindowController.shared.showPage(.screenMap)
+            }
+            ActionRow(
+                label: "Search",
+                detail: "Windows, projects, sessions, processes, and OCR",
                 hotkeyTokens: hotkeyTokens(.omniSearch),
                 icon: "magnifyingglass",
                 accentColor: AudioLayer.shared.isListening ? Palette.running : Palette.textDim
             ) {
-                showAssistant()
+                ScreenMapWindowController.shared.showPage(.desktopInventory)
             }
         }
         .padding(.vertical, 4)
@@ -397,15 +410,6 @@ struct MainView: View {
         case "Space": return "Space"
         default: return token
         }
-    }
-
-    private func showAssistant() {
-        if AudioLayer.shared.isListening || VoiceCommandWindow.shared.isVisible {
-            VoiceCommandWindow.shared.toggle()
-            return
-        }
-
-        OmniSearchWindow.shared.show()
     }
 
     // MARK: - Empty state

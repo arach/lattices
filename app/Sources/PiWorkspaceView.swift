@@ -70,7 +70,7 @@ struct PiWorkspaceView: View {
                         .fill(session.hasPiBinary ? Palette.running : Palette.kill)
                         .frame(width: 7, height: 7)
 
-                    Text("PI WORKSPACE")
+                    Text("WORKSPACE CHAT")
                         .font(Typo.geistMonoBold(11))
                         .foregroundColor(Palette.text)
 

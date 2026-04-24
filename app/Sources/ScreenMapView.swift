@@ -4,6 +4,140 @@ import AppKit
 // MARK: - Screen Map View (Standalone)
 
 struct ScreenMapView: View {
+    private static let canvasPadding: CGFloat = 8
+    private static let canvasFitInsets = CGSize(width: 24, height: 16)
+    private static let canvasViewportInsets = CGSize(width: 16, height: 16)
+
+    private struct CanvasMetrics: Equatable {
+        let worldBounds: CGRect
+        let fitScale: CGFloat
+        let effectiveScale: CGFloat
+        let mapSize: CGSize
+        let centerOffset: CGPoint
+        let syncedViewportSize: CGSize
+
+        init(editor: ScreenMapEditorState?, displays: [DisplayGeometry], viewportSize: CGSize) {
+            let fallbackBounds: CGRect = {
+                guard let first = displays.first else {
+                    let size = NSScreen.main?.frame.size ?? CGSize(width: 1920, height: 1080)
+                    return CGRect(origin: .zero, size: size)
+                }
+                return displays.dropFirst().reduce(first.cgRect) { $0.union($1.cgRect) }
+            }()
+
+            worldBounds = editor?.canvasWorldBounds ?? fallbackBounds
+
+            let fitArea = CGSize(
+                width: max(viewportSize.width - ScreenMapView.canvasFitInsets.width, 1),
+                height: max(viewportSize.height - ScreenMapView.canvasFitInsets.height, 1)
+            )
+            syncedViewportSize = CGSize(
+                width: max(viewportSize.width - ScreenMapView.canvasViewportInsets.width, 1),
+                height: max(viewportSize.height - ScreenMapView.canvasViewportInsets.height, 1)
+            )
+
+            fitScale = min(
+                fitArea.width / max(worldBounds.width, 1),
+                fitArea.height / max(worldBounds.height, 1)
+            )
+            effectiveScale = fitScale * (editor?.zoomLevel ?? 1)
+            mapSize = CGSize(width: worldBounds.width * effectiveScale, height: worldBounds.height * effectiveScale)
+            centerOffset = CGPoint(
+                x: (viewportSize.width - mapSize.width) / 2,
+                y: (viewportSize.height - mapSize.height) / 2
+            )
+        }
+
+        func mapRect(for worldRect: CGRect, minimumSize: CGFloat = 4) -> CGRect {
+            CGRect(
+                x: (worldRect.origin.x - worldBounds.origin.x) * effectiveScale,
+                y: (worldRect.origin.y - worldBounds.origin.y) * effectiveScale,
+                width: max(worldRect.width * effectiveScale, minimumSize),
+                height: max(worldRect.height * effectiveScale, minimumSize)
+            )
+        }
+    }
+
+    private struct CanvasProjection {
+        let scale: CGFloat
+        let bboxOrigin: CGPoint
+        let mapOrigin: CGPoint
+        let panOffset: CGPoint
+
+        init(editor: ScreenMapEditorState) {
+            scale = editor.effectiveScale
+            bboxOrigin = editor.bboxOrigin
+            mapOrigin = editor.mapOrigin
+            panOffset = editor.panOffset
+        }
+
+        func mapRect(for worldRect: CGRect, minimumSize: CGFloat = 4) -> CGRect {
+            CGRect(
+                x: (worldRect.origin.x - bboxOrigin.x) * scale,
+                y: (worldRect.origin.y - bboxOrigin.y) * scale,
+                width: max(worldRect.width * scale, minimumSize),
+                height: max(worldRect.height * scale, minimumSize)
+            )
+        }
+
+        func mapPoint(forCanvasPoint canvasPoint: CGPoint) -> CGPoint {
+            CGPoint(
+                x: canvasPoint.x - ScreenMapView.canvasPadding - mapOrigin.x - panOffset.x,
+                y: canvasPoint.y - ScreenMapView.canvasPadding - mapOrigin.y - panOffset.y
+            )
+        }
+    }
+
+    private struct CanvasHit {
+        let id: UInt32
+        let mapRect: CGRect
+        let mapPoint: CGPoint
+    }
+
+    private struct CanvasSyncKey: Equatable {
+        let viewportSize: CGSize
+        let worldBounds: CGRect
+        let zoomLevel: CGFloat
+        let navigationRevision: Int
+    }
+
+    private struct MiniMapMetrics {
+        let worldBounds: CGRect
+        let scale: CGFloat
+        let drawSize: CGSize
+        let offset: CGPoint
+
+        init(worldBounds: CGRect, canvasSize: CGSize) {
+            self.worldBounds = worldBounds
+            let scaleW = canvasSize.width / max(worldBounds.width, 1)
+            let scaleH = canvasSize.height / max(worldBounds.height, 1)
+            scale = min(scaleW, scaleH)
+            drawSize = CGSize(width: worldBounds.width * scale, height: worldBounds.height * scale)
+            offset = CGPoint(
+                x: (canvasSize.width - drawSize.width) / 2,
+                y: (canvasSize.height - drawSize.height) / 2
+            )
+        }
+
+        func rect(for worldRect: CGRect, minimumSize: CGFloat) -> CGRect {
+            CGRect(
+                x: (worldRect.origin.x - worldBounds.origin.x) * scale + offset.x,
+                y: (worldRect.origin.y - worldBounds.origin.y) * scale + offset.y,
+                width: max(worldRect.width * scale, minimumSize),
+                height: max(worldRect.height * scale, minimumSize)
+            )
+        }
+
+        func worldPoint(for localPoint: CGPoint) -> CGPoint {
+            let localX = min(max(localPoint.x - offset.x, 0), drawSize.width)
+            let localY = min(max(localPoint.y - offset.y, 0), drawSize.height)
+            return CGPoint(
+                x: worldBounds.origin.x + localX / max(scale, 0.0001),
+                y: worldBounds.origin.y + localY / max(scale, 0.0001)
+            )
+        }
+    }
+
     @ObservedObject var controller: ScreenMapController
     var onNavigate: ((AppPage) -> Void)? = nil
     @ObservedObject private var daemon = DaemonServer.shared
@@ -18,7 +152,6 @@ struct ScreenMapView: View {
     @State private var scrollWheelMonitor: Any?
     @State private var screenMapCanvasOrigin: CGPoint = .zero
     @State private var screenMapCanvasSize: CGSize = .zero
-    @State private var screenMapTitleBarHeight: CGFloat = 0  // reserved for coordinate math
     @State private var screenMapClickWindowId: UInt32? = nil
     @State private var screenMapClickPoint: NSPoint = .zero
     @State private var hoveredWindowId: UInt32?
@@ -28,6 +161,9 @@ struct ScreenMapView: View {
     @State private var sidebarDragWindowId: UInt32? = nil
     @State private var sidebarDragOffset: CGSize = .zero
     @State private var expandedLayers: Set<Int> = []
+    @State private var showUnnamedLayers: Bool = false
+    @State private var showSets: Bool = false
+    @State private var showExplorer: Bool = false
     @State private var mouseMovedMonitor: Any?
     @State private var sidebarWidth: CGFloat = 180
     @State private var isDraggingSidebar: Bool = false
@@ -40,7 +176,6 @@ struct ScreenMapView: View {
     @State private var isSpaceHeld: Bool = false
     @State private var spaceDragStart: NSPoint? = nil
     @State private var spaceDragPanStart: CGPoint = .zero
-    @State private var flagsMonitor: Any?
     @State private var searchOverlayFrame: CGRect = .zero
 
     var body: some View {
@@ -73,17 +208,7 @@ struct ScreenMapView: View {
                     if controller.isSearchActive, let editor = controller.editor {
                         floatingSearchOverlay(editor: editor)
                     }
-                    // Viewport controls — bottom-right corner of canvas
-                    if let editor = controller.editor {
-                        VStack {
-                            Spacer()
-                            HStack {
-                                Spacer()
-                                canvasViewportDock(editor: editor)
-                                    .padding(10)
-                            }
-                        }
-                    }
+                    // Viewport controls removed — accessible via keyboard shortcuts
                 }
                 if let editor = controller.editor {
                     panelResizeHandle(isActive: $isDraggingInspector, width: $inspectorWidth,
@@ -117,10 +242,7 @@ struct ScreenMapView: View {
     private func displayToolbar(editor: ScreenMapEditorState) -> some View {
         HStack(spacing: 4) {
             Button {
-                editor.cyclePreviousDisplay()
-                controller.focusViewportPreset(editor.activeViewportPreset ?? .main, flashView: false)
-                controller.flash(editor.focusedDisplay?.label ?? "All displays")
-                controller.objectWillChange.send()
+                controller.stepDisplayFocus(.previous)
             } label: {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 8, weight: .semibold))
@@ -131,9 +253,7 @@ struct ScreenMapView: View {
             .buttonStyle(.plain)
 
             Button {
-                editor.focusDisplay(nil)
-                controller.focusViewportPreset(editor.activeViewportPreset ?? .main, flashView: false)
-                controller.objectWillChange.send()
+                controller.setDisplayFocus(nil)
             } label: {
                 displayToolbarPill(name: "All", isActive: editor.focusedDisplayIndex == nil)
             }
@@ -142,9 +262,7 @@ struct ScreenMapView: View {
             ForEach(Array(editor.spatialDisplayOrder.enumerated()), id: \.element.index) { spatialPos, disp in
                 let isActive = editor.focusedDisplayIndex == disp.index
                 Button {
-                    editor.focusDisplay(disp.index)
-                    controller.focusViewportPreset(editor.activeViewportPreset ?? .main, flashView: false)
-                    controller.objectWillChange.send()
+                    controller.setDisplayFocus(disp.index)
                 } label: {
                     displayToolbarPill(
                         badge: spatialPos + 1,
@@ -156,10 +274,7 @@ struct ScreenMapView: View {
             }
 
             Button {
-                editor.cycleNextDisplay()
-                controller.focusViewportPreset(editor.activeViewportPreset ?? .main, flashView: false)
-                controller.flash(editor.focusedDisplay?.label ?? "All displays")
-                controller.objectWillChange.send()
+                controller.stepDisplayFocus(.next)
             } label: {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 8, weight: .semibold))
@@ -1316,8 +1431,6 @@ struct ScreenMapView: View {
     // MARK: - Layer Sidebar
 
     private func layerSidebar(editor: ScreenMapEditorState) -> some View {
-        let layers = editor.effectiveLayers
-
         return VStack(spacing: 0) {
             // Header
             HStack {
@@ -1337,146 +1450,61 @@ struct ScreenMapView: View {
             }
             .padding(.bottom, 8)
 
-            // "All" row
+            // Layer list
             ScrollView(.vertical, showsIndicators: false) {
+                let namedLayers = editor.namedEffectiveLayers
+                let unnamedLayers = editor.unnamedEffectiveLayers
+
                 VStack(spacing: 2) {
                     layerTreeHeader(
                         label: "All",
-                        count: editor.focusedDisplayIndex != nil
-                            ? editor.windows.filter { $0.displayIndex == editor.focusedDisplayIndex! }.count
-                            : editor.windows.count,
+                        count: editor.scopedWindowCount,
                         isActive: editor.isShowingAll,
                         color: Palette.running
                     ) {
                         editor.selectLayer(nil)
-                        controller.objectWillChange.send()
                     }
 
-                    // Per-layer tree nodes
-                    ForEach(layers, id: \.self) { layer in
-                        let displayName = editor.layerDisplayName(for: layer)
-                        let fullName = editor.layerNames[layer]
-                        let color = Self.layerColor(for: layer)
-                        let isActive = editor.isLayerSelected(layer)
-                        let isDropTarget = dropTargetLayer == layer
-                        let layerWindows = layerWindowsForTree(editor: editor, layer: layer)
+                    ForEach(namedLayers, id: \.self) { layer in
+                        layerRow(layer: layer, editor: editor)
+                    }
 
-                        VStack(spacing: 0) {
-                            layerTreeHeader(label: fullName ?? displayName,
-                                            count: layerWindows.count,
-                                            isActive: isActive,
-                                            color: color,
-                                            isExpandable: true,
-                                            isExpanded: expandedLayers.contains(layer),
-                                            onToggleExpand: {
-                                                if expandedLayers.contains(layer) {
-                                                    expandedLayers.remove(layer)
-                                                } else {
-                                                    expandedLayers.insert(layer)
-                                                }
-                                            }) {
-                                if NSEvent.modifierFlags.contains(.command) {
-                                    editor.toggleLayerSelection(layer)
-                                } else {
-                                    editor.selectLayer(layer)
-                                }
-                                // Auto-expand on selection
-                                expandedLayers.insert(layer)
-                                controller.objectWillChange.send()
-                            }
+                    if !unnamedLayers.isEmpty {
+                        HStack(spacing: 4) {
+                            let totalWindows = unnamedLayers.reduce(0) { $0 + editor.layerTreeWindows(for: $1).count }
+                            Image(systemName: showUnnamedLayers ? "chevron.down" : "chevron.right")
+                                .font(.system(size: 6, weight: .bold))
+                                .foregroundColor(Palette.textMuted)
+                            Text("\(unnamedLayers.count) more")
+                                .font(Typo.mono(8))
+                                .foregroundColor(Palette.textMuted)
+                            Text("· \(totalWindows)w")
+                                .font(Typo.mono(7))
+                                .foregroundColor(Palette.textDim)
+                            Spacer()
+                        }
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 4)
+                        .contentShape(Rectangle())
+                        .simultaneousGesture(TapGesture().onEnded { showUnnamedLayers.toggle() })
 
-                            // Window children (shown when layer is expanded)
-                            if expandedLayers.contains(layer) {
-                                VStack(spacing: 0) {
-                                    ForEach(layerWindows) { win in
-                                        let isSelected = controller.selectedWindowIds.contains(win.id)
-                                        let isDragging = sidebarDragWindowId == win.id
-                                        HStack(spacing: 4) {
-                                            Rectangle()
-                                                .fill(color.opacity(0.4))
-                                                .frame(width: 1, height: 12)
-                                                .padding(.leading, 8)
-                                            Text(win.app)
-                                                .font(Typo.mono(8))
-                                                .foregroundColor(isSelected ? Palette.running : Palette.textDim)
-                                                .lineLimit(1)
-                                            Spacer()
-                                            if win.hasEdits {
-                                                Circle()
-                                                    .fill(Color.orange)
-                                                    .frame(width: 4, height: 4)
-                                            }
-                                        }
-                                        .padding(.vertical, 2)
-                                        .padding(.horizontal, 4)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 3)
-                                                .fill(isSelected ? Palette.running.opacity(0.08) : Color.clear)
-                                        )
-                                        .contentShape(Rectangle())
-                                        .opacity(isDragging ? 0.4 : 1.0)
-                                        .offset(isDragging ? sidebarDragOffset : .zero)
-                                        .zIndex(isDragging ? 10 : 0)
-                                        .gesture(
-                                            DragGesture(minimumDistance: 4, coordinateSpace: .named("layerSidebar"))
-                                                .onChanged { value in
-                                                    sidebarDragWindowId = win.id
-                                                    sidebarDragOffset = value.translation
-                                                    controller.selectSingle(win.id)
-                                                    // Hit-test layer rows
-                                                    let pt = value.location
-                                                    var hit: Int? = nil
-                                                    for (l, frame) in layerRowFrames {
-                                                        if l != layer && frame.contains(pt) {
-                                                            hit = l
-                                                            break
-                                                        }
-                                                    }
-                                                    dropTargetLayer = hit
-                                                }
-                                                .onEnded { _ in
-                                                    if let targetLayer = dropTargetLayer {
-                                                        editor.reassignLayer(windowId: win.id, toLayer: targetLayer, fitToAvailable: true)
-                                                        controller.flash("Moved to L\(targetLayer)")
-                                                        controller.objectWillChange.send()
-                                                    }
-                                                    sidebarDragWindowId = nil
-                                                    sidebarDragOffset = .zero
-                                                    dropTargetLayer = nil
-                                                }
-                                        )
-                                        .onTapGesture {
-                                            if NSEvent.modifierFlags.contains(.command) {
-                                                controller.toggleSelection(win.id)
-                                            } else {
-                                                controller.selectSingle(win.id)
-                                            }
-                                        }
-                                    }
-                                }
-                                .padding(.leading, 4)
-                                .padding(.top, 2)
+                        if showUnnamedLayers {
+                            ForEach(unnamedLayers, id: \.self) { layer in
+                                layerRow(layer: layer, editor: editor)
                             }
                         }
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 4)
-                                .strokeBorder(isDropTarget ? Palette.running : Color.clear, lineWidth: 1.5)
-                        )
-                        .background(
-                            GeometryReader { geo in
-                                Color.clear.preference(key: LayerRowFrameKey.self,
-                                    value: [layer: geo.frame(in: .named("layerSidebar"))])
-                            }
-                        )
                     }
                 }
             }
             .coordinateSpace(name: "layerSidebar")
 
             Spacer(minLength: 8)
-            windowSetsSection(editor: editor)
-            Spacer(minLength: 8)
-            canvasExplorer(editor: editor)
+            collapsibleSection(title: "SETS", count: controller.windowSets.count, isExpanded: $showSets) {
+                windowSetsSection(editor: editor)
+            }
+            collapsibleSection(title: "EXPLORER", count: editor.canvasExplorerRegions.count, isExpanded: $showExplorer) {
+                canvasExplorer(editor: editor)
+            }
             Spacer(minLength: 8)
             sidebarMiniMap(editor: editor)
         }
@@ -1486,12 +1514,163 @@ struct ScreenMapView: View {
         .onPreferenceChange(LayerRowFrameKey.self) { layerRowFrames = $0 }
     }
 
-    private func layerWindowsForTree(editor: ScreenMapEditorState, layer: Int) -> [ScreenMapWindowEntry] {
-        var wins = editor.windows.filter { $0.layer == layer }
-        if let dIdx = editor.focusedDisplayIndex {
-            wins = wins.filter { $0.displayIndex == dIdx }
+    @ViewBuilder
+    private func layerRow(layer: Int, editor: ScreenMapEditorState) -> some View {
+        let displayName = editor.layerDisplayName(for: layer)
+        let fullName = editor.layerNames[layer]
+        let color = Self.layerColor(for: layer)
+        let isActive = editor.isLayerSelected(layer)
+        let isDropTarget = dropTargetLayer == layer
+        let layerWindows = editor.layerTreeWindows(for: layer)
+
+        VStack(spacing: 0) {
+            layerTreeHeader(label: fullName ?? displayName,
+                            count: layerWindows.count,
+                            isActive: isActive,
+                            color: color,
+                            isExpandable: true,
+                            isExpanded: expandedLayers.contains(layer),
+                            onToggleExpand: { toggleExpandedLayer(layer) }) {
+                selectSidebarLayer(layer, editor: editor)
+            }
+
+            if expandedLayers.contains(layer) {
+                VStack(spacing: 0) {
+                    ForEach(layerWindows) { win in
+                        let isSelected = controller.selectedWindowIds.contains(win.id)
+                        let isDragging = sidebarDragWindowId == win.id
+                        HStack(spacing: 4) {
+                            Rectangle()
+                                .fill(color.opacity(0.4))
+                                .frame(width: 1, height: 12)
+                                .padding(.leading, 8)
+                            Text(win.app)
+                                .font(Typo.mono(8))
+                                .foregroundColor(isSelected ? Palette.running : Palette.textDim)
+                                .lineLimit(1)
+                            Spacer()
+                            if win.hasEdits {
+                                Circle()
+                                    .fill(Color.orange)
+                                    .frame(width: 4, height: 4)
+                            }
+                        }
+                        .padding(.vertical, 2)
+                        .padding(.horizontal, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(isSelected ? Palette.running.opacity(0.08) : Color.clear)
+                        )
+                        .contentShape(Rectangle())
+                        .opacity(isDragging ? 0.4 : 1.0)
+                        .offset(isDragging ? sidebarDragOffset : .zero)
+                        .zIndex(isDragging ? 10 : 0)
+                        .gesture(
+                            DragGesture(minimumDistance: 4, coordinateSpace: .named("layerSidebar"))
+                                .onChanged { value in
+                                    handleSidebarWindowDragChanged(value, sourceLayer: layer, windowId: win.id)
+                                }
+                                .onEnded { _ in
+                                    finishSidebarWindowDrag(win, editor: editor)
+                                }
+                        )
+                        .simultaneousGesture(TapGesture().onEnded {
+                            selectSidebarWindow(win.id)
+                        })
+                    }
+                }
+                .padding(.leading, 4)
+                .padding(.top, 2)
+            }
         }
-        return wins.sorted { $0.zIndex < $1.zIndex }
+        .overlay(
+            RoundedRectangle(cornerRadius: 4)
+                .strokeBorder(isDropTarget ? Palette.running : Color.clear, lineWidth: 1.5)
+        )
+        .background(
+            GeometryReader { geo in
+                Color.clear.preference(key: LayerRowFrameKey.self,
+                    value: [layer: geo.frame(in: .named("layerSidebar"))])
+            }
+        )
+    }
+
+    private func toggleExpandedLayer(_ layer: Int) {
+        if expandedLayers.contains(layer) {
+            expandedLayers.remove(layer)
+        } else {
+            expandedLayers.insert(layer)
+        }
+    }
+
+    private func selectSidebarLayer(_ layer: Int, editor: ScreenMapEditorState) {
+        if NSEvent.modifierFlags.contains(.command) {
+            editor.toggleLayerSelection(layer)
+        } else {
+            editor.selectLayer(layer)
+        }
+        expandedLayers.insert(layer)
+    }
+
+    private func selectSidebarWindow(_ windowId: UInt32) {
+        if NSEvent.modifierFlags.contains(.command) {
+            controller.toggleSelection(windowId)
+        } else {
+            controller.selectSingle(windowId)
+        }
+    }
+
+    private func resolveSidebarDropTarget(at point: CGPoint, excluding layer: Int) -> Int? {
+        for (candidate, frame) in layerRowFrames where candidate != layer {
+            if frame.contains(point) {
+                return candidate
+            }
+        }
+        return nil
+    }
+
+    private func handleSidebarWindowDragChanged(_ value: DragGesture.Value, sourceLayer: Int, windowId: UInt32) {
+        sidebarDragWindowId = windowId
+        sidebarDragOffset = value.translation
+        controller.selectSingle(windowId)
+        dropTargetLayer = resolveSidebarDropTarget(at: value.location, excluding: sourceLayer)
+    }
+
+    private func finishSidebarWindowDrag(_ win: ScreenMapWindowEntry, editor: ScreenMapEditorState) {
+        if let targetLayer = dropTargetLayer {
+            editor.reassignLayer(windowId: win.id, toLayer: targetLayer, fitToAvailable: true)
+            controller.flash("Moved to L\(targetLayer)")
+        }
+        sidebarDragWindowId = nil
+        sidebarDragOffset = .zero
+        dropTargetLayer = nil
+    }
+
+    private func collapsibleSection<Content: View>(title: String, count: Int, isExpanded: Binding<Bool>,
+                                                     @ViewBuilder content: @escaping () -> Content) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 4) {
+                Image(systemName: isExpanded.wrappedValue ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 6, weight: .bold))
+                    .foregroundColor(Palette.textMuted)
+                Text(title)
+                    .font(Typo.monoBold(8))
+                    .foregroundColor(Palette.textMuted)
+                Text("\(count)")
+                    .font(Typo.mono(7))
+                    .foregroundColor(Palette.textDim)
+                Spacer()
+            }
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+            .simultaneousGesture(TapGesture().onEnded { isExpanded.wrappedValue.toggle() })
+
+            if isExpanded.wrappedValue {
+                content()
+                    .padding(.top, 4)
+            }
+        }
+        .padding(.bottom, 4)
     }
 
     private func windowSetsSection(editor: ScreenMapEditorState) -> some View {
@@ -1499,55 +1678,28 @@ struct ScreenMapView: View {
         let canSave = !controller.selectedWindowIds.isEmpty
 
         return VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Text("SETS")
-                    .font(Typo.monoBold(8))
-                    .foregroundColor(Palette.textMuted)
-                Text("\(sets.count)")
-                    .font(Typo.mono(7))
-                    .foregroundColor(Palette.textDim)
-                Spacer()
-                Button {
-                    controller.createWindowSetFromSelection()
-                } label: {
-                    Text("u save")
-                        .font(Typo.monoBold(7))
-                        .foregroundColor(canSave ? Self.shelfGreen : Palette.textMuted)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 3)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(canSave ? Self.shelfGreen.opacity(0.12) : Palette.surface.opacity(0.7))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .strokeBorder(canSave ? Self.shelfGreen.opacity(0.25) : Palette.border, lineWidth: 0.5)
-                                )
-                        )
-                }
-                .buttonStyle(.plain)
-                .disabled(!canSave)
-            }
-
             if sets.isEmpty {
-                Text("Save a selection to create a reusable cluster.")
-                    .font(Typo.mono(7))
-                    .foregroundColor(Palette.textMuted)
-                    .padding(.top, 2)
+                HStack {
+                    Text("No sets yet.")
+                        .font(Typo.mono(7))
+                        .foregroundColor(Palette.textMuted)
+                    Spacer()
+                    Button {
+                        controller.createWindowSetFromSelection()
+                    } label: {
+                        Text("u save")
+                            .font(Typo.monoBold(7))
+                            .foregroundColor(canSave ? Self.shelfGreen : Palette.textMuted)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!canSave)
+                }
             } else {
                 ForEach(sets) { set in
                     windowSetRow(set: set, editor: editor)
                 }
             }
         }
-        .padding(6)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color.black.opacity(0.4))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
-                )
-        )
     }
 
     private func windowSetRow(set: ScreenMapWindowSet, editor: ScreenMapEditorState) -> some View {
@@ -1642,118 +1794,60 @@ struct ScreenMapView: View {
                 .fill(isActive ? color.opacity(0.12) : Color.clear)
         )
         .contentShape(Rectangle())
-        .onTapGesture { action() }
+        .simultaneousGesture(TapGesture().onEnded { action() })
     }
 
     // MARK: - Canvas
 
     private func screenMapCanvas(editor: ScreenMapEditorState?) -> some View {
         let isFocused = editor?.focusedDisplayIndex != nil
-        let allWindows = isFocused ? (editor?.focusedVisibleWindows ?? []) : (editor?.visibleWindows ?? [])
+        let canvasWindows = editor?.renderedCanvasWindows ?? []
         let displays = editor?.displays ?? []
         let zoomLevel = editor?.zoomLevel ?? 1.0
         let panOffset = editor?.panOffset ?? .zero
 
         return GeometryReader { geo in
-            let availW = geo.size.width - 24
-            let availH = geo.size.height - 16
-
-            let bboxPad: CGFloat = (!isFocused && displays.count > 1) ? 40 : 0
-            let bbox: CGRect = {
-                if let editor {
-                    return editor.canvasWorldBounds
-                }
-                guard !displays.isEmpty else {
-                    let s = NSScreen.main?.frame ?? CGRect(x: 0, y: 0, width: 1920, height: 1080)
-                    return CGRect(origin: .zero, size: s.size)
-                }
-                var union = displays[0].cgRect
-                for d in displays.dropFirst() { union = union.union(d.cgRect) }
-                return union.insetBy(dx: -bboxPad, dy: -bboxPad)
-            }()
-            let bboxOriginPt = bbox.origin
-            let screenW = bbox.width
-            let screenH = bbox.height
-
-            let fitScale = min(availW / screenW, availH / screenH)
-            let effScale = fitScale * zoomLevel
-            let mapW = screenW * effScale
-            let mapH = screenH * effScale
-            let centerX = (geo.size.width - mapW) / 2
-            let centerY = (geo.size.height - mapH) / 2
+            let metrics = CanvasMetrics(editor: editor, displays: displays, viewportSize: geo.size)
+            let syncKey = CanvasSyncKey(
+                viewportSize: geo.size,
+                worldBounds: metrics.worldBounds,
+                zoomLevel: zoomLevel,
+                navigationRevision: editor?.canvasNavigationRevision ?? 0
+            )
 
             ZStack(alignment: .topLeading) {
                 // Per-display background rectangles
-                if isFocused, let focused = editor?.focusedDisplay, let editor = editor {
-                    focusedDisplayBackground(focused: focused, editor: editor, mapW: mapW, mapH: mapH)
+                if isFocused, editor?.focusedDisplay != nil {
+                    focusedDisplayBackground(mapSize: metrics.mapSize)
                 } else if displays.count > 1 {
-                    multiDisplayBackgrounds(displays: displays, editor: editor, effScale: effScale, bboxOrigin: bboxOriginPt)
+                    multiDisplayBackgrounds(displays: displays, editor: editor, metrics: metrics)
                 } else {
-                    singleDisplayBackground(displays: displays, mapW: mapW, mapH: mapH)
+                    singleDisplayBackground(mapSize: metrics.mapSize)
                 }
 
                 // Ghost outlines for edited windows
-                ForEach(allWindows.filter(\.hasEdits)) { win in
-                    let f = win.originalFrame
-                    let x = (f.origin.x - bboxOriginPt.x) * effScale
-                    let y = (f.origin.y - bboxOriginPt.y) * effScale
-                    let w = max(f.width * effScale, 4)
-                    let h = max(f.height * effScale, 4)
+                ForEach(canvasWindows.filter(\.hasEdits)) { win in
+                    let rect = metrics.mapRect(for: win.originalFrame)
 
                     RoundedRectangle(cornerRadius: 2)
                         .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
                         .foregroundColor(Palette.textMuted.opacity(0.4))
-                        .frame(width: w, height: h)
-                        .offset(x: x, y: y)
+                        .frame(width: rect.width, height: rect.height)
+                        .offset(x: rect.minX, y: rect.minY)
                 }
 
                 // Live windows back-to-front
-                ForEach(Array(allWindows.sorted(by: { $0.zIndex > $1.zIndex }).enumerated()), id: \.element.id) { _, win in
-                    windowTile(win: win, editor: editor, scale: effScale, bboxOrigin: bboxOriginPt)
+                ForEach(Array(canvasWindows.sorted(by: { $0.zIndex > $1.zIndex }).enumerated()), id: \.element.id) { _, win in
+                    windowTile(win: win, editor: editor, metrics: metrics)
                 }
             }
-            .frame(width: mapW, height: mapH)
-            .offset(x: centerX + panOffset.x, y: centerY + panOffset.y)
+            .frame(width: metrics.mapSize.width, height: metrics.mapSize.height)
+            .offset(x: metrics.centerOffset.x + panOffset.x, y: metrics.centerOffset.y + panOffset.y)
             .onAppear {
-                syncCanvasGeometry(editor: editor, fitScale: fitScale, scale: effScale,
-                                   offsetX: centerX, offsetY: centerY,
-                                   viewportSize: CGSize(width: max(geo.size.width - 16, 1), height: max(geo.size.height - 16, 1)),
-                                   screenSize: CGSize(width: screenW, height: screenH),
-                                   bboxOrigin: bboxOriginPt)
+                syncCanvasGeometry(editor: editor, metrics: metrics)
             }
-            .onChange(of: geo.size) { _ in
-                let newFitScale = min((geo.size.width - 24) / screenW, (geo.size.height - 16) / screenH)
-                let newEffScale = newFitScale * zoomLevel
-                let newMapW = screenW * newEffScale
-                let newMapH = screenH * newEffScale
-                let newCX = (geo.size.width - newMapW) / 2
-                let newCY = (geo.size.height - newMapH) / 2
-                syncCanvasGeometry(editor: editor, fitScale: newFitScale, scale: newEffScale,
-                                   offsetX: newCX, offsetY: newCY,
-                                   viewportSize: CGSize(width: max(geo.size.width - 16, 1), height: max(geo.size.height - 16, 1)),
-                                   screenSize: CGSize(width: screenW, height: screenH),
-                                   bboxOrigin: bboxOriginPt)
-            }
-            .onChange(of: bbox) { _ in
-                syncCanvasGeometry(editor: editor, fitScale: fitScale, scale: effScale,
-                                   offsetX: centerX, offsetY: centerY,
-                                   viewportSize: CGSize(width: max(geo.size.width - 16, 1), height: max(geo.size.height - 16, 1)),
-                                   screenSize: CGSize(width: screenW, height: screenH),
-                                   bboxOrigin: bboxOriginPt)
-            }
-            .onChange(of: zoomLevel) { _ in
-                syncCanvasGeometry(editor: editor, fitScale: fitScale, scale: effScale,
-                                   offsetX: centerX, offsetY: centerY,
-                                   viewportSize: CGSize(width: max(geo.size.width - 16, 1), height: max(geo.size.height - 16, 1)),
-                                   screenSize: CGSize(width: screenW, height: screenH),
-                                   bboxOrigin: bboxOriginPt)
-            }
-            .onChange(of: editor?.canvasNavigationRevision ?? 0) { _ in
-                syncCanvasGeometry(editor: editor, fitScale: fitScale, scale: effScale,
-                                   offsetX: centerX, offsetY: centerY,
-                                   viewportSize: CGSize(width: max(geo.size.width - 16, 1), height: max(geo.size.height - 16, 1)),
-                                   screenSize: CGSize(width: screenW, height: screenH),
-                                   bboxOrigin: bboxOriginPt)
+            .onChange(of: syncKey) { _ in
+                syncCanvasGeometry(editor: editor, metrics: metrics)
             }
         }
         .padding(8)
@@ -1805,7 +1899,7 @@ struct ScreenMapView: View {
 
     // MARK: - Display Backgrounds
 
-    private func focusedDisplayBackground(focused: DisplayGeometry, editor: ScreenMapEditorState, mapW: CGFloat, mapH: CGFloat) -> some View {
+    private func focusedDisplayBackground(mapSize: CGSize) -> some View {
         ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: 6)
                 .fill(Palette.bg.opacity(0.5))
@@ -1816,15 +1910,12 @@ struct ScreenMapView: View {
                 .contentShape(Rectangle())
                 .onTapGesture { controller.clearSelection() }
         }
-        .frame(width: mapW, height: mapH)
+        .frame(width: mapSize.width, height: mapSize.height)
     }
 
-    private func multiDisplayBackgrounds(displays: [DisplayGeometry], editor: ScreenMapEditorState?, effScale: CGFloat, bboxOrigin: CGPoint) -> some View {
+    private func multiDisplayBackgrounds(displays: [DisplayGeometry], editor: ScreenMapEditorState?, metrics: CanvasMetrics) -> some View {
         ForEach(displays, id: \.index) { disp in
-            let dx = (disp.cgRect.origin.x - bboxOrigin.x) * effScale
-            let dy = (disp.cgRect.origin.y - bboxOrigin.y) * effScale
-            let dw = disp.cgRect.width * effScale
-            let dh = disp.cgRect.height * effScale
+            let frame = metrics.mapRect(for: disp.cgRect, minimumSize: 12)
             let bezel: CGFloat = 3
 
             ZStack {
@@ -1862,15 +1953,14 @@ struct ScreenMapView: View {
             }
             .contentShape(Rectangle())
             .onTapGesture {
-                editor?.focusDisplay(disp.index)
-                controller.objectWillChange.send()
+                controller.setDisplayFocus(disp.index)
             }
-            .frame(width: dw, height: dh)
-            .offset(x: dx, y: dy)
+            .frame(width: frame.width, height: frame.height)
+            .offset(x: frame.minX, y: frame.minY)
         }
     }
 
-    private func singleDisplayBackground(displays: [DisplayGeometry], mapW: CGFloat, mapH: CGFloat) -> some View {
+    private func singleDisplayBackground(mapSize: CGSize) -> some View {
         ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: 6)
                 .fill(Palette.bg.opacity(0.5))
@@ -1882,18 +1972,16 @@ struct ScreenMapView: View {
                 .onTapGesture { controller.clearSelection() }
 
         }
-        .frame(width: mapW, height: mapH)
+        .frame(width: mapSize.width, height: mapSize.height)
     }
 
     // MARK: - Window Tile
 
     @ViewBuilder
-    private func windowTile(win: ScreenMapWindowEntry, editor: ScreenMapEditorState?, scale: CGFloat, bboxOrigin: CGPoint = .zero) -> some View {
-        let f = win.virtualFrame
-        let x = (f.origin.x - bboxOrigin.x) * scale
-        let y = (f.origin.y - bboxOrigin.y) * scale
-        let w = max(f.width * scale, 4)
-        let h = max(f.height * scale, 4)
+    private func windowTile(win: ScreenMapWindowEntry, editor: ScreenMapEditorState?, metrics: CanvasMetrics) -> some View {
+        let rect = metrics.mapRect(for: win.virtualFrame)
+        let w = rect.width
+        let h = rect.height
         let isSelected = controller.selectedWindowIds.contains(win.id)
         let isDragging = editor?.draggingWindowId == win.id
         let isInActiveLayer = editor?.isLayerSelected(win.layer) ?? true
@@ -1999,7 +2087,7 @@ struct ScreenMapView: View {
                     .shadow(color: Self.shelfGreen.opacity(0.5), radius: 6)
             }
         }
-        .offset(x: x, y: y)
+        .offset(x: rect.minX, y: rect.minY)
         .opacity(isInActiveLayer ? 1.0 : 0.3)
         .shadow(color: isDragging ? Palette.running.opacity(0.4) : .clear,
                 radius: isDragging ? 6 : 0)
@@ -2088,11 +2176,7 @@ struct ScreenMapView: View {
         let pct = Int(editor.zoomLevel * 100)
         return HStack(spacing: 0) {
             Button {
-                let newZoom = max(ScreenMapEditorState.minZoom, editor.zoomLevel - 0.25)
-                editor.activeViewportPreset = nil
-                editor.zoomLevel = newZoom
-                editor.objectWillChange.send()
-                controller.objectWillChange.send()
+                controller.adjustZoom(by: -0.25)
             } label: {
                 Image(systemName: "minus")
                     .font(.system(size: 9, weight: .medium))
@@ -2116,11 +2200,7 @@ struct ScreenMapView: View {
             Rectangle().fill(Palette.border).frame(width: 0.5, height: 12)
 
             Button {
-                let newZoom = min(ScreenMapEditorState.maxZoom, editor.zoomLevel + 0.25)
-                editor.activeViewportPreset = nil
-                editor.zoomLevel = newZoom
-                editor.objectWillChange.send()
-                controller.objectWillChange.send()
+                controller.adjustZoom(by: 0.25)
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 9, weight: .medium))
@@ -2325,164 +2405,115 @@ struct ScreenMapView: View {
     @ViewBuilder
     private func sidebarMiniMap(editor: ScreenMapEditorState) -> some View {
         let displays = editor.displays
-        let windows = editor.focusedDisplayIndex != nil ? editor.focusedVisibleWindows : editor.visibleWindows
-        let world = editor.canvasWorldBounds
-        let viewport = editor.viewportWorldRect
+        let windows = editor.renderedCanvasWindows
         let miniW: CGFloat = sidebarWidth - 28
         let miniH: CGFloat = 118
-        let scaleW = miniW / max(world.width, 1)
-        let scaleH = miniH / max(world.height, 1)
-        let scale = min(scaleW, scaleH)
-        let drawW = world.width * scale
-        let drawH = world.height * scale
-        let offsetX = (miniW - drawW) / 2
-        let offsetY = (miniH - drawH) / 2
+        let metrics = MiniMapMetrics(
+            worldBounds: editor.canvasWorldBounds,
+            canvasSize: CGSize(width: miniW, height: miniH)
+        )
 
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Text("MAP")
-                    .font(Typo.monoBold(8))
-                    .foregroundColor(Palette.textMuted)
-                Spacer()
-                Text("drag to pan")
-                    .font(Typo.mono(7))
-                    .foregroundColor(Palette.textMuted)
-            }
-
-            ZStack(alignment: .topLeading) {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.black.opacity(0.28))
+        sidebarPanel {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Text("MAP")
+                        .font(Typo.monoBold(8))
+                        .foregroundColor(Palette.textMuted)
+                    Spacer()
+                    Text("drag to pan")
+                        .font(Typo.mono(7))
+                        .foregroundColor(Palette.textMuted)
+                }
 
                 ZStack(alignment: .topLeading) {
-                    RoundedRectangle(cornerRadius: 5)
-                        .fill(Palette.bg.opacity(0.35))
-                        .frame(width: drawW, height: drawH)
-                        .offset(x: offsetX, y: offsetY)
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color.black.opacity(0.28))
 
-                    ForEach(displays, id: \.index) { disp in
-                        let dx = (disp.cgRect.origin.x - world.origin.x) * scale + offsetX
-                        let dy = (disp.cgRect.origin.y - world.origin.y) * scale + offsetY
-                        let dw = disp.cgRect.width * scale
-                        let dh = disp.cgRect.height * scale
-                        let isFocused = editor.focusedDisplayIndex == nil || editor.focusedDisplayIndex == disp.index
+                    ZStack(alignment: .topLeading) {
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(Palette.bg.opacity(0.35))
+                            .frame(width: metrics.drawSize.width, height: metrics.drawSize.height)
+                            .offset(x: metrics.offset.x, y: metrics.offset.y)
 
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(isFocused ? Color.white.opacity(0.05) : Color.white.opacity(0.02))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 3)
-                                    .strokeBorder(
-                                        editor.focusedDisplayIndex == disp.index ? Palette.running.opacity(0.55) : Color.white.opacity(0.12),
-                                        lineWidth: editor.focusedDisplayIndex == disp.index ? 1 : 0.5
-                                    )
+                        ForEach(displays, id: \.index) { disp in
+                            let rect = metrics.rect(for: disp.cgRect, minimumSize: 12)
+                            let isFocused = editor.focusedDisplayIndex == nil || editor.focusedDisplayIndex == disp.index
+
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(isFocused ? Color.white.opacity(0.05) : Color.white.opacity(0.02))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 3)
+                                        .strokeBorder(
+                                            editor.focusedDisplayIndex == disp.index ? Palette.running.opacity(0.55) : Color.white.opacity(0.12),
+                                            lineWidth: editor.focusedDisplayIndex == disp.index ? 1 : 0.5
+                                        )
+                                )
+                                .frame(width: rect.width, height: rect.height)
+                                .offset(x: rect.minX, y: rect.minY)
+                        }
+
+                        ForEach(Array(windows.sorted(by: { $0.zIndex > $1.zIndex }).enumerated()), id: \.element.id) { _, win in
+                            let rect = metrics.rect(for: win.virtualFrame, minimumSize: 2)
+                            let isSelected = controller.selectedWindowIds.contains(win.id)
+
+                            RoundedRectangle(cornerRadius: 1.5)
+                                .fill((isSelected ? Palette.running : Self.layerColor(for: win.layer)).opacity(isSelected ? 0.35 : 0.18))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 1.5)
+                                        .strokeBorder(isSelected ? Palette.running.opacity(0.85) : Color.white.opacity(0.12), lineWidth: isSelected ? 1 : 0.5)
+                                )
+                                .frame(width: rect.width, height: rect.height)
+                                .offset(x: rect.minX, y: rect.minY)
+                        }
+
+                        let viewportRect = metrics.rect(for: editor.viewportWorldRect, minimumSize: 12)
+
+                        RoundedRectangle(cornerRadius: 4)
+                            .strokeBorder(Palette.running.opacity(0.9), lineWidth: 1.25)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(Palette.running.opacity(0.08))
                             )
-                            .frame(width: max(dw, 12), height: max(dh, 12))
-                            .offset(x: dx, y: dy)
+                            .frame(width: viewportRect.width, height: viewportRect.height)
+                            .offset(x: viewportRect.minX, y: viewportRect.minY)
                     }
+                }
+                .frame(width: miniW, height: miniH)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            controller.recenterViewport(at: metrics.worldPoint(for: value.location))
+                        }
+                )
 
-                    ForEach(Array(windows.sorted(by: { $0.zIndex > $1.zIndex }).enumerated()), id: \.element.id) { _, win in
-                        let rect = win.virtualFrame
-                        let x = (rect.origin.x - world.origin.x) * scale + offsetX
-                        let y = (rect.origin.y - world.origin.y) * scale + offsetY
-                        let w = max(rect.width * scale, 2)
-                        let h = max(rect.height * scale, 2)
-                        let isSelected = controller.selectedWindowIds.contains(win.id)
-
-                        RoundedRectangle(cornerRadius: 1.5)
-                            .fill((isSelected ? Palette.running : Self.layerColor(for: win.layer)).opacity(isSelected ? 0.35 : 0.18))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 1.5)
-                                    .strokeBorder(isSelected ? Palette.running.opacity(0.85) : Color.white.opacity(0.12), lineWidth: isSelected ? 1 : 0.5)
+                HStack(spacing: 6) {
+                    mapScopePill("ALL", isActive: editor.focusedDisplayIndex == nil) {
+                        controller.focusCanvas(on: editor.canvasWorldBounds, focusDisplay: nil, zoomToFit: true)
+                    }
+                    ForEach(editor.spatialDisplayOrder, id: \.index) { disp in
+                        mapScopePill("\(editor.spatialNumber(for: disp.index))", isActive: editor.focusedDisplayIndex == disp.index) {
+                            controller.focusCanvas(
+                                on: editor.displayRegion(for: disp.index)?.rect ?? disp.cgRect,
+                                focusDisplay: disp.index,
+                                zoomToFit: true
                             )
-                            .frame(width: w, height: h)
-                            .offset(x: x, y: y)
-                    }
-
-                    let viewportX = (viewport.origin.x - world.origin.x) * scale + offsetX
-                    let viewportY = (viewport.origin.y - world.origin.y) * scale + offsetY
-                    let viewportW = max(viewport.width * scale, 12)
-                    let viewportH = max(viewport.height * scale, 12)
-
-                    RoundedRectangle(cornerRadius: 4)
-                        .strokeBorder(Palette.running.opacity(0.9), lineWidth: 1.25)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(Palette.running.opacity(0.08))
-                        )
-                        .frame(width: viewportW, height: viewportH)
-                        .offset(x: viewportX, y: viewportY)
-                }
-            }
-            .frame(width: miniW, height: miniH)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        let localX = min(max(value.location.x - offsetX, 0), drawW)
-                        let localY = min(max(value.location.y - offsetY, 0), drawH)
-                        let worldPoint = CGPoint(
-                            x: world.origin.x + localX / max(scale, 0.0001),
-                            y: world.origin.y + localY / max(scale, 0.0001)
-                        )
-                        controller.recenterViewport(at: worldPoint)
-                    }
-            )
-
-            HStack(spacing: 6) {
-                mapScopePill("ALL", isActive: editor.focusedDisplayIndex == nil) {
-                    controller.focusCanvas(on: editor.canvasWorldBounds, focusDisplay: nil, zoomToFit: true)
-                }
-                ForEach(editor.spatialDisplayOrder, id: \.index) { disp in
-                    mapScopePill("\(editor.spatialNumber(for: disp.index))", isActive: editor.focusedDisplayIndex == disp.index) {
-                        controller.focusCanvas(
-                            on: editor.canvasExplorerRegions.first(where: { $0.kind == .display && $0.displayIndex == disp.index })?.rect ?? disp.cgRect,
-                            focusDisplay: disp.index,
-                            zoomToFit: true
-                        )
+                        }
                     }
                 }
             }
         }
-        .padding(6)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color.black.opacity(0.4))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
-                )
-        )
     }
 
     private func canvasExplorer(editor: ScreenMapEditorState) -> some View {
         let regions = editor.canvasExplorerRegions
 
         return VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text("EXPLORER")
-                    .font(Typo.monoBold(8))
-                    .foregroundColor(Palette.textMuted)
-                Spacer()
-                if let viewport = controller.editor?.viewportWorldRect {
-                    Text("\(Int(viewport.midX)),\(Int(viewport.midY))")
-                        .font(Typo.mono(7))
-                        .foregroundColor(Palette.textMuted)
-                }
-            }
-
             ForEach(regions.prefix(8)) { region in
                 canvasExplorerRow(region: region)
             }
         }
-        .padding(6)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color.black.opacity(0.4))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
-                )
-        )
     }
 
     private func canvasExplorerRow(region: ScreenMapCanvasRegion) -> some View {
@@ -2591,16 +2622,27 @@ struct ScreenMapView: View {
 
     // MARK: - Helpers
 
-    private func syncCanvasGeometry(editor: ScreenMapEditorState?, fitScale: CGFloat? = nil, scale: CGFloat,
-                                    offsetX: CGFloat, offsetY: CGFloat,
-                                    viewportSize: CGSize,
-                                    screenSize: CGSize, bboxOrigin: CGPoint = .zero) {
-        if let fs = fitScale { editor?.fitScale = fs }
-        editor?.scale = scale
-        editor?.mapOrigin = CGPoint(x: offsetX, y: offsetY)
-        editor?.viewportSize = viewportSize
-        editor?.screenSize = screenSize
-        editor?.bboxOrigin = bboxOrigin
+    @ViewBuilder
+    private func sidebarPanel<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .padding(6)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.black.opacity(0.4))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
+                    )
+            )
+    }
+
+    private func syncCanvasGeometry(editor: ScreenMapEditorState?, metrics: CanvasMetrics) {
+        editor?.fitScale = metrics.fitScale
+        editor?.scale = metrics.effectiveScale
+        editor?.mapOrigin = metrics.centerOffset
+        editor?.viewportSize = metrics.syncedViewportSize
+        editor?.screenSize = metrics.worldBounds.size
+        editor?.bboxOrigin = metrics.worldBounds.origin
         controller.applyPendingCanvasNavigationIfNeeded()
     }
 
@@ -2755,15 +2797,13 @@ struct ScreenMapView: View {
                 return nil
             }
 
-            if let hitId = hoveredWindowId, let editor = controller.editor {
-                screenMapClickWindowId = hitId
+            let flippedPt = flippedScreenPoint(event)
+            if let editor = controller.editor,
+               let hit = canvasHit(flippedScreenPt: flippedPt, editor: editor),
+               hoveredWindowId == hit.id {
+                screenMapClickWindowId = hit.id
                 screenMapClickPoint = event.locationInWindow
-                let flippedPt = flippedScreenPoint(event)
-                if let hit = screenMapHitTestWithRect(flippedScreenPt: flippedPt, editor: editor) {
-                    editor.canvasDragMode = detectDragMode(mapPoint: hit.mapPoint, windowMapRect: hit.mapRect)
-                } else {
-                    editor.canvasDragMode = .move
-                }
+                editor.canvasDragMode = detectDragMode(mapPoint: hit.mapPoint, windowMapRect: hit.mapRect)
             } else {
                 screenMapClickWindowId = nil
             }
@@ -2777,8 +2817,6 @@ struct ScreenMapView: View {
                 let dy = event.locationInWindow.y - start.y
                 editor.activeViewportPreset = nil
                 editor.panOffset = CGPoint(x: spaceDragPanStart.x + dx, y: spaceDragPanStart.y - dy)
-                editor.objectWillChange.send()
-                controller.objectWillChange.send()
                 return nil
             }
 
@@ -2849,8 +2887,6 @@ struct ScreenMapView: View {
             }
 
             editor.syncLayoutFrame(at: idx, to: newFrame)
-            editor.objectWillChange.send()
-            controller.objectWillChange.send()
             return nil
         }
 
@@ -2866,7 +2902,6 @@ struct ScreenMapView: View {
                     editor.draggingWindowId = nil
                     editor.dragStartFrame = nil
                     editor.canvasDragMode = .move
-                    editor.objectWillChange.send()
                 }
                 screenMapClickWindowId = nil
             }
@@ -2882,11 +2917,11 @@ struct ScreenMapView: View {
             let canvasRect = CGRect(origin: screenMapCanvasOrigin, size: screenMapCanvasSize)
             guard canvasRect.contains(flippedPt) else { return event }
 
-            if let hitId = screenMapHitTest(flippedScreenPt: flippedPt, editor: editor) {
-                if !controller.isSelected(hitId) {
-                    controller.selectSingle(hitId)
+            if let hit = canvasHit(flippedScreenPt: flippedPt, editor: editor) {
+                if !controller.isSelected(hit.id) {
+                    controller.selectSingle(hit.id)
                 }
-                showLayerContextMenu(for: hitId, at: event.locationInWindow, in: eventWindow, editor: editor)
+                showLayerContextMenu(for: hit.id, at: event.locationInWindow, in: eventWindow, editor: editor)
                 return nil
             }
             return event
@@ -2938,16 +2973,12 @@ struct ScreenMapView: View {
                 editor.activeViewportPreset = nil
                 editor.zoomLevel = newZoom
                 editor.panOffset = CGPoint(x: newPanX, y: newPanY)
-                editor.objectWillChange.send()
-                controller.objectWillChange.send()
             } else {
                 editor.activeViewportPreset = nil
                 editor.panOffset = CGPoint(
                     x: editor.panOffset.x + event.scrollingDeltaX,
                     y: editor.panOffset.y - event.scrollingDeltaY
                 )
-                editor.objectWillChange.send()
-                controller.objectWillChange.send()
             }
             return nil
         }
@@ -2967,7 +2998,7 @@ struct ScreenMapView: View {
                 return event
             }
 
-            if let hit = screenMapHitTestWithRect(flippedScreenPt: flippedPt, editor: editor) {
+            if let hit = canvasHit(flippedScreenPt: flippedPt, editor: editor) {
                 let mode = detectDragMode(mapPoint: hit.mapPoint, windowMapRect: hit.mapRect)
                 if mode != editor.currentCursorMode {
                     if editor.currentCursorMode != .move { NSCursor.pop() }
@@ -3010,64 +3041,20 @@ struct ScreenMapView: View {
 
     // MARK: - Hit Test / Coordinate Conversion
 
-    private func screenMapHitTest(flippedScreenPt: CGPoint, editor: ScreenMapEditorState) -> UInt32? {
-        let effScale = editor.effectiveScale
-        let origin = editor.mapOrigin
-        let panOffset = editor.panOffset
-        guard effScale > 0 else { return nil }
-
+    private func canvasHit(flippedScreenPt: CGPoint, editor: ScreenMapEditorState) -> CanvasHit? {
+        let projection = CanvasProjection(editor: editor)
+        guard projection.scale > 0 else { return nil }
         let canvasLocal = CGPoint(
             x: flippedScreenPt.x - screenMapCanvasOrigin.x,
             y: flippedScreenPt.y - screenMapCanvasOrigin.y
         )
-        let mapPoint = CGPoint(
-            x: canvasLocal.x - 8 - origin.x - panOffset.x,
-            y: canvasLocal.y - 8 - origin.y - panOffset.y
-        )
-
-        let bboxOrig = editor.bboxOrigin
-        let windowPool = editor.focusedDisplayIndex != nil ? editor.focusedVisibleWindows : editor.windows
-        let sorted = windowPool.sorted(by: { $0.zIndex < $1.zIndex })
+        let mapPoint = projection.mapPoint(forCanvasPoint: canvasLocal)
+        let sorted = editor.renderedCanvasWindows.sorted(by: { $0.zIndex < $1.zIndex })
         for win in sorted {
-            let f = win.virtualFrame
-            let mapRect = CGRect(
-                x: (f.origin.x - bboxOrig.x) * effScale,
-                y: (f.origin.y - bboxOrig.y) * effScale,
-                width: max(f.width * effScale, 4),
-                height: max(f.height * effScale, 4)
-            )
-            if mapRect.contains(mapPoint) { return win.id }
-        }
-        return nil
-    }
-
-    private func screenMapHitTestWithRect(flippedScreenPt: CGPoint, editor: ScreenMapEditorState) -> (id: UInt32, mapRect: CGRect, mapPoint: CGPoint)? {
-        let effScale = editor.effectiveScale
-        let origin = editor.mapOrigin
-        let panOff = editor.panOffset
-        guard effScale > 0 else { return nil }
-
-        let canvasLocal = CGPoint(
-            x: flippedScreenPt.x - screenMapCanvasOrigin.x,
-            y: flippedScreenPt.y - screenMapCanvasOrigin.y
-        )
-        let mapPoint = CGPoint(
-            x: canvasLocal.x - 8 - origin.x - panOff.x,
-            y: canvasLocal.y - 8 - origin.y - panOff.y
-        )
-
-        let bboxOrig = editor.bboxOrigin
-        let windowPool = editor.focusedDisplayIndex != nil ? editor.focusedVisibleWindows : editor.windows
-        let sorted = windowPool.sorted(by: { $0.zIndex < $1.zIndex })
-        for win in sorted {
-            let f = win.virtualFrame
-            let mapRect = CGRect(
-                x: (f.origin.x - bboxOrig.x) * effScale,
-                y: (f.origin.y - bboxOrig.y) * effScale,
-                width: max(f.width * effScale, 4),
-                height: max(f.height * effScale, 4)
-            )
-            if mapRect.contains(mapPoint) { return (win.id, mapRect, mapPoint) }
+            let mapRect = projection.mapRect(for: win.virtualFrame)
+            if mapRect.contains(mapPoint) {
+                return CanvasHit(id: win.id, mapRect: mapRect, mapPoint: mapPoint)
+            }
         }
         return nil
     }
@@ -3181,7 +3168,6 @@ final class ScreenMapMenuTarget: NSObject {
     @objc func performLayerMove(_ sender: NSMenuItem) {
         guard let action = sender.representedObject as? ScreenMapLayerMenuAction else { return }
         action.editor.reassignLayer(windowId: action.windowId, toLayer: action.targetLayer, fitToAvailable: true)
-        action.controller.objectWillChange.send()
     }
 
     @objc func performFocus(_ sender: NSMenuItem) {

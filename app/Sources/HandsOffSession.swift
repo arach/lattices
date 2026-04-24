@@ -327,7 +327,9 @@ final class HandsOffSession: ObservableObject {
                 }
             }
 
-            // Single dispatch — all @Published mutations in one block
+            // Single dispatch — all @Published mutations in one block.
+            // The pending callback also mutates @Published state, so it must
+            // run on main with the rest of the turn completion.
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 if let spoken { self.lastResponse = spoken }
@@ -342,9 +344,8 @@ final class HandsOffSession: ObservableObject {
                     self.executeActions(actions)
                 }
                 self.state = .idle
+                cb?(json)
             }
-
-            cb?(json)
         }
     }
 

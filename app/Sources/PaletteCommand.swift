@@ -365,10 +365,20 @@ enum CommandBuilder {
         ))
 
         commands.append(PaletteCommand(
+            id: "app-home",
+            title: "Home",
+            subtitle: "Open the workspace home view",
+            icon: "house",
+            category: .app,
+            badge: nil,
+            action: { ScreenMapWindowController.shared.showPage(.home) }
+        ))
+
+        commands.append(PaletteCommand(
             id: "app-windows-list",
-            title: "Windows List",
-            subtitle: "Browse all windows across displays",
-            icon: "rectangle.split.2x1",
+            title: "Search",
+            subtitle: "Browse windows, displays, spaces, and screen text",
+            icon: "magnifyingglass",
             category: .app,
             badge: nil,
             action: { ScreenMapWindowController.shared.showPage(.desktopInventory) }
@@ -376,12 +386,22 @@ enum CommandBuilder {
 
         commands.append(PaletteCommand(
             id: "app-screen-map",
-            title: "Window Map",
+            title: "Layout",
             subtitle: "Visual window editor",
             icon: "rectangle.3.group",
             category: .app,
             badge: nil,
             action: { ScreenMapWindowController.shared.showPage(.screenMap) }
+        ))
+
+        commands.append(PaletteCommand(
+            id: "app-workspace-chat",
+            title: "Workspace Chat",
+            subtitle: "Open the longer-form assistant surface",
+            icon: "bubble.left.and.bubble.right",
+            category: .app,
+            badge: nil,
+            action: { ScreenMapWindowController.shared.showPage(.pi) }
         ))
 
         commands.append(PaletteCommand(

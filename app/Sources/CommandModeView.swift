@@ -121,23 +121,6 @@ struct CommandModeView: View {
 
             Spacer()
 
-            if let layer = state.inventory.activeLayer {
-                HStack(spacing: 4) {
-                    Text("Layer: \(layer)")
-                        .font(Typo.mono(10))
-                        .foregroundColor(Palette.running)
-
-                    Text("[\(state.inventory.layerCount > 0 ? "\(WorkspaceManager.shared.activeLayerIndex + 1)/\(state.inventory.layerCount)" : "—")]")
-                        .font(Typo.mono(10))
-                        .foregroundColor(Palette.textMuted)
-                }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Palette.running.opacity(0.10))
-                )
-            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -155,15 +138,12 @@ struct CommandModeView: View {
     private var inventoryGrid: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                let grouped = groupedItems
-                if grouped.isEmpty {
+                let items = state.inventory.items
+                if items.isEmpty {
                     emptyState
                 } else {
-                    ForEach(grouped, id: \.0) { section, items in
-                        sectionHeader(section)
-                        ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                            inventoryRow(item)
-                        }
+                    ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                        inventoryRow(item)
                     }
                 }
             }

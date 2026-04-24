@@ -182,10 +182,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             }
         }
 
-        // --screen-map flag: auto-open screen map on launch
+        // --screen-map flag: auto-open layout on launch
         if CommandLine.arguments.contains("--screen-map") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                ScreenMapWindowController.shared.show()
+                ScreenMapWindowController.shared.showPage(.screenMap)
             }
         }
     }
@@ -199,14 +199,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             // Right-click → context menu
             contextMenu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height + 4), in: button)
         } else {
-            // Left-click → toggle popover
-            if let shown = popover, shown.isShown {
-                shown.performClose(sender)
-            } else {
-                let p = makePopover()
-                p.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-                p.contentViewController?.view.window?.makeKey()
-            }
+            // Left-click → workspace home. Projects remain available from the context menu.
+            popover?.performClose(nil)
+            ScreenMapWindowController.shared.showPage(.home)
         }
     }
 
@@ -232,6 +227,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         return p
     }
 
+    private func showProjectsPopover() {
+        guard let button = statusItem.button else { return }
+        let p = makePopover()
+        p.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        p.contentViewController?.view.window?.makeKey()
+    }
+
     func popoverWillShow(_ notification: Notification) {
         Self.updateActivationPolicy()
         NotificationCenter.default.post(name: .latticesPopoverWillShow, object: nil)
@@ -247,10 +249,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let menu = NSMenu()
 
         let actions: [(String, String, Selector)] = [
+            ("Home", "", #selector(menuWorkspace)),
+            ("Layout", "", #selector(menuLayout)),
+            ("Search", "", #selector(menuSearch)),
             ("Command Palette", "⌘⇧M", #selector(menuCommandPalette)),
-            ("Workspace", "", #selector(menuWorkspace)),
-            ("Assistant", "", #selector(menuAssistant)),
-            ("Help & Shortcuts", "", #selector(menuDocs)),
         ]
         for (title, shortcut, action) in actions {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
@@ -264,6 +266,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         menu.addItem(.separator())
 
         let cliActions: [(String, Selector)] = [
+            ("Projects…", #selector(menuProjects)),
             ("Initialize Project in Terminal…", #selector(menuInitializeProject)),
             ("Launch Project in Terminal…", #selector(menuLaunchProject)),
         ]
@@ -290,14 +293,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     @objc private func menuCommandPalette() { CommandPaletteWindow.shared.toggle() }
     @objc private func menuWorkspace() { ScreenMapWindowController.shared.showPage(.home) }
-    @objc private func menuAssistant() {
-        if AudioLayer.shared.isListening || VoiceCommandWindow.shared.isVisible {
-            VoiceCommandWindow.shared.toggle()
-        } else {
-            OmniSearchWindow.shared.show()
-        }
-    }
+    @objc private func menuLayout() { ScreenMapWindowController.shared.showPage(.screenMap) }
+    @objc private func menuSearch() { ScreenMapWindowController.shared.showPage(.desktopInventory) }
     @objc private func menuDocs() { SettingsWindowController.shared.show() }
+    @objc private func menuProjects() { DispatchQueue.main.async { self.showProjectsPopover() } }
     @objc private func menuInitializeProject() { CliActionLauncher.initializeProjectInTerminal() }
     @objc private func menuLaunchProject() { CliActionLauncher.launchProjectInTerminal() }
     @objc private func menuHUD() { HUDController.shared.toggle() }

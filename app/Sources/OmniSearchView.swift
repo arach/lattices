@@ -3,7 +3,10 @@ import SwiftUI
 struct OmniSearchView: View {
     @ObservedObject var state: OmniSearchState
     var onDismiss: () -> Void
+    var isEmbedded: Bool = false
 
+    @ObservedObject private var ocrModel = OcrModel.shared
+    @State private var expandedOcrWindow: UInt32?
     @FocusState private var searchFocused: Bool
 
     var body: some View {
@@ -46,8 +49,22 @@ struct OmniSearchView: View {
                 resultsView
             }
         }
-        .frame(minWidth: 520, idealWidth: 520, maxWidth: 700, minHeight: 360, idealHeight: 480, maxHeight: 600)
-        .background(PanelBackground())
+        .frame(
+            minWidth: isEmbedded ? 0 : 520,
+            idealWidth: isEmbedded ? nil : 520,
+            maxWidth: isEmbedded ? .infinity : 700,
+            minHeight: isEmbedded ? 0 : 360,
+            idealHeight: isEmbedded ? nil : 480,
+            maxHeight: isEmbedded ? .infinity : 600,
+            alignment: .top
+        )
+        .background {
+            if isEmbedded {
+                Palette.bg
+            } else {
+                PanelBackground()
+            }
+        }
         .preferredColorScheme(.dark)
         .onAppear {
             searchFocused = true
@@ -234,6 +251,10 @@ struct OmniSearchView: View {
                         }
                         .padding(.horizontal, 14)
                     }
+
+                    if !recentOcrResults.isEmpty {
+                        ocrResultsSection
+                    }
                 } else {
                     Text("Loading...")
                         .font(Typo.mono(11))
@@ -242,6 +263,105 @@ struct OmniSearchView: View {
                 }
             }
             .padding(.vertical, 10)
+        }
+    }
+
+    private var recentOcrResults: [OcrWindowResult] {
+        Array(ocrModel.results.values.sorted { $0.timestamp > $1.timestamp }.prefix(10))
+    }
+
+    private var ocrResultsSection: some View {
+        summarySection("SCREEN TEXT", icon: "doc.text.magnifyingglass", count: ocrModel.results.count) {
+            ForEach(recentOcrResults, id: \.wid) { result in
+                ocrResultRow(result)
+            }
+        }
+    }
+
+    private func ocrResultRow(_ result: OcrWindowResult) -> some View {
+        let isExpanded = expandedOcrWindow == result.wid
+        let title = result.title.isEmpty ? "Untitled" : result.title
+        let preview = compactPreview(result.fullText)
+
+        return VStack(alignment: .leading, spacing: 5) {
+            Button {
+                withAnimation(.easeOut(duration: 0.12)) {
+                    expandedOcrWindow = isExpanded ? nil : result.wid
+                }
+            } label: {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 7) {
+                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundColor(Palette.textMuted)
+                            .frame(width: 9)
+
+                        Text(result.app)
+                            .font(Typo.monoBold(11))
+                            .foregroundColor(Palette.textDim)
+                            .lineLimit(1)
+
+                        Text(sourceLabel(result.source))
+                            .font(Typo.mono(8))
+                            .foregroundColor(Palette.textMuted)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(Palette.surface.opacity(0.8))
+                            )
+
+                        Spacer()
+
+                        Text(relativeTime(result.timestamp))
+                            .font(Typo.mono(9))
+                            .foregroundColor(Palette.textMuted)
+                    }
+
+                    Text(title)
+                        .font(Typo.mono(10))
+                        .foregroundColor(Palette.textMuted)
+                        .lineLimit(1)
+
+                    if !isExpanded && !preview.isEmpty {
+                        Text(preview)
+                            .font(Typo.mono(9))
+                            .foregroundColor(Palette.textMuted.opacity(0.75))
+                            .lineLimit(2)
+                    }
+                }
+                .padding(8)
+                .background(
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(Palette.surface.opacity(isExpanded ? 0.72 : 0.38))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 5)
+                                .strokeBorder(Color.white.opacity(isExpanded ? 0.10 : 0.05), lineWidth: 0.5)
+                        )
+                )
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                ScrollView {
+                    Text(result.fullText.isEmpty ? "No text captured." : result.fullText)
+                        .font(Typo.mono(10))
+                        .foregroundColor(Palette.textDim)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(8)
+                }
+                .frame(maxHeight: 140)
+                .background(
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(Color.black.opacity(0.22))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 5)
+                                .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
+                        )
+                )
+            }
         }
     }
 
@@ -284,5 +404,19 @@ struct OmniSearchView: View {
         if seconds < 60 { return "\(seconds)s ago" }
         if seconds < 3600 { return "\(seconds / 60)m ago" }
         return "\(seconds / 3600)h ago"
+    }
+
+    private func sourceLabel(_ source: TextSource) -> String {
+        switch source {
+        case .accessibility: return "AX"
+        case .ocr: return "OCR"
+        }
+    }
+
+    private func compactPreview(_ text: String) -> String {
+        text
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
     }
 }

@@ -13,9 +13,9 @@ enum AppPage: String, CaseIterable {
     var label: String {
         switch self {
         case .home:             return "Home"
-        case .screenMap:        return "Screen Map"
-        case .desktopInventory: return "Desktop Inventory"
-        case .pi:               return "Pi"
+        case .screenMap:        return "Layout"
+        case .desktopInventory: return "Search"
+        case .pi:               return "Chat"
         case .settings:         return "Settings"
         case .docs:             return "Docs"
         }
@@ -25,15 +25,15 @@ enum AppPage: String, CaseIterable {
         switch self {
         case .home:             return "house"
         case .screenMap:        return "rectangle.3.group"
-        case .desktopInventory: return "macwindow.on.rectangle"
-        case .pi:               return "terminal"
+        case .desktopInventory: return "magnifyingglass"
+        case .pi:               return "bubble.left.and.bubble.right"
         case .settings:         return "gearshape"
         case .docs:             return "book"
         }
     }
 
     /// Pages shown as primary tabs in the unified window
-    static var primaryTabs: [AppPage] { [.home, .screenMap, .desktopInventory, .pi] }
+    static var primaryTabs: [AppPage] { [.home, .screenMap, .desktopInventory] }
 }
 
 // MARK: - App Shell View
@@ -41,7 +41,7 @@ enum AppPage: String, CaseIterable {
 struct AppShellView: View {
     @ObservedObject var controller: ScreenMapController
     @ObservedObject var windowController = ScreenMapWindowController.shared
-    @StateObject private var commandState = CommandModeState()
+    @StateObject private var searchState = OmniSearchState()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -54,9 +54,6 @@ struct AppShellView: View {
             contentArea
         }
         .background(Palette.bg)
-        .onAppear {
-            commandState.onDismiss = { windowController.activePage = .home }
-        }
     }
 
     // MARK: - Tab Bar
@@ -66,6 +63,9 @@ struct AppShellView: View {
             ForEach(AppPage.primaryTabs, id: \.rawValue) { tab in
                 tabButton(tab)
             }
+
+            commandPaletteButton
+
             Spacer()
         }
         .padding(.horizontal, 12)
@@ -79,7 +79,6 @@ struct AppShellView: View {
         return Button {
             windowController.activePage = tab
             if tab == .screenMap { controller.enter() }
-            if tab == .desktopInventory { commandState.enter() }
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: tab.icon)
@@ -90,9 +89,32 @@ struct AppShellView: View {
             .foregroundColor(isActive ? Palette.text : Palette.textMuted)
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
+            .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: 6)
                     .fill(isActive ? Palette.surfaceHov : Color.clear)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var commandPaletteButton: some View {
+        Button {
+            CommandPaletteWindow.shared.toggle()
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "command")
+                    .font(.system(size: 10))
+                Text("Command")
+                    .font(Typo.monoBold(11))
+            }
+            .foregroundColor(Palette.textMuted)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.clear)
             )
         }
         .buttonStyle(.plain)
@@ -107,14 +129,17 @@ struct AppShellView: View {
             HomeDashboardView(onNavigate: { page in
                 windowController.activePage = page
                 if page == .screenMap { controller.enter() }
-                if page == .desktopInventory { commandState.enter() }
             })
         case .screenMap:
             ScreenMapView(controller: controller, onNavigate: { page in
                 windowController.activePage = page
             })
         case .desktopInventory:
-            CommandModeView(state: commandState)
+            OmniSearchView(
+                state: searchState,
+                onDismiss: { windowController.activePage = .home },
+                isEmbedded: true
+            )
         case .pi:
             PiWorkspaceView()
         case .settings:

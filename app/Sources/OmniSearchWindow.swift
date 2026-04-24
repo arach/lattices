@@ -65,7 +65,7 @@ final class OmniSearchWindow {
             backing: .buffered,
             defer: false
         )
-        p.title = "Omni Search"
+        p.title = "Search"
         p.titlebarAppearsTransparent = true
         p.titleVisibility = .hidden
         p.isMovableByWindowBackground = true

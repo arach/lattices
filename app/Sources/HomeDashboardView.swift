@@ -30,7 +30,7 @@ struct HomeDashboardView: View {
                         .font(Typo.heading(18))
                         .foregroundColor(Palette.text)
 
-                    Text("Launch workspaces, jump into the screen map, or open a full Pi session from one place.")
+                    Text("Workspace status, project launch, layout, search, and chat in one place.")
                         .font(Typo.mono(11))
                         .foregroundColor(Palette.textDim)
                         .fixedSize(horizontal: false, vertical: true)
@@ -41,8 +41,8 @@ struct HomeDashboardView: View {
 
             HStack(spacing: 10) {
                 homeActionCard(
-                    title: "Screen Map",
-                    subtitle: "Spatial window layout",
+                    title: "Layout",
+                    subtitle: "Arrange windows",
                     icon: "rectangle.3.group",
                     tint: Palette.running
                 ) {
@@ -50,22 +50,22 @@ struct HomeDashboardView: View {
                 }
 
                 homeActionCard(
-                    title: "Desktop Inventory",
-                    subtitle: "Enumerate displays and spaces",
-                    icon: "macwindow.on.rectangle",
+                    title: "Search",
+                    subtitle: "Find workspace context",
+                    icon: "magnifyingglass",
                     tint: Palette.detach
                 ) {
                     onNavigate?(.desktopInventory)
                 }
 
                 homeActionCard(
-                    title: "Pi Workspace",
+                    title: "Chat",
                     subtitle: piSession.hasPiBinary
                         ? (piSession.needsProviderSetup || piSession.isAuthenticating
                             ? piSession.setupStatusSummary
                             : "Standalone conversation surface")
                         : "Install Pi to enable the assistant",
-                    icon: "terminal",
+                    icon: "bubble.left.and.bubble.right",
                     tint: piSession.hasPiBinary ? Palette.text : Palette.kill
                 ) {
                     onNavigate?(.pi)

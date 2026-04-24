@@ -127,5 +127,5 @@ ls -lh "$BUILD_DIR/$DMG_NAME"
 spctl --assess --type open --context context:primary-signature -v "$BUILD_DIR/$DMG_NAME" 2>&1 || true
 
 echo ""
-echo "To release:"
-echo "  gh release create v${VERSION} ${BUILD_DIR}/${DMG_NAME} --title \"v${VERSION}\""
+echo "To ship:"
+echo "  ./scripts/ship.sh"
