@@ -43,9 +43,8 @@ struct MainView: View {
             minWidth: layout == .popover ? 380 : 0,
             idealWidth: layout == .popover ? 380 : nil,
             maxWidth: .infinity,
-            minHeight: layout == .popover ? 520 : 0,
-            idealHeight: layout == .popover ? 560 : nil,
-            maxHeight: .infinity
+            maxHeight: .infinity,
+            alignment: .top
         )
         .background(PanelBackground())
         .preferredColorScheme(.dark)
@@ -86,7 +85,7 @@ struct MainView: View {
         VStack(spacing: 0) {
             if layout == .popover {
                 HStack {
-                    Text("Projects")
+                    Text("Lattices")
                         .font(Typo.mono(14))
                         .foregroundColor(Palette.text)
 
@@ -113,34 +112,34 @@ struct MainView: View {
                 .padding(.horizontal, 18)
                 .padding(.top, 18)
                 .padding(.bottom, 12)
-            }
-
-            // Search
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundColor(Palette.textMuted)
-                    .font(.system(size: 11))
-                TextField("Search projects...", text: $searchText)
-                    .textFieldStyle(.plain)
-                    .font(Typo.body(13))
-                    .foregroundColor(Palette.text)
-                if !searchText.isEmpty {
-                    Button { searchText = "" } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(Palette.textMuted)
-                            .font(.system(size: 11))
+            } else {
+                // Search
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(Palette.textMuted)
+                        .font(.system(size: 11))
+                    TextField("Search projects...", text: $searchText)
+                        .textFieldStyle(.plain)
+                        .font(Typo.body(13))
+                        .foregroundColor(Palette.text)
+                    if !searchText.isEmpty {
+                        Button { searchText = "" } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(Palette.textMuted)
+                                .font(.system(size: 11))
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Palette.surface)
+                )
+                .padding(.horizontal, 14)
+                .padding(.bottom, 10)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Palette.surface)
-            )
-            .padding(.horizontal, 14)
-            .padding(.bottom, 10)
 
             // Permission banner
             if !permChecker.allGranted && !bannerDismissed {
@@ -152,79 +151,93 @@ struct MainView: View {
                 tmuxBanner
             }
 
-            Rectangle()
-                .fill(Palette.border)
-                .frame(height: 0.5)
+            if layout == .popover {
+                Rectangle()
+                    .fill(Palette.border)
+                    .frame(height: 0.5)
 
-            // List
-            if filtered.isEmpty && (workspace.config?.groups ?? []).isEmpty {
-                Spacer()
-                emptyState
-                Spacer()
+                actionsSection
+
+                Rectangle()
+                    .fill(Palette.border)
+                    .frame(height: 0.5)
+
+                bottomBar
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 4) {
-                        // Tab groups section
-                        if let groups = workspace.config?.groups, !groups.isEmpty, searchText.isEmpty {
-                            ForEach(groups) { group in
-                                TabGroupRow(group: group, workspace: workspace)
+                Rectangle()
+                    .fill(Palette.border)
+                    .frame(height: 0.5)
+
+                // List
+                if filtered.isEmpty && (workspace.config?.groups ?? []).isEmpty {
+                    Spacer()
+                    emptyState
+                    Spacer()
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 4) {
+                            // Tab groups section
+                            if let groups = workspace.config?.groups, !groups.isEmpty, searchText.isEmpty {
+                                ForEach(groups) { group in
+                                    TabGroupRow(group: group, workspace: workspace)
+                                }
+
+                                if !filtered.isEmpty {
+                                    Rectangle()
+                                        .fill(Palette.border)
+                                        .frame(height: 0.5)
+                                        .padding(.vertical, 4)
+                                }
                             }
 
-                            if !filtered.isEmpty {
-                                Rectangle()
-                                    .fill(Palette.border)
-                                    .frame(height: 0.5)
-                                    .padding(.vertical, 4)
+                            // Projects
+                            ForEach(filtered) { project in
+                                ProjectRow(project: project) {
+                                    SessionManager.launch(project: project)
+                                } onDetach: {
+                                    SessionManager.detach(project: project)
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                        scanner.refreshStatus()
+                                    }
+                                } onKill: {
+                                    SessionManager.kill(project: project)
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                        scanner.refreshStatus()
+                                    }
+                                } onSync: {
+                                    SessionManager.sync(project: project)
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                                        scanner.refreshStatus()
+                                    }
+                                } onRestart: { paneName in
+                                    SessionManager.restart(project: project, paneName: paneName)
+                                }
+                            }
+
+                            // Orphan sessions
+                            if !filteredOrphans.isEmpty {
+                                orphanSection
                             }
                         }
-
-                        // Projects
-                        ForEach(filtered) { project in
-                            ProjectRow(project: project) {
-                                SessionManager.launch(project: project)
-                            } onDetach: {
-                                SessionManager.detach(project: project)
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                    scanner.refreshStatus()
-                                }
-                            } onKill: {
-                                SessionManager.kill(project: project)
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                    scanner.refreshStatus()
-                                }
-                            } onSync: {
-                                SessionManager.sync(project: project)
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                                    scanner.refreshStatus()
-                                }
-                            } onRestart: { paneName in
-                                SessionManager.restart(project: project, paneName: paneName)
-                            }
-                        }
-
-                        // Orphan sessions
-                        if !filteredOrphans.isEmpty {
-                            orphanSection
-                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
                 }
+
+                Rectangle()
+                    .fill(Palette.border)
+                    .frame(height: 0.5)
+
+                // Actions footer
+                actionsSection
+
+                Rectangle()
+                    .fill(Palette.border)
+                    .frame(height: 0.5)
+
+                // Bottom bar
+                bottomBar
             }
-
-            Rectangle()
-                .fill(Palette.border)
-                .frame(height: 0.5)
-
-            // Actions footer
-            actionsSection
-
-            Rectangle()
-                .fill(Palette.border)
-                .frame(height: 0.5)
-
-            // Bottom bar
-            bottomBar
         }
     }
 

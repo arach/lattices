@@ -199,9 +199,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             // Right-click → context menu
             contextMenu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height + 4), in: button)
         } else {
-            // Left-click → workspace home. Projects remain available from the context menu.
-            popover?.performClose(nil)
-            ScreenMapWindowController.shared.showPage(.home)
+            // Left-click → toggle the menu bar projects popover.
+            if let shown = popover, shown.isShown {
+                shown.performClose(sender)
+            } else {
+                showProjectsPopover()
+            }
         }
     }
 
@@ -219,7 +222,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let p = NSPopover()
         p.contentViewController = NSHostingController(rootView: MainView(scanner: ProjectScanner.shared))
         p.behavior = .transient
-        p.contentSize = NSSize(width: 380, height: 560)
+        p.contentSize = NSSize(width: 380, height: 300)
         p.appearance = NSAppearance(named: .darkAqua)
         p.delegate = self
         popover = p
