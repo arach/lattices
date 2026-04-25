@@ -22,6 +22,7 @@ const REPO = "arach/lattices";
 const RELEASE_APP_ASSET_NAMES = ["Lattices.dmg"];
 const RELEASE_BINARY_ASSET_NAMES = ["Lattices-macos-arm64", "LatticeApp-macos-arm64"];
 type ReleaseAsset = { name: string; browser_download_url: string };
+const selfScriptPath = resolve(__dirname, "lattices-app.ts");
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -77,6 +78,14 @@ function launch(extraArgs: string[] = []): void {
   if (appArgs.length) args.push("--args", ...appArgs);
   spawn("open", args, { detached: true, stdio: "ignore" }).unref();
   console.log("lattices app launched.");
+}
+
+function relaunchIfNeeded(shouldLaunch: boolean, extraArgs: string[] = []): void {
+  if (!shouldLaunch) {
+    console.log("App updated. Launch with: lattices app");
+    return;
+  }
+  launch(extraArgs);
 }
 
 function resolveSigningIdentity(): string | null {
@@ -313,11 +322,48 @@ async function ensureBinary(): Promise<void> {
   process.exit(1);
 }
 
+function spawnDetachedUpdateWorker(extraArgs: string[] = [], shouldLaunch = false): void {
+  const workerArgs = [
+    selfScriptPath,
+    "update",
+    "--worker",
+    ...(shouldLaunch ? ["--launch"] : []),
+    ...extraArgs,
+  ];
+  const child = spawn(process.execPath, workerArgs, {
+    cwd: cliRoot,
+    detached: true,
+    stdio: "ignore",
+  });
+  child.unref();
+}
+
+async function updateApp(extraArgs: string[] = [], shouldLaunch = false): Promise<void> {
+  const wasRunning = isRunning();
+  if (wasRunning) {
+    quit();
+  }
+
+  const downloaded = await download();
+  if (!downloaded) {
+    console.error("Update failed.");
+    if (wasRunning || shouldLaunch || extraArgs.length > 0) {
+      launch(extraArgs);
+    }
+    process.exit(1);
+  }
+
+  relaunchIfNeeded(shouldLaunch || wasRunning || extraArgs.length > 0, extraArgs);
+}
+
 const cmd = process.argv[2];
 const flags = process.argv.slice(3);
 const launchFlags: string[] = [];
 if (flags.includes("--diagnostics") || flags.includes("-d")) launchFlags.push("--diagnostics");
 if (flags.includes("--screen-map") || flags.includes("-m")) launchFlags.push("--screen-map");
+const shouldLaunchAfterUpdate = flags.includes("--launch") || launchFlags.length > 0;
+const shouldDetachUpdate = flags.includes("--detach");
+const isUpdateWorker = flags.includes("--worker");
 
 if (cmd === "build") {
   if (!hasSwift()) {
@@ -343,6 +389,13 @@ if (cmd === "build") {
     process.exit(1);
   }
   launch(launchFlags);
+} else if (cmd === "update") {
+  if (shouldDetachUpdate && !isUpdateWorker) {
+    spawnDetachedUpdateWorker(launchFlags, shouldLaunchAfterUpdate);
+    console.log("lattices app update started.");
+  } else {
+    await updateApp(launchFlags, shouldLaunchAfterUpdate);
+  }
 } else {
   await ensureBinary();
   launch(launchFlags);

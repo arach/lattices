@@ -281,6 +281,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         menu.addItem(.separator())
 
+        let update = NSMenuItem(title: "Update Lattices…", action: #selector(menuUpdate), keyEquivalent: "")
+        update.target = self
+        menu.addItem(update)
+
+        menu.addItem(.separator())
+
         let settings = NSMenuItem(title: "Help & Settings…", action: #selector(menuSettings), keyEquivalent: ",")
         settings.target = self
         menu.addItem(settings)
@@ -306,6 +312,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc private func menuWindowBezel() { Self.showWorkspaceInspector() }
     @objc private func menuCheatSheet() { SettingsWindowController.shared.show() }
     @objc private func menuOmniSearch() { OmniSearchWindow.shared.toggle() }
+    @MainActor @objc private func menuUpdate() { AppUpdater.shared.promptForUpdate() }
     @objc private func menuSettings() { SettingsWindowController.shared.show() }
     @objc private func menuQuit() { NSApp.terminate(nil) }
 

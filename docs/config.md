@@ -135,6 +135,7 @@ Run `lattices init` in your project directory to generate a starter
 | `lattices groups`            | List all tab groups with status                   |
 | `lattices tab <group> [tab]` | Switch tab within a group (by label or index)     |
 | `lattices app`               | Launch the menu bar companion app                 |
+| `lattices app update`        | Download the latest menu bar app and relaunch     |
 | `lattices app build`         | Rebuild the menu bar app from source              |
 | `lattices app restart`       | Rebuild and relaunch the menu bar app             |
 | `lattices layer [name\|index]` | Switch to a workspace layer by name or index      |
@@ -149,6 +150,7 @@ Run `lattices init` in your project directory to generate a starter
 | `lattices scan search <query>` | Search indexed screen text                       |
 | `lattices diag [limit]`       | Show recent diagnostic entries                   |
 | `lattices app`               | Launch the menu bar companion app                 |
+| `lattices app update`        | Download the latest menu bar app and relaunch     |
 | `lattices app build`         | Rebuild the menu bar app from source              |
 | `lattices app restart`       | Rebuild and relaunch the menu bar app             |
 | `lattices app quit`          | Stop the menu bar app                             |

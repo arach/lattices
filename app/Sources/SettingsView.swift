@@ -3,13 +3,63 @@ import SwiftUI
 /// Settings content with internal General / Shortcuts tabs.
 /// Can also render the Docs page when `page == .docs`.
 struct SettingsContentView: View {
+    private enum SettingsSection: String, CaseIterable, Identifiable {
+        case general
+        case ai
+        case search
+        case shortcuts
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .general: return "General"
+            case .ai: return "AI"
+            case .search: return "Search & OCR"
+            case .shortcuts: return "Shortcuts"
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .general: return "slider.horizontal.3"
+            case .ai: return "sparkles"
+            case .search: return "text.viewfinder"
+            case .shortcuts: return "command"
+            }
+        }
+
+        var eyebrow: String {
+            switch self {
+            case .general: return "Workspace"
+            case .ai: return "Agents"
+            case .search: return "Indexing"
+            case .shortcuts: return "Controls"
+            }
+        }
+
+        var summary: String {
+            switch self {
+            case .general:
+                return "Terminal defaults, scan roots, window snapping, and app updates."
+            case .ai:
+                return "Claude CLI detection plus advisor model and spending controls."
+            case .search:
+                return "OCR cadence, quality, and recent capture visibility."
+            case .shortcuts:
+                return "A full map of global hotkeys for workspace movement and tmux flow."
+            }
+        }
+    }
+
     var page: AppPage = .settings
     @ObservedObject var prefs: Preferences
     @ObservedObject var scanner: ProjectScanner
     @ObservedObject var hotkeyStore: HotkeyStore = .shared
+    @ObservedObject var appUpdater: AppUpdater = .shared
     var onBack: (() -> Void)? = nil
 
-    @State private var selectedTab = "shortcuts"
+    @State private var selectedTab: SettingsSection = .general
 
     var body: some View {
         VStack(spacing: 0) {
@@ -30,12 +80,7 @@ struct SettingsContentView: View {
     // MARK: - Back Bar
 
     private var currentTabLabel: String {
-        switch selectedTab {
-        case "general": return "General"
-        case "search": return "Search & OCR"
-        case "shortcuts": return "Shortcuts"
-        default: return page.label
-        }
+        page == .docs ? "Docs" : selectedTab.title
     }
 
     private var backBar: some View {
@@ -64,62 +109,134 @@ struct SettingsContentView: View {
         }
     }
 
-    // MARK: - Settings Body (General + Shortcuts tabs)
+    // MARK: - Settings Body
 
     private var settingsBody: some View {
-        VStack(spacing: 0) {
-            // Tab bar
-            HStack(spacing: 2) {
-                settingsTab(label: "General", id: "general")
-                settingsTab(label: "AI", id: "ai")
-                settingsTab(label: "Search & OCR", id: "search")
-                settingsTab(label: "Shortcuts", id: "shortcuts")
-                Spacer()
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
+        HStack(spacing: 0) {
+            settingsSidebar
+                .frame(width: 220, alignment: .top)
 
-            Rectangle().fill(Palette.border).frame(height: 0.5)
+            Rectangle()
+                .fill(Palette.border)
+                .frame(width: 0.5)
+                .frame(maxHeight: .infinity)
 
-            // Tab content
-            switch selectedTab {
-            case "shortcuts": shortcutsContent
-            case "search":    searchOcrContent
-            case "ai":        aiContent
-            default:          generalContent
+            VStack(spacing: 0) {
+                settingsSectionHero(selectedTab)
+
+                Rectangle().fill(Palette.border).frame(height: 0.5)
+
+                selectedSectionContent
             }
         }
     }
 
-    private func settingsTab(label: String, id: String) -> some View {
-        let active = selectedTab == id
+    private var settingsSidebar: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("SETTINGS")
+                    .font(Typo.pixel(14))
+                    .foregroundColor(Palette.textDim)
+                    .tracking(1)
+                Text("Tune how Lattices launches workspaces, listens for commands, and navigates the desktop.")
+                    .font(Typo.caption(11))
+                    .foregroundColor(Palette.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(spacing: 6) {
+                ForEach(SettingsSection.allCases) { section in
+                    settingsTab(section)
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(16)
+    }
+
+    private func settingsTab(_ section: SettingsSection) -> some View {
+        let active = selectedTab == section
         return Button {
-            selectedTab = id
+            selectedTab = section
         } label: {
-            Text(label)
-                .font(Typo.mono(11))
-                .foregroundColor(active ? Palette.text : Palette.textMuted)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(
-                    ZStack {
-                        if active {
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(Color.white.opacity(0.06))
-                            RoundedRectangle(cornerRadius: 6)
-                                .strokeBorder(
-                                    LinearGradient(
-                                        colors: [Color.white.opacity(0.12), Color.white.opacity(0.04)],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    ),
-                                    lineWidth: 0.5
-                                )
-                        }
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: section.icon)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(active ? Palette.text : Palette.textMuted)
+                    .frame(width: 16, alignment: .center)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(section.title)
+                        .font(Typo.mono(11))
+                        .foregroundColor(active ? Palette.text : Palette.textMuted)
+
+                    Text(section.summary)
+                        .font(Typo.caption(9.5))
+                        .foregroundColor(Palette.textMuted.opacity(active ? 0.9 : 0.7))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
+            .contentShape(RoundedRectangle(cornerRadius: 8))
+            .background(
+                ZStack {
+                    if active {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.white.opacity(0.06))
+                        RoundedRectangle(cornerRadius: 8)
+                            .strokeBorder(
+                                LinearGradient(
+                                    colors: [Color.white.opacity(0.12), Color.white.opacity(0.04)],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                ),
+                                lineWidth: 0.5
+                            )
                     }
-                )
+                }
+            )
         }
         .buttonStyle(.plain)
+    }
+
+    private func settingsSectionHero(_ section: SettingsSection) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(section.eyebrow.uppercased())
+                .font(Typo.pixel(14))
+                .foregroundColor(Palette.textDim)
+                .tracking(1)
+
+            Text(section.title)
+                .font(Typo.heading(16))
+                .foregroundColor(Palette.text)
+
+            Text(section.summary)
+                .font(Typo.caption(11))
+                .foregroundColor(Palette.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+        .background(Palette.bg)
+    }
+
+    @ViewBuilder
+    private var selectedSectionContent: some View {
+        switch selectedTab {
+        case .general:
+            generalContent
+        case .ai:
+            aiContent
+        case .search:
+            searchOcrContent
+        case .shortcuts:
+            shortcutsContent
+        }
     }
 
     // MARK: - Sticky section header
@@ -148,6 +265,62 @@ struct SettingsContentView: View {
     private var generalContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
+                settingsCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(alignment: .center, spacing: 8) {
+                            Image(systemName: "arrow.down.circle")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(Palette.running)
+                            Text("Lattices app")
+                                .font(Typo.mono(12))
+                                .foregroundColor(Palette.text)
+                            Spacer()
+                            Text("v\(appUpdater.currentVersion)")
+                                .font(Typo.caption(10))
+                                .foregroundColor(Palette.textMuted)
+                        }
+
+                        Text("Install the latest published app build without leaving the menu bar. The app relaunches when the update finishes.")
+                            .font(Typo.caption(10))
+                            .foregroundColor(Palette.textMuted)
+
+                        if let status = appUpdater.statusMessage {
+                            Text(status)
+                                .font(Typo.caption(9))
+                                .foregroundColor(Palette.running.opacity(0.85))
+                        }
+
+                        if let reason = appUpdater.unavailableReason {
+                            Text(reason)
+                                .font(Typo.caption(9))
+                                .foregroundColor(Palette.detach.opacity(0.9))
+                        }
+
+                        HStack(spacing: 10) {
+                            Button {
+                                appUpdater.promptForUpdate()
+                            } label: {
+                                Text(appUpdater.isUpdating ? "Updating…" : "Update Lattices")
+                                    .font(Typo.monoBold(10))
+                                    .foregroundColor(Palette.text)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 5)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(Palette.surfaceHov)
+                                            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(appUpdater.isUpdating)
+
+                            Text("CLI: `lattices app update`")
+                                .font(Typo.caption(9))
+                                .foregroundColor(Palette.textMuted.opacity(0.8))
+                        }
+                    }
+                }
+
                 // ── Terminal ──
                 settingsCard {
                     VStack(alignment: .leading, spacing: 8) {
@@ -297,6 +470,8 @@ struct SettingsContentView: View {
                 }
             }
             .padding(16)
+            .frame(maxWidth: 760, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 

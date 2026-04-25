@@ -11,6 +11,7 @@ workspace from there.
 
 ```bash
 lattices app          # Build (or download) and launch
+lattices app update   # Download the latest release and relaunch
 lattices app build    # Rebuild from source
 lattices app restart  # Quit, rebuild, relaunch
 lattices app quit     # Stop the app
@@ -73,6 +74,7 @@ Available when `layers` are configured in `~/.lattices/workspace.json`
 | Command           | Description                              |
 |-------------------|------------------------------------------|
 | Settings          | Open preferences (terminal, scan root)   |
+| Update Lattices   | Download the latest release and relaunch |
 | Diagnostics       | View logs and debug info                 |
 | Refresh Projects  | Re-scan for .lattices.json configs        |
 | Quit Lattices      | Exit the menu bar app                    |
@@ -166,6 +168,7 @@ The settings window has four tabs:
 | Terminal   | Which terminal to use (auto-detected from installed) |
 | Mode       | `learning` or `auto` (see below)                     |
 | Scan Root  | Directory to scan for .lattices.json configs (type a path or click Browse) |
+| Updates    | Download the latest release and relaunch the app     |
 
 **Mode** controls how the app handles session interaction:
 

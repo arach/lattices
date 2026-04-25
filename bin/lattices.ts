@@ -1767,6 +1767,7 @@ Usage:
   lattices daemon status      Show daemon status
   lattices diag [limit]       Show diagnostic log entries
   lattices app                Launch the menu bar companion app
+  lattices app update         Download the latest menu bar app and relaunch
   lattices app build          Rebuild the menu bar app
   lattices app restart        Rebuild and relaunch the menu bar app
   lattices app quit           Stop the menu bar app
