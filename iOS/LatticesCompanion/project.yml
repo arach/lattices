@@ -1,0 +1,74 @@
+name: LatticesCompanion
+options:
+  bundleIdPrefix: com.arach
+  deploymentTarget:
+    iOS: "18.0"
+  developmentLanguage: en
+  createIntermediateGroups: true
+
+settings:
+  base:
+    DEVELOPMENT_TEAM: 2U83JFPW66
+    CODE_SIGN_STYLE: Automatic
+    CODE_SIGN_IDENTITY: Apple Development
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "1,2"
+
+packages:
+  DeckKit:
+    path: ../../swift
+
+targets:
+  LatticesCompanion:
+    type: application
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - path: Sources
+        type: group
+      - path: Assets.xcassets
+        type: group
+        excludes:
+          - Contents.json
+          - AppIcon.appiconset/Contents.json
+    info:
+      path: Sources/Info.plist
+      properties:
+        CFBundleDisplayName: Lattices
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSBonjourServices:
+          - _lattices-companion._tcp
+        NSLocalNetworkUsageDescription: Lattices Companion discovers and connects to your Mac over your local network.
+        UILaunchStoryboardName: LaunchScreen
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+          - UIInterfaceOrientationPortraitUpsideDown
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+          - UIInterfaceOrientationPortraitUpsideDown
+    dependencies:
+      - package: DeckKit
+        product: DeckKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.arach.lattices.companion.ios
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: NO
+        SUPPORTS_MACCATALYST: NO
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+
+schemes:
+  LatticesCompanion:
+    build:
+      targets:
+        LatticesCompanion: all
+    run:
+      config: Debug
+    archive:
+      config: Release

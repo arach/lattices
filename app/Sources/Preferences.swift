@@ -1,3 +1,4 @@
+import DeckKit
 import Foundation
 
 enum InteractionMode: String {
@@ -7,6 +8,11 @@ enum InteractionMode: String {
 
 class Preferences: ObservableObject {
     static let shared = Preferences()
+
+    private enum CompanionDefaultsKey {
+        static let trackpadEnabled = "companion.trackpad.enabled"
+        static let cockpitLayout = "companion.cockpit.layout"
+    }
 
     @Published var terminal: Terminal {
         didSet { UserDefaults.standard.set(terminal.rawValue, forKey: "terminal") }
@@ -22,6 +28,14 @@ class Preferences: ObservableObject {
 
     @Published var dragSnapEnabled: Bool {
         didSet { UserDefaults.standard.set(dragSnapEnabled, forKey: "windowSnap.enabled") }
+    }
+
+    @Published var companionTrackpadEnabled: Bool {
+        didSet { UserDefaults.standard.set(companionTrackpadEnabled, forKey: CompanionDefaultsKey.trackpadEnabled) }
+    }
+
+    @Published var companionCockpitLayout: LatticesCompanionCockpitLayout {
+        didSet { persistCompanionCockpitLayout() }
     }
 
     // MARK: - AI / Claude
@@ -138,6 +152,14 @@ class Preferences: ObservableObject {
             self.dragSnapEnabled = true
         }
 
+        if UserDefaults.standard.object(forKey: CompanionDefaultsKey.trackpadEnabled) != nil {
+            self.companionTrackpadEnabled = UserDefaults.standard.bool(forKey: CompanionDefaultsKey.trackpadEnabled)
+        } else {
+            self.companionTrackpadEnabled = true
+        }
+
+        self.companionCockpitLayout = Self.loadCompanionCockpitLayout()
+
         // AI / Claude
         self.claudePath = UserDefaults.standard.string(forKey: "claude.path") ?? ""
         self.advisorModel = UserDefaults.standard.string(forKey: "claude.advisorModel") ?? "haiku"
@@ -164,5 +186,42 @@ class Preferences: ObservableObject {
 
         let savedAcc = UserDefaults.standard.string(forKey: "ocr.accuracy") ?? "accurate"
         self.ocrAccuracy = savedAcc
+    }
+
+    func updateCompanionCockpitSlot(
+        pageID: String,
+        index: Int,
+        shortcutID: String
+    ) {
+        var normalized = LatticesCompanionCockpitCatalog.normalized(companionCockpitLayout)
+        guard let pageIndex = normalized.pages.firstIndex(where: { $0.id == pageID }),
+              normalized.pages[pageIndex].slotIDs.indices.contains(index) else {
+            return
+        }
+        normalized.pages[pageIndex].slotIDs[index] = shortcutID
+        companionCockpitLayout = normalized
+    }
+
+    func resetCompanionCockpitLayout() {
+        companionCockpitLayout = LatticesCompanionCockpitCatalog.defaultLayout
+    }
+
+    private static func loadCompanionCockpitLayout() -> LatticesCompanionCockpitLayout {
+        guard let data = UserDefaults.standard.data(forKey: CompanionDefaultsKey.cockpitLayout),
+              let decoded = try? JSONDecoder().decode(LatticesCompanionCockpitLayout.self, from: data) else {
+            return LatticesCompanionCockpitCatalog.defaultLayout
+        }
+        return LatticesCompanionCockpitCatalog.normalized(decoded)
+    }
+
+    private func persistCompanionCockpitLayout() {
+        let normalized = LatticesCompanionCockpitCatalog.normalized(companionCockpitLayout)
+        if normalized != companionCockpitLayout {
+            companionCockpitLayout = normalized
+            return
+        }
+
+        guard let data = try? JSONEncoder().encode(normalized) else { return }
+        UserDefaults.standard.set(data, forKey: CompanionDefaultsKey.cockpitLayout)
     }
 }

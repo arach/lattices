@@ -254,6 +254,7 @@ struct CheatSheetView: View {
             // Center + Distribute
             shortcutRow(action: .tileCenter)
             shortcutRow(action: .tileDistribute)
+            shortcutRow(action: .tileTypeGrid)
 
             // Hovered shortcut detail
             if let hovered = hoveredAction, let binding = hotkeyStore.bindings[hovered] {
