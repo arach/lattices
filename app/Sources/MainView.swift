@@ -355,15 +355,6 @@ struct MainView: View {
             .padding(.bottom, 6)
 
             ActionRow(
-                label: "Command Palette",
-                detail: "Launch, attach, and control projects",
-                hotkeyTokens: hotkeyTokens(.palette),
-                icon: "command",
-                accentColor: Palette.running
-            ) {
-                CommandPaletteWindow.shared.toggle()
-            }
-            ActionRow(
                 label: "Home",
                 detail: "Workspace overview and project launcher",
                 hotkeyTokens: hotkeyTokens(.unifiedWindow),
@@ -389,6 +380,15 @@ struct MainView: View {
                 accentColor: AudioLayer.shared.isListening ? Palette.running : Palette.textDim
             ) {
                 ScreenMapWindowController.shared.showPage(.desktopInventory)
+            }
+            ActionRow(
+                label: "Command Palette",
+                detail: "Launch, attach, and control projects",
+                hotkeyTokens: hotkeyTokens(.palette),
+                icon: "command",
+                accentColor: Palette.running
+            ) {
+                CommandPaletteWindow.shared.toggle()
             }
         }
         .padding(.vertical, 4)
