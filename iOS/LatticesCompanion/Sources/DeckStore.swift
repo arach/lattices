@@ -204,7 +204,7 @@ private extension DeckStore {
         pollingTask?.cancel()
         pollingTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(2))
+                try? await Task.sleep(for: .seconds(1))
                 guard let self else { return }
                 await self.refreshSnapshot(endpoint: endpoint)
             }

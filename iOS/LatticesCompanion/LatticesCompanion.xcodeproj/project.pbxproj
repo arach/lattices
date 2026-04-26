@@ -30,6 +30,7 @@
 		D22111B43C6A48912D6E5A96 /* Icon-App-20x20@3x.png in Resources */ = {isa = PBXBuildFile; fileRef = 2569702CC7CAC0677B8C6524 /* Icon-App-20x20@3x.png */; };
 		D34392C35E4145D4262AC87F /* Icon-App-83.5x83.5@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = BCF0269F9663D59AA5D8BEF6 /* Icon-App-83.5x83.5@2x.png */; };
 		E7EC416CD4478DCF4FEBB4FC /* CompanionTrackpadSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA2C2E756959812A344E33FA /* CompanionTrackpadSurface.swift */; };
+		5A75C1B0A6E0F4D8C2B19E02 /* LatsDeckScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A75C1B0A6E0F4D8C2B19E01 /* LatsDeckScreen.swift */; };
 		FD675D5F19359E6AA5DC41AB /* Icon-App-76x76@1x.png in Resources */ = {isa = PBXBuildFile; fileRef = 924A59FEB2399ED0CF09A4B5 /* Icon-App-76x76@1x.png */; };
 /* End PBXBuildFile section */
 
@@ -55,6 +56,7 @@
 		B4603482511D3BE1F2132C82 /* BridgeDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeDiscovery.swift; sourceTree = "<group>"; };
 		B9B6EE50773DB75253F67837 /* Icon-App-40x40@1x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-40x40@1x.png"; sourceTree = "<group>"; };
 		BA2C2E756959812A344E33FA /* CompanionTrackpadSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionTrackpadSurface.swift; sourceTree = "<group>"; };
+		5A75C1B0A6E0F4D8C2B19E01 /* LatsDeckScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LatsDeckScreen.swift; sourceTree = "<group>"; };
 		BCF0269F9663D59AA5D8BEF6 /* Icon-App-83.5x83.5@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-83.5x83.5@2x.png"; sourceTree = "<group>"; };
 		D0A784E5230CF4A1207A5B63 /* Icon-App-60x60@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-60x60@3x.png"; sourceTree = "<group>"; };
 		D6A573A92276901B84AA3EE4 /* Icon-App-60x60@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-60x60@2x.png"; sourceTree = "<group>"; };
@@ -141,6 +143,7 @@
 				11238FFB50336470B6A97CE0 /* DeckStore.swift */,
 				0A0454EF94BCB42389D5B90B /* Info.plist */,
 				31BAB98213FEF0182FB2EA32 /* LatticesCompanionApp.swift */,
+				5A75C1B0A6E0F4D8C2B19E01 /* LatsDeckScreen.swift */,
 				E0A62477A93C15EBE3917B2E /* LaunchScreen.storyboard */,
 			);
 			path = Sources;
@@ -244,6 +247,7 @@
 				477B603FA482CD0AF55BC9C7 /* DeckBridgeSecurityStore.swift in Sources */,
 				015334E9F01E2EC8CE7C6C77 /* DeckStore.swift in Sources */,
 				8509FE10337BF9B4286C77DF /* LatticesCompanionApp.swift in Sources */,
+				5A75C1B0A6E0F4D8C2B19E02 /* LatsDeckScreen.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

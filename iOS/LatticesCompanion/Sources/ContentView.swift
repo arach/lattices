@@ -4,6 +4,7 @@ import SwiftUI
 struct ContentView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @StateObject private var store = DeckStore()
+    @State private var showLatsDeck = false
 
     var body: some View {
         NavigationStack {
@@ -23,6 +24,13 @@ struct ContentView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button {
+                        showLatsDeck = true
+                    } label: {
+                        Image(systemName: "rectangle.grid.2x2")
+                    }
+                    .accessibilityLabel("Open Lats Deck preview")
+
                     if store.activeEndpoint != nil {
                         Button {
                             store.refreshSnapshot()
@@ -31,6 +39,19 @@ struct ContentView: View {
                         }
                     }
                 }
+            }
+            .fullScreenCover(isPresented: $showLatsDeck) {
+                LatsDeckScreen(
+                    liveSnapshot: store.snapshot,
+                    onAction: { actionID, payload, label in
+                        store.perform(
+                            actionID: actionID,
+                            pageID: "cockpit",
+                            payload: payload,
+                            label: label
+                        )
+                    }
+                )
             }
         }
     }
