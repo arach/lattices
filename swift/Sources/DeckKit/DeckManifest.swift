@@ -40,6 +40,12 @@ public enum DeckCapability: String, Codable, CaseIterable, Sendable {
     case trackpadProxy
     case historyFeed
     case questionCards
+    case systemTelemetry
+    case spaces
+    case keyboardForwarding
+    case activityLog
+    case cockpitModes
+    case transcriptStream
     case embeddedSecurityDelegation
 }
 
@@ -49,19 +55,22 @@ public struct DeckPage: Codable, Equatable, Identifiable, Sendable {
     public var iconSystemName: String
     public var kind: DeckPageKind
     public var accentToken: String?
+    public var deckID: String?
 
     public init(
         id: String,
         title: String,
         iconSystemName: String,
         kind: DeckPageKind,
-        accentToken: String? = nil
+        accentToken: String? = nil,
+        deckID: String? = nil
     ) {
         self.id = id
         self.title = title
         self.iconSystemName = iconSystemName
         self.kind = kind
         self.accentToken = accentToken
+        self.deckID = deckID
     }
 }
 

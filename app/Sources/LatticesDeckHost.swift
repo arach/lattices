@@ -35,6 +35,10 @@ final class LatticesDeckHost: DeckHost, @unchecked Sendable {
     static let shared = LatticesDeckHost()
 
     private let security: DeckSecurityConfiguration
+    private let replayLock = NSLock()
+    private var lastReplayMessage: String?
+    private var lastReplayAt: Date?
+    private var lastReplayUndoActionID: String?
 
     init(security: DeckSecurityConfiguration = .standaloneBonjour()) {
         self.security = security
@@ -64,6 +68,12 @@ final class LatticesDeckHost: DeckHost, @unchecked Sendable {
             .appSwitching,
             .taskSwitching,
             .historyFeed,
+            .systemTelemetry,
+            .spaces,
+            .keyboardForwarding,
+            .activityLog,
+            .cockpitModes,
+            .transcriptStream,
         ]
         if security.mode == .embedded {
             capabilities.append(.embeddedSecurityDelegation)
@@ -79,39 +89,44 @@ final class LatticesDeckHost: DeckHost, @unchecked Sendable {
             capabilities: capabilities,
             pages: [
                 DeckPage(
-                    id: "cockpit",
-                    title: "Cockpit",
+                    id: "command",
+                    title: "Command",
                     iconSystemName: "circle.grid.2x2.fill",
                     kind: .cockpit,
-                    accentToken: "lattices-cockpit"
+                    accentToken: "lattices-cockpit",
+                    deckID: "command"
+                ),
+                DeckPage(
+                    id: "dev",
+                    title: "Dev",
+                    iconSystemName: "terminal.fill",
+                    kind: .switch,
+                    accentToken: "lattices-dev",
+                    deckID: "dev"
+                ),
+                DeckPage(
+                    id: "media",
+                    title: "Media",
+                    iconSystemName: "play.rectangle.fill",
+                    kind: .custom,
+                    accentToken: "lattices-media",
+                    deckID: "media"
+                ),
+                DeckPage(
+                    id: "windows",
+                    title: "Windows",
+                    iconSystemName: "rectangle.3.group.fill",
+                    kind: .layout,
+                    accentToken: "lattices-layout",
+                    deckID: "windows"
                 ),
                 DeckPage(
                     id: "voice",
                     title: "Voice",
                     iconSystemName: "waveform.badge.mic",
                     kind: .voice,
-                    accentToken: "lattices-voice"
-                ),
-                DeckPage(
-                    id: "layout",
-                    title: "Layout",
-                    iconSystemName: "rectangle.3.group.fill",
-                    kind: .layout,
-                    accentToken: "lattices-layout"
-                ),
-                DeckPage(
-                    id: "switch",
-                    title: "Switch",
-                    iconSystemName: "square.grid.2x2.fill",
-                    kind: .switch,
-                    accentToken: "lattices-switch"
-                ),
-                DeckPage(
-                    id: "history",
-                    title: "History",
-                    iconSystemName: "clock.arrow.trianglehead.counterclockwise.rotate.90",
-                    kind: .history,
-                    accentToken: "lattices-history"
+                    accentToken: "lattices-voice",
+                    deckID: "voice"
                 ),
             ]
         )
@@ -123,6 +138,7 @@ final class LatticesDeckHost: DeckHost, @unchecked Sendable {
 
     func performSync(_ request: DeckActionRequest) throws -> DeckActionResult {
         let outcome = try handle(request)
+        recordAction(request: request, outcome: outcome)
         flushMainQueue()
         let snapshot = try runtimeSnapshotSync()
 
@@ -226,6 +242,12 @@ private extension LatticesDeckHost {
             )
 
         case "layout.optimize":
+            try MainActorSync.run {
+                let wids = DesktopModel.shared.allWindows()
+                    .filter { $0.isOnScreen && $0.app != "Lattices" }
+                    .map(\.wid)
+                HandsOffSession.shared.snapshotFrames(wids: wids)
+            }
             var params: [String: JSON] = [:]
             if let scope = request.payload["scope"]?.stringValue {
                 params["scope"] = .string(scope)
@@ -254,6 +276,13 @@ private extension LatticesDeckHost {
             guard let placement = request.payload["placement"]?.stringValue else {
                 throw LatticesDeckHostError.missingPayload("placement")
             }
+            try MainActorSync.run {
+                if let frontmost = self.currentFrontmostWindow(
+                    from: DesktopModel.shared.allWindows().filter(\.isOnScreen)
+                ) {
+                    HandsOffSession.shared.snapshotFrames(wids: [frontmost.wid])
+                }
+            }
             _ = try callAPI("window.place", params: [
                 "placement": .string(placement)
             ])
@@ -281,6 +310,18 @@ private extension LatticesDeckHost {
             return ActionOutcome(
                 summary: "Undid the last window move",
                 detail: "Restored the most recent saved window frames.",
+                suggestedActions: []
+            )
+
+        case "keys.send", "key.send":
+            guard let key = request.payload["key"]?.stringValue else {
+                throw LatticesDeckHostError.missingPayload("key")
+            }
+            let modifiers = request.payload["modifiers"]?.arrayValue?.compactMap(\.stringValue) ?? []
+            let sent = try CompanionKeyboardController.shared.send(key: key, modifiers: modifiers)
+            return ActionOutcome(
+                summary: "Sent \(sent)",
+                detail: "Forwarded the key chord to the active macOS application.",
                 suggestedActions: []
             )
 
@@ -424,6 +465,10 @@ private extension LatticesDeckHost {
             )
         }
 
+        try MainActorSync.run {
+            HandsOffSession.shared.snapshotFrames(wids: [resolved.entry.wid])
+        }
+
         _ = try callAPI("window.present", params: [
             "wid": .int(Int(resolved.entry.wid)),
             "x": .int(Int(resolved.frame.origin.x.rounded())),
@@ -465,9 +510,13 @@ private extension LatticesDeckHost {
         let windows = DesktopModel.shared.allWindows()
         let visibleWindows = windows.filter(\.isOnScreen)
         let sessions = TmuxModel.shared.sessions
+        let spacesState = buildSpacesState()
+        let currentSpaceIndex = spacesState.currentSpaceIndex
+        let currentSpaceName = spacesState.currentSpaceName
         let voice = DeckVoiceState(
             phase: currentVoicePhase(),
             transcript: handsOff.lastTranscript ?? audio.lastTranscript,
+            transcriptLines: buildTranscriptLines(handsOff: handsOff, audio: audio),
             responseSummary: handsOff.lastResponse ?? audio.executionResult,
             provider: audio.providerName == "none" ? "vox" : audio.providerName
         )
@@ -476,13 +525,21 @@ private extension LatticesDeckHost {
             activeAppName: visibleWindows.first?.app ?? NSWorkspace.shared.frontmostApplication?.localizedName,
             screenCount: NSScreen.screens.count,
             visibleWindowCount: visibleWindows.count,
-            sessionCount: sessions.count
+            sessionCount: sessions.count,
+            currentSpaceIndex: currentSpaceIndex,
+            currentSpaceName: currentSpaceName
         )
         let layoutState = buildLayoutState(windows: visibleWindows)
         let switcherState = DeckSwitcherState(items: buildSwitcherItems(
             windows: visibleWindows,
             sessions: sessions
         ))
+        let telemetry = SystemTelemetryMonitor.shared.snapshot(
+            windowCount: visibleWindows.count,
+            sessionCount: sessions.count
+        )
+        let cockpitMode = buildCockpitModeState(handsOff: handsOff)
+        let activityLog = CompanionActivityLog.shared.snapshot()
 
         return DeckRuntimeSnapshot(
             updatedAt: Date(),
@@ -498,6 +555,10 @@ private extension LatticesDeckHost {
             desktop: desktop,
             layout: layoutState,
             switcher: switcherState,
+            telemetry: telemetry,
+            spaces: spacesState,
+            cockpitMode: cockpitMode,
+            activityLog: activityLog,
             history: buildHistoryEntries(handsOff: handsOff),
             questions: []
         )
@@ -515,6 +576,119 @@ private extension LatticesDeckHost {
             desktop: desktop,
             layoutState: layoutState
         )
+    }
+
+    @MainActor
+    func buildTranscriptLines(handsOff: HandsOffSession, audio: AudioLayer) -> [DeckTranscriptLine]? {
+        var lines = handsOff.chatLog.suffix(10).compactMap { entry -> DeckTranscriptLine? in
+            guard entry.role == .user else { return nil }
+            return DeckTranscriptLine(
+                id: "voice-\(entry.id.uuidString)",
+                createdAt: entry.timestamp,
+                text: entry.text,
+                isFinal: true,
+                confidence: nil,
+                source: "hands-off"
+            )
+        }
+
+        if let transcript = audio.lastTranscript ?? handsOff.lastTranscript,
+           !transcript.isEmpty,
+           !lines.contains(where: { $0.text == transcript }) {
+            lines.append(DeckTranscriptLine(
+                id: "voice-current",
+                createdAt: Date(),
+                text: transcript,
+                isFinal: currentVoicePhase() == .idle,
+                confidence: audio.matchConfidence > 0 ? audio.matchConfidence : nil,
+                source: audio.providerName == "none" ? "vox" : audio.providerName
+            ))
+        }
+
+        return lines.isEmpty ? nil : Array(lines.suffix(8).reversed())
+    }
+
+    @MainActor
+    func buildSpacesState() -> DeckSpacesState {
+        let displays = WindowTiler.getDisplaySpaces()
+        let deckDisplays = displays.map { display -> DeckSpaceDisplay in
+            let spaces = display.spaces.map { space in
+                DeckSpace(
+                    id: space.id,
+                    index: space.index,
+                    name: spaceName(for: space.index),
+                    isCurrent: space.isCurrent
+                )
+            }
+            let current = spaces.first(where: \.isCurrent)
+            return DeckSpaceDisplay(
+                id: display.displayId.isEmpty ? "display-\(display.displayIndex)" : display.displayId,
+                displayIndex: display.displayIndex,
+                currentSpaceID: display.currentSpaceId == 0 ? nil : display.currentSpaceId,
+                currentSpaceIndex: current?.index,
+                currentSpaceName: current?.name,
+                spaces: spaces
+            )
+        }
+
+        let primaryCurrent = deckDisplays.first?.spaces.first(where: \.isCurrent)
+            ?? deckDisplays.flatMap(\.spaces).first(where: \.isCurrent)
+
+        return DeckSpacesState(
+            currentSpaceIndex: primaryCurrent?.index,
+            currentSpaceName: primaryCurrent?.name,
+            displays: deckDisplays
+        )
+    }
+
+    @MainActor
+    func buildCockpitModeState(handsOff: HandsOffSession) -> DeckCockpitModeState {
+        let now = Date()
+
+        switch handsOff.state {
+        case .connecting, .listening:
+            return DeckCockpitModeState(
+                mode: .rec,
+                startedAt: handsOff.stateChangedAt,
+                elapsedSeconds: now.timeIntervalSince(handsOff.stateChangedAt)
+            )
+        case .thinking:
+            return DeckCockpitModeState(
+                mode: .agent,
+                startedAt: handsOff.stateChangedAt,
+                elapsedSeconds: now.timeIntervalSince(handsOff.stateChangedAt),
+                agentProgress: 0.45,
+                agentRows: buildAgentRows(handsOff: handsOff)
+            )
+        case .idle:
+            break
+        }
+
+        if let replay = currentReplay(now: now) {
+            return DeckCockpitModeState(
+                mode: .replay,
+                startedAt: replay.createdAt,
+                elapsedSeconds: now.timeIntervalSince(replay.createdAt),
+                replayMessage: replay.message,
+                replayUndoExpiresAt: replay.createdAt.addingTimeInterval(5),
+                replayUndoActionID: replay.undoActionID
+            )
+        }
+
+        if let historyDate = handsOff.frameHistoryUpdatedAt,
+           !handsOff.frameHistory.isEmpty,
+           now.timeIntervalSince(historyDate) <= 5 {
+            return DeckCockpitModeState(
+                mode: .replay,
+                startedAt: historyDate,
+                elapsedSeconds: now.timeIntervalSince(historyDate),
+                replayMessage: replayMessageFromRecentAction(handsOff: handsOff),
+                replayUndoExpiresAt: historyDate.addingTimeInterval(5),
+                replayUndoActionID: "history.undoLast"
+            )
+        }
+
+        return DeckCockpitModeState(mode: .idle)
     }
 
     @MainActor
@@ -630,6 +804,8 @@ private extension LatticesDeckHost {
                         title: window.title.isEmpty ? window.app : window.title,
                         subtitle: window.title.isEmpty ? nil : window.app,
                         normalizedFrame: rect,
+                        appCategory: appCategory(for: window.app),
+                        appCategoryTint: appCategoryTint(for: window.app),
                         isFrontmost: window.wid == frontmost.wid
                     )
                 }
@@ -776,6 +952,38 @@ private extension LatticesDeckHost {
             .min { lhs, rhs in
                 lhs.zIndex < rhs.zIndex
             }
+    }
+
+    @MainActor
+    func buildAgentRows(handsOff: HandsOffSession) -> [DeckAgentPlanRow] {
+        let transcript = handsOff.lastTranscript ?? "voice request"
+        var rows: [DeckAgentPlanRow] = [
+            DeckAgentPlanRow(id: "capture", state: .done, text: "captured: \(transcript)"),
+            DeckAgentPlanRow(id: "resolve", state: .live, text: "resolve workspace intent"),
+            DeckAgentPlanRow(id: "apply", state: .next, text: "apply actions on Mac"),
+        ]
+
+        for (index, action) in handsOff.recentActions.prefix(3).enumerated() {
+            let summary = actionSummary(for: action)
+            rows.append(DeckAgentPlanRow(
+                id: "recent-\(index)",
+                state: .next,
+                text: summary.title.lowercased()
+            ))
+        }
+
+        return rows
+    }
+
+    @MainActor
+    func replayMessageFromRecentAction(handsOff: HandsOffSession) -> String {
+        if let action = handsOff.recentActions.first {
+            return actionSummary(for: action).title
+        }
+        if let transcript = handsOff.lastTranscript, !transcript.isEmpty {
+            return transcript
+        }
+        return "Last window move"
     }
 
     func cycleApplication(direction: String) throws -> ActionOutcome {
@@ -987,6 +1195,84 @@ private extension LatticesDeckHost {
         }
 
         return (title, detail.isEmpty ? nil : detail, kind)
+    }
+
+    @MainActor
+    func spaceName(for index: Int) -> String {
+        if let layers = WorkspaceManager.shared.config?.layers,
+           layers.indices.contains(index - 1) {
+            return layers[index - 1].label
+        }
+
+        let defaults = ["main", "code", "chat", "review", "media", "notes", "ops", "admin", "scratch"]
+        if defaults.indices.contains(index - 1) {
+            return defaults[index - 1]
+        }
+        return "space \(index)"
+    }
+
+    func appCategory(for appName: String) -> String {
+        AppTypeClassifier.classify(appName).rawValue
+    }
+
+    func appCategoryTint(for appName: String) -> String {
+        switch AppTypeClassifier.classify(appName) {
+        case .terminal, .editor:
+            return "green"
+        case .browser:
+            return "blue"
+        case .chat:
+            return "teal"
+        case .media:
+            return "pink"
+        case .design:
+            return "violet"
+        case .system:
+            return "amber"
+        case .other:
+            return "amber"
+        }
+    }
+
+    func recordAction(request: DeckActionRequest, outcome: ActionOutcome) {
+        CompanionActivityLog.shared.record(
+            tag: "DECK",
+            tint: actionTint(for: request.actionID),
+            text: outcome.summary
+        )
+
+        let hasUndo = ((try? MainActorSync.run {
+            !HandsOffSession.shared.frameHistory.isEmpty
+        }) ?? false)
+
+        replayLock.lock()
+        lastReplayMessage = outcome.summary
+        lastReplayAt = Date()
+        lastReplayUndoActionID = hasUndo ? "history.undoLast" : nil
+        replayLock.unlock()
+    }
+
+    func currentReplay(now: Date) -> (message: String, createdAt: Date, undoActionID: String?)? {
+        replayLock.lock()
+        let message = lastReplayMessage
+        let createdAt = lastReplayAt
+        let undoActionID = lastReplayUndoActionID
+        replayLock.unlock()
+
+        guard let message, let createdAt, now.timeIntervalSince(createdAt) <= 5 else {
+            return nil
+        }
+        return (message, createdAt, undoActionID)
+    }
+
+    func actionTint(for actionID: String) -> String {
+        if actionID.hasPrefix("voice") { return "red" }
+        if actionID.hasPrefix("layout") { return "blue" }
+        if actionID.hasPrefix("switch") { return "violet" }
+        if actionID.hasPrefix("mouse") { return "teal" }
+        if actionID.hasPrefix("key") || actionID.hasPrefix("keys") { return "amber" }
+        if actionID.hasPrefix("history") { return "green" }
+        return "amber"
     }
 
     func historyTitle(for entry: VoiceChatEntry) -> String {

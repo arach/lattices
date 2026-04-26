@@ -45,6 +45,8 @@ public struct DeckCockpitTile: Codable, Equatable, Identifiable, Sendable {
     public var subtitle: String?
     public var iconSystemName: String
     public var accentToken: String?
+    public var deckID: String?
+    public var categoryTint: String?
     public var actionID: String?
     public var payload: [String: DeckValue]
     public var isEnabled: Bool
@@ -57,6 +59,8 @@ public struct DeckCockpitTile: Codable, Equatable, Identifiable, Sendable {
         subtitle: String? = nil,
         iconSystemName: String,
         accentToken: String? = nil,
+        deckID: String? = nil,
+        categoryTint: String? = nil,
         actionID: String? = nil,
         payload: [String: DeckValue] = [:],
         isEnabled: Bool = true,
@@ -68,6 +72,8 @@ public struct DeckCockpitTile: Codable, Equatable, Identifiable, Sendable {
         self.subtitle = subtitle
         self.iconSystemName = iconSystemName
         self.accentToken = accentToken
+        self.deckID = deckID
+        self.categoryTint = categoryTint
         self.actionID = actionID
         self.payload = payload
         self.isEnabled = isEnabled

@@ -8,6 +8,10 @@ public struct DeckRuntimeSnapshot: Codable, Equatable, Sendable {
     public var desktop: DeckDesktopSummary?
     public var layout: DeckLayoutState?
     public var switcher: DeckSwitcherState?
+    public var telemetry: DeckSystemTelemetry?
+    public var spaces: DeckSpacesState?
+    public var cockpitMode: DeckCockpitModeState?
+    public var activityLog: [DeckActivityLogEntry]?
     public var history: [DeckHistoryEntry]
     public var questions: [DeckQuestionCard]
 
@@ -19,6 +23,10 @@ public struct DeckRuntimeSnapshot: Codable, Equatable, Sendable {
         desktop: DeckDesktopSummary? = nil,
         layout: DeckLayoutState? = nil,
         switcher: DeckSwitcherState? = nil,
+        telemetry: DeckSystemTelemetry? = nil,
+        spaces: DeckSpacesState? = nil,
+        cockpitMode: DeckCockpitModeState? = nil,
+        activityLog: [DeckActivityLogEntry]? = nil,
         history: [DeckHistoryEntry] = [],
         questions: [DeckQuestionCard] = []
     ) {
@@ -29,6 +37,10 @@ public struct DeckRuntimeSnapshot: Codable, Equatable, Sendable {
         self.desktop = desktop
         self.layout = layout
         self.switcher = switcher
+        self.telemetry = telemetry
+        self.spaces = spaces
+        self.cockpitMode = cockpitMode
+        self.activityLog = activityLog
         self.history = history
         self.questions = questions
     }
@@ -37,19 +49,47 @@ public struct DeckRuntimeSnapshot: Codable, Equatable, Sendable {
 public struct DeckVoiceState: Codable, Equatable, Sendable {
     public var phase: DeckVoicePhase
     public var transcript: String?
+    public var transcriptLines: [DeckTranscriptLine]?
     public var responseSummary: String?
     public var provider: String?
 
     public init(
         phase: DeckVoicePhase,
         transcript: String? = nil,
+        transcriptLines: [DeckTranscriptLine]? = nil,
         responseSummary: String? = nil,
         provider: String? = nil
     ) {
         self.phase = phase
         self.transcript = transcript
+        self.transcriptLines = transcriptLines
         self.responseSummary = responseSummary
         self.provider = provider
+    }
+}
+
+public struct DeckTranscriptLine: Codable, Equatable, Identifiable, Sendable {
+    public var id: String
+    public var createdAt: Date
+    public var text: String
+    public var isFinal: Bool
+    public var confidence: Double?
+    public var source: String?
+
+    public init(
+        id: String,
+        createdAt: Date = .now,
+        text: String,
+        isFinal: Bool,
+        confidence: Double? = nil,
+        source: String? = nil
+    ) {
+        self.id = id
+        self.createdAt = createdAt
+        self.text = text
+        self.isFinal = isFinal
+        self.confidence = confidence
+        self.source = source
     }
 }
 
@@ -67,19 +107,25 @@ public struct DeckDesktopSummary: Codable, Equatable, Sendable {
     public var screenCount: Int
     public var visibleWindowCount: Int
     public var sessionCount: Int
+    public var currentSpaceIndex: Int?
+    public var currentSpaceName: String?
 
     public init(
         activeLayerName: String? = nil,
         activeAppName: String? = nil,
         screenCount: Int,
         visibleWindowCount: Int,
-        sessionCount: Int
+        sessionCount: Int,
+        currentSpaceIndex: Int? = nil,
+        currentSpaceName: String? = nil
     ) {
         self.activeLayerName = activeLayerName
         self.activeAppName = activeAppName
         self.screenCount = screenCount
         self.visibleWindowCount = visibleWindowCount
         self.sessionCount = sessionCount
+        self.currentSpaceIndex = currentSpaceIndex
+        self.currentSpaceName = currentSpaceName
     }
 }
 
@@ -146,6 +192,8 @@ public struct DeckLayoutPreviewWindow: Codable, Equatable, Identifiable, Sendabl
     public var title: String
     public var subtitle: String?
     public var normalizedFrame: DeckRect
+    public var appCategory: String?
+    public var appCategoryTint: String?
     public var isFrontmost: Bool
 
     public init(
@@ -154,6 +202,8 @@ public struct DeckLayoutPreviewWindow: Codable, Equatable, Identifiable, Sendabl
         title: String,
         subtitle: String? = nil,
         normalizedFrame: DeckRect,
+        appCategory: String? = nil,
+        appCategoryTint: String? = nil,
         isFrontmost: Bool = false
     ) {
         self.id = id
@@ -161,6 +211,8 @@ public struct DeckLayoutPreviewWindow: Codable, Equatable, Identifiable, Sendabl
         self.title = title
         self.subtitle = subtitle
         self.normalizedFrame = normalizedFrame
+        self.appCategory = appCategory
+        self.appCategoryTint = appCategoryTint
         self.isFrontmost = isFrontmost
     }
 }
@@ -250,6 +302,189 @@ public enum DeckHistoryKind: String, Codable, CaseIterable, Sendable {
     case layout
     case switcher
     case automation
+}
+
+public struct DeckSystemTelemetry: Codable, Equatable, Sendable {
+    public var sampledAt: Date
+    public var cpuLoadPercent: Double?
+    public var memoryUsedPercent: Double?
+    public var gpuLoadPercent: Double?
+    public var thermalPressurePercent: Double?
+    public var thermalState: DeckThermalState?
+    public var temperatureCelsius: Double?
+    public var batteryPercent: Double?
+    public var isCharging: Bool?
+    public var powerSource: String?
+    public var windowCount: Int
+    public var sessionCount: Int
+
+    public init(
+        sampledAt: Date = .now,
+        cpuLoadPercent: Double? = nil,
+        memoryUsedPercent: Double? = nil,
+        gpuLoadPercent: Double? = nil,
+        thermalPressurePercent: Double? = nil,
+        thermalState: DeckThermalState? = nil,
+        temperatureCelsius: Double? = nil,
+        batteryPercent: Double? = nil,
+        isCharging: Bool? = nil,
+        powerSource: String? = nil,
+        windowCount: Int,
+        sessionCount: Int
+    ) {
+        self.sampledAt = sampledAt
+        self.cpuLoadPercent = cpuLoadPercent
+        self.memoryUsedPercent = memoryUsedPercent
+        self.gpuLoadPercent = gpuLoadPercent
+        self.thermalPressurePercent = thermalPressurePercent
+        self.thermalState = thermalState
+        self.temperatureCelsius = temperatureCelsius
+        self.batteryPercent = batteryPercent
+        self.isCharging = isCharging
+        self.powerSource = powerSource
+        self.windowCount = windowCount
+        self.sessionCount = sessionCount
+    }
+}
+
+public enum DeckThermalState: String, Codable, CaseIterable, Sendable {
+    case nominal
+    case fair
+    case serious
+    case critical
+}
+
+public struct DeckSpacesState: Codable, Equatable, Sendable {
+    public var currentSpaceIndex: Int?
+    public var currentSpaceName: String?
+    public var displays: [DeckSpaceDisplay]
+
+    public init(
+        currentSpaceIndex: Int? = nil,
+        currentSpaceName: String? = nil,
+        displays: [DeckSpaceDisplay]
+    ) {
+        self.currentSpaceIndex = currentSpaceIndex
+        self.currentSpaceName = currentSpaceName
+        self.displays = displays
+    }
+}
+
+public struct DeckSpaceDisplay: Codable, Equatable, Identifiable, Sendable {
+    public var id: String
+    public var displayIndex: Int
+    public var currentSpaceID: Int?
+    public var currentSpaceIndex: Int?
+    public var currentSpaceName: String?
+    public var spaces: [DeckSpace]
+
+    public init(
+        id: String,
+        displayIndex: Int,
+        currentSpaceID: Int? = nil,
+        currentSpaceIndex: Int? = nil,
+        currentSpaceName: String? = nil,
+        spaces: [DeckSpace]
+    ) {
+        self.id = id
+        self.displayIndex = displayIndex
+        self.currentSpaceID = currentSpaceID
+        self.currentSpaceIndex = currentSpaceIndex
+        self.currentSpaceName = currentSpaceName
+        self.spaces = spaces
+    }
+}
+
+public struct DeckSpace: Codable, Equatable, Identifiable, Sendable {
+    public var id: Int
+    public var index: Int
+    public var name: String?
+    public var isCurrent: Bool
+
+    public init(id: Int, index: Int, name: String? = nil, isCurrent: Bool) {
+        self.id = id
+        self.index = index
+        self.name = name
+        self.isCurrent = isCurrent
+    }
+}
+
+public struct DeckCockpitModeState: Codable, Equatable, Sendable {
+    public var mode: DeckCockpitMode
+    public var startedAt: Date?
+    public var elapsedSeconds: Double?
+    public var replayMessage: String?
+    public var replayUndoExpiresAt: Date?
+    public var replayUndoActionID: String?
+    public var agentProgress: Double?
+    public var agentRows: [DeckAgentPlanRow]
+
+    public init(
+        mode: DeckCockpitMode,
+        startedAt: Date? = nil,
+        elapsedSeconds: Double? = nil,
+        replayMessage: String? = nil,
+        replayUndoExpiresAt: Date? = nil,
+        replayUndoActionID: String? = nil,
+        agentProgress: Double? = nil,
+        agentRows: [DeckAgentPlanRow] = []
+    ) {
+        self.mode = mode
+        self.startedAt = startedAt
+        self.elapsedSeconds = elapsedSeconds
+        self.replayMessage = replayMessage
+        self.replayUndoExpiresAt = replayUndoExpiresAt
+        self.replayUndoActionID = replayUndoActionID
+        self.agentProgress = agentProgress
+        self.agentRows = agentRows
+    }
+}
+
+public enum DeckCockpitMode: String, Codable, CaseIterable, Sendable {
+    case idle
+    case rec
+    case replay
+    case agent
+}
+
+public struct DeckAgentPlanRow: Codable, Equatable, Identifiable, Sendable {
+    public var id: String
+    public var state: DeckAgentPlanRowState
+    public var text: String
+
+    public init(id: String, state: DeckAgentPlanRowState, text: String) {
+        self.id = id
+        self.state = state
+        self.text = text
+    }
+}
+
+public enum DeckAgentPlanRowState: String, Codable, CaseIterable, Sendable {
+    case done
+    case live
+    case next
+}
+
+public struct DeckActivityLogEntry: Codable, Equatable, Identifiable, Sendable {
+    public var id: String
+    public var createdAt: Date
+    public var tag: String
+    public var tint: String?
+    public var text: String
+
+    public init(
+        id: String,
+        createdAt: Date = .now,
+        tag: String,
+        tint: String? = nil,
+        text: String
+    ) {
+        self.id = id
+        self.createdAt = createdAt
+        self.tag = tag
+        self.tint = tint
+        self.text = text
+    }
 }
 
 public struct DeckQuestionCard: Codable, Equatable, Identifiable, Sendable {

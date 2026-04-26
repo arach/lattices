@@ -29,9 +29,13 @@ struct LatticesCompanionCockpitLayout: Codable, Equatable {
 
 enum LatticesCompanionShortcutCategory: String, CaseIterable, Identifiable {
     case voice
+    case agent
+    case system
     case switching
     case layout
     case mouse
+    case dev
+    case media
 
     var id: String { rawValue }
 
@@ -39,12 +43,39 @@ enum LatticesCompanionShortcutCategory: String, CaseIterable, Identifiable {
         switch self {
         case .voice:
             return "Voice"
+        case .agent:
+            return "Agent"
+        case .system:
+            return "System"
         case .switching:
             return "Switching"
         case .layout:
             return "Layout"
         case .mouse:
             return "Mouse"
+        case .dev:
+            return "Dev"
+        case .media:
+            return "Media"
+        }
+    }
+
+    var tintToken: String {
+        switch self {
+        case .voice:
+            return "red"
+        case .agent:
+            return "violet"
+        case .system:
+            return "amber"
+        case .switching, .layout:
+            return "blue"
+        case .mouse:
+            return "teal"
+        case .dev:
+            return "green"
+        case .media:
+            return "pink"
         }
     }
 }
@@ -56,6 +87,7 @@ struct LatticesCompanionShortcutDefinition: Identifiable {
     let iconSystemName: String
     let accentToken: String?
     let category: LatticesCompanionShortcutCategory
+    let deckID: String? = nil
 }
 
 enum LatticesCompanionCockpitCatalog {
@@ -64,6 +96,8 @@ enum LatticesCompanionCockpitCatalog {
         var subtitle: String?
         var iconSystemName: String
         var accentToken: String?
+        var deckID: String? = nil
+        var categoryTint: String? = nil
         var actionID: String?
         var payload: [String: DeckValue]
         var isEnabled: Bool
@@ -75,20 +109,44 @@ enum LatticesCompanionCockpitCatalog {
     static let defaultLayout = LatticesCompanionCockpitLayout(
         pages: [
             .init(
-                id: "main",
-                title: "Cockpit",
-                subtitle: "Voice, switching, and fast workspace moves",
+                id: "command",
+                title: "Command",
+                subtitle: "Core voice, system, and workspace moves",
                 columns: 4,
                 slotIDs: [
-                    "voice-toggle", "voice-cancel", "switch-app-prev", "switch-app-next",
-                    "switch-window-prev", "switch-window-next", "layout-optimize", "mouse-find",
-                    "place-left", "place-right", "place-center", "place-maximize",
-                    "resize-wider", "resize-taller", "mouse-summon", ""
+                    "voice-toggle", "voice-cancel", "key-escape", "key-enter",
+                    "switch-app-prev", "switch-app-next", "switch-window-prev", "switch-window-next",
+                    "layout-optimize", "mouse-find", "mouse-summon", "key-space",
+                    "place-left", "place-right", "place-center", "place-maximize"
                 ]
             ),
             .init(
-                id: "layout",
-                title: "Layout",
+                id: "dev",
+                title: "Dev",
+                subtitle: "Terminal, agent, and edit shortcuts",
+                columns: 4,
+                slotIDs: [
+                    "key-copy", "key-paste", "key-undo", "key-shift-tab",
+                    "place-left", "place-right", "resize-wider", "resize-narrower",
+                    "switch-window-prev", "switch-window-next", "switch-app-prev", "switch-app-next",
+                    "layout-optimize", "mouse-find", "key-up", "key-down"
+                ]
+            ),
+            .init(
+                id: "media",
+                title: "Media",
+                subtitle: "Media-friendly window and keyboard controls",
+                columns: 4,
+                slotIDs: [
+                    "key-space", "key-escape", "key-left", "key-right",
+                    "place-center", "place-maximize", "resize-grow", "resize-shrink",
+                    "switch-app-prev", "switch-app-next", "mouse-summon", "mouse-find",
+                    "place-top-left", "place-top-right", "place-bottom-left", "place-bottom-right"
+                ]
+            ),
+            .init(
+                id: "windows",
+                title: "Windows",
                 subtitle: "Placement and resize macros for the frontmost window",
                 columns: 4,
                 slotIDs: [
@@ -96,6 +154,18 @@ enum LatticesCompanionCockpitCatalog {
                     "place-left-third", "place-center-third", "place-right-third", "place-center",
                     "resize-wider", "resize-narrower", "resize-taller", "resize-shorter",
                     "resize-grow", "resize-shrink", "place-left", "place-right"
+                ]
+            ),
+            .init(
+                id: "voice",
+                title: "Voice",
+                subtitle: "Hands-off voice and transcript controls",
+                columns: 4,
+                slotIDs: [
+                    "voice-toggle", "voice-cancel", "key-escape", "key-enter",
+                    "layout-optimize", "switch-app-prev", "switch-app-next", "mouse-find",
+                    "place-left", "place-right", "place-center", "place-maximize",
+                    "key-copy", "key-paste", "key-undo", "key-space"
                 ]
             ),
         ]
@@ -129,6 +199,17 @@ enum LatticesCompanionCockpitCatalog {
         .init(id: "resize-shrink", title: "Shrink", subtitle: "Reduce both dimensions", iconSystemName: "minus.rectangle", accentToken: "layout", category: .layout),
         .init(id: "mouse-find", title: "Find Mouse", subtitle: "Pulse the current cursor position", iconSystemName: "scope", accentToken: "mouse", category: .mouse),
         .init(id: "mouse-summon", title: "Summon Mouse", subtitle: "Bring the cursor to center screen", iconSystemName: "dot.scope", accentToken: "mouse", category: .mouse),
+        .init(id: "key-escape", title: "Escape", subtitle: "Send Escape", iconSystemName: "escape", accentToken: "system", category: .system),
+        .init(id: "key-copy", title: "Copy", subtitle: "Send Command-C", iconSystemName: "doc.on.doc", accentToken: "system", category: .system),
+        .init(id: "key-paste", title: "Paste", subtitle: "Send Command-V", iconSystemName: "doc.on.clipboard", accentToken: "system", category: .system),
+        .init(id: "key-undo", title: "Undo", subtitle: "Send Command-Z", iconSystemName: "arrow.uturn.backward", accentToken: "system", category: .system),
+        .init(id: "key-shift-tab", title: "Back Tab", subtitle: "Send Shift-Tab", iconSystemName: "arrowshape.turn.up.left", accentToken: "system", category: .system),
+        .init(id: "key-space", title: "Space", subtitle: "Send Space", iconSystemName: "space", accentToken: "system", category: .system),
+        .init(id: "key-enter", title: "Enter", subtitle: "Send Return", iconSystemName: "return", accentToken: "system", category: .system),
+        .init(id: "key-left", title: "Left", subtitle: "Send Left Arrow", iconSystemName: "arrow.left", accentToken: "system", category: .system),
+        .init(id: "key-right", title: "Right", subtitle: "Send Right Arrow", iconSystemName: "arrow.right", accentToken: "system", category: .system),
+        .init(id: "key-up", title: "Up", subtitle: "Send Up Arrow", iconSystemName: "arrow.up", accentToken: "system", category: .system),
+        .init(id: "key-down", title: "Down", subtitle: "Send Down Arrow", iconSystemName: "arrow.down", accentToken: "system", category: .system),
     ]
 
     static func definition(for shortcutID: String) -> LatticesCompanionShortcutDefinition? {
@@ -218,6 +299,8 @@ enum LatticesCompanionCockpitCatalog {
             subtitle: rendered.subtitle,
             iconSystemName: rendered.iconSystemName,
             accentToken: rendered.accentToken,
+            deckID: rendered.deckID ?? pageID,
+            categoryTint: rendered.categoryTint ?? definition(for: shortcutID)?.category.tintToken,
             actionID: rendered.actionID,
             payload: rendered.payload,
             isEnabled: rendered.isEnabled,
@@ -233,6 +316,10 @@ enum LatticesCompanionCockpitCatalog {
     ) -> RenderedShortcut {
         let frontmostWindow = layoutState?.frontmostWindow
         let activeAppName = desktop?.activeAppName ?? frontmostWindow?.appName
+
+        if let keyShortcut = keyboardShortcut(for: shortcutID) {
+            return keyShortcut
+        }
 
         switch shortcutID {
         case "voice-toggle":
@@ -428,6 +515,38 @@ enum LatticesCompanionCockpitCatalog {
             payload: [
                 "dimension": .string(dimension),
                 "direction": .string(direction)
+            ],
+            isEnabled: true,
+            isActive: false
+        )
+    }
+
+    private static func keyboardShortcut(for shortcutID: String) -> RenderedShortcut? {
+        let shortcuts: [String: (title: String, subtitle: String, icon: String, key: String, modifiers: [String])] = [
+            "key-escape": ("Escape", "Send Escape", "escape", "escape", []),
+            "key-copy": ("Copy", "Send Command-C", "doc.on.doc", "c", ["command"]),
+            "key-paste": ("Paste", "Send Command-V", "doc.on.clipboard", "v", ["command"]),
+            "key-undo": ("Undo", "Send Command-Z", "arrow.uturn.backward", "z", ["command"]),
+            "key-shift-tab": ("Back Tab", "Send Shift-Tab", "arrowshape.turn.up.left", "tab", ["shift"]),
+            "key-space": ("Space", "Send Space", "space", "space", []),
+            "key-enter": ("Enter", "Send Return", "return", "enter", []),
+            "key-left": ("Left", "Send Left Arrow", "arrow.left", "left", []),
+            "key-right": ("Right", "Send Right Arrow", "arrow.right", "right", []),
+            "key-up": ("Up", "Send Up Arrow", "arrow.up", "up", []),
+            "key-down": ("Down", "Send Down Arrow", "arrow.down", "down", []),
+        ]
+
+        guard let shortcut = shortcuts[shortcutID] else { return nil }
+        return RenderedShortcut(
+            title: shortcut.title,
+            subtitle: shortcut.subtitle,
+            iconSystemName: shortcut.icon,
+            accentToken: "system",
+            categoryTint: LatticesCompanionShortcutCategory.system.tintToken,
+            actionID: "keys.send",
+            payload: [
+                "key": .string(shortcut.key),
+                "modifiers": .array(shortcut.modifiers.map { .string($0) })
             ],
             isEnabled: true,
             isActive: false

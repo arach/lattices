@@ -198,6 +198,7 @@ final class LatticesApi {
         api.model(ApiModel(name: "Space", fields: [
             Field(name: "id", type: "int", required: true, description: "Space ID"),
             Field(name: "index", type: "int", required: true, description: "Space index"),
+            Field(name: "name", type: "string", required: true, description: "Lattices display name for the space"),
             Field(name: "display", type: "int", required: true, description: "Display index"),
             Field(name: "isCurrent", type: "bool", required: true, description: "Whether this is the active space"),
         ]))
@@ -737,6 +738,7 @@ final class LatticesApi {
                             .object([
                                 "id": .int(space.id),
                                 "index": .int(space.index),
+                                "name": .string(Self.defaultSpaceName(for: space.index)),
                                 "display": .int(space.display),
                                 "isCurrent": .bool(space.isCurrent)
                             ])
@@ -2133,6 +2135,19 @@ private extension LatticesApi {
             "mode": .string(mode),
             "trace": .array(trace),
         ])
+    }
+
+    static func defaultSpaceName(for index: Int) -> String {
+        if let layers = WorkspaceManager.shared.config?.layers,
+           layers.indices.contains(index - 1) {
+            return layers[index - 1].label
+        }
+
+        let defaults = ["main", "code", "chat", "review", "media", "notes", "ops", "admin", "scratch"]
+        if defaults.indices.contains(index - 1) {
+            return defaults[index - 1]
+        }
+        return "space \(index)"
     }
 
     static func executeSpaceOptimization(params: JSON?) throws -> JSON {

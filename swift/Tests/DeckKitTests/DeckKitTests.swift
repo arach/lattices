@@ -100,6 +100,16 @@ final class DeckKitTests: XCTestCase {
             voice: DeckVoiceState(
                 phase: .reasoning,
                 transcript: "Arrange my review setup",
+                transcriptLines: [
+                    DeckTranscriptLine(
+                        id: "line-1",
+                        createdAt: Date(timeIntervalSince1970: 1_713_700_001),
+                        text: "Arrange my review setup",
+                        isFinal: true,
+                        confidence: 0.93,
+                        source: "vox"
+                    )
+                ],
                 responseSummary: "Preparing a code review layout.",
                 provider: "vox"
             ),
@@ -130,6 +140,8 @@ final class DeckKitTests: XCTestCase {
                             title: "Pull request",
                             subtitle: "Safari",
                             normalizedFrame: DeckRect(x: 0.0, y: 0.0, w: 0.75, h: 1.0),
+                            appCategory: "browser",
+                            appCategoryTint: "blue",
                             isFrontmost: true
                         )
                     ]
@@ -152,6 +164,49 @@ final class DeckKitTests: XCTestCase {
                     kind: .session
                 )
             ]),
+            telemetry: DeckSystemTelemetry(
+                sampledAt: Date(timeIntervalSince1970: 1_713_700_002),
+                cpuLoadPercent: 31,
+                memoryUsedPercent: 68,
+                gpuLoadPercent: 12,
+                thermalPressurePercent: 10,
+                thermalState: .nominal,
+                batteryPercent: 84,
+                isCharging: true,
+                powerSource: "AC Power",
+                windowCount: 6,
+                sessionCount: 3
+            ),
+            spaces: DeckSpacesState(
+                currentSpaceIndex: 2,
+                currentSpaceName: "code",
+                displays: [
+                    DeckSpaceDisplay(
+                        id: "main",
+                        displayIndex: 0,
+                        currentSpaceID: 20,
+                        currentSpaceIndex: 2,
+                        currentSpaceName: "code",
+                        spaces: [
+                            DeckSpace(id: 10, index: 1, name: "main", isCurrent: false),
+                            DeckSpace(id: 20, index: 2, name: "code", isCurrent: true)
+                        ]
+                    )
+                ]
+            ),
+            cockpitMode: DeckCockpitModeState(
+                mode: .replay,
+                replayMessage: "Placed Safari left",
+                replayUndoActionID: "history.undoLast"
+            ),
+            activityLog: [
+                DeckActivityLogEntry(
+                    id: "activity-1",
+                    tag: "DECK",
+                    tint: "blue",
+                    text: "Placed Safari left"
+                )
+            ],
             history: [
                 DeckHistoryEntry(
                     id: "history-1",
@@ -183,7 +238,13 @@ final class DeckKitTests: XCTestCase {
         XCTAssertEqual(decoded.cockpit?.pages.first?.tiles.first?.shortcutID, "voice-toggle")
         XCTAssertEqual(decoded.trackpad?.statusTitle, "Trackpad Ready")
         XCTAssertEqual(decoded.voice?.provider, "vox")
+        XCTAssertEqual(decoded.voice?.transcriptLines?.first?.source, "vox")
         XCTAssertEqual(decoded.layout?.frontmostWindow?.placement, "left")
+        XCTAssertEqual(decoded.layout?.preview?.windows.first?.appCategoryTint, "blue")
         XCTAssertEqual(decoded.switcher?.items.count, 2)
+        XCTAssertEqual(decoded.telemetry?.thermalState, .nominal)
+        XCTAssertEqual(decoded.spaces?.currentSpaceName, "code")
+        XCTAssertEqual(decoded.cockpitMode?.mode, .replay)
+        XCTAssertEqual(decoded.activityLog?.first?.tag, "DECK")
     }
 }

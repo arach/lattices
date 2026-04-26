@@ -43,7 +43,14 @@ final class HandsOffSession: ObservableObject {
         case thinking
     }
 
-    @Published var state: State = .idle
+    @Published var state: State = .idle {
+        didSet {
+            if state != oldValue {
+                stateChangedAt = Date()
+            }
+        }
+    }
+    @Published private(set) var stateChangedAt: Date = Date()
     @Published var lastTranscript: String?
     @Published var lastResponse: String?
     @Published var audibleFeedbackEnabled: Bool = false
@@ -58,6 +65,7 @@ final class HandsOffSession: ObservableObject {
         let frame: WindowFrame
     }
     private(set) var frameHistory: [FrameSnapshot] = []
+    private(set) var frameHistoryUpdatedAt: Date?
 
     /// Snapshot current frames for all windows that are about to be moved.
     /// Stores frames in CG/AX coordinates (top-left origin) for direct use with batchRestoreWindows.
@@ -77,10 +85,12 @@ final class HandsOffSession: ObservableObject {
                 break
             }
         }
+        frameHistoryUpdatedAt = frameHistory.isEmpty ? nil : Date()
     }
 
     func clearFrameHistory() {
         frameHistory.removeAll()
+        frameHistoryUpdatedAt = nil
     }
 
     /// Running chat log — visible in the voice chat panel. Persists across turns.
