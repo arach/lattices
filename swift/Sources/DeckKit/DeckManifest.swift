@@ -79,38 +79,47 @@ public struct DeckSecurityConfiguration: Codable, Equatable, Sendable {
     public var mode: DeckSecurityMode
     public var pairingStrategy: DeckPairingStrategy
     public var requestSigningRequired: Bool
+    public var payloadEncryptionRequired: Bool
     public var delegatedOwner: String?
 
     public init(
         mode: DeckSecurityMode,
         pairingStrategy: DeckPairingStrategy,
         requestSigningRequired: Bool,
+        payloadEncryptionRequired: Bool = false,
         delegatedOwner: String? = nil
     ) {
         self.mode = mode
         self.pairingStrategy = pairingStrategy
         self.requestSigningRequired = requestSigningRequired
+        self.payloadEncryptionRequired = payloadEncryptionRequired
         self.delegatedOwner = delegatedOwner
     }
 }
 
 public extension DeckSecurityConfiguration {
-    static func standaloneBonjour(requestSigningRequired: Bool = true) -> Self {
+    static func standaloneBonjour(
+        requestSigningRequired: Bool = true,
+        payloadEncryptionRequired: Bool = true
+    ) -> Self {
         DeckSecurityConfiguration(
             mode: .standalone,
             pairingStrategy: .bonjour,
-            requestSigningRequired: requestSigningRequired
+            requestSigningRequired: requestSigningRequired,
+            payloadEncryptionRequired: payloadEncryptionRequired
         )
     }
 
     static func embeddedDelegated(
         owner: String,
-        requestSigningRequired: Bool = true
+        requestSigningRequired: Bool = true,
+        payloadEncryptionRequired: Bool = true
     ) -> Self {
         DeckSecurityConfiguration(
             mode: .embedded,
             pairingStrategy: .delegated,
             requestSigningRequired: requestSigningRequired,
+            payloadEncryptionRequired: payloadEncryptionRequired,
             delegatedOwner: owner
         )
     }

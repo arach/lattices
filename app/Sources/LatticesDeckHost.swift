@@ -36,8 +36,12 @@ final class LatticesDeckHost: DeckHost, @unchecked Sendable {
 
     private let security: DeckSecurityConfiguration
 
-    init(security: DeckSecurityConfiguration = .standaloneBonjour(requestSigningRequired: false)) {
+    init(security: DeckSecurityConfiguration = .standaloneBonjour()) {
         self.security = security
+    }
+
+    var securityConfiguration: DeckSecurityConfiguration {
+        security
     }
 
     func manifest() async throws -> DeckManifest {

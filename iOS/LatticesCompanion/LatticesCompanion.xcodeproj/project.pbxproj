@@ -14,6 +14,7 @@
 		303C0ED6FF5A801009E72EBD /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = E0A62477A93C15EBE3917B2E /* LaunchScreen.storyboard */; };
 		39910639463B85C88940415F /* DeckBridgeClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B31BBB86BC2F6969B6F8C6AC /* DeckBridgeClient.swift */; };
 		3CD5F4319B4419DA9ACCA70A /* Icon-App-60x60@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = D6A573A92276901B84AA3EE4 /* Icon-App-60x60@2x.png */; };
+		477B603FA482CD0AF55BC9C7 /* DeckBridgeSecurityStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D303982A361559374D4ECAF /* DeckBridgeSecurityStore.swift */; };
 		48AB2F1093E08D5F972BEF57 /* Icon-App-76x76@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 2008FE641E08A7EA3F1142D8 /* Icon-App-76x76@2x.png */; };
 		49328530140603E31D3C44C4 /* Icon-App-29x29@1x.png in Resources */ = {isa = PBXBuildFile; fileRef = 763E58A4536019D1C0D225B5 /* Icon-App-29x29@1x.png */; };
 		58104483ED43F7B6EADEDD47 /* Icon-App-29x29@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 5E31C91E44E310ECB2F450E6 /* Icon-App-29x29@2x.png */; };
@@ -46,6 +47,7 @@
 		65151992218EDBCB6BFC8518 /* Icon-App-40x40@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-40x40@2x.png"; sourceTree = "<group>"; };
 		742860D211F50B7F0B23A4DB /* Icon-App-40x40@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-40x40@3x.png"; sourceTree = "<group>"; };
 		763E58A4536019D1C0D225B5 /* Icon-App-29x29@1x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-29x29@1x.png"; sourceTree = "<group>"; };
+		7D303982A361559374D4ECAF /* DeckBridgeSecurityStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckBridgeSecurityStore.swift; sourceTree = "<group>"; };
 		924A59FEB2399ED0CF09A4B5 /* Icon-App-76x76@1x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-76x76@1x.png"; sourceTree = "<group>"; };
 		977D8E982F70B14D99DF82FE /* LatticesCompanion.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = LatticesCompanion.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AB70174A80BDBEF97964B1D1 /* Icon-App-29x29@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-29x29@3x.png"; sourceTree = "<group>"; };
@@ -135,6 +137,7 @@
 				BA2C2E756959812A344E33FA /* CompanionTrackpadSurface.swift */,
 				6008CE13AA2719DE4CFEFBA5 /* ContentView.swift */,
 				B31BBB86BC2F6969B6F8C6AC /* DeckBridgeClient.swift */,
+				7D303982A361559374D4ECAF /* DeckBridgeSecurityStore.swift */,
 				11238FFB50336470B6A97CE0 /* DeckStore.swift */,
 				0A0454EF94BCB42389D5B90B /* Info.plist */,
 				31BAB98213FEF0182FB2EA32 /* LatticesCompanionApp.swift */,
@@ -238,6 +241,7 @@
 				E7EC416CD4478DCF4FEBB4FC /* CompanionTrackpadSurface.swift in Sources */,
 				2495F9FA74E60FE3935AF9AB /* ContentView.swift in Sources */,
 				39910639463B85C88940415F /* DeckBridgeClient.swift in Sources */,
+				477B603FA482CD0AF55BC9C7 /* DeckBridgeSecurityStore.swift in Sources */,
 				015334E9F01E2EC8CE7C6C77 /* DeckStore.swift in Sources */,
 				8509FE10337BF9B4286C77DF /* LatticesCompanionApp.swift in Sources */,
 			);

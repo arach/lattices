@@ -124,10 +124,18 @@ The first host-side integration now lives in the Lattices macOS app.
 That gives the future iPhone/iPad companion a stable local contract
 before transport and pairing are finalized.
 
-The current transport prototype now runs as a local network bridge in
-the macOS app with Bonjour discovery and a simple HTTP gateway. It is
-intentionally lightweight while the action contract settles. Pairing and
-request signing are still the next hardening step for standalone mode.
+The current transport now runs as a local network bridge in the macOS
+app with Bonjour discovery on port `5287` (`LATS` on a phone keypad).
+Standalone mode now uses:
+
+- local Mac approval for first-time device pairing
+- per-device key agreement
+- signed requests with nonce and timestamp checks
+- encrypted deck payloads for snapshots, actions, and trackpad events
+
+The bridge still keeps `/health`, `/deck/manifest`, and pairing
+bootstrap lightweight so a new companion can connect and establish trust
+without an external relay or Tailscale dependency.
 
 ## Initial Action Surface
 

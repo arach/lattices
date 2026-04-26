@@ -14,7 +14,7 @@ final class DeckStore: ObservableObject {
     @Published var selectedPageID = "voice"
     @Published var selectedCockpitPageID = "main"
     @Published var manualHost = ""
-    @Published var manualPort = "9404"
+    @Published var manualPort = "5287"
     @Published var errorMessage: String?
     @Published var isLoading = false
 
@@ -95,14 +95,14 @@ final class DeckStore: ObservableObject {
         label: String? = nil
     ) {
         let actionLabel = label ?? actionID
-        guard let endpoint = preferredEndpoint() else { return }
+        guard let endpoint = preferredEndpoint(), let health else { return }
 
         Task {
             do {
                 lastActionLabel = actionLabel
                 isPerformingAction = true
                 let request = DeckActionRequest(pageID: pageID, actionID: actionID, payload: payload)
-                let result = try await performWithFallback(request: request, preferred: endpoint)
+                let result = try await performWithFallback(request: request, preferred: endpoint, health: health)
                 lastActionResult = result
                 if let runtimeSnapshot = result.runtimeSnapshot {
                     snapshot = runtimeSnapshot
@@ -123,12 +123,13 @@ final class DeckStore: ObservableObject {
         dx: Double = 0,
         dy: Double = 0
     ) {
-        guard let endpoint = preferredEndpoint() else { return }
+        guard let endpoint = preferredEndpoint(), let health else { return }
 
         Task {
             do {
                 _ = try await client.trackpad(
                     endpoint: endpoint,
+                    health: health,
                     request: DeckTrackpadEventRequest(event: event, dx: dx, dy: dy)
                 )
             } catch {
@@ -173,7 +174,8 @@ private extension DeckStore {
                     selectedPageID = firstPage.id
                 }
             }
-            snapshot = try await client.snapshot(endpoint: resolvedEndpoint)
+            try await ensurePairing(endpoint: resolvedEndpoint, health: healthResponse)
+            snapshot = try await client.snapshot(endpoint: resolvedEndpoint, health: healthResponse)
             if let firstCockpitPage = snapshot?.cockpit?.pages.first(where: { $0.id == selectedCockpitPageID }) ?? snapshot?.cockpit?.pages.first {
                 selectedCockpitPageID = firstCockpitPage.id
             }
@@ -187,7 +189,8 @@ private extension DeckStore {
     func refreshSnapshot(endpoint: BridgeEndpoint) async {
         do {
             let target = preferredEndpoint(fallback: endpoint) ?? endpoint
-            snapshot = try await client.snapshot(endpoint: target)
+            guard let health else { return }
+            snapshot = try await client.snapshot(endpoint: target, health: health)
             if let firstCockpitPage = snapshot?.cockpit?.pages.first(where: { $0.id == selectedCockpitPageID }) ?? snapshot?.cockpit?.pages.first {
                 selectedCockpitPageID = firstCockpitPage.id
             }
@@ -221,7 +224,7 @@ private extension DeckStore {
         return BridgeEndpoint(
             name: endpoint.name,
             host: host,
-            port: endpoint.port,
+            port: Int(health.port),
             source: endpoint.source
         )
     }
@@ -247,13 +250,14 @@ private extension DeckStore {
 
     func performWithFallback(
         request: DeckActionRequest,
-        preferred: BridgeEndpoint
+        preferred: BridgeEndpoint,
+        health: BridgeHealthResponse
     ) async throws -> DeckActionResult {
         var lastError: Error?
 
         for candidate in candidateEndpoints(for: preferred) {
             do {
-                let result = try await client.perform(endpoint: candidate, request: request)
+                let result = try await client.perform(endpoint: candidate, health: health, request: request)
                 if activeEndpoint != candidate {
                     activeEndpoint = candidate
                     manualHost = candidate.host
@@ -266,5 +270,19 @@ private extension DeckStore {
         }
 
         throw lastError ?? DeckBridgeClientError.invalidResponse
+    }
+
+    func ensurePairing(endpoint: BridgeEndpoint, health: BridgeHealthResponse) async throws {
+        guard manifest?.security.requestSigningRequired == true else { return }
+        let security = DeckBridgeSecurityStore.shared
+        guard security.isTrusted(health: health) == false else { return }
+
+        let pairing = try await client.pair(endpoint: endpoint)
+        switch pairing.disposition {
+        case .approved, .alreadyTrusted:
+            security.storePairing(pairing)
+        case .denied:
+            throw DeckBridgeClientError.badStatus(403, pairing.detail ?? "Pairing was denied on the Mac.")
+        }
     }
 }

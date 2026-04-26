@@ -34,12 +34,31 @@ final class DeckKitTests: XCTestCase {
         XCTAssertEqual(standalone.mode, .standalone)
         XCTAssertEqual(standalone.pairingStrategy, .bonjour)
         XCTAssertTrue(standalone.requestSigningRequired)
+        XCTAssertTrue(standalone.payloadEncryptionRequired)
         XCTAssertNil(standalone.delegatedOwner)
 
         let embedded = DeckSecurityConfiguration.embeddedDelegated(owner: "talkie")
         XCTAssertEqual(embedded.mode, .embedded)
         XCTAssertEqual(embedded.pairingStrategy, .delegated)
+        XCTAssertTrue(embedded.payloadEncryptionRequired)
         XCTAssertEqual(embedded.delegatedOwner, "talkie")
+    }
+
+    func testPairingPayloadRoundTripPreservesSecurityFlags() throws {
+        let response = DeckPairingResponse(
+            disposition: .approved,
+            bridgeName: "Lats Bridge",
+            bridgePublicKey: "bridge-public-key",
+            bridgeFingerprint: "ABCD-1234",
+            requestSigningRequired: true,
+            payloadEncryptionRequired: true,
+            detail: "Trusted on the Mac."
+        )
+
+        let data = try JSONEncoder().encode(response)
+        let decoded = try JSONDecoder().decode(DeckPairingResponse.self, from: data)
+
+        XCTAssertEqual(decoded, response)
     }
 
     func testRuntimeSnapshotRoundTripPreservesSwitcherAndHistory() throws {

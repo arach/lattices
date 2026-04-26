@@ -1,3 +1,4 @@
+import DeckKit
 import SwiftUI
 
 /// Settings content with internal General / Shortcuts tabs.
@@ -1127,6 +1128,7 @@ struct SettingsContentView: View {
         let layout = LatticesCompanionCockpitCatalog.normalized(prefs.companionCockpitLayout)
         let selectedPage = layout.pages.first(where: { $0.id == selectedCompanionCockpitPageID }) ?? layout.pages.first
         let categories = LatticesCompanionShortcutCategory.allCases
+        let trustedDevices = companionTrustedDevices(revision: companionTrustRevision)
 
         return shortcutSectionCard(
             title: "Companion Cockpit",
@@ -1150,6 +1152,62 @@ struct SettingsContentView: View {
                     Toggle("", isOn: $prefs.companionTrackpadEnabled)
                         .toggleStyle(.switch)
                         .labelsHidden()
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Trusted Devices")
+                                .font(Typo.monoBold(11))
+                                .foregroundColor(Palette.text)
+                            Text("New companions must be approved on the Mac before they can send encrypted bridge requests.")
+                                .font(Typo.caption(10.5))
+                                .foregroundColor(Palette.textMuted)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        Spacer()
+
+                        if trustedDevices.isEmpty == false {
+                            Button("Forget All") {
+                                LatticesCompanionSecurityCoordinator.shared.clearTrustedDevices()
+                                companionTrustRevision += 1
+                            }
+                            .buttonStyle(.plain)
+                            .font(Typo.caption(10.5))
+                            .foregroundColor(Palette.textDim)
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        if trustedDevices.isEmpty {
+                            Text("No paired iPad or iPhone devices yet.")
+                                .font(Typo.caption(10.5))
+                                .foregroundColor(Palette.textMuted)
+                        } else {
+                            ForEach(trustedDevices) { device in
+                                HStack(alignment: .top, spacing: 10) {
+                                    Image(systemName: "iphone.gen3")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundColor(Palette.textDim)
+                                        .frame(width: 14)
+
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(device.name)
+                                            .font(Typo.caption(11))
+                                            .foregroundColor(Palette.text)
+                                        Text("\(device.fingerprint) · Last seen \(relativeTimestamp(device.lastSeenAt))")
+                                            .font(Typo.caption(10))
+                                            .foregroundColor(Palette.textMuted)
+                                    }
+
+                                    Spacer(minLength: 0)
+                                }
+                            }
+                        }
+                    }
+                    .padding(12)
+                    .background(shortcutsInsetPanel)
                 }
 
                 if let selectedPage {
@@ -1455,6 +1513,15 @@ struct SettingsContentView: View {
             )
     }
 
+    private func relativeTimestamp(_ date: Date) -> String {
+        RelativeDateTimeFormatter().localizedString(for: date, relativeTo: Date())
+    }
+
+    private func companionTrustedDevices(revision: Int) -> [DeckTrustedDeviceSummary] {
+        _ = revision
+        return LatticesCompanionSecurityCoordinator.shared.trustedDeviceSummaries()
+    }
+
     // MARK: - Tile cell (spatial grid item)
 
     private func tileCell(action: HotkeyAction, label: String) -> some View {
@@ -1496,6 +1563,7 @@ struct SettingsContentView: View {
 
     @State private var activeTilePopover: HotkeyAction?
     @State private var selectedCompanionCockpitPageID = "main"
+    @State private var companionTrustRevision = 0
 
     private func tileCellPopoverBinding(for action: HotkeyAction) -> Binding<Bool> {
         Binding(
