@@ -959,21 +959,19 @@ struct ArrowCluster: View {
     var onTap: ((String) -> Void)? = nil
 
     var body: some View {
-        VStack(spacing: 2) {
+        HStack(spacing: 2) {
+            arrow("arrow.left", key: "left")
             arrow("arrow.up", key: "up")
-            HStack(spacing: 2) {
-                arrow("arrow.left", key: "left")
-                arrow("arrow.down", key: "down")
-                arrow("arrow.right", key: "right")
-            }
+            arrow("arrow.down", key: "down")
+            arrow("arrow.right", key: "right")
         }
     }
 
     private func arrow(_ icon: String, key: String) -> some View {
         let label = Image(systemName: icon)
-            .font(.system(size: 9, weight: .medium))
+            .font(.system(size: 10, weight: .medium))
             .foregroundStyle(LatsPalette.textDim)
-            .frame(width: 24, height: 12)
+            .frame(width: 24, height: 26)
             .background(
                 RoundedRectangle(cornerRadius: 3)
                     .fill(Color.white.opacity(0.04))
@@ -1185,8 +1183,11 @@ struct LatsStatusBar: View {
             StatusItem(label: "⌘K", tint: LatsPalette.text, onTap: onPaletteTap)
             StatusItem(label: "⌘⇧P", tint: LatsPalette.text, onTap: onSwitcherTap)
         }
-        .frame(height: 26)
-        .background(Color.black.opacity(0.5))
+        .frame(height: 16)
+        .background(
+            Color.black.opacity(0.5)
+                .ignoresSafeArea(edges: .bottom)
+        )
         .overlay(alignment: .top) {
             Rectangle().fill(LatsPalette.hairline).frame(height: 1)
         }
@@ -1208,7 +1209,7 @@ struct LatsStatusBar: View {
             }
             .foregroundStyle(mode.color)
             .padding(.horizontal, 10)
-            .frame(height: 26)
+            .frame(height: 16)
             .background(mode.color.opacity(0.24))
             .overlay(alignment: .trailing) {
                 Rectangle().fill(LatsPalette.hairline).frame(width: 1)
@@ -1233,7 +1234,7 @@ struct StatusItem: View {
         }
         .foregroundStyle(tint)
         .padding(.horizontal, 9)
-        .frame(height: 26)
+        .frame(height: 16)
         .background(isHovered && onTap != nil ? Color.white.opacity(0.06) : .clear)
         .overlay(alignment: .trailing) {
             Rectangle().fill(LatsPalette.hairline).frame(width: 1)
