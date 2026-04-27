@@ -119,6 +119,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         store.register(action: .omniSearch) { OmniSearchWindow.shared.toggle() }
         WindowDragSnapController.shared.start()
+        MouseGestureController.shared.start()
 
         // Session layer cycling
         store.register(action: .layerNext) { SessionLayerStore.shared.cycleNext() }
