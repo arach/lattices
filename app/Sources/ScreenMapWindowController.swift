@@ -78,6 +78,14 @@ final class ScreenMapWindowController: ObservableObject {
         show()
     }
 
+    func showScreenMapOverview() {
+        activePage = .screenMap
+        show()
+        DispatchQueue.main.async { [weak self] in
+            self?.controller?.focusViewportPreset(.overview)
+        }
+    }
+
     /// Open screen map focused on a specific window.
     func showWindow(wid: UInt32) {
         activePage = .screenMap

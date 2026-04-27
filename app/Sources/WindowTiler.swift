@@ -594,6 +594,23 @@ enum WindowTiler {
         return Int(getActive(mainConn()))
     }
 
+    static func adjacentSpace(in spaces: [SpaceInfo], currentSpaceId: Int, offset: Int) -> SpaceInfo? {
+        guard let currentIndex = spaces.firstIndex(where: { $0.id == currentSpaceId }) else { return nil }
+        let targetIndex = currentIndex + offset
+        guard spaces.indices.contains(targetIndex) else { return nil }
+        return spaces[targetIndex]
+    }
+
+    @discardableResult
+    static func switchToAdjacentSpace(offset: Int, from cgPoint: CGPoint? = nil) -> Bool {
+        guard let display = displaySpaces(containing: cgPoint ?? currentMouseCGPoint()) else { return false }
+        guard let target = adjacentSpace(in: display.spaces, currentSpaceId: display.currentSpaceId, offset: offset) else {
+            return false
+        }
+        switchToSpace(spaceId: target.id)
+        return true
+    }
+
     /// Find a window by its title tag and return its CGWindowID and owner PID
     static func findWindow(tag: String) -> (wid: UInt32, pid: pid_t)? {
         guard let windowList = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
@@ -2001,6 +2018,24 @@ enum WindowTiler {
         return NSScreen.screens.first(where: {
             $0.frame.contains(NSPoint(x: centerX, y: nsCenterY))
         }) ?? NSScreen.main ?? primaryScreen
+    }
+
+    private static func currentMouseCGPoint() -> CGPoint {
+        let mouseLocation = NSEvent.mouseLocation
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+        return CGPoint(x: mouseLocation.x, y: primaryHeight - mouseLocation.y)
+    }
+
+    private static func displaySpaces(containing cgPoint: CGPoint) -> DisplaySpaces? {
+        guard let screenIndex = screenIndex(for: cgPoint) else { return nil }
+        return getDisplaySpaces().first(where: { $0.displayIndex == screenIndex })
+    }
+
+    private static func screenIndex(for cgPoint: CGPoint) -> Int? {
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+        let nsPoint = NSPoint(x: cgPoint.x, y: primaryHeight - cgPoint.y)
+        return NSScreen.screens.firstIndex(where: { $0.frame.contains(nsPoint) })
+            ?? (NSScreen.main != nil ? 0 : nil)
     }
 
     // MARK: - Private

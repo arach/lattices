@@ -24,6 +24,10 @@ class Preferences: ObservableObject {
         didSet { UserDefaults.standard.set(dragSnapEnabled, forKey: "windowSnap.enabled") }
     }
 
+    @Published var mouseGesturesEnabled: Bool {
+        didSet { UserDefaults.standard.set(mouseGesturesEnabled, forKey: "mouseGestures.enabled") }
+    }
+
     // MARK: - AI / Claude
 
     @Published var claudePath: String {
@@ -136,6 +140,12 @@ class Preferences: ObservableObject {
             self.dragSnapEnabled = UserDefaults.standard.bool(forKey: "windowSnap.enabled")
         } else {
             self.dragSnapEnabled = true
+        }
+
+        if UserDefaults.standard.object(forKey: "mouseGestures.enabled") != nil {
+            self.mouseGesturesEnabled = UserDefaults.standard.bool(forKey: "mouseGestures.enabled")
+        } else {
+            self.mouseGesturesEnabled = false
         }
 
         // AI / Claude
