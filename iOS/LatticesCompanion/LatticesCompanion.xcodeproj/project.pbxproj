@@ -1,0 +1,526 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		015334E9F01E2EC8CE7C6C77 /* DeckStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11238FFB50336470B6A97CE0 /* DeckStore.swift */; };
+		02DFEEC584B5BE76F4E0EF59 /* Icon-App-29x29@3x.png in Resources */ = {isa = PBXBuildFile; fileRef = AB70174A80BDBEF97964B1D1 /* Icon-App-29x29@3x.png */; };
+		0B62E8780B2EF68BB75DCB77 /* DeckKit in Frameworks */ = {isa = PBXBuildFile; productRef = 1D4FCB5C53FAA6DC26531C63 /* DeckKit */; };
+		2495F9FA74E60FE3935AF9AB /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6008CE13AA2719DE4CFEFBA5 /* ContentView.swift */; };
+		303C0ED6FF5A801009E72EBD /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = E0A62477A93C15EBE3917B2E /* LaunchScreen.storyboard */; };
+		39910639463B85C88940415F /* DeckBridgeClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B31BBB86BC2F6969B6F8C6AC /* DeckBridgeClient.swift */; };
+		3CD5F4319B4419DA9ACCA70A /* Icon-App-60x60@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = D6A573A92276901B84AA3EE4 /* Icon-App-60x60@2x.png */; };
+		477B603FA482CD0AF55BC9C7 /* DeckBridgeSecurityStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D303982A361559374D4ECAF /* DeckBridgeSecurityStore.swift */; };
+		48AB2F1093E08D5F972BEF57 /* Icon-App-76x76@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 2008FE641E08A7EA3F1142D8 /* Icon-App-76x76@2x.png */; };
+		49328530140603E31D3C44C4 /* Icon-App-29x29@1x.png in Resources */ = {isa = PBXBuildFile; fileRef = 763E58A4536019D1C0D225B5 /* Icon-App-29x29@1x.png */; };
+		4932E64B0E7CF7E4C48DB05E /* LatsDeckScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AE37E6C4302786080981EE9 /* LatsDeckScreen.swift */; };
+		58104483ED43F7B6EADEDD47 /* Icon-App-29x29@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 5E31C91E44E310ECB2F450E6 /* Icon-App-29x29@2x.png */; };
+		84F9131A8649EB980EC5A378 /* BridgeDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4603482511D3BE1F2132C82 /* BridgeDiscovery.swift */; };
+		8509FE10337BF9B4286C77DF /* LatticesCompanionApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31BAB98213FEF0182FB2EA32 /* LatticesCompanionApp.swift */; };
+		890DFAA5138BB9EFA7C21D8C /* Icon-App-20x20@1x.png in Resources */ = {isa = PBXBuildFile; fileRef = D91400AA758EB6C7BDEFA067 /* Icon-App-20x20@1x.png */; };
+		89AB5D05E905F1A23A38C4F3 /* Icon-App-40x40@3x.png in Resources */ = {isa = PBXBuildFile; fileRef = 742860D211F50B7F0B23A4DB /* Icon-App-40x40@3x.png */; };
+		AE392FBE93D051B87EF6EB52 /* Icon-App-40x40@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 65151992218EDBCB6BFC8518 /* Icon-App-40x40@2x.png */; };
+		B5BD61D18065255F3BA23397 /* Icon-App-40x40@1x.png in Resources */ = {isa = PBXBuildFile; fileRef = B9B6EE50773DB75253F67837 /* Icon-App-40x40@1x.png */; };
+		B87350C3DF5953681D197E24 /* Icon-App-60x60@3x.png in Resources */ = {isa = PBXBuildFile; fileRef = D0A784E5230CF4A1207A5B63 /* Icon-App-60x60@3x.png */; };
+		CAF7F48B371B153DED55637D /* Icon-App-20x20@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 358CE7599268D7E37739DA40 /* Icon-App-20x20@2x.png */; };
+		D087EC7E9542F2EB5989500F /* Icon-App-1024x1024@1x.png in Resources */ = {isa = PBXBuildFile; fileRef = 2484AA38E059AA293C768446 /* Icon-App-1024x1024@1x.png */; };
+		D22111B43C6A48912D6E5A96 /* Icon-App-20x20@3x.png in Resources */ = {isa = PBXBuildFile; fileRef = 2569702CC7CAC0677B8C6524 /* Icon-App-20x20@3x.png */; };
+		D34392C35E4145D4262AC87F /* Icon-App-83.5x83.5@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = BCF0269F9663D59AA5D8BEF6 /* Icon-App-83.5x83.5@2x.png */; };
+		E7EC416CD4478DCF4FEBB4FC /* CompanionTrackpadSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA2C2E756959812A344E33FA /* CompanionTrackpadSurface.swift */; };
+		EC49AAE0FD658F4D651D6CB1 /* LatsDesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5BE58AB3627168981D1D91F /* LatsDesignSystem.swift */; };
+		FD675D5F19359E6AA5DC41AB /* Icon-App-76x76@1x.png in Resources */ = {isa = PBXBuildFile; fileRef = 924A59FEB2399ED0CF09A4B5 /* Icon-App-76x76@1x.png */; };
+		389783C39A96A0C6040E3D18 /* HomeMockData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30519DB14393D18A74E57E5B /* HomeMockData.swift */; };
+		3B524C6E337D9959BF1BE8FE /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0C0606BE3D76578604B9CBD /* HomeView.swift */; };
+		3345DF34E18FB311421B2457 /* HomeTopBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5321ED84ACB164F46D2934B /* HomeTopBar.swift */; };
+		C6451DBFD579F34A327E81BF /* HomeTargetsRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBAE0DE923F39F2BF45E3E1B /* HomeTargetsRow.swift */; };
+		B9C0507422A8734A914A0D30 /* HomeOverflowGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEDF0B8863E06CF3EB482FBA /* HomeOverflowGrid.swift */; };
+		68B80BF5CD2C40BA2A059F8E /* HomeScenesGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8215EE258557D16AA38B3085 /* HomeScenesGrid.swift */; };
+		5BBCE0043B3533C707C8E672 /* HomeRoutinesList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C03F974076CB5E3C7E3587F /* HomeRoutinesList.swift */; };
+		FEEE84C4D01FA5FEF0781729 /* HomeRecentTape.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78455880A83F3B59BA98BF37 /* HomeRecentTape.swift */; };
+		8213187280F129984B01C42C /* HomeSyncSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D0AF528B55EB38C5E54DFBF /* HomeSyncSection.swift */; };
+		B608495202DFA2A819A411A2 /* HomeCloudStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89ACC1F3EE158DE33127A06F /* HomeCloudStrip.swift */; };
+		C08E8053E76ECAE40E56BC31 /* HomeBottomBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3DA7D87C159F5D6AC0C544C /* HomeBottomBar.swift */; };
+		76A8011A09CC97845FD62341 /* HomeZeroState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D54988DB36C3ED3DD1CBF066 /* HomeZeroState.swift */; };
+		27F65A5D6B42CBFF48C61B5D /* HomeVoiceOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1042450AFBDFADBC000EC79 /* HomeVoiceOverlay.swift */; };
+		2C6AA52F856780E09FBEC4F0 /* HomeDataAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 126FA09AC8E4CB185422ED57 /* HomeDataAdapter.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		003766AC268BAEEC8D05E9E8 /* swift */ = {isa = PBXFileReference; lastKnownFileType = folder; name = swift; path = ../../swift; sourceTree = SOURCE_ROOT; };
+		0A0454EF94BCB42389D5B90B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		0AE37E6C4302786080981EE9 /* LatsDeckScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LatsDeckScreen.swift; sourceTree = "<group>"; };
+		11238FFB50336470B6A97CE0 /* DeckStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStore.swift; sourceTree = "<group>"; };
+		2008FE641E08A7EA3F1142D8 /* Icon-App-76x76@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-76x76@2x.png"; sourceTree = "<group>"; };
+		2484AA38E059AA293C768446 /* Icon-App-1024x1024@1x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-1024x1024@1x.png"; sourceTree = "<group>"; };
+		2569702CC7CAC0677B8C6524 /* Icon-App-20x20@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-20x20@3x.png"; sourceTree = "<group>"; };
+		31BAB98213FEF0182FB2EA32 /* LatticesCompanionApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LatticesCompanionApp.swift; sourceTree = "<group>"; };
+		358CE7599268D7E37739DA40 /* Icon-App-20x20@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-20x20@2x.png"; sourceTree = "<group>"; };
+		5E31C91E44E310ECB2F450E6 /* Icon-App-29x29@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-29x29@2x.png"; sourceTree = "<group>"; };
+		6008CE13AA2719DE4CFEFBA5 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		65151992218EDBCB6BFC8518 /* Icon-App-40x40@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-40x40@2x.png"; sourceTree = "<group>"; };
+		742860D211F50B7F0B23A4DB /* Icon-App-40x40@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-40x40@3x.png"; sourceTree = "<group>"; };
+		763E58A4536019D1C0D225B5 /* Icon-App-29x29@1x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-29x29@1x.png"; sourceTree = "<group>"; };
+		7D303982A361559374D4ECAF /* DeckBridgeSecurityStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckBridgeSecurityStore.swift; sourceTree = "<group>"; };
+		924A59FEB2399ED0CF09A4B5 /* Icon-App-76x76@1x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-76x76@1x.png"; sourceTree = "<group>"; };
+		977D8E982F70B14D99DF82FE /* LatticesCompanion.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = LatticesCompanion.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AB70174A80BDBEF97964B1D1 /* Icon-App-29x29@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-29x29@3x.png"; sourceTree = "<group>"; };
+		B31BBB86BC2F6969B6F8C6AC /* DeckBridgeClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckBridgeClient.swift; sourceTree = "<group>"; };
+		B4603482511D3BE1F2132C82 /* BridgeDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeDiscovery.swift; sourceTree = "<group>"; };
+		B9B6EE50773DB75253F67837 /* Icon-App-40x40@1x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-40x40@1x.png"; sourceTree = "<group>"; };
+		BA2C2E756959812A344E33FA /* CompanionTrackpadSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionTrackpadSurface.swift; sourceTree = "<group>"; };
+		BCF0269F9663D59AA5D8BEF6 /* Icon-App-83.5x83.5@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-83.5x83.5@2x.png"; sourceTree = "<group>"; };
+		D0A784E5230CF4A1207A5B63 /* Icon-App-60x60@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-60x60@3x.png"; sourceTree = "<group>"; };
+		D6A573A92276901B84AA3EE4 /* Icon-App-60x60@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-60x60@2x.png"; sourceTree = "<group>"; };
+		D91400AA758EB6C7BDEFA067 /* Icon-App-20x20@1x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-20x20@1x.png"; sourceTree = "<group>"; };
+		E0A62477A93C15EBE3917B2E /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+		E5BE58AB3627168981D1D91F /* LatsDesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LatsDesignSystem.swift; sourceTree = "<group>"; };
+		30519DB14393D18A74E57E5B /* HomeMockData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeMockData.swift; path = Home/HomeMockData.swift; sourceTree = "<group>"; };
+		B0C0606BE3D76578604B9CBD /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeView.swift; path = Home/HomeView.swift; sourceTree = "<group>"; };
+		C5321ED84ACB164F46D2934B /* HomeTopBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeTopBar.swift; path = Home/HomeTopBar.swift; sourceTree = "<group>"; };
+		DBAE0DE923F39F2BF45E3E1B /* HomeTargetsRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeTargetsRow.swift; path = Home/HomeTargetsRow.swift; sourceTree = "<group>"; };
+		BEDF0B8863E06CF3EB482FBA /* HomeOverflowGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeOverflowGrid.swift; path = Home/HomeOverflowGrid.swift; sourceTree = "<group>"; };
+		8215EE258557D16AA38B3085 /* HomeScenesGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeScenesGrid.swift; path = Home/HomeScenesGrid.swift; sourceTree = "<group>"; };
+		7C03F974076CB5E3C7E3587F /* HomeRoutinesList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeRoutinesList.swift; path = Home/HomeRoutinesList.swift; sourceTree = "<group>"; };
+		78455880A83F3B59BA98BF37 /* HomeRecentTape.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeRecentTape.swift; path = Home/HomeRecentTape.swift; sourceTree = "<group>"; };
+		8D0AF528B55EB38C5E54DFBF /* HomeSyncSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeSyncSection.swift; path = Home/HomeSyncSection.swift; sourceTree = "<group>"; };
+		89ACC1F3EE158DE33127A06F /* HomeCloudStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeCloudStrip.swift; path = Home/HomeCloudStrip.swift; sourceTree = "<group>"; };
+		F3DA7D87C159F5D6AC0C544C /* HomeBottomBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeBottomBar.swift; path = Home/HomeBottomBar.swift; sourceTree = "<group>"; };
+		D54988DB36C3ED3DD1CBF066 /* HomeZeroState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeZeroState.swift; path = Home/HomeZeroState.swift; sourceTree = "<group>"; };
+		E1042450AFBDFADBC000EC79 /* HomeVoiceOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeVoiceOverlay.swift; path = Home/HomeVoiceOverlay.swift; sourceTree = "<group>"; };
+		126FA09AC8E4CB185422ED57 /* HomeDataAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeDataAdapter.swift; path = Home/HomeDataAdapter.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		CEBE3E7A38B23D4DFA991B36 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0B62E8780B2EF68BB75DCB77 /* DeckKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		016972A54EE0B0FD9BFF9AA2 /* AppIcon.appiconset */ = {
+			isa = PBXGroup;
+			children = (
+				D91400AA758EB6C7BDEFA067 /* Icon-App-20x20@1x.png */,
+				358CE7599268D7E37739DA40 /* Icon-App-20x20@2x.png */,
+				2569702CC7CAC0677B8C6524 /* Icon-App-20x20@3x.png */,
+				763E58A4536019D1C0D225B5 /* Icon-App-29x29@1x.png */,
+				5E31C91E44E310ECB2F450E6 /* Icon-App-29x29@2x.png */,
+				AB70174A80BDBEF97964B1D1 /* Icon-App-29x29@3x.png */,
+				B9B6EE50773DB75253F67837 /* Icon-App-40x40@1x.png */,
+				65151992218EDBCB6BFC8518 /* Icon-App-40x40@2x.png */,
+				742860D211F50B7F0B23A4DB /* Icon-App-40x40@3x.png */,
+				D6A573A92276901B84AA3EE4 /* Icon-App-60x60@2x.png */,
+				D0A784E5230CF4A1207A5B63 /* Icon-App-60x60@3x.png */,
+				924A59FEB2399ED0CF09A4B5 /* Icon-App-76x76@1x.png */,
+				2008FE641E08A7EA3F1142D8 /* Icon-App-76x76@2x.png */,
+				BCF0269F9663D59AA5D8BEF6 /* Icon-App-83.5x83.5@2x.png */,
+				2484AA38E059AA293C768446 /* Icon-App-1024x1024@1x.png */,
+			);
+			path = AppIcon.appiconset;
+			sourceTree = "<group>";
+		};
+		5E1E566C7FE1684D66EAD5A7 /* Assets.xcassets */ = {
+			isa = PBXGroup;
+			children = (
+				016972A54EE0B0FD9BFF9AA2 /* AppIcon.appiconset */,
+			);
+			path = Assets.xcassets;
+			sourceTree = "<group>";
+		};
+		7222461E8EFB707683CF0F1F = {
+			isa = PBXGroup;
+			children = (
+				5E1E566C7FE1684D66EAD5A7 /* Assets.xcassets */,
+				B343272AB8FA90BB3207C575 /* Packages */,
+				F83FF26ABEBD47CFB79371F9 /* Sources */,
+				F3908548B1A4941A6C97B64B /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		B343272AB8FA90BB3207C575 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				003766AC268BAEEC8D05E9E8 /* swift */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		F3908548B1A4941A6C97B64B /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				977D8E982F70B14D99DF82FE /* LatticesCompanion.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		F83FF26ABEBD47CFB79371F9 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				B4603482511D3BE1F2132C82 /* BridgeDiscovery.swift */,
+				BA2C2E756959812A344E33FA /* CompanionTrackpadSurface.swift */,
+				6008CE13AA2719DE4CFEFBA5 /* ContentView.swift */,
+				B31BBB86BC2F6969B6F8C6AC /* DeckBridgeClient.swift */,
+				7D303982A361559374D4ECAF /* DeckBridgeSecurityStore.swift */,
+				11238FFB50336470B6A97CE0 /* DeckStore.swift */,
+				0A0454EF94BCB42389D5B90B /* Info.plist */,
+				0AE37E6C4302786080981EE9 /* LatsDeckScreen.swift */,
+				E5BE58AB3627168981D1D91F /* LatsDesignSystem.swift */,
+				126FA09AC8E4CB185422ED57 /* HomeDataAdapter.swift */,
+				E1042450AFBDFADBC000EC79 /* HomeVoiceOverlay.swift */,
+				30519DB14393D18A74E57E5B /* HomeMockData.swift */,
+				B0C0606BE3D76578604B9CBD /* HomeView.swift */,
+				C5321ED84ACB164F46D2934B /* HomeTopBar.swift */,
+				DBAE0DE923F39F2BF45E3E1B /* HomeTargetsRow.swift */,
+				BEDF0B8863E06CF3EB482FBA /* HomeOverflowGrid.swift */,
+				8215EE258557D16AA38B3085 /* HomeScenesGrid.swift */,
+				7C03F974076CB5E3C7E3587F /* HomeRoutinesList.swift */,
+				78455880A83F3B59BA98BF37 /* HomeRecentTape.swift */,
+				8D0AF528B55EB38C5E54DFBF /* HomeSyncSection.swift */,
+				89ACC1F3EE158DE33127A06F /* HomeCloudStrip.swift */,
+				F3DA7D87C159F5D6AC0C544C /* HomeBottomBar.swift */,
+				D54988DB36C3ED3DD1CBF066 /* HomeZeroState.swift */,
+				31BAB98213FEF0182FB2EA32 /* LatticesCompanionApp.swift */,
+				E0A62477A93C15EBE3917B2E /* LaunchScreen.storyboard */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		C19FFDF279AEA0AB229D2532 /* LatticesCompanion */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7B8F371E6C6312B824C2319C /* Build configuration list for PBXNativeTarget "LatticesCompanion" */;
+			buildPhases = (
+				0CE722E08B918DDB62E95DFC /* Sources */,
+				83A8AAE982AD2E46DBDD6E09 /* Resources */,
+				CEBE3E7A38B23D4DFA991B36 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = LatticesCompanion;
+			packageProductDependencies = (
+				1D4FCB5C53FAA6DC26531C63 /* DeckKit */,
+			);
+			productName = LatticesCompanion;
+			productReference = 977D8E982F70B14D99DF82FE /* LatticesCompanion.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		CEA3E4BAA7D33FBD5BA8BE2B /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					C19FFDF279AEA0AB229D2532 = {
+						DevelopmentTeam = 2U83JFPW66;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 5A74D3F6041E0DD23E4479FA /* Build configuration list for PBXProject "LatticesCompanion" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 7222461E8EFB707683CF0F1F;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				A9A9C52D0A538CA736CDB7B5 /* XCLocalSwiftPackageReference "../../swift" */,
+			);
+			preferredProjectObjectVersion = 77;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				C19FFDF279AEA0AB229D2532 /* LatticesCompanion */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		83A8AAE982AD2E46DBDD6E09 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D087EC7E9542F2EB5989500F /* Icon-App-1024x1024@1x.png in Resources */,
+				890DFAA5138BB9EFA7C21D8C /* Icon-App-20x20@1x.png in Resources */,
+				CAF7F48B371B153DED55637D /* Icon-App-20x20@2x.png in Resources */,
+				D22111B43C6A48912D6E5A96 /* Icon-App-20x20@3x.png in Resources */,
+				49328530140603E31D3C44C4 /* Icon-App-29x29@1x.png in Resources */,
+				58104483ED43F7B6EADEDD47 /* Icon-App-29x29@2x.png in Resources */,
+				02DFEEC584B5BE76F4E0EF59 /* Icon-App-29x29@3x.png in Resources */,
+				B5BD61D18065255F3BA23397 /* Icon-App-40x40@1x.png in Resources */,
+				AE392FBE93D051B87EF6EB52 /* Icon-App-40x40@2x.png in Resources */,
+				89AB5D05E905F1A23A38C4F3 /* Icon-App-40x40@3x.png in Resources */,
+				3CD5F4319B4419DA9ACCA70A /* Icon-App-60x60@2x.png in Resources */,
+				B87350C3DF5953681D197E24 /* Icon-App-60x60@3x.png in Resources */,
+				FD675D5F19359E6AA5DC41AB /* Icon-App-76x76@1x.png in Resources */,
+				48AB2F1093E08D5F972BEF57 /* Icon-App-76x76@2x.png in Resources */,
+				D34392C35E4145D4262AC87F /* Icon-App-83.5x83.5@2x.png in Resources */,
+				303C0ED6FF5A801009E72EBD /* LaunchScreen.storyboard in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		0CE722E08B918DDB62E95DFC /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				84F9131A8649EB980EC5A378 /* BridgeDiscovery.swift in Sources */,
+				E7EC416CD4478DCF4FEBB4FC /* CompanionTrackpadSurface.swift in Sources */,
+				2495F9FA74E60FE3935AF9AB /* ContentView.swift in Sources */,
+				39910639463B85C88940415F /* DeckBridgeClient.swift in Sources */,
+				477B603FA482CD0AF55BC9C7 /* DeckBridgeSecurityStore.swift in Sources */,
+				015334E9F01E2EC8CE7C6C77 /* DeckStore.swift in Sources */,
+				4932E64B0E7CF7E4C48DB05E /* LatsDeckScreen.swift in Sources */,
+				EC49AAE0FD658F4D651D6CB1 /* LatsDesignSystem.swift in Sources */,
+				2C6AA52F856780E09FBEC4F0 /* HomeDataAdapter.swift in Sources */,
+				27F65A5D6B42CBFF48C61B5D /* HomeVoiceOverlay.swift in Sources */,
+				389783C39A96A0C6040E3D18 /* HomeMockData.swift in Sources */,
+				3B524C6E337D9959BF1BE8FE /* HomeView.swift in Sources */,
+				3345DF34E18FB311421B2457 /* HomeTopBar.swift in Sources */,
+				C6451DBFD579F34A327E81BF /* HomeTargetsRow.swift in Sources */,
+				B9C0507422A8734A914A0D30 /* HomeOverflowGrid.swift in Sources */,
+				68B80BF5CD2C40BA2A059F8E /* HomeScenesGrid.swift in Sources */,
+				5BBCE0043B3533C707C8E672 /* HomeRoutinesList.swift in Sources */,
+				FEEE84C4D01FA5FEF0781729 /* HomeRecentTape.swift in Sources */,
+				8213187280F129984B01C42C /* HomeSyncSection.swift in Sources */,
+				B608495202DFA2A819A411A2 /* HomeCloudStrip.swift in Sources */,
+				C08E8053E76ECAE40E56BC31 /* HomeBottomBar.swift in Sources */,
+				76A8011A09CC97845FD62341 /* HomeZeroState.swift in Sources */,
+				8509FE10337BF9B4286C77DF /* LatticesCompanionApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		45F25506216BC79D425A39CF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Sources/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.arach.lattices.companion.ios;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		69F90BA8CC71BE9DBBE8004A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Sources/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.arach.lattices.companion.ios;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		CC945CD0D5FF0C8CB9F0EC91 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 2U83JFPW66;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		DDE7241DB93DDFA2FE0ECB6C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 2U83JFPW66;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		5A74D3F6041E0DD23E4479FA /* Build configuration list for PBXProject "LatticesCompanion" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CC945CD0D5FF0C8CB9F0EC91 /* Debug */,
+				DDE7241DB93DDFA2FE0ECB6C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		7B8F371E6C6312B824C2319C /* Build configuration list for PBXNativeTarget "LatticesCompanion" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				45F25506216BC79D425A39CF /* Debug */,
+				69F90BA8CC71BE9DBBE8004A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		A9A9C52D0A538CA736CDB7B5 /* XCLocalSwiftPackageReference "../../swift" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../swift;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		1D4FCB5C53FAA6DC26531C63 /* DeckKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = DeckKit;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = CEA3E4BAA7D33FBD5BA8BE2B /* Project object */;
+}

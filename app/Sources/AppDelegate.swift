@@ -159,7 +159,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         for (action, position) in tileMap {
             store.register(action: action) { WindowTiler.tileFrontmostViaAX(to: position) }
         }
-        store.register(action: .tileDistribute) { WindowTiler.distributeVisible() }
+        store.register(action: .tileDistribute) { WindowTiler.distributeVisible(reactivateLattices: false) }
+        store.register(action: .tileTypeGrid) { WindowTiler.distributeVisibleByFrontmostType(reactivateLattices: false) }
 
         // Onboarding on first launch; otherwise just check permissions
         if !OnboardingWindowController.shared.showIfNeeded() {
@@ -176,6 +177,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         ProcessModel.shared.start()
         LatticesApi.setup()
         DaemonServer.shared.start()
+        LatticesCompanionBridgeServer.shared.start()
         AgentPool.shared.start()
         diag.finish(tBoot)
 
@@ -192,6 +194,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 ScreenMapWindowController.shared.showPage(.screenMap)
             }
         }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        LatticesCompanionBridgeServer.shared.stop()
+        DaemonServer.shared.stop()
     }
 
     // MARK: - Status item click handler

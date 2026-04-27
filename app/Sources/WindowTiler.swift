@@ -1212,14 +1212,11 @@ enum WindowTiler {
     }
 
     /// Distribute ALL visible non-Lattices windows into a smart grid on the screen with the most windows.
-    static func distributeVisible() {
+    static func distributeVisible(reactivateLattices: Bool = true) {
         let diag = DiagnosticLog.shared
         let t = diag.startTimed("distributeVisible")
 
-        let allEntries = DesktopModel.shared.allWindows()
-        let visible = allEntries.filter { entry in
-            entry.isOnScreen && entry.app != "Lattices" && entry.frame.w > 50 && entry.frame.h > 50
-        }
+        let visible = visibleDistributableWindows()
 
         guard !visible.isEmpty else {
             diag.info("distributeVisible: no visible windows to distribute")
@@ -1229,7 +1226,59 @@ enum WindowTiler {
 
         let windows = visible.map { (wid: $0.wid, pid: $0.pid) }
         diag.info("distributeVisible: \(windows.count) windows")
-        batchRaiseAndDistribute(windows: windows)
+        batchRaiseAndDistribute(windows: windows, reactivateLattices: reactivateLattices)
+        diag.finish(t)
+    }
+
+    /// Distribute visible windows matching the frontmost app's broader type.
+    /// Example: when the active app is a terminal, grid all visible terminal windows on that display.
+    static func distributeVisibleByFrontmostType(reactivateLattices: Bool = true) {
+        let diag = DiagnosticLog.shared
+        let t = diag.startTimed("distributeVisibleByFrontmostType")
+
+        let visible = visibleDistributableWindows()
+        guard !visible.isEmpty else {
+            diag.info("distributeVisibleByFrontmostType: no visible windows to distribute")
+            diag.finish(t)
+            return
+        }
+
+        let frontmostAppName = NSWorkspace.shared.frontmostApplication?.localizedName
+        let anchor = frontmostAppName.flatMap { name in
+            visible.first { $0.app.localizedCaseInsensitiveCompare(name) == .orderedSame }
+        } ?? visible.first
+
+        guard let anchor else {
+            diag.info("distributeVisibleByFrontmostType: no anchor window resolved")
+            diag.finish(t)
+            return
+        }
+
+        let grouping = AppTypeClassifier.grouping(for: anchor.app)
+        let anchorScreen = screenForWindowFrame(anchor.frame)
+        let anchorScreenId = screenID(for: anchorScreen)
+
+        let sameScreenMatches = visible.filter { entry in
+            AppTypeClassifier.matches(entry.app, grouping: grouping) &&
+            screenID(for: screenForWindowFrame(entry.frame)) == anchorScreenId
+        }
+
+        let matches = sameScreenMatches.isEmpty
+            ? visible.filter { AppTypeClassifier.matches($0.app, grouping: grouping) }
+            : sameScreenMatches
+
+        guard !matches.isEmpty else {
+            diag.info("distributeVisibleByFrontmostType: no matches for \(grouping.label)")
+            diag.finish(t)
+            return
+        }
+
+        let ordered = sortWindowsForGrid(matches)
+        diag.info("distributeVisibleByFrontmostType: grouping=\(grouping.label) count=\(ordered.count) screen=\(anchorScreen.localizedName)")
+        batchRaiseAndDistribute(
+            windows: ordered.map { (wid: $0.wid, pid: $0.pid) },
+            reactivateLattices: reactivateLattices
+        )
         diag.finish(t)
     }
 
@@ -1691,7 +1740,11 @@ enum WindowTiler {
 
     /// Raise multiple windows and arrange in smart grid — single CG query, single AX query per process.
     /// If `region` is provided (fractional x, y, w, h), the grid is constrained to that sub-area.
-    static func batchRaiseAndDistribute(windows: [(wid: UInt32, pid: Int32)], region: (CGFloat, CGFloat, CGFloat, CGFloat)? = nil) {
+    static func batchRaiseAndDistribute(
+        windows: [(wid: UInt32, pid: Int32)],
+        region: (CGFloat, CGFloat, CGFloat, CGFloat)? = nil,
+        reactivateLattices: Bool = true
+    ) {
         guard !windows.isEmpty else { return }
         let diag = DiagnosticLog.shared
 
@@ -1750,91 +1803,99 @@ enum WindowTiler {
         }
 
         // Group by pid for AX queries, keep slot mapping
-        var widToSlot: [UInt32: Int] = [:]
-        for (i, win) in windows.enumerated() { widToSlot[win.wid] = i }
-
-        var byPid: [Int32: [(wid: UInt32, target: CGRect)]] = [:]
-        for (i, win) in windows.enumerated() {
-            byPid[win.pid, default: []].append((wid: win.wid, target: slots[i]))
+        var byPid: [Int32: [(slotIdx: Int, wid: UInt32, target: CGRect)]] = [:]
+        let moves: [(wid: UInt32, pid: Int32, frame: CGRect)] = windows.enumerated().map { index, win in
+            let target = slots[index]
+            byPid[win.pid, default: []].append((slotIdx: index, wid: win.wid, target: target))
+            return (wid: win.wid, pid: win.pid, frame: target)
         }
 
-        struct AXWin { let el: AXUIElement; let pos: CGPoint; let size: CGSize }
-
-        // Pass 1: Move all windows to target positions (no raise yet)
+        // Pass 1: Move all windows using exact wid→AX mapping.
         var moved = 0
         var failed: [UInt32] = []
         var resolvedAXElements: [(slotIdx: Int, el: AXUIElement)] = [] // for raise pass
+        var activatedPids = Set<Int32>()
+
+        let cid = _SLSMainConnectionID?()
+        if let cid { _ = _SLSDisableUpdate?(cid) }
 
         for (pid, windowMoves) in byPid {
             let appRef = AXUIElementCreateApplication(pid)
+            AXUIElementSetAttributeValue(appRef, "AXEnhancedUserInterface" as CFString, false as CFTypeRef)
+
             var windowsRef: CFTypeRef?
             let err = AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &windowsRef)
             guard err == .success, let axWindows = windowsRef as? [AXUIElement] else {
                 diag.warn("  AX query failed for pid=\(pid) err=\(err.rawValue)")
                 failed.append(contentsOf: windowMoves.map(\.wid))
+                AXUIElementSetAttributeValue(appRef, "AXEnhancedUserInterface" as CFString, true as CFTypeRef)
                 continue
             }
 
-            var axCache: [AXWin] = []
+            var axByWid: [UInt32: AXUIElement] = [:]
             for axWin in axWindows {
-                var posRef: CFTypeRef?; var sizeRef: CFTypeRef?
-                AXUIElementCopyAttributeValue(axWin, kAXPositionAttribute as CFString, &posRef)
-                AXUIElementCopyAttributeValue(axWin, kAXSizeAttribute as CFString, &sizeRef)
-                guard let pv = posRef, let sv = sizeRef else { continue }
-                var pos = CGPoint.zero; var size = CGSize.zero
-                AXValueGetValue(pv as! AXValue, .cgPoint, &pos)
-                AXValueGetValue(sv as! AXValue, .cgSize, &size)
-                axCache.append(AXWin(el: axWin, pos: pos, size: size))
+                var windowId: CGWindowID = 0
+                if _AXUIElementGetWindow(axWin, &windowId) == .success {
+                    axByWid[windowId] = axWin
+                }
             }
 
             for wm in windowMoves {
-                guard let cgRect = cgFrames[wm.wid] else {
-                    diag.warn("  wid=\(wm.wid): no CG frame, skipping")
-                    failed.append(wm.wid)
-                    continue
-                }
-                guard let ax = axCache.first(where: {
-                    abs(cgRect.origin.x - $0.pos.x) < 2 && abs(cgRect.origin.y - $0.pos.y) < 2 &&
-                    abs(cgRect.width - $0.size.width) < 2 && abs(cgRect.height - $0.size.height) < 2
-                }) else {
-                    diag.warn("  wid=\(wm.wid): CG frame (\(Int(cgRect.origin.x)),\(Int(cgRect.origin.y)) \(Int(cgRect.width))x\(Int(cgRect.height))) — no AX match among \(axCache.count) AX windows")
-                    for (j, axw) in axCache.enumerated() {
-                        diag.info("    AX[\(j)]: pos=(\(Int(axw.pos.x)),\(Int(axw.pos.y))) size=\(Int(axw.size.width))x\(Int(axw.size.height))")
+                guard let axWin = axByWid[wm.wid] else {
+                    if let cgRect = cgFrames[wm.wid] {
+                        diag.warn("  wid=\(wm.wid): CG frame (\(Int(cgRect.origin.x)),\(Int(cgRect.origin.y)) \(Int(cgRect.width))x\(Int(cgRect.height))) — no AX wid match")
+                    } else {
+                        diag.warn("  wid=\(wm.wid): no CG frame and no AX wid match")
                     }
                     failed.append(wm.wid)
                     continue
                 }
 
-                let slotIdx = widToSlot[wm.wid] ?? -1
-                // Move only — raise comes later
                 var newPos = CGPoint(x: wm.target.origin.x, y: wm.target.origin.y)
                 var newSize = CGSize(width: wm.target.width, height: wm.target.height)
-                let posOk = AXValueCreate(.cgPoint, &newPos).map {
-                    AXUIElementSetAttributeValue(ax.el, kAXPositionAttribute as CFString, $0)
+                let sizeErr1 = AXValueCreate(.cgSize, &newSize).map {
+                    AXUIElementSetAttributeValue(axWin, kAXSizeAttribute as CFString, $0)
                 }
-                let sizeOk = AXValueCreate(.cgSize, &newSize).map {
-                    AXUIElementSetAttributeValue(ax.el, kAXSizeAttribute as CFString, $0)
+                let posErr = AXValueCreate(.cgPoint, &newPos).map {
+                    AXUIElementSetAttributeValue(axWin, kAXPositionAttribute as CFString, $0)
                 }
-                diag.info("  Move[\(slotIdx)] wid=\(wm.wid): target=(\(Int(wm.target.origin.x)),\(Int(wm.target.origin.y))) \(Int(wm.target.width))x\(Int(wm.target.height)) posErr=\(posOk?.rawValue ?? -1) sizeErr=\(sizeOk?.rawValue ?? -1)")
-                resolvedAXElements.append((slotIdx: slotIdx, el: ax.el))
+                let sizeErr2 = AXValueCreate(.cgSize, &newSize).map {
+                    AXUIElementSetAttributeValue(axWin, kAXSizeAttribute as CFString, $0)
+                }
+                diag.info("  Move[\(wm.slotIdx)] wid=\(wm.wid): target=(\(Int(wm.target.origin.x)),\(Int(wm.target.origin.y))) \(Int(wm.target.width))x\(Int(wm.target.height)) sizeErr1=\(sizeErr1?.rawValue ?? -1) posErr=\(posErr?.rawValue ?? -1) sizeErr2=\(sizeErr2?.rawValue ?? -1)")
+                resolvedAXElements.append((slotIdx: wm.slotIdx, el: axWin))
                 moved += 1
             }
+
+            if !activatedPids.contains(pid) {
+                if let app = NSRunningApplication(processIdentifier: pid) {
+                    app.activate()
+                    activatedPids.insert(pid)
+                }
+            }
+
+            AXUIElementSetAttributeValue(appRef, "AXEnhancedUserInterface" as CFString, true as CFTypeRef)
         }
 
-        // Pass 2: Raise all windows in slot order so they all come to front
-        // Sort by slot index so the layout order is predictable
+        if let cid { _ = _SLSReenableUpdate?(cid) }
+
+        // Pass 2: Raise all windows in slot order after app activation so final z-order matches the grid.
         resolvedAXElements.sort { $0.slotIdx < $1.slotIdx }
         for item in resolvedAXElements {
             AXUIElementPerformAction(item.el, kAXRaiseAction as CFString)
+            AXUIElementSetAttributeValue(item.el, kAXMainAttribute as CFString, kCFBooleanTrue)
         }
         diag.info("  Raised \(resolvedAXElements.count) windows in slot order")
 
-        // Pass 3: Activate all apps so windows come to front of other apps
-        var activatedPids = Set<Int32>()
-        for win in windows {
-            if !activatedPids.contains(win.pid) {
-                if let app = NSRunningApplication(processIdentifier: win.pid) { app.activate() }
-                activatedPids.insert(win.pid)
+        // Verify and retry drifted windows once using the battle-tested batch mover.
+        let drifted = verifyMoves(moves)
+        if !drifted.isEmpty {
+            diag.warn("  Drifted after distribute: \(drifted.map(\.wid)) — retrying exact move path")
+            usleep(100_000)
+            batchMoveAndRaiseWindows(drifted)
+            let stillDrifted = verifyMoves(drifted)
+            if !stillDrifted.isEmpty {
+                diag.warn("  Still drifted after retry: \(stillDrifted.map(\.wid))")
             }
         }
 
@@ -1843,8 +1904,10 @@ enum WindowTiler {
         }
         DesktopModel.shared.markInteraction(wids: windows.map(\.wid))
         diag.success("batchRaiseAndDistribute: moved \(moved)/\(windows.count) [\(desc) grid]")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            NSApp.activate(ignoringOtherApps: true)
+        if reactivateLattices {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                NSApp.activate(ignoringOtherApps: true)
+            }
         }
     }
 
@@ -2004,6 +2067,40 @@ enum WindowTiler {
     }
 
     // MARK: - Private
+
+    private static func visibleDistributableWindows() -> [WindowEntry] {
+        DesktopModel.shared.allWindows().filter { entry in
+            entry.isOnScreen &&
+            entry.app != "Lattices" &&
+            entry.frame.w > 50 &&
+            entry.frame.h > 50
+        }
+    }
+
+    private static func sortWindowsForGrid(_ windows: [WindowEntry]) -> [WindowEntry] {
+        windows.sorted { lhs, rhs in
+            let rowTolerance = 40.0
+            let yDelta = lhs.frame.y - rhs.frame.y
+            if abs(yDelta) > rowTolerance {
+                return lhs.frame.y < rhs.frame.y
+            }
+
+            let xDelta = lhs.frame.x - rhs.frame.x
+            if abs(xDelta) > rowTolerance {
+                return lhs.frame.x < rhs.frame.x
+            }
+
+            return lhs.zIndex < rhs.zIndex
+        }
+    }
+
+    private static func screenID(for screen: NSScreen) -> String {
+        let key = NSDeviceDescriptionKey("NSScreenNumber")
+        if let number = screen.deviceDescription[key] as? NSNumber {
+            return number.stringValue
+        }
+        return screen.localizedName
+    }
 
     private static func tileAppleScript(app: String, tag: String, bounds: (Int, Int, Int, Int)) {
         let (x1, y1, x2, y2) = bounds

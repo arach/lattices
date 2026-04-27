@@ -411,7 +411,7 @@ final class IntentEngine {
 
         register(IntentDef(
             name: "distribute",
-            description: "Distribute windows evenly in a grid, optionally filtered by app and constrained to a screen region",
+            description: "Distribute windows evenly in a grid, optionally filtered by app or window type and constrained to a screen region",
             examples: [
                 "spread out the windows",
                 "distribute everything",
@@ -424,6 +424,9 @@ final class IntentEngine {
             slots: [
                 IntentSlot(name: "app", type: "string", required: false,
                            description: "Filter to windows of this app (e.g. 'iTerm2', 'Google Chrome')", enumValues: nil),
+                IntentSlot(name: "type", type: "string", required: false,
+                           description: "Filter to a window type (e.g. 'terminal', 'browser', 'editor')",
+                           enumValues: AppType.allCases.map(\.rawValue)),
                 IntentSlot(name: "region", type: "position", required: false,
                            description: "Constrain the grid to a screen region. Uses tile position names.",
                            enumValues: ["left", "right", "top", "bottom", "top-left", "top-right", "bottom-left", "bottom-right",
@@ -435,6 +438,9 @@ final class IntentEngine {
                 var params: [String: JSON] = [:]
                 if let app = req.slots["app"]?.stringValue {
                     params["app"] = .string(app)
+                }
+                if let type = req.slots["type"]?.stringValue {
+                    params["type"] = .string(type)
                 }
                 if let region = req.slots["region"]?.stringValue {
                     params["region"] = .string(region)

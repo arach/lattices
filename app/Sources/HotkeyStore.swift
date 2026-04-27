@@ -31,7 +31,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
     // Tiling
     case tileLeft, tileRight, tileMaximize, tileCenter
     case tileTopLeft, tileTopRight, tileBottomLeft, tileBottomRight
-    case tileTop, tileBottom, tileDistribute
+    case tileTop, tileBottom, tileDistribute, tileTypeGrid
     case tileLeftThird, tileCenterThird, tileRightThird
 
     var label: String {
@@ -70,6 +70,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .tileTop:         return "Top Half"
         case .tileBottom:      return "Bottom Half"
         case .tileDistribute:  return "Distribute"
+        case .tileTypeGrid:    return "Grid Type"
         case .tileLeftThird:   return "Left Third"
         case .tileCenterThird: return "Center Third"
         case .tileRightThird:  return "Right Third"
@@ -122,6 +123,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .tileTop:         return 308
         case .tileBottom:      return 309
         case .tileDistribute:  return 310
+        case .tileTypeGrid:    return 314
         case .tileLeftThird:   return 311
         case .tileCenterThird: return 312
         case .tileRightThird:  return 313
@@ -260,6 +262,7 @@ class HotkeyStore: ObservableObject {
         bind(.tileBottomLeft,   38, ctrlOpt)  // Ctrl+Opt+J
         bind(.tileBottomRight,  40, ctrlOpt)  // Ctrl+Opt+K
         bind(.tileDistribute,    2, ctrlOpt)  // Ctrl+Opt+D
+        bind(.tileTypeGrid,      5, hyper)    // Hyper+G
         bind(.tileLeftThird,    18, ctrlOpt)  // Ctrl+Opt+1
         bind(.tileCenterThird,  19, ctrlOpt)  // Ctrl+Opt+2
         bind(.tileRightThird,   20, ctrlOpt)  // Ctrl+Opt+3

@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import DeckKit
 import Foundation
 
 // MARK: - Registry Types
@@ -197,6 +198,7 @@ final class LatticesApi {
         api.model(ApiModel(name: "Space", fields: [
             Field(name: "id", type: "int", required: true, description: "Space ID"),
             Field(name: "index", type: "int", required: true, description: "Space index"),
+            Field(name: "name", type: "string", required: true, description: "Lattices display name for the space"),
             Field(name: "display", type: "int", required: true, description: "Display index"),
             Field(name: "isCurrent", type: "bool", required: true, description: "Whether this is the active space"),
         ]))
@@ -736,6 +738,7 @@ final class LatticesApi {
                             .object([
                                 "id": .int(space.id),
                                 "index": .int(space.index),
+                                "name": .string(Self.defaultSpaceName(for: space.index)),
                                 "display": .int(space.display),
                                 "isCurrent": .bool(space.isCurrent)
                             ])
@@ -770,6 +773,45 @@ final class LatticesApi {
                     }),
                     "active": .int(wm.activeLayerIndex)
                 ])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "deck.manifest",
+            description: "Get the shared companion deck manifest exposed by the macOS app",
+            access: .read,
+            params: [],
+            returns: .custom("DeckKit manifest for the Lattices companion surface"),
+            handler: { _ in
+                try Self.encodeDeckValue(LatticesDeckHost.shared.manifestSync())
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "deck.snapshot",
+            description: "Get the current companion deck runtime snapshot",
+            access: .read,
+            params: [],
+            returns: .custom("DeckKit runtime snapshot with voice, layout, switcher, and history state"),
+            handler: { _ in
+                try Self.encodeDeckValue(LatticesDeckHost.shared.runtimeSnapshotSync())
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "deck.perform",
+            description: "Perform a companion deck action and return the updated runtime snapshot",
+            access: .mutate,
+            params: [
+                Param(name: "pageID", type: "string", required: false, description: "Deck page ID"),
+                Param(name: "actionID", type: "string", required: true, description: "Deck action identifier"),
+                Param(name: "payload", type: "object", required: false, description: "Deck action payload"),
+            ],
+            returns: .custom("DeckKit action result"),
+            handler: { params in
+                let request = try Self.decodeDeckActionRequest(from: params)
+                let result = try LatticesDeckHost.shared.performSync(request)
+                return try Self.encodeDeckValue(result)
             }
         ))
 
@@ -1339,10 +1381,11 @@ final class LatticesApi {
 
         api.register(Endpoint(
             method: "layout.distribute",
-            description: "Distribute windows evenly in a grid, optionally filtered by app and constrained to a screen region",
+            description: "Distribute windows evenly in a grid, optionally filtered by app or type and constrained to a screen region",
             access: .mutate,
             params: [
                 Param(name: "app", type: "string", required: false, description: "Filter to windows of this app (e.g. 'iTerm2')"),
+                Param(name: "type", type: "string", required: false, description: "Filter to an app type (e.g. 'terminal', 'browser', 'editor')"),
                 Param(name: "region", type: "string", required: false, description: "Constrain grid to a screen region (e.g. 'right', 'left', 'top-right'). Uses tile position names."),
             ],
             returns: .ok,
@@ -1351,9 +1394,11 @@ final class LatticesApi {
                 if case .object(let obj) = params {
                     dict = obj
                 }
-                // If app is provided, switch to app scope
+                // Explicit filters select the matching scope automatically.
                 if dict["app"] != nil && dict["scope"] == nil {
                     dict["scope"] = .string("app")
+                } else if dict["type"] != nil && dict["scope"] == nil {
+                    dict["scope"] = .string("type")
                 } else {
                     dict["scope"] = dict["scope"] ?? .string("visible")
                 }
@@ -1367,9 +1412,10 @@ final class LatticesApi {
             description: "Optimize a set of windows using an explicit scope and strategy",
             access: .mutate,
             params: [
-                Param(name: "scope", type: "string", required: false, description: "Optimization scope: visible, active-app, app, or selection"),
+                Param(name: "scope", type: "string", required: false, description: "Optimization scope: visible, active-app, active-type, app, type, or selection"),
                 Param(name: "strategy", type: "string", required: false, description: "Optimization strategy: balanced or mosaic"),
                 Param(name: "app", type: "string", required: false, description: "App name for app-scoped optimization"),
+                Param(name: "type", type: "string", required: false, description: "App type for type-scoped optimization"),
                 Param(name: "title", type: "string", required: false, description: "Optional title substring for app-scoped optimization"),
                 Param(name: "windowIds", type: "[uint32]", required: false, description: "Explicit window selection for selection scope"),
             ],
@@ -1872,6 +1918,27 @@ final class LatticesApi {
 }
 
 private extension LatticesApi {
+    static func decodeDeckActionRequest(from json: JSON?) throws -> DeckActionRequest {
+        guard let json else {
+            throw RouterError.missingParam("actionID")
+        }
+        guard case .object(var object) = json else {
+            throw RouterError.custom("Invalid deck action request: params must be an object")
+        }
+        object["payload"] = object["payload"] ?? .object([:])
+        let data = try JSONEncoder().encode(JSON.object(object))
+        do {
+            return try JSONDecoder().decode(DeckActionRequest.self, from: data)
+        } catch {
+            throw RouterError.custom("Invalid deck action request: \(error.localizedDescription)")
+        }
+    }
+
+    static func encodeDeckValue<T: Encodable>(_ value: T) throws -> JSON {
+        let data = try JSONEncoder().encode(value)
+        return try JSONDecoder().decode(JSON.self, from: data)
+    }
+
     static func parsePlacement(from json: JSON?) -> PlacementSpec? {
         PlacementSpec(json: json)
     }
@@ -2070,6 +2137,19 @@ private extension LatticesApi {
         ])
     }
 
+    static func defaultSpaceName(for index: Int) -> String {
+        if let layers = WorkspaceManager.shared.config?.layers,
+           layers.indices.contains(index - 1) {
+            return layers[index - 1].label
+        }
+
+        let defaults = ["main", "code", "chat", "review", "media", "notes", "ops", "admin", "scratch"]
+        if defaults.indices.contains(index - 1) {
+            return defaults[index - 1]
+        }
+        return "space \(index)"
+    }
+
     static func executeSpaceOptimization(params: JSON?) throws -> JSON {
         let scope = try parseOptimizationScope(from: params)
         let strategy = try parseOptimizationStrategy(params?["strategy"]?.stringValue)
@@ -2135,10 +2215,15 @@ private extension LatticesApi {
         if params?["app"] != nil {
             return "app"
         }
+        if params?["type"] != nil {
+            return "type"
+        }
 
         let scope = normalizeToken(params?["scope"]?.stringValue ?? "visible")
         switch scope {
-        case "visible", "selection", "app", "active-app", "frontmost-app", "current-app":
+        case "visible", "selection", "app", "type",
+             "active-app", "frontmost-app", "current-app",
+             "active-type", "frontmost-type", "current-type":
             return scope
         default:
             throw RouterError.custom("Unsupported optimization scope: \(params?["scope"]?.stringValue ?? scope)")
@@ -2179,6 +2264,21 @@ private extension LatticesApi {
                 (titleFilter == nil || $0.title.localizedCaseInsensitiveContains(titleFilter!))
             })
 
+        case "type":
+            guard let typeName = params?["type"]?.stringValue,
+                  let appType = parseOptimizationAppType(typeName) else {
+                trace.append(.string("missing or unknown type for type scope"))
+                return []
+            }
+            trace.append(.string("filtered by type \(appType.rawValue)"))
+            if let titleFilter {
+                trace.append(.string("title contains \(titleFilter)"))
+            }
+            return dedupeWindows(visible.filter {
+                AppTypeClassifier.matches($0.app, type: appType) &&
+                (titleFilter == nil || $0.title.localizedCaseInsensitiveContains(titleFilter!))
+            })
+
         case "active-app", "frontmost-app", "current-app":
             let activeApp = params?["app"]?.stringValue ?? frontmostOptimizableApp()
             guard let activeApp else {
@@ -2194,10 +2294,31 @@ private extension LatticesApi {
                 (titleFilter == nil || $0.title.localizedCaseInsensitiveContains(titleFilter!))
             })
 
+        case "active-type", "frontmost-type", "current-type":
+            let activeApp = params?["app"]?.stringValue ?? frontmostOptimizableApp()
+            guard let activeApp else {
+                trace.append(.string("no active app available"))
+                return []
+            }
+            let grouping = AppTypeClassifier.grouping(for: activeApp)
+            trace.append(.string("resolved active type \(grouping.label) from \(activeApp)"))
+            if let titleFilter {
+                trace.append(.string("title contains \(titleFilter)"))
+            }
+            return dedupeWindows(visible.filter {
+                AppTypeClassifier.matches($0.app, grouping: grouping) &&
+                (titleFilter == nil || $0.title.localizedCaseInsensitiveContains(titleFilter!))
+            })
+
         default:
             trace.append(.string("using visible window scope"))
             return dedupeWindows(visible)
         }
+    }
+
+    static func parseOptimizationAppType(_ raw: String) -> AppType? {
+        let normalized = normalizeToken(raw)
+        return AppType.allCases.first { $0.rawValue == normalized }
     }
 
     static func selectedWindowIds(from json: JSON?) -> [UInt32] {
