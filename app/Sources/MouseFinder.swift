@@ -92,12 +92,12 @@ final class MouseFinder {
         CGWarpMouseCursorPosition(cgPoint)
         CGAssociateMouseAndMouseCursorPosition(1)
 
-        showSpotlight(at: target)
+        showSpotlight(at: target, mode: .summon)
     }
 
     // MARK: - Spotlight Effect
 
-    private func showSpotlight(at nsPoint: NSPoint) {
+    private func showSpotlight(at nsPoint: NSPoint, mode: SpotlightMode = .find) {
         dismiss()
 
         let screens = NSScreen.screens
@@ -115,7 +115,8 @@ final class MouseFinder {
         let spotlightWindow = makeOverlayWindow(frame: cursorScreen.frame, level: windowLevel)
         spotlightWindow.contentView = SpotlightView(
             frame: NSRect(origin: .zero, size: cursorScreen.frame.size),
-            cursorPoint: localCursor
+            cursorPoint: localCursor,
+            mode: mode
         )
         overlayWindows.append(spotlightWindow)
 
@@ -306,13 +307,20 @@ final class MouseFinder {
 
 // MARK: - Spotlight View (radial gradient cutout on cursor screen)
 
+enum SpotlightMode {
+    case find    // single arrow at screen center pointing TO the cursor
+    case summon  // four arrows around the cursor pointing INWARD ("conjured here")
+}
+
 private class SpotlightView: NSView {
     let cursorPoint: CGPoint
+    let mode: SpotlightMode
     private let config = DotMatrixConfig.shared
     private lazy var dotPattern = config.generatePattern()
 
-    init(frame: NSRect, cursorPoint: CGPoint) {
+    init(frame: NSRect, cursorPoint: CGPoint, mode: SpotlightMode = .find) {
         self.cursorPoint = cursorPoint
+        self.mode = mode
         super.init(frame: frame)
     }
 
@@ -351,13 +359,36 @@ private class SpotlightView: NSView {
             options: []
         )
 
-        // Dot matrix arrow at screen center pointing toward cursor
         ctx.setBlendMode(.normal)
-        let center = CGPoint(x: bounds.midX, y: bounds.midY)
-        let angle = atan2(cursorPoint.y - center.y, cursorPoint.x - center.x)
 
+        switch mode {
+        case .find:
+            // Single arrow at screen center pointing toward the cursor.
+            let center = CGPoint(x: bounds.midX, y: bounds.midY)
+            let angle = atan2(cursorPoint.y - center.y, cursorPoint.x - center.x)
+            drawDotMatrixArrow(in: ctx, at: center, angle: angle)
+
+        case .summon:
+            // Four arrows around the cursor, all heads pointing inward toward it —
+            // the visual joke is that the mouse was just summoned here, so everything
+            // is converging on the new cursor position.
+            let arrowLen = CGFloat(config.arrowCols - 1) * config.dotSpacing
+            let offset = arrowLen / 2 + SpotlightConfig.spotlightRadius * 0.55
+            let placements: [(CGPoint, CGFloat)] = [
+                (CGPoint(x: cursorPoint.x, y: cursorPoint.y + offset), -.pi / 2), // above → points down
+                (CGPoint(x: cursorPoint.x, y: cursorPoint.y - offset),  .pi / 2), // below → points up
+                (CGPoint(x: cursorPoint.x - offset, y: cursorPoint.y),  0),       // left  → points right
+                (CGPoint(x: cursorPoint.x + offset, y: cursorPoint.y),  .pi),     // right → points left
+            ]
+            for (origin, angle) in placements {
+                drawDotMatrixArrow(in: ctx, at: origin, angle: angle)
+            }
+        }
+    }
+
+    private func drawDotMatrixArrow(in ctx: CGContext, at point: CGPoint, angle: CGFloat) {
         ctx.saveGState()
-        ctx.translateBy(x: center.x, y: center.y)
+        ctx.translateBy(x: point.x, y: point.y)
         ctx.rotate(by: angle)
 
         let originX = -CGFloat(config.arrowCols - 1) * config.dotSpacing / 2

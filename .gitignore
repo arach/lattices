@@ -39,3 +39,11 @@ site/.astro/
 find_talkie.js
 # OpenScout local state
 .openscout/project.json
+
+# iOS companion local build state
+iOS/LatticesCompanion/.derived-data/
+iOS/LatticesCompanion/.derived-data-sim/
+iOS/LatticesCompanion/.device-id.local
+
+# Swift package local build state
+swift/.build/

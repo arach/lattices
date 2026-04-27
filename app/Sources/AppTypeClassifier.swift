@@ -13,6 +13,20 @@ enum AppType: String, CaseIterable {
     var label: String { rawValue }
 }
 
+enum AppGrouping {
+    case type(AppType)
+    case exactApp(String)
+
+    var label: String {
+        switch self {
+        case .type(let type):
+            return type.label
+        case .exactApp(let appName):
+            return appName
+        }
+    }
+}
+
 enum AppTypeClassifier {
     private static let nameMap: [String: AppType] = [
         // Terminals
@@ -66,5 +80,27 @@ enum AppTypeClassifier {
         if lower.contains("chrome") || lower.contains("firefox") || lower.contains("safari") || lower.contains("browser") { return .browser }
         if lower.contains("slack") || lower.contains("discord") || lower.contains("chat") || lower.contains("teams") { return .chat }
         return .other
+    }
+
+    static func grouping(for appName: String) -> AppGrouping {
+        switch classify(appName) {
+        case .system, .other:
+            return .exactApp(appName)
+        case let type:
+            return .type(type)
+        }
+    }
+
+    static func matches(_ appName: String, grouping: AppGrouping) -> Bool {
+        switch grouping {
+        case .type(let type):
+            return classify(appName) == type
+        case .exactApp(let exactApp):
+            return appName.localizedCaseInsensitiveCompare(exactApp) == .orderedSame
+        }
+    }
+
+    static func matches(_ appName: String, type: AppType) -> Bool {
+        classify(appName) == type
     }
 }

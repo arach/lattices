@@ -164,9 +164,64 @@ try {
 
 | Method | Type | Description |
 |--------|------|-------------|
+| `deck.manifest` | read | Shared companion deck manifest |
+| `deck.snapshot` | read | Current companion deck runtime snapshot |
+| `deck.perform` | write | Perform a companion deck action |
 | `daemon.status` | read | Health check and stats |
 | `api.schema` | read | Full API schema for self-discovery |
 | `diagnostics.list` | read | Recent diagnostic entries |
+
+#### `deck.manifest`
+
+Return the shared `DeckKit` manifest exposed by the macOS app. This is
+the contract a future Lattices companion can consume to discover pages,
+capabilities, and security mode.
+
+**Params**: none
+
+#### `deck.snapshot`
+
+Return the current `DeckKit` runtime snapshot for the macOS host.
+
+**Params**: none
+
+**Returns**: a `DeckRuntimeSnapshot` object containing:
+
+- `voice`
+- `desktop`
+- `switcher`
+- `history`
+- `questions`
+
+#### `deck.perform`
+
+Perform a `DeckKit` action against the running macOS host and return a
+`DeckActionResult`.
+
+**Params**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `pageID` | string | no | Deck page ID |
+| `actionID` | string | yes | Deck action identifier |
+| `payload` | object | no | Deck action payload |
+
+Example:
+
+```json
+{
+  "id": "1",
+  "method": "deck.perform",
+  "params": {
+    "pageID": "layout",
+    "actionID": "layout.optimize",
+    "payload": {
+      "strategy": "balanced",
+      "region": "right"
+    }
+  }
+}
+```
 
 #### `daemon.status`
 

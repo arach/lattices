@@ -1,3 +1,4 @@
+import DeckKit
 import SwiftUI
 
 /// Settings content with internal General / Shortcuts tabs.
@@ -1033,32 +1034,48 @@ struct SettingsContentView: View {
             .padding(.vertical, 3)
     }
 
-    // MARK: - Shortcuts (Spatial Layout)
+    // MARK: - Shortcuts
 
     private var shortcutsContent: some View {
         VStack(spacing: 0) {
             GeometryReader { geo in
-                let spacing: CGFloat = 16
-                let pad: CGFloat = 20
-                let total = geo.size.width - pad * 2 - spacing * 2
-                let leftW = total * 0.35
-                let centerW = total * 0.35
-                let rightW = total * 0.30
+                let contentWidth = max(geo.size.width - 40, 320)
+                let sectionColumns = [
+                    GridItem(.adaptive(minimum: min(320, contentWidth), maximum: 440), spacing: 16, alignment: .top)
+                ]
+                let tilingColumns = contentWidth > 860
+                    ? [
+                        GridItem(.flexible(minimum: 280, maximum: 360), spacing: 16, alignment: .top),
+                        GridItem(.flexible(minimum: 320, maximum: 640), spacing: 16, alignment: .top)
+                    ]
+                    : [GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 16, alignment: .top)]
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        HStack(alignment: .top, spacing: spacing) {
-                            shortcutsLeftColumn
-                                .frame(width: leftW, alignment: .leading)
-                                .clipped()
-                            shortcutsCenterColumn
-                                .frame(width: centerW, alignment: .leading)
-                                .clipped()
-                            shortcutsRightColumn
-                                .frame(width: rightW, alignment: .leading)
-                                .clipped()
+                        VStack(alignment: .leading, spacing: 16) {
+                            companionCockpitCard
+
+                            shortcutsOverviewCard
+
+                            LazyVGrid(columns: sectionColumns, alignment: .leading, spacing: 16) {
+                                shortcutsAppCard
+                                shortcutsLayersCard
+                            }
+
+                            shortcutSectionCard(
+                                title: "Window Tiling",
+                                eyebrow: "Desktop Layout",
+                                summary: "See the directional map first, then edit the matching global shortcuts below."
+                            ) {
+                                LazyVGrid(columns: tilingColumns, alignment: .leading, spacing: 16) {
+                                    shortcutsTilingVisualizer
+                                    shortcutsTilingEditors
+                                }
+                            }
+
+                            shortcutsTmuxCard
                         }
-                        .padding(.horizontal, pad)
+                        .padding(.horizontal, 20)
                         .padding(.vertical, 16)
                     }
                 }
@@ -1105,110 +1122,404 @@ struct SettingsContentView: View {
         }
     }
 
-    // MARK: - Shortcuts: Left Column (App + Layers)
+    // MARK: - Shortcuts: Overview
 
-    private var shortcutsLeftColumn: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            columnHeader("App & Layers")
+    private var companionCockpitCard: some View {
+        let layout = LatticesCompanionCockpitCatalog.normalized(prefs.companionCockpitLayout)
+        let selectedPage = layout.pages.first(where: { $0.id == selectedCompanionCockpitPageID }) ?? layout.pages.first
+        let categories = LatticesCompanionShortcutCategory.allCases
+        let trustedDevices = companionTrustedDevices(revision: companionTrustRevision)
 
-            VStack(alignment: .leading, spacing: 2) {
+        return shortcutSectionCard(
+            title: "Companion Cockpit",
+            eyebrow: "iPad & iPhone",
+            summary: "Define the Mac-authored command deck here, then let the companion app render it. Trackpad proxy runs through the same bridge."
+        ) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Trackpad Proxy")
+                            .font(Typo.monoBold(11))
+                            .foregroundColor(Palette.text)
+                        Text("Enable remote pointer control for the iPad trackpad surface. Accessibility permission is still required on the Mac.")
+                            .font(Typo.caption(10.5))
+                            .foregroundColor(Palette.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer()
+
+                    Toggle("", isOn: $prefs.companionTrackpadEnabled)
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Trusted Devices")
+                                .font(Typo.monoBold(11))
+                                .foregroundColor(Palette.text)
+                            Text("New companions must be approved on the Mac before they can send encrypted bridge requests.")
+                                .font(Typo.caption(10.5))
+                                .foregroundColor(Palette.textMuted)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        Spacer()
+
+                        if trustedDevices.isEmpty == false {
+                            Button("Forget All") {
+                                LatticesCompanionSecurityCoordinator.shared.clearTrustedDevices()
+                                companionTrustRevision += 1
+                            }
+                            .buttonStyle(.plain)
+                            .font(Typo.caption(10.5))
+                            .foregroundColor(Palette.textDim)
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        if trustedDevices.isEmpty {
+                            Text("No paired iPad or iPhone devices yet.")
+                                .font(Typo.caption(10.5))
+                                .foregroundColor(Palette.textMuted)
+                        } else {
+                            ForEach(trustedDevices) { device in
+                                HStack(alignment: .top, spacing: 10) {
+                                    Image(systemName: "iphone.gen3")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundColor(Palette.textDim)
+                                        .frame(width: 14)
+
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(device.name)
+                                            .font(Typo.caption(11))
+                                            .foregroundColor(Palette.text)
+                                        Text("\(device.fingerprint) · Last seen \(relativeTimestamp(device.lastSeenAt))")
+                                            .font(Typo.caption(10))
+                                            .foregroundColor(Palette.textMuted)
+                                    }
+
+                                    Spacer(minLength: 0)
+                                }
+                            }
+                        }
+                    }
+                    .padding(12)
+                    .background(shortcutsInsetPanel)
+                }
+
+                if let selectedPage {
+                    Picker("Companion page", selection: $selectedCompanionCockpitPageID) {
+                        ForEach(layout.pages) { page in
+                            Text(page.title).tag(page.id)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        if let subtitle = selectedPage.subtitle, !subtitle.isEmpty {
+                            Text(subtitle)
+                                .font(Typo.caption(10.5))
+                                .foregroundColor(Palette.textMuted)
+                        }
+
+                        LazyVGrid(
+                            columns: Array(
+                                repeating: GridItem(.flexible(minimum: 120, maximum: 220), spacing: 8, alignment: .top),
+                                count: max(2, selectedPage.columns)
+                            ),
+                            alignment: .leading,
+                            spacing: 8
+                        ) {
+                            ForEach(Array(selectedPage.slotIDs.enumerated()), id: \.offset) { index, shortcutID in
+                                companionCockpitSlotMenu(
+                                    pageID: selectedPage.id,
+                                    index: index,
+                                    shortcutID: shortcutID,
+                                    categories: categories
+                                )
+                            }
+                        }
+                    }
+                    .padding(12)
+                    .background(shortcutsInsetPanel)
+                }
+
+                HStack(spacing: 10) {
+                    Text("Changes appear in the iPad companion on the next snapshot refresh.")
+                        .font(Typo.caption(10.5))
+                        .foregroundColor(Palette.textMuted)
+
+                    Spacer()
+
+                    Button("Reset Companion Layout") {
+                        prefs.resetCompanionCockpitLayout()
+                    }
+                    .buttonStyle(.plain)
+                    .font(Typo.caption(10.5))
+                    .foregroundColor(Palette.textDim)
+                }
+            }
+        }
+    }
+
+    private var shortcutsOverviewCard: some View {
+        shortcutSectionCard(
+            title: "Shortcut Map",
+            eyebrow: "Quick Reference",
+            summary: "Global hotkeys are editable here. tmux shortcuts stay as a built-in reference so you can keep your workspace flow in one place."
+        ) {
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 180, maximum: 240), spacing: 10, alignment: .top)],
+                alignment: .leading,
+                spacing: 10
+            ) {
+                shortcutFactCard(
+                    icon: "command",
+                    title: "Global Hotkeys",
+                    detail: "Edit palette, search, voice, and workspace actions without leaving settings."
+                )
+                shortcutFactCard(
+                    icon: "rectangle.split.3x3",
+                    title: "Spatial Tiling",
+                    detail: "The layout grid mirrors the screen positions used by the menu bar app."
+                )
+                shortcutFactCard(
+                    icon: "terminal",
+                    title: "tmux Muscle Memory",
+                    detail: "Keep the core pane controls visible here while you tune the app-level shortcuts."
+                )
+            }
+        }
+    }
+
+    // MARK: - Shortcuts: App
+
+    private var shortcutsAppCard: some View {
+        shortcutSectionCard(
+            title: "App & Workspace",
+            eyebrow: "Global",
+            summary: "Commands for opening primary surfaces and navigating the desktop companion."
+        ) {
+            VStack(alignment: .leading, spacing: 8) {
                 ForEach(HotkeyAction.allCases.filter { $0.group == .app }, id: \.rawValue) { action in
                     compactKeyRecorder(action: action)
                 }
             }
+        }
+    }
 
-            Rectangle().fill(Palette.border).frame(height: 0.5)
+    // MARK: - Shortcuts: Layers
 
-            VStack(alignment: .leading, spacing: 2) {
-                ForEach(HotkeyAction.layerActions, id: \.rawValue) { action in
+    private var shortcutsLayersCard: some View {
+        shortcutSectionCard(
+            title: "Layers",
+            eyebrow: "Workspace Stack",
+            summary: "Direct jumps stay grouped separately from layer cycling so the numeric map is easier to scan."
+        ) {
+            VStack(alignment: .leading, spacing: 12) {
+                shortcutSubsectionLabel("Jump to a Layer")
+
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(HotkeyAction.layerActions, id: \.rawValue) { action in
+                        compactKeyRecorder(action: action)
+                    }
+                }
+
+                cardDivider
+
+                shortcutSubsectionLabel("Cycle & Tag")
+
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach([HotkeyAction.layerPrev, .layerNext, .layerTag], id: \.rawValue) { action in
+                        compactKeyRecorder(action: action)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Shortcuts: Tiling
+
+    private var shortcutsTilingVisualizer: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            shortcutSubsectionLabel("Screen Regions")
+
+            VStack(alignment: .leading, spacing: 10) {
+                VStack(spacing: 2) {
+                    HStack(spacing: 2) {
+                        tileCell(action: .tileTopLeft, label: "TL")
+                        tileCell(action: .tileTop, label: "Top")
+                        tileCell(action: .tileTopRight, label: "TR")
+                    }
+                    HStack(spacing: 2) {
+                        tileCell(action: .tileLeft, label: "Left")
+                        tileCell(action: .tileMaximize, label: "Max")
+                        tileCell(action: .tileRight, label: "Right")
+                    }
+                    HStack(spacing: 2) {
+                        tileCell(action: .tileBottomLeft, label: "BL")
+                        tileCell(action: .tileBottom, label: "Bottom")
+                        tileCell(action: .tileBottomRight, label: "BR")
+                    }
+                }
+                .padding(8)
+                .background(shortcutsInsetPanel)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Thirds")
+                        .font(Typo.caption(10.5))
+                        .foregroundColor(Palette.textMuted)
+
+                    HStack(spacing: 2) {
+                        tileCell(action: .tileLeftThird, label: "\u{2153}L")
+                        tileCell(action: .tileCenterThird, label: "\u{2153}C")
+                        tileCell(action: .tileRightThird, label: "\u{2153}R")
+                    }
+                }
+                .padding(8)
+                .background(shortcutsInsetPanel)
+
+                Text("Use the grid as a visual legend for where each shortcut will place the focused window.")
+                    .font(Typo.caption(10.5))
+                    .foregroundColor(Palette.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var shortcutsTilingEditors: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            shortcutSubsectionLabel("Editable Bindings")
+
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach([
+                    HotkeyAction.tileLeft, .tileRight, .tileTop, .tileBottom,
+                    .tileTopLeft, .tileTopRight, .tileBottomLeft, .tileBottomRight
+                ], id: \.rawValue) { action in
+                    compactKeyRecorder(action: action)
+                }
+            }
+
+            cardDivider
+
+            shortcutSubsectionLabel("Layout Helpers")
+
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach([
+                    HotkeyAction.tileLeftThird, .tileCenterThird, .tileRightThird,
+                    .tileCenter, .tileMaximize, .tileDistribute, .tileTypeGrid
+                ], id: \.rawValue) { action in
                     compactKeyRecorder(action: action)
                 }
             }
         }
     }
 
-    // MARK: - Shortcuts: Center Column (Tiling)
+    // MARK: - Shortcuts: tmux
 
-    private var shortcutsCenterColumn: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            columnHeader("Tiling")
-
-            // Monitor visualization — 3x3 grid
-            VStack(spacing: 2) {
-                HStack(spacing: 2) {
-                    tileCell(action: .tileTopLeft, label: "TL")
-                    tileCell(action: .tileTop, label: "Top")
-                    tileCell(action: .tileTopRight, label: "TR")
+    private var shortcutsTmuxCard: some View {
+        shortcutSectionCard(
+            title: "Inside tmux",
+            eyebrow: "Reference",
+            summary: "These are tmux-native controls. They are shown here for fast recall and are not edited by the app."
+        ) {
+            VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 8) {
+                    shortcutRow("Detach", keys: ["Ctrl+B", "D"])
+                    shortcutRow("Kill pane", keys: ["Ctrl+B", "X"])
+                    shortcutRow("Pane left", keys: ["Ctrl+B", "\u{2190}"])
+                    shortcutRow("Pane right", keys: ["Ctrl+B", "\u{2192}"])
+                    shortcutRow("Zoom toggle", keys: ["Ctrl+B", "Z"])
+                    shortcutRow("Scroll mode", keys: ["Ctrl+B", "["])
                 }
-                HStack(spacing: 2) {
-                    tileCell(action: .tileLeft, label: "Left")
-                    tileCell(action: .tileMaximize, label: "Max")
-                    tileCell(action: .tileRight, label: "Right")
-                }
-                HStack(spacing: 2) {
-                    tileCell(action: .tileBottomLeft, label: "BL")
-                    tileCell(action: .tileBottom, label: "Bottom")
-                    tileCell(action: .tileBottomRight, label: "BR")
-                }
-            }
-            .padding(6)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.black.opacity(0.25))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .strokeBorder(Palette.border, lineWidth: 0.5)
-                    )
-            )
+                .padding(12)
+                .background(shortcutsInsetPanel)
 
-            // Thirds row
-            HStack(spacing: 2) {
-                tileCell(action: .tileLeftThird, label: "\u{2153}L")
-                tileCell(action: .tileCenterThird, label: "\u{2153}C")
-                tileCell(action: .tileRightThird, label: "\u{2153}R")
-            }
-            .padding(6)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.black.opacity(0.25))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .strokeBorder(Palette.border, lineWidth: 0.5)
-                    )
-            )
-
-            // Center + Distribute
-            HStack(spacing: 4) {
-                compactKeyRecorder(action: .tileCenter)
-                compactKeyRecorder(action: .tileDistribute)
+                Text("Tip: use this as your quick memory jogger while editing the global shortcuts above.")
+                    .font(Typo.caption(10.5))
+                    .foregroundColor(Palette.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
 
-    // MARK: - Shortcuts: Right Column (tmux)
+    // MARK: - Shortcut section UI
 
-    private var shortcutsRightColumn: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            columnHeader("Inside tmux")
+    private func shortcutSectionCard<Content: View>(
+        title: String,
+        eyebrow: String,
+        summary: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        settingsCard {
+            VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(eyebrow.uppercased())
+                        .font(Typo.pixel(12))
+                        .foregroundColor(Palette.textDim)
+                        .tracking(1)
 
-            VStack(alignment: .leading, spacing: 6) {
-                shortcutRow("Detach", keys: ["Ctrl+B", "D"])
-                shortcutRow("Kill pane", keys: ["Ctrl+B", "X"])
-                shortcutRow("Pane left", keys: ["Ctrl+B", "\u{2190}"])
-                shortcutRow("Pane right", keys: ["Ctrl+B", "\u{2192}"])
-                shortcutRow("Zoom toggle", keys: ["Ctrl+B", "Z"])
-                shortcutRow("Scroll mode", keys: ["Ctrl+B", "["])
+                    Text(title)
+                        .font(Typo.monoBold(12))
+                        .foregroundColor(Palette.text)
+
+                    Text(summary)
+                        .font(Typo.caption(10.5))
+                        .foregroundColor(Palette.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                content()
             }
         }
     }
 
-    // MARK: - Column header
+    private func shortcutFactCard(icon: String, title: String, detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(Palette.textDim)
 
-    private func columnHeader(_ title: String) -> some View {
+            Text(title)
+                .font(Typo.monoBold(11))
+                .foregroundColor(Palette.text)
+
+            Text(detail)
+                .font(Typo.caption(10))
+                .foregroundColor(Palette.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(shortcutsInsetPanel)
+    }
+
+    private func shortcutSubsectionLabel(_ title: String) -> some View {
         Text(title.uppercased())
-            .font(Typo.pixel(12))
+            .font(Typo.pixel(11))
             .foregroundColor(Palette.textDim)
             .tracking(1)
+    }
+
+    private var shortcutsInsetPanel: some View {
+        RoundedRectangle(cornerRadius: 8)
+            .fill(Color.black.opacity(0.22))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(Palette.border, lineWidth: 0.5)
+            )
+    }
+
+    private func relativeTimestamp(_ date: Date) -> String {
+        RelativeDateTimeFormatter().localizedString(for: date, relativeTo: Date())
+    }
+
+    private func companionTrustedDevices(revision: Int) -> [DeckTrustedDeviceSummary] {
+        _ = revision
+        return LatticesCompanionSecurityCoordinator.shared.trustedDeviceSummaries()
     }
 
     // MARK: - Tile cell (spatial grid item)
@@ -1251,6 +1562,8 @@ struct SettingsContentView: View {
     @State private var collapsedOcrApps: Set<String> = []
 
     @State private var activeTilePopover: HotkeyAction?
+    @State private var selectedCompanionCockpitPageID = "main"
+    @State private var companionTrustRevision = 0
 
     private func tileCellPopoverBinding(for action: HotkeyAction) -> Binding<Bool> {
         Binding(
@@ -1263,6 +1576,83 @@ struct SettingsContentView: View {
 
     private func compactKeyRecorder(action: HotkeyAction) -> some View {
         KeyRecorderView(action: action, store: hotkeyStore)
+    }
+
+    private func companionCockpitSlotMenu(
+        pageID: String,
+        index: Int,
+        shortcutID: String,
+        categories: [LatticesCompanionShortcutCategory]
+    ) -> some View {
+        let definition = LatticesCompanionCockpitCatalog.definition(for: shortcutID)
+        let label = definition?.title ?? "Empty"
+        let subtitle = definition?.subtitle ?? "Choose a shortcut"
+        let icon = definition?.iconSystemName ?? "square.dashed"
+
+        return Menu {
+            Button("Empty Slot") {
+                prefs.updateCompanionCockpitSlot(pageID: pageID, index: index, shortcutID: "")
+            }
+
+            ForEach(categories) { category in
+                let shortcuts = LatticesCompanionCockpitCatalog.shortcuts.filter {
+                    $0.category == category && !$0.id.isEmpty
+                }
+                if !shortcuts.isEmpty {
+                    Section(category.title) {
+                        ForEach(shortcuts) { shortcut in
+                            Button {
+                                prefs.updateCompanionCockpitSlot(
+                                    pageID: pageID,
+                                    index: index,
+                                    shortcutID: shortcut.id
+                                )
+                            } label: {
+                                Label(shortcut.title, systemImage: shortcut.iconSystemName)
+                            }
+                        }
+                    }
+                }
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top) {
+                    Text("Slot \(index + 1)")
+                        .font(Typo.pixel(10))
+                        .foregroundColor(Palette.textDim)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(Palette.textMuted)
+                }
+
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(Palette.textDim)
+
+                Text(label)
+                    .font(Typo.monoBold(11))
+                    .foregroundColor(Palette.text)
+                    .lineLimit(2)
+
+                Text(subtitle)
+                    .font(Typo.caption(9.5))
+                    .foregroundColor(Palette.textMuted)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)
+            .padding(10)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Palette.surface)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .strokeBorder(Palette.border, lineWidth: 0.5)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Shortcut row (read-only, for tmux)
