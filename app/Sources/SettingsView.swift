@@ -469,6 +469,29 @@ struct SettingsContentView: View {
                             .foregroundColor(Palette.textMuted.opacity(0.7))
                     }
                 }
+
+                settingsCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Mouse gestures")
+                            .font(Typo.mono(11))
+                            .foregroundColor(Palette.text)
+
+                        HStack {
+                            Text("Middle-click gestures")
+                                .font(Typo.mono(10))
+                                .foregroundColor(Palette.textDim)
+                            Spacer()
+                            Toggle("", isOn: $prefs.mouseGesturesEnabled)
+                                .toggleStyle(.switch)
+                                .controlSize(.small)
+                                .labelsHidden()
+                        }
+
+                        Text("On empty desktop space only: drag left for the previous Space, right for the next Space, and down for the Screen Map overview. A stylized arrow preview appears once the direction locks in. Requires Accessibility permission.")
+                            .font(Typo.caption(9))
+                            .foregroundColor(Palette.textMuted.opacity(0.7))
+                    }
+                }
             }
             .padding(16)
             .frame(maxWidth: 760, alignment: .leading)
