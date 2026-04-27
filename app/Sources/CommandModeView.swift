@@ -22,8 +22,14 @@ private struct FocusRingSuppressor: ViewModifier {
     }
 }
 
+enum CommandModePresentation {
+    case panel
+    case embedded
+}
+
 struct CommandModeView: View {
     @ObservedObject var state: CommandModeState
+    var presentation: CommandModePresentation = .panel
     @State private var eventMonitor: Any?
     @State private var mouseDownMonitor: Any?
     @State private var mouseDragMonitor: Any?
@@ -36,41 +42,77 @@ struct CommandModeView: View {
         state.phase == .desktopInventory
     }
 
+    private var isEmbedded: Bool {
+        presentation == .embedded
+    }
+
     // Column widths for inventory table
     private static let sizeColW: CGFloat = 80
     private static let tileColW: CGFloat = 60
 
-    private var displayColumnWidth: CGFloat {
-        let count = CGFloat(max(1, state.filteredSnapshot?.displays.count ?? 1))
-        let available = panelWidth - 32 - (count - 1) * 0.5
-        return max(360, (available / count).rounded(.down))
+    var body: some View {
+        GeometryReader { geo in
+            let availableWidth = max(geo.size.width, 580)
+            let contentWidth = resolvedContentWidth(in: availableWidth)
+
+            Group {
+                if isEmbedded && isDesktopInventory {
+                    embeddedInventoryPage(contentWidth: contentWidth)
+                } else {
+                    inventoryCard(contentWidth: contentWidth)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        }
+        .onAppear { installKeyHandler(); installMouseMonitors() }
+        .onDisappear { removeKeyHandler(); removeMouseMonitors() }
+        .onChange(of: state.desktopMode) { mode in
+            CommandModeWindow.shared.panelWindow?.isMovableByWindowBackground = true
+        }
+        .animation(.easeInOut(duration: 0.2), value: isDesktopInventory)
+        .modifier(FocusRingSuppressor())
     }
 
-    private var panelWidth: CGFloat {
+    private func resolvedContentWidth(in availableWidth: CGFloat) -> CGFloat {
         if isDesktopInventory {
-            let displayCount = max(1, state.filteredSnapshot?.displays.count ?? 1)
-            let ideal = CGFloat(displayCount) * 480 + CGFloat(displayCount - 1) + 32
-            let screenWidth = NSScreen.main?.visibleFrame.width ?? 1920
+            if isEmbedded {
+                return min(max(availableWidth - 24, 840), 1560)
+            }
+
+            let displayCount = CGFloat(max(1, state.filteredSnapshot?.displays.count ?? 1))
+            let ideal = displayCount * 480 + CGFloat(max(0, Int(displayCount) - 1)) + 32
+            let screenWidth = NSScreen.main?.visibleFrame.width ?? availableWidth
             return min(ideal, screenWidth * 0.92)
+        }
+
+        if isEmbedded {
+            return min(720, max(availableWidth - 32, 580))
         }
         return 580
     }
 
-    var body: some View {
+    private func displayColumnWidth(for contentWidth: CGFloat) -> CGFloat {
+        let count = CGFloat(max(1, state.filteredSnapshot?.displays.count ?? 1))
+        let available = contentWidth - 32 - (count - 1) * 0.5
+        return max(isEmbedded ? 400 : 360, (available / count).rounded(.down))
+    }
+
+    private func inventoryCard(contentWidth: CGFloat) -> some View {
         VStack(spacing: 0) {
             header
             divider
             if isDesktopInventory && state.desktopMode == .gridPreview {
                 gridPreviewContent
             } else if isDesktopInventory {
-                desktopInventoryContent
+                desktopInventoryContent(contentWidth: contentWidth)
             } else {
                 inventoryGrid
             }
             divider
             chordFooter
         }
-        .frame(width: panelWidth)
+        .frame(width: contentWidth)
         .background(Palette.bg)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
@@ -79,13 +121,79 @@ struct CommandModeView: View {
         )
         .overlay(executingOverlay)
         .overlay(flashOverlay)
-        .onAppear { installKeyHandler(); installMouseMonitors() }
-        .onDisappear { removeKeyHandler(); removeMouseMonitors() }
-        .onChange(of: state.desktopMode) { mode in
-            CommandModeWindow.shared.panelWindow?.isMovableByWindowBackground = true
+    }
+
+    private func embeddedInventoryPage(contentWidth: CGFloat) -> some View {
+        VStack(spacing: 12) {
+            embeddedInventorySummary
+                .frame(width: contentWidth, alignment: .leading)
+            inventoryCard(contentWidth: contentWidth)
+                .frame(maxHeight: .infinity)
         }
-        .animation(.easeInOut(duration: 0.2), value: isDesktopInventory)
-        .modifier(FocusRingSuppressor())
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private var embeddedInventorySummary: some View {
+        let snapshot = state.filteredSnapshot ?? state.desktopSnapshot
+        let displayCount = snapshot?.displays.count ?? 0
+        let spaceCount = snapshot?.displays.reduce(0) { total, display in
+            total + display.spaces.count
+        } ?? 0
+        let windowCount = snapshot?.allWindows.count ?? 0
+
+        return HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Grouped by display, Space, and app")
+                    .font(Typo.heading(13))
+                    .foregroundColor(Palette.text)
+                Text(state.isSearching
+                    ? "Search results stay in place so the desktop reads like a map instead of a flat list."
+                    : "Live window sizes, tiling hints, and OCR search in one balanced pass across the desktop.")
+                    .font(Typo.mono(10))
+                    .foregroundColor(Palette.textDim)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 12)
+
+            HStack(spacing: 8) {
+                inventoryStatPill(value: displayCount, label: "Displays")
+                inventoryStatPill(value: spaceCount, label: "Spaces")
+                inventoryStatPill(value: windowCount, label: "Windows")
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Palette.surface.opacity(0.65))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(Palette.border, lineWidth: 0.5)
+                )
+        )
+    }
+
+    private func inventoryStatPill(value: Int, label: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("\(value)")
+                .font(Typo.monoBold(12))
+                .foregroundColor(Palette.text)
+            Text(label.uppercased())
+                .font(Typo.mono(8))
+                .foregroundColor(Palette.textMuted)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Palette.bg.opacity(0.75))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(Palette.border, lineWidth: 0.5)
+                )
+        )
     }
 
     // MARK: - Header
@@ -165,7 +273,7 @@ struct CommandModeView: View {
 
     // MARK: - Desktop Inventory Content
 
-    private var desktopInventoryContent: some View {
+    private func desktopInventoryContent(contentWidth: CGFloat) -> some View {
         VStack(spacing: 0) {
             if state.isSearching {
                 searchBar
@@ -177,20 +285,7 @@ struct CommandModeView: View {
             ZStack {
                 Group {
                     if let snapshot = state.filteredSnapshot, !snapshot.displays.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(alignment: .top, spacing: 0) {
-                                let total = snapshot.displays.count
-                                ForEach(Array(snapshot.displays.enumerated()), id: \.element.id) { idx, display in
-                                    if idx > 0 {
-                                        Rectangle()
-                                            .fill(Palette.border)
-                                            .frame(width: 0.5)
-                                    }
-                                    displayColumn(display, index: idx, total: total)
-                                        .frame(width: displayColumnWidth)
-                                }
-                            }
-                        }
+                        inventoryColumns(snapshot: snapshot, contentWidth: contentWidth)
                     } else {
                         desktopEmptyState
                     }
@@ -213,6 +308,53 @@ struct CommandModeView: View {
                 state.rowFrames = frames
             }
             .frame(maxHeight: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private func inventoryColumns(snapshot: DesktopInventorySnapshot, contentWidth: CGFloat) -> some View {
+        if shouldShowEmbeddedSidebar(snapshot: snapshot, contentWidth: contentWidth),
+           let display = snapshot.displays.first {
+            embeddedSingleDisplayLayout(display: display, contentWidth: contentWidth)
+        } else {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 0) {
+                    let total = snapshot.displays.count
+                    ForEach(Array(snapshot.displays.enumerated()), id: \.element.id) { idx, display in
+                        if idx > 0 {
+                            Rectangle()
+                                .fill(Palette.border)
+                                .frame(width: 0.5)
+                        }
+                        displayColumn(display, index: idx, total: total)
+                            .frame(width: displayColumnWidth(for: contentWidth))
+                    }
+                }
+            }
+        }
+    }
+
+    private func shouldShowEmbeddedSidebar(snapshot: DesktopInventorySnapshot, contentWidth: CGFloat) -> Bool {
+        isEmbedded && snapshot.displays.count == 1 && contentWidth >= 900
+    }
+
+    private func embeddedSingleDisplayLayout(
+        display: DesktopInventorySnapshot.DisplayInfo,
+        contentWidth: CGFloat
+    ) -> some View {
+        let sidebarWidth = min(max(contentWidth * 0.28, 250), 330)
+        let mainWidth = max(contentWidth - sidebarWidth - 0.5, 620)
+
+        return HStack(alignment: .top, spacing: 0) {
+            displayColumn(display, index: 0, total: 1)
+                .frame(width: mainWidth)
+
+            Rectangle()
+                .fill(Palette.border)
+                .frame(width: 0.5)
+
+            embeddedInventorySidebar(display: display)
+                .frame(width: sidebarWidth)
         }
     }
 
@@ -376,6 +518,210 @@ struct CommandModeView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
+    }
+
+    private func embeddedInventorySidebar(display: DesktopInventorySnapshot.DisplayInfo) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                sidebarCard(title: "Overview") {
+                    sidebarMetric(label: "Display", value: display.name)
+                    sidebarMetric(
+                        label: "Visible",
+                        value: "\(display.visibleFrame.w)×\(display.visibleFrame.h)"
+                    )
+                    sidebarMetric(
+                        label: "Current Space",
+                        value: "Space \(display.currentSpaceIndex)"
+                    )
+                    sidebarMetric(
+                        label: "Windows",
+                        value: "\(windowCount(in: display)) total"
+                    )
+                    sidebarMetric(
+                        label: "Apps",
+                        value: "\(uniqueAppCount(in: display)) active"
+                    )
+                    sidebarMetric(
+                        label: "Lattices",
+                        value: "\(latticesWindowCount(in: display)) tagged"
+                    )
+                }
+
+                sidebarCard(title: "Spaces") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(display.spaces) { space in
+                            HStack(alignment: .top, spacing: 8) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack(spacing: 5) {
+                                        Text("Space \(space.index)")
+                                            .font(Typo.monoBold(10))
+                                            .foregroundColor(space.isCurrent ? Palette.running : Palette.text)
+                                        if space.isCurrent {
+                                            Text("active")
+                                                .font(Typo.mono(8))
+                                                .foregroundColor(Palette.running.opacity(0.75))
+                                        }
+                                    }
+                                    Text("\(spaceWindowCount(space)) windows across \(space.apps.count) apps")
+                                        .font(Typo.mono(9))
+                                        .foregroundColor(Palette.textDim)
+                                }
+                                Spacer()
+                                Text("\(spaceLatticesCount(space))")
+                                    .font(Typo.mono(9))
+                                    .foregroundColor(Palette.textMuted)
+                            }
+                        }
+                    }
+                }
+
+                sidebarCard(title: state.selectedWindowIds.isEmpty ? "Top Apps" : "Selection") {
+                    if state.selectedWindowIds.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Select a window to inspect it here.")
+                                .font(Typo.mono(9))
+                                .foregroundColor(Palette.textDim)
+
+                            ForEach(topApps(in: display), id: \.name) { app in
+                                HStack(spacing: 8) {
+                                    Text(app.name)
+                                        .font(Typo.monoBold(10))
+                                        .foregroundColor(Palette.text)
+                                        .lineLimit(1)
+                                    Spacer()
+                                    Text("\(app.count)")
+                                        .font(Typo.mono(9))
+                                        .foregroundColor(Palette.textMuted)
+                                }
+                            }
+                        }
+                    } else {
+                        selectionSidebarContent
+                    }
+                }
+
+                sidebarCard(title: "Keys") {
+                    VStack(alignment: .leading, spacing: 7) {
+                        sidebarShortcut("Arrows", "move through windows")
+                        sidebarShortcut("/", "search by title or OCR")
+                        sidebarShortcut("M", "jump to Screen Map")
+                        sidebarShortcut("T", "tile selected window")
+                        sidebarShortcut("Esc", "back or clear selection")
+                    }
+                }
+            }
+            .padding(12)
+        }
+    }
+
+    @ViewBuilder
+    private var selectionSidebarContent: some View {
+        let selected = selectedWindows
+
+        if selected.count > 1 {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("\(selected.count) windows selected")
+                    .font(Typo.monoBold(10))
+                    .foregroundColor(Palette.text)
+                if !state.selectedWindowSummaryText.isEmpty {
+                    Text(state.selectedWindowSummaryText)
+                        .font(Typo.mono(9))
+                        .foregroundColor(Palette.textDim)
+                }
+                ForEach(Array(selected.prefix(5)), id: \.id) { window in
+                    HStack(spacing: 8) {
+                        Text(window.appName ?? "Unknown")
+                            .font(Typo.monoBold(9))
+                            .foregroundColor(window.isLattices ? Palette.running : Palette.text)
+                            .lineLimit(1)
+                        Spacer()
+                        Text(sizeText(window.frame))
+                            .font(Typo.mono(9))
+                            .foregroundColor(Palette.textMuted)
+                    }
+                }
+            }
+        } else if let window = selected.first {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(window.appName ?? "Unknown")
+                    .font(Typo.monoBold(10))
+                    .foregroundColor(window.isLattices ? Palette.running : Palette.text)
+                Text(window.title.isEmpty ? "(untitled)" : window.title)
+                    .font(Typo.mono(9))
+                    .foregroundColor(Palette.textDim)
+                    .fixedSize(horizontal: false, vertical: true)
+                sidebarMetric(label: "Size", value: sizeText(window.frame))
+                if let tile = window.tilePosition?.label {
+                    sidebarMetric(label: "Tile", value: tile)
+                }
+                if let session = window.latticesSession {
+                    sidebarMetric(label: "Session", value: session)
+                }
+                if let path = window.inventoryPath {
+                    Text(path.description)
+                        .font(Typo.mono(8))
+                        .foregroundColor(Palette.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    private func sidebarCard<Content: View>(
+        title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title.uppercased())
+                .font(Typo.mono(9))
+                .foregroundColor(Palette.textMuted)
+            content()
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Palette.surface.opacity(0.55))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(Palette.border, lineWidth: 0.5)
+                )
+        )
+    }
+
+    private func sidebarMetric(label: String, value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(label.uppercased())
+                .font(Typo.mono(8))
+                .foregroundColor(Palette.textMuted)
+                .frame(width: 74, alignment: .leading)
+            Text(value)
+                .font(Typo.mono(9))
+                .foregroundColor(Palette.text)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func sidebarShortcut(_ key: String, _ label: String) -> some View {
+        HStack(spacing: 8) {
+            Text(key)
+                .font(Typo.monoBold(9))
+                .foregroundColor(Palette.text)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(Palette.bg.opacity(0.8))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .strokeBorder(Palette.border, lineWidth: 0.5)
+                        )
+                )
+            Text(label)
+                .font(Typo.mono(9))
+                .foregroundColor(Palette.textDim)
+        }
     }
 
     private func spaceHeader(_ space: DesktopInventorySnapshot.SpaceGroup, display: DesktopInventorySnapshot.DisplayInfo) -> some View {
@@ -610,15 +956,7 @@ struct CommandModeView: View {
             Menu("Tile All (\(selCount))") {
                 ForEach(TilePosition.allCases) { tile in
                     Button {
-                        let windows = state.flatWindowList.filter { state.selectedWindowIds.contains($0.id) }
-                        for (i, win) in windows.enumerated() {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.1) {
-                                WindowTiler.tileWindowById(wid: win.id, pid: win.pid, to: tile)
-                            }
-                        }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3 + Double(windows.count) * 0.1) {
-                            state.desktopSnapshot = nil
-                        }
+                        state.showAndDistributeSelected(in: .tile(tile))
                     } label: {
                         Label(tile.label, systemImage: tile.icon)
                     }
@@ -683,14 +1021,62 @@ struct CommandModeView: View {
     private func windowTitle(_ window: DesktopInventorySnapshot.InventoryWindowInfo) -> String {
         let title = window.title
         if title.isEmpty { return "(untitled)" }
-        if title.count > 30 {
-            return String(title.prefix(27)) + "..."
-        }
         return title
     }
 
     private func sizeText(_ frame: WindowFrame) -> String {
         "\(Int(frame.w))×\(Int(frame.h))"
+    }
+
+    private var selectedWindows: [DesktopInventorySnapshot.InventoryWindowInfo] {
+        state.flatWindowList.filter { state.selectedWindowIds.contains($0.id) }
+    }
+
+    private func windowCount(in display: DesktopInventorySnapshot.DisplayInfo) -> Int {
+        display.spaces.reduce(0) { total, space in
+            total + spaceWindowCount(space)
+        }
+    }
+
+    private func uniqueAppCount(in display: DesktopInventorySnapshot.DisplayInfo) -> Int {
+        Set(display.spaces.flatMap { $0.apps.map(\.appName) }).count
+    }
+
+    private func latticesWindowCount(in display: DesktopInventorySnapshot.DisplayInfo) -> Int {
+        display.spaces.reduce(0) { total, space in
+            total + spaceLatticesCount(space)
+        }
+    }
+
+    private func spaceWindowCount(_ space: DesktopInventorySnapshot.SpaceGroup) -> Int {
+        space.apps.reduce(0) { total, app in
+            total + app.windows.count
+        }
+    }
+
+    private func spaceLatticesCount(_ space: DesktopInventorySnapshot.SpaceGroup) -> Int {
+        space.apps.reduce(0) { total, app in
+            total + app.windows.filter(\.isLattices).count
+        }
+    }
+
+    private func topApps(
+        in display: DesktopInventorySnapshot.DisplayInfo
+    ) -> [(name: String, count: Int)] {
+        var counts: [String: Int] = [:]
+        for space in display.spaces {
+            for app in space.apps {
+                counts[app.appName, default: 0] += app.windows.count
+            }
+        }
+        return counts
+            .map { (name: $0.key, count: $0.value) }
+            .sorted { lhs, rhs in
+                if lhs.count == rhs.count { return lhs.name < rhs.name }
+                return lhs.count > rhs.count
+            }
+            .prefix(5)
+            .map { $0 }
     }
 
     /// Group items by their group label
@@ -835,10 +1221,16 @@ struct CommandModeView: View {
             if isDesktopInventory && state.desktopMode == .gridPreview {
                 // Grid preview hints
                 HStack(spacing: 12) {
+                    chordHint(key: "←→↑↓", label: "region")
+                    chordHint(key: "1-7", label: "corners/thirds")
+                    chordHint(key: "c", label: "center")
                     chordHint(key: "↩", label: "apply layout")
                     chordHint(key: "s", label: "apply layout")
                     chordHint(key: "esc", label: "cancel")
                     Spacer()
+                    Text(state.gridPreviewRegionLabel.uppercased())
+                        .font(Typo.mono(9))
+                        .foregroundColor(Palette.textDim)
                     let shape = state.gridPreviewShape
                     Text(shape.map(String.init).joined(separator: " + "))
                         .font(Typo.monoBold(9))
@@ -890,13 +1282,19 @@ struct CommandModeView: View {
             } else if isDesktopInventory && state.selectedWindowIds.count > 1 {
                 // Multi-selection active
                 HStack(spacing: 12) {
-                    chordHint(key: "s", label: "show")
+                    chordHint(key: "s", label: "grid preview")
                     chordHint(key: "↩", label: "front")
-                    chordHint(key: "t", label: "tile")
+                    chordHint(key: "t", label: "grid region")
                     chordHint(key: "f", label: "focus")
                     chordHint(key: "h", label: "highlight")
                     chordHint(key: "esc", label: "clear")
                     Spacer()
+                    if !state.selectedWindowSummaryText.isEmpty {
+                        Text(state.selectedWindowSummaryText)
+                            .font(Typo.mono(9))
+                            .foregroundColor(Palette.textDim)
+                            .lineLimit(1)
+                    }
                     Text("\(state.selectedWindowIds.count) selected")
                         .font(Typo.mono(9))
                         .foregroundColor(Palette.running)
@@ -1082,6 +1480,9 @@ struct CommandModeView: View {
                 Text("LAYOUT PREVIEW")
                     .font(Typo.monoBold(10))
                     .foregroundColor(Palette.textDim)
+                Text(state.gridPreviewRegionLabel.uppercased())
+                    .font(Typo.mono(9))
+                    .foregroundColor(Palette.textMuted)
                 Text(gridDesc)
                     .font(Typo.monoBold(10))
                     .foregroundColor(Palette.running)
@@ -1096,7 +1497,7 @@ struct CommandModeView: View {
             divider
 
             // Screen map: current positions (dimmed) + target grid (bright)
-            screenMap(windows: windows, shape: shape)
+            screenMap(windows: windows, shape: shape, placement: state.gridPreviewPlacement)
                 .frame(height: 160)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
@@ -1125,7 +1526,11 @@ struct CommandModeView: View {
     // MARK: - Grid Preview Screen Map
 
     /// Miniature proportional map of the screen showing current window positions and target grid slots
-    private func screenMap(windows: [DesktopInventorySnapshot.InventoryWindowInfo], shape: [Int]) -> some View {
+    private func screenMap(
+        windows: [DesktopInventorySnapshot.InventoryWindowInfo],
+        shape: [Int],
+        placement: PlacementSpec?
+    ) -> some View {
         GeometryReader { geo in
             let availW = geo.size.width
             let availH = geo.size.height
@@ -1154,6 +1559,14 @@ struct CommandModeView: View {
                     )
                     .frame(width: mapW, height: mapH)
 
+                if let placement {
+                    let region = placement.fractions
+                    RoundedRectangle(cornerRadius: 4)
+                        .strokeBorder(Palette.running.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
+                        .frame(width: mapW * region.2, height: mapH * region.3)
+                        .offset(x: mapW * region.0, y: mapH * region.1)
+                }
+
                 // Current positions (dimmed)
                 ForEach(Array(windows.enumerated()), id: \.element.id) { idx, win in
                     let f = win.frame
@@ -1173,7 +1586,13 @@ struct CommandModeView: View {
                 }
 
                 // Target grid slots (bright)
-                let slots = computeMapSlots(count: windows.count, shape: shape, mapW: mapW, mapH: mapH)
+                let slots = computeMapSlots(
+                    count: windows.count,
+                    shape: shape,
+                    mapW: mapW,
+                    mapH: mapH,
+                    region: placement?.fractions
+                )
                 ForEach(Array(slots.enumerated()), id: \.offset) { idx, slot in
                     let win = idx < windows.count ? windows[idx] : nil
                     RoundedRectangle(cornerRadius: 2)
@@ -1204,15 +1623,30 @@ struct CommandModeView: View {
     }
 
     /// Compute grid slots scaled to the mini map dimensions
-    private func computeMapSlots(count: Int, shape: [Int], mapW: CGFloat, mapH: CGFloat) -> [CGRect] {
+    private func computeMapSlots(
+        count: Int,
+        shape: [Int],
+        mapW: CGFloat,
+        mapH: CGFloat,
+        region: (CGFloat, CGFloat, CGFloat, CGFloat)? = nil
+    ) -> [CGRect] {
+        let regionX = mapW * (region?.0 ?? 0)
+        let regionY = mapH * (region?.1 ?? 0)
+        let regionW = mapW * (region?.2 ?? 1)
+        let regionH = mapH * (region?.3 ?? 1)
         let rowCount = shape.count
-        let rowH = mapH / CGFloat(rowCount)
+        let rowH = regionH / CGFloat(rowCount)
         var slots: [CGRect] = []
         for (row, cols) in shape.enumerated() {
-            let colW = mapW / CGFloat(cols)
-            let y = CGFloat(row) * rowH
+            let colW = regionW / CGFloat(cols)
+            let y = regionY + CGFloat(row) * rowH
             for col in 0..<cols {
-                slots.append(CGRect(x: CGFloat(col) * colW, y: y, width: colW, height: rowH))
+                slots.append(CGRect(
+                    x: regionX + CGFloat(col) * colW,
+                    y: y,
+                    width: colW,
+                    height: rowH
+                ))
             }
         }
         return slots
@@ -1382,4 +1816,3 @@ struct CommandModeView: View {
         }
     }
 }
-

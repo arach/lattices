@@ -1388,7 +1388,9 @@ final class ScreenMapController: ObservableObject {
     @Published var editor: ScreenMapEditorState? {
         didSet { bindEditor() }
     }
-    @Published var selectedWindowIds: Set<UInt32> = []
+    @Published var selectedWindowIds: Set<UInt32> = [] {
+        didSet { syncSharedSelection() }
+    }
     @Published var windowSets: [ScreenMapWindowSet] = []
     @Published var activeWindowSetID: UUID? = nil
     @Published var flashMessage: String? = nil
@@ -1482,6 +1484,28 @@ final class ScreenMapController: ObservableObject {
     func clearSelection() {
         selectedWindowIds = []
         activeWindowSetID = nil
+    }
+
+    private func syncSharedSelection() {
+        guard !selectedWindowIds.isEmpty else {
+            WindowSelectionStore.shared.clear(source: "screen-map")
+            return
+        }
+
+        guard let editor else { return }
+        let summaries = editor.windows
+            .filter { selectedWindowIds.contains($0.id) }
+            .map {
+                SelectedWindowSummary(
+                    wid: $0.id,
+                    app: $0.app,
+                    title: $0.title,
+                    latticesSession: $0.latticesSession
+                )
+            }
+
+        guard !summaries.isEmpty else { return }
+        WindowSelectionStore.shared.setSelection(summaries, source: "screen-map")
     }
 
     func selectNextWindow() {

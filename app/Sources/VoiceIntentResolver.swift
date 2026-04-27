@@ -141,10 +141,43 @@ final class VoiceIntentResolver {
     private func extractSlots(for intentName: String, input: String) -> ExtractedSlots {
         switch intentName {
         case "tile_window":
-            guard let position = resolvePosition(in: input) else {
+            var slots: [String: JSON] = [:]
+            var boost = 0.0
+
+            if let position = resolvePosition(in: input) {
+                slots["position"] = .string(position)
+                boost += 0.28
+            } else {
                 return ExtractedSlots(slots: [:], boost: 0)
             }
-            return ExtractedSlots(slots: ["position": .string(position)], boost: 0.28)
+
+            if refersToSelection(in: input) {
+                slots["selection"] = .bool(true)
+                boost += 0.08
+            }
+
+            return ExtractedSlots(slots: slots, boost: boost)
+
+        case "distribute":
+            var slots: [String: JSON] = [:]
+            var boost = 0.0
+
+            if let region = resolvePosition(in: input) {
+                slots["region"] = .string(region)
+                boost += 0.18
+            }
+
+            if let app = detectKnownApp(in: input) {
+                slots["app"] = .string(app)
+                boost += 0.14
+            }
+
+            if refersToSelection(in: input) {
+                slots["selection"] = .bool(true)
+                boost += 0.12
+            }
+
+            return ExtractedSlots(slots: slots, boost: boost)
 
         case "focus":
             if let app = detectKnownApp(in: input) ?? extractEntity(in: input, prefixes: focusPrefixes) {
@@ -426,6 +459,15 @@ final class VoiceIntentResolver {
         return nil
     }
 
+    private func refersToSelection(in input: String) -> Bool {
+        let markers = [
+            "grid that", "grid these", "grid those",
+            "tile that", "tile these", "tile those",
+            "selected windows", "selection", "selected", "these windows", "those windows", "them"
+        ]
+        return markers.contains(where: input.contains)
+    }
+
     private func detectKnownApp(in input: String) -> String? {
         for app in knownApps() {
             let lower = app.lowercased()
@@ -601,7 +643,7 @@ final class VoiceIntentResolver {
         "search": ["find", "search", "look for", "where is", "where d", "locate", "lost", "show me all", "windows"],
         "list_windows": ["what s open", "list windows", "which windows", "what do i have open"],
         "list_sessions": ["list sessions", "what s running", "which projects", "show my sessions"],
-        "distribute": ["distribute", "spread", "organize", "arrange", "tidy", "clean up", "grid"],
+        "distribute": ["distribute", "spread", "organize", "arrange", "tidy", "clean up", "grid", "selected", "selection"],
         "create_layer": ["create layer", "save layout", "snapshot", "remember this layout"],
         "kill": ["kill", "stop", "shut down", "close", "terminate", "end"],
         "scan": ["scan", "rescan", "ocr", "read the screen", "what s on my screen", "screen text"],
@@ -662,7 +704,7 @@ final class VoiceIntentResolver {
         "search": ["where d my slack go", "pull up everything with dewey in it", "show me all the chrome windows", "dewey"],
         "list_windows": ["what do i have open", "what windows do i have"],
         "list_sessions": ["show me my sessions", "which projects are active"],
-        "distribute": ["tidy up", "line everything up", "clean up the windows"],
+        "distribute": ["tidy up", "line everything up", "clean up the windows", "grid that in the bottom half", "arrange the selected windows"],
         "create_layer": ["snapshot this", "remember this layout"],
         "kill": ["close the dewey session", "stop my session"],
         "scan": ["what s on my screen", "read the screen", "give me a fresh scan"],

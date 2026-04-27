@@ -560,6 +560,7 @@ final class VoiceCommandState: ObservableObject {
 
 struct VoiceCommandView: View {
     @ObservedObject var state: VoiceCommandState
+    @ObservedObject private var activeSelection = WindowSelectionStore.shared
     let onDismiss: () -> Void
 
     private let docsURL = "https://lattices.dev/docs/voice"
@@ -884,6 +885,30 @@ struct VoiceCommandView: View {
             VStack(alignment: .leading, spacing: 14) {
                     // Zero-height spacer forces VStack to fill ScrollView width
                     Color.clear.frame(maxWidth: .infinity, maxHeight: 0)
+                    if activeSelection.isActive {
+                        commandSection("selection") {
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack(spacing: 6) {
+                                    Text("\(activeSelection.count) window\(activeSelection.count == 1 ? "" : "s")")
+                                        .font(Typo.geistMonoBold(11))
+                                        .foregroundColor(Palette.running)
+                                    if let source = activeSelection.sourceLabel {
+                                        Text(source)
+                                            .font(Typo.geistMono(10))
+                                            .foregroundColor(Palette.textMuted)
+                                    }
+                                }
+                                Text(activeSelection.summary(maxItems: 4))
+                                    .font(Typo.geistMono(11))
+                                    .foregroundColor(Palette.textDim)
+                                    .lineLimit(3)
+                                Text("Try: grid that in the bottom half")
+                                    .font(Typo.geistMono(10))
+                                    .foregroundColor(Palette.textMuted)
+                            }
+                        }
+                    }
+
                     // Partial transcript (while listening)
                     if state.phase == .listening, !state.partialText.isEmpty {
                         commandSection("hearing...") {

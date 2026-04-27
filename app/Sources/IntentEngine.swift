@@ -133,6 +133,8 @@ final class IntentEngine {
                            description: "Target window ID", enumValues: nil),
                 IntentSlot(name: "session", type: "string", required: false,
                            description: "Target session name", enumValues: nil),
+                IntentSlot(name: "selection", type: "bool", required: false,
+                           description: "Apply to the active multi-window selection instead of a single window", enumValues: nil),
             ],
             handler: { req in
                 guard let posStr = req.slots["position"]?.stringValue else {
@@ -174,6 +176,34 @@ final class IntentEngine {
                         return .object(["ok": .bool(true), "app": .string(entry.app), "wid": .int(Int(entry.wid)), "position": .string(posStr)])
                     }
                     throw IntentError.targetNotFound("No window found for app '\(app)'")
+                }
+
+                if req.slots["selection"]?.boolValue == true {
+                    let selectionIds = WindowSelectionStore.shared.windowIds
+                    guard !selectionIds.isEmpty else {
+                        throw IntentError.targetNotFound("No active window selection")
+                    }
+
+                    if selectionIds.count == 1,
+                       let wid = selectionIds.first,
+                       let entry = DesktopModel.shared.windows[wid] {
+                        tileEntry(entry)
+                        return .object([
+                            "ok": .bool(true),
+                            "target": .string("selection"),
+                            "wid": .int(Int(wid)),
+                            "position": .string(posStr)
+                        ])
+                    }
+
+                    return try LatticesApi.shared.dispatch(
+                        method: "space.optimize",
+                        params: .object([
+                            "scope": .string("selection"),
+                            "windowIds": .array(selectionIds.map { .int(Int($0)) }),
+                            "region": .string(posStr)
+                        ])
+                    )
                 }
 
                 // Default: tile frontmost window
@@ -398,6 +428,8 @@ final class IntentEngine {
                            description: "Constrain the grid to a screen region. Uses tile position names.",
                            enumValues: ["left", "right", "top", "bottom", "top-left", "top-right", "bottom-left", "bottom-right",
                                         "left-third", "center-third", "right-third"]),
+                IntentSlot(name: "selection", type: "bool", required: false,
+                           description: "Use the active selected windows instead of all visible windows", enumValues: nil),
             ],
             handler: { req in
                 var params: [String: JSON] = [:]
@@ -406,6 +438,18 @@ final class IntentEngine {
                 }
                 if let region = req.slots["region"]?.stringValue {
                     params["region"] = .string(region)
+                }
+                if req.slots["selection"]?.boolValue == true {
+                    let selectionIds = WindowSelectionStore.shared.windowIds
+                    guard !selectionIds.isEmpty else {
+                        throw IntentError.targetNotFound("No active window selection")
+                    }
+                    params["scope"] = .string("selection")
+                    params["windowIds"] = .array(selectionIds.map { .int(Int($0)) })
+                    return try LatticesApi.shared.dispatch(
+                        method: "space.optimize",
+                        params: .object(params)
+                    )
                 }
                 return try LatticesApi.shared.dispatch(
                     method: "layout.distribute",
