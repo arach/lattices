@@ -63,12 +63,7 @@ final class LatticesCompanionTrackpadController {
 
 private extension LatticesCompanionTrackpadController {
     func currentCursorPoint() -> CGPoint {
-        let current = NSEvent.mouseLocation
-        return CGPoint(x: current.x, y: screenMaxY() - current.y)
-    }
-
-    func screenMaxY() -> CGFloat {
-        NSScreen.screens.map { $0.frame.maxY }.max() ?? 0
+        CGEvent(source: nil)?.location ?? .zero
     }
 
     func clamp(delta: Double) -> CGFloat {
@@ -79,8 +74,13 @@ private extension LatticesCompanionTrackpadController {
         let current = currentCursorPoint()
         let next = CGPoint(
             x: current.x + clamp(delta: dx),
-            y: current.y - clamp(delta: dy)
+            y: current.y + clamp(delta: dy)
         )
+
+        // Disassociate so the synthesized warp isn't fought by the physical
+        // mouse's last reported position (which was pinning Y to the bottom).
+        CGAssociateMouseAndMouseCursorPosition(0)
+        CGWarpMouseCursorPosition(next)
 
         guard let source = CGEventSource(stateID: .combinedSessionState),
               let event = CGEvent(
@@ -89,9 +89,13 @@ private extension LatticesCompanionTrackpadController {
                 mouseCursorPosition: next,
                 mouseButton: .left
               ) else {
+            CGAssociateMouseAndMouseCursorPosition(1)
             return false
         }
+        event.setIntegerValueField(.mouseEventDeltaX, value: Int64(clamp(delta: dx)))
+        event.setIntegerValueField(.mouseEventDeltaY, value: Int64(clamp(delta: dy)))
         event.post(tap: .cghidEventTap)
+        CGAssociateMouseAndMouseCursorPosition(1)
         return true
     }
 
@@ -155,8 +159,11 @@ private extension LatticesCompanionTrackpadController {
         let current = currentCursorPoint()
         let next = CGPoint(
             x: current.x + clamp(delta: dx),
-            y: current.y - clamp(delta: dy)
+            y: current.y + clamp(delta: dy)
         )
+
+        CGAssociateMouseAndMouseCursorPosition(0)
+        CGWarpMouseCursorPosition(next)
 
         guard let source = CGEventSource(stateID: .combinedSessionState),
               let event = CGEvent(
@@ -165,9 +172,13 @@ private extension LatticesCompanionTrackpadController {
                 mouseCursorPosition: next,
                 mouseButton: .left
               ) else {
+            CGAssociateMouseAndMouseCursorPosition(1)
             return false
         }
+        event.setIntegerValueField(.mouseEventDeltaX, value: Int64(clamp(delta: dx)))
+        event.setIntegerValueField(.mouseEventDeltaY, value: Int64(clamp(delta: dy)))
         event.post(tap: .cghidEventTap)
+        CGAssociateMouseAndMouseCursorPosition(1)
         return true
     }
 

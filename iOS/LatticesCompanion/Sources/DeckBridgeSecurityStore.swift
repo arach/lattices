@@ -78,6 +78,17 @@ final class DeckBridgeSecurityStore {
         trustedBridges[health.bridgePublicKey] != nil
     }
 
+    /// All Macs this device has paired with (most recently paired first).
+    func trustedBridgeList() -> [StoredBridgeTrust] {
+        trustedBridges.values.sorted { $0.pairedAt > $1.pairedAt }
+    }
+
+    /// Forget a previously paired bridge by its public key.
+    func forgetBridge(publicKey: String) {
+        trustedBridges.removeValue(forKey: publicKey)
+        persistTrustedBridges()
+    }
+
     func pairingRequest() -> DeckPairingRequest {
         DeckPairingRequest(
             deviceID: deviceID,

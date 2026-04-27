@@ -22,6 +22,34 @@ final class DeckStore: ObservableObject {
     private let discovery = BridgeDiscovery()
     private var pollingTask: Task<Void, Never>?
 
+    var connectionLabel: String {
+        // Prefer human-readable names (Bonjour service name / health-reported name)
+        // over raw hosts/UUIDs which look like "F8B453FB-…" in the UI.
+        if let endpointName = activeEndpoint?.name.trimmingCharacters(in: .whitespacesAndNewlines),
+           !endpointName.isEmpty,
+           !looksLikeUUID(endpointName) {
+            return endpointName
+        }
+        if let healthName = health?.name.trimmingCharacters(in: .whitespacesAndNewlines),
+           !healthName.isEmpty,
+           !looksLikeUUID(healthName) {
+            return healthName
+        }
+        if let endpointHost = activeEndpoint?.host.trimmingCharacters(in: .whitespacesAndNewlines),
+           !endpointHost.isEmpty {
+            return endpointHost
+                .replacingOccurrences(of: ".local", with: "")
+                .replacingOccurrences(of: ".lan", with: "")
+        }
+        return "Mac"
+    }
+
+    private func looksLikeUUID(_ s: String) -> Bool {
+        // Crude check: 32+ hex/dash chars, no spaces. Matches "F8B453FB-F2AD-4194-…"
+        let hex = CharacterSet(charactersIn: "0123456789ABCDEFabcdef-")
+        return s.count >= 16 && s.unicodeScalars.allSatisfy { hex.contains($0) }
+    }
+
     init() {
         discovery.onUpdate = { [weak self] bridges in
             Task { @MainActor [weak self] in
@@ -118,6 +146,27 @@ final class DeckStore: ObservableObject {
         }
     }
 
+    // MARK: - Voice (relay)
+    //
+    // The iPad never captures audio. These thin wrappers fire `voice.command.*`
+    // on the active Mac via the same /deck/perform bridge other actions use.
+    // Live phase + transcript + errors stream back through `snapshot.voice` on
+    // the existing polling cadence — no separate event channel needed.
+
+    var voiceState: DeckVoiceState? { snapshot?.voice }
+
+    func startVoice() {
+        perform(actionID: "voice.command.start", pageID: "home", label: "voice")
+    }
+
+    func stopVoice() {
+        perform(actionID: "voice.command.stop", pageID: "home", label: "voice")
+    }
+
+    func toggleVoice() {
+        perform(actionID: "voice.command.toggle", pageID: "home", label: "voice")
+    }
+
     func sendTrackpad(
         event: DeckTrackpadEvent,
         dx: Double = 0,
@@ -127,11 +176,14 @@ final class DeckStore: ObservableObject {
 
         Task {
             do {
-                _ = try await client.trackpad(
+                let result = try await client.trackpad(
                     endpoint: endpoint,
                     health: health,
                     request: DeckTrackpadEventRequest(event: event, dx: dx, dy: dy)
                 )
+                if !result.ok {
+                    errorMessage = "Trackpad input was rejected. Check that the Mac bridge is enabled and has Accessibility permission."
+                }
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -148,7 +200,7 @@ private extension DeckStore {
             return
         }
 
-        guard let activeEndpoint else { return }
+        guard let activeEndpoint, activeEndpoint.source == "Bonjour" else { return }
         if let replacement = bridges.first(where: { bridge in
             bridge.name == activeEndpoint.name && bridge.port == activeEndpoint.port && bridge.host != activeEndpoint.host
         }) {
@@ -219,13 +271,25 @@ private extension DeckStore {
     }
 
     func canonicalEndpoint(from endpoint: BridgeEndpoint, health: BridgeHealthResponse) -> BridgeEndpoint {
-        let host = health.hostName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !host.isEmpty else { return endpoint }
+        let healthName = health.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let endpointHost = endpoint.host.trimmingCharacters(in: .whitespacesAndNewlines)
         return BridgeEndpoint(
-            name: endpoint.name,
-            host: host,
+            name: healthName.isEmpty ? endpoint.name : healthName,
+            host: endpointHost.isEmpty ? endpoint.host : endpointHost,
             port: Int(health.port),
             source: endpoint.source
+        )
+    }
+
+    func reportedEndpoint(from endpoint: BridgeEndpoint, health: BridgeHealthResponse) -> BridgeEndpoint? {
+        let host = health.hostName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !host.isEmpty, host != endpoint.host else { return nil }
+        let healthName = health.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return BridgeEndpoint(
+            name: healthName.isEmpty ? endpoint.name : healthName,
+            host: host,
+            port: Int(health.port),
+            source: "Health"
         )
     }
 
@@ -236,6 +300,10 @@ private extension DeckStore {
             let canonical = canonicalEndpoint(from: preferred, health: health)
             if !candidates.contains(canonical) {
                 candidates.append(canonical)
+            }
+            if let reported = reportedEndpoint(from: preferred, health: health),
+               !candidates.contains(reported) {
+                candidates.append(reported)
             }
         }
 

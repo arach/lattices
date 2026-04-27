@@ -212,6 +212,32 @@ private extension LatticesDeckHost {
                 suggestedActions: voiceSuggestions(for: .idle)
             )
 
+        // Single-shot voice command path (transcribe → match intent → execute).
+        // Distinct from voice.toggle / voice.cancel which drive the chat-style
+        // HandsOffSession. Lives here so the iPad companion can fire dictation
+        // on the active Mac via the existing /deck/perform bridge.
+        case "voice.command.start":
+            try MainActorSync.run {
+                AudioLayer.shared.startVoiceCommand()
+            }
+            return try voiceOutcome()
+
+        case "voice.command.stop":
+            try MainActorSync.run {
+                AudioLayer.shared.stopVoiceCommand()
+            }
+            return try voiceOutcome()
+
+        case "voice.command.toggle":
+            try MainActorSync.run {
+                if AudioLayer.shared.isListening {
+                    AudioLayer.shared.stopVoiceCommand()
+                } else {
+                    AudioLayer.shared.startVoiceCommand()
+                }
+            }
+            return try voiceOutcome()
+
         case "switch.cycleApplication":
             return try cycleApplication(direction: request.payload["direction"]?.stringValue ?? "next")
 
@@ -318,12 +344,25 @@ private extension LatticesDeckHost {
                 throw LatticesDeckHostError.missingPayload("key")
             }
             let modifiers = request.payload["modifiers"]?.arrayValue?.compactMap(\.stringValue) ?? []
+            DiagnosticLog.shared.info("DeckHost keys.send: key=\(key) modifiers=\(modifiers)")
+
+            // Ctrl+Left / Ctrl+Right: macOS filters synthesized Mission Control hot keys at
+            // .cghidEventTap, so route directly to the SkyLight space switcher instead.
+            if let direction = spaceSwitchDirection(key: key, modifiers: modifiers) {
+                DiagnosticLog.shared.info("DeckHost keys.send → spaces.switchActive direction=\(direction)")
+                return try MainActorSync.run { self.switchActiveSpace(direction: direction) }
+            }
+
             let sent = try CompanionKeyboardController.shared.send(key: key, modifiers: modifiers)
             return ActionOutcome(
                 summary: "Sent \(sent)",
                 detail: "Forwarded the key chord to the active macOS application.",
                 suggestedActions: []
             )
+
+        case "spaces.focusRelative":
+            let direction = request.payload["direction"]?.intValue ?? 1
+            return try MainActorSync.run { self.switchActiveSpace(direction: direction > 0 ? 1 : -1) }
 
         case "mouse.find":
             let result = try callAPI("mouse.find")
@@ -768,21 +807,41 @@ private extension LatticesDeckHost {
             return nil
         }
 
-        let screen = WindowTiler.screenForWindowFrame(frontmost.frame)
-        let visibleFrame = cgVisibleFrame(for: screen)
-        let screenID = ObjectIdentifier(screen)
-        let previewWindows = deckWindows
-            .filter { ObjectIdentifier(WindowTiler.screenForWindowFrame($0.frame)) == screenID }
-            .sorted { lhs, rhs in
-                lhs.zIndex > rhs.zIndex
-            }
+        let frontmostScreen = WindowTiler.screenForWindowFrame(frontmost.frame)
+        let frontmostVisible = cgVisibleFrame(for: frontmostScreen)
+        let frontmostRect = normalizedRect(for: frontmost.frame, within: frontmostVisible)
+        let placement = WindowTiler.inferTilePosition(frame: frontmost.frame, screen: frontmostScreen)?.rawValue
+        let aspectRatio = frontmostVisible.height > 0 ? frontmostVisible.width / frontmostVisible.height : 1.0
 
-        let frontmostRect = normalizedRect(for: frontmost.frame, within: visibleFrame)
-        let placement = WindowTiler.inferTilePosition(frame: frontmost.frame, screen: screen)?.rawValue
-        let aspectRatio = visibleFrame.height > 0 ? visibleFrame.width / visibleFrame.height : 1.0
+        // Distribute windows per NSScreen — same pattern as HUDMinimap.windowsOnScreen.
+        // Each window's normalizedFrame is relative to its own display's visible frame so
+        // the iPad mini-displays render correctly per-monitor.
+        let screens = NSScreen.screens
+        var previewWindows: [DeckLayoutPreviewWindow] = []
+        for (idx, screen) in screens.enumerated() {
+            let visible = cgVisibleFrame(for: screen)
+            let screenID = ObjectIdentifier(screen)
+            let onScreen = deckWindows
+                .filter { ObjectIdentifier(WindowTiler.screenForWindowFrame($0.frame)) == screenID }
+                .sorted { $0.zIndex > $1.zIndex }
+            for window in onScreen {
+                guard let rect = normalizedRect(for: window.frame, within: visible) else { continue }
+                previewWindows.append(DeckLayoutPreviewWindow(
+                    id: "window:\(window.wid)",
+                    itemID: "window:\(window.wid)",
+                    title: window.title.isEmpty ? window.app : window.title,
+                    subtitle: window.title.isEmpty ? nil : window.app,
+                    normalizedFrame: rect,
+                    appCategory: appCategory(for: window.app),
+                    appCategoryTint: appCategoryTint(for: window.app),
+                    isFrontmost: window.wid == frontmost.wid,
+                    displayIndex: idx
+                ))
+            }
+        }
 
         return DeckLayoutState(
-            screenName: screen.localizedName,
+            screenName: frontmostScreen.localizedName,
             frontmostWindow: DeckLayoutFocusWindow(
                 id: "window:\(frontmost.wid)",
                 itemID: "window:\(frontmost.wid)",
@@ -794,21 +853,8 @@ private extension LatticesDeckHost {
             ),
             preview: DeckLayoutPreview(
                 aspectRatio: aspectRatio,
-                windows: previewWindows.compactMap { window in
-                    guard let rect = normalizedRect(for: window.frame, within: visibleFrame) else {
-                        return nil
-                    }
-                    return DeckLayoutPreviewWindow(
-                        id: "window:\(window.wid)",
-                        itemID: "window:\(window.wid)",
-                        title: window.title.isEmpty ? window.app : window.title,
-                        subtitle: window.title.isEmpty ? nil : window.app,
-                        normalizedFrame: rect,
-                        appCategory: appCategory(for: window.app),
-                        appCategoryTint: appCategoryTint(for: window.app),
-                        isFrontmost: window.wid == frontmost.wid
-                    )
-                }
+                windows: previewWindows,
+                displayCount: screens.count
             )
         )
     }
@@ -952,6 +998,64 @@ private extension LatticesDeckHost {
             .min { lhs, rhs in
                 lhs.zIndex < rhs.zIndex
             }
+    }
+
+    func spaceSwitchDirection(key: String, modifiers: [String]) -> Int? {
+        let normalized = key.lowercased()
+            .replacingOccurrences(of: "←", with: "left")
+            .replacingOccurrences(of: "→", with: "right")
+        guard normalized == "left" || normalized == "right" else { return nil }
+        let hasControl = modifiers.contains { mod in
+            let m = mod.lowercased()
+            return m == "control" || m == "ctrl" || m == "⌃"
+        }
+        guard hasControl else { return nil }
+        return normalized == "right" ? 1 : -1
+    }
+
+    @MainActor
+    func switchActiveSpace(direction: Int) -> ActionOutcome {
+        let displays = WindowTiler.getDisplaySpaces()
+        guard !displays.isEmpty else {
+            return ActionOutcome(summary: "No displays available", detail: nil, suggestedActions: [])
+        }
+
+        let activeScreen: NSScreen? = {
+            if let frontmost = frontmostWindowTarget(),
+               let entry = DesktopModel.shared.windows[frontmost.wid] {
+                return WindowTiler.screenForWindowFrame(entry.frame)
+            }
+            let mouse = NSEvent.mouseLocation
+            return NSScreen.screens.first(where: { $0.frame.contains(mouse) }) ?? NSScreen.main
+        }()
+
+        let preferredDisplayIndex = NSScreen.screens.firstIndex { activeScreen === $0 } ?? 0
+        let display = displays.first(where: { $0.displayIndex == preferredDisplayIndex }) ?? displays[0]
+
+        guard let currentIdx = display.spaces.firstIndex(where: { $0.isCurrent }) else {
+            return ActionOutcome(
+                summary: "No current space",
+                detail: "Could not determine the active space on display \(display.displayIndex + 1).",
+                suggestedActions: []
+            )
+        }
+
+        let targetIdx = currentIdx + direction
+        guard targetIdx >= 0, targetIdx < display.spaces.count else {
+            return ActionOutcome(
+                summary: direction > 0 ? "Already on last space" : "Already on first space",
+                detail: nil,
+                suggestedActions: []
+            )
+        }
+
+        let target = display.spaces[targetIdx]
+        WindowTiler.switchToSpace(spaceId: target.id)
+        return ActionOutcome(
+            summary: direction > 0 ? "Next space" : "Previous space",
+            detail: "Switched display \(display.displayIndex + 1) to space \(target.index).",
+            suggestedActions: []
+        )
     }
 
     @MainActor

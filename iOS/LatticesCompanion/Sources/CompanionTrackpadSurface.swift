@@ -28,20 +28,20 @@ struct CompanionTrackpadSurface: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text("TRACKPAD")
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color.white.opacity(0.62))
-                        .tracking(1.3)
+                        .font(LatsFont.mono(9, weight: .bold))
+                        .foregroundStyle(LatsPalette.textFaint)
+                        .tracking(1.5)
 
                     Text(state.statusTitle)
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
+                        .font(LatsFont.mono(14, weight: .semibold))
+                        .foregroundStyle(LatsPalette.text)
 
                     if let detail = state.statusDetail, !detail.isEmpty {
                         Text(detail)
-                            .font(.system(size: 13, weight: .medium, design: .rounded))
-                            .foregroundStyle(Color.white.opacity(0.74))
+                            .font(LatsFont.mono(11))
+                            .foregroundStyle(LatsPalette.textDim)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -59,39 +59,36 @@ struct CompanionTrackpadSurface: View {
             }
 
             ZStack {
-                RoundedRectangle(cornerRadius: 24)
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.white.opacity(0.08), Color.white.opacity(0.04)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(LatsPalette.bgEdge)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 24)
-                            .stroke(state.isAvailable ? Color.white.opacity(0.14) : Color.red.opacity(0.28), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(state.isAvailable ? LatsPalette.hairline2 : LatsPalette.red.opacity(0.45), lineWidth: 1)
                     )
 
                 trackpadGrid
 
-                VStack(spacing: 10) {
+                VStack(spacing: 8) {
                     Image(systemName: dragLocked ? "cursorarrow.motionlines.click" : "cursorarrow.motionlines")
-                        .font(.system(size: 26, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.88))
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundStyle(LatsPalette.green.opacity(0.8))
 
-                    Text(interactionMode == .pointer ? "Glide to move the Mac pointer" : "Glide to scroll the frontmost surface")
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white)
+                    Text(interactionMode == .pointer ? "glide to move pointer" : "glide to scroll surface")
+                        .font(LatsFont.mono(10, weight: .semibold))
+                        .tracking(1.5)
+                        .textCase(.uppercase)
+                        .foregroundStyle(LatsPalette.textDim)
 
-                    Text(dragLocked ? "Drag lock is active." : "Tap below for click, right click, or drag lock.")
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundStyle(Color.white.opacity(0.68))
+                    Text(dragLocked ? "drag lock active" : "tap · drag · pinch")
+                        .font(LatsFont.mono(9))
+                        .tracking(1)
+                        .foregroundStyle(LatsPalette.textFaint)
                 }
                 .multilineTextAlignment(.center)
                 .padding(20)
             }
             .frame(height: 240)
-            .contentShape(RoundedRectangle(cornerRadius: 24))
+            .contentShape(RoundedRectangle(cornerRadius: 6))
             .gesture(trackpadGesture)
             .simultaneousGesture(
                 TapGesture()
@@ -200,22 +197,24 @@ private extension CompanionTrackpadSurface {
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Image(systemName: icon)
+                    .font(.system(size: 12, weight: .medium))
                 Text(title)
+                    .font(LatsFont.mono(11, weight: .semibold))
+                    .tracking(0.3)
             }
-            .font(.system(size: 14, weight: .semibold, design: .rounded))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
+            .foregroundStyle(isActive ? tint : LatsPalette.textDim)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
             .frame(maxWidth: .infinity)
             .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(isActive ? tint.opacity(1.2) : tint)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16)
-                            .stroke(isActive ? Color.white.opacity(0.28) : Color.white.opacity(0.08), lineWidth: 1)
-                    )
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(isActive ? tint.opacity(0.18) : Color.white.opacity(0.04))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(isActive ? tint.opacity(0.5) : LatsPalette.hairline2, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)

@@ -4,7 +4,7 @@ import SwiftUI
 // MARK: - Design System
 
 enum LatsPalette {
-    static let bgEdge   = Color(hue: 0.62, saturation: 0.05, brightness: 0.10)
+    static let bgEdge   = Color(hue: 0.62, saturation: 0.05, brightness: 0.08)
     static let bg       = Color(hue: 0.62, saturation: 0.05, brightness: 0.13)
     static let surface  = Color(hue: 0.62, saturation: 0.06, brightness: 0.18)
     static let surface2 = Color(hue: 0.62, saturation: 0.07, brightness: 0.22)
@@ -253,90 +253,18 @@ struct LatsTopChrome: View {
 // MARK: - Cockpit Shell
 
 struct LatsCockpitShell<Content: View>: View {
-    let deckName: String
-    let deckHint: String
-    let accent: Color
-    @Binding var mode: CockpitMode
     @ViewBuilder var content: () -> Content
 
     var body: some View {
         VStack(spacing: 0) {
-            header
             content()
         }
-        .background(
-            LinearGradient(
-                colors: [LatsPalette.surface, LatsPalette.surface.opacity(0.9)],
-                startPoint: .top, endPoint: .bottom
-            )
-        )
+        .background(LatsPalette.surface)
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: 6)
                 .stroke(LatsPalette.hairline2, lineWidth: 1)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-    }
-
-    private var header: some View {
-        HStack {
-            HStack(spacing: 10) {
-                Circle()
-                    .fill(accent)
-                    .frame(width: 8, height: 8)
-                    .shadow(color: accent, radius: 4)
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text("COCKPIT")
-                        .font(LatsFont.mono(9, weight: .bold))
-                        .tracking(1.5)
-                        .foregroundStyle(LatsPalette.textFaint)
-                    Text("· \(deckName)")
-                        .font(LatsFont.ui(13, weight: .semibold))
-                        .foregroundStyle(LatsPalette.text)
-                    Text(deckHint)
-                        .font(LatsFont.mono(9))
-                        .foregroundStyle(LatsPalette.textFaint)
-                }
-            }
-            Spacer()
-            HStack(spacing: 6) {
-                ForEach(CockpitMode.allCases, id: \.self) { m in
-                    LatsModeChip(mode: m, isActive: mode == m) { mode = m }
-                }
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color.black.opacity(0.2))
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(LatsPalette.hairline).frame(height: 1)
-        }
-    }
-}
-
-struct LatsModeChip: View {
-    let mode: CockpitMode
-    let isActive: Bool
-    let onTap: () -> Void
-
-    var body: some View {
-        Button(action: onTap) {
-            Text(mode.rawValue)
-                .font(LatsFont.mono(9, weight: isActive ? .semibold : .regular))
-                .tracking(1)
-                .textCase(.uppercase)
-                .foregroundStyle(isActive ? mode.color : LatsPalette.textFaint)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 3)
-                .background(
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(isActive ? mode.color.opacity(0.24) : .clear)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(isActive ? mode.color : LatsPalette.hairline, lineWidth: 1)
-                )
-        }
-        .buttonStyle(.plain)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 }
 
@@ -356,20 +284,44 @@ struct LatsTrackpadSurface: View {
     let spaceName: String?
     let transcript: [String]
     let activityLog: [DeckActivityLogEntry]
+    let hostLabel: String
+    let trackpadState: DeckTrackpadState?
+    var spaceDisplays: [DeckSpaceDisplay] = []
+    var frontmostApp: String? = nil
+    var frontmostTitle: String? = nil
     var onSendKey: ((String, [String]) -> Void)? = nil
     var onReplayUndo: (() -> Void)? = nil
+    var onTrackpadEvent: ((DeckTrackpadEvent, Double, Double) -> Void)? = nil
+    var onSpaceTap: ((Int) -> Void)? = nil
+    var onMonitorSwipe: ((_ display: Int, _ direction: Int) -> Void)? = nil
+
+    @State private var lastTrackpadLocation: CGPoint?
 
     var body: some View {
         ZStack {
-            // Grid background
-            LatsGridBackground()
+            Rectangle()
+                .fill(LatsPalette.bgEdge)
+                .overlay(LatsGridBackground())
+                .contentShape(Rectangle())
+                .gesture(trackpadDragGesture)
+                .simultaneousGesture(trackpadTapGesture)
+                .allowsHitTesting(isTrackpadReady)
 
-            // Mode badge top center
-            VStack {
-                modeBadge
-                    .padding(.top, 8)
+            // Top bezel: useful state — Mac name (left), live mode (center), frontmost app/title (right).
+            // Symmetric with the bottom action bezel; together they frame the touch surface.
+            VStack(spacing: 0) {
+                LatsTrackpadTopBezel(
+                    hostLabel: hostLabel,
+                    isAvailable: trackpadState?.isAvailable ?? false,
+                    mode: mode,
+                    recTime: recTime,
+                    agentRows: agentRows,
+                    frontmostApp: frontmostApp,
+                    frontmostTitle: frontmostTitle
+                )
                 Spacer()
             }
+            .allowsHitTesting(false)
 
             // Center mode visual
             LatsTrackpadModeVisual(
@@ -381,86 +333,195 @@ struct LatsTrackpadSurface: View {
                 agentRows: agentRows,
                 onReplayUndo: onReplayUndo
             )
+            .allowsHitTesting(mode == .replay && onReplayUndo != nil)
 
-            // Top-left inset stack
-            VStack(alignment: .leading, spacing: 6) {
+            // LEFT column — system on top, displays bottom; equal share of vertical space
+            VStack(alignment: .leading, spacing: 8) {
                 LatsInsetSlice {
-                    CompactSystemPanel(telemetry: telemetry)
+                    CompactSystemPanel(hostLabel: hostLabel, telemetry: telemetry)
                 }
+                .frame(maxHeight: .infinity)
                 LatsInsetSlice {
                     CompactDisplaysPanel(
                         stage: stage,
                         space: space,
                         spaceCount: spaceCount,
-                        spaceName: spaceName
+                        spaceName: spaceName,
+                        spaceDisplays: spaceDisplays,
+                        onSpaceTap: onSpaceTap,
+                        onMonitorSwipe: onMonitorSwipe
                     )
                 }
-                Spacer()
+                .frame(maxHeight: .infinity)
             }
-            .frame(width: 200)
-            .padding(.top, 38)
+            .frame(width: 240)
+            .padding(.top, 30)
+            .padding(.bottom, 56)
             .padding(.leading, 12)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
 
-            // Top-right inset stack
-            VStack(alignment: .leading, spacing: 6) {
+            // RIGHT column — transcript on top, activity bottom; equal share of vertical space
+            VStack(alignment: .leading, spacing: 8) {
                 LatsInsetSlice {
                     CompactTranscriptPanel(items: transcript)
                 }
+                .frame(maxHeight: .infinity)
                 LatsInsetSlice {
                     CompactActivityLogPanel(entries: activityLog)
                 }
-                Spacer()
+                .frame(maxHeight: .infinity)
             }
-            .frame(width: 220)
-            .padding(.top, 38)
+            .frame(width: 240)
+            .padding(.top, 30)
+            .padding(.bottom, 56)
             .padding(.trailing, 12)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
 
-            // Bottom action keyboard row
-            VStack {
+            // Bottom bezel: keyboard buttons sit on a quiet ledge that mirrors the top bezel.
+            VStack(spacing: 0) {
                 Spacer()
                 LatsActionKeyboardRow(onSendKey: onSendKey)
                     .padding(.horizontal, 12)
-                    .padding(.bottom, 10)
+                    .padding(.vertical, 6)
+                    .frame(maxWidth: .infinity)
+                    .background(Color.black.opacity(0.32))
+                    .overlay(alignment: .top) {
+                        Rectangle().fill(LatsPalette.hairline).frame(height: 1)
+                    }
             }
         }
         .background(LatsPalette.bgEdge)
     }
 
-    private var modeBadge: some View {
-        Group {
-            switch mode {
-            case .idle:
-                Text("trackpad · awaiting input")
-                    .foregroundStyle(LatsPalette.textFaint)
-            case .rec:
-                HStack(spacing: 4) {
-                    Circle().fill(LatsPalette.red).frame(width: 6, height: 6)
-                    Text("recording · \(recTime, specifier: "%.1f")s")
-                        .foregroundStyle(LatsPalette.red)
+    private var isTrackpadReady: Bool {
+        guard let state = trackpadState else { return onTrackpadEvent != nil }
+        return state.isEnabled && state.isAvailable && onTrackpadEvent != nil
+    }
+
+    private var trackpadDragGesture: some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .local)
+            .onChanged { value in
+                guard isTrackpadReady else { return }
+                guard let previous = lastTrackpadLocation else {
+                    lastTrackpadLocation = value.location
+                    return
                 }
-            case .replay:
-                Text("✓ done · \(recTime, specifier: "%.1f")s")
-                    .foregroundStyle(LatsPalette.green)
-            case .agent:
-                let liveIndex = agentRows.firstIndex(where: { $0.state == .live }).map { $0 + 1 } ?? 1
-                let total = max(agentRows.count, 1)
-                Text("thinking · step \(liveIndex)/\(total)")
-                    .foregroundStyle(LatsPalette.violet)
+
+                let dx = value.location.x - previous.x
+                let dy = value.location.y - previous.y
+                lastTrackpadLocation = value.location
+
+                guard abs(dx) > 0.2 || abs(dy) > 0.2 else { return }
+                let scale = trackpadState?.pointerScale ?? 1.6
+                onTrackpadEvent?(.move, Double(dx) * scale, Double(dy) * scale)
             }
+            .onEnded { _ in
+                lastTrackpadLocation = nil
+            }
+    }
+
+    private var trackpadTapGesture: some Gesture {
+        TapGesture()
+            .onEnded {
+                guard isTrackpadReady else { return }
+                onTrackpadEvent?(.click, 0, 0)
+            }
+    }
+}
+
+/// Symmetric counterpart to the bottom action bezel. Hosts genuinely useful state
+/// — paired Mac (left), live cockpit mode (center), frontmost app/title (right) —
+/// using the same dark ledge + hairline so top and bottom frame the touch surface.
+struct LatsTrackpadTopBezel: View {
+    let hostLabel: String
+    let isAvailable: Bool
+    let mode: CockpitMode
+    let recTime: Double
+    let agentRows: [DeckAgentPlanRow]
+    let frontmostApp: String?
+    let frontmostTitle: String?
+
+    var body: some View {
+        HStack(spacing: 10) {
+            // LEFT — paired Mac
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(isAvailable ? LatsPalette.green : LatsPalette.amber)
+                    .frame(width: 5, height: 5)
+                Text(shortHost)
+                    .font(LatsFont.mono(9, weight: .semibold))
+                    .foregroundStyle(LatsPalette.text)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            // CENTER — live mode (replaces the floating modeBadge)
+            modeText
+                .font(LatsFont.mono(9, weight: .semibold))
+                .tracking(1.2)
+                .textCase(.uppercase)
+
+            // RIGHT — what the user is controlling on the Mac
+            HStack(spacing: 4) {
+                if let app = frontmostApp, !app.isEmpty {
+                    Text(app)
+                        .font(LatsFont.mono(9, weight: .semibold))
+                        .foregroundStyle(LatsPalette.text)
+                        .lineLimit(1)
+                    if let title = frontmostTitle, !title.isEmpty {
+                        Text("·")
+                            .font(LatsFont.mono(9))
+                            .foregroundStyle(LatsPalette.textFaint)
+                        Text(title)
+                            .font(LatsFont.mono(9))
+                            .foregroundStyle(LatsPalette.textDim)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                } else {
+                    Text("idle")
+                        .font(LatsFont.mono(9))
+                        .foregroundStyle(LatsPalette.textFaint)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .font(LatsFont.mono(9))
-        .tracking(1.5)
-        .textCase(.uppercase)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 3)
-        .background(
-            Capsule().fill(Color.black.opacity(0.4))
-        )
-        .overlay(
-            Capsule().stroke(LatsPalette.hairline, lineWidth: 1)
-        )
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity)
+        .background(Color.black.opacity(0.32))
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(LatsPalette.hairline).frame(height: 1)
+        }
+    }
+
+    private var shortHost: String {
+        hostLabel
+            .replacingOccurrences(of: ".local", with: "")
+            .replacingOccurrences(of: ".lan", with: "")
+    }
+
+    @ViewBuilder
+    private var modeText: some View {
+        switch mode {
+        case .idle:
+            Text(isAvailable ? "ready" : "tap to wake")
+                .foregroundStyle(isAvailable ? LatsPalette.green : LatsPalette.amber)
+        case .rec:
+            HStack(spacing: 4) {
+                Circle().fill(LatsPalette.red).frame(width: 5, height: 5)
+                Text("rec · \(recTime, specifier: "%.1f")s")
+                    .foregroundStyle(LatsPalette.red)
+            }
+        case .replay:
+            Text("✓ done · \(recTime, specifier: "%.1f")s")
+                .foregroundStyle(LatsPalette.green)
+        case .agent:
+            let liveIndex = agentRows.firstIndex(where: { $0.state == .live }).map { $0 + 1 } ?? 1
+            let total = max(agentRows.count, 1)
+            Text("agent · \(liveIndex)/\(total)")
+                .foregroundStyle(LatsPalette.violet)
+        }
     }
 }
 
@@ -468,7 +529,7 @@ struct LatsGridBackground: View {
     var body: some View {
         Canvas { context, size in
             let step: CGFloat = 20
-            let lineColor = Color.white.opacity(0.035)
+            let lineColor = Color.white.opacity(0.025)
             var path = Path()
             var x: CGFloat = 0
             while x < size.width {
@@ -508,12 +569,13 @@ struct LatsInsetSlice<Content: View>: View {
 // MARK: - Compact Inset Modules
 
 struct CompactSystemPanel: View {
+    let hostLabel: String
     let telemetry: LatsTelemetry
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text("air.local")
+                Text(hostLabel)
                     .font(LatsFont.mono(10, weight: .semibold))
                     .foregroundStyle(LatsPalette.text)
                 Spacer()
@@ -570,34 +632,105 @@ struct CompactDisplaysPanel: View {
     let space: Int
     let spaceCount: Int
     let spaceName: String?
+    var spaceDisplays: [DeckSpaceDisplay] = []
+    var onSpaceTap: ((Int) -> Void)? = nil
+    var onMonitorSwipe: ((_ display: Int, _ direction: Int) -> Void)? = nil
 
-    private var cappedSpaceCount: Int {
-        max(1, min(spaceCount, 9))
+    @State private var selectedDisplay: Int = 0
+
+    /// Authoritative monitor count: stage mirrors NSScreen.screens.count from the
+    /// bridge, falling back to live spaceDisplays then 1. Never silently 2.
+    private var monitorCount: Int {
+        if !stage.isEmpty { return stage.count }
+        if !spaceDisplays.isEmpty { return spaceDisplays.count }
+        return 1
+    }
+
+    private var activeDisplay: Int {
+        max(0, min(selectedDisplay, monitorCount - 1))
+    }
+
+    private var windowsForActiveDisplay: [LatsWindow] {
+        activeDisplay < stage.count ? stage[activeDisplay] : []
+    }
+
+    private var spacesForActiveDisplay: [Int] {
+        if activeDisplay < spaceDisplays.count {
+            return spaceDisplays[activeDisplay].spaces.map(\.index)
+        }
+        return Array(0..<max(spaceCount, 1))
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text("displays")
                     .font(LatsFont.mono(10, weight: .semibold))
                     .foregroundStyle(LatsPalette.text)
                 Spacer()
-                Text("\(max(stage.count, 1)) · \(spaceName ?? "\(space + 1)")")
-                    .font(LatsFont.mono(8.5))
-                    .foregroundStyle(LatsPalette.textFaint)
-            }
-            HStack(spacing: 3) {
-                ForEach(0..<2, id: \.self) { d in
-                    miniDisplay(windows: d < stage.count ? stage[d] : [])
+                if monitorCount > 1 {
+                    HStack(spacing: 3) {
+                        ForEach(0..<monitorCount, id: \.self) { d in
+                            displayPill(d)
+                        }
+                    }
+                } else {
+                    Text(spaceName ?? "\(space + 1)")
+                        .font(LatsFont.mono(8.5))
+                        .foregroundStyle(LatsPalette.textFaint)
                 }
             }
-            .frame(height: 32)
-            HStack(spacing: 2) {
-                ForEach(0..<cappedSpaceCount, id: \.self) { i in
-                    spaceCell(index: i)
+
+            // Single mini-display for the selected monitor (full panel width).
+            miniDisplay(windows: windowsForActiveDisplay)
+                .contentShape(Rectangle())
+                .gesture(monitorSwipeGesture(displayIndex: activeDisplay))
+                .frame(maxHeight: .infinity)
+
+            // Space cells for the selected monitor.
+            let indices = spacesForActiveDisplay
+            if !indices.isEmpty {
+                HStack(spacing: 2) {
+                    ForEach(indices, id: \.self) { i in
+                        spaceCell(index: i)
+                    }
                 }
             }
         }
+        .frame(maxHeight: .infinity)
+    }
+
+    private func displayPill(_ d: Int) -> some View {
+        let isActive = d == activeDisplay
+        return Button {
+            selectedDisplay = d
+        } label: {
+            Text("D\(d + 1)")
+                .font(LatsFont.mono(8, weight: isActive ? .semibold : .regular))
+                .foregroundStyle(isActive ? LatsPalette.green : LatsPalette.textDim)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
+                .background(
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(isActive ? LatsPalette.green.opacity(0.2) : Color.clear)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 2)
+                        .stroke(isActive ? LatsPalette.green : LatsPalette.hairline, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Horizontal swipe on a monitor: left → previous space, right → next space.
+    private func monitorSwipeGesture(displayIndex: Int) -> some Gesture {
+        DragGesture(minimumDistance: 18)
+            .onEnded { value in
+                let dx = value.translation.width
+                let dy = value.translation.height
+                guard abs(dx) > 60, abs(dx) > abs(dy) * 1.4 else { return }
+                onMonitorSwipe?(displayIndex, dx < 0 ? 1 : -1)
+            }
     }
 
     private func miniDisplay(windows: [LatsWindow]) -> some View {
@@ -631,18 +764,27 @@ struct CompactDisplaysPanel: View {
 
     private func spaceCell(index: Int) -> some View {
         let isActive = index == space
-        return Text("\(index + 1)")
-            .font(LatsFont.mono(7, weight: isActive ? .semibold : .regular))
+        let label = Text("\(index + 1)")
+            .font(LatsFont.mono(8, weight: isActive ? .semibold : .regular))
             .foregroundStyle(isActive ? LatsPalette.green : LatsPalette.textDim)
-            .frame(maxWidth: .infinity, maxHeight: 11)
+            .frame(maxWidth: .infinity, maxHeight: 14)
             .background(
-                RoundedRectangle(cornerRadius: 1.5)
+                RoundedRectangle(cornerRadius: 2)
                     .fill(isActive ? LatsPalette.green.opacity(0.25) : Color.white.opacity(0.04))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 1.5)
+                RoundedRectangle(cornerRadius: 2)
                     .stroke(isActive ? LatsPalette.green : LatsPalette.hairline, lineWidth: 1)
             )
+            .contentShape(Rectangle())
+
+        return Group {
+            if let onSpaceTap {
+                Button { onSpaceTap(index) } label: { label }.buttonStyle(.plain)
+            } else {
+                label
+            }
+        }
     }
 }
 
@@ -682,12 +824,12 @@ struct CompactTranscriptPanel: View {
 struct CompactActivityLogPanel: View {
     let entries: [DeckActivityLogEntry]
 
-    private var visibleEntries: [DeckActivityLogEntry] {
-        Array(entries.sorted { $0.createdAt > $1.createdAt }.prefix(5))
+    private var sortedEntries: [DeckActivityLogEntry] {
+        entries.sorted { $0.createdAt > $1.createdAt }
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text("activity")
                     .font(LatsFont.mono(10, weight: .semibold))
@@ -698,7 +840,7 @@ struct CompactActivityLogPanel: View {
                     .foregroundStyle(LatsPalette.textFaint)
             }
 
-            if visibleEntries.isEmpty {
+            if sortedEntries.isEmpty {
                 HStack(spacing: 4) {
                     Text("IDLE")
                         .font(LatsFont.mono(8.5, weight: .semibold))
@@ -709,21 +851,40 @@ struct CompactActivityLogPanel: View {
                         .foregroundStyle(LatsPalette.textFaint)
                         .lineLimit(1)
                 }
+                Spacer(minLength: 0)
             } else {
-                ForEach(visibleEntries) { entry in
-                    HStack(alignment: .top, spacing: 4) {
-                        Text(entry.tag.uppercased())
-                            .font(LatsFont.mono(8.5, weight: .semibold))
-                            .foregroundStyle(LatsTint.from(token: entry.tint).color)
-                            .frame(width: 44, alignment: .leading)
-                        Text(entry.text)
-                            .font(LatsFont.mono(9))
-                            .foregroundStyle(LatsPalette.textDim)
-                            .lineLimit(1)
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(sortedEntries) { entry in
+                            HStack(alignment: .top, spacing: 4) {
+                                Text(entry.tag.uppercased())
+                                    .font(LatsFont.mono(8.5, weight: .semibold))
+                                    .foregroundStyle(LatsTint.from(token: entry.tint).color)
+                                    .frame(width: 44, alignment: .leading)
+                                Text(entry.text)
+                                    .font(LatsFont.mono(9))
+                                    .foregroundStyle(LatsPalette.textDim)
+                                    .lineLimit(1)
+                            }
+                        }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .frame(maxHeight: .infinity)
+                .mask(
+                    LinearGradient(
+                        stops: [
+                            .init(color: .clear, location: 0),
+                            .init(color: .black, location: 0.04),
+                            .init(color: .black, location: 0.92),
+                            .init(color: .clear, location: 1)
+                        ],
+                        startPoint: .top, endPoint: .bottom
+                    )
+                )
             }
         }
+        .frame(maxHeight: .infinity)
     }
 }
 
@@ -750,28 +911,14 @@ struct LatsTrackpadModeVisual: View {
     }
 
     private var idleView: some View {
-        VStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .stroke(LatsPalette.green.opacity(0.25), lineWidth: 1)
-                    .frame(width: 64, height: 64)
-                Circle()
-                    .stroke(LatsPalette.green.opacity(0.18), lineWidth: 1)
-                    .frame(width: 44, height: 44)
-                ZStack {
-                    Circle()
-                        .stroke(LatsPalette.green, lineWidth: 1)
-                        .frame(width: 20, height: 20)
-                    Rectangle().fill(LatsPalette.green.opacity(0.6)).frame(width: 1, height: 36)
-                    Rectangle().fill(LatsPalette.green.opacity(0.6)).frame(width: 36, height: 1)
-                    Circle().fill(LatsPalette.green).frame(width: 3, height: 3)
-                }
-                .shadow(color: LatsPalette.green.opacity(0.5), radius: 7)
-            }
-            Text("TAP · DRAG · PINCH")
-                .font(LatsFont.mono(10, weight: .semibold))
-                .tracking(2.5)
-                .foregroundStyle(LatsPalette.textDim)
+        VStack(spacing: 4) {
+            Image(systemName: "cursorarrow.motionlines")
+                .font(.system(size: 13, weight: .light))
+                .foregroundColor(.white.opacity(0.18))
+            Text("TRACKPAD")
+                .font(.system(size: 8, weight: .regular, design: .monospaced))
+                .foregroundColor(.white.opacity(0.12))
+                .tracking(1.5)
         }
     }
 
@@ -878,50 +1025,213 @@ struct LatsTrackpadModeVisual: View {
 
 // MARK: - Action Keyboard Row
 
+/// Sticky modifier model. The bottom-row keyboard tracks each modifier in one of
+/// three states so the user can compose chords by tapping rather than holding.
+///
+/// - `off`: not engaged.
+/// - `armed`: single-tap one-shot — included in the next non-modifier key press,
+///   then clears back to `off`.
+/// - `locked`: double-tap sticky — stays held across multiple key presses until
+///   the modifier is tapped again.
+enum LatsModifier: String, CaseIterable, Hashable {
+    case control, option, shift, command
+
+    /// Glyph rendered on the chip (matches the existing aesthetic).
+    var glyph: String {
+        switch self {
+        case .control: return "⌃"
+        case .option:  return "⌥"
+        case .shift:   return "⇧"
+        case .command: return "⌘"
+        }
+    }
+
+    /// Wire value sent in `keys.send`'s `modifiers` array. The Mac side
+    /// (`CompanionKeyboardController.normalizeModifier`) accepts both the long
+    /// name and the glyph; we use the long name for clarity in logs.
+    var wire: String { rawValue }
+}
+
+enum LatsModifierState {
+    case off, armed, locked
+}
+
 struct LatsActionKeyboardRow: View {
     var onSendKey: ((String, [String]) -> Void)? = nil
 
+    /// Source of truth for sticky modifier state. Tapping a chip cycles
+    /// `off → armed → locked → off`. A non-modifier key press clears any
+    /// `armed` chips back to `off` (locked chips remain).
+    @State private var modifierStates: [LatsModifier: LatsModifierState] = [:]
+
     var body: some View {
         HStack(spacing: 12) {
-            // Left — modifier / utility keys
+            // Left — utility keys + common combos. Combos fold in any active
+            // sticky modifiers so e.g. armed Shift + ⌘C → ⇧⌘C.
             HStack(spacing: 4) {
                 ActionKey(label: "esc", width: 30) { send("escape", []) }
-                ActionKey(label: "⌘C", width: 30) { send("c", ["⌘"]) }
-                ActionKey(label: "⌘V", width: 30) { send("v", ["⌘"]) }
-                ActionKey(label: "⌘Z", width: 30) { send("z", ["⌘"]) }
-                ActionKey(label: "⇧⇥", width: 30) { send("tab", ["⇧"]) }
+                ActionKey(label: "⌘C", width: 30) { send("c", [.command]) }
+                ActionKey(label: "⌘V", width: 30) { send("v", [.command]) }
+                ActionKey(label: "⌘Z", width: 30) { send("z", [.command]) }
+                ActionKey(label: "⇧⇥", width: 30) { send("tab", [.shift]) }
                 ActionKey(label: "space", width: 56) { send("space", []) }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            // Center — arrow cluster
+            // Center — arrow cluster (also picks up active modifiers).
             ArrowCluster(onTap: { dir in send(dir, []) })
 
-            // Right — modifiers (visual only, no single-key action) + enter
+            // Right — sticky modifiers + enter.
             HStack(spacing: 4) {
-                ActionKey(label: "⌃", width: 26)
-                ActionKey(label: "⌥", width: 26)
-                ActionKey(label: "⇧", width: 26)
-                ActionKey(label: "⌘", width: 26)
+                ForEach(LatsModifier.allCases, id: \.self) { mod in
+                    ModifierKey(
+                        label: mod.glyph,
+                        state: modifierStates[mod] ?? .off,
+                        onSingleTap: { cycleModifier(mod) },
+                        onDoubleTap: { setModifier(mod, .locked) }
+                    )
+                }
                 EnterPill { send("return", []) }
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color(hue: 0.62, saturation: 0.05, brightness: 0.12))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(LatsPalette.hairline2, lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.4), radius: 8, x: 0, y: 4)
+        .padding(.horizontal, 4)
     }
 
-    private func send(_ key: String, _ modifiers: [String]) {
-        onSendKey?(key, modifiers)
+    // MARK: Modifier state machine
+
+    /// Single-tap cycles a modifier through `off → armed → locked → off`.
+    /// Tap once to arm for the next key, tap again to lock it, tap a third
+    /// time to release. Double-tap is handled separately in `ModifierKey`
+    /// and jumps straight to `locked` via `setModifier`.
+    private func cycleModifier(_ mod: LatsModifier) {
+        let current = modifierStates[mod] ?? .off
+        let next: LatsModifierState
+        switch current {
+        case .off:    next = .armed
+        case .armed:  next = .locked
+        case .locked: next = .off
+        }
+        withAnimation(.easeOut(duration: 0.12)) {
+            modifierStates[mod] = next
+        }
+    }
+
+    /// Direct setter used by double-tap (and any future explicit transition).
+    private func setModifier(_ mod: LatsModifier, _ state: LatsModifierState) {
+        withAnimation(.easeOut(duration: 0.12)) {
+            modifierStates[mod] = state
+        }
+    }
+
+    /// Wire helper that takes a key and an explicit set of "preset" modifiers
+    /// (e.g. ⌘C) and folds in any armed/locked sticky modifiers, then clears
+    /// armed ones. Locked modifiers persist for the next press.
+    private func send(_ key: String, _ presets: [LatsModifier]) {
+        var active = Set<LatsModifier>(presets)
+        for (mod, state) in modifierStates where state != .off {
+            active.insert(mod)
+        }
+
+        // Stable, predictable order to match Mac-side display ordering
+        // (control, option, shift, command).
+        let ordered = LatsModifier.allCases.filter { active.contains($0) }
+        let wire = ordered.map(\.wire)
+
+        onSendKey?(key, wire)
+
+        // Clear armed modifiers; locked modifiers stay engaged.
+        let armed = modifierStates.filter { $0.value == .armed }.map(\.key)
+        if !armed.isEmpty {
+            withAnimation(.easeOut(duration: 0.12)) {
+                for mod in armed { modifierStates[mod] = .off }
+            }
+        }
+    }
+}
+
+/// A single sticky-modifier chip. Visually distinguishes three states using
+/// the existing `LatsPalette` greens — armed shows an outlined glow; locked
+/// fills the chip and adds a tiny lock badge so the held state is unmistakable.
+struct ModifierKey: View {
+    let label: String
+    let state: LatsModifierState
+    let onSingleTap: () -> Void
+    let onDoubleTap: () -> Void
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Text(label)
+                .font(LatsFont.mono(10, weight: state == .off ? .medium : .semibold))
+                .foregroundStyle(foreground)
+                .frame(minWidth: 26)
+                .padding(.horizontal, 8)
+                .frame(height: 26)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(background)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(border, lineWidth: state == .off ? 1 : 1.25)
+                )
+                .shadow(
+                    color: state == .off ? .clear : LatsPalette.green.opacity(state == .locked ? 0.35 : 0.22),
+                    radius: state == .off ? 0 : 4,
+                    x: 0,
+                    y: 0
+                )
+
+            if state == .locked {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 6, weight: .bold))
+                    .foregroundStyle(LatsPalette.bgEdge)
+                    .padding(2)
+                    .background(Circle().fill(LatsPalette.green))
+                    .offset(x: 4, y: -4)
+            }
+        }
+        // Double-tap is declared first so SwiftUI gives it priority when a
+        // tap could match either gesture; single-tap fires only after the
+        // double-tap window elapses.
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) { onDoubleTap() }
+        .onTapGesture(count: 1) { onSingleTap() }
+        .accessibilityLabel(Text("\(label) modifier"))
+        .accessibilityValue(Text(accessibilityValue))
+        .accessibilityHint(Text("Tap to arm for next key, double-tap to lock"))
+    }
+
+    private var foreground: Color {
+        switch state {
+        case .off:    return LatsPalette.textDim
+        case .armed:  return LatsPalette.green
+        case .locked: return LatsPalette.bgEdge
+        }
+    }
+
+    private var background: Color {
+        switch state {
+        case .off:    return Color.white.opacity(0.04)
+        case .armed:  return LatsPalette.green.opacity(0.18)
+        case .locked: return LatsPalette.green.opacity(0.95)
+        }
+    }
+
+    private var border: Color {
+        switch state {
+        case .off:    return LatsPalette.hairline
+        case .armed:  return LatsPalette.green.opacity(0.7)
+        case .locked: return LatsPalette.green
+        }
+    }
+
+    private var accessibilityValue: String {
+        switch state {
+        case .off:    return "off"
+        case .armed:  return "armed"
+        case .locked: return "locked"
+        }
     }
 }
 
@@ -1111,18 +1421,18 @@ struct LatsShortcutTile: View {
             .foregroundStyle(shortcut.tint.color)
             .frame(width: 24, height: 24)
             .background(
-                RoundedRectangle(cornerRadius: 6)
+                RoundedRectangle(cornerRadius: 4)
                     .fill(shortcut.tint.color.opacity(0.18))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 6)
+                RoundedRectangle(cornerRadius: 4)
                     .stroke(shortcut.tint.color.opacity(0.28), lineWidth: 1)
             )
     }
 
     @ViewBuilder
     private var tileBackground: some View {
-        let base = RoundedRectangle(cornerRadius: 8)
+        let base = RoundedRectangle(cornerRadius: 4)
         if isPressed {
             base.fill(Color.white.opacity(0.06))
         } else if isRecent {
@@ -1134,7 +1444,7 @@ struct LatsShortcutTile: View {
     }
 
     private var tileBorder: some View {
-        RoundedRectangle(cornerRadius: 8)
+        RoundedRectangle(cornerRadius: 4)
             .stroke(isRecent ? shortcut.tint.color : LatsPalette.hairline, lineWidth: 1)
             .shadow(color: isRecent ? shortcut.tint.color.opacity(0.14) : .clear, radius: 3)
     }
@@ -1149,6 +1459,7 @@ struct LatsStatusBar: View {
     let space: Int
     let spaceCount: Int
     let spaceName: String?
+    let hostLabel: String
     let onModeTap: () -> Void
     let onSpaceTap: () -> Void
     let onPaletteTap: () -> Void
@@ -1167,7 +1478,7 @@ struct LatsStatusBar: View {
         HStack(spacing: 0) {
             modePill
             StatusItem(icon: "mic", label: "hold·space", tint: LatsPalette.text, onTap: onModeTap)
-            StatusItem(icon: "laptopcomputer.and.iphone", label: "air ↔ deck", tint: LatsPalette.green)
+            StatusItem(icon: "laptopcomputer.and.iphone", label: "\(shortHostLabel) ↔ deck", tint: LatsPalette.green)
             StatusItem(label: "◉ \(telemetry.windows)w")
             StatusItem(label: "▢ \(space + 1)/\(spaceCount)", onTap: onSpaceTap)
             StatusItem(label: "cpu \(Int(telemetry.cpu))%", tint: telemetry.cpu > 70 ? LatsPalette.amber : LatsPalette.textDim)
@@ -1183,39 +1494,62 @@ struct LatsStatusBar: View {
             StatusItem(label: "⌘K", tint: LatsPalette.text, onTap: onPaletteTap)
             StatusItem(label: "⌘⇧P", tint: LatsPalette.text, onTap: onSwitcherTap)
         }
-        .frame(height: 16)
-        .background(
-            Color.black.opacity(0.5)
-                .ignoresSafeArea(edges: .bottom)
-        )
+        .frame(maxWidth: .infinity)
+        // Bar is placed via `safeAreaInset(edge: .bottom)` on the parent. With
+        // spacing now under control, narrow it down: ~24pt total. Top padding
+        // gives a touch of breathing room; bottom is a tiny clearance from the
+        // rounded corner / home indicator.
+        .padding(.top, 14)
+        .padding(.bottom, 4)
+        .background {
+            // Liquid Glass — same trick Talkie's BottomTrayBackground uses.
+            // Glass blurs the cockpit content behind it and reflects light, so
+            // the bar reads as a quiet floating ledge instead of a dark slab.
+            // Falls back to the previous flat fill on older iOS.
+            if #available(iOS 26.0, *) {
+                Color.clear
+                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 0))
+            } else {
+                Color.black.opacity(0.32)
+            }
+        }
         .overlay(alignment: .top) {
-            Rectangle().fill(LatsPalette.hairline).frame(height: 1)
+            // Hairline gives the glass a defined edge against the cockpit above.
+            Rectangle()
+                .fill(Color.white.opacity(0.08))
+                .frame(height: 0.5)
         }
     }
 
     private var modePill: some View {
         Button(action: onModeTap) {
-            HStack(spacing: 6) {
+            HStack(spacing: 5) {
                 Circle()
                     .fill(mode.color)
-                    .frame(width: 6, height: 6)
+                    .frame(width: 5, height: 5)
                 Text(modeLabel)
-                    .font(LatsFont.mono(10, weight: .semibold))
+                    .font(LatsFont.mono(9, weight: .semibold))
                     .tracking(1)
                 if mode == .rec {
                     Text("· \(recTime, specifier: "%.1f")s")
-                        .font(LatsFont.mono(10))
+                        .font(LatsFont.mono(9))
                 }
             }
             .foregroundStyle(mode.color)
-            .padding(.horizontal, 10)
-            .frame(height: 16)
+            .padding(.horizontal, 8)
+            .frame(height: 12)
             .background(mode.color.opacity(0.24))
             .overlay(alignment: .trailing) {
                 Rectangle().fill(LatsPalette.hairline).frame(width: 1)
             }
         }
         .buttonStyle(.plain)
+    }
+
+    private var shortHostLabel: String {
+        hostLabel
+            .replacingOccurrences(of: ".local", with: "")
+            .replacingOccurrences(of: ".lan", with: "")
     }
 }
 
@@ -1228,13 +1562,15 @@ struct StatusItem: View {
     @State private var isHovered = false
 
     var body: some View {
-        let content = HStack(spacing: 5) {
-            if let icon { Image(systemName: icon).font(.system(size: 10)) }
-            Text(label).font(LatsFont.mono(10))
+        let content = HStack(spacing: 4) {
+            if let icon { Image(systemName: icon).font(.system(size: 9)) }
+            Text(label)
+                .font(LatsFont.mono(9))
+                .lineLimit(1)
         }
         .foregroundStyle(tint)
-        .padding(.horizontal, 9)
-        .frame(height: 16)
+        .padding(.horizontal, 7)
+        .frame(height: 12)
         .background(isHovered && onTap != nil ? Color.white.opacity(0.06) : .clear)
         .overlay(alignment: .trailing) {
             Rectangle().fill(LatsPalette.hairline).frame(width: 1)
@@ -1260,8 +1596,14 @@ struct LatsDeckScreen: View {
     /// mock state machine for offline preview.
     var liveSnapshot: DeckRuntimeSnapshot?
 
+    /// Active bridge label supplied by the connection store.
+    var connectionLabel: String?
+
     /// When connected, tile presses and keyboard sends route through this callback.
     var onAction: ((_ actionID: String, _ payload: [String: DeckValue], _ label: String?) -> Void)?
+
+    /// When connected, the full-screen cockpit surface forwards pointer events here.
+    var onTrackpadEvent: ((_ event: DeckTrackpadEvent, _ dx: Double, _ dy: Double) -> Void)?
 
     /// Which deck to render. Defaults to "command".
     var deckID: String = "command"
@@ -1350,6 +1692,10 @@ struct LatsDeckScreen: View {
             ?? liveSnapshot?.desktop?.currentSpaceName
     }
 
+    private var spaceDisplays: [DeckSpaceDisplay] {
+        liveSnapshot?.spaces?.displays ?? []
+    }
+
     private var transcript: [String] {
         if let lines = liveSnapshot?.voice?.transcriptLines, !lines.isEmpty {
             return Array(lines.sorted { $0.createdAt > $1.createdAt }.prefix(5).map(\.text))
@@ -1362,21 +1708,32 @@ struct LatsDeckScreen: View {
         liveSnapshot?.activityLog ?? []
     }
 
+    private var hostLabel: String {
+        let label = connectionLabel?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let label, !label.isEmpty { return label }
+        return isConnected ? "Mac" : "preview"
+    }
+
     private var stage: [[LatsWindow]] {
         guard let preview = liveSnapshot?.layout?.preview else { return mockStage }
-        // Bridge currently returns one preview per layout; project all windows onto display 0
-        // until per-display preview lands. Empty display 1 keeps the second mini-frame.
-        let windows: [LatsWindow] = preview.windows.map { w in
-            LatsWindow(
+        // Bridge sends each preview window with a `displayIndex` plus a `displayCount`.
+        // Bucket windows into per-display columns so the iPad mini-frames render the
+        // correct windows on the correct monitor.
+        let displayCount = max(preview.displayCount ?? 1, 1)
+        var buckets: [[LatsWindow]] = Array(repeating: [], count: displayCount)
+        for w in preview.windows {
+            let idx = w.displayIndex ?? 0
+            guard idx >= 0, idx < displayCount else { continue }
+            buckets[idx].append(LatsWindow(
                 x: w.normalizedFrame.x * 100,
                 y: w.normalizedFrame.y * 100,
                 w: w.normalizedFrame.w * 100,
                 h: w.normalizedFrame.h * 100,
                 tint: LatsTint.from(token: w.appCategoryTint),
                 tag: String(w.title.prefix(4))
-            )
+            ))
         }
-        return [windows, []]
+        return buckets
     }
 
     private var shortcuts: [LatsShortcut] {
@@ -1397,10 +1754,6 @@ struct LatsDeckScreen: View {
         activeCockpitPage()?.title.lowercased() ?? CommandDeck.name
     }
 
-    private var deckHint: String {
-        activeCockpitPage()?.subtitle ?? CommandDeck.hint
-    }
-
     var body: some View {
         ZStack {
             LatsPalette.bgEdge.ignoresSafeArea()
@@ -1415,17 +1768,12 @@ struct LatsDeckScreen: View {
 
                 GeometryReader { geo in
                     let isPad = geo.size.width > 700 && hSize == .regular
-                    let cockpitH: CGFloat = isPad ? max(440, geo.size.height * 0.58) : max(360, geo.size.height * 0.50)
+                    let cockpitH: CGFloat = isPad ? max(380, geo.size.height * 0.50) : max(320, geo.size.height * 0.44)
 
                     VStack(spacing: 0) {
                         // Cockpit
                         ZStack {
-                            LatsCockpitShell(
-                                deckName: deckName,
-                                deckHint: deckHint,
-                                accent: deckAccent,
-                                mode: cockpitModeBinding
-                            ) {
+                            LatsCockpitShell {
                                 LatsTrackpadSurface(
                                     mode: mode,
                                     recTime: recTime,
@@ -1440,8 +1788,17 @@ struct LatsDeckScreen: View {
                                     spaceName: spaceName,
                                     transcript: transcript,
                                     activityLog: activityLog,
+                                    hostLabel: hostLabel,
+                                    trackpadState: liveSnapshot?.trackpad,
+                                    spaceDisplays: spaceDisplays,
+                                    frontmostApp: liveSnapshot?.layout?.frontmostWindow?.appName
+                                        ?? liveSnapshot?.desktop?.activeAppName,
+                                    frontmostTitle: liveSnapshot?.layout?.frontmostWindow?.title,
                                     onSendKey: handleSendKey,
-                                    onReplayUndo: handleReplayUndo
+                                    onReplayUndo: handleReplayUndo,
+                                    onTrackpadEvent: onTrackpadEvent,
+                                    onSpaceTap: handleSpaceTap,
+                                    onMonitorSwipe: handleMonitorSwipe
                                 )
                             }
                         }
@@ -1454,7 +1811,7 @@ struct LatsDeckScreen: View {
                             Rectangle().fill(LatsPalette.hairline).frame(height: 1)
                         }
 
-                        // Shortcut grid
+                        // Shortcut grid (deck keys) — horizontal swipe cycles decks
                         ScrollView {
                             LatsShortcutGrid(
                                 shortcuts: shortcuts,
@@ -1462,23 +1819,33 @@ struct LatsDeckScreen: View {
                                 onTap: handleTilePress
                             )
                             .padding(14)
+                            .id(effectiveDeckID)
+                            .transition(.opacity.combined(with: .move(edge: .leading)))
                         }
                         .frame(maxHeight: .infinity)
+                        .contentShape(Rectangle())
+                        // simultaneousGesture so the ScrollView's vertical scroll
+                        // and the horizontal deck-cycle swipe can both recognize.
+                        .simultaneousGesture(deckSwipeGesture)
                     }
                 }
-
-                LatsStatusBar(
-                    mode: mode,
-                    recTime: recTime,
-                    telemetry: telemetry,
-                    space: space,
-                    spaceCount: spaceCount,
-                    spaceName: spaceName,
-                    onModeTap: { toggleVoice() },
-                    onSpaceTap: { if !isConnected { mockSpace = (mockSpace + 1) % 6 } },
-                    onPaletteTap: {},
-                    onSwitcherTap: { cycleDeck() }
-                )
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    // Anchor the bar inside the bottom safe-area inset so the
+                    // chips can ride right up to the rounded corner.
+                    LatsStatusBar(
+                        mode: mode,
+                        recTime: recTime,
+                        telemetry: telemetry,
+                        space: space,
+                        spaceCount: spaceCount,
+                        spaceName: spaceName,
+                        hostLabel: hostLabel,
+                        onModeTap: { toggleVoice() },
+                        onSpaceTap: { if !isConnected { mockSpace = (mockSpace + 1) % 6 } },
+                        onPaletteTap: {},
+                        onSwitcherTap: { cycleDeck() }
+                    )
+                }
             }
         }
         .preferredColorScheme(.dark)
@@ -1539,19 +1906,6 @@ struct LatsDeckScreen: View {
         if id.contains("move") || id.contains("monitor") { return .move }
         if id.contains("palette") || id.contains("search") { return .palette }
         return .none
-    }
-
-    private var cockpitModeBinding: Binding<CockpitMode> {
-        Binding(
-            get: { mode },
-            set: { newValue in
-                if isConnected {
-                    // Modes are an output when connected; ignore manual chip taps.
-                } else {
-                    mockMode = newValue
-                }
-            }
-        )
     }
 
     // MARK: - Behaviour
@@ -1617,14 +1971,57 @@ struct LatsDeckScreen: View {
         }
     }
 
-    private func cycleDeck() {
+    private func handleSpaceTap(_ index: Int) {
+        if let onAction {
+            // Mac-side gap: bridge needs a "spaces.focusIndex" handler to honor this.
+            onAction("spaces.focusIndex", ["index": .int(index)], "Switch to space \(index + 1)")
+        } else {
+            mockSpace = index
+        }
+    }
+
+    /// Swipe a monitor to the next/previous space. Falls back to Ctrl+Left/Right via
+    /// keys.send when the bridge has no per-display swipe action.
+    private func handleMonitorSwipe(_ display: Int, _ direction: Int) {
+        if let onAction {
+            let key = direction > 0 ? "right" : "left"
+            let label = direction > 0 ? "Next space" : "Previous space"
+            onAction(
+                "keys.send",
+                ["key": .string(key), "modifiers": .array([.string("⌃")])],
+                label
+            )
+        } else {
+            mockSpace = max(0, min(spaceCount - 1, mockSpace + direction))
+        }
+    }
+
+    /// Horizontal swipe on the shortcut grid cycles decks.
+    /// Swipe left → next deck, swipe right → previous deck.
+    private var deckSwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 20)
+            .onEnded { value in
+                let dx = value.translation.width
+                let dy = value.translation.height
+                // Require dominantly-horizontal motion so vertical scrolls don't
+                // accidentally trigger a deck change.
+                guard abs(dx) > 60, abs(dx) > abs(dy) * 2.0 else { return }
+                cycleDeck(forward: dx < 0)
+            }
+    }
+
+    private func cycleDeck(forward: Bool = true) {
         let liveIDs = liveSnapshot?.cockpit?.pages.map(\.id).filter { !$0.isEmpty } ?? []
         let ids = liveIDs.isEmpty ? ["command", "dev", "media", "windows", "voice"] : liveIDs
+        guard !ids.isEmpty else { return }
         guard let currentIndex = ids.firstIndex(of: effectiveDeckID) else {
-            selectedDeckID = ids.first
+            withAnimation(.easeOut(duration: 0.22)) { selectedDeckID = ids.first }
             return
         }
-        selectedDeckID = ids[(currentIndex + 1) % ids.count]
+        let nextIndex = forward
+            ? (currentIndex + 1) % ids.count
+            : (currentIndex - 1 + ids.count) % ids.count
+        withAnimation(.easeOut(duration: 0.22)) { selectedDeckID = ids[nextIndex] }
     }
 
     private func toggleVoice() {

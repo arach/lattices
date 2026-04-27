@@ -1,48 +1,91 @@
 import DeckKit
 import SwiftUI
 
+// MARK: - Router
+
 struct ContentView: View {
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @StateObject private var store = DeckStore()
     @State private var showLatsDeck = false
+    @State private var showSettings = false
+    @State private var trustedBridges: [StoredBridgeTrust] = []
+
+    private var liveMachines: [HomeMachine] {
+        HomeDataAdapter.machines(store: store, trustedBridges: trustedBridges)
+    }
+
+    private var liveRecent: [HomeRecentEntry] {
+        HomeDataAdapter.recent(snapshot: store.snapshot, machineLabel: store.connectionLabel)
+    }
+
+    private var liveAgentFeed: [HomeAgentFeedEntry] {
+        HomeDataAdapter.agentFeed(snapshot: store.snapshot)
+    }
+
+    private var liveAttention: [HomeAttentionItem] {
+        HomeDataAdapter.attention(snapshot: store.snapshot)
+    }
+
+    private var liveCloud: HomeCloudStatus {
+        HomeDataAdapter.cloud(snapshot: store.snapshot)
+    }
+
+    private var liveBottomTelemetry: HomeBottomTelemetry {
+        HomeDataAdapter.bottomTelemetry(
+            snapshot: store.snapshot,
+            machineLabel: store.connectionLabel
+        )
+    }
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                companionBackground
-                    .ignoresSafeArea()
+            LatsBackground {
+                HomeView(
+                    // Live data — every section with a real source on
+                    // DeckRuntimeSnapshot is wired through HomeDataAdapter.
+                    // Sections still without a backend (terminal/calendar/
+                    // scenes/routines/sync) pass empty arrays; their
+                    // tiles/sections hide themselves.
+                    machines:  liveMachines,
+                    scenes:    [],
+                    routines:  [],
+                    recent:    liveRecent,
+                    sync:      [],
+                    cloud:     liveCloud,
+                    agentFeed: liveAgentFeed,
+                    terminal:  [],
+                    calendar:  [],
+                    attention: liveAttention,
+                    bottomTelemetry: liveBottomTelemetry,
 
-                if let manifest = store.manifest,
-                   let snapshot = store.snapshot,
-                   let endpoint = store.activeEndpoint {
-                    deckShell(manifest: manifest, snapshot: snapshot, endpoint: endpoint)
-                } else {
-                    connectionView
-                }
-            }
-            .navigationTitle("Lattices")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button {
+                    onEnterDeck: { machine in
+                        // Only the currently-active machine has a live bridge.
+                        // Tapping an offline / online-but-not-active card must
+                        // not silently open the active machine's deck.
+                        guard machine.status == .active else { return }
                         showLatsDeck = true
-                    } label: {
-                        Image(systemName: "rectangle.grid.2x2")
-                    }
-                    .accessibilityLabel("Open Lats Deck preview")
+                    },
+                    onPair:      { showSettings = true },
+                    onSettings:  { showSettings = true },
 
-                    if store.activeEndpoint != nil {
-                        Button {
-                            store.refreshSnapshot()
-                        } label: {
-                            Image(systemName: "arrow.clockwise")
-                        }
-                    }
+                    // Voice relay — wired to the active Mac via /deck/perform.
+                    voiceState:        store.snapshot?.voice,
+                    voiceMacLabel:     store.connectionLabel,
+                    isVoicePerforming: store.isPerformingAction,
+                    onVoiceStart:      { store.startVoice() },
+                    onVoiceStop:       { store.stopVoice() },
+                    onVoiceCancel:     { store.stopVoice() },
+                    onVoiceRemediate:  { _ in /* deferred — wired after error pipeline lands */ }
+                )
+                .onAppear {
+                    trustedBridges = DeckBridgeSecurityStore.shared.trustedBridgeList()
                 }
             }
+            .navigationBarHidden(true)
+            .toolbar(.hidden, for: .navigationBar)
             .fullScreenCover(isPresented: $showLatsDeck) {
                 LatsDeckScreen(
                     liveSnapshot: store.snapshot,
+                    connectionLabel: store.connectionLabel,
                     onAction: { actionID, payload, label in
                         store.perform(
                             actionID: actionID,
@@ -50,313 +93,478 @@ struct ContentView: View {
                             payload: payload,
                             label: label
                         )
+                    },
+                    onTrackpadEvent: { event, dx, dy in
+                        store.sendTrackpad(event: event, dx: dx, dy: dy)
                     }
                 )
             }
+            .sheet(isPresented: $showSettings) {
+                LatsSettingsView(store: store)
+                    .preferredColorScheme(.dark)
+            }
         }
+        .preferredColorScheme(.dark)
     }
 }
 
-private extension ContentView {
-    var companionBackground: some View {
-        ZStack {
-            LinearGradient(
-                colors: [
-                    Color(red: 0.06, green: 0.11, blue: 0.17),
-                    Color(red: 0.08, green: 0.18, blue: 0.24),
-                    Color(red: 0.03, green: 0.07, blue: 0.11)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
+// MARK: - Home (no Mac connected)
+
+struct LatsHomeView: View {
+    @ObservedObject var store: DeckStore
+    let onSettings: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            LatsTopBar(
+                product: "LATS",
+                section: "PAIR",
+                trailing: AnyView(
+                    Button(action: onSettings) {
+                        Image(systemName: "gearshape")
+                            .font(.system(size: 13))
+                            .foregroundStyle(LatsPalette.textDim)
+                            .frame(width: 22, height: 22)
+                    }
+                    .buttonStyle(.plain)
+                )
             )
 
-            Circle()
-                .fill(Color.cyan.opacity(0.16))
-                .frame(width: 280, height: 280)
-                .blur(radius: 60)
-                .offset(x: 140, y: -220)
-
-            Circle()
-                .fill(Color.mint.opacity(0.11))
-                .frame(width: 320, height: 320)
-                .blur(radius: 80)
-                .offset(x: -180, y: 260)
-        }
-    }
-
-    var connectionView: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                connectionHero
-                discoveryCard
-                manualConnectionCard
-
-                if let message = store.errorMessage {
-                    statusCard(
-                        title: "Connection Issue",
-                        detail: message,
-                        tint: Color.red.opacity(0.18),
-                        stroke: Color.red.opacity(0.28)
-                    )
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    hero
+                    discoveryCard
+                    manualCard
+                    if let message = store.errorMessage {
+                        errorCard(message)
+                    }
                 }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 16)
+                .frame(maxWidth: 720)
+                .frame(maxWidth: .infinity)
             }
-            .padding(20)
-            .frame(maxWidth: 720)
         }
     }
 
-    var connectionHero: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Mac Command Deck")
-                .font(.system(size: 32, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
-
-            Text("Discover the running Lattices menu bar app on your local network, then control voice, layout, switching, and history from iPhone or iPad.")
-                .font(.system(size: 15, weight: .medium, design: .rounded))
-                .foregroundStyle(Color.white.opacity(0.78))
+    private var hero: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            LatsSectionLabel(text: "lats deck")
+            Text("Pair your Mac")
+                .font(LatsFont.ui(28, weight: .bold))
+                .foregroundStyle(LatsPalette.text)
+                .tracking(-0.4)
+            Text("A trackpad cockpit on your iPad. Discover the Lattices menu bar app on your local network and pair this device to start sending voice, layout, and shortcut commands.")
+                .font(LatsFont.ui(13))
+                .foregroundStyle(LatsPalette.textDim)
+                .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(24)
+        .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(deckCardBackground(stroke: Color.white.opacity(0.12)))
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(LinearGradient(
+                    colors: [
+                        LatsPalette.surface,
+                        LatsPalette.surface.opacity(0.4)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10).stroke(LatsPalette.hairline2, lineWidth: 1)
+        )
     }
 
-    var discoveryCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
+    private var discoveryCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
-                sectionLabel("Nearby Macs")
+                LatsSectionLabel(text: "nearby macs")
                 Spacer()
-                Button("Refresh") {
+                LatsButton(title: "Refresh", icon: "arrow.clockwise", style: .ghost) {
                     store.refreshDiscovery()
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.cyan.opacity(0.75))
             }
 
             if store.discoveredBridges.isEmpty {
-                Text("No Lattices companion bridge has been discovered yet. Make sure the macOS menu bar app is running on the same local network.")
-                    .font(.system(size: 14, weight: .medium, design: .rounded))
-                    .foregroundStyle(Color.white.opacity(0.72))
-                    .fixedSize(horizontal: false, vertical: true)
+                LatsEmptyState(
+                    title: "no bridge discovered",
+                    subtitle: "Make sure the Lattices menu bar app is running on the same Wi-Fi network.",
+                    icon: "wifi.exclamationmark"
+                )
             } else {
-                VStack(spacing: 10) {
+                VStack(spacing: 6) {
                     ForEach(store.discoveredBridges) { bridge in
-                        Button {
-                            store.connect(to: bridge)
-                        } label: {
-                            HStack(alignment: .center, spacing: 12) {
-                                ZStack {
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .fill(Color.cyan.opacity(0.18))
-                                        .frame(width: 42, height: 42)
-                                    Image(systemName: "macwindow.and.iphone")
-                                        .font(.system(size: 17, weight: .semibold))
-                                        .foregroundStyle(.white)
-                                }
+                        LatsListRow(
+                            title: bridge.name,
+                            subtitle: "\(bridge.host):\(bridge.port) · \(bridge.source)",
+                            icon: "macwindow.and.iphone",
+                            iconTint: .green,
+                            onTap: { store.connect(to: bridge) }
+                        ) {
+                            Image(systemName: "arrow.up.right")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(LatsPalette.textFaint)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 10).fill(LatsPalette.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10).stroke(LatsPalette.hairline2, lineWidth: 1)
+        )
+    }
 
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(bridge.name)
-                                        .font(.system(size: 16, weight: .semibold, design: .rounded))
-                                        .foregroundStyle(.white)
-                                    Text("\(bridge.host):\(bridge.port) • \(bridge.source)")
-                                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                                        .foregroundStyle(Color.white.opacity(0.68))
-                                }
+    private var manualCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                LatsSectionLabel(text: "manual connection")
+                Spacer()
+            }
+            Text("Use this if Bonjour discovery is blocked. Enter the Mac's Bonjour host, such as `mini.local`, or its local network name.")
+                .font(LatsFont.mono(10))
+                .foregroundStyle(LatsPalette.textDim)
+                .lineSpacing(2)
 
-                                Spacer()
+            VStack(spacing: 8) {
+                LatsField(placeholder: "Mac host", text: $store.manualHost, autocapitalize: false)
+                LatsField(placeholder: "Port", text: $store.manualPort, keyboardType: .numberPad)
+            }
 
-                                Image(systemName: "arrow.up.right")
-                                    .foregroundStyle(Color.white.opacity(0.52))
-                            }
-                            .padding(14)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(deckInsetBackground(stroke: Color.white.opacity(0.08)))
+            LatsButton(title: "Connect", icon: "bolt.fill", style: .primary(.green)) {
+                store.connectManually()
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 10).fill(LatsPalette.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10).stroke(LatsPalette.hairline2, lineWidth: 1)
+        )
+    }
+
+    private func errorCard(_ message: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(LatsPalette.red)
+                LatsSectionLabel(text: "connection issue", tint: LatsPalette.red)
+            }
+            Text(message)
+                .font(LatsFont.mono(11))
+                .foregroundStyle(LatsPalette.text)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 10).fill(LatsPalette.red.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10).stroke(LatsPalette.red.opacity(0.4), lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - Connected home (Mac paired)
+
+struct LatsConnectedHome: View {
+    @ObservedObject var store: DeckStore
+    let onEnterDeck: () -> Void
+    let onSettings: () -> Void
+
+    @State private var trustedBridges: [StoredBridgeTrust] = []
+
+    private var securityLabel: String? {
+        guard let h = store.health else { return nil }
+        if h.requestSigningRequired && h.payloadEncryptionRequired { return "secure" }
+        if h.requestSigningRequired { return "signed" }
+        return nil
+    }
+
+    // MARK: - Deck cards (one per paired Mac)
+
+    private struct DeckCard: Identifiable {
+        let id: String
+        let name: String       // e.g., "Arach's Mac mini" or "air.local"
+        let host: String       // e.g., "mini.local" — secondary line
+        let icon: String
+        let isActive: Bool
+        let isOnline: Bool
+        let endpoint: BridgeEndpoint?
+    }
+
+    /// Compare bridge names loosely (case- and punctuation-insensitive) so a
+    /// trusted record matches its discovered/active counterpart even if the
+    /// service name and the persisted name differ slightly.
+    private static func nameKey(_ s: String) -> String {
+        s.lowercased()
+            .replacingOccurrences(of: ".local", with: "")
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .joined()
+    }
+
+    private static func deckIcon(for hostOrName: String) -> String {
+        let s = hostOrName.lowercased()
+        if s.contains("mini") { return "macmini" }
+        if s.contains("studio") { return "macstudio" }
+        if s.contains("imac") { return "desktopcomputer" }
+        if s.contains("air") || s.contains("book") || s.contains("pro") { return "laptopcomputer" }
+        return "macwindow.and.iphone"
+    }
+
+    private var deckCards: [DeckCard] {
+        var cards: [DeckCard] = []
+        var seenKeys = Set<String>()
+
+        if let endpoint = store.activeEndpoint {
+            let displayName = endpoint.name.isEmpty ? endpoint.host : endpoint.name
+            seenKeys.insert(Self.nameKey(displayName))
+            seenKeys.insert(Self.nameKey(endpoint.host))
+            cards.append(DeckCard(
+                id: "active-\(endpoint.host)",
+                name: displayName,
+                host: endpoint.host,
+                icon: Self.deckIcon(for: displayName + " " + endpoint.host),
+                isActive: true,
+                isOnline: true,
+                endpoint: endpoint
+            ))
+        }
+
+        for bridge in store.discoveredBridges {
+            let displayName = bridge.name.isEmpty ? bridge.host : bridge.name
+            let nk = Self.nameKey(displayName)
+            let hk = Self.nameKey(bridge.host)
+            if seenKeys.contains(nk) || seenKeys.contains(hk) { continue }
+            seenKeys.insert(nk); seenKeys.insert(hk)
+            cards.append(DeckCard(
+                id: "online-\(bridge.host)",
+                name: displayName,
+                host: bridge.host,
+                icon: Self.deckIcon(for: displayName + " " + bridge.host),
+                isActive: false,
+                isOnline: true,
+                endpoint: bridge
+            ))
+        }
+
+        for trust in trustedBridges {
+            let nk = Self.nameKey(trust.bridgeName)
+            if seenKeys.contains(nk) { continue }
+            seenKeys.insert(nk)
+            cards.append(DeckCard(
+                id: "trusted-\(trust.bridgePublicKey)",
+                name: trust.bridgeName,
+                host: "paired",
+                icon: Self.deckIcon(for: trust.bridgeName),
+                isActive: false,
+                isOnline: false,
+                endpoint: nil
+            ))
+        }
+        return cards
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            LatsTopBar(
+                product: "LATS",
+                section: store.connectionLabel,
+                trailing: AnyView(
+                    HStack(spacing: 8) {
+                        if let security = securityLabel {
+                            LatsBadge(text: security, tint: LatsPalette.green, dot: true)
+                        }
+                        Button { store.refreshSnapshot() } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(LatsPalette.textDim)
+                                .frame(width: 22, height: 22)
+                        }
+                        .buttonStyle(.plain)
+                        Button(action: onSettings) {
+                            Image(systemName: "gearshape")
+                                .font(.system(size: 13))
+                                .foregroundStyle(LatsPalette.textDim)
+                                .frame(width: 22, height: 22)
                         }
                         .buttonStyle(.plain)
                     }
-                }
-            }
-        }
-        .padding(20)
-        .background(deckCardBackground(stroke: Color.white.opacity(0.1)))
-    }
-
-    var manualConnectionCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            sectionLabel("Manual Connection")
-
-            Text("Use this if Bonjour discovery is blocked. A common host format is `air.local` or your Mac’s local network name.")
-                .font(.system(size: 13, weight: .medium, design: .rounded))
-                .foregroundStyle(Color.white.opacity(0.72))
-                .fixedSize(horizontal: false, vertical: true)
-
-            VStack(spacing: 12) {
-                TextField("Mac host", text: $store.manualHost)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .padding(12)
-                    .background(deckInsetBackground(stroke: Color.white.opacity(0.08)))
-
-                TextField("Port", text: $store.manualPort)
-                    .keyboardType(.numberPad)
-                    .padding(12)
-                    .background(deckInsetBackground(stroke: Color.white.opacity(0.08)))
-            }
-            .font(.system(size: 15, weight: .medium, design: .rounded))
-            .foregroundStyle(.white)
-
-            Button {
-                store.connectManually()
-            } label: {
-                HStack {
-                    Spacer()
-                    Text("Connect")
-                    Spacer()
-                }
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.mint.opacity(0.8))
-        }
-        .padding(20)
-        .background(deckCardBackground(stroke: Color.white.opacity(0.1)))
-    }
-
-    func deckShell(
-        manifest: DeckManifest,
-        snapshot: DeckRuntimeSnapshot,
-        endpoint: BridgeEndpoint
-    ) -> some View {
-        VStack(spacing: 16) {
-            deckStatusHeader(endpoint: endpoint)
-
-            if horizontalSizeClass == .regular {
-                HStack(alignment: .top, spacing: 16) {
-                    pageRail(pages: manifest.pages)
-                        .frame(width: 220)
-
-                    pageDetail(manifest: manifest, snapshot: snapshot)
-                        .frame(maxWidth: .infinity)
-                }
-            } else {
-                VStack(spacing: 14) {
-                    pageStrip(pages: manifest.pages)
-                    pageDetail(manifest: manifest, snapshot: snapshot)
-                }
-            }
-        }
-        .padding(18)
-    }
-
-    func deckStatusHeader(endpoint: BridgeEndpoint) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Connected to \(endpoint.name)")
-                        .font(.system(size: 22, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-
-                    Text("\(endpoint.host):\(endpoint.port) • \(store.health?.mode ?? "bridge")")
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
-                        .foregroundStyle(Color.white.opacity(0.7))
-                }
-
-                Spacer()
-
-                Button("Change Mac") {
-                    store.disconnect()
-                }
-                .buttonStyle(.bordered)
-                .tint(.white.opacity(0.7))
-            }
-
-            if store.isPerformingAction, let label = store.lastActionLabel {
-                statusCard(
-                    title: "Running \(label)",
-                    detail: "Sending the action to your Mac companion bridge.",
-                    tint: Color.cyan.opacity(0.16),
-                    stroke: Color.cyan.opacity(0.28)
                 )
-            } else if let result = store.lastActionResult {
-                statusCard(
-                    title: result.summary,
-                    detail: result.detail ?? "The Mac deck action completed successfully.",
-                    tint: result.ok ? Color.mint.opacity(0.18) : Color.red.opacity(0.18),
-                    stroke: result.ok ? Color.mint.opacity(0.26) : Color.red.opacity(0.26)
-                )
-            } else if let error = store.errorMessage {
-                statusCard(
-                    title: "Bridge Error",
-                    detail: store.lastActionLabel.map { "\($0): \(error)" } ?? error,
-                    tint: Color.red.opacity(0.18),
-                    stroke: Color.red.opacity(0.28)
-                )
-            }
-        }
-    }
+            )
 
-    func pageRail(pages: [DeckPage]) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionLabel("Pages")
-
-            ForEach(pages) { page in
-                Button {
-                    store.selectedPageID = page.id
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: page.iconSystemName)
-                            .frame(width: 22)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(page.title)
-                                .font(.system(size: 15, weight: .semibold, design: .rounded))
-                            Text(page.kind.rawValue.capitalized)
-                                .font(.system(size: 11, weight: .medium, design: .rounded))
-                                .foregroundStyle(Color.white.opacity(0.62))
-                        }
-                        Spacer()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    decksRow
+                    quickStats
+                    surfacesSection
+                    if let result = store.lastActionResult {
+                        actionResultCard(result)
                     }
-                    .foregroundStyle(.white)
-                    .padding(14)
-                    .background(
-                        RoundedRectangle(cornerRadius: 18)
-                            .fill(page.id == store.selectedPageID ? accentColor(for: page).opacity(0.34) : Color.white.opacity(0.06))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 18)
-                                    .stroke(page.id == store.selectedPageID ? accentColor(for: page).opacity(0.55) : Color.white.opacity(0.06), lineWidth: 1)
-                            )
-                    )
                 }
-                .buttonStyle(.plain)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 16)
+                .frame(maxWidth: 880)
+                .frame(maxWidth: .infinity)
             }
-
-            Spacer(minLength: 0)
         }
-        .padding(16)
-        .background(deckCardBackground(stroke: Color.white.opacity(0.1)))
+        .onAppear { trustedBridges = DeckBridgeSecurityStore.shared.trustedBridgeList() }
     }
 
-    func pageStrip(pages: [DeckPage]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
+    private var decksRow: some View {
+        let cards = deckCards
+        let columns = [GridItem(.adaptive(minimum: 180, maximum: 280), spacing: 10)]
+        return LazyVGrid(columns: columns, spacing: 10) {
+            ForEach(cards) { card in
+                deckCardView(card)
+            }
+        }
+    }
+
+    private func deckCardView(_ card: DeckCard) -> some View {
+        let tint: Color = card.isActive ? LatsPalette.green
+            : card.isOnline ? LatsPalette.blue
+            : LatsPalette.textFaint
+
+        return Button {
+            if card.isActive {
+                onEnterDeck()
+            } else if let endpoint = card.endpoint {
+                store.connect(to: endpoint)
+                // Open the deck cover; it will reflect the new snapshot when it lands.
+                onEnterDeck()
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(tint.opacity(0.15))
+                        Image(systemName: card.icon)
+                            .font(.system(size: 22, weight: .regular))
+                            .foregroundStyle(tint)
+                    }
+                    .frame(width: 44, height: 44)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10).stroke(tint.opacity(0.4), lineWidth: 1)
+                    )
+
+                    Spacer()
+
+                    if card.isActive {
+                        Image(systemName: "arrow.up.right")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(LatsPalette.textDim)
+                    } else if !card.isOnline {
+                        Image(systemName: "moon.zzz")
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundStyle(LatsPalette.textFaint)
+                    }
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(card.name)
+                        .font(LatsFont.mono(13, weight: .semibold))
+                        .foregroundStyle(LatsPalette.text)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Text(card.host)
+                        .font(LatsFont.mono(10))
+                        .foregroundStyle(LatsPalette.textDim)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(card.isActive ? tint.opacity(0.08) : LatsPalette.surface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(card.isActive ? tint.opacity(0.5) : LatsPalette.hairline2, lineWidth: 1)
+            )
+            .opacity(card.isOnline ? 1.0 : 0.55)
+        }
+        .buttonStyle(.plain)
+        .disabled(!card.isOnline)
+    }
+
+    private var quickStats: some View {
+        HStack(spacing: 8) {
+            statTile(
+                label: "windows",
+                value: "\(store.snapshot?.desktop?.visibleWindowCount ?? 0)",
+                tint: .blue
+            )
+            statTile(
+                label: "sessions",
+                value: "\(store.snapshot?.desktop?.sessionCount ?? 0)",
+                tint: .green
+            )
+            statTile(
+                label: "active app",
+                value: store.snapshot?.desktop?.activeAppName ?? "—",
+                tint: .amber
+            )
+        }
+    }
+
+    private func statTile(label: String, value: String, tint: LatsTint) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            LatsSectionLabel(text: label, tint: tint.color.opacity(0.85))
+            Text(value)
+                .font(LatsFont.mono(14, weight: .regular))
+                .foregroundStyle(LatsPalette.text)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 8).fill(LatsPalette.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8).stroke(LatsPalette.hairline2, lineWidth: 1)
+        )
+    }
+
+    private var surfacesSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                LatsSectionLabel(text: "surfaces")
+                Spacer()
+                Text("legacy · will fold into deck")
+                    .font(LatsFont.mono(9))
+                    .foregroundStyle(LatsPalette.textFaint)
+            }
+
+            let pages = store.manifest?.pages ?? []
+
+            VStack(spacing: 6) {
                 ForEach(pages) { page in
-                    Button {
-                        store.selectedPageID = page.id
+                    NavigationLink {
+                        LatsSurfaceDetailView(page: page, store: store)
                     } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: page.iconSystemName)
-                            Text(page.title)
+                        LatsListRow(
+                            title: page.title,
+                            subtitle: page.kind.rawValue,
+                            icon: page.iconSystemName,
+                            iconTint: tint(for: page)
+                        ) {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(LatsPalette.textFaint)
                         }
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                        .background(
-                            Capsule()
-                                .fill(page.id == store.selectedPageID ? accentColor(for: page).opacity(0.34) : Color.white.opacity(0.08))
-                                .overlay(
-                                    Capsule()
-                                        .stroke(page.id == store.selectedPageID ? accentColor(for: page).opacity(0.55) : Color.white.opacity(0.06), lineWidth: 1)
-                                )
-                        )
                     }
                     .buttonStyle(.plain)
                 }
@@ -364,704 +572,784 @@ private extension ContentView {
         }
     }
 
-    func pageDetail(manifest: DeckManifest, snapshot: DeckRuntimeSnapshot) -> some View {
-        let activePage = manifest.pages.first(where: { $0.id == store.selectedPageID }) ?? manifest.pages.first
+    private func tint(for page: DeckPage) -> LatsTint {
+        switch page.kind {
+        case .cockpit: return .green
+        case .voice: return .red
+        case .layout: return .blue
+        case .switch: return .teal
+        case .history: return .amber
+        case .mac, .custom: return .violet
+        }
+    }
 
-        return ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                if let activePage {
-                    pageTitle(page: activePage)
+    private func actionResultCard(_ result: DeckActionResult) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(result.ok ? LatsPalette.green : LatsPalette.red)
+                    .frame(width: 6, height: 6)
+                LatsSectionLabel(text: result.ok ? "last action" : "action failed",
+                                 tint: result.ok ? LatsPalette.green : LatsPalette.red)
+            }
+            Text(result.summary)
+                .font(LatsFont.ui(13, weight: .semibold))
+                .foregroundStyle(LatsPalette.text)
+            if let detail = result.detail, !detail.isEmpty {
+                Text(detail)
+                    .font(LatsFont.mono(10))
+                    .foregroundStyle(LatsPalette.textDim)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill((result.ok ? LatsPalette.green : LatsPalette.red).opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke((result.ok ? LatsPalette.green : LatsPalette.red).opacity(0.35), lineWidth: 1)
+        )
+    }
+}
 
-                    switch activePage.kind {
-                    case .cockpit:
-                        cockpitPage(snapshot: snapshot)
-                    case .voice:
-                        voicePage(snapshot: snapshot)
-                    case .layout:
-                        layoutPage(snapshot: snapshot)
-                    case .switch:
-                        switchPage(snapshot: snapshot)
-                    case .history:
-                        historyPage(snapshot: snapshot)
-                    case .mac, .custom:
-                        placeholderPage(title: activePage.title)
+// MARK: - Settings drawer
+
+struct LatsSettingsView: View {
+    @ObservedObject var store: DeckStore
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var trustedBridges: [StoredBridgeTrust] = []
+
+    var body: some View {
+        LatsBackground {
+            VStack(spacing: 0) {
+                LatsTopBar(
+                    product: "LATS",
+                    section: "SETTINGS",
+                    onClose: { dismiss() }
+                )
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        macsCard
+                        if store.activeEndpoint != nil {
+                            activeDetailCard
+                            disconnectCard
+                        }
+                        aboutCard
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 16)
+                    .frame(maxWidth: 720)
+                    .frame(maxWidth: .infinity)
+                }
+            }
+        }
+        .onAppear { reloadTrustedBridges() }
+    }
+
+    // MARK: - Macs list
+
+    private struct MacEntry: Identifiable {
+        let id: String
+        let name: String
+        let host: String
+        let port: Int
+        let source: String         // "Bonjour", "Manual", "Paired"
+        let isActive: Bool
+        let isOnline: Bool         // discovered on the network now
+        let isTrusted: Bool        // previously paired
+        let publicKey: String?     // for forget action
+        let fingerprint: String?
+    }
+
+    private var macEntries: [MacEntry] {
+        var entries: [MacEntry] = []
+        let activeName = store.activeEndpoint?.name
+        let activePK = store.health?.bridgePublicKey
+
+        // Active first
+        if let endpoint = store.activeEndpoint {
+            let h = store.health
+            entries.append(MacEntry(
+                id: "active-\(endpoint.host):\(endpoint.port)",
+                name: endpoint.name,
+                host: endpoint.host,
+                port: endpoint.port,
+                source: endpoint.source,
+                isActive: true,
+                isOnline: true,
+                isTrusted: h.map { DeckBridgeSecurityStore.shared.isTrusted(health: $0) } ?? false,
+                publicKey: h?.bridgePublicKey,
+                fingerprint: h?.bridgeFingerprint
+            ))
+        }
+
+        // Discovered (excluding the active one)
+        for bridge in store.discoveredBridges {
+            if bridge.name == activeName { continue }
+            entries.append(MacEntry(
+                id: "discovered-\(bridge.host):\(bridge.port)",
+                name: bridge.name,
+                host: bridge.host,
+                port: bridge.port,
+                source: bridge.source,
+                isActive: false,
+                isOnline: true,
+                isTrusted: false,         // unknown until we pair
+                publicKey: nil,
+                fingerprint: nil
+            ))
+        }
+
+        // Trusted but offline (paired before, not currently discovered)
+        for trust in trustedBridges {
+            if trust.bridgePublicKey == activePK { continue }
+            // skip if it shows up under discovered with the same name (best-effort match)
+            if entries.contains(where: { $0.name == trust.bridgeName && $0.isOnline }) { continue }
+            entries.append(MacEntry(
+                id: "trusted-\(trust.bridgePublicKey)",
+                name: trust.bridgeName,
+                host: "—",
+                port: 0,
+                source: "Paired",
+                isActive: false,
+                isOnline: false,
+                isTrusted: true,
+                publicKey: trust.bridgePublicKey,
+                fingerprint: trust.bridgeFingerprint
+            ))
+        }
+        return entries
+    }
+
+    private var macsCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                LatsSectionLabel(text: "macs")
+                Spacer()
+                LatsButton(title: "Refresh", icon: "arrow.clockwise", style: .ghost) {
+                    store.refreshDiscovery()
+                    reloadTrustedBridges()
+                }
+            }
+
+            let entries = macEntries
+            if entries.isEmpty {
+                LatsEmptyState(
+                    title: "no macs paired",
+                    subtitle: "Pair from the home screen, or open Lattices on the Mac and join the same Wi-Fi.",
+                    icon: "macwindow.and.iphone"
+                )
+            } else {
+                VStack(spacing: 6) {
+                    ForEach(entries) { entry in
+                        macRow(entry)
                     }
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10).fill(LatsPalette.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10).stroke(LatsPalette.hairline2, lineWidth: 1)
+        )
     }
 
-    func pageTitle(page: DeckPage) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(page.title)
-                .font(.system(size: 28, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
-            Text("Shared deck surface powered by the running Lattices menu bar app.")
-                .font(.system(size: 14, weight: .medium, design: .rounded))
-                .foregroundStyle(Color.white.opacity(0.7))
-        }
-    }
+    private func macRow(_ entry: MacEntry) -> some View {
+        let stateTint: LatsTint = entry.isActive ? .green : entry.isOnline ? .blue : .amber
+        let stateLabel: String = entry.isActive ? "active" : entry.isOnline ? "online" : "offline"
 
-    func cockpitPage(snapshot: DeckRuntimeSnapshot) -> some View {
-        let cockpit = snapshot.cockpit
-        let pages = cockpit?.pages ?? []
-        let selectedCockpitPage = pages.first(where: { $0.id == store.selectedCockpitPageID }) ?? pages.first
-        let trackpad = snapshot.trackpad
-
-        return VStack(alignment: .leading, spacing: 16) {
+        return Button {
+            if !entry.isActive, entry.isOnline {
+                store.connect(to: BridgeEndpoint(
+                    name: entry.name,
+                    host: entry.host,
+                    port: entry.port,
+                    source: entry.source
+                ))
+            }
+        } label: {
             HStack(spacing: 12) {
-                compactMetric(title: "Visible", value: "\(snapshot.desktop?.visibleWindowCount ?? 0)")
-                compactMetric(title: "Sessions", value: "\(snapshot.desktop?.sessionCount ?? 0)")
-                compactMetric(title: "Active App", value: snapshot.desktop?.activeAppName ?? "Mac")
-            }
-
-            if let cockpit {
-                statusCard(
-                    title: cockpit.title ?? "Command Deck",
-                    detail: cockpit.detail ?? "Quick controls from your Mac-defined cockpit board.",
-                    tint: Color.cyan.opacity(0.14),
-                    stroke: Color.cyan.opacity(0.22)
-                )
-            }
-
-            if let trackpad {
-                CompanionTrackpadSurface(state: trackpad) { event, dx, dy in
-                    store.sendTrackpad(event: event, dx: dx, dy: dy)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(stateTint.color.opacity(0.15))
+                    Image(systemName: entry.isOnline ? "macwindow.and.iphone" : "macwindow")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(stateTint.color)
                 }
-                .padding(18)
-                .background(deckCardBackground(stroke: Color.white.opacity(0.08)))
-            }
-
-            if pages.count > 1 {
-                cockpitPageStrip(pages: pages)
-            }
-
-            if let selectedCockpitPage {
-                cockpitBoardCard(page: selectedCockpitPage)
-            } else {
-                infoCard(
-                    title: "No Cockpit Layout",
-                    detail: "Open Lattices on the Mac and configure the companion cockpit in Settings > Shortcuts."
+                .frame(width: 32, height: 32)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(stateTint.color.opacity(0.4), lineWidth: 1)
                 )
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(entry.name)
+                            .font(LatsFont.ui(13, weight: .semibold))
+                            .foregroundStyle(LatsPalette.text)
+                        if entry.isTrusted {
+                            Image(systemName: "checkmark.shield.fill")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(LatsPalette.green)
+                        }
+                    }
+                    if entry.isOnline {
+                        Text("\(entry.host):\(entry.port) · \(entry.source)")
+                            .font(LatsFont.mono(10))
+                            .foregroundStyle(LatsPalette.textDim)
+                    } else if let fp = entry.fingerprint {
+                        Text("paired · \(String(fp.prefix(10)))…")
+                            .font(LatsFont.mono(10))
+                            .foregroundStyle(LatsPalette.textDim)
+                    } else {
+                        Text(entry.source.lowercased())
+                            .font(LatsFont.mono(10))
+                            .foregroundStyle(LatsPalette.textDim)
+                    }
+                }
+
+                Spacer()
+
+                LatsBadge(text: stateLabel, tint: stateTint.color, dot: entry.isActive)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(entry.isActive ? stateTint.color.opacity(0.10) : Color.white.opacity(0.025))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(entry.isActive ? stateTint.color.opacity(0.5) : LatsPalette.hairline, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            if let pk = entry.publicKey, !entry.isActive {
+                Button(role: .destructive) {
+                    DeckBridgeSecurityStore.shared.forgetBridge(publicKey: pk)
+                    reloadTrustedBridges()
+                } label: { Label("Forget", systemImage: "trash") }
             }
         }
     }
 
-    func voicePage(snapshot: DeckRuntimeSnapshot) -> some View {
-        let voice = snapshot.voice
-        let phase = voice?.phase.rawValue.capitalized ?? "Unknown"
+    private func reloadTrustedBridges() {
+        trustedBridges = DeckBridgeSecurityStore.shared.trustedBridgeList()
+    }
+
+    // MARK: - Active detail / disconnect / about
+
+    private var activeDetailCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            LatsSectionLabel(text: "active session")
+            if let endpoint = store.activeEndpoint {
+                LatsKVRow(key: "host", value: endpoint.host, valueColor: LatsPalette.green)
+                LatsKVRow(key: "port", value: "\(endpoint.port)")
+                LatsKVRow(key: "source", value: endpoint.source)
+            }
+            if let h = store.health {
+                LatsKVRow(key: "mode", value: h.mode)
+                let sec = (h.requestSigningRequired && h.payloadEncryptionRequired) ? "signed + encrypted"
+                    : h.requestSigningRequired ? "signed" : "open"
+                LatsKVRow(key: "security", value: sec, valueColor: LatsPalette.green)
+                LatsKVRow(key: "fingerprint", value: String(h.bridgeFingerprint.prefix(12)) + "…",
+                          valueColor: LatsPalette.textDim)
+                LatsKVRow(key: "version", value: h.version, valueColor: LatsPalette.textDim)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10).fill(LatsPalette.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10).stroke(LatsPalette.hairline2, lineWidth: 1)
+        )
+    }
+
+    private var disconnectCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            LatsSectionLabel(text: "device")
+            Text("Disconnecting clears the active session. Re-pair to re-encrypt this device with the Mac.")
+                .font(LatsFont.mono(10))
+                .foregroundStyle(LatsPalette.textDim)
+                .fixedSize(horizontal: false, vertical: true)
+            LatsButton(title: "Disconnect", icon: "xmark.circle", style: .primary(.red)) {
+                store.disconnect()
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10).fill(LatsPalette.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10).stroke(LatsPalette.hairline2, lineWidth: 1)
+        )
+    }
+
+    private var aboutCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            LatsSectionLabel(text: "about")
+            LatsKVRow(key: "build", value: "lats deck · v0.1")
+            LatsKVRow(key: "device", value: UIDevice.current.model)
+            LatsKVRow(key: "system", value: "iOS \(UIDevice.current.systemVersion)")
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10).fill(LatsPalette.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10).stroke(LatsPalette.hairline2, lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - Surface detail (per page kind)
+
+struct LatsSurfaceDetailView: View {
+    let page: DeckPage
+    @ObservedObject var store: DeckStore
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        LatsBackground {
+            VStack(spacing: 0) {
+                LatsTopBar(
+                    product: "LATS",
+                    section: page.title.uppercased(),
+                    trailing: AnyView(EmptyView()),
+                    onClose: { dismiss() }
+                )
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        switch page.kind {
+                        case .cockpit:
+                            LatsCockpitSurface(store: store)
+                        case .voice:
+                            LatsVoiceSurface(store: store)
+                        case .layout:
+                            LatsLayoutSurface(store: store)
+                        case .switch:
+                            LatsSwitchSurface(store: store)
+                        case .history:
+                            LatsHistorySurface(store: store)
+                        case .mac, .custom:
+                            LatsEmptyState(
+                                title: page.title.lowercased(),
+                                subtitle: "This surface will be expanded as the shared contract grows.",
+                                icon: page.iconSystemName
+                            )
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 16)
+                    .frame(maxWidth: 880)
+                    .frame(maxWidth: .infinity)
+                }
+            }
+        }
+        .navigationBarHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+    }
+}
+
+// MARK: - Surface bodies
+
+struct LatsCockpitSurface: View {
+    @ObservedObject var store: DeckStore
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            LatsSectionLabel(text: "command deck")
+            Text("Open the cockpit for the full Lats Deck experience.")
+                .font(LatsFont.mono(11))
+                .foregroundStyle(LatsPalette.textDim)
+            if let cockpit = store.snapshot?.cockpit {
+                let pageCount = cockpit.pages.count
+                let tileCount = cockpit.pages.reduce(0) { $0 + $1.tiles.count }
+                HStack(spacing: 8) {
+                    statChip(label: "decks", value: "\(pageCount)", tint: .green)
+                    statChip(label: "tiles", value: "\(tileCount)", tint: .blue)
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10).fill(LatsPalette.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10).stroke(LatsPalette.hairline2, lineWidth: 1)
+        )
+    }
+
+    private func statChip(label: String, value: String, tint: LatsTint) -> some View {
+        HStack(spacing: 6) {
+            Text(label.uppercased())
+                .font(LatsFont.mono(9, weight: .bold))
+                .tracking(0.8)
+                .foregroundStyle(tint.color.opacity(0.8))
+            Text(value)
+                .font(LatsFont.mono(11, weight: .semibold))
+                .foregroundStyle(LatsPalette.text)
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 24)
+        .background(
+            Capsule().fill(tint.color.opacity(0.12))
+        )
+        .overlay(
+            Capsule().stroke(tint.color.opacity(0.4), lineWidth: 1)
+        )
+    }
+}
+
+struct LatsVoiceSurface: View {
+    @ObservedObject var store: DeckStore
+
+    private var phaseLabel: String {
+        store.snapshot?.voice?.phase.rawValue.uppercased() ?? "IDLE"
+    }
+    private var phaseColor: Color {
+        switch store.snapshot?.voice?.phase {
+        case .listening: return LatsPalette.red
+        case .transcribing, .reasoning: return LatsPalette.violet
+        case .speaking: return LatsPalette.amber
+        default: return LatsPalette.green
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            heroPhase
+            actions
+            transcriptCard
+            tryThis
+        }
+    }
+
+    private var heroPhase: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Circle().fill(phaseColor).frame(width: 8, height: 8)
+                LatsSectionLabel(text: store.snapshot?.voice?.provider?.uppercased() ?? "VOICE",
+                                 tint: phaseColor)
+            }
+            Text(phaseLabel)
+                .font(LatsFont.ui(36, weight: .bold))
+                .foregroundStyle(LatsPalette.text)
+                .tracking(-0.6)
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10).fill(LatsPalette.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10).stroke(LatsPalette.hairline2, lineWidth: 1)
+        )
+    }
+
+    private var actions: some View {
+        HStack(spacing: 8) {
+            LatsButton(
+                title: store.snapshot?.voice?.phase == .listening ? "Stop" : "Start Voice",
+                icon: store.snapshot?.voice?.phase == .listening ? "stop.fill" : "mic.fill",
+                style: .primary(.red)
+            ) {
+                store.perform(actionID: "voice.toggle", pageID: "voice")
+            }
+            LatsButton(title: "Cancel", icon: "xmark", style: .secondary) {
+                store.perform(actionID: "voice.cancel", pageID: "voice")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var transcriptCard: some View {
+        if let transcript = store.snapshot?.voice?.transcript, !transcript.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                LatsSectionLabel(text: "transcript")
+                Text("\u{201C}\(transcript)\u{201D}")
+                    .font(LatsFont.ui(15))
+                    .foregroundStyle(LatsPalette.text)
+                    .lineSpacing(2)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 10).fill(LatsPalette.surface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10).stroke(LatsPalette.hairline2, lineWidth: 1)
+            )
+        }
+
+        if let summary = store.snapshot?.voice?.responseSummary, !summary.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                LatsSectionLabel(text: "response")
+                Text(summary)
+                    .font(LatsFont.mono(11))
+                    .foregroundStyle(LatsPalette.text)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 10).fill(LatsPalette.surface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10).stroke(LatsPalette.hairline2, lineWidth: 1)
+            )
+        }
+    }
+
+    private var tryThis: some View {
         let examples = [
             "Optimize the layout",
             "Move this window left",
             "Focus Safari",
-            "Switch to my review layer"
+            "Switch to my review layer",
         ]
-
-        return VStack(alignment: .leading, spacing: 16) {
-            metricHero(title: phase, subtitle: voice?.provider?.uppercased() ?? "VOICE")
-
-            actionRow(
-                primaryTitle: voice?.phase == .listening ? "Stop Listening" : "Start Voice",
-                primaryIcon: voice?.phase == .listening ? "stop.fill" : "mic.fill",
-                primaryAction: { store.perform(actionID: "voice.toggle", pageID: "voice") },
-                secondaryTitle: "Cancel",
-                secondaryIcon: "xmark",
-                secondaryAction: { store.perform(actionID: "voice.cancel", pageID: "voice") }
-            )
-
-            if let transcript = voice?.transcript, !transcript.isEmpty {
-                infoCard(title: "Transcript", detail: transcript)
-            }
-
-            if let response = voice?.responseSummary, !response.isEmpty {
-                infoCard(title: "Response", detail: response)
-            }
-
-            VStack(alignment: .leading, spacing: 12) {
-                sectionLabel("Try Saying")
-
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 10)], spacing: 10) {
-                    ForEach(examples, id: \.self) { example in
-                        Text(example)
-                            .font(.system(size: 14, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 12)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(deckInsetBackground(stroke: Color.white.opacity(0.08)))
-                    }
-                }
-            }
-            .padding(18)
-            .background(deckCardBackground(stroke: Color.white.opacity(0.08)))
-        }
-    }
-
-    func layoutPage(snapshot: DeckRuntimeSnapshot) -> some View {
-        let desktop = snapshot.desktop
-        let layout = snapshot.layout
-        let layoutTasks = snapshot.switcher?.items.filter { $0.kind == .task } ?? []
-        let appItems = Array((snapshot.switcher?.items.filter { $0.kind == .application } ?? []).prefix(5))
-        let windowItems = Array((snapshot.switcher?.items.filter { $0.kind == .window } ?? []).prefix(4))
-        let placements: [(String, String, String)] = [
-            ("Left", "left", "rectangle.leadinghalf.filled"),
-            ("Right", "right", "rectangle.trailinghalf.filled"),
-            ("Top Left", "top-left", "rectangle.inset.topleft.filled"),
-            ("Top Right", "top-right", "rectangle.inset.topright.filled"),
-            ("Bottom Left", "bottom-left", "rectangle.inset.bottomleft.filled"),
-            ("Bottom Right", "bottom-right", "rectangle.inset.bottomright.filled"),
-            ("Center", "center", "plus.rectangle.on.rectangle"),
-            ("Maximize", "maximize", "macwindow")
-        ]
-        let precisionPlacements: [(String, String, String)] = [
-            ("Left Third", "left-third", "rectangle.leadingthird.inset.filled"),
-            ("Center Third", "center-third", "rectangle.center.inset.filled"),
-            ("Right Third", "right-third", "rectangle.trailingthird.inset.filled"),
-            ("Top Third", "top-third", "rectangle.topthird.inset.filled"),
-            ("Middle Third", "middle-third", "rectangle.center.inset.filled"),
-            ("Bottom Third", "bottom-third", "rectangle.bottomthird.inset.filled")
-        ]
-
-        return VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 12) {
-                compactMetric(title: "Screens", value: "\(desktop?.screenCount ?? 0)")
-                compactMetric(title: "Visible", value: "\(desktop?.visibleWindowCount ?? 0)")
-                compactMetric(title: "Sessions", value: "\(desktop?.sessionCount ?? 0)")
-            }
-
-            if let focus = layout?.frontmostWindow {
-                frontmostWindowCard(
-                    focus: focus,
-                    screenName: layout?.screenName
-                )
-            } else if let layer = desktop?.activeLayerName ?? desktop?.activeAppName {
-                infoCard(title: "Active Focus", detail: layer)
-            }
-
-            actionRow(
-                primaryTitle: "Optimize Layout",
-                primaryIcon: "rectangle.3.group.fill",
-                primaryAction: { store.perform(actionID: "layout.optimize", pageID: "layout") },
-                secondaryTitle: "Center Window",
-                secondaryIcon: "plus.rectangle.on.rectangle",
-                secondaryAction: {
-                    store.perform(
-                        actionID: "layout.placeFrontmost",
-                        pageID: "layout",
-                        payload: ["placement": .string("center")]
-                    )
-                }
-            )
-
-            if let preview = layout?.preview, !preview.windows.isEmpty {
-                layoutPreviewCard(preview: preview)
-            }
-
-            placementSection(title: "Quick Placements", placements: placements)
-            placementSection(title: "Precision Layouts", placements: precisionPlacements)
-            sizeAdjustmentSection()
-
-            if !appItems.isEmpty {
-                quickSwitchSection(title: "Apps", items: appItems)
-            }
-
-            if !windowItems.isEmpty {
-                quickSwitchSection(title: "Windows", items: windowItems)
-            }
-
-            if !layoutTasks.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
-                    sectionLabel("Layers & Tasks")
-
-                    ForEach(layoutTasks) { item in
-                        switcherButton(item: item)
-                    }
-                }
-                .padding(18)
-                .background(deckCardBackground(stroke: Color.white.opacity(0.08)))
-            }
-        }
-    }
-
-    func switchPage(snapshot: DeckRuntimeSnapshot) -> some View {
-        let items = snapshot.switcher?.items ?? []
-        let groups = Dictionary(grouping: items) { $0.kind }
-        let orderedKinds: [DeckSwitcherItemKind] = [
-            .application,
-            .window,
-            .task,
-            .session
-        ]
-
-        return VStack(alignment: .leading, spacing: 16) {
-            if let focus = snapshot.layout?.frontmostWindow {
-                frontmostWindowCard(
-                    focus: focus,
-                    screenName: snapshot.layout?.screenName
-                )
-            }
-
-            ForEach(orderedKinds, id: \.rawValue) { kind in
-                if let entries = groups[kind], !entries.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
-                        sectionLabel(kind.rawValue.capitalized)
-
-                        ForEach(entries) { item in
-                            switcherButton(item: item)
-                        }
-                    }
-                    .padding(18)
-                    .background(deckCardBackground(stroke: Color.white.opacity(0.08)))
-                }
-            }
-        }
-    }
-
-    func historyPage(snapshot: DeckRuntimeSnapshot) -> some View {
-        let entries = snapshot.history
-
-        return VStack(alignment: .leading, spacing: 16) {
-            if entries.isEmpty {
-                infoCard(
-                    title: "No Recent History",
-                    detail: "Run a few deck actions on the Mac and the shared history feed will start filling in here."
-                )
-            } else {
-                ForEach(entries) { entry in
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(alignment: .top) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(entry.title)
-                                    .font(.system(size: 15, weight: .semibold, design: .rounded))
-                                    .foregroundStyle(.white)
-
-                                if let detail = entry.detail, !detail.isEmpty {
-                                    Text(detail)
-                                        .font(.system(size: 13, weight: .medium, design: .rounded))
-                                        .foregroundStyle(Color.white.opacity(0.72))
-                                        .fixedSize(horizontal: false, vertical: true)
-                                }
-                            }
-
-                            Spacer()
-
-                            if let undo = entry.undoActionID {
-                                Button("Undo") {
-                                    store.perform(actionID: undo, pageID: "history")
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .tint(.mint.opacity(0.8))
-                            }
-                        }
-                    }
-                    .padding(18)
-                    .background(deckCardBackground(stroke: Color.white.opacity(0.08)))
-                }
-            }
-        }
-    }
-
-    func placeholderPage(title: String) -> some View {
-        infoCard(title: title, detail: "This deck page will be expanded as the shared contract grows.")
-    }
-
-    func frontmostWindowCard(
-        focus: DeckLayoutFocusWindow,
-        screenName: String?
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color.mint.opacity(0.18))
-                        .frame(width: 52, height: 52)
-                    Image(systemName: "macwindow.on.rectangle")
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundStyle(.white)
-                }
-
-                VStack(alignment: .leading, spacing: 5) {
-                    sectionLabel("Frontmost Window")
-                    Text(focus.appName)
-                        .font(.system(size: 22, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-
-                    if let title = focus.title, !title.isEmpty {
-                        Text(title)
-                            .font(.system(size: 14, weight: .medium, design: .rounded))
-                            .foregroundStyle(Color.white.opacity(0.74))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-
-                Spacer()
-            }
-
-            HStack(spacing: 10) {
-                detailChip(
-                    icon: "ruler",
-                    text: "\(Int(focus.frame.w.rounded()))×\(Int(focus.frame.h.rounded()))"
-                )
-
-                if let placement = focus.placement {
-                    detailChip(
-                        icon: "square.split.2x2",
-                        text: humanPlacementLabel(placement)
-                    )
-                }
-
-                if let screenName, !screenName.isEmpty {
-                    detailChip(icon: "display", text: screenName)
-                }
-            }
-        }
-        .padding(20)
-        .background(deckCardBackground(stroke: Color.white.opacity(0.1)))
-    }
-
-    func layoutPreviewCard(preview: DeckLayoutPreview) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                sectionLabel("Layout Preview")
-                Spacer()
-                Text("Tap a window to focus it")
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                    .foregroundStyle(Color.white.opacity(0.66))
-            }
-
-            GeometryReader { geometry in
-                let fullSize = geometry.size
-                let canvas = CGSize(
-                    width: max(fullSize.width - 24, 10),
-                    height: max(fullSize.height - 24, 10)
-                )
-
-                ZStack(alignment: .topLeading) {
-                    RoundedRectangle(cornerRadius: 24)
-                        .fill(Color.white.opacity(0.05))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 24)
-                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        return VStack(alignment: .leading, spacing: 8) {
+            LatsSectionLabel(text: "try saying")
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 6)], spacing: 6) {
+                ForEach(examples, id: \.self) { e in
+                    Text(e)
+                        .font(LatsFont.mono(11))
+                        .foregroundStyle(LatsPalette.text)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 9)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color.white.opacity(0.025))
                         )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(LatsPalette.hairline, lineWidth: 1)
+                        )
+                }
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 10).fill(LatsPalette.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10).stroke(LatsPalette.hairline2, lineWidth: 1)
+        )
+    }
+}
 
-                    ForEach(preview.windows) { window in
-                        let frame = previewFrame(window.normalizedFrame, in: canvas)
+struct LatsLayoutSurface: View {
+    @ObservedObject var store: DeckStore
+
+    private let placements: [(String, String, String)] = [
+        ("Left",        "left",         "rectangle.leadinghalf.filled"),
+        ("Right",       "right",        "rectangle.trailinghalf.filled"),
+        ("Top Left",    "top-left",     "rectangle.inset.topleft.filled"),
+        ("Top Right",   "top-right",    "rectangle.inset.topright.filled"),
+        ("Bottom Left", "bottom-left",  "rectangle.inset.bottomleft.filled"),
+        ("Bottom Right","bottom-right", "rectangle.inset.bottomright.filled"),
+        ("Center",      "center",       "plus.rectangle.on.rectangle"),
+        ("Maximize",    "maximize",     "macwindow"),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            stats
+            actions
+            if let preview = store.snapshot?.layout?.preview, !preview.windows.isEmpty {
+                previewCard(preview: preview)
+            }
+            placementsCard
+        }
+    }
+
+    private var stats: some View {
+        HStack(spacing: 8) {
+            stat("screens", "\(store.snapshot?.desktop?.screenCount ?? 0)", .blue)
+            stat("visible", "\(store.snapshot?.desktop?.visibleWindowCount ?? 0)", .teal)
+            stat("sessions", "\(store.snapshot?.desktop?.sessionCount ?? 0)", .green)
+        }
+    }
+
+    private func stat(_ label: String, _ value: String, _ tint: LatsTint) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            LatsSectionLabel(text: label, tint: tint.color.opacity(0.8))
+            Text(value)
+                .font(LatsFont.mono(14, weight: .regular))
+                .foregroundStyle(LatsPalette.text)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 8).fill(LatsPalette.surface))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(LatsPalette.hairline2, lineWidth: 1))
+    }
+
+    private var actions: some View {
+        HStack(spacing: 8) {
+            LatsButton(title: "Optimize", icon: "rectangle.3.group.fill", style: .primary(.blue)) {
+                store.perform(actionID: "layout.optimize", pageID: "layout")
+            }
+            LatsButton(title: "Center", icon: "plus.rectangle.on.rectangle") {
+                store.perform(
+                    actionID: "layout.placeFrontmost",
+                    pageID: "layout",
+                    payload: ["placement": .string("center")]
+                )
+            }
+        }
+    }
+
+    private var placementsCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            LatsSectionLabel(text: "placements")
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 6)], spacing: 6) {
+                ForEach(placements, id: \.1) { p in
+                    Button {
+                        store.perform(
+                            actionID: "layout.placeFrontmost",
+                            pageID: "layout",
+                            payload: ["placement": .string(p.1)]
+                        )
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: p.2).font(.system(size: 12))
+                            Text(p.0).font(LatsFont.mono(11, weight: .medium))
+                            Spacer()
+                        }
+                        .foregroundStyle(LatsPalette.text)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 9)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.025))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6).stroke(LatsPalette.hairline, lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 10).fill(LatsPalette.surface))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(LatsPalette.hairline2, lineWidth: 1))
+    }
+
+    private func previewCard(preview: DeckLayoutPreview) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                LatsSectionLabel(text: "stage")
+                Spacer()
+                Text("tap a window to focus")
+                    .font(LatsFont.mono(9))
+                    .foregroundStyle(LatsPalette.textFaint)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .topLeading) {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(LatsPalette.bgEdge)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6).stroke(LatsPalette.hairline, lineWidth: 1)
+                        )
+                    ForEach(preview.windows) { w in
+                        let frame = CGRect(
+                            x: w.normalizedFrame.x * geo.size.width,
+                            y: w.normalizedFrame.y * geo.size.height,
+                            width: w.normalizedFrame.w * geo.size.width,
+                            height: w.normalizedFrame.h * geo.size.height
+                        )
+                        let tint = LatsTint.from(token: w.appCategoryTint).color
                         Button {
                             store.perform(
                                 actionID: "switch.focusItem",
                                 pageID: "layout",
-                                payload: ["itemID": .string(window.itemID)]
+                                payload: ["itemID": .string(w.itemID)]
                             )
                         } label: {
                             ZStack(alignment: .topLeading) {
-                                RoundedRectangle(cornerRadius: 16)
-                                    .fill(
-                                        window.isFrontmost
-                                        ? LinearGradient(
-                                            colors: [Color.cyan.opacity(0.72), Color.mint.opacity(0.6)],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        )
-                                        : LinearGradient(
-                                            colors: [Color.white.opacity(0.16), Color.white.opacity(0.08)],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        )
-                                    )
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 16)
-                                            .stroke(
-                                                window.isFrontmost
-                                                ? Color.white.opacity(0.55)
-                                                : Color.white.opacity(0.12),
-                                                lineWidth: 1
-                                            )
-                                    )
-
-                                if frame.width > 96, frame.height > 54 {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(window.subtitle ?? window.title)
-                                            .font(.system(size: 11, weight: .bold, design: .rounded))
-                                            .foregroundStyle(.white.opacity(0.76))
-                                            .lineLimit(1)
-
-                                        Text(window.title)
-                                            .font(.system(size: 13, weight: .semibold, design: .rounded))
-                                            .foregroundStyle(.white)
-                                            .lineLimit(2)
-                                    }
-                                    .padding(10)
+                                RoundedRectangle(cornerRadius: 5)
+                                    .fill(tint.opacity(w.isFrontmost ? 0.42 : 0.22))
+                                if frame.width > 80, frame.height > 32 {
+                                    Text(w.title)
+                                        .font(LatsFont.mono(9, weight: .semibold))
+                                        .foregroundStyle(LatsPalette.text)
+                                        .padding(6)
                                 }
                             }
                             .frame(width: frame.width, height: frame.height, alignment: .topLeading)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 5)
+                                    .stroke(tint.opacity(w.isFrontmost ? 0.85 : 0.45), lineWidth: 1)
+                            )
                         }
                         .buttonStyle(.plain)
-                        .offset(x: frame.minX + 12, y: frame.minY + 12)
+                        .offset(x: frame.minX, y: frame.minY)
                     }
                 }
             }
             .aspectRatio(max(preview.aspectRatio, 1.0), contentMode: .fit)
         }
-        .padding(18)
-        .background(deckCardBackground(stroke: Color.white.opacity(0.08)))
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 10).fill(LatsPalette.surface))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(LatsPalette.hairline2, lineWidth: 1))
     }
+}
 
-    func placementSection(
-        title: String,
-        placements: [(String, String, String)]
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionLabel(title)
+struct LatsSwitchSurface: View {
+    @ObservedObject var store: DeckStore
 
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
-                ForEach(placements, id: \.1) { placement in
-                    Button {
-                        store.perform(
-                            actionID: "layout.placeFrontmost",
-                            pageID: "layout",
-                            payload: ["placement": .string(placement.1)]
-                        )
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: placement.2)
-                            Text(placement.0)
-                            Spacer()
-                        }
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white)
-                        .padding(14)
-                        .background(deckInsetBackground(stroke: Color.white.opacity(0.08)))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .padding(18)
-        .background(deckCardBackground(stroke: Color.white.opacity(0.08)))
-    }
+    var body: some View {
+        let items = store.snapshot?.switcher?.items ?? []
+        let groups = Dictionary(grouping: items, by: { $0.kind })
+        let order: [DeckSwitcherItemKind] = [.application, .window, .task, .session]
 
-    func sizeAdjustmentSection() -> some View {
-        let adjustments: [(String, String, String, String)] = [
-            ("Wider", "width", "grow", "arrow.left.and.right"),
-            ("Narrower", "width", "shrink", "arrow.left.and.right"),
-            ("Taller", "height", "grow", "arrow.up.and.down"),
-            ("Shorter", "height", "shrink", "arrow.up.and.down"),
-            ("Grow", "both", "grow", "plus.rectangle.on.rectangle"),
-            ("Shrink", "both", "shrink", "minus.rectangle")
-        ]
-
-        return VStack(alignment: .leading, spacing: 12) {
-            sectionLabel("Size Controls")
-
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
-                ForEach(adjustments, id: \.0) { adjustment in
-                    Button {
-                        store.perform(
-                            actionID: "layout.resizeFrontmost",
-                            pageID: "layout",
-                            payload: [
-                                "dimension": .string(adjustment.1),
-                                "direction": .string(adjustment.2)
-                            ]
-                        )
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: adjustment.3)
-                            Text(adjustment.0)
-                            Spacer()
-                        }
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white)
-                        .padding(14)
-                        .background(deckInsetBackground(stroke: Color.white.opacity(0.08)))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .padding(18)
-        .background(deckCardBackground(stroke: Color.white.opacity(0.08)))
-    }
-
-    func quickSwitchSection(
-        title: String,
-        items: [DeckSwitcherItem]
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionLabel(title)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    ForEach(items) { item in
-                        Button {
-                            store.perform(
-                                actionID: "switch.focusItem",
-                                pageID: "layout",
-                                payload: ["itemID": .string(item.id)]
-                            )
-                        } label: {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Image(systemName: icon(for: item))
-                                    .font(.system(size: 18, weight: .semibold))
-                                    .foregroundStyle(.white)
-
-                                Text(item.title)
-                                    .font(.system(size: 15, weight: .semibold, design: .rounded))
-                                    .foregroundStyle(.white)
-                                    .lineLimit(1)
-
-                                if let subtitle = item.subtitle, !subtitle.isEmpty {
-                                    Text(subtitle)
-                                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                                        .foregroundStyle(Color.white.opacity(0.68))
-                                        .lineLimit(2)
-                                }
-                            }
-                            .padding(14)
-                            .frame(width: 180, alignment: .leading)
-                            .background(
-                                deckInsetBackground(
-                                    stroke: item.isFrontmost
-                                    ? Color.cyan.opacity(0.28)
-                                    : Color.white.opacity(0.08)
-                                )
-                            )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-        }
-        .padding(18)
-        .background(deckCardBackground(stroke: Color.white.opacity(0.08)))
-    }
-
-    func cockpitPageStrip(pages: [DeckCockpitPage]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                ForEach(pages) { page in
-                    Button {
-                        store.selectedCockpitPageID = page.id
-                    } label: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(page.title)
-                                .font(.system(size: 14, weight: .bold, design: .rounded))
-                            if let subtitle = page.subtitle, !subtitle.isEmpty {
-                                Text(subtitle)
-                                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                                    .foregroundStyle(Color.white.opacity(0.64))
-                                    .lineLimit(2)
+        return VStack(alignment: .leading, spacing: 14) {
+            ForEach(order, id: \.rawValue) { kind in
+                if let entries = groups[kind], !entries.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        LatsSectionLabel(text: kind.rawValue)
+                        VStack(spacing: 4) {
+                            ForEach(entries) { item in
+                                switcherRow(item)
                             }
                         }
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                        .background(
-                            Capsule()
-                                .fill(page.id == store.selectedCockpitPageID ? Color.cyan.opacity(0.3) : Color.white.opacity(0.08))
-                                .overlay(
-                                    Capsule()
-                                        .stroke(page.id == store.selectedCockpitPageID ? Color.cyan.opacity(0.5) : Color.white.opacity(0.06), lineWidth: 1)
-                                )
-                        )
                     }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-    }
-
-    func cockpitBoardCard(page: DeckCockpitPage) -> some View {
-        let columns = Array(
-            repeating: GridItem(.flexible(minimum: 130, maximum: .infinity), spacing: 10, alignment: .top),
-            count: max(2, min(page.columns, horizontalSizeClass == .regular ? 4 : 2))
-        )
-
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    sectionLabel(page.title)
-                    if let subtitle = page.subtitle, !subtitle.isEmpty {
-                        Text(subtitle)
-                            .font(.system(size: 13, weight: .medium, design: .rounded))
-                            .foregroundStyle(Color.white.opacity(0.7))
-                    }
-                }
-                Spacer()
-            }
-
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
-                ForEach(page.tiles) { tile in
-                    cockpitTileButton(tile: tile)
-                }
-            }
-        }
-        .padding(18)
-        .background(deckCardBackground(stroke: Color.white.opacity(0.08)))
-    }
-
-    func cockpitTileButton(tile: DeckCockpitTile) -> some View {
-        let tint = accentColor(for: tile.accentToken)
-        let isEnabled = tile.isEnabled && tile.actionID != nil
-
-        return Button {
-            guard let actionID = tile.actionID else { return }
-            store.perform(
-                actionID: actionID,
-                pageID: "cockpit",
-                payload: tile.payload,
-                label: tile.title
-            )
-        } label: {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .top) {
-                    Image(systemName: tile.iconSystemName)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(.white)
-
-                    Spacer()
-
-                    if tile.isActive {
-                        Text("Live")
-                            .font(.system(size: 10, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 5)
-                            .background(Capsule().fill(Color.white.opacity(0.18)))
-                    }
-                }
-
-                Text(tile.title)
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .lineLimit(2)
-
-                if let subtitle = tile.subtitle, !subtitle.isEmpty {
-                    Text(subtitle)
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundStyle(Color.white.opacity(0.72))
-                        .lineLimit(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .padding(14)
-            .frame(maxWidth: .infinity, minHeight: 132, alignment: .topLeading)
-            .background(
-                RoundedRectangle(cornerRadius: 18)
-                    .fill(isEnabled ? tint.opacity(tile.isActive ? 0.34 : 0.22) : Color.white.opacity(0.04))
+                    .padding(14)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(LatsPalette.surface))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 18)
-                            .stroke(isEnabled ? tint.opacity(tile.isActive ? 0.5 : 0.3) : Color.white.opacity(0.06), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 10).stroke(LatsPalette.hairline2, lineWidth: 1)
                     )
-            )
-            .opacity(isEnabled ? 1 : 0.65)
+                }
+            }
+
+            if items.isEmpty {
+                LatsEmptyState(
+                    title: "no items",
+                    subtitle: "Open some apps or windows on the Mac to see them here.",
+                    icon: "square.stack.3d.up"
+                )
+            }
         }
-        .buttonStyle(.plain)
-        .disabled(!isEnabled)
     }
 
-    func switcherButton(item: DeckSwitcherItem) -> some View {
+    private func switcherRow(_ item: DeckSwitcherItem) -> some View {
         Button {
             store.perform(
                 actionID: "switch.focusItem",
@@ -1069,237 +1357,106 @@ private extension ContentView {
                 payload: ["itemID": .string(item.id)]
             )
         } label: {
-            HStack(alignment: .center, spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(item.isFrontmost ? Color.cyan.opacity(0.22) : Color.white.opacity(0.08))
-                        .frame(width: 42, height: 42)
-                    Image(systemName: icon(for: item))
-                        .foregroundStyle(.white)
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 10) {
+                Image(systemName: icon(for: item.kind))
+                    .font(.system(size: 12))
+                    .foregroundStyle(LatsPalette.text)
+                    .frame(width: 28, height: 28)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(item.isFrontmost ? LatsPalette.green.opacity(0.22) : Color.white.opacity(0.05))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 5)
+                            .stroke(item.isFrontmost ? LatsPalette.green.opacity(0.5) : LatsPalette.hairline, lineWidth: 1)
+                    )
+                VStack(alignment: .leading, spacing: 2) {
                     Text(item.title)
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white)
-
-                    if let subtitle = item.subtitle, !subtitle.isEmpty {
+                        .font(LatsFont.ui(13, weight: .medium))
+                        .foregroundStyle(LatsPalette.text)
+                    if let subtitle = item.subtitle {
                         Text(subtitle)
-                            .font(.system(size: 12, weight: .medium, design: .rounded))
-                            .foregroundStyle(Color.white.opacity(0.68))
+                            .font(LatsFont.mono(10))
+                            .foregroundStyle(LatsPalette.textDim)
                     }
                 }
-
                 Spacer()
-
                 if item.isFrontmost {
-                    Text("Live")
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Capsule().fill(Color.cyan.opacity(0.28)))
+                    LatsBadge(text: "live", tint: LatsPalette.green, dot: true)
                 }
             }
-            .padding(14)
-            .background(deckInsetBackground(stroke: item.isFrontmost ? Color.cyan.opacity(0.25) : Color.white.opacity(0.08)))
-        }
-        .buttonStyle(.plain)
-    }
-
-    func metricHero(title: String, subtitle: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(subtitle)
-                .font(.system(size: 12, weight: .bold, design: .rounded))
-                .foregroundStyle(Color.white.opacity(0.62))
-                .tracking(1.4)
-
-            Text(title)
-                .font(.system(size: 42, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
-        }
-        .padding(22)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(deckCardBackground(stroke: Color.white.opacity(0.12)))
-    }
-
-    func compactMetric(title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title.uppercased())
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .foregroundStyle(Color.white.opacity(0.6))
-            Text(value)
-                .font(.system(size: 24, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(deckCardBackground(stroke: Color.white.opacity(0.08)))
-    }
-
-    func actionRow(
-        primaryTitle: String,
-        primaryIcon: String,
-        primaryAction: @escaping () -> Void,
-        secondaryTitle: String,
-        secondaryIcon: String,
-        secondaryAction: @escaping () -> Void
-    ) -> some View {
-        HStack(spacing: 12) {
-            actionButton(title: primaryTitle, icon: primaryIcon, tint: .cyan.opacity(0.8), action: primaryAction)
-            actionButton(title: secondaryTitle, icon: secondaryIcon, tint: .white.opacity(0.18), action: secondaryAction)
-        }
-    }
-
-    func actionButton(
-        title: String,
-        icon: String,
-        tint: Color,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            HStack {
-                Image(systemName: icon)
-                Text(title)
-                Spacer()
-            }
-            .font(.system(size: 15, weight: .semibold, design: .rounded))
-            .foregroundStyle(.white)
-            .padding(15)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
             .background(
-                RoundedRectangle(cornerRadius: 18)
-                    .fill(tint)
+                RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.025))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6).stroke(LatsPalette.hairline, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
     }
 
-    func infoCard(title: String, detail: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            sectionLabel(title)
-            Text(detail)
-                .font(.system(size: 15, weight: .medium, design: .rounded))
-                .foregroundStyle(.white)
-                .fixedSize(horizontal: false, vertical: true)
+    private func icon(for kind: DeckSwitcherItemKind) -> String {
+        switch kind {
+        case .application: return "app.badge"
+        case .window: return "macwindow"
+        case .tab: return "square.on.square"
+        case .task: return "square.grid.2x2.fill"
+        case .session: return "terminal"
         }
-        .padding(18)
-        .background(deckCardBackground(stroke: Color.white.opacity(0.08)))
+    }
+}
+
+struct LatsHistorySurface: View {
+    @ObservedObject var store: DeckStore
+
+    var body: some View {
+        let entries = store.snapshot?.history ?? []
+        return VStack(alignment: .leading, spacing: 8) {
+            if entries.isEmpty {
+                LatsEmptyState(
+                    title: "no history yet",
+                    subtitle: "Run a deck action and the shared history feed will start filling in.",
+                    icon: "clock.arrow.circlepath"
+                )
+            } else {
+                ForEach(entries) { entry in
+                    historyRow(entry)
+                }
+            }
+        }
     }
 
-    func statusCard(title: String, detail: String, tint: Color, stroke: Color) -> some View {
+    private func historyRow(_ entry: DeckHistoryEntry) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.system(size: 14, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
-            Text(detail)
-                .font(.system(size: 13, weight: .medium, design: .rounded))
-                .foregroundStyle(Color.white.opacity(0.8))
-                .fixedSize(horizontal: false, vertical: true)
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(entry.title)
+                        .font(LatsFont.ui(13, weight: .medium))
+                        .foregroundStyle(LatsPalette.text)
+                    if let detail = entry.detail, !detail.isEmpty {
+                        Text(detail)
+                            .font(LatsFont.mono(10))
+                            .foregroundStyle(LatsPalette.textDim)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Spacer()
+                if let undo = entry.undoActionID {
+                    LatsButton(title: "Undo", icon: "arrow.uturn.backward", style: .primary(.amber)) {
+                        store.perform(actionID: undo, pageID: "history")
+                    }
+                }
+            }
         }
-        .padding(16)
+        .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(deckCardBackground(fill: tint, stroke: stroke))
-    }
-
-    func detailChip(icon: String, text: String) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon)
-            Text(text)
-        }
-        .font(.system(size: 12, weight: .bold, design: .rounded))
-        .foregroundStyle(.white)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .background(Capsule().fill(Color.white.opacity(0.08)))
-    }
-
-    func sectionLabel(_ label: String) -> some View {
-        Text(label.uppercased())
-            .font(.system(size: 11, weight: .bold, design: .rounded))
-            .foregroundStyle(Color.white.opacity(0.62))
-            .tracking(1.3)
-    }
-
-    func deckCardBackground(
-        fill: Color = Color.white.opacity(0.08),
-        stroke: Color
-    ) -> some View {
-        RoundedRectangle(cornerRadius: 24)
-            .fill(fill)
-            .overlay(
-                RoundedRectangle(cornerRadius: 24)
-                    .stroke(stroke, lineWidth: 1)
-            )
-    }
-
-    func deckInsetBackground(stroke: Color) -> some View {
-        RoundedRectangle(cornerRadius: 18)
-            .fill(Color.white.opacity(0.05))
-            .overlay(
-                RoundedRectangle(cornerRadius: 18)
-                    .stroke(stroke, lineWidth: 1)
-            )
-    }
-
-    func accentColor(for page: DeckPage) -> Color {
-        accentColor(for: page.accentToken)
-    }
-
-    func accentColor(for token: String?) -> Color {
-        switch token {
-        case "lattices-cockpit":
-            return .cyan
-        case "lattices-voice":
-            return .cyan
-        case "lattices-layout":
-            return .mint
-        case "lattices-switch":
-            return .teal
-        case "lattices-history":
-            return .orange
-        case "voice":
-            return .cyan
-        case "switch":
-            return .teal
-        case "layout":
-            return .mint
-        case "mouse":
-            return .orange
-        case "rose":
-            return .pink
-        default:
-            return .blue
-        }
-    }
-
-    func icon(for item: DeckSwitcherItem) -> String {
-        switch item.kind {
-        case .application:
-            return "app.badge"
-        case .window:
-            return "macwindow"
-        case .tab:
-            return "square.on.square"
-        case .task:
-            return "square.grid.2x2.fill"
-        case .session:
-            return "terminal"
-        }
-    }
-
-    func humanPlacementLabel(_ placement: String) -> String {
-        placement
-            .split(separator: "-")
-            .map(\.capitalized)
-            .joined(separator: " ")
-    }
-
-    func previewFrame(_ rect: DeckRect, in canvas: CGSize) -> CGRect {
-        CGRect(
-            x: rect.x * canvas.width,
-            y: rect.y * canvas.height,
-            width: rect.w * canvas.width,
-            height: rect.h * canvas.height
+        .background(
+            RoundedRectangle(cornerRadius: 8).fill(LatsPalette.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8).stroke(LatsPalette.hairline2, lineWidth: 1)
         )
     }
 }

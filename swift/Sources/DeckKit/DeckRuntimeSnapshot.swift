@@ -52,19 +52,25 @@ public struct DeckVoiceState: Codable, Equatable, Sendable {
     public var transcriptLines: [DeckTranscriptLine]?
     public var responseSummary: String?
     public var provider: String?
+    public var error: DeckVoiceError?       // currently-active error (cleared on recovery)
+    public var lastError: DeckVoiceError?   // sticky most-recent error for the activity tape
 
     public init(
         phase: DeckVoicePhase,
         transcript: String? = nil,
         transcriptLines: [DeckTranscriptLine]? = nil,
         responseSummary: String? = nil,
-        provider: String? = nil
+        provider: String? = nil,
+        error: DeckVoiceError? = nil,
+        lastError: DeckVoiceError? = nil
     ) {
         self.phase = phase
         self.transcript = transcript
         self.transcriptLines = transcriptLines
         self.responseSummary = responseSummary
         self.provider = provider
+        self.error = error
+        self.lastError = lastError
     }
 }
 
@@ -176,13 +182,16 @@ public struct DeckLayoutFocusWindow: Codable, Equatable, Identifiable, Sendable 
 public struct DeckLayoutPreview: Codable, Equatable, Sendable {
     public var aspectRatio: Double
     public var windows: [DeckLayoutPreviewWindow]
+    public var displayCount: Int?
 
     public init(
         aspectRatio: Double,
-        windows: [DeckLayoutPreviewWindow]
+        windows: [DeckLayoutPreviewWindow],
+        displayCount: Int? = nil
     ) {
         self.aspectRatio = aspectRatio
         self.windows = windows
+        self.displayCount = displayCount
     }
 }
 
@@ -195,6 +204,7 @@ public struct DeckLayoutPreviewWindow: Codable, Equatable, Identifiable, Sendabl
     public var appCategory: String?
     public var appCategoryTint: String?
     public var isFrontmost: Bool
+    public var displayIndex: Int?
 
     public init(
         id: String,
@@ -204,7 +214,8 @@ public struct DeckLayoutPreviewWindow: Codable, Equatable, Identifiable, Sendabl
         normalizedFrame: DeckRect,
         appCategory: String? = nil,
         appCategoryTint: String? = nil,
-        isFrontmost: Bool = false
+        isFrontmost: Bool = false,
+        displayIndex: Int? = nil
     ) {
         self.id = id
         self.itemID = itemID
@@ -214,6 +225,7 @@ public struct DeckLayoutPreviewWindow: Codable, Equatable, Identifiable, Sendabl
         self.appCategory = appCategory
         self.appCategoryTint = appCategoryTint
         self.isFrontmost = isFrontmost
+        self.displayIndex = displayIndex
     }
 }
 

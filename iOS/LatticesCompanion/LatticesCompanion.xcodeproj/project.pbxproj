@@ -17,6 +17,7 @@
 		477B603FA482CD0AF55BC9C7 /* DeckBridgeSecurityStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D303982A361559374D4ECAF /* DeckBridgeSecurityStore.swift */; };
 		48AB2F1093E08D5F972BEF57 /* Icon-App-76x76@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 2008FE641E08A7EA3F1142D8 /* Icon-App-76x76@2x.png */; };
 		49328530140603E31D3C44C4 /* Icon-App-29x29@1x.png in Resources */ = {isa = PBXBuildFile; fileRef = 763E58A4536019D1C0D225B5 /* Icon-App-29x29@1x.png */; };
+		4932E64B0E7CF7E4C48DB05E /* LatsDeckScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AE37E6C4302786080981EE9 /* LatsDeckScreen.swift */; };
 		58104483ED43F7B6EADEDD47 /* Icon-App-29x29@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 5E31C91E44E310ECB2F450E6 /* Icon-App-29x29@2x.png */; };
 		84F9131A8649EB980EC5A378 /* BridgeDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4603482511D3BE1F2132C82 /* BridgeDiscovery.swift */; };
 		8509FE10337BF9B4286C77DF /* LatticesCompanionApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31BAB98213FEF0182FB2EA32 /* LatticesCompanionApp.swift */; };
@@ -30,13 +31,28 @@
 		D22111B43C6A48912D6E5A96 /* Icon-App-20x20@3x.png in Resources */ = {isa = PBXBuildFile; fileRef = 2569702CC7CAC0677B8C6524 /* Icon-App-20x20@3x.png */; };
 		D34392C35E4145D4262AC87F /* Icon-App-83.5x83.5@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = BCF0269F9663D59AA5D8BEF6 /* Icon-App-83.5x83.5@2x.png */; };
 		E7EC416CD4478DCF4FEBB4FC /* CompanionTrackpadSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA2C2E756959812A344E33FA /* CompanionTrackpadSurface.swift */; };
-		5A75C1B0A6E0F4D8C2B19E02 /* LatsDeckScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A75C1B0A6E0F4D8C2B19E01 /* LatsDeckScreen.swift */; };
+		EC49AAE0FD658F4D651D6CB1 /* LatsDesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5BE58AB3627168981D1D91F /* LatsDesignSystem.swift */; };
 		FD675D5F19359E6AA5DC41AB /* Icon-App-76x76@1x.png in Resources */ = {isa = PBXBuildFile; fileRef = 924A59FEB2399ED0CF09A4B5 /* Icon-App-76x76@1x.png */; };
+		389783C39A96A0C6040E3D18 /* HomeMockData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30519DB14393D18A74E57E5B /* HomeMockData.swift */; };
+		3B524C6E337D9959BF1BE8FE /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0C0606BE3D76578604B9CBD /* HomeView.swift */; };
+		3345DF34E18FB311421B2457 /* HomeTopBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5321ED84ACB164F46D2934B /* HomeTopBar.swift */; };
+		C6451DBFD579F34A327E81BF /* HomeTargetsRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBAE0DE923F39F2BF45E3E1B /* HomeTargetsRow.swift */; };
+		B9C0507422A8734A914A0D30 /* HomeOverflowGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEDF0B8863E06CF3EB482FBA /* HomeOverflowGrid.swift */; };
+		68B80BF5CD2C40BA2A059F8E /* HomeScenesGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8215EE258557D16AA38B3085 /* HomeScenesGrid.swift */; };
+		5BBCE0043B3533C707C8E672 /* HomeRoutinesList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C03F974076CB5E3C7E3587F /* HomeRoutinesList.swift */; };
+		FEEE84C4D01FA5FEF0781729 /* HomeRecentTape.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78455880A83F3B59BA98BF37 /* HomeRecentTape.swift */; };
+		8213187280F129984B01C42C /* HomeSyncSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D0AF528B55EB38C5E54DFBF /* HomeSyncSection.swift */; };
+		B608495202DFA2A819A411A2 /* HomeCloudStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89ACC1F3EE158DE33127A06F /* HomeCloudStrip.swift */; };
+		C08E8053E76ECAE40E56BC31 /* HomeBottomBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3DA7D87C159F5D6AC0C544C /* HomeBottomBar.swift */; };
+		76A8011A09CC97845FD62341 /* HomeZeroState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D54988DB36C3ED3DD1CBF066 /* HomeZeroState.swift */; };
+		27F65A5D6B42CBFF48C61B5D /* HomeVoiceOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1042450AFBDFADBC000EC79 /* HomeVoiceOverlay.swift */; };
+		2C6AA52F856780E09FBEC4F0 /* HomeDataAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 126FA09AC8E4CB185422ED57 /* HomeDataAdapter.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		003766AC268BAEEC8D05E9E8 /* swift */ = {isa = PBXFileReference; lastKnownFileType = folder; name = swift; path = ../../swift; sourceTree = SOURCE_ROOT; };
 		0A0454EF94BCB42389D5B90B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		0AE37E6C4302786080981EE9 /* LatsDeckScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LatsDeckScreen.swift; sourceTree = "<group>"; };
 		11238FFB50336470B6A97CE0 /* DeckStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStore.swift; sourceTree = "<group>"; };
 		2008FE641E08A7EA3F1142D8 /* Icon-App-76x76@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-76x76@2x.png"; sourceTree = "<group>"; };
 		2484AA38E059AA293C768446 /* Icon-App-1024x1024@1x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-1024x1024@1x.png"; sourceTree = "<group>"; };
@@ -56,12 +72,26 @@
 		B4603482511D3BE1F2132C82 /* BridgeDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeDiscovery.swift; sourceTree = "<group>"; };
 		B9B6EE50773DB75253F67837 /* Icon-App-40x40@1x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-40x40@1x.png"; sourceTree = "<group>"; };
 		BA2C2E756959812A344E33FA /* CompanionTrackpadSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionTrackpadSurface.swift; sourceTree = "<group>"; };
-		5A75C1B0A6E0F4D8C2B19E01 /* LatsDeckScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LatsDeckScreen.swift; sourceTree = "<group>"; };
 		BCF0269F9663D59AA5D8BEF6 /* Icon-App-83.5x83.5@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-83.5x83.5@2x.png"; sourceTree = "<group>"; };
 		D0A784E5230CF4A1207A5B63 /* Icon-App-60x60@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-60x60@3x.png"; sourceTree = "<group>"; };
 		D6A573A92276901B84AA3EE4 /* Icon-App-60x60@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-60x60@2x.png"; sourceTree = "<group>"; };
 		D91400AA758EB6C7BDEFA067 /* Icon-App-20x20@1x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-20x20@1x.png"; sourceTree = "<group>"; };
 		E0A62477A93C15EBE3917B2E /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+		E5BE58AB3627168981D1D91F /* LatsDesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LatsDesignSystem.swift; sourceTree = "<group>"; };
+		30519DB14393D18A74E57E5B /* HomeMockData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeMockData.swift; path = Home/HomeMockData.swift; sourceTree = "<group>"; };
+		B0C0606BE3D76578604B9CBD /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeView.swift; path = Home/HomeView.swift; sourceTree = "<group>"; };
+		C5321ED84ACB164F46D2934B /* HomeTopBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeTopBar.swift; path = Home/HomeTopBar.swift; sourceTree = "<group>"; };
+		DBAE0DE923F39F2BF45E3E1B /* HomeTargetsRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeTargetsRow.swift; path = Home/HomeTargetsRow.swift; sourceTree = "<group>"; };
+		BEDF0B8863E06CF3EB482FBA /* HomeOverflowGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeOverflowGrid.swift; path = Home/HomeOverflowGrid.swift; sourceTree = "<group>"; };
+		8215EE258557D16AA38B3085 /* HomeScenesGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeScenesGrid.swift; path = Home/HomeScenesGrid.swift; sourceTree = "<group>"; };
+		7C03F974076CB5E3C7E3587F /* HomeRoutinesList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeRoutinesList.swift; path = Home/HomeRoutinesList.swift; sourceTree = "<group>"; };
+		78455880A83F3B59BA98BF37 /* HomeRecentTape.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeRecentTape.swift; path = Home/HomeRecentTape.swift; sourceTree = "<group>"; };
+		8D0AF528B55EB38C5E54DFBF /* HomeSyncSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeSyncSection.swift; path = Home/HomeSyncSection.swift; sourceTree = "<group>"; };
+		89ACC1F3EE158DE33127A06F /* HomeCloudStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeCloudStrip.swift; path = Home/HomeCloudStrip.swift; sourceTree = "<group>"; };
+		F3DA7D87C159F5D6AC0C544C /* HomeBottomBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeBottomBar.swift; path = Home/HomeBottomBar.swift; sourceTree = "<group>"; };
+		D54988DB36C3ED3DD1CBF066 /* HomeZeroState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeZeroState.swift; path = Home/HomeZeroState.swift; sourceTree = "<group>"; };
+		E1042450AFBDFADBC000EC79 /* HomeVoiceOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeVoiceOverlay.swift; path = Home/HomeVoiceOverlay.swift; sourceTree = "<group>"; };
+		126FA09AC8E4CB185422ED57 /* HomeDataAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeDataAdapter.swift; path = Home/HomeDataAdapter.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -142,8 +172,23 @@
 				7D303982A361559374D4ECAF /* DeckBridgeSecurityStore.swift */,
 				11238FFB50336470B6A97CE0 /* DeckStore.swift */,
 				0A0454EF94BCB42389D5B90B /* Info.plist */,
+				0AE37E6C4302786080981EE9 /* LatsDeckScreen.swift */,
+				E5BE58AB3627168981D1D91F /* LatsDesignSystem.swift */,
+				126FA09AC8E4CB185422ED57 /* HomeDataAdapter.swift */,
+				E1042450AFBDFADBC000EC79 /* HomeVoiceOverlay.swift */,
+				30519DB14393D18A74E57E5B /* HomeMockData.swift */,
+				B0C0606BE3D76578604B9CBD /* HomeView.swift */,
+				C5321ED84ACB164F46D2934B /* HomeTopBar.swift */,
+				DBAE0DE923F39F2BF45E3E1B /* HomeTargetsRow.swift */,
+				BEDF0B8863E06CF3EB482FBA /* HomeOverflowGrid.swift */,
+				8215EE258557D16AA38B3085 /* HomeScenesGrid.swift */,
+				7C03F974076CB5E3C7E3587F /* HomeRoutinesList.swift */,
+				78455880A83F3B59BA98BF37 /* HomeRecentTape.swift */,
+				8D0AF528B55EB38C5E54DFBF /* HomeSyncSection.swift */,
+				89ACC1F3EE158DE33127A06F /* HomeCloudStrip.swift */,
+				F3DA7D87C159F5D6AC0C544C /* HomeBottomBar.swift */,
+				D54988DB36C3ED3DD1CBF066 /* HomeZeroState.swift */,
 				31BAB98213FEF0182FB2EA32 /* LatticesCompanionApp.swift */,
-				5A75C1B0A6E0F4D8C2B19E01 /* LatsDeckScreen.swift */,
 				E0A62477A93C15EBE3917B2E /* LaunchScreen.storyboard */,
 			);
 			path = Sources;
@@ -246,8 +291,23 @@
 				39910639463B85C88940415F /* DeckBridgeClient.swift in Sources */,
 				477B603FA482CD0AF55BC9C7 /* DeckBridgeSecurityStore.swift in Sources */,
 				015334E9F01E2EC8CE7C6C77 /* DeckStore.swift in Sources */,
+				4932E64B0E7CF7E4C48DB05E /* LatsDeckScreen.swift in Sources */,
+				EC49AAE0FD658F4D651D6CB1 /* LatsDesignSystem.swift in Sources */,
+				2C6AA52F856780E09FBEC4F0 /* HomeDataAdapter.swift in Sources */,
+				27F65A5D6B42CBFF48C61B5D /* HomeVoiceOverlay.swift in Sources */,
+				389783C39A96A0C6040E3D18 /* HomeMockData.swift in Sources */,
+				3B524C6E337D9959BF1BE8FE /* HomeView.swift in Sources */,
+				3345DF34E18FB311421B2457 /* HomeTopBar.swift in Sources */,
+				C6451DBFD579F34A327E81BF /* HomeTargetsRow.swift in Sources */,
+				B9C0507422A8734A914A0D30 /* HomeOverflowGrid.swift in Sources */,
+				68B80BF5CD2C40BA2A059F8E /* HomeScenesGrid.swift in Sources */,
+				5BBCE0043B3533C707C8E672 /* HomeRoutinesList.swift in Sources */,
+				FEEE84C4D01FA5FEF0781729 /* HomeRecentTape.swift in Sources */,
+				8213187280F129984B01C42C /* HomeSyncSection.swift in Sources */,
+				B608495202DFA2A819A411A2 /* HomeCloudStrip.swift in Sources */,
+				C08E8053E76ECAE40E56BC31 /* HomeBottomBar.swift in Sources */,
+				76A8011A09CC97845FD62341 /* HomeZeroState.swift in Sources */,
 				8509FE10337BF9B4286C77DF /* LatticesCompanionApp.swift in Sources */,
-				5A75C1B0A6E0F4D8C2B19E02 /* LatsDeckScreen.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
