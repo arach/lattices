@@ -47,7 +47,7 @@ function hasTmux(): boolean {
 const tmuxRequiredCommands = new Set([
   "init", "ls", "list", "kill", "rm", "sync", "reconcile",
   "restart", "respawn", "group", "groups", "tab", "status",
-  "inventory", "distribute", "sessions",
+  "inventory", "sessions",
 ]);
 
 function requireTmux(command: string | undefined): void {
@@ -1430,14 +1430,14 @@ async function diagCommand(limit?: string): Promise<void> {
   }
 }
 
-async function distributeCommand(): Promise<void> {
-  try {
-    const { daemonCall } = await getDaemonClient();
-    await daemonCall("space.optimize", { scope: "visible", strategy: "balanced" });
-    console.log("Distributed visible windows into grid");
-  } catch {
-    console.log("Daemon not running. Start with: lattices app");
-  }
+async function distributeCommand(rawArgs: string[] = []): Promise<void> {
+  const request = parseSpaceOptimizeArgs(rawArgs, "visible");
+  await optimizeWindowsCommand(request, "Distributed");
+}
+
+async function tileFamilyCommand(rawArgs: string[]): Promise<void> {
+  const request = parseSpaceOptimizeArgs(rawArgs, "active-app");
+  await optimizeWindowsCommand(request, "Smart-tiled");
 }
 
 async function daemonLsCommand(): Promise<boolean> {
@@ -1740,7 +1740,8 @@ Usage:
   lattices windows [--json]   List all desktop windows (daemon required)
   lattices sessions [--json]  List active tmux sessions via daemon
   lattices tile <position>    Tile the frontmost window (left, right, top, etc.)
-  lattices distribute         Smart-grid all visible windows (daemon required)
+  lattices tile family [app] [region]  Smart-grid the frontmost app family, or a named app
+  lattices distribute [app] [region]   Smart-grid visible windows or just one app (daemon required)
   lattices layer [name|index]  List layers or switch by name/index (daemon required)
   lattices layer create <name> [wid:N ...] [--json '<specs>']  Create a session layer
   lattices layer snap [name]   Snapshot visible windows into a session layer
@@ -1931,6 +1932,69 @@ const tilePresets: Record<string, (s: ScreenBounds) => number[]> = {
   "center-third": (s) => [s.x + Math.round(s.w * 0.333), s.y, s.x + Math.round(s.w * 0.667), s.y + s.h],
   "right-third":  (s) => [s.x + Math.round(s.w * 0.667), s.y, s.x + s.w, s.y + s.h],
 };
+
+type SpaceOptimizeScope = "visible" | "active-app" | "app";
+
+interface SpaceOptimizeRequest {
+  scope: SpaceOptimizeScope;
+  app?: string;
+  region?: string;
+}
+
+function isPlacementToken(value?: string): boolean {
+  if (!value) return false;
+  const normalized = value.toLowerCase();
+  return normalized in tilePresets || /^grid:\d+x\d+:\d+,\d+$/i.test(normalized);
+}
+
+function parseSpaceOptimizeArgs(rawArgs: string[], defaultScope: SpaceOptimizeScope): SpaceOptimizeRequest {
+  const parts = rawArgs.filter(Boolean);
+  if (!parts.length) return { scope: defaultScope };
+
+  const last = parts[parts.length - 1];
+  const region = isPlacementToken(last) ? last : undefined;
+  const appParts = region ? parts.slice(0, -1) : parts;
+  const app = appParts.length ? appParts.join(" ") : undefined;
+
+  if (app) return { scope: "app", app, region };
+  return { scope: defaultScope, region };
+}
+
+function formatOptimizeTarget(request: SpaceOptimizeRequest): string {
+  if (request.app) return `"${request.app}"`;
+  return request.scope === "active-app" ? "the frontmost app" : "all visible windows";
+}
+
+async function optimizeWindowsCommand(
+  request: SpaceOptimizeRequest,
+  successVerb: string
+): Promise<void> {
+  try {
+    const { daemonCall } = await getDaemonClient();
+    const params: Record<string, unknown> = {
+      scope: request.scope,
+      strategy: "balanced",
+    };
+    if (request.app) params.app = request.app;
+    if (request.region) params.region = request.region;
+
+    const result = await daemonCall("space.optimize", params) as any;
+    const count = result?.windowCount ?? 0;
+    const target = formatOptimizeTarget(request);
+    const regionSuffix = request.region ? ` in the ${request.region} region` : "";
+
+    if (count === 0) {
+      console.log(`No eligible windows found for ${target}${regionSuffix}.`);
+      return;
+    }
+
+    console.log(
+      `${successVerb} ${count} window${count === 1 ? "" : "s"} for ${target}${regionSuffix}.`
+    );
+  } catch {
+    console.log("Daemon not running. Start with: lattices app");
+  }
+}
 
 function tileWindow(position: string): void {
   const preset = tilePresets[position];
@@ -2129,14 +2193,27 @@ switch (command) {
     }
     break;
   case "distribute":
-    await distributeCommand();
+    await distributeCommand(args.slice(1));
     break;
   case "tile":
   case "t":
-    if (args[1]) {
+    if (args[1] === "family" || args[1] === "app") {
+      await tileFamilyCommand(args.slice(2));
+    } else if (args[1] === "all") {
+      await distributeCommand(args.slice(2));
+    } else if (args[1]) {
       tileWindow(args[1]);
     } else {
-      console.log("Usage: lattices tile <position>\n");
+      console.log("Usage:");
+      console.log("  lattices tile <position>");
+      console.log("  lattices tile family [app-name] [region]");
+      console.log("  lattices tile all [app-name] [region]\n");
+      console.log("Examples:");
+      console.log("  lattices tile left");
+      console.log("  lattices tile family");
+      console.log("  lattices tile family right");
+      console.log("  lattices tile family iTerm2");
+      console.log("  lattices tile all Google Chrome left\n");
       console.log("Positions: left, right, top, bottom, top-left, top-right,");
       console.log("           bottom-left, bottom-right, maximize, center,");
       console.log("           left-third, center-third, right-third");

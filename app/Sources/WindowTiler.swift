@@ -601,14 +601,72 @@ enum WindowTiler {
         return spaces[targetIndex]
     }
 
+    private struct AdjacentSpaceContext {
+        let point: CGPoint
+        let display: DisplaySpaces
+        let activeSpaceId: Int
+        let currentSpaceId: Int
+        let target: SpaceInfo?
+    }
+
+    private static func adjacentSpaceContext(offset: Int, from cgPoint: CGPoint? = nil) -> AdjacentSpaceContext? {
+        let point = cgPoint ?? currentMouseCGPoint()
+        guard let display = displaySpaces(containing: point) else { return nil }
+        let activeSpaceId = getCurrentSpace()
+        let currentSpaceId = resolvedCurrentSpaceId(for: display, activeSpaceId: activeSpaceId)
+        let target = adjacentSpace(in: display.spaces, currentSpaceId: currentSpaceId, offset: offset)
+        return AdjacentSpaceContext(
+            point: point,
+            display: display,
+            activeSpaceId: activeSpaceId,
+            currentSpaceId: currentSpaceId,
+            target: target
+        )
+    }
+
+    static func adjacentSpaceTarget(offset: Int, from cgPoint: CGPoint? = nil) -> SpaceInfo? {
+        adjacentSpaceContext(offset: offset, from: cgPoint)?.target
+    }
+
     @discardableResult
     static func switchToAdjacentSpace(offset: Int, from cgPoint: CGPoint? = nil) -> Bool {
-        guard let display = displaySpaces(containing: cgPoint ?? currentMouseCGPoint()) else { return false }
-        guard let target = adjacentSpace(in: display.spaces, currentSpaceId: display.currentSpaceId, offset: offset) else {
+        guard let context = adjacentSpaceContext(offset: offset, from: cgPoint) else {
+            DiagnosticLog.shared.warn("switchToAdjacentSpace: no adjacent space for offset \(offset) from \(formatCGPoint(cgPoint ?? currentMouseCGPoint()))")
             return false
         }
-        switchToSpace(spaceId: target.id)
-        return true
+
+        let spaces = context.display.spaces.map(\.id)
+        let targetText = context.target.map { String($0.id) } ?? "none"
+        DiagnosticLog.shared.info(
+            "switchToAdjacentSpace: offset=\(offset) point=\(formatCGPoint(context.point)) displayId=\(context.display.displayId) active=\(context.activeSpaceId) displayCurrent=\(context.display.currentSpaceId) resolved=\(context.currentSpaceId) target=\(targetText) spaces=\(spaces)"
+        )
+
+        if getDisplaySpaces().count == 1 {
+            if let finalSpaceId = switchToAdjacentSpaceViaSystemShortcut(
+                offset: offset,
+                displayId: context.display.displayId,
+                initialSpaceId: context.currentSpaceId
+            ) {
+                if let target = context.target, finalSpaceId != target.id {
+                    DiagnosticLog.shared.info("switchToAdjacentSpace: system shortcut changed \(context.currentSpaceId) → \(finalSpaceId) (expected \(target.id))")
+                } else {
+                    DiagnosticLog.shared.info("switchToAdjacentSpace: system shortcut changed \(context.currentSpaceId) → \(finalSpaceId)")
+                }
+                return true
+            }
+
+            guard let target = context.target else {
+                DiagnosticLog.shared.info("switchToAdjacentSpace: system shortcut stayed on \(context.currentSpaceId) and there is no adjacent space")
+                return false
+            }
+
+            DiagnosticLog.shared.warn("switchToAdjacentSpace: system shortcut stayed on \(context.currentSpaceId), falling back to SkyLight target \(target.id)")
+        }
+
+        guard let target = context.target else { return false }
+        let switched = switchToSpace(spaceId: target.id)
+        DiagnosticLog.shared.info("switchToAdjacentSpace: SkyLight \(switched ? "reached" : "missed") target \(target.id)")
+        return switched
     }
 
     /// Find a window by its title tag and return its CGWindowID and owner PID
@@ -637,10 +695,12 @@ enum WindowTiler {
         return result.map { $0.intValue }
     }
 
-    /// Switch a display to a specific Space
-    static func switchToSpace(spaceId: Int) {
+    /// Switch a display to a specific Space.
+    /// Returns true once the requested Space becomes current.
+    @discardableResult
+    static func switchToSpace(spaceId: Int, verify: Bool = true) -> Bool {
         guard let mainConn = CGS.mainConnectionID,
-              let setSpace = CGS.setCurrentSpace else { return }
+              let setSpace = CGS.setCurrentSpace else { return false }
 
         let cid = mainConn()
 
@@ -648,10 +708,37 @@ enum WindowTiler {
         let allDisplays = getDisplaySpaces()
         for display in allDisplays {
             if display.spaces.contains(where: { $0.id == spaceId }) {
+                let initialSpace = display.currentSpaceId
+                if initialSpace == spaceId {
+                    DiagnosticLog.shared.info("switchToSpace: display \(display.displayIndex) already on target \(spaceId)")
+                    return true
+                }
+
+                DiagnosticLog.shared.info(
+                    "switchToSpace: requesting \(spaceId) on display \(display.displayIndex) id=\(display.displayId) from \(initialSpace)"
+                )
                 setSpace(cid, display.displayId as CFString, UInt64(spaceId))
-                return
+                guard verify else { return true }
+
+                let deadline = Date().addingTimeInterval(0.45)
+                while Date() < deadline {
+                    usleep(30_000)
+                    let current = getDisplaySpaces().first(where: { $0.displayId == display.displayId })?.currentSpaceId ?? 0
+                    if current == spaceId {
+                        DiagnosticLog.shared.info("switchToSpace: display \(display.displayIndex) confirmed target \(spaceId)")
+                        return true
+                    }
+                }
+
+                DiagnosticLog.shared.warn(
+                    "switchToSpace: requested \(spaceId) on display \(display.displayIndex) from \(initialSpace), but current Space did not change"
+                )
+                return false
             }
         }
+
+        DiagnosticLog.shared.warn("switchToSpace: couldn't resolve display for space \(spaceId)")
+        return false
     }
 
     // MARK: - Move Window Between Spaces
@@ -2089,9 +2176,47 @@ enum WindowTiler {
         return CGPoint(x: mouseLocation.x, y: primaryHeight - mouseLocation.y)
     }
 
+    private static func switchToAdjacentSpaceViaSystemShortcut(offset: Int, displayId: String, initialSpaceId: Int) -> Int? {
+        let keyCode: CGKeyCode = offset < 0 ? 123 : 124
+        let script = """
+        tell application "System Events"
+            key code \(keyCode) using control down
+        end tell
+        return "ok"
+        """
+        let result = ProcessQuery.shell(["/usr/bin/osascript", "-e", script])
+        if result != "ok" {
+            DiagnosticLog.shared.warn("switchToAdjacentSpace: system shortcut script did not complete for offset \(offset)")
+        }
+        return waitForSpaceChange(displayId: displayId, initialSpaceId: initialSpaceId, timeout: 1.2)
+    }
+
+    private static func waitForSpaceChange(displayId: String, initialSpaceId: Int, timeout: TimeInterval) -> Int? {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            usleep(30_000)
+            let current = getDisplaySpaces().first(where: { $0.displayId == displayId })?.currentSpaceId ?? 0
+            if current != 0, current != initialSpaceId {
+                return current
+            }
+        }
+        return nil
+    }
+
     private static func displaySpaces(containing cgPoint: CGPoint) -> DisplaySpaces? {
         guard let screenIndex = screenIndex(for: cgPoint) else { return nil }
         return getDisplaySpaces().first(where: { $0.displayIndex == screenIndex })
+    }
+
+    private static func resolvedCurrentSpaceId(for display: DisplaySpaces, activeSpaceId: Int) -> Int {
+        if display.spaces.contains(where: { $0.id == activeSpaceId }) {
+            return activeSpaceId
+        }
+        return display.currentSpaceId
+    }
+
+    private static func formatCGPoint(_ point: CGPoint) -> String {
+        "\(Int(point.x)),\(Int(point.y))"
     }
 
     private static func screenIndex(for cgPoint: CGPoint) -> Int? {
