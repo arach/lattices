@@ -2011,7 +2011,6 @@ final class ScreenMapController: ObservableObject {
 
     func handleKey(_ keyCode: UInt16, modifiers: NSEvent.ModifierFlags = []) -> Bool {
         let diag = DiagnosticLog.shared
-        diag.info("[ScreenMap] key: \(keyCode)")
 
         // Tiling mode intercepts keys before anything else
         if editor?.isTilingMode == true {
