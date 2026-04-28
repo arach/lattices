@@ -45,6 +45,11 @@ enum DesktopInventoryMode: Equatable {
     case screenMap    // m → interactive screen map editor
 }
 
+enum CommandModeLaunchMode: Equatable {
+    case normal
+    case organize(appName: String?)
+}
+
 // DisplayGeometry, ScreenMapWindowEntry, ScreenMapEditorState, ScreenMapActionLog
 // are defined in ScreenMapState.swift
 // MARK: - Filter Presets
@@ -132,9 +137,42 @@ final class CommandModeState: ObservableObject {
 
     var onDismiss: (() -> Void)?
     var onPanelResize: ((_ width: CGFloat, _ height: CGFloat) -> Void)?
+    private let launchMode: CommandModeLaunchMode
 
     /// Tracks the last item navigated to, for consistent Shift+arrow multi-select
     private var cursorWindowId: UInt32?
+
+    init(launchMode: CommandModeLaunchMode = .normal) {
+        self.launchMode = launchMode
+    }
+
+    var isOrganizeFlow: Bool {
+        if case .organize = launchMode { return true }
+        return false
+    }
+
+    var organizeSeedAppName: String? {
+        if case .organize(let appName) = launchMode { return appName }
+        return nil
+    }
+
+    var organizeSelectionSummary: String {
+        let count = selectedWindowIds.count
+        if let appName = organizeSeedAppName, !appName.isEmpty {
+            return "\(count) \(appName) window\(count == 1 ? "" : "s") selected"
+        }
+        return "\(count) window\(count == 1 ? "" : "s") selected"
+    }
+
+    var organizeGuidance: String {
+        if selectedWindowIds.count > 1 {
+            return "Press D to organize. Cmd-click adds or removes windows. Shift-click extends the selection."
+        }
+        if selectedWindowIds.count == 1 {
+            return "Cmd-click another window to add it, then press D to organize the set."
+        }
+        return "Click windows to select them. Cmd-click adds or removes windows, and D organizes the selection."
+    }
 
     // MARK: - Selection Helpers
 
@@ -369,6 +407,7 @@ final class CommandModeState: ObservableObject {
         desktopMode = .browsing
         gridPreviewPlacement = nil
         phase = .desktopInventory
+        configureLaunchMode()
         // Don't call onPanelResize here — caller handles initial sizing
     }
 
@@ -574,6 +613,20 @@ final class CommandModeState: ObservableObject {
                     highlightSelectedWindow()
                 }
             }
+            return true
+
+        case 2: // d → distribute selected
+            if isSearching && selectedWindowIds.isEmpty { return false }
+            if isSearching { deactivateSearch() }
+            guard !selectedWindowIds.isEmpty else {
+                flash("Select 2+ windows to organize")
+                return true
+            }
+            guard selectedWindowIds.count > 1 else {
+                flash("Add another window, then press D to organize")
+                return true
+            }
+            distributeSelected()
             return true
 
         case 46: // m → screen map editor (standalone window)
@@ -1047,6 +1100,54 @@ final class CommandModeState: ObservableObject {
             return position.label
         default:
             return placement.wireValue
+        }
+    }
+
+    private func configureLaunchMode() {
+        switch launchMode {
+        case .normal:
+            return
+        case .organize(let appName):
+            activePreset = .currentSpace
+            seedSelectionForOrganization(appName: appName)
+        }
+    }
+
+    private func seedSelectionForOrganization(appName: String?) {
+        let visibleWindows = flatWindowList.filter(\.isOnScreen)
+        let targetApp = appName ?? visibleWindows.first?.appName
+        let initialSelection = visibleWindows.filter { window in
+            guard let name = window.appName, let targetApp else { return false }
+            return name.localizedCaseInsensitiveCompare(targetApp) == .orderedSame
+        }
+
+        if initialSelection.isEmpty {
+            flash("Select windows to organize. Cmd-click adds or removes windows; D distributes.")
+            return
+        }
+
+        selectedWindowIds = Set(initialSelection.map(\.id))
+        cursorWindowId = initialSelection.first?.id
+
+        if let targetApp {
+            if initialSelection.count > 1 {
+                flash("Selected \(initialSelection.count) \(targetApp) windows. Press D to organize.")
+            } else {
+                flash("Selected the \(targetApp) window. Cmd-click more windows, then press D.")
+            }
+        } else if initialSelection.count > 1 {
+            flash("Selected \(initialSelection.count) windows. Press D to organize.")
+        } else {
+            flash("Selected 1 window. Cmd-click more windows, then press D.")
+        }
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            if self.selectedWindowIds.count > 1 {
+                self.highlightAllSelected()
+            } else {
+                self.highlightSelectedWindow()
+            }
         }
     }
 

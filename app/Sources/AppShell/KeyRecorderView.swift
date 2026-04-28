@@ -34,7 +34,7 @@ struct KeyRecorderView: View {
                     .frame(minWidth: 80, alignment: .leading)
             } else if let binding = binding {
                 HStack(spacing: 4) {
-                    ForEach(binding.displayParts, id: \.self) { part in
+                    ForEach(binding.compactDisplayParts, id: \.self) { part in
                         keyBadge(part)
                     }
                 }

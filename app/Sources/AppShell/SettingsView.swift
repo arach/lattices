@@ -57,6 +57,7 @@ struct SettingsContentView: View {
     @ObservedObject var prefs: Preferences
     @ObservedObject var scanner: ProjectScanner
     @ObservedObject var hotkeyStore: HotkeyStore = .shared
+    @ObservedObject var workspaceManager: WorkspaceManager = .shared
     @ObservedObject var appUpdater: AppUpdater = .shared
     @ObservedObject var mouseShortcutStore: MouseShortcutStore = .shared
     var onBack: (() -> Void)? = nil
@@ -83,6 +84,13 @@ struct SettingsContentView: View {
 
     private var currentTabLabel: String {
         page == .docs ? "Docs" : selectedTab.title
+    }
+
+    private var snapModifierBinding: Binding<SnapModifierKey> {
+        Binding(
+            get: { workspaceManager.snapZonesConfig.modifier ?? .command },
+            set: { workspaceManager.updateSnapModifier($0) }
+        )
     }
 
     private var backBar: some View {
@@ -459,13 +467,28 @@ struct SettingsContentView: View {
                                 .labelsHidden()
                         }
 
-                        Text("Hold the configured snap modifier while dragging to reveal landing targets and a live preview, then release it to go back to a free drag. Default: Command.")
+                        HStack {
+                            Text("Snap modifier")
+                                .font(Typo.mono(10))
+                                .foregroundColor(Palette.textDim)
+                            Spacer()
+                            Picker("", selection: snapModifierBinding) {
+                                ForEach(SnapModifierKey.allCases) { modifier in
+                                    Text(modifier.shortLabel).tag(modifier)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+                            .frame(width: 220)
+                        }
+
+                        Text("Dragging stays normal until you hold \(snapModifierBinding.wrappedValue.label). While that key is down, Lattices reveals snap targets and a live preview for the window you’re moving.")
                             .font(Typo.caption(9))
                             .foregroundColor(Palette.textMuted.opacity(0.7))
 
                         cardDivider
 
-                        Text("Agent-editable rules live in ~/.lattices/snap-zones.json. Changes are picked up on the next drag.")
+                        Text("Advanced landing-zone rules still live in ~/.lattices/snap-zones.json. Modifier changes here take effect on the next drag.")
                             .font(Typo.caption(9))
                             .foregroundColor(Palette.textMuted.opacity(0.7))
                     }
@@ -1541,6 +1564,8 @@ struct SettingsContentView: View {
                     .foregroundColor(Palette.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
             }
+
+            compactKeyRecorder(action: .tileOrganize)
         }
     }
 

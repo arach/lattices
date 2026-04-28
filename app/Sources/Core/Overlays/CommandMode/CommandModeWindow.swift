@@ -43,15 +43,19 @@ final class CommandModeWindow {
 
     var isVisible: Bool { isOpen }
 
-    func toggle() {
+    func toggle(launchMode: CommandModeLaunchMode = .normal) {
         if isOpen {
-            dismiss()
+            if launchMode == .normal {
+                dismiss()
+            } else {
+                show(launchMode: launchMode)
+            }
         } else {
-            show()
+            show(launchMode: launchMode)
         }
     }
 
-    func show() {
+    func show(launchMode: CommandModeLaunchMode = .normal) {
         // Always rebuild for fresh state
         dismiss()
         isOpen = true
@@ -61,7 +65,7 @@ final class CommandModeWindow {
             CommandPaletteWindow.shared.dismiss()
         }
 
-        let state = CommandModeState()
+        let state = CommandModeState(launchMode: launchMode)
         state.onDismiss = { [weak self] in
             self?.dismiss()
         }
