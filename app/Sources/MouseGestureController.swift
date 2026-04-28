@@ -391,7 +391,11 @@ final class MouseGestureController {
             )
             DispatchQueue.main.async { [weak self] in
                 session.overlay.dismiss()
-                self?.replayMouseClick(buttonNumber: buttonNumber, at: session.startPoint)
+                self?.replayMouseClick(
+                    buttonNumber: buttonNumber,
+                    at: session.startPoint,
+                    flags: event.flags
+                )
             }
             return nil
         }
@@ -490,7 +494,7 @@ final class MouseGestureController {
         session = nil
     }
 
-    private func replayMouseClick(buttonNumber: Int64, at point: CGPoint) {
+    private func replayMouseClick(buttonNumber: Int64, at point: CGPoint, flags: CGEventFlags) {
         let events: [CGEventType] = [.otherMouseDown, .otherMouseUp]
         for type in events {
             guard let mouseButton = CGMouseButton(rawValue: UInt32(buttonNumber)) else { continue }
@@ -503,6 +507,7 @@ final class MouseGestureController {
 
             event.setIntegerValueField(CGEventField.mouseEventButtonNumber, value: buttonNumber)
             event.setIntegerValueField(CGEventField.eventSourceUserData, value: Self.syntheticMarker)
+            event.flags = flags
             event.post(tap: CGEventTapLocation.cghidEventTap)
         }
     }

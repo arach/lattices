@@ -562,7 +562,7 @@ struct SettingsContentView: View {
                             .buttonStyle(.plain)
                         }
 
-                        Text("Use Event Viewer to discover what your mouse emits on this machine. Device-specific rules are supported in the schema now, with global fallback when the source device cannot be resolved from the event stream.")
+                        Text("Use Event Viewer to discover what your mouse emits on this machine. The config schema already accepts device selectors, but live gesture matching currently falls back to global rules when macOS doesn't expose the source device.")
                             .font(Typo.caption(9))
                             .foregroundColor(Palette.textMuted.opacity(0.7))
                     }
