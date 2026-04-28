@@ -106,8 +106,7 @@ final class DesktopModel: ObservableObject {
     }
 
     func windowForSession(_ session: String) -> WindowEntry? {
-        let tag = Terminal.windowTag(for: session)
-        return windows.values.first { $0.title.contains(tag) }
+        SessionWindowLocator.cachedWindow(forSession: session, in: windows)
     }
 
     /// Assign a layer tag to a window (in-memory only)
@@ -205,12 +204,7 @@ final class DesktopModel: ObservableObject {
 
             let spaceIds = WindowTiler.getSpacesForWindow(wid)
 
-            // Extract lattices session tag from title: [lattices:session-name]
-            var latticesSession: String?
-            if let range = title.range(of: #"\[lattices:([^\]]+)\]"#, options: .regularExpression) {
-                let match = String(title[range])
-                latticesSession = String(match.dropFirst(9).dropLast(1)) // drop "[lattices:" and "]"
-            }
+            let latticesSession = SessionWindowLocator.extractSessionName(from: title)
 
             var entry = WindowEntry(
                 wid: wid,
