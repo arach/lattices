@@ -1805,6 +1805,7 @@ struct ScreenMapView: View {
         let displays = editor?.displays ?? []
         let zoomLevel = editor?.zoomLevel ?? 1.0
         let panOffset = editor?.panOffset ?? .zero
+        let canvasShape = RoundedRectangle(cornerRadius: 6, style: .continuous)
 
         return GeometryReader { geo in
             let metrics = CanvasMetrics(editor: editor, displays: displays, viewportSize: geo.size)
@@ -1852,12 +1853,14 @@ struct ScreenMapView: View {
         }
         .padding(8)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(canvasShape)
+        .clipShape(canvasShape)
         .clipped()
         .background(
             ZStack {
-                RoundedRectangle(cornerRadius: 6)
+                canvasShape
                     .fill(Color.black.opacity(0.25))
-                RoundedRectangle(cornerRadius: 6)
+                canvasShape
                     .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
                 Canvas { context, size in
                     let spacing: CGFloat = 20
@@ -2742,11 +2745,14 @@ struct ScreenMapView: View {
             }
             // Track space key for canvas drag-to-pan
             if event.keyCode == 49 && !controller.isSearchActive {
-                if event.type == .keyDown && !event.isARepeat {
-                    isSpaceHeld = true
-                    NSCursor.openHand.push()
+                if event.type == .keyDown {
+                    if !isSpaceHeld {
+                        isSpaceHeld = true
+                        NSCursor.openHand.push()
+                    }
                     return nil
                 } else if event.type == .keyUp {
+                    guard isSpaceHeld else { return nil }
                     isSpaceHeld = false
                     spaceDragStart = nil
                     NSCursor.pop()
@@ -2788,16 +2794,18 @@ struct ScreenMapView: View {
         mouseDownMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
             guard let eventWindow = event.window,
                   eventWindow === ScreenMapWindowController.shared.nsWindow else { return event }
+            let flippedPt = flippedScreenPoint(event)
 
             // Space+click → begin canvas pan
-            if isSpaceHeld, let editor = controller.editor {
+            if isSpaceHeld,
+               isCanvasPoint(flippedPt),
+               let editor = controller.editor {
                 spaceDragStart = event.locationInWindow
                 spaceDragPanStart = editor.panOffset
                 NSCursor.closedHand.push()
                 return nil
             }
 
-            let flippedPt = flippedScreenPoint(event)
             if let editor = controller.editor,
                let hit = canvasHit(flippedScreenPt: flippedPt, editor: editor),
                hoveredWindowId == hit.id {
@@ -3042,6 +3050,7 @@ struct ScreenMapView: View {
     // MARK: - Hit Test / Coordinate Conversion
 
     private func canvasHit(flippedScreenPt: CGPoint, editor: ScreenMapEditorState) -> CanvasHit? {
+        guard isCanvasPoint(flippedScreenPt) else { return nil }
         let projection = CanvasProjection(editor: editor)
         guard projection.scale > 0 else { return nil }
         let canvasLocal = CGPoint(
@@ -3057,6 +3066,10 @@ struct ScreenMapView: View {
             }
         }
         return nil
+    }
+
+    private func isCanvasPoint(_ point: CGPoint) -> Bool {
+        CGRect(origin: screenMapCanvasOrigin, size: screenMapCanvasSize).contains(point)
     }
 
     private func detectDragMode(mapPoint: CGPoint, windowMapRect: CGRect) -> CanvasDragMode {
