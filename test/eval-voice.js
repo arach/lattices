@@ -4,7 +4,7 @@
 // Tests the full pipeline: text -> preamble strip -> phrase match -> slot resolution
 // Requires the Lattices daemon to be running (ws://127.0.0.1:9399)
 //
-// Run: node test/eval-voice.js
+// Run: node --experimental-strip-types test/eval-voice.js
 // Flags:
 //   --verbose    Show slot details for passing tests
 //   --only=N     Run only test number N (1-based)
@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const { daemonCall, isDaemonRunning } = await import(
-  resolve(__dirname, "../bin/daemon-client.js")
+  resolve(__dirname, "../bin/daemon-client.ts")
 );
 
 // ── CLI Flags ────────────────────────────────────────────────────────
@@ -309,7 +309,7 @@ async function runVoiceTests() {
   const alive = await isDaemonRunning();
   if (!alive) {
     console.error(
-      "Lattices daemon is not running. Start it with: node bin/lattices-app.js restart"
+      "Lattices daemon is not running. Start it with: ./bin/lattices-dev restart"
     );
     process.exit(1);
   }
