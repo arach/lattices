@@ -1,31 +1,5 @@
 import AppKit
 
-// MARK: - Intent Definition
-
-struct IntentDef {
-    let name: String
-    let description: String
-    let examples: [String]           // Example phrases that map to this intent
-    let slots: [IntentSlot]          // Named parameters extracted from the utterance
-    let handler: (IntentRequest) throws -> JSON
-}
-
-struct IntentSlot {
-    let name: String
-    let type: String                 // "string", "int", "position", "query"
-    let required: Bool
-    let description: String
-    let enumValues: [String]?        // For constrained slots like tile positions
-}
-
-struct IntentRequest {
-    let intent: String
-    let slots: [String: JSON]
-    let rawText: String?             // Original transcription, for fallback matching
-    let confidence: Double?          // Transcription confidence from voice service
-    let source: String?              // "vox", "siri", "cli", etc.
-}
-
 // MARK: - Intent Engine
 
 final class IntentEngine {
