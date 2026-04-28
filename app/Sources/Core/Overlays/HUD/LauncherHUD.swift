@@ -25,33 +25,20 @@ final class LauncherHUD {
         let view = LauncherView(dismiss: { [weak self] in self?.dismiss() })
             .preferredColorScheme(.dark)
 
-        let hosting = NSHostingView(rootView: view)
-
-        let p = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 420, height: 480),
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
+        let p = OverlayPanelShell.makePanel(
+            config: .init(
+                size: NSSize(width: 420, height: 480),
+                styleMask: [.borderless, .nonactivatingPanel],
+                background: .clear,
+                hidesOnDeactivate: false,
+                isMovableByWindowBackground: false
+            ),
+            rootView: view
         )
-        p.isOpaque = false
-        p.backgroundColor = .clear
-        p.level = .floating
-        p.hasShadow = true
-        p.hidesOnDeactivate = false
-        p.isReleasedWhenClosed = false
-        p.isMovableByWindowBackground = false
-        p.contentView = hosting
-
-        // Center on mouse screen
-        let mouseLocation = NSEvent.mouseLocation
-        let screen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }) ?? NSScreen.main ?? NSScreen.screens.first!
-        let screenFrame = screen.visibleFrame
-        let x = screenFrame.midX - 210
-        let y = screenFrame.midY - 240 + (screenFrame.height * 0.08)
-        p.setFrameOrigin(NSPoint(x: x, y: y))
+        OverlayPanelShell.position(p, placement: .mouseScreenCentered(yOffsetRatio: 0.08))
 
         p.alphaValue = 0
-        p.orderFrontRegardless()
+        OverlayPanelShell.present(p, activate: false, makeKey: false, orderFrontRegardless: true)
 
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.12
@@ -86,7 +73,6 @@ final class LauncherHUD {
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
             // Don't dismiss if clicking inside the panel
             guard let panel = self?.panel else { return }
-            let loc = event.locationInWindow
             if !panel.frame.contains(NSEvent.mouseLocation) {
                 self?.dismiss()
             }
@@ -115,7 +101,7 @@ struct LauncherView: View {
         let q = query.lowercased()
         return scanner.projects.filter {
             $0.name.lowercased().contains(q) ||
-            ($0.paneSummary ?? "").lowercased().contains(q)
+            $0.paneSummary.lowercased().contains(q)
         }
     }
 

@@ -12,31 +12,6 @@ protocol LatticeIntent {
     func perform(slots: [String: JSON]) throws -> JSON
 }
 
-// MARK: - Slot Definition
-
-enum SlotType {
-    case string                           // Free-form text
-    case position                         // Tile position (left, right, maximize, etc.)
-    case app                              // Running app name
-    case session                          // Active tmux session
-    case layer                            // Layer name
-    case enumerated([String])             // Fixed set of values
-}
-
-struct SlotDef {
-    let name: String
-    let type: SlotType
-    let required: Bool
-    let defaultValue: JSON?
-
-    init(name: String, type: SlotType, required: Bool = true, defaultValue: JSON? = nil) {
-        self.name = name
-        self.type = type
-        self.required = required
-        self.defaultValue = defaultValue
-    }
-}
-
 // MARK: - Compiled Phrase Template
 
 struct CompiledPhrase {

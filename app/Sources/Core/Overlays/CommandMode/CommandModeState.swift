@@ -91,11 +91,14 @@ final class CommandModeState: ObservableObject {
     @Published var inventory = CommandModeInventory(activeLayer: nil, layerCount: 0, items: [])
     @Published var chords: [Chord] = []
     @Published var desktopSnapshot: DesktopInventorySnapshot?
-    @Published var selectedWindowIds: Set<UInt32> = []
+    @Published var selectedWindowIds: Set<UInt32> = [] {
+        didSet { syncSharedSelection() }
+    }
     @Published var desktopMode: DesktopInventoryMode = .browsing
     @Published var activePreset: FilterPreset? = nil
     @Published var searchQuery: String = ""
     @Published var isSearching: Bool = false
+    @Published var gridPreviewPlacement: PlacementSpec? = nil
 
     // MARK: - Marquee Drag State
     @Published var isDragging: Bool = false
@@ -138,6 +141,26 @@ final class CommandModeState: ObservableObject {
     /// Backwards-compat: returns single selected ID (first element)
     var selectedWindowId: UInt32? {
         selectedWindowIds.first
+    }
+
+    var selectedWindowSummaryText: String {
+        let windows = flatWindowList.filter { selectedWindowIds.contains($0.id) }
+        let labels = windows.compactMap { $0.appName }.uniquePrefix(3)
+        guard !labels.isEmpty else { return "" }
+        if windows.count > labels.count {
+            return labels.joined(separator: " • ") + " +\(windows.count - labels.count)"
+        }
+        return labels.joined(separator: " • ")
+    }
+
+    var gridPreviewRegionLabel: String {
+        guard let placement = gridPreviewPlacement else { return "Full Screen" }
+        switch placement {
+        case .tile(let position):
+            return position.label
+        default:
+            return placement.wireValue
+        }
     }
 
     func isSelected(_ id: UInt32) -> Bool {
@@ -344,6 +367,7 @@ final class CommandModeState: ObservableObject {
         desktopSnapshot = buildDesktopInventory()
         clearSelection()
         desktopMode = .browsing
+        gridPreviewPlacement = nil
         phase = .desktopInventory
         // Don't call onPanelResize here — caller handles initial sizing
     }
@@ -535,6 +559,7 @@ final class CommandModeState: ObservableObject {
             if isSearching && selectedWindowIds.isEmpty { return false }
             if isSearching { deactivateSearch() }
             if !selectedWindowIds.isEmpty {
+                gridPreviewPlacement = nil
                 desktopMode = .gridPreview
             }
             return true
@@ -614,13 +639,52 @@ final class CommandModeState: ObservableObject {
 
     private func handleGridPreviewKey(_ keyCode: UInt16) -> Bool {
         switch keyCode {
-        case 53: // Escape — always dismiss
-            onDismiss?()
+        case 53: // Escape — cancel preview, keep selection
+            gridPreviewPlacement = nil
+            desktopMode = .browsing
             return true
 
         case 36, 1: // Enter or s → apply the layout
-            showAndDistributeSelected()
+            showAndDistributeSelected(in: gridPreviewPlacement)
+            gridPreviewPlacement = nil
             desktopMode = .browsing
+            return true
+
+        case 123:
+            gridPreviewPlacement = .tile(.left)
+            return true
+        case 124:
+            gridPreviewPlacement = .tile(.right)
+            return true
+        case 126:
+            gridPreviewPlacement = .tile(.top)
+            return true
+        case 125:
+            gridPreviewPlacement = .tile(.bottom)
+            return true
+        case 18:
+            gridPreviewPlacement = .tile(.topLeft)
+            return true
+        case 19:
+            gridPreviewPlacement = .tile(.topRight)
+            return true
+        case 20:
+            gridPreviewPlacement = .tile(.bottomLeft)
+            return true
+        case 21:
+            gridPreviewPlacement = .tile(.bottomRight)
+            return true
+        case 23:
+            gridPreviewPlacement = .tile(.leftThird)
+            return true
+        case 22:
+            gridPreviewPlacement = .tile(.centerThird)
+            return true
+        case 26:
+            gridPreviewPlacement = .tile(.rightThird)
+            return true
+        case 8:
+            gridPreviewPlacement = .tile(.center)
             return true
 
         default:
@@ -795,20 +859,8 @@ final class CommandModeState: ObservableObject {
     private func tileAllSelected(to position: TilePosition) {
         let windows = flatWindowList.filter { selectedWindowIds.contains($0.id) }
         guard !windows.isEmpty else { return }
-
-        // For left/right with 2+ windows: distribute evenly across width
-        if windows.count >= 2 && (position == .left || position == .right) {
-            distributeSelectedHorizontally()
-            return
-        }
-
-        DiagnosticLog.shared.info("Tile all \(windows.count): \(position.rawValue)")
-        for win in windows {
-            WindowTiler.tileWindowById(wid: win.id, pid: win.pid, to: position)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-            self?.desktopSnapshot = self?.buildDesktopInventory()
-        }
+        DiagnosticLog.shared.info("Grid selected \(windows.count): \(position.rawValue)")
+        showAndDistributeSelected(in: .tile(position))
     }
 
     private func distributeSelectedHorizontally() {
@@ -849,28 +901,36 @@ final class CommandModeState: ObservableObject {
     }
 
     /// Show all selected windows AND distribute in smart grid — single batch operation
-    func showAndDistributeSelected() {
+    func showAndDistributeSelected(in placement: PlacementSpec? = nil) {
         let windows = flatWindowList.filter { selectedWindowIds.contains($0.id) }
         guard !windows.isEmpty else { return }
         savePositions(for: windows)
-        WindowTiler.batchRaiseAndDistribute(windows: windows.map { (wid: $0.id, pid: $0.pid) })
+        WindowTiler.batchRaiseAndDistribute(
+            windows: windows.map { (wid: $0.id, pid: $0.pid) },
+            region: placement?.fractions
+        )
         let shape = WindowTiler.gridShape(for: windows.count)
         let grid = shape.map(String.init).joined(separator: "+")
-        flash("\(windows.count) windows [\(grid)]")
+        let region = placement.map { " in \(self.regionLabel(for: $0))" } ?? ""
+        flash("\(windows.count) windows\(region) [\(grid)]")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
             self?.desktopSnapshot = self?.buildDesktopInventory()
         }
     }
 
     /// Distribute selected in smart grid without raising
-    func distributeSelected() {
+    func distributeSelected(in placement: PlacementSpec? = nil) {
         let windows = flatWindowList.filter { selectedWindowIds.contains($0.id) }
         guard !windows.isEmpty else { return }
         savePositions(for: windows)
-        WindowTiler.batchRaiseAndDistribute(windows: windows.map { (wid: $0.id, pid: $0.pid) })
+        WindowTiler.batchRaiseAndDistribute(
+            windows: windows.map { (wid: $0.id, pid: $0.pid) },
+            region: placement?.fractions
+        )
         let shape = WindowTiler.gridShape(for: windows.count)
         let grid = shape.map(String.init).joined(separator: "+")
-        flash("\(windows.count) windows [\(grid)]")
+        let region = placement.map { " in \(self.regionLabel(for: $0))" } ?? ""
+        flash("\(windows.count) windows\(region) [\(grid)]")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
             self?.desktopSnapshot = self?.buildDesktopInventory()
         }
@@ -958,6 +1018,36 @@ final class CommandModeState: ObservableObject {
     func dismiss() {
         phase = .idle
         onDismiss?()
+    }
+
+    private func syncSharedSelection() {
+        guard !selectedWindowIds.isEmpty else {
+            WindowSelectionStore.shared.clear(source: "desktop-inventory")
+            return
+        }
+
+        let summaries = flatWindowList
+            .filter { selectedWindowIds.contains($0.id) }
+            .map {
+                SelectedWindowSummary(
+                    wid: $0.id,
+                    app: $0.appName ?? "Window",
+                    title: $0.title,
+                    latticesSession: $0.latticesSession
+                )
+            }
+
+        guard !summaries.isEmpty else { return }
+        WindowSelectionStore.shared.setSelection(summaries, source: "desktop-inventory")
+    }
+
+    private func regionLabel(for placement: PlacementSpec) -> String {
+        switch placement {
+        case .tile(let position):
+            return position.label
+        default:
+            return placement.wireValue
+        }
     }
 
     // MARK: - Inventory Builder
@@ -1358,5 +1448,18 @@ final class CommandModeState: ObservableObject {
         })
 
         return chords
+    }
+}
+
+private extension Sequence where Element == String {
+    func uniquePrefix(_ count: Int) -> [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+        for item in self where !seen.contains(item) {
+            seen.insert(item)
+            result.append(item)
+            if result.count == count { break }
+        }
+        return result
     }
 }

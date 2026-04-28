@@ -56,6 +56,10 @@ struct AppShellView: View {
         .background(Palette.bg)
         .onAppear {
             commandState.onDismiss = { windowController.activePage = .home }
+            syncPageState(windowController.activePage)
+        }
+        .onChange(of: windowController.activePage) { page in
+            syncPageState(page)
         }
     }
 
@@ -116,7 +120,7 @@ struct AppShellView: View {
                 windowController.activePage = page
             })
         case .desktopInventory:
-            CommandModeView(state: commandState)
+            CommandModeView(state: commandState, presentation: .embedded)
         case .pi:
             PiWorkspaceView()
         case .settings:
@@ -133,5 +137,10 @@ struct AppShellView: View {
                 onBack: { windowController.activePage = .screenMap; controller.enter() }
             )
         }
+    }
+
+    private func syncPageState(_ page: AppPage) {
+        if page == .screenMap { controller.enter() }
+        if page == .desktopInventory { commandState.enter() }
     }
 }

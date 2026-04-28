@@ -1,6 +1,6 @@
 {
   "name": "@lattices/cli",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "description": "Agentic window manager for macOS — programmable workspace, smart layouts, managed tmux sessions, and a 35+-method agent API",
   "bin": {
     "lattices": "./bin/lattices.ts",
@@ -28,6 +28,8 @@
   },
   "scripts": {
     "dev": "bun --cwd docs-site dev",
+    "test:e2e": "node --experimental-strip-types --test test/e2e-daemon.test.mjs",
+    "test:e2e:voice": "node --experimental-strip-types test/eval-voice.js",
     "typecheck": "tsc --noEmit",
     "build:app-bundle": "bash ./bin/lattices-dev build",
     "prepack": "bash ./bin/lattices-dev build"

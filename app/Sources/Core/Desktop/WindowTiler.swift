@@ -671,18 +671,7 @@ enum WindowTiler {
 
     /// Find a window by its title tag and return its CGWindowID and owner PID
     static func findWindow(tag: String) -> (wid: UInt32, pid: pid_t)? {
-        guard let windowList = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
-            return nil
-        }
-        for info in windowList {
-            if let name = info[kCGWindowName as String] as? String,
-               name.contains(tag),
-               let wid = info[kCGWindowNumber as String] as? UInt32,
-               let pid = info[kCGWindowOwnerPID as String] as? pid_t {
-                return (wid, pid)
-            }
-        }
-        return nil
+        SessionWindowLocator.findCGWindow(tag: tag).map { ($0.wid, $0.pid) }
     }
 
     /// Get the space ID(s) a window is on
@@ -760,13 +749,9 @@ enum WindowTiler {
 
         // Find the window — CG first, then AX→CG fallback
         let wid: UInt32
-        if let (w, _) = findWindow(tag: tag) {
-            wid = w
-            diag.info("moveWindowToSpace: found via CG wid=\(w)")
-        } else if let (pid, axWindow) = findWindowViaAX(terminal: terminal, tag: tag),
-                  let w = matchCGWindow(pid: pid, axWindow: axWindow) {
-            wid = w
-            diag.info("moveWindowToSpace: found via AX→CG wid=\(w)")
+        if let match = SessionWindowLocator.findWindow(tag: tag, terminal: terminal) {
+            wid = match.wid
+            diag.info("moveWindowToSpace: located wid=\(match.wid) pid=\(match.pid)")
         } else {
             diag.warn("moveWindowToSpace: window not found for tag \(tag) — switching view only")
             switchToSpace(spaceId: spaceId)
@@ -834,39 +819,31 @@ enum WindowTiler {
         let tag = Terminal.windowTag(for: session)
 
         // Path 1: CG window lookup (needs Screen Recording permission for window names)
-        if let (wid, pid) = findWindow(tag: tag) {
-            diag.success("Path 1 (CG): found wid=\(wid) pid=\(pid)")
-            navigateToKnownWindow(wid: wid, pid: pid, tag: tag, session: session, terminal: terminal)
+        if let match = SessionWindowLocator.findWindow(tag: tag, terminal: terminal) {
+            diag.success("Path 1/2 (locator): found wid=\(match.wid) pid=\(match.pid)")
+            navigateToKnownWindow(wid: match.wid, pid: match.pid, tag: tag, session: session, terminal: terminal)
             diag.finish(t)
             return
         }
-        diag.warn("Path 1 (CG): findWindow failed — no Screen Recording?")
+        diag.warn("SessionWindowLocator failed — trying direct AX fallback")
 
-        // Path 2: AX API fallback (needs Accessibility permission)
-        if let (pid, axWindow) = findWindowViaAX(terminal: terminal, tag: tag) {
-            diag.success("Path 2 (AX): found window for \(terminal.rawValue) pid=\(pid)")
-            // Try to match AX window → CG window for space switching
-            if let wid = matchCGWindow(pid: pid, axWindow: axWindow) {
-                diag.success("Path 2 (AX→CG): matched CG wid=\(wid)")
-                navigateToKnownWindow(wid: wid, pid: pid, tag: tag, session: session, terminal: terminal)
+        if let (pid, axWindow) = SessionWindowLocator.findAXWindow(terminal: terminal, tag: tag) {
+            diag.success("Direct AX fallback: found window for \(terminal.rawValue) pid=\(pid)")
+            AXUIElementPerformAction(axWindow, kAXRaiseAction as CFString)
+            AXUIElementSetAttributeValue(axWindow, kAXMainAttribute as CFString, kCFBooleanTrue)
+            if let app = NSRunningApplication(processIdentifier: pid) {
+                app.activate()
+            }
+            if let frame = axWindowFrame(axWindow) {
+                diag.info("Highlighting via AX frame: \(frame)")
+                DispatchQueue.main.async { WindowHighlight.shared.flash(frame: frame) }
             } else {
-                diag.warn("Path 2 (AX): no CG match — raising without space switch")
-                AXUIElementPerformAction(axWindow, kAXRaiseAction as CFString)
-                AXUIElementSetAttributeValue(axWindow, kAXMainAttribute as CFString, kCFBooleanTrue)
-                if let app = NSRunningApplication(processIdentifier: pid) {
-                    app.activate()
-                }
-                if let frame = axWindowFrame(axWindow) {
-                    diag.info("Highlighting via AX frame: \(frame)")
-                    DispatchQueue.main.async { WindowHighlight.shared.flash(frame: frame) }
-                } else {
-                    diag.error("axWindowFrame returned nil — no highlight")
-                }
+                diag.error("axWindowFrame returned nil — no highlight")
             }
             diag.finish(t)
             return
         }
-        diag.warn("Path 2 (AX): findWindowViaAX failed — no Accessibility?")
+        diag.warn("Direct AX fallback failed — no Accessibility?")
 
         // Path 3: AppleScript / bare activate fallback
         diag.warn("Path 3: falling back to AppleScript/activate")
@@ -894,70 +871,12 @@ enum WindowTiler {
         }
     }
 
-    /// Find a terminal window by title tag using AX API (requires Accessibility permission)
     private static func findWindowViaAX(terminal: Terminal, tag: String) -> (pid: pid_t, window: AXUIElement)? {
-        let diag = DiagnosticLog.shared
-        guard let app = NSWorkspace.shared.runningApplications.first(where: {
-            $0.bundleIdentifier == terminal.bundleId
-        }) else {
-            diag.error("findWindowViaAX: \(terminal.rawValue) (\(terminal.bundleId)) not running")
-            return nil
-        }
-
-        let pid = app.processIdentifier
-        let appRef = AXUIElementCreateApplication(pid)
-        var windowsRef: CFTypeRef?
-        let err = AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &windowsRef)
-        guard err == .success, let windows = windowsRef as? [AXUIElement] else {
-            diag.error("findWindowViaAX: AX error \(err.rawValue) — Accessibility not granted?")
-            return nil
-        }
-
-        diag.info("findWindowViaAX: \(windows.count) windows for \(terminal.rawValue), searching for \(tag)")
-        for win in windows {
-            var titleRef: CFTypeRef?
-            AXUIElementCopyAttributeValue(win, kAXTitleAttribute as CFString, &titleRef)
-            let title = titleRef as? String ?? "<no title>"
-            if title.contains(tag) {
-                diag.success("findWindowViaAX: matched \"\(title)\"")
-                return (pid, win)
-            } else {
-                diag.info("  skip: \"\(title)\"")
-            }
-        }
-        diag.warn("findWindowViaAX: no window matched tag \(tag)")
-        return nil
+        SessionWindowLocator.findAXWindow(terminal: terminal, tag: tag)
     }
 
-    /// Match an AX window to its CG window ID using PID + bounds comparison
     private static func matchCGWindow(pid: pid_t, axWindow: AXUIElement) -> UInt32? {
-        var posRef: CFTypeRef?
-        var sizeRef: CFTypeRef?
-        AXUIElementCopyAttributeValue(axWindow, kAXPositionAttribute as CFString, &posRef)
-        AXUIElementCopyAttributeValue(axWindow, kAXSizeAttribute as CFString, &sizeRef)
-        guard let pv = posRef, let sv = sizeRef else { return nil }
-
-        var pos = CGPoint.zero
-        var size = CGSize.zero
-        AXValueGetValue(pv as! AXValue, .cgPoint, &pos)
-        AXValueGetValue(sv as! AXValue, .cgSize, &size)
-
-        guard let windowList = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return nil }
-
-        for info in windowList {
-            guard let wPid = info[kCGWindowOwnerPID as String] as? pid_t,
-                  wPid == pid,
-                  let wid = info[kCGWindowNumber as String] as? UInt32,
-                  let boundsDict = info[kCGWindowBounds as String] as? NSDictionary else { continue }
-            var rect = CGRect.zero
-            if CGRectMakeWithDictionaryRepresentation(boundsDict, &rect) {
-                if abs(rect.origin.x - pos.x) < 2 && abs(rect.origin.y - pos.y) < 2 &&
-                   abs(rect.width - size.width) < 2 && abs(rect.height - size.height) < 2 {
-                    return wid
-                }
-            }
-        }
-        return nil
+        SessionWindowLocator.matchCGWindow(pid: pid, axWindow: axWindow)
     }
 
     /// Get NSRect from an AX window element (AX uses top-left origin, convert to NS bottom-left)
@@ -1107,11 +1026,8 @@ enum WindowTiler {
 
         // Find the window
         let wid: UInt32
-        if let (w, _) = findWindow(tag: tag) {
-            wid = w
-        } else if let (pid, axWindow) = findWindowViaAX(terminal: terminal, tag: tag),
-                  let w = matchCGWindow(pid: pid, axWindow: axWindow) {
-            wid = w
+        if let match = SessionWindowLocator.findWindow(tag: tag, terminal: terminal) {
+            wid = match.wid
         } else {
             return nil
         }

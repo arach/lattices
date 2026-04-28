@@ -2,55 +2,12 @@ import AppKit
 import Combine
 import SwiftUI
 
-// MARK: - Panel subclass (handles keyDown when focused)
-
-final class VoicePanel: NSPanel {
-    var onKeyDown: ((NSEvent) -> Void)?
-    var onFlagsChanged: ((NSEvent) -> Void)?
-
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
-
-    override func sendEvent(_ event: NSEvent) {
-        if event.type == .leftMouseDown || event.type == .rightMouseDown {
-            if !NSApp.isActive {
-                NSApp.activate(ignoringOtherApps: true)
-            }
-            if !isKeyWindow {
-                makeKey()
-            }
-        }
-        super.sendEvent(event)
-    }
-
-    override func keyDown(with event: NSEvent) {
-        if let handler = onKeyDown {
-            handler(event)
-        } else {
-            super.keyDown(with: event)
-        }
-    }
-
-    override func flagsChanged(with event: NSEvent) {
-        if let handler = onFlagsChanged {
-            handler(event)
-        } else {
-            super.flagsChanged(with: event)
-        }
-    }
-}
-
-private final class VoiceHostingView<Content: View>: NSHostingView<Content> {
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    override var focusRingType: NSFocusRingType { get { .none } set {} }
-}
-
 // MARK: - Window Controller
 
 final class VoiceCommandWindow {
     static let shared = VoiceCommandWindow()
 
-    private(set) var panel: VoicePanel?
+    private(set) var panel: OverlayPanel?
     private var keyMonitor: Any?
     private var state: VoiceCommandState?
 
@@ -66,7 +23,7 @@ final class VoiceCommandWindow {
 
     func show() {
         // If panel exists but is hidden, just re-show it
-        if let p = panel, let s = state {
+        if let p = panel, state != nil {
             p.alphaValue = 0
             p.orderFrontRegardless()
             NSAnimationContext.runAnimationGroup { ctx in
@@ -87,42 +44,32 @@ final class VoiceCommandWindow {
         .preferredColorScheme(.dark)
 
         let mouseLocation = NSEvent.mouseLocation
-        let screen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }) ?? NSScreen.main ?? NSScreen.screens.first!
+        let screen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) })
+            ?? NSScreen.main
+            ?? NSScreen.screens.first!
         let visible = screen.visibleFrame
-
         let panelWidth: CGFloat = min(900, visible.width - 80)
         let panelHeight: CGFloat = min(560, visible.height - 80)
 
-        let p = VoicePanel(
-            contentRect: NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight),
-            styleMask: [.titled, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
+        let p = OverlayPanelShell.makePanel(
+            config: .init(
+                size: NSSize(width: panelWidth, height: panelHeight),
+                styleMask: [.titled, .nonactivatingPanel],
+                titleVisible: .hidden,
+                titlebarAppearsTransparent: true,
+                background: .clear,
+                hidesOnDeactivate: false,
+                isMovableByWindowBackground: true,
+                activatesOnMouseDown: true,
+                onKeyDown: { [weak self] event in self?.handleKey(event) },
+                onFlagsChanged: { [weak self] event in self?.handleFlags(event) }
+            ),
+            rootView: view
         )
-        p.onKeyDown = { [weak self] event in self?.handleKey(event) }
-        p.onFlagsChanged = { [weak self] event in self?.handleFlags(event) }
-        p.titlebarAppearsTransparent = true
-        p.titleVisibility = .hidden
-        p.isOpaque = false
-        p.backgroundColor = .clear
-        p.level = .floating
-        p.hasShadow = true
-        p.hidesOnDeactivate = false
-        p.isReleasedWhenClosed = false
-        p.isMovableByWindowBackground = true
-        let hosting = VoiceHostingView(rootView: view)
-        hosting.translatesAutoresizingMaskIntoConstraints = false
-        p.contentView = hosting
-
-        // Position: top-center of screen
-        let x = visible.midX - panelWidth / 2
-        let y = visible.maxY - panelHeight - 40
-        p.setFrameOrigin(NSPoint(x: x, y: y))
+        OverlayPanelShell.position(p, placement: .topCenter(margin: 40))
 
         p.alphaValue = 0
-        p.orderFrontRegardless()
-        p.makeKey()
-        NSApp.activate(ignoringOtherApps: true)
+        OverlayPanelShell.present(p, activate: true, makeKey: true, orderFrontRegardless: true)
 
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.15
@@ -560,6 +507,7 @@ final class VoiceCommandState: ObservableObject {
 
 struct VoiceCommandView: View {
     @ObservedObject var state: VoiceCommandState
+    @ObservedObject private var activeSelection = WindowSelectionStore.shared
     let onDismiss: () -> Void
 
     private let docsURL = "https://lattices.dev/docs/voice"
@@ -884,6 +832,30 @@ struct VoiceCommandView: View {
             VStack(alignment: .leading, spacing: 14) {
                     // Zero-height spacer forces VStack to fill ScrollView width
                     Color.clear.frame(maxWidth: .infinity, maxHeight: 0)
+                    if activeSelection.isActive {
+                        commandSection("selection") {
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack(spacing: 6) {
+                                    Text("\(activeSelection.count) window\(activeSelection.count == 1 ? "" : "s")")
+                                        .font(Typo.geistMonoBold(11))
+                                        .foregroundColor(Palette.running)
+                                    if let source = activeSelection.sourceLabel {
+                                        Text(source)
+                                            .font(Typo.geistMono(10))
+                                            .foregroundColor(Palette.textMuted)
+                                    }
+                                }
+                                Text(activeSelection.summary(maxItems: 4))
+                                    .font(Typo.geistMono(11))
+                                    .foregroundColor(Palette.textDim)
+                                    .lineLimit(3)
+                                Text("Try: grid that in the bottom half")
+                                    .font(Typo.geistMono(10))
+                                    .foregroundColor(Palette.textMuted)
+                            }
+                        }
+                    }
+
                     // Partial transcript (while listening)
                     if state.phase == .listening, !state.partialText.isEmpty {
                         commandSection("hearing...") {

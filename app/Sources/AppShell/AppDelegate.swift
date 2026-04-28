@@ -91,6 +91,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         store.register(action: .unifiedWindow) { ScreenMapWindowController.shared.toggle() }
         store.register(action: .bezel) { Self.showWorkspaceInspector() }
         store.register(action: .cheatSheet) { SettingsWindowController.shared.show() }
+        store.register(action: .desktopInventory) {
+            DiagnosticLog.shared.info("Hotkey: desktopInventory triggered")
+            ScreenMapWindowController.shared.showPage(.desktopInventory)
+        }
         store.register(action: .voiceCommand) {
             DiagnosticLog.shared.info("Hotkey: voiceCommand triggered")
             VoiceCommandWindow.shared.toggle()
