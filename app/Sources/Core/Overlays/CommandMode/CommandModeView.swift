@@ -200,9 +200,16 @@ struct CommandModeView: View {
 
     private var header: some View {
         HStack {
-            Text(isDesktopInventory ? "DESKTOP INVENTORY" : "COMMAND MODE")
+            Text(isDesktopInventory ? (state.isOrganizeFlow ? "ORGANIZE WINDOWS" : "DESKTOP INVENTORY") : "COMMAND MODE")
                 .font(Typo.monoBold(11))
                 .foregroundColor(Palette.text)
+
+            if isDesktopInventory && state.isOrganizeFlow {
+                bannerBadge("Current Space", tone: .neutral)
+                if let appName = state.organizeSeedAppName, !appName.isEmpty {
+                    bannerBadge(appName, tone: .accent)
+                }
+            }
 
             if isDesktopInventory {
                 Button(action: { state.copyInventoryToClipboard() }) {
@@ -275,6 +282,11 @@ struct CommandModeView: View {
 
     private func desktopInventoryContent(contentWidth: CGFloat) -> some View {
         VStack(spacing: 0) {
+            if state.isOrganizeFlow {
+                organizeBanner
+                divider
+            }
+
             if state.isSearching {
                 searchBar
             } else {
@@ -356,6 +368,33 @@ struct CommandModeView: View {
             embeddedInventorySidebar(display: display)
                 .frame(width: sidebarWidth)
         }
+    }
+
+    private var organizeBanner: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .center, spacing: 8) {
+                Image(systemName: "rectangle.3.group")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(Palette.running)
+                Text(state.organizeSelectionSummary)
+                    .font(Typo.monoBold(10))
+                    .foregroundColor(Palette.text)
+                Spacer()
+                if state.selectedWindowIds.count > 1 {
+                    bannerBadge("Ready", tone: .accent)
+                } else {
+                    bannerBadge("Add More", tone: .neutral)
+                }
+            }
+
+            Text(state.organizeGuidance)
+                .font(Typo.mono(10))
+                .foregroundColor(Palette.textDim)
+                .lineLimit(2)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Palette.running.opacity(0.06))
     }
 
     private var filterPillBar: some View {
@@ -835,9 +874,17 @@ struct CommandModeView: View {
                 if indented {
                     Spacer().frame(width: 8)
                 }
-                Text(isLattices ? "●" : "•")
-                    .font(.system(size: 7))
-                    .foregroundColor(isLattices ? Palette.running : (isSelected ? Palette.text : Palette.textDim))
+                Group {
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(Palette.running)
+                    } else {
+                        Text(isLattices ? "●" : "•")
+                            .font(.system(size: 7))
+                            .foregroundColor(isLattices ? Palette.running : Palette.textDim)
+                    }
+                }
                 if let app = appLabel {
                     Text(app)
                         .font(Typo.monoBold(10))
@@ -1242,6 +1289,9 @@ struct CommandModeView: View {
                     chordHint(key: "↩", label: "select & front")
                     chordHint(key: "⌘A", label: "select all")
                     chordHint(key: "⇧↑↓", label: "multi-select")
+                    if state.isOrganizeFlow && state.selectedWindowIds.count > 1 {
+                        chordHint(key: "d", label: "organize")
+                    }
                     if !state.selectedWindowIds.isEmpty {
                         chordHint(key: "t", label: "tile")
                     }
@@ -1279,9 +1329,42 @@ struct CommandModeView: View {
                             .foregroundColor(Palette.running)
                     }
                 }
+            } else if isDesktopInventory && state.isOrganizeFlow && state.selectedWindowIds.count > 1 {
+                HStack(spacing: 12) {
+                    chordHint(key: "d", label: "organize")
+                    chordHint(key: "⌘-click", label: "add/remove")
+                    chordHint(key: "⇧-click", label: "range")
+                    chordHint(key: "↩", label: "front")
+                    chordHint(key: "esc", label: "cancel")
+                    Spacer()
+                    Text("\(state.selectedWindowIds.count) selected")
+                        .font(Typo.mono(9))
+                        .foregroundColor(Palette.running)
+                }
+            } else if isDesktopInventory && state.isOrganizeFlow && !state.selectedWindowIds.isEmpty {
+                HStack(spacing: 12) {
+                    chordHint(key: "⌘-click", label: "add more")
+                    chordHint(key: "d", label: "need 2+")
+                    chordHint(key: "↩", label: "front")
+                    chordHint(key: "esc", label: "cancel")
+                    Spacer()
+                    Text(state.organizeSelectionSummary)
+                        .font(Typo.mono(9))
+                        .foregroundColor(Palette.textDim)
+                }
+            } else if isDesktopInventory && state.isOrganizeFlow {
+                HStack(spacing: 12) {
+                    chordHint(key: "click", label: "select")
+                    chordHint(key: "⌘-click", label: "add/remove")
+                    chordHint(key: "/", label: "search")
+                    chordHint(key: "esc", label: "cancel")
+                    Spacer()
+                }
             } else if isDesktopInventory && state.selectedWindowIds.count > 1 {
                 // Multi-selection active
                 HStack(spacing: 12) {
+                    chordHint(key: "s", label: "grid preview")
+                    chordHint(key: "d", label: "distribute")
                     chordHint(key: "s", label: "grid preview")
                     chordHint(key: "↩", label: "front")
                     chordHint(key: "t", label: "grid region")
@@ -1302,6 +1385,7 @@ struct CommandModeView: View {
             } else if isDesktopInventory && !state.selectedWindowIds.isEmpty {
                 // Single selection active — browsing hints with direct shortcuts
                 HStack(spacing: 12) {
+                    chordHint(key: "d", label: "organize")
                     chordHint(key: "s", label: "show")
                     chordHint(key: "↩", label: "front")
                     chordHint(key: "f", label: "focus+close")
@@ -1365,6 +1449,31 @@ struct CommandModeView: View {
                 .font(Typo.mono(9))
                 .foregroundColor(Palette.textMuted)
         }
+    }
+
+    private enum BannerTone {
+        case neutral
+        case accent
+    }
+
+    private func bannerBadge(_ text: String, tone: BannerTone) -> some View {
+        let foreground = tone == .accent ? Palette.running : Palette.textDim
+        let fill = tone == .accent ? Palette.running.opacity(0.10) : Palette.surface
+        let stroke = tone == .accent ? Palette.running.opacity(0.30) : Palette.border
+
+        return Text(text)
+            .font(Typo.mono(8))
+            .foregroundColor(foreground)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(fill)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .strokeBorder(stroke, lineWidth: 0.5)
+                    )
+            )
     }
 
     private func actionButton(key: String, label: String, action: @escaping () -> Void) -> some View {

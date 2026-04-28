@@ -31,7 +31,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
     // Tiling
     case tileLeft, tileRight, tileMaximize, tileCenter
     case tileTopLeft, tileTopRight, tileBottomLeft, tileBottomRight
-    case tileTop, tileBottom, tileDistribute, tileTypeGrid
+    case tileTop, tileBottom, tileDistribute, tileTypeGrid, tileOrganize
     case tileLeftThird, tileCenterThird, tileRightThird
 
     var label: String {
@@ -71,6 +71,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .tileBottom:      return "Bottom Half"
         case .tileDistribute:  return "Distribute"
         case .tileTypeGrid:    return "Grid Type"
+        case .tileOrganize:    return "Organize Windows"
         case .tileLeftThird:   return "Left Third"
         case .tileCenterThird: return "Center Third"
         case .tileRightThird:  return "Right Third"
@@ -127,6 +128,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .tileLeftThird:   return 311
         case .tileCenterThird: return 312
         case .tileRightThird:  return 313
+        case .tileOrganize:    return 315
         }
     }
 
@@ -141,6 +143,15 @@ struct KeyBinding: Codable, Equatable {
     let keyCode: UInt32
     let carbonModifiers: UInt32
     var displayParts: [String]
+
+    var compactDisplayParts: [String] {
+        guard let key = displayParts.last else { return [] }
+        let modifiers = Set(displayParts.dropLast())
+        if modifiers == Set(["Ctrl", "Option", "Shift", "Cmd"]) {
+            return ["Hyper", key]
+        }
+        return displayParts
+    }
 
     static func carbonModifiers(from flags: NSEvent.ModifierFlags) -> UInt32 {
         var mods: UInt32 = 0
@@ -266,6 +277,7 @@ class HotkeyStore: ObservableObject {
         bind(.tileLeftThird,    18, ctrlOpt)  // Ctrl+Opt+1
         bind(.tileCenterThird,  19, ctrlOpt)  // Ctrl+Opt+2
         bind(.tileRightThird,   20, ctrlOpt)  // Ctrl+Opt+3
+        bind(.tileOrganize,     31, ctrlOpt)  // Ctrl+Opt+O
 
         return d
     }()

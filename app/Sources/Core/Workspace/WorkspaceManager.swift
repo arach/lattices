@@ -66,11 +66,39 @@ struct GridFile: Codable {
     let snapZones: SnapZonesConfig?
 }
 
-enum SnapModifierKey: String, Codable, Equatable {
+enum SnapModifierKey: String, Codable, Equatable, CaseIterable, Identifiable {
     case command
     case option
     case control
     case shift
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .command:
+            return "Command"
+        case .option:
+            return "Option"
+        case .control:
+            return "Control"
+        case .shift:
+            return "Shift"
+        }
+    }
+
+    var shortLabel: String {
+        switch self {
+        case .command:
+            return "Cmd"
+        case .option:
+            return "Opt"
+        case .control:
+            return "Ctrl"
+        case .shift:
+            return "Shift"
+        }
+    }
 
     var eventFlags: NSEvent.ModifierFlags {
         switch self {
@@ -98,9 +126,6 @@ enum SnapModifierKey: String, Codable, Equatable {
         }
     }
 
-    var label: String {
-        rawValue.capitalized
-    }
 }
 
 enum SnapZoneTriggerSpec: Codable, Equatable {
@@ -457,6 +482,36 @@ class WorkspaceManager: ObservableObject {
         self.gridPresets = presets
         self.gridLayouts = layouts
         self.snapZonesConfig = snapZones
+    }
+
+    func updateSnapModifier(_ modifier: SnapModifierKey) {
+        let updated = SnapZonesConfig(
+            enabled: snapZonesConfig.enabled,
+            modifier: modifier,
+            zoneOpacity: snapZonesConfig.zoneOpacity,
+            highlightOpacity: snapZonesConfig.highlightOpacity,
+            previewOpacity: snapZonesConfig.previewOpacity,
+            cornerRadius: snapZonesConfig.cornerRadius,
+            rules: snapZonesConfig.rules
+        )
+
+        do {
+            let url = URL(fileURLWithPath: snapZonesConfigPath)
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(updated)
+            try data.write(to: url, options: .atomic)
+
+            loadGridConfig()
+            DiagnosticLog.shared.info("WorkspaceManager: updated snap modifier to \(modifier.rawValue)")
+        } catch {
+            DiagnosticLog.shared.error("WorkspaceManager: failed to write snap-zones.json — \(error.localizedDescription)")
+        }
     }
 
     /// Resolve a tile string to fractions: check user presets first, then built-in TilePosition

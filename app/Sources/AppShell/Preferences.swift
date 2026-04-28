@@ -37,7 +37,6 @@ class Preferences: ObservableObject {
     @Published var companionCockpitLayout: LatticesCompanionCockpitLayout {
         didSet { persistCompanionCockpitLayout() }
     }
-
     @Published var mouseGesturesEnabled: Bool {
         didSet { UserDefaults.standard.set(mouseGesturesEnabled, forKey: "mouseGestures.enabled") }
     }
@@ -163,7 +162,6 @@ class Preferences: ObservableObject {
         }
 
         self.companionCockpitLayout = Self.loadCompanionCockpitLayout()
-
         if UserDefaults.standard.object(forKey: "mouseGestures.enabled") != nil {
             self.mouseGesturesEnabled = UserDefaults.standard.bool(forKey: "mouseGestures.enabled")
         } else {

@@ -162,6 +162,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         store.register(action: .tileDistribute) { WindowTiler.distributeVisible(reactivateLattices: false) }
         store.register(action: .tileTypeGrid) { WindowTiler.distributeVisibleByFrontmostType(reactivateLattices: false) }
+        store.register(action: .tileOrganize) {
+            let appName = DesktopModel.shared.frontmostWindow()?.app
+                ?? NSWorkspace.shared.frontmostApplication?.localizedName
+            CommandModeWindow.shared.show(launchMode: .organize(appName: appName))
+        }
 
         // Onboarding on first launch; otherwise just check permissions
         if !OnboardingWindowController.shared.showIfNeeded() {

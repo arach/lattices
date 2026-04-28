@@ -2118,7 +2118,6 @@ enum WindowTiler {
         }
         return nil
     }
-
     private static func displaySpaces(containing cgPoint: CGPoint) -> DisplaySpaces? {
         guard let screenIndex = screenIndex(for: cgPoint) else { return nil }
         return getDisplaySpaces().first(where: { $0.displayIndex == screenIndex })
@@ -2134,7 +2133,6 @@ enum WindowTiler {
     private static func formatCGPoint(_ point: CGPoint) -> String {
         "\(Int(point.x)),\(Int(point.y))"
     }
-
     private static func screenIndex(for cgPoint: CGPoint) -> Int? {
         let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
         let nsPoint = NSPoint(x: cgPoint.x, y: primaryHeight - cgPoint.y)
