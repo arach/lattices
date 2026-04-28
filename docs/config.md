@@ -131,6 +131,8 @@ Run `lattices init` in your project directory to generate a starter
 | `lattices sync`              | Reconcile session to match declared config        |
 | `lattices restart [pane]`    | Restart a pane's process (by name or index)       |
 | `lattices tile <position>`   | Tile the frontmost window to a screen position    |
+| `lattices tile family [app] [region]` | Smart-grid the frontmost app family, or a named app |
+| `lattices distribute [app] [region]` | Smart-grid visible windows or just one app      |
 | `lattices group [id]`        | List tab groups or launch/attach a group          |
 | `lattices groups`            | List all tab groups with status                   |
 | `lattices tab <group> [tab]` | Switch tab within a group (by label or index)     |
@@ -249,3 +251,24 @@ Aliases: `left-half`/`left`, `right-half`/`right`, `top-half`/`top`,
 
 Tiling respects the menu bar and dock. It uses the visible desktop
 area, not the full screen.
+
+### Smart app tiling
+
+Use `lattices tile family` when you want lattices to arrange a whole
+window family instead of just moving the frontmost window.
+
+Examples:
+
+```bash
+lattices tile family
+lattices tile family right
+lattices tile family iTerm2
+lattices tile family "Google Chrome" left
+```
+
+- With no app name, `family` means the **frontmost app**. If iTerm is
+  frontmost, lattices grids your visible iTerm windows.
+- If you pass a region (`left`, `right`, `top`, `bottom`, etc.), the
+  smart grid is constrained to that part of the screen.
+- `lattices distribute` uses the same smart grid engine, but defaults to
+  **all visible windows** instead of the current app family.
