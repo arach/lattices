@@ -196,6 +196,11 @@ These are composed from multiple `tile_window` actions:
 | Eight-up (4×2) | All eight `*-*-fourth` positions |
 | Distribute | Single `distribute` intent (auto-grid) |
 
+CLI shortcuts compile into the same distributor:
+
+- `lattices tile family` → smart-grid the frontmost app's visible windows
+- `lattices distribute iTerm2 right` → smart-grid visible iTerm windows inside the right half
+
 ## HandsOff Smart Distribution
 
 When the LLM sends multiple `tile_window` actions targeting the **same position**, `HandsOffSession.distributeTileActions()` subdivides:
