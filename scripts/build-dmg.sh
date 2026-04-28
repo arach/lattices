@@ -8,7 +8,7 @@ BUILD_DIR="$ROOT/dist"
 APP_NAME="Lattices.app"
 DMG_NAME="Lattices.dmg"
 BUNDLE="$BUILD_DIR/$APP_NAME"
-VERSION="${1:-$(node -p "require('$ROOT/package.json').version" 2>/dev/null || echo '0.1.0')}"
+VERSION="${1:-$(node -p "require(process.argv[1]).version" "$ROOT/package.json" 2>/dev/null || echo '0.1.0')}"
 
 # Signing — override via environment or use defaults
 SIGN_IDENTITY="${LATTICES_SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | grep -o '"Developer ID Application:[^"]*"' | head -1 | tr -d '"' || echo "")}"

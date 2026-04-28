@@ -5,7 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$SCRIPT_DIR/.."
 APP_DIR="$ROOT/app"
 DIST_DIR="$ROOT/dist"
-REMOTE="${LATTICES_REMOTE:-origin}"
+RELEASE_REPO="${LATTICES_RELEASE_REPO:-arach/lattices}"
+RELEASE_TARGET="${LATTICES_RELEASE_TARGET:-main}"
 VERSION="${LATTICES_VERSION:-$(node -p "require(process.argv[1]).version" "$ROOT/package.json" 2>/dev/null || echo '0.1.0')}"
 TAG="v${VERSION}"
 MODE="dmg"
@@ -15,8 +16,7 @@ usage() {
     cat <<'EOF'
 Usage: ./scripts/ship.sh [dmg|bin] [--dry-run]
 
-Build the release asset, force-update the matching git tag, and upload the
-artifact to the GitHub release.
+Build the release asset and upload it to the public GitHub release feed.
 
 Modes:
   dmg   Build/sign/notarize dist/Lattices.dmg and upload it (default)
@@ -83,14 +83,7 @@ while [ $# -gt 0 ]; do
     shift
 done
 
-need_cmd git
 need_cmd gh
-need_cmd node
-
-if ! git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
-    echo "Error: $ROOT is not a git repository." >&2
-    exit 1
-fi
 
 cd "$ROOT"
 
@@ -112,22 +105,18 @@ if [ "$DRY_RUN" -eq 0 ] && [ ! -f "$ASSET_PATH" ]; then
     exit 1
 fi
 
-echo "==> Updating tag $TAG to HEAD..."
-run git -C "$ROOT" tag -f "$TAG" HEAD
-run git -C "$ROOT" push --force "$REMOTE" "refs/tags/$TAG"
-
 if [ "$DRY_RUN" -eq 1 ]; then
-    echo "==> DRY RUN: would create or update GitHub release $TAG"
-elif gh release view "$TAG" >/dev/null 2>&1; then
-    echo "==> Updating GitHub release $TAG..."
-    run gh release edit "$TAG" --title "$TAG"
+    echo "==> DRY RUN: would create or update GitHub release $TAG in $RELEASE_REPO"
+elif gh release view "$TAG" --repo "$RELEASE_REPO" >/dev/null 2>&1; then
+    echo "==> Updating GitHub release $TAG in $RELEASE_REPO..."
+    run gh release edit "$TAG" --repo "$RELEASE_REPO" --title "$TAG"
 else
-    echo "==> Creating GitHub release $TAG..."
-    run gh release create "$TAG" --title "$TAG" --notes ""
+    echo "==> Creating GitHub release $TAG in $RELEASE_REPO..."
+    run gh release create "$TAG" --repo "$RELEASE_REPO" --target "$RELEASE_TARGET" --title "$TAG" --notes ""
 fi
 
 echo "==> Uploading $(basename "$ASSET_PATH")..."
-run gh release upload "$TAG" "$ASSET_PATH" --clobber
+run gh release upload "$TAG" "$ASSET_PATH" --repo "$RELEASE_REPO" --clobber
 
 echo ""
-echo "==> Shipped $TAG with $(basename "$ASSET_PATH")"
+echo "==> Shipped $TAG with $(basename "$ASSET_PATH") to $RELEASE_REPO"
