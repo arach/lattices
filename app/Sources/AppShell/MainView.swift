@@ -107,23 +107,23 @@ struct MainView: View {
 
                     Spacer()
 
-                    headerButton(icon: "house") {
+                    headerButton(icon: "house", label: "Home") {
                         (NSApp.delegate as? AppDelegate)?.dismissPopover()
                         ScreenMapWindowController.shared.showPage(.home)
                     }
-                    headerButton(icon: "rectangle.3.group") {
+                    headerButton(icon: "rectangle.3.group", label: "Screen Map") {
                         (NSApp.delegate as? AppDelegate)?.dismissPopover()
                         ScreenMapWindowController.shared.showPage(.screenMap)
                     }
-                    headerButton(icon: "magnifyingglass") {
+                    headerButton(icon: "macwindow.on.rectangle", label: "Desktop Inventory") {
                         (NSApp.delegate as? AppDelegate)?.dismissPopover()
                         ScreenMapWindowController.shared.showPage(.desktopInventory)
                     }
-                    headerButton(icon: "command") {
+                    headerButton(icon: "command", label: "Command Palette") {
                         (NSApp.delegate as? AppDelegate)?.dismissPopover()
                         CommandPaletteWindow.shared.toggle()
                     }
-                    headerButton(icon: "arrow.clockwise") { scanner.scan(); inventory.refresh() }
+                    headerButton(icon: "arrow.clockwise", label: "Refresh") { scanner.scan(); inventory.refresh() }
                 }
                 .padding(.horizontal, 18)
                 .padding(.top, 18)
@@ -364,7 +364,7 @@ struct MainView: View {
                 ScreenMapWindowController.shared.showPage(.home)
             }
             ActionRow(
-                label: "Layout",
+                label: "Screen Map",
                 detail: "Arrange windows and layers",
                 hotkeyTokens: [],
                 icon: "rectangle.3.group",
@@ -373,10 +373,10 @@ struct MainView: View {
                 ScreenMapWindowController.shared.showPage(.screenMap)
             }
             ActionRow(
-                label: "Search",
+                label: "Desktop Inventory",
                 detail: "Windows, projects, sessions, processes, and OCR",
                 hotkeyTokens: hotkeyTokens(.omniSearch),
-                icon: "magnifyingglass",
+                icon: "macwindow.on.rectangle",
                 accentColor: AudioLayer.shared.isListening ? Palette.running : Palette.textDim
             ) {
                 ScreenMapWindowController.shared.showPage(.desktopInventory)
@@ -590,7 +590,7 @@ struct MainView: View {
             }
             .buttonStyle(.plain)
 
-            Text("Window tiling, search, and OCR work without tmux.")
+            Text("Screen Map and Desktop Inventory work without tmux.")
                 .font(Typo.mono(9))
                 .foregroundColor(Palette.textMuted)
         }
@@ -645,7 +645,7 @@ struct MainView: View {
 
     // MARK: - Helpers
 
-    private func headerButton(icon: String, action: @escaping () -> Void) -> some View {
+    private func headerButton(icon: String, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: icon)
                 .font(.system(size: 12, weight: .medium))
@@ -653,6 +653,8 @@ struct MainView: View {
                 .frame(width: 28, height: 28)
         }
         .buttonStyle(.plain)
+        .help(label)
+        .accessibilityLabel(Text(label))
     }
 
     private func launchProject(_ project: Project) {

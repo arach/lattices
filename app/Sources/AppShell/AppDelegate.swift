@@ -265,8 +265,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         let actions: [(String, String, Selector)] = [
             ("Home", "", #selector(menuWorkspace)),
-            ("Layout", "", #selector(menuLayout)),
-            ("Search", "", #selector(menuSearch)),
+            ("Screen Map", "", #selector(menuLayout)),
+            ("Desktop Inventory", "", #selector(menuSearch)),
             ("Command Palette", "⌘⇧M", #selector(menuCommandPalette)),
         ]
         for (title, shortcut, action) in actions {

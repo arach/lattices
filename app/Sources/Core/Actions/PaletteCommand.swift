@@ -376,9 +376,9 @@ enum CommandBuilder {
 
         commands.append(PaletteCommand(
             id: "app-windows-list",
-            title: "Search",
-            subtitle: "Browse windows, displays, spaces, and screen text",
-            icon: "magnifyingglass",
+            title: "Desktop Inventory",
+            subtitle: "Browse windows, displays, Spaces, and screen text",
+            icon: "macwindow.on.rectangle",
             category: .app,
             badge: nil,
             action: { ScreenMapWindowController.shared.showPage(.desktopInventory) }
@@ -386,8 +386,8 @@ enum CommandBuilder {
 
         commands.append(PaletteCommand(
             id: "app-screen-map",
-            title: "Layout",
-            subtitle: "Visual window editor",
+            title: "Screen Map",
+            subtitle: "Arrange windows and layers visually",
             icon: "rectangle.3.group",
             category: .app,
             badge: nil,
@@ -396,9 +396,9 @@ enum CommandBuilder {
 
         commands.append(PaletteCommand(
             id: "app-workspace-chat",
-            title: "Workspace Chat",
-            subtitle: "Open the longer-form assistant surface",
-            icon: "bubble.left.and.bubble.right",
+            title: "Pi",
+            subtitle: "Open the Pi workspace",
+            icon: "terminal",
             category: .app,
             badge: nil,
             action: { ScreenMapWindowController.shared.showPage(.pi) }

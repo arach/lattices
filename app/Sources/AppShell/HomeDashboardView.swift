@@ -26,11 +26,11 @@ struct HomeDashboardView: View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Lattices Home")
+                    Text("Home")
                         .font(Typo.heading(18))
                         .foregroundColor(Palette.text)
 
-                    Text("Workspace status, project launch, layout, search, and chat in one place.")
+                    Text("Workspace status, project launch, Screen Map, Desktop Inventory, and Pi in one place.")
                         .font(Typo.mono(11))
                         .foregroundColor(Palette.textDim)
                         .fixedSize(horizontal: false, vertical: true)
@@ -41,8 +41,8 @@ struct HomeDashboardView: View {
 
             HStack(spacing: 10) {
                 homeActionCard(
-                    title: "Layout",
-                    subtitle: "Arrange windows",
+                    title: "Screen Map",
+                    subtitle: "Arrange windows and layers",
                     icon: "rectangle.3.group",
                     tint: Palette.running
                 ) {
@@ -50,22 +50,22 @@ struct HomeDashboardView: View {
                 }
 
                 homeActionCard(
-                    title: "Search",
-                    subtitle: "Find workspace context",
-                    icon: "magnifyingglass",
+                    title: "Desktop Inventory",
+                    subtitle: "Windows, Spaces, and OCR",
+                    icon: "macwindow.on.rectangle",
                     tint: Palette.detach
                 ) {
                     onNavigate?(.desktopInventory)
                 }
 
                 homeActionCard(
-                    title: "Chat",
+                    title: "Pi",
                     subtitle: piSession.hasPiBinary
                         ? (piSession.needsProviderSetup || piSession.isAuthenticating
                             ? piSession.setupStatusSummary
-                            : "Standalone conversation surface")
+                            : "Standalone assistant workspace")
                         : "Install Pi to enable the assistant",
-                    icon: "bubble.left.and.bubble.right",
+                    icon: "terminal",
                     tint: piSession.hasPiBinary ? Palette.text : Palette.kill
                 ) {
                     onNavigate?(.pi)

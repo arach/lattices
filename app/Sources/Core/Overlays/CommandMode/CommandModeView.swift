@@ -1315,7 +1315,7 @@ struct CommandModeView: View {
                 HStack(spacing: 12) {
                     chordHint(key: "↑↓", label: "navigate")
                     chordHint(key: "←→", label: "display")
-                    chordHint(key: "m", label: "map")
+                    chordHint(key: "m", label: "Screen Map")
                     chordHint(key: "/", label: "search")
                     chordHint(key: "`", label: "chords")
                     chordHint(key: "esc", label: "back")
@@ -1324,7 +1324,7 @@ struct CommandModeView: View {
             } else {
                 // First row: action chords
                 HStack(spacing: 12) {
-                    chordHint(key: "`", label: "desktop")
+                    chordHint(key: "`", label: "Desktop Inventory")
                     ForEach(state.chords.prefix(3), id: \.key) { chord in
                         chordHint(key: chord.key, label: chord.label)
                     }

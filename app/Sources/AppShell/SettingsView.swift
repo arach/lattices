@@ -1,4 +1,3 @@
-import DeckKit
 import SwiftUI
 
 /// Settings content with internal General / Shortcuts tabs.
@@ -1151,7 +1150,7 @@ struct SettingsContentView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         VStack(alignment: .leading, spacing: 16) {
-                            companionCockpitCard
+                            companionCockpitEntryCard
 
                             shortcutsOverviewCard
 
@@ -1218,147 +1217,21 @@ struct SettingsContentView: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 10)
         }
+        .sheet(isPresented: $isCompanionCockpitEditorPresented) {
+            CompanionCockpitEditorView(prefs: prefs, showsCloseButton: true)
+        }
     }
 
     // MARK: - Shortcuts: Overview
 
-    private var companionCockpitCard: some View {
-        let layout = LatticesCompanionCockpitCatalog.normalized(prefs.companionCockpitLayout)
-        let selectedPage = layout.pages.first(where: { $0.id == selectedCompanionCockpitPageID }) ?? layout.pages.first
-        let categories = LatticesCompanionShortcutCategory.allCases
-        let trustedDevices = companionTrustedDevices(revision: companionTrustRevision)
-
+    private var companionCockpitEntryCard: some View {
         return shortcutSectionCard(
             title: "Companion Cockpit",
             eyebrow: "iPad & iPhone",
-            summary: "Define the Mac-authored command deck here, then let the companion app render it. Trackpad proxy runs through the same bridge."
+            summary: "Companion deck authoring has been split into its own surface so this tab can stay focused on desktop shortcuts."
         ) {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .top, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("Trackpad Proxy")
-                            .font(Typo.monoBold(11))
-                            .foregroundColor(Palette.text)
-                        Text("Enable remote pointer control for the iPad trackpad surface. Accessibility permission is still required on the Mac.")
-                            .font(Typo.caption(10.5))
-                            .foregroundColor(Palette.textMuted)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    Spacer()
-
-                    Toggle("", isOn: $prefs.companionTrackpadEnabled)
-                        .toggleStyle(.switch)
-                        .labelsHidden()
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Trusted Devices")
-                                .font(Typo.monoBold(11))
-                                .foregroundColor(Palette.text)
-                            Text("New companions must be approved on the Mac before they can send encrypted bridge requests.")
-                                .font(Typo.caption(10.5))
-                                .foregroundColor(Palette.textMuted)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-
-                        Spacer()
-
-                        if trustedDevices.isEmpty == false {
-                            Button("Forget All") {
-                                LatticesCompanionSecurityCoordinator.shared.clearTrustedDevices()
-                                companionTrustRevision += 1
-                            }
-                            .buttonStyle(.plain)
-                            .font(Typo.caption(10.5))
-                            .foregroundColor(Palette.textDim)
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        if trustedDevices.isEmpty {
-                            Text("No paired iPad or iPhone devices yet.")
-                                .font(Typo.caption(10.5))
-                                .foregroundColor(Palette.textMuted)
-                        } else {
-                            ForEach(trustedDevices) { device in
-                                HStack(alignment: .top, spacing: 10) {
-                                    Image(systemName: "iphone.gen3")
-                                        .font(.system(size: 11, weight: .semibold))
-                                        .foregroundColor(Palette.textDim)
-                                        .frame(width: 14)
-
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(device.name)
-                                            .font(Typo.caption(11))
-                                            .foregroundColor(Palette.text)
-                                        Text("\(device.fingerprint) · Last seen \(relativeTimestamp(device.lastSeenAt))")
-                                            .font(Typo.caption(10))
-                                            .foregroundColor(Palette.textMuted)
-                                    }
-
-                                    Spacer(minLength: 0)
-                                }
-                            }
-                        }
-                    }
-                    .padding(12)
-                    .background(shortcutsInsetPanel)
-                }
-
-                if let selectedPage {
-                    Picker("Companion page", selection: $selectedCompanionCockpitPageID) {
-                        ForEach(layout.pages) { page in
-                            Text(page.title).tag(page.id)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        if let subtitle = selectedPage.subtitle, !subtitle.isEmpty {
-                            Text(subtitle)
-                                .font(Typo.caption(10.5))
-                                .foregroundColor(Palette.textMuted)
-                        }
-
-                        LazyVGrid(
-                            columns: Array(
-                                repeating: GridItem(.flexible(minimum: 120, maximum: 220), spacing: 8, alignment: .top),
-                                count: max(2, selectedPage.columns)
-                            ),
-                            alignment: .leading,
-                            spacing: 8
-                        ) {
-                            ForEach(Array(selectedPage.slotIDs.enumerated()), id: \.offset) { index, shortcutID in
-                                companionCockpitSlotMenu(
-                                    pageID: selectedPage.id,
-                                    index: index,
-                                    shortcutID: shortcutID,
-                                    categories: categories
-                                )
-                            }
-                        }
-                    }
-                    .padding(12)
-                    .background(shortcutsInsetPanel)
-                }
-
-                HStack(spacing: 10) {
-                    Text("Changes appear in the iPad companion on the next snapshot refresh.")
-                        .font(Typo.caption(10.5))
-                        .foregroundColor(Palette.textMuted)
-
-                    Spacer()
-
-                    Button("Reset Companion Layout") {
-                        prefs.resetCompanionCockpitLayout()
-                    }
-                    .buttonStyle(.plain)
-                    .font(Typo.caption(10.5))
-                    .foregroundColor(Palette.textDim)
-                }
+            CompanionCockpitSettingsEntryContent(prefs: prefs) {
+                isCompanionCockpitEditorPresented = true
             }
         }
     }
@@ -1399,7 +1272,7 @@ struct SettingsContentView: View {
         shortcutSectionCard(
             title: "App & Workspace",
             eyebrow: "Global",
-            summary: "Commands for opening primary surfaces and navigating the desktop companion."
+            summary: "Commands for opening primary surfaces and moving around the desktop workspace."
         ) {
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(HotkeyAction.allCases.filter { $0.group == .app }, id: \.rawValue) { action in
@@ -1611,15 +1484,6 @@ struct SettingsContentView: View {
             )
     }
 
-    private func relativeTimestamp(_ date: Date) -> String {
-        RelativeDateTimeFormatter().localizedString(for: date, relativeTo: Date())
-    }
-
-    private func companionTrustedDevices(revision: Int) -> [DeckTrustedDeviceSummary] {
-        _ = revision
-        return LatticesCompanionSecurityCoordinator.shared.trustedDeviceSummaries()
-    }
-
     // MARK: - Tile cell (spatial grid item)
 
     private func tileCell(action: HotkeyAction, label: String) -> some View {
@@ -1660,8 +1524,7 @@ struct SettingsContentView: View {
     @State private var collapsedOcrApps: Set<String> = []
 
     @State private var activeTilePopover: HotkeyAction?
-    @State private var selectedCompanionCockpitPageID = "main"
-    @State private var companionTrustRevision = 0
+    @State private var isCompanionCockpitEditorPresented = false
 
     private func tileCellPopoverBinding(for action: HotkeyAction) -> Binding<Bool> {
         Binding(
@@ -1674,83 +1537,6 @@ struct SettingsContentView: View {
 
     private func compactKeyRecorder(action: HotkeyAction) -> some View {
         KeyRecorderView(action: action, store: hotkeyStore)
-    }
-
-    private func companionCockpitSlotMenu(
-        pageID: String,
-        index: Int,
-        shortcutID: String,
-        categories: [LatticesCompanionShortcutCategory]
-    ) -> some View {
-        let definition = LatticesCompanionCockpitCatalog.definition(for: shortcutID)
-        let label = definition?.title ?? "Empty"
-        let subtitle = definition?.subtitle ?? "Choose a shortcut"
-        let icon = definition?.iconSystemName ?? "square.dashed"
-
-        return Menu {
-            Button("Empty Slot") {
-                prefs.updateCompanionCockpitSlot(pageID: pageID, index: index, shortcutID: "")
-            }
-
-            ForEach(categories) { category in
-                let shortcuts = LatticesCompanionCockpitCatalog.shortcuts.filter {
-                    $0.category == category && !$0.id.isEmpty
-                }
-                if !shortcuts.isEmpty {
-                    Section(category.title) {
-                        ForEach(shortcuts) { shortcut in
-                            Button {
-                                prefs.updateCompanionCockpitSlot(
-                                    pageID: pageID,
-                                    index: index,
-                                    shortcutID: shortcut.id
-                                )
-                            } label: {
-                                Label(shortcut.title, systemImage: shortcut.iconSystemName)
-                            }
-                        }
-                    }
-                }
-            }
-        } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .top) {
-                    Text("Slot \(index + 1)")
-                        .font(Typo.pixel(10))
-                        .foregroundColor(Palette.textDim)
-                    Spacer(minLength: 0)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(Palette.textMuted)
-                }
-
-                Image(systemName: icon)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(Palette.textDim)
-
-                Text(label)
-                    .font(Typo.monoBold(11))
-                    .foregroundColor(Palette.text)
-                    .lineLimit(2)
-
-                Text(subtitle)
-                    .font(Typo.caption(9.5))
-                    .foregroundColor(Palette.textMuted)
-                    .lineLimit(3)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)
-            .padding(10)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Palette.surface)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .strokeBorder(Palette.border, lineWidth: 0.5)
-                    )
-            )
-        }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Shortcut row (read-only, for tmux)

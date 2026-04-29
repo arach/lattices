@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// Manages the unified app window (Home + Layout + Search + Settings).
+/// Manages the unified app window (Home + Screen Map + Desktop Inventory + Pi + Settings).
 /// Singleton with show/close/toggle, plus showPage() for navigation.
 final class ScreenMapWindowController: ObservableObject {
     static let shared = ScreenMapWindowController()
@@ -86,12 +86,12 @@ final class ScreenMapWindowController: ObservableObject {
         }
     }
 
-    /// Open screen map focused on a specific window.
+    /// Open Screen Map focused on a specific window.
     func showWindow(wid: UInt32) {
         activePage = .screenMap
         show()
 
-        // Avoid overlapping the voice panel — nudge screen map below it
+        // Avoid overlapping the voice panel — nudge Screen Map below it
         if let w = window, let voicePanel = VoiceCommandWindow.shared.panel, voicePanel.isVisible {
             let voiceBottom = voicePanel.frame.minY
             let mapFrame = w.frame

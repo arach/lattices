@@ -40,11 +40,11 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .screenMap:       return "Screen Map"
         case .bezel:           return "Window Bezel"
         case .cheatSheet:      return "Cheat Sheet"
-        case .desktopInventory: return "Window Selector"
+        case .desktopInventory: return "Desktop Inventory"
         case .omniSearch:      return "Search"
         case .voiceCommand:    return "Voice Command"
         case .handsOff:        return "Hands-Off Mode"
-        case .unifiedWindow:   return "Workspace Home"
+        case .unifiedWindow:   return "Home"
         case .hud:             return "HUD"
         case .mouseFinder:     return "Find Mouse"
         case .layer1:          return "Layer 1"
@@ -231,7 +231,7 @@ class HotkeyStore: ObservableObject {
         bind(.unifiedWindow, 18, hyper)  // Hyper+1 (Workspace Home)
         bind(.bezel,     19, hyper)      // Hyper+2
         bind(.hud,       20, hyper)      // Hyper+3 (HUD overlay)
-        bind(.desktopInventory, 5, hyper) // Hyper+G
+        bind(.desktopInventory, 34, hyper) // Hyper+I
         bind(.voiceCommand, 21, hyper)   // Hyper+4 (moved from Hyper+3)
         let cmdCtrl = UInt32(cmdKey | controlKey)
         bind(.handsOff, 46, cmdCtrl)          // Ctrl+Cmd+M

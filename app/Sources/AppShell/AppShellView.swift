@@ -42,6 +42,9 @@ struct AppShellView: View {
     @ObservedObject var controller: ScreenMapController
     @ObservedObject var windowController = ScreenMapWindowController.shared
     @StateObject private var commandState = CommandModeState()
+    @State private var pageOrigins: [AppPage: AppPage] = [:]
+    @State private var previousPage: AppPage = .home
+    @State private var originCaptureBypassPage: AppPage?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -57,9 +60,17 @@ struct AppShellView: View {
         .onAppear {
             commandState.onDismiss = { windowController.activePage = .home }
             syncPageState(windowController.activePage)
+            captureOriginIfNeeded(for: windowController.activePage, from: previousPage)
+            previousPage = windowController.activePage
         }
         .onChange(of: windowController.activePage) { page in
+            if originCaptureBypassPage == page {
+                originCaptureBypassPage = nil
+            } else {
+                captureOriginIfNeeded(for: page, from: previousPage)
+            }
             syncPageState(page)
+            previousPage = page
         }
     }
 
@@ -111,13 +122,11 @@ struct AppShellView: View {
         switch windowController.activePage {
         case .home:
             HomeDashboardView(onNavigate: { page in
-                windowController.activePage = page
-                if page == .screenMap { controller.enter() }
-                if page == .desktopInventory { commandState.enter() }
+                navigate(to: page)
             })
         case .screenMap:
             ScreenMapView(controller: controller, onNavigate: { page in
-                windowController.activePage = page
+                navigate(to: page)
             })
         case .desktopInventory:
             CommandModeView(state: commandState, presentation: .embedded)
@@ -127,16 +136,31 @@ struct AppShellView: View {
             SettingsContentView(
                 prefs: Preferences.shared,
                 scanner: ProjectScanner.shared,
-                onBack: { windowController.activePage = .screenMap; controller.enter() }
+                onBack: { navigateBack(from: .settings) }
             )
         case .docs:
             SettingsContentView(
                 page: .docs,
                 prefs: Preferences.shared,
                 scanner: ProjectScanner.shared,
-                onBack: { windowController.activePage = .screenMap; controller.enter() }
+                onBack: { navigateBack(from: .docs) }
             )
         }
+    }
+
+    private func navigate(to page: AppPage) {
+        windowController.activePage = page
+    }
+
+    private func navigateBack(from page: AppPage) {
+        let destination = pageOrigins[page] ?? .home
+        originCaptureBypassPage = destination
+        windowController.activePage = destination
+    }
+
+    private func captureOriginIfNeeded(for page: AppPage, from origin: AppPage) {
+        guard page == .settings || page == .docs else { return }
+        pageOrigins[page] = origin
     }
 
     private func syncPageState(_ page: AppPage) {
