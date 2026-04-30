@@ -42,6 +42,10 @@ class Preferences: ObservableObject {
         didSet { UserDefaults.standard.set(mouseGesturesEnabled, forKey: "mouseGestures.enabled") }
     }
 
+    @Published var keyboardRemapsEnabled: Bool {
+        didSet { UserDefaults.standard.set(keyboardRemapsEnabled, forKey: "keyboardRemaps.enabled") }
+    }
+
     // MARK: - AI / Claude
 
     @Published var claudePath: String {
@@ -168,6 +172,12 @@ class Preferences: ObservableObject {
             self.mouseGesturesEnabled = UserDefaults.standard.bool(forKey: "mouseGestures.enabled")
         } else {
             self.mouseGesturesEnabled = false
+        }
+
+        if UserDefaults.standard.object(forKey: "keyboardRemaps.enabled") != nil {
+            self.keyboardRemapsEnabled = UserDefaults.standard.bool(forKey: "keyboardRemaps.enabled")
+        } else {
+            self.keyboardRemapsEnabled = true
         }
         // AI / Claude
         self.claudePath = UserDefaults.standard.string(forKey: "claude.path") ?? ""
