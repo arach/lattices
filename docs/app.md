@@ -169,12 +169,24 @@ The settings window has four tabs:
 | Mode       | `learning` or `auto` (see below)                     |
 | Scan Root  | Directory to scan for .lattices.json configs (type a path or click Browse) |
 | Updates    | Download the latest release and relaunch the app     |
+| Keyboard Remaps | Optional Caps Lock layer that maps hold to Hyper and tap to Escape |
 
 **Mode** controls how the app handles session interaction:
 
 - **Learning** — shows tmux keybinding hints when you detach
   (helpful while getting used to tmux)
 - **Auto** — detaches sessions automatically (fewer prompts)
+
+### Keyboard Remaps
+
+**Keyboard remaps** are enabled by default for the laptop-friendly rule:
+
+- hold Caps Lock -> Hyper (`Control` + `Option` + `Shift` + `Command`)
+- tap Caps Lock -> Escape
+
+Rules live in `~/.lattices/keyboard-remaps.json`, and the Settings toggle
+can turn the layer off. Keyboard remaps require Accessibility permission
+because they use a local event tap.
 
 ### AI
 

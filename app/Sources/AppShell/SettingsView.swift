@@ -60,6 +60,7 @@ struct SettingsContentView: View {
     @ObservedObject var workspaceManager: WorkspaceManager = .shared
     @ObservedObject var appUpdater: AppUpdater = .shared
     @ObservedObject var mouseShortcutStore: MouseShortcutStore = .shared
+    @ObservedObject var keyboardRemapStore: KeyboardRemapStore = .shared
     var onBack: (() -> Void)? = nil
 
     @State private var selectedTab: SettingsSection = .general
@@ -588,6 +589,83 @@ struct SettingsContentView: View {
                         Text("Use Event Viewer to discover what your mouse emits on this machine. The config schema already accepts device selectors, but live gesture matching currently falls back to global rules when macOS doesn't expose the source device.")
                             .font(Typo.caption(9))
                             .foregroundColor(Palette.textMuted.opacity(0.7))
+                    }
+                }
+
+                settingsCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Keyboard remaps")
+                            .font(Typo.mono(11))
+                            .foregroundColor(Palette.text)
+
+                        HStack {
+                            Text("Caps Lock as Hyper")
+                                .font(Typo.mono(10))
+                                .foregroundColor(Palette.textDim)
+                            Spacer()
+                            Toggle("", isOn: $prefs.keyboardRemapsEnabled)
+                                .toggleStyle(.switch)
+                                .controlSize(.small)
+                                .labelsHidden()
+                        }
+
+                        Text("Rules live in ~/.lattices/keyboard-remaps.json. The default maps hold Caps Lock to Hyper and tap Caps Lock to Escape, so the existing Hyper shortcuts work on the laptop keyboard.")
+                            .font(Typo.caption(9))
+                            .foregroundColor(Palette.textMuted.opacity(0.7))
+
+                        cardDivider
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Active remaps")
+                                .font(Typo.mono(10))
+                                .foregroundColor(Palette.textDim)
+
+                            ForEach(keyboardRemapStore.summaryLines.prefix(4), id: \.self) { line in
+                                Text(line)
+                                    .font(Typo.caption(9))
+                                    .foregroundColor(Palette.textMuted.opacity(0.78))
+                            }
+
+                            if keyboardRemapStore.summaryLines.isEmpty {
+                                Text("No active remaps")
+                                    .font(Typo.caption(9))
+                                    .foregroundColor(Palette.textMuted.opacity(0.6))
+                            }
+                        }
+
+                        HStack(spacing: 8) {
+                            Button {
+                                keyboardRemapStore.openConfiguration()
+                            } label: {
+                                Text("Configure...")
+                                    .font(Typo.monoBold(10))
+                                    .foregroundColor(Palette.text)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 4)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(Palette.surfaceHov)
+                                            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
+                                    )
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                keyboardRemapStore.restoreDefaults()
+                            } label: {
+                                Text("Restore Defaults")
+                                    .font(Typo.monoBold(10))
+                                    .foregroundColor(Palette.text)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 4)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(Palette.surfaceHov)
+                                            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                 }
             }
