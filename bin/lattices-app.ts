@@ -152,6 +152,17 @@ function writeInfoPlist(): void {
     <string>AppIcon</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>com.arach.lattices</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>lattices</string>
+            </array>
+        </dict>
+    </array>
     <key>CFBundleVersion</key>
     <string>${version}</string>
     <key>CFBundleShortVersionString</key>

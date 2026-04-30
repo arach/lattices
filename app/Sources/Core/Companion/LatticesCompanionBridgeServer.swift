@@ -7,6 +7,8 @@ final class LatticesCompanionBridgeServer: NSObject {
 
     static let bonjourType = "_lattices-companion._tcp."
     static let defaultPort: UInt16 = 5287
+    static let protocolVersion = "1"
+    static let maxBodyBytes = 512 * 1024
 
     private let queue = DispatchQueue(label: "lattices.companion.bridge", qos: .userInitiated)
     private let encoder = JSONEncoder()
@@ -101,12 +103,14 @@ private extension LatticesCompanionBridgeServer {
         let serviceType: String
         let hostName: String
         let port: UInt16
+        let protocolVersion: String
         let version: String
         let mode: String
         let bridgePublicKey: String
         let bridgeFingerprint: String
         let requestSigningRequired: Bool
         let payloadEncryptionRequired: Bool
+        let capabilities: [String]
     }
 
     func publishBonjour() {
@@ -118,6 +122,13 @@ private extension LatticesCompanionBridgeServer {
             port: Int32(Self.defaultPort)
         )
         service.includesPeerToPeer = true
+        service.setTXTRecord(NetService.data(fromTXTRecord: [
+            "v": Data(Self.protocolVersion.utf8),
+            "mode": Data("local-network-secure".utf8),
+            "fp": Data(LatticesCompanionSecurityCoordinator.shared.bridgeFingerprint.utf8),
+            "sec": Data("signed,encrypted".utf8),
+            "cap": Data(DeckBridgeCapability.defaultCompanionCapabilities.joined(separator: ",").utf8),
+        ]))
         service.publish()
         self.service = service
     }
@@ -164,7 +175,7 @@ private extension LatticesCompanionBridgeServer {
         } catch let error as LatticesCompanionSecurityError {
             let status: Int
             switch error {
-            case .untrustedDevice:
+            case .untrustedDevice, .insufficientCapability:
                 status = 403
             case .missingHeader, .staleRequest, .replayedRequest, .invalidSignature, .invalidEnvelope, .invalidDeviceKey:
                 status = 401
@@ -185,12 +196,14 @@ private extension LatticesCompanionBridgeServer {
                 serviceType: Self.bonjourType,
                 hostName: localHostName(),
                 port: Self.defaultPort,
+                protocolVersion: Self.protocolVersion,
                 version: LatticesRuntime.appVersion,
                 mode: "local-network-secure",
                 bridgePublicKey: LatticesCompanionSecurityCoordinator.shared.bridgePublicKeyBase64,
                 bridgeFingerprint: LatticesCompanionSecurityCoordinator.shared.bridgeFingerprint,
                 requestSigningRequired: security.requestSigningRequired,
-                payloadEncryptionRequired: security.payloadEncryptionRequired
+                payloadEncryptionRequired: security.payloadEncryptionRequired,
+                capabilities: DeckBridgeCapability.defaultCompanionCapabilities
             )
             try sendJSON(status: 200, value: response, to: fd)
 
@@ -204,7 +217,7 @@ private extension LatticesCompanionBridgeServer {
             try sendJSON(status: status, value: response, to: fd)
 
         case ("GET", "/deck/snapshot"):
-            let auth = try authorizeProtectedRequest(request)
+            let auth = try authorizeProtectedRequest(request, requiredCapability: DeckBridgeCapability.deckRead)
             let snapshot = try LatticesDeckHost.shared.runtimeSnapshotSync()
             let response = try LatticesCompanionSecurityCoordinator.shared.encodeProtectedResponse(
                 snapshot,
@@ -215,7 +228,7 @@ private extension LatticesCompanionBridgeServer {
             try sendJSON(status: 200, value: response, to: fd)
 
         case ("POST", "/deck/perform"):
-            let auth = try authorizeProtectedRequest(request)
+            let auth = try authorizeProtectedRequest(request, requiredCapability: DeckBridgeCapability.deckPerform)
             let action = try LatticesCompanionSecurityCoordinator.shared.decodeProtectedBody(
                 DeckActionRequest.self,
                 body: request.body,
@@ -233,7 +246,7 @@ private extension LatticesCompanionBridgeServer {
             try sendJSON(status: 200, value: response, to: fd)
 
         case ("POST", "/deck/trackpad"):
-            let auth = try authorizeProtectedRequest(request)
+            let auth = try authorizeProtectedRequest(request, requiredCapability: DeckBridgeCapability.inputTrackpad)
             let eventRequest = try LatticesCompanionSecurityCoordinator.shared.decodeProtectedBody(
                 DeckTrackpadEventRequest.self,
                 body: request.body,
@@ -255,17 +268,19 @@ private extension LatticesCompanionBridgeServer {
         }
     }
 
-    func authorizeProtectedRequest(_ request: HTTPRequest) throws -> AuthorizedBridgeRequest {
+    func authorizeProtectedRequest(_ request: HTTPRequest, requiredCapability: String) throws -> AuthorizedBridgeRequest {
         let security = LatticesDeckHost.shared.securityConfiguration
         guard security.requestSigningRequired else {
             throw LatticesCompanionSecurityError.untrustedDevice
         }
-        return try LatticesCompanionSecurityCoordinator.shared.authorize(
+        let auth = try LatticesCompanionSecurityCoordinator.shared.authorize(
             method: request.method,
             path: request.path,
             headers: request.headers,
             body: request.body
         )
+        try LatticesCompanionSecurityCoordinator.shared.requireCapability(requiredCapability, for: auth)
+        return auth
     }
 
     func readRequest(from fd: Int32) -> HTTPRequest? {
@@ -312,6 +327,7 @@ private extension LatticesCompanionBridgeServer {
         }
 
         let contentLength = Int(headers["content-length"] ?? "") ?? 0
+        guard contentLength <= Self.maxBodyBytes else { return nil }
         var body = Data(buffer[headerRange.upperBound...])
         while body.count < contentLength {
             guard let count = readChunk(

@@ -41,6 +41,7 @@ find_talkie.js
 .openscout/project.json
 
 # iOS companion local build state
+.derived/
 iOS/LatticesCompanion/.derived-data/
 iOS/LatticesCompanion/.derived-data-sim/
 iOS/LatticesCompanion/.device-id.local

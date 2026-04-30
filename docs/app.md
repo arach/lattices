@@ -159,7 +159,7 @@ in the AI corner. Configure the model and budget in Settings > AI.
 ## Settings
 
 Open via the command palette or the gear icon in the main view.
-The settings window has four tabs:
+The settings window has five tabs:
 
 ### General
 
@@ -187,6 +187,22 @@ The settings window has four tabs:
 Rules live in `~/.lattices/keyboard-remaps.json`, and the Settings toggle
 can turn the layer off. Keyboard remaps require Accessibility permission
 because they use a local event tap.
+
+### Companion
+
+Shows the secure local bridge status, Mac bridge fingerprint, supported
+capability grants, and paired iPad or iPhone devices. The paired-device
+list shows each device fingerprint, last-seen time, and granted
+capabilities. You can refresh the list, revoke an individual device, or
+forget all trusted companions.
+
+The local companion bridge and trackpad proxy are off by default for
+privacy. Turn the bridge on in Settings > Companion, or open
+`lattices://companion/enable` to enable the bridge and jump straight to
+Companion settings. `lattices://companion/disable` turns it off again.
+
+The trackpad proxy toggle lives here. Paired devices still need the
+`input.trackpad` grant before they can send pointer events.
 
 ### AI
 

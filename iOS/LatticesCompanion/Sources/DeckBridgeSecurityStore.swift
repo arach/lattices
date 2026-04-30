@@ -6,6 +6,7 @@ import UIKit
 
 enum DeckBridgeSecurityError: LocalizedError {
     case pairingRequired
+    case insufficientCapability(String)
     case invalidBridgeKey
     case invalidEnvelope
 
@@ -13,6 +14,8 @@ enum DeckBridgeSecurityError: LocalizedError {
         switch self {
         case .pairingRequired:
             return "Approve this iPad or iPhone on your Mac before using the protected bridge."
+        case .insufficientCapability(let capability):
+            return "This pairing does not grant the required bridge capability: \(capability). Pair again from the Mac."
         case .invalidBridgeKey:
             return "The Mac bridge returned an invalid encryption identity."
         case .invalidEnvelope:
@@ -27,7 +30,12 @@ struct StoredBridgeTrust: Codable, Equatable, Sendable {
     var bridgeFingerprint: String
     var requestSigningRequired: Bool
     var payloadEncryptionRequired: Bool
+    var grantedCapabilities: [String]?
     var pairedAt: Date
+
+    var effectiveCapabilities: [String] {
+        grantedCapabilities ?? DeckBridgeCapability.defaultCompanionCapabilities
+    }
 }
 
 struct PreparedBridgeRequest {
@@ -95,7 +103,8 @@ final class DeckBridgeSecurityStore {
             deviceName: UIDevice.current.name,
             devicePublicKey: devicePublicKeyBase64,
             platform: "iOS \(UIDevice.current.systemVersion)",
-            appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+            appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+            requestedCapabilities: DeckBridgeCapability.defaultCompanionCapabilities
         )
     }
 
@@ -106,6 +115,7 @@ final class DeckBridgeSecurityStore {
             bridgeFingerprint: response.bridgeFingerprint,
             requestSigningRequired: response.requestSigningRequired,
             payloadEncryptionRequired: response.payloadEncryptionRequired,
+            grantedCapabilities: response.grantedCapabilities,
             pairedAt: Date()
         )
         persistTrustedBridges()
@@ -120,6 +130,7 @@ final class DeckBridgeSecurityStore {
         guard let trust = trustedBridges[health.bridgePublicKey] else {
             throw DeckBridgeSecurityError.pairingRequired
         }
+        try requireCapability(for: path, trust: trust)
 
         let requestNonce = UUID().uuidString.lowercased()
         let timestamp = ISO8601DateFormatter.latticesBridge.string(from: Date())
@@ -296,6 +307,25 @@ private extension DeckBridgeSecurityStore {
             requestNonce
         ].joined(separator: "\n")
         return Data(value.utf8)
+    }
+
+    func requireCapability(for path: String, trust: StoredBridgeTrust) throws {
+        let required: String?
+        switch path {
+        case "/deck/snapshot":
+            required = DeckBridgeCapability.deckRead
+        case "/deck/perform":
+            required = DeckBridgeCapability.deckPerform
+        case "/deck/trackpad":
+            required = DeckBridgeCapability.inputTrackpad
+        default:
+            required = nil
+        }
+
+        guard let required else { return }
+        guard trust.effectiveCapabilities.contains(required) else {
+            throw DeckBridgeSecurityError.insufficientCapability(required)
+        }
     }
 
     func sharedSecret(bridgePublicKeyBase64: String) throws -> SharedSecret {

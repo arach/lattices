@@ -78,6 +78,17 @@ write_info_plist() {
     <string>AppIcon</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>com.arach.lattices</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>lattices</string>
+            </array>
+        </dict>
+    </array>
     <key>CFBundleVersion</key>
     <string>$VERSION</string>
     <key>CFBundleShortVersionString</key>

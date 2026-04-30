@@ -52,6 +52,10 @@ final class DeckKitTests: XCTestCase {
             bridgeFingerprint: "ABCD-1234",
             requestSigningRequired: true,
             payloadEncryptionRequired: true,
+            grantedCapabilities: [
+                DeckBridgeCapability.deckRead,
+                DeckBridgeCapability.deckPerform,
+            ],
             detail: "Trusted on the Mac."
         )
 
@@ -59,6 +63,38 @@ final class DeckKitTests: XCTestCase {
         let decoded = try JSONDecoder().decode(DeckPairingResponse.self, from: data)
 
         XCTAssertEqual(decoded, response)
+        XCTAssertEqual(decoded.grantedCapabilities, [
+            DeckBridgeCapability.deckRead,
+            DeckBridgeCapability.deckPerform,
+        ])
+    }
+
+    func testPairingPayloadDecodesLegacyCapabilityDefaults() throws {
+        let responseJSON = """
+        {
+          "disposition": "approved",
+          "bridgeName": "Lats Bridge",
+          "bridgePublicKey": "bridge-public-key",
+          "bridgeFingerprint": "ABCD-1234",
+          "requestSigningRequired": true,
+          "payloadEncryptionRequired": true
+        }
+        """.data(using: .utf8)!
+
+        let decodedResponse = try JSONDecoder().decode(DeckPairingResponse.self, from: responseJSON)
+        XCTAssertEqual(decodedResponse.grantedCapabilities, DeckBridgeCapability.defaultCompanionCapabilities)
+
+        let requestJSON = """
+        {
+          "deviceID": "ipad-1",
+          "deviceName": "iPad",
+          "devicePublicKey": "device-public-key",
+          "platform": "iPadOS"
+        }
+        """.data(using: .utf8)!
+
+        let decodedRequest = try JSONDecoder().decode(DeckPairingRequest.self, from: requestJSON)
+        XCTAssertEqual(decodedRequest.requestedCapabilities, DeckBridgeCapability.defaultCompanionCapabilities)
     }
 
     func testRuntimeSnapshotRoundTripPreservesSwitcherAndHistory() throws {

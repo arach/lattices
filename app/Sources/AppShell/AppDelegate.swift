@@ -1,4 +1,5 @@
 import AppKit
+import Carbon
 import SwiftUI
 
 extension Notification.Name {
@@ -69,6 +70,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         Self.shared = self
         NSApp.setActivationPolicy(.accessory)
         NSApp.appearance = NSAppearance(named: .darkAqua)
+        registerDeepLinkHandler()
 
         // --- Status item ---
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -184,7 +186,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         ProcessModel.shared.start()
         LatticesApi.setup()
         DaemonServer.shared.start()
-        LatticesCompanionBridgeServer.shared.start()
+        if Preferences.shared.companionBridgeEnabled {
+            LatticesCompanionBridgeServer.shared.start()
+        } else {
+            diag.info("CompanionBridge: disabled by preference")
+        }
         AgentPool.shared.start()
         diag.finish(tBoot)
 
@@ -334,6 +340,57 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @MainActor @objc private func menuUpdate() { AppUpdater.shared.promptForUpdate() }
     @objc private func menuSettings() { SettingsWindowController.shared.show() }
     @objc private func menuQuit() { NSApp.terminate(nil) }
+
+    // MARK: - Deep Links
+
+    private func registerDeepLinkHandler() {
+        NSAppleEventManager.shared().setEventHandler(
+            self,
+            andSelector: #selector(handleGetURLEvent(_:withReplyEvent:)),
+            forEventClass: AEEventClass(kInternetEventClass),
+            andEventID: AEEventID(kAEGetURL)
+        )
+    }
+
+    @objc private func handleGetURLEvent(
+        _ event: NSAppleEventDescriptor,
+        withReplyEvent replyEvent: NSAppleEventDescriptor
+    ) {
+        guard
+            let value = event.paramDescriptor(forKeyword: keyDirectObject)?.stringValue,
+            let url = URL(string: value)
+        else {
+            return
+        }
+        handleDeepLink(url)
+    }
+
+    private func handleDeepLink(_ url: URL) {
+        guard url.scheme?.localizedCaseInsensitiveCompare("lattices") == .orderedSame else {
+            return
+        }
+
+        let host = url.host?.lowercased()
+        let action = url.pathComponents
+            .first { $0 != "/" }?
+            .lowercased()
+
+        guard host == "companion" else {
+            SettingsWindowController.shared.show()
+            return
+        }
+
+        switch action {
+        case "enable", "start":
+            Preferences.shared.companionBridgeEnabled = true
+            SettingsWindowController.shared.showCompanion()
+        case "disable", "stop":
+            Preferences.shared.companionBridgeEnabled = false
+            SettingsWindowController.shared.showCompanion()
+        default:
+            SettingsWindowController.shared.showCompanion()
+        }
+    }
 
     private static func showWorkspaceInspector() {
         guard let entry = DesktopModel.shared.frontmostWindow(),

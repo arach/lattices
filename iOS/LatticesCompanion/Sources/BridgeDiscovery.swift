@@ -64,12 +64,16 @@ extension BridgeDiscovery: NetServiceBrowserDelegate, NetServiceDelegate {
         guard let hostName = sender.hostName else { return }
         let normalizedHost = normalize(hostName: hostName)
         guard !normalizedHost.isEmpty, sender.port > 0 else { return }
+        let txt = txtDictionary(from: sender.txtRecordData())
 
         discoveredEndpoints[key] = BridgeEndpoint(
             name: sender.name,
             host: normalizedHost,
             port: sender.port,
-            source: "Bonjour"
+            source: "Bonjour",
+            bridgeFingerprint: txt["fp"],
+            securityMode: txt["sec"],
+            capabilities: txt["cap"]?.split(separator: ",").map(String.init) ?? []
         )
         publish()
     }
@@ -92,5 +96,13 @@ extension BridgeDiscovery: NetServiceBrowserDelegate, NetServiceDelegate {
     private func normalize(hostName: String) -> String {
         guard hostName.hasSuffix(".") else { return hostName }
         return String(hostName.dropLast())
+    }
+
+    private func txtDictionary(from data: Data?) -> [String: String] {
+        guard let data else { return [:] }
+        return NetService.dictionary(fromTXTRecord: data).reduce(into: [:]) { result, entry in
+            guard let value = String(data: entry.value, encoding: .utf8) else { return }
+            result[entry.key] = value
+        }
     }
 }

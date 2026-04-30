@@ -14,6 +14,10 @@ final class SettingsWindowController {
         ScreenMapWindowController.shared.showPage(.settings)
     }
 
+    func showCompanion() {
+        ScreenMapWindowController.shared.showPage(.companionSettings)
+    }
+
     func close() {
         ScreenMapWindowController.shared.close()
     }

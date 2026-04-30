@@ -132,10 +132,39 @@ Standalone mode now uses:
 - per-device key agreement
 - signed requests with nonce and timestamp checks
 - encrypted deck payloads for snapshots, actions, and trackpad events
+- pairing-time capability grants, enforced again on every protected route
 
 The bridge still keeps `/health`, `/deck/manifest`, and pairing
 bootstrap lightweight so a new companion can connect and establish trust
 without an external relay or Tailscale dependency.
+
+## Reference Security Pattern
+
+The standalone bridge is the reference pattern we should share back to
+Talkie and Scout:
+
+1. Bonjour is discovery only. The TXT record exposes protocol version,
+   fingerprint, security mode, and coarse capabilities, but no project
+   names, sessions, commands, or tokens.
+2. Local-network control is opt-in. The bridge is disabled by default;
+   users enable it from Companion settings or the local
+   `lattices://companion/enable` deep link.
+3. Pairing is explicit Mac approval. A cryptographic handshake or public
+   key exchange proves key possession; it does not automatically grant
+   control.
+4. Trust is scoped. Pairing records store granted capabilities such as
+   `deck.read`, `deck.perform`, and `input.trackpad`.
+5. Every protected request is signed with a timestamp and nonce, then
+   checked for replay before the route runs.
+6. Sensitive payloads are encrypted with per-device key agreement and
+   route-bound additional authenticated data.
+7. Authorization happens after authentication. A trusted device still
+   needs the route's required capability before it can read state,
+   perform actions, or proxy input.
+
+That gives the family of apps one ergonomic model: discover nearby,
+pair once, reconnect quietly, and keep control surfaces capability
+scoped.
 
 ## Initial Action Surface
 

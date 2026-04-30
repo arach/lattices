@@ -6,6 +6,27 @@ struct BridgeEndpoint: Identifiable, Hashable {
     let host: String
     let port: Int
     let source: String
+    var bridgeFingerprint: String?
+    var securityMode: String?
+    var capabilities: [String]
+
+    init(
+        name: String,
+        host: String,
+        port: Int,
+        source: String,
+        bridgeFingerprint: String? = nil,
+        securityMode: String? = nil,
+        capabilities: [String] = []
+    ) {
+        self.name = name
+        self.host = host
+        self.port = port
+        self.source = source
+        self.bridgeFingerprint = bridgeFingerprint
+        self.securityMode = securityMode
+        self.capabilities = capabilities
+    }
 
     var id: String {
         "\(host):\(port)"
@@ -18,12 +39,14 @@ struct BridgeHealthResponse: Codable, Equatable {
     let serviceType: String
     let hostName: String
     let port: UInt16
+    let protocolVersion: String?
     let version: String
     let mode: String
     let bridgePublicKey: String
     let bridgeFingerprint: String
     let requestSigningRequired: Bool
     let payloadEncryptionRequired: Bool
+    let capabilities: [String]?
 }
 
 enum DeckBridgeClientError: LocalizedError {

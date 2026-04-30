@@ -13,7 +13,7 @@ final class LatticesCompanionTrackpadController {
                 isEnabled: false,
                 isAvailable: false,
                 statusTitle: "Trackpad Off",
-                statusDetail: "Enable the companion trackpad from the Mac Shortcuts settings.",
+                statusDetail: "Enable the companion trackpad from the Mac Companion settings.",
                 pointerScale: 1.6,
                 scrollScale: 1.0,
                 supportsDragLock: true

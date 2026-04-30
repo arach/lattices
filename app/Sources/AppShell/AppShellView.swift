@@ -8,6 +8,7 @@ enum AppPage: String, CaseIterable {
     case desktopInventory
     case pi
     case settings
+    case companionSettings
     case docs
 
     var label: String {
@@ -17,6 +18,7 @@ enum AppPage: String, CaseIterable {
         case .desktopInventory: return "Desktop Inventory"
         case .pi:               return "Pi"
         case .settings:         return "Settings"
+        case .companionSettings:return "Settings"
         case .docs:             return "Docs"
         }
     }
@@ -28,6 +30,7 @@ enum AppPage: String, CaseIterable {
         case .desktopInventory: return "macwindow.on.rectangle"
         case .pi:               return "terminal"
         case .settings:         return "gearshape"
+        case .companionSettings:return "ipad.and.iphone"
         case .docs:             return "book"
         }
     }
@@ -125,6 +128,13 @@ struct AppShellView: View {
             PiWorkspaceView()
         case .settings:
             SettingsContentView(
+                prefs: Preferences.shared,
+                scanner: ProjectScanner.shared,
+                onBack: { windowController.activePage = .screenMap; controller.enter() }
+            )
+        case .companionSettings:
+            SettingsContentView(
+                page: .companionSettings,
                 prefs: Preferences.shared,
                 scanner: ProjectScanner.shared,
                 onBack: { windowController.activePage = .screenMap; controller.enter() }

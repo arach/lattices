@@ -10,6 +10,7 @@ class Preferences: ObservableObject {
     static let shared = Preferences()
 
     private enum CompanionDefaultsKey {
+        static let bridgeEnabled = "companion.bridge.enabled"
         static let trackpadEnabled = "companion.trackpad.enabled"
         static let cockpitLayout = "companion.cockpit.layout"
     }
@@ -28,6 +29,17 @@ class Preferences: ObservableObject {
 
     @Published var dragSnapEnabled: Bool {
         didSet { UserDefaults.standard.set(dragSnapEnabled, forKey: "windowSnap.enabled") }
+    }
+
+    @Published var companionBridgeEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(companionBridgeEnabled, forKey: CompanionDefaultsKey.bridgeEnabled)
+            if companionBridgeEnabled {
+                LatticesCompanionBridgeServer.shared.start()
+            } else {
+                LatticesCompanionBridgeServer.shared.stop()
+            }
+        }
     }
 
     @Published var companionTrackpadEnabled: Bool {
@@ -159,10 +171,16 @@ class Preferences: ObservableObject {
             self.dragSnapEnabled = true
         }
 
+        if UserDefaults.standard.object(forKey: CompanionDefaultsKey.bridgeEnabled) != nil {
+            self.companionBridgeEnabled = UserDefaults.standard.bool(forKey: CompanionDefaultsKey.bridgeEnabled)
+        } else {
+            self.companionBridgeEnabled = false
+        }
+
         if UserDefaults.standard.object(forKey: CompanionDefaultsKey.trackpadEnabled) != nil {
             self.companionTrackpadEnabled = UserDefaults.standard.bool(forKey: CompanionDefaultsKey.trackpadEnabled)
         } else {
-            self.companionTrackpadEnabled = true
+            self.companionTrackpadEnabled = false
         }
 
         self.companionCockpitLayout = Self.loadCompanionCockpitLayout()

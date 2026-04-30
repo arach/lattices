@@ -12,6 +12,7 @@ enum LatticesCompanionSecurityError: LocalizedError {
     case invalidSignature
     case invalidEnvelope
     case invalidDeviceKey
+    case insufficientCapability(String)
 
     var errorDescription: String? {
         switch self {
@@ -29,6 +30,8 @@ enum LatticesCompanionSecurityError: LocalizedError {
             return "The bridge payload could not be decrypted."
         case .invalidDeviceKey:
             return "The device pairing key is invalid."
+        case .insufficientCapability(let capability):
+            return "This trusted device is missing the required bridge capability: \(capability)."
         }
     }
 }
@@ -40,6 +43,7 @@ struct LatticesCompanionTrustedDeviceRecord: Codable, Equatable, Identifiable, S
     var fingerprint: String
     var platform: String
     var appVersion: String?
+    var capabilities: [String]?
     var pairedAt: Date
     var lastSeenAt: Date
 
@@ -48,9 +52,14 @@ struct LatticesCompanionTrustedDeviceRecord: Codable, Equatable, Identifiable, S
             id: id,
             name: name,
             fingerprint: fingerprint,
+            capabilities: effectiveCapabilities,
             pairedAt: pairedAt,
             lastSeenAt: lastSeenAt
         )
+    }
+
+    var effectiveCapabilities: [String] {
+        capabilities ?? DeckBridgeCapability.defaultCompanionCapabilities
     }
 }
 
@@ -117,9 +126,15 @@ final class LatticesCompanionSecurityCoordinator {
         persistTrustedDevices()
     }
 
+    func revokeTrustedDevice(id: String) {
+        trustedDevices.removeValue(forKey: id)
+        persistTrustedDevices()
+    }
+
     func handlePairingRequest(_ request: DeckPairingRequest) -> DeckPairingResponse {
         let diag = DiagnosticLog.shared
         diag.info("CompanionPairing: request device=\(request.deviceName) id=\(request.deviceID)")
+        let grantedCapabilities = Self.grantedCapabilities(for: request.requestedCapabilities)
 
         guard
             request.deviceID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false,
@@ -134,12 +149,14 @@ final class LatticesCompanionSecurityCoordinator {
                 bridgeFingerprint: bridgeFingerprint,
                 requestSigningRequired: true,
                 payloadEncryptionRequired: true,
+                grantedCapabilities: [],
                 detail: LatticesCompanionSecurityError.invalidDeviceKey.localizedDescription
             )
         }
 
         if var existing = trustedDevices[request.deviceID], existing.publicKey == request.devicePublicKey {
             existing.lastSeenAt = Date()
+            existing.capabilities = grantedCapabilities.isEmpty ? existing.effectiveCapabilities : grantedCapabilities
             trustedDevices[request.deviceID] = existing
             persistTrustedDevices()
             diag.success("CompanionPairing: device already trusted id=\(request.deviceID)")
@@ -150,6 +167,7 @@ final class LatticesCompanionSecurityCoordinator {
                 bridgeFingerprint: bridgeFingerprint,
                 requestSigningRequired: true,
                 payloadEncryptionRequired: true,
+                grantedCapabilities: existing.effectiveCapabilities,
                 detail: "This device is already trusted on the Mac."
             )
         }
@@ -164,6 +182,7 @@ final class LatticesCompanionSecurityCoordinator {
                 bridgeFingerprint: bridgeFingerprint,
                 requestSigningRequired: true,
                 payloadEncryptionRequired: true,
+                grantedCapabilities: [],
                 detail: "Pairing was denied on the Mac."
             )
         }
@@ -176,6 +195,7 @@ final class LatticesCompanionSecurityCoordinator {
             fingerprint: Self.fingerprint(forPublicKeyBase64: request.devicePublicKey),
             platform: request.platform,
             appVersion: request.appVersion,
+            capabilities: grantedCapabilities,
             pairedAt: now,
             lastSeenAt: now
         )
@@ -189,6 +209,7 @@ final class LatticesCompanionSecurityCoordinator {
             bridgeFingerprint: bridgeFingerprint,
             requestSigningRequired: true,
             payloadEncryptionRequired: true,
+            grantedCapabilities: grantedCapabilities,
             detail: "Trusted and ready for encrypted bridge requests."
         )
     }
@@ -239,6 +260,12 @@ final class LatticesCompanionSecurityCoordinator {
             requestNonce: requestNonce,
             requestTimestamp: timestamp
         )
+    }
+
+    func requireCapability(_ capability: String, for auth: AuthorizedBridgeRequest) throws {
+        guard auth.device.effectiveCapabilities.contains(capability) else {
+            throw LatticesCompanionSecurityError.insufficientCapability(capability)
+        }
     }
 
     func decodeProtectedBody<T: Decodable>(
@@ -313,6 +340,14 @@ private extension LatticesCompanionSecurityCoordinator {
         let hex = digest.map { String(format: "%02x", $0) }.joined()
         let compact = String(hex.prefix(12)).uppercased()
         return compact.chunked(into: 4).joined(separator: "-")
+    }
+
+    static func grantedCapabilities(for requested: [String]) -> [String] {
+        let supported = Set(DeckBridgeCapability.defaultCompanionCapabilities)
+        let requested = requested.isEmpty ? supported : Set(requested)
+        return requested
+            .intersection(supported)
+            .sorted()
     }
 
     func persistTrustedDevices() {
