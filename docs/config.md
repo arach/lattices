@@ -161,6 +161,29 @@ Run `lattices init` in your project directory to generate a starter
 Aliases: `ls`/`list`, `kill`/`rm`, `sync`/`reconcile`,
 `restart`/`respawn`, `tile`/`t`.
 
+## Keyboard remaps
+
+The menu bar app can create a lightweight keyboard layer from
+`~/.lattices/keyboard-remaps.json`. The default config is:
+
+```json
+{
+  "rules": [
+    {
+      "enabled": true,
+      "from": "caps_lock",
+      "id": "caps_lock_hyper_escape",
+      "toIfAlone": "escape",
+      "toIfHeld": "hyper"
+    }
+  ]
+}
+```
+
+It is enabled by default and can be turned off from Settings -> General ->
+Keyboard remaps. Hold Caps Lock to send Hyper (`Control` + `Option` +
+`Shift` + `Command`), or tap Caps Lock alone to send Escape.
+
 ## Machine-readable output
 
 ### `--json` flag

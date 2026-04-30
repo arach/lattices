@@ -124,6 +124,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         store.register(action: .omniSearch) { OmniSearchWindow.shared.toggle() }
         WindowDragSnapController.shared.start()
         MouseGestureController.shared.start()
+        KeyboardRemapController.shared.start()
 
         // Session layer cycling
         store.register(action: .layerNext) { SessionLayerStore.shared.cycleNext() }
@@ -203,6 +204,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        KeyboardRemapController.shared.stop()
         LatticesCompanionBridgeServer.shared.stop()
         DaemonServer.shared.stop()
     }
