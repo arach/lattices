@@ -152,7 +152,7 @@ private struct MouseInputEventViewerView: View {
                 Text("Mouse Shortcut Event Viewer")
                     .font(.system(size: 14, weight: .semibold, design: .monospaced))
                     .foregroundColor(.white.opacity(0.95))
-                Text("Watching extra mouse buttons and drag candidates for configurable shortcuts.")
+                Text("Watching extra mouse buttons plus click and drag candidates for configurable shortcuts.")
                     .font(.system(size: 11))
                     .foregroundColor(.white.opacity(0.6))
             }

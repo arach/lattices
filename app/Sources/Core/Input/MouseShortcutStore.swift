@@ -33,7 +33,7 @@ final class MouseShortcutStore: ObservableObject {
     }
 
     var summaryLines: [String] {
-        enabledRules.map { "\($0.trigger.triggerName) -> \($0.action.type.rawValue)" }
+        enabledRules.map(\.summary)
     }
 
     func ensureConfigFile() {
@@ -48,8 +48,14 @@ final class MouseShortcutStore: ObservableObject {
         }
 
         do {
-            config = try JSONDecoder().decode(MouseShortcutConfig.self, from: data)
-            lastLoadedModifiedDate = modifiedDate()
+            let decoded = try JSONDecoder().decode(MouseShortcutConfig.self, from: data)
+            let normalized = decoded.normalizedForCurrentVersion()
+            config = normalized
+            if normalized != decoded {
+                write(config: normalized)
+            } else {
+                lastLoadedModifiedDate = modifiedDate()
+            }
         } catch {
             DiagnosticLog.shared.error("MouseShortcutStore: failed to decode mouse-shortcuts.json - \(error.localizedDescription)")
             config = .defaults

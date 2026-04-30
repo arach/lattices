@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 extension Notification.Name {
@@ -13,6 +14,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var statusItem: NSStatusItem!
     private var popover: NSPopover?
     private var contextMenu: NSMenu!
+    private var companionBridgePreferenceCancellable: AnyCancellable?
 
     /// 3×3 grid icon for the menu bar — L-shape bright, rest dim (template for auto light/dark)
     private static let menuBarIcon: NSImage = {
@@ -183,7 +185,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         ProcessModel.shared.start()
         LatticesApi.setup()
         DaemonServer.shared.start()
-        LatticesCompanionBridgeServer.shared.start()
+        companionBridgePreferenceCancellable = Preferences.shared.$companionBridgeEnabled
+            .removeDuplicates()
+            .sink { enabled in
+                if enabled {
+                    LatticesCompanionBridgeServer.shared.start()
+                } else {
+                    LatticesCompanionBridgeServer.shared.stop()
+                }
+            }
         AgentPool.shared.start()
         diag.finish(tBoot)
 

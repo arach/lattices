@@ -501,7 +501,7 @@ struct SettingsContentView: View {
                             .foregroundColor(Palette.text)
 
                         HStack {
-                            Text("Middle-click gestures")
+                            Text("Middle-click shortcuts")
                                 .font(Typo.mono(10))
                                 .foregroundColor(Palette.textDim)
                             Spacer()
@@ -511,18 +511,18 @@ struct SettingsContentView: View {
                                 .labelsHidden()
                         }
 
-                        Text("Rules live in ~/.lattices/mouse-shortcuts.json. The current defaults preserve the working setup: middle-click drag left/right switches Spaces and drag down opens the Screen Map overview.")
+                        Text("Rules live in ~/.lattices/mouse-shortcuts.json. The defaults now give middle-click a real paste on click, while drag left/right switches Spaces, drag down opens Screen Map overview, and drag up starts Dictation.")
                             .font(Typo.caption(9))
                             .foregroundColor(Palette.textMuted.opacity(0.7))
 
                         cardDivider
 
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("Active drag mappings")
+                            Text("Active mappings")
                                 .font(Typo.mono(10))
                                 .foregroundColor(Palette.textDim)
 
-                            ForEach(mouseShortcutStore.summaryLines.prefix(4), id: \.self) { line in
+                            ForEach(mouseShortcutStore.summaryLines.prefix(5), id: \.self) { line in
                                 Text(line)
                                     .font(Typo.caption(9))
                                     .foregroundColor(Palette.textMuted.opacity(0.78))
@@ -1254,9 +1254,37 @@ struct SettingsContentView: View {
         return shortcutSectionCard(
             title: "Companion Cockpit",
             eyebrow: "iPad & iPhone",
-            summary: "Define the Mac-authored command deck here, then let the companion app render it. Trackpad proxy runs through the same bridge."
+            summary: "Define the Mac-authored command deck here, then let the companion app render it. Local network access stays off until you explicitly enable the bridge."
         ) {
             VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Companion Access")
+                            .font(Typo.monoBold(11))
+                            .foregroundColor(Palette.text)
+                        Text("Advertise a secure local-network bridge for paired iPad and iPhone devices. Leave this off to avoid the macOS local network permission prompt until you actually want companion features.")
+                            .font(Typo.caption(10.5))
+                            .foregroundColor(Palette.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer()
+
+                    Toggle("", isOn: $prefs.companionBridgeEnabled)
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                }
+
+                if !prefs.companionBridgeEnabled {
+                    Text("The companion bridge is currently off. Turn it on when you're ready to pair an iPad or iPhone.")
+                        .font(Typo.caption(10.5))
+                        .foregroundColor(Palette.textMuted)
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(shortcutsInsetPanel)
+                }
+
+                VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .top, spacing: 12) {
                     VStack(alignment: .leading, spacing: 5) {
                         Text("Trackpad Proxy")
@@ -1382,6 +1410,9 @@ struct SettingsContentView: View {
                     .font(Typo.caption(10.5))
                     .foregroundColor(Palette.textDim)
                 }
+                }
+                .disabled(!prefs.companionBridgeEnabled)
+                .opacity(prefs.companionBridgeEnabled ? 1 : 0.55)
             }
         }
     }

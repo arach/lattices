@@ -10,6 +10,7 @@ class Preferences: ObservableObject {
     static let shared = Preferences()
 
     private enum CompanionDefaultsKey {
+        static let bridgeEnabled = "companion.bridge.enabled"
         static let trackpadEnabled = "companion.trackpad.enabled"
         static let cockpitLayout = "companion.cockpit.layout"
     }
@@ -28,6 +29,10 @@ class Preferences: ObservableObject {
 
     @Published var dragSnapEnabled: Bool {
         didSet { UserDefaults.standard.set(dragSnapEnabled, forKey: "windowSnap.enabled") }
+    }
+
+    @Published var companionBridgeEnabled: Bool {
+        didSet { UserDefaults.standard.set(companionBridgeEnabled, forKey: CompanionDefaultsKey.bridgeEnabled) }
     }
 
     @Published var companionTrackpadEnabled: Bool {
@@ -153,6 +158,14 @@ class Preferences: ObservableObject {
             self.dragSnapEnabled = UserDefaults.standard.bool(forKey: "windowSnap.enabled")
         } else {
             self.dragSnapEnabled = true
+        }
+
+        if UserDefaults.standard.object(forKey: CompanionDefaultsKey.bridgeEnabled) != nil {
+            self.companionBridgeEnabled = UserDefaults.standard.bool(forKey: CompanionDefaultsKey.bridgeEnabled)
+        } else {
+            let hadLegacyTrackpadPreference = UserDefaults.standard.object(forKey: CompanionDefaultsKey.trackpadEnabled) != nil
+            let hasTrustedCompanionDevices = !LatticesCompanionSecurityCoordinator.shared.trustedDeviceSummaries().isEmpty
+            self.companionBridgeEnabled = hadLegacyTrackpadPreference || hasTrustedCompanionDevices
         }
 
         if UserDefaults.standard.object(forKey: CompanionDefaultsKey.trackpadEnabled) != nil {

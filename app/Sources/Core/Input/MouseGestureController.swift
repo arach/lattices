@@ -377,6 +377,38 @@ final class MouseGestureController {
         self.session = nil
 
         guard let direction else {
+            let clickDistance = max(abs(delta.x), abs(delta.y))
+            let clickTriggerEvent = MouseShortcutTriggerEvent(
+                button: button,
+                kind: .click,
+                direction: nil,
+                device: nil
+            )
+            let clickMatch = clickDistance <= tuning.holdTolerance
+                ? MouseShortcutStore.shared.match(for: clickTriggerEvent)
+                : nil
+
+            if let clickMatch {
+                DispatchQueue.main.async { [weak self] in
+                    session.overlay.dismiss(immediately: true)
+                    guard let self else { return }
+                    let outcome = self.performAction(match: clickMatch, startPoint: session.startPoint)
+                    DiagnosticLog.shared.info("MouseGesture: \(outcome.label) -> \(outcome.success ? "ok" : "blocked")")
+                    self.recordObservedEvent(
+                        phase: "up",
+                        button: button,
+                        location: event.location,
+                        delta: delta,
+                        modifiers: event.flags,
+                        candidate: clickTriggerEvent.triggerName,
+                        match: clickMatch,
+                        note: outcome.success ? "click fired" : "click blocked",
+                        appInfo: appInfo
+                    )
+                }
+                return nil
+            }
+
             DiagnosticLog.shared.info("MouseGesture: released without a gesture at \(format(event.location))")
             recordObservedEvent(
                 phase: "up",
@@ -384,9 +416,9 @@ final class MouseGestureController {
                 location: event.location,
                 delta: delta,
                 modifiers: event.flags,
-                candidate: nil,
-                match: nil,
-                note: "replay click",
+                candidate: clickDistance <= tuning.holdTolerance ? clickTriggerEvent.triggerName : nil,
+                match: clickMatch,
+                note: clickDistance <= tuning.holdTolerance ? "replay click" : "movement below drag threshold",
                 appInfo: appInfo
             )
             DispatchQueue.main.async { [weak self] in

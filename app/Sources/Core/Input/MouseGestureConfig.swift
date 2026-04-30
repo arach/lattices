@@ -9,6 +9,7 @@ enum MouseGestureDirection: String, CaseIterable, Codable, Equatable {
 }
 
 enum MouseShortcutTriggerKind: String, Codable, Equatable {
+    case click
     case drag
 }
 
@@ -226,10 +227,25 @@ struct MouseShortcutDeviceSelector: Codable, Equatable {
 struct MouseShortcutTrigger: Codable, Equatable {
     var button: MouseShortcutButton
     var kind: MouseShortcutTriggerKind
-    var direction: MouseGestureDirection
+    var direction: MouseGestureDirection?
 
     var triggerName: String {
-        "\(button.triggerToken).\(kind.rawValue).\(direction.rawValue)"
+        if let direction {
+            return "\(button.triggerToken).\(kind.rawValue).\(direction.rawValue)"
+        }
+        return "\(button.triggerToken).\(kind.rawValue)"
+    }
+
+    var displayLabel: String {
+        switch kind {
+        case .click:
+            return button.displayLabel
+        case .drag:
+            if let direction {
+                return "\(button.displayLabel) drag \(direction.rawValue)"
+            }
+            return "\(button.displayLabel) drag"
+        }
     }
 }
 
@@ -273,7 +289,7 @@ struct MouseShortcutRule: Codable, Equatable, Identifiable {
     var action: MouseShortcutActionDefinition
 
     var summary: String {
-        "\(trigger.triggerName) -> \(action.type.rawValue)"
+        "\(trigger.displayLabel) -> \(action.label)"
     }
 }
 
@@ -294,10 +310,26 @@ struct MouseShortcutConfig: Codable, Equatable {
     var tuning: MouseShortcutTuning
     var rules: [MouseShortcutRule]
 
+    static let currentVersion = 2
+
     static let defaults = MouseShortcutConfig(
-        version: 1,
+        version: currentVersion,
         tuning: .defaults,
         rules: [
+            MouseShortcutRule(
+                id: "paste",
+                enabled: true,
+                device: .any,
+                trigger: MouseShortcutTrigger(button: .middle, kind: .click, direction: nil),
+                action: MouseShortcutActionDefinition(
+                    type: .shortcutSend,
+                    shortcut: MouseShortcutKeyStroke(
+                        key: "v",
+                        keyCode: nil,
+                        modifiers: [.command]
+                    )
+                )
+            ),
             MouseShortcutRule(
                 id: "space-previous",
                 enabled: true,
@@ -328,6 +360,20 @@ struct MouseShortcutConfig: Codable, Equatable {
             ),
         ]
     )
+
+    func normalizedForCurrentVersion() -> MouseShortcutConfig {
+        guard version < Self.currentVersion else { return self }
+
+        var normalized = self
+        normalized.version = Self.currentVersion
+
+        let existingRuleIDs = Set(normalized.rules.map(\.id))
+        for rule in Self.defaults.rules where !existingRuleIDs.contains(rule.id) {
+            normalized.rules.append(rule)
+        }
+
+        return normalized
+    }
 }
 
 struct MouseShortcutMatchResult {
@@ -339,7 +385,7 @@ struct MouseShortcutMatchResult {
 struct MouseShortcutTriggerEvent {
     let button: MouseShortcutButton
     let kind: MouseShortcutTriggerKind
-    let direction: MouseGestureDirection
+    let direction: MouseGestureDirection?
     let device: MouseInputDeviceInfo?
 
     var triggerName: String {

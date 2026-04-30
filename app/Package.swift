@@ -20,6 +20,7 @@ let package = Package(
         ),
         .testTarget(
             name: "LatticesTests",
+            dependencies: ["Lattices"],
             path: "Tests"
         )
     ]
