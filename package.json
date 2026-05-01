@@ -1,6 +1,6 @@
 {
   "name": "@lattices/cli",
-  "version": "0.4.9",
+  "version": "0.4.10",
   "description": "Agentic window manager for macOS — programmable workspace, smart layouts, managed tmux sessions, and a 35+-method agent API",
   "bin": {
     "lattices": "./bin/lattices.ts",

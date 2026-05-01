@@ -13,7 +13,7 @@ VERSION="${1:-$(node -p "require(process.argv[1]).version" "$ROOT/package.json" 
 # Signing — override via environment or use defaults
 SIGN_IDENTITY="${LATTICES_SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | grep -o '"Developer ID Application:[^"]*"' | head -1 | tr -d '"' || echo "")}"
 TEAM_ID="${LATTICES_TEAM_ID:-}"
-NOTARY_PROFILE="${LATTICES_NOTARY_PROFILE:-notarytool}"
+NOTARY_PROFILE="${LATTICES_NOTARY_PROFILE:-notarytool-art}"
 
 if [ -z "$SIGN_IDENTITY" ]; then
     echo "Error: No Developer ID signing identity found."
