@@ -13,8 +13,8 @@ order: 6
 | **Agent API** | WebSocket server (`ws://127.0.0.1:9399`) inside the menu bar app. Exposes 35+ RPC methods and 5 real-time events for programmatic control. See the [API reference](/docs/api). |
 | **Agent** | Any program that calls the agent API autonomously — an AI coding agent, a shell script, a CI pipeline, or a custom tool. |
 | **Session** | A persistent tmux workspace that lives in the background. Survives terminal crashes, disconnects, and closing your laptop. One session per project. Requires tmux. |
-| **Pane** | A single terminal view inside a session. A typical setup has two panes side by side — Claude Code on the left, dev server on the right. Requires tmux. |
-| **Attach / Detach** | Attaching connects your terminal to an existing session. Detaching disconnects but keeps the session alive — your dev server keeps running, Claude keeps thinking. Requires tmux. |
+| **Pane** | A single terminal view inside a session. A typical setup has two panes side by side — shell on the left, dev server on the right. Requires tmux. |
+| **Attach / Detach** | Attaching connects your terminal to an existing session. Detaching disconnects but keeps the session alive — your shell and dev server keep running. Requires tmux. |
 | **Sync / Reconcile** | `lattices sync` brings a running session back in line with its declared config — recreates missing panes, re-applies layout, restores labels, re-runs commands in idle panes. Requires tmux. |
 | **Ensure / Prefill** | Two modes for restoring exited commands on reattach. **Ensure** auto-reruns the command. **Prefill** types it but waits for you to press Enter. Set via `.lattices.json`. Requires tmux. |
 | **tmux** | Terminal multiplexer (optional). Provides persistent sessions, pane layouts, and command restoration. Install with `brew install tmux` if you want session management. |
@@ -24,8 +24,8 @@ order: 6
 1. You create a `.lattices.json` file in your project root (or run `lattices init`)
 2. The menu bar app discovers the project and adds it to the command palette
 3. You can tile windows, switch layers, search via OCR, and use the agent API
-4. With tmux installed, `lattices` also creates persistent terminal sessions:
-   - Each pane gets its command (claude, dev server, tests, etc.)
+4. With tmux installed, `lattices start` also creates persistent terminal sessions:
+   - Each pane gets its command (shell, dev server, tests, etc.)
    - The session persists in the background until you kill it
    - You can attach/detach from any terminal at any time
    - If `ensure` is enabled, exited commands auto-restart on reattach
@@ -94,7 +94,7 @@ and other macOS window managers.
 
 ### Ensure/prefill restoration (requires tmux)
 
-When you run `lattices` (no arguments) and a session already exists:
+When you run `lattices start` and a session already exists:
 
 1. lattices checks the `ensure` / `prefill` flag in `.lattices.json`
 2. For each pane, it queries `#{pane_current_command}` via tmux

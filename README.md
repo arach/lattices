@@ -81,11 +81,11 @@ Close your laptop, reboot, come back a week later — your editor, dev
 server, and test runner are exactly where you left them.
 
 ```sh
-cd my-project && lattices
+cd my-project && lattices start
 ```
 
-No config? It reads your `package.json` and picks the right dev command
-automatically.
+No config? It opens a shell in the project and, when it can, starts your
+detected dev command in a second pane.
 
 ### Configuration
 
@@ -95,7 +95,7 @@ Drop a `.lattices.json` in your project root:
 {
   "ensure": true,
   "panes": [
-    { "name": "claude", "cmd": "claude", "size": 60 },
+    { "name": "shell", "size": 60 },
     { "name": "server", "cmd": "pnpm dev" },
     { "name": "tests",  "cmd": "pnpm test --watch" }
   ]
@@ -108,7 +108,7 @@ Drop a `.lattices.json` in your project root:
 2 panes              3+ panes
 
 ┌──────────┬───────┐ ┌──────────┬───────┐
-│  claude  │server │ │  claude  │server │
+│  shell   │server │ │  shell   │server │
 │  (60%)   │(40%)  │ │  (60%)   ├───────┤
 └──────────┴───────┘ │          │tests  │
                      └──────────┴───────┘
@@ -193,7 +193,9 @@ desktop the same way you do.
 ## CLI
 
 ```
-lattices                    Create or reattach to session
+lattices                    Show workspace status and common commands
+lattices start              Create or reattach to current project session
+lattices tmux               Alias for lattices start
 lattices init               Generate .lattices.json
 lattices ls                 List active sessions
 lattices kill [name]        Kill a session

@@ -14,7 +14,7 @@ workspace layout. lattices reads this file when creating a session.
 ```json
 {
   "panes": [
-    { "name": "claude", "cmd": "claude" },
+    { "name": "shell" },
     { "name": "server", "cmd": "pnpm dev" }
   ]
 }
@@ -26,7 +26,7 @@ workspace layout. lattices reads this file when creating a session.
 {
   "ensure": true,
   "panes": [
-    { "name": "claude", "cmd": "claude", "size": 60 },
+    { "name": "shell", "size": 60 },
     { "name": "server", "cmd": "pnpm dev" },
     { "name": "tests",  "cmd": "pnpm test --watch" }
   ]
@@ -72,7 +72,7 @@ lattices picks a layout based on how many panes you define:
 
 ```
 ┌──────────┬─────────┐
-│  claude  │ server  │
+│  shell   │ server  │
 │  (60%)   │ (40%)   │
 └──────────┴─────────┘
 ```
@@ -83,7 +83,7 @@ Horizontal split. First pane on the left, second on the right.
 
 ```
 ┌──────────┬─────────┐
-│  claude  │ server  │
+│  shell   │ server  │
 │  (60%)   ├─────────┤
 │          │ tests   │
 └──────────┴─────────┘
@@ -96,7 +96,7 @@ on the right.
 
 ```
 ┌──────────┬─────────┐
-│  claude  │ server  │
+│  shell   │ server  │
 │  (60%)   ├─────────┤
 │          │ tests   │
 │          ├─────────┤
@@ -109,10 +109,10 @@ on the right.
 If there's no `.lattices.json`, lattices still works. It will:
 
 1. Create a 2-pane layout (60/40 split)
-2. Run `claude` in the left pane
-3. Auto-detect your dev command from package.json scripts:
+2. Open a shell in the left pane
+3. Auto-detect your dev command from package.json scripts and run it on the right:
    - Looks for: `dev`, `start`, `serve`, `watch` (in that order)
-   - Detects package manager: pnpm > bun > yarn > npm
+   - Detects package manager: bun > pnpm > yarn > npm
 
 ## Creating a config
 
@@ -124,7 +124,9 @@ Run `lattices init` in your project directory to generate a starter
 
 | Command                    | Description                                      |
 |----------------------------|--------------------------------------------------|
-| `lattices`                   | Create or attach to session for current project   |
+| `lattices`                   | Show workspace status and common commands         |
+| `lattices start`             | Create or attach to session for current project   |
+| `lattices tmux`              | Alias for `lattices start`                        |
 | `lattices init`              | Generate .lattices.json config for this project     |
 | `lattices ls`                | List active sessions (requires tmux)              |
 | `lattices kill [name]`       | Kill a session (defaults to current project)      |

@@ -57,7 +57,7 @@ and you can reattach anytime.
 ## Example
 
 ```bash
-cd ~/my-project && lattices
+cd ~/my-project && lattices start
 ```
 
 Agents get the same control programmatically:

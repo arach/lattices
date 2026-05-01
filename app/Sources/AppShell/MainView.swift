@@ -490,7 +490,7 @@ struct MainView: View {
                 .buttonStyle(.plain)
             }
 
-            Text("Initialize runs  lattices init && lattices  in the folder you choose.")
+            Text("Initialize runs  lattices init && lattices start  in the folder you choose.")
                 .font(Typo.mono(9))
                 .foregroundColor(Palette.textMuted)
                 .multilineTextAlignment(.center)

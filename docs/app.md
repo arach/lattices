@@ -95,7 +95,7 @@ For each project found, the app reads:
 ## Session management
 
 The app calls the lattices CLI for session operations. Launch runs
-`lattices` in the project directory, Sync runs `lattices sync` to
+`lattices start` in the project directory, Sync runs `lattices sync` to
 reconcile panes, and Restart runs `lattices restart <pane>` to kill
 and re-run a pane's process. Detach and Kill call `tmux detach-client`
 and `tmux kill-session` directly.

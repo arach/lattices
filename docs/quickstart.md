@@ -10,7 +10,7 @@ Four steps to a running workspace.
 
 ```bash
 git clone https://github.com/arach/lattices
-cd lattices && npm link
+cd lattices && bun link
 ```
 
 Verify: `lattices help` should print usage info.
@@ -39,7 +39,7 @@ This generates a config like:
 ```json
 {
   "panes": [
-    { "name": "claude", "cmd": "claude", "size": 60 },
+    { "name": "shell", "size": 60 },
     { "name": "server", "cmd": "bun dev" }
   ]
 }
@@ -55,12 +55,12 @@ your pane layout:
 
 ```bash
 brew install tmux
-cd ~/your-project && lattices
+cd ~/your-project && lattices start
 ```
 
 This creates a tmux session with your configured panes side by side.
 The session persists in the background — close your terminal, reopen it,
-run `lattices` again, and everything is still there.
+run `lattices start` again, and everything is still there.
 
 > **Without tmux**, you still get the menu bar app, command palette,
 > window tiling, workspace layers, OCR, and the full agent API.

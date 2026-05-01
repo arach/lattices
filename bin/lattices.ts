@@ -45,7 +45,7 @@ function hasTmux(): boolean {
 
 /** Commands that require tmux to be installed */
 const tmuxRequiredCommands = new Set([
-  "init", "ls", "list", "kill", "rm", "sync", "reconcile",
+  "start", "tmux", "init", "ls", "list", "kill", "rm", "sync", "reconcile",
   "restart", "respawn", "group", "groups", "tab", "status",
   "inventory", "sessions",
 ]);
@@ -53,13 +53,9 @@ const tmuxRequiredCommands = new Set([
 function requireTmux(command: string | undefined): void {
   if (hasTmux()) return;
 
-  const isImplicitCreate = command && !tmuxRequiredCommands.has(command)
-    && !["search", "s", "focus", "place", "tile", "t", "windows", "window",
-         "voice", "call", "layer", "layers", "diag", "diagnostics", "scan",
-         "ocr", "daemon", "dev", "app", "mouse", "assistant",
-         "help", "-h", "--help"].includes(command);
+  if (!command) return;
 
-  if (command && !tmuxRequiredCommands.has(command) && !isImplicitCreate) return;
+  if (!tmuxRequiredCommands.has(command)) return;
 
   console.error(`
 \x1b[1;31m✘ tmux not found\x1b[0m
@@ -395,9 +391,9 @@ function tabCommand(groupId?: string, tabName?: string): void {
 // ── Detect dev command ───────────────────────────────────────────────
 
 function detectPackageManager(dir: string): string {
-  if (existsSync(resolve(dir, "pnpm-lock.yaml"))) return "pnpm";
   if (existsSync(resolve(dir, "bun.lockb")) || existsSync(resolve(dir, "bun.lock")))
     return "bun";
+  if (existsSync(resolve(dir, "pnpm-lock.yaml"))) return "pnpm";
   if (existsSync(resolve(dir, "yarn.lock"))) return "yarn";
   return "npm";
 }
@@ -663,12 +659,12 @@ function defaultPanes(dir: string): PaneConfig[] {
   const devCmd = detectDevCommand(dir);
   if (devCmd) {
     return [
-      { name: "claude", cmd: "claude", size: 60 },
+      { name: "shell", size: 60 },
       { name: "server", cmd: devCmd },
     ];
   }
   // No dev server detected → single pane
-  return [{ name: "claude", cmd: "claude" }];
+  return [{ name: "shell" }];
 }
 
 function syncSession(): void {
@@ -765,7 +761,7 @@ function restartPane(target?: string): void {
   // Resolve target to an index
   let idx: number;
   if (target === undefined || target === null || target === "") {
-    // Default: first pane (claude)
+    // Default: first pane
     idx = 0;
   } else if (/^\d+$/.test(target)) {
     idx = parseInt(target, 10);
@@ -1718,10 +1714,12 @@ Usage:
 }
 
 function printUsage(): void {
-  console.log(`lattices — Claude Code + dev server in tmux
+  console.log(`lattices — workspace launcher for tmux, windows, layers, and the menu bar app
 
 Usage:
-  lattices                    Create session (or reattach) for current project
+  lattices                    Show workspace status and common commands
+  lattices start              Start or reattach the current directory's tmux workspace
+  lattices tmux               Alias for lattices start
   lattices init               Generate .lattices.json config for this project
   lattices ls                 List active tmux sessions
   lattices status             Show managed vs unmanaged session inventory
@@ -1780,7 +1778,7 @@ Config (.lattices.json):
   {
     "ensure": true,
     "panes": [
-      { "name": "claude", "cmd": "claude", "size": 60 },
+      { "name": "shell", "size": 60 },
       { "name": "server", "cmd": "pnpm dev" },
       { "name": "tests",  "cmd": "pnpm test --watch" }
     ]
@@ -1799,7 +1797,7 @@ Recovery:
 
   lattices restart    Kills the process in a pane and re-runs its declared command.
                     Accepts a pane name or 0-based index (default: 0 / first pane).
-                    Examples:  lattices restart         (restarts "claude")
+                    Examples:  lattices restart         (restarts the first pane)
                                lattices restart server  (restarts "server" by name)
                                lattices restart 1       (restarts pane at index 1)
 
@@ -1809,11 +1807,45 @@ Layouts:
   3+ panes →  main-vertical (first pane left, rest stacked right)
 
   ┌────────────────────┐    ┌──────────┬─────────┐    ┌──────────┬─────────┐
-  │      claude         │    │  claude   │ server  │    │  claude   │ server  │
+  │      shell          │    │  shell    │ server  │    │  shell    │ server  │
   │                     │    │  (60%)   │ (40%)   │    │  (60%)   ├─────────┤
   └────────────────────┘    └──────────┴─────────┘    │          │ tests   │
                                                        └──────────┴─────────┘
 `);
+}
+
+function printHome(): void {
+  const dir = process.cwd();
+  const sessionName = toSessionName(dir);
+  const config = readConfig(dir);
+  const panes = resolvePanes(dir);
+  const tmuxReady = hasTmux();
+  const sessionRunning = tmuxReady && sessionExists(sessionName);
+  const appRunning = runQuiet("pgrep -x Lattices >/dev/null 2>&1 && echo yes") === "yes";
+
+  console.log(`lattices — let's get you situated
+
+Current directory:
+  ${dir}
+
+Workspace:
+  session   ${sessionName}
+  config    ${config ? ".lattices.json" : "none yet"}
+  panes     ${panes.map((p) => p.name || "pane").join(", ")}
+  tmux      ${tmuxReady ? (sessionRunning ? "running" : "ready") : "missing"}
+  app       ${appRunning ? "running" : "not running"}
+
+Common commands:
+  lattices start        Start or reattach this directory's tmux workspace
+  lattices init         Create a .lattices.json for this project
+  lattices app          Launch the menu bar app
+  lattices ls           List active sessions
+  lattices help         Show the full command reference
+`);
+
+  if (!tmuxReady) {
+    console.log("tmux is not installed. Run: brew install tmux");
+  }
 }
 
 function initConfig(): void {
@@ -2154,6 +2186,13 @@ function statusInventory(): void {
 requireTmux(command);
 
 switch (command) {
+  case undefined:
+    printHome();
+    break;
+  case "start":
+  case "tmux":
+    createOrAttach();
+    break;
   case "init":
     initConfig();
     break;
@@ -2295,5 +2334,6 @@ switch (command) {
     printUsage();
     break;
   default:
-    createOrAttach();
+    console.log(`Unknown command: ${command}`);
+    console.log("Run `lattices help` for the full command reference.");
 }

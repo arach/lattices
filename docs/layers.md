@@ -49,7 +49,7 @@ to per-project configs.
 - Session name follows the pattern `lattices-group-<id>` (e.g. `lattices-group-vox`)
 - 1 group = 1 tmux session. Each tab is a tmux window, and each window
   gets its own panes from that project's `.lattices.json`
-- You can still launch projects independently: `cd vox-ios && lattices`
+- You can still launch projects independently: `cd vox-ios && lattices start`
   creates its own standalone session as before
 
 ### Tab group fields

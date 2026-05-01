@@ -555,12 +555,12 @@ class WorkspaceManager: ObservableObject {
             let label = tab.label ?? (tab.path as NSString).lastPathComponent
             DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.4) {
                 if i == 0 {
-                    terminal.launch(command: "/opt/homebrew/bin/lattices", in: tab.path)
+                    terminal.launch(command: "/opt/homebrew/bin/lattices start", in: tab.path)
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         terminal.nameTab(label)
                     }
                 } else {
-                    terminal.launchTab(command: "/opt/homebrew/bin/lattices", in: tab.path, tabName: label)
+                    terminal.launchTab(command: "/opt/homebrew/bin/lattices start", in: tab.path, tabName: label)
                 }
             }
         }
@@ -851,7 +851,7 @@ class WorkspaceManager: ObservableObject {
                     diag.finish(t)
                 } else {
                     diag.info("  launch (direct): \(sessionName)")
-                    terminal.launch(command: "/opt/homebrew/bin/lattices", in: path)
+                    terminal.launch(command: "/opt/homebrew/bin/lattices start", in: path)
                 }
                 launchQueue.append((sessionName, position, lpScreen, {}))
             } else {

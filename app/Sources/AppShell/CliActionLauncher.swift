@@ -24,7 +24,7 @@ enum CliActionLauncher {
         ) else { return }
 
         Preferences.shared.terminal.launch(
-            command: "lattices init && lattices",
+            command: "lattices init && lattices start",
             in: directory
         )
     }
@@ -36,7 +36,7 @@ enum CliActionLauncher {
         ) else { return }
 
         Preferences.shared.terminal.launch(
-            command: "lattices",
+            command: "lattices start",
             in: directory
         )
     }

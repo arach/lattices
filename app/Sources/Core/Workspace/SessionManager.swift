@@ -13,7 +13,7 @@ enum SessionManager {
             }
             terminal.focusOrAttach(session: project.sessionName)
         } else {
-            terminal.launch(command: latticesPath, in: project.path)
+            terminal.launch(command: "\(latticesPath) start", in: project.path)
         }
     }
 
