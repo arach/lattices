@@ -1,0 +1,109 @@
+---
+title: "Lattices Weekly Shipped Review: v0.4.3 to v0.4.9"
+description: "Seven releases in eight days: companion surfaces, bridge security, mouse gestures, calmer CLI defaults, app updates, distribution, and architecture work."
+date: "2026-05-01"
+tags: ["release", "macos", "ipad", "updates", "workspace-management"]
+author: "Arach Tchoupani"
+draft: true
+---
+
+This was a dense week for Lattices: seven releases in eight days, from `v0.4.3` through `v0.4.9`.
+
+The visible shape was a lot of feature work: companion surfaces, mouse gestures, better tiling flows, update checks, and a calmer CLI. Underneath that, we also did the release and architecture work that makes shipping at this pace feel less fragile: signed DMGs, npm releases, e2e coverage, and a clearer Swift source layout.
+
+Here is the review.
+
+## Executive summary
+
+The last seven days moved Lattices in three directions at once:
+
+- **More surfaces:** a local-network iPad/iPhone companion path, cockpit controls, and a live Home dashboard.
+- **More natural control:** mouse shortcuts, middle-click gestures, smart tiling polish, organize-windows flow, and Caps Lock Hyper remapping.
+- **More reliable distribution:** signed and notarized DMGs, standalone arm64 binaries, npm releases through `0.4.9`, in-app updates, and automatic update checks.
+
+The CLI and app also got a needed product reset. Bare `lattices` now orients you instead of immediately launching tmux, and starting a workspace is explicit with `lattices start` or `lattices tmux`.
+
+## Companion surfaces
+
+The companion work was one of the largest chunks of the week, but it was not the only story.
+
+We added the foundation for a local-network companion: shared `DeckKit` models, Mac bridge endpoints for deck/cockpit/trackpad control, a Mac-side cockpit editor, persisted shortcut layouts, iPhone/iPad discovery, action execution, and a Talkie-style trackpad surface.
+
+That grew into live cockpit data: CPU, memory, GPU, battery, thermal state, SkyLight Spaces, activity logs, transcript lines, cockpit replay state, agent state, tinted preview windows, and forwarded keyboard input through `keys.send`.
+
+On iPad, the Lats Deck prototype became a full-screen companion surface with a cockpit shell, trackpad area, shortcut grid, and status bar. The Home dashboard followed with real `DeckRuntimeSnapshot` wiring, honest empty states, machine sections, scenes, routines, sync status, recent activity, cloud state, and a voice error model.
+
+**So what:** Lattices is starting to become a workspace system with multiple surfaces, not just a Mac menu bar app.
+
+## Bridge security
+
+A local-network bridge that can trigger actions on the Mac needs a real trust model.
+
+This week added device pairing, signed requests, encrypted payloads, a standalone companion bridge port, trusted-device state in Settings, and then a stricter pass that made sharing default-off, capability-scoped, visible, and revocable per paired device.
+
+**So what:** The companion work shipped with the controls it needed. Pairing and revocation are product features, not just security plumbing.
+
+## Input and navigation
+
+Lattices also got more physical.
+
+We added configurable mouse shortcuts, middle-click gestures, a mouse finder, smart tiling polish, screen-map hit testing fixes, and an organize-windows command flow. Caps Lock Hyper remapping landed too, giving Lattices a nicer path for power-user shortcuts without requiring a separate remapping app.
+
+**So what:** Workspace management should work from whatever input surface you are already using: keyboard, mouse, voice, or companion device.
+
+## CLI and app UX
+
+Bare `lattices` used to launch or attach to a tmux session immediately. That was convenient once you knew the tool, but a little abrupt if you were trying to get oriented.
+
+Now bare `lattices` shows a workspace overview: current directory, session name, config state, panes, tmux state, app state, and common commands.
+
+Starting a workspace is explicit:
+
+```bash
+lattices start
+lattices tmux
+```
+
+Zero-config sessions also stopped assuming Claude. If there is no `.lattices.json`, Lattices now opens a plain shell and, when it can detect one, starts your dev server in a second pane.
+
+**So what:** Lattices feels more like a general developer workspace manager and less like a tool with one assumed workflow.
+
+## Updates and distribution
+
+Fast releases only help if people can receive them.
+
+This week moved the app from “you can download a build” toward “the app can keep itself current.” The update flow is now discoverable from Settings and the menu bar, backed by GitHub releases, and clear about what happens during install.
+
+By `v0.4.9`, Lattices checks for new releases automatically using a lightweight GitHub-release strategy. Settings shows the current version, a new available version, release notes preview, auto-check toggle, check-now, skip, and release-notes actions. The install confirmation names the current version, the version to install, and the quit/replace/relaunch handoff.
+
+It also checks whether you are already on the latest version before initiating installation.
+
+**So what:** The release pipeline and app UX now match the pace of development better.
+
+## Architecture and quality
+
+The Swift source tree was regrouped into `AppShell`, `Core`, and `UI`. Desktop, actions, overlays, input, companion, daemon, voice, system, and workspace code now have clearer homes.
+
+A central intent schema landed. Session window lookup moved into a dedicated locator. Shared overlay panel primitives appeared. Daemon and voice end-to-end coverage landed in the same release window.
+
+**So what:** This is the work that keeps a fast week from becoming a brittle one.
+
+## Release timeline
+
+| Date | Version | Headline |
+|---|---|---|
+| 2026-04-24 | `v0.4.3` | GitHub release DMGs, compact popover restore, in-app update scaffolding |
+| 2026-04-25 | `v0.4.4` | Package and app version alignment for notarized distribution |
+| 2026-04-28 | `v0.4.5` | Mouse shortcuts, middle-click gestures, smart tiling polish |
+| 2026-04-28 | `v0.4.6` | AppShell/Core/UI regroup, daemon and voice e2e coverage, central intent schema |
+| 2026-04-28 | `v0.4.7` | Mouse gestures, organize-windows flow, screen-map hit testing |
+| 2026-05-01 | `v0.4.8` | Bare `lattices` overview, explicit `start`/`tmux`, shell and dev-server defaults |
+| 2026-05-01 | `v0.4.9` | Automatic update checks and clearer update confirmation |
+
+Every current release ships through GitHub with a signed, notarized DMG. Recent releases also include a standalone macOS arm64 binary, and npm is current at `@lattices/cli@0.4.9`.
+
+## What changed
+
+The week was not just a pile of features. It was a broad pass across product surface, control ergonomics, trust, architecture, and distribution.
+
+The companion cockpit is important, but it is one part of the larger release: Lattices got easier to install, easier to update, safer to pair, less surprising at the CLI, and more flexible in how you control your workspace.

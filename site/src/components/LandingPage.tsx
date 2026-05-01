@@ -245,6 +245,37 @@ export default function App() {
           </div>
         </section>
 
+        {/* Coming soon */}
+        <section className="next-section fade-in fade-in-delay-2">
+          <div className="next-card">
+            <div className="next-copy">
+              <div className="next-kicker">Coming into view</div>
+              <h2>A companion cockpit for your workspace</h2>
+              <p>
+                Lattices is growing a second surface: an iPad-ready deck for
+                trackpad control, window actions, live workspace state, and
+                shortcuts that stay beside your keyboard.
+              </p>
+            </div>
+            <div className="next-preview" aria-hidden="true">
+              <div className="deck-shell">
+                <div className="deck-top">
+                  <span>lats deck</span>
+                  <span>mac · live</span>
+                </div>
+                <div className="deck-trackpad">
+                  <div className="deck-crosshair" />
+                </div>
+                <div className="deck-actions">
+                  {["tile", "focus", "voice", "agent", "spaces", "keys"].map((label) => (
+                    <div className="deck-action" key={label}>{label}</div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* Menu bar app */}
         <section className="app-section" id="app">
           <div className="app-grid">
@@ -296,7 +327,7 @@ export default function App() {
             <div className="bucket-cards">
               <div className="feature">
                 <h3>One command, zero config</h3>
-                <p>Run <code>lattices</code> — session created, dev server running.</p>
+                <p>Run <code>lattices start</code> — session created, dev server running.</p>
               </div>
               <div className="feature">
                 <h3>Persistent sessions</h3>
