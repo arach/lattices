@@ -194,6 +194,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         AgentPool.shared.start()
         diag.finish(tBoot)
 
+        Task {
+            await AppUpdater.shared.checkIfNeeded()
+        }
+
         // --diagnostics flag: auto-open diagnostics panel on launch
         if CommandLine.arguments.contains("--diagnostics") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {

@@ -301,14 +301,52 @@ struct SettingsContentView: View {
                                 .font(Typo.mono(12))
                                 .foregroundColor(Palette.text)
                             Spacer()
-                            Text("v\(appUpdater.currentVersion)")
+                            Text("Current v\(appUpdater.currentVersion)")
                                 .font(Typo.caption(10))
                                 .foregroundColor(Palette.textMuted)
                         }
 
-                        Text("Install the latest published app build without leaving the menu bar. The app relaunches when the update finishes.")
+                        Text("Lattices can check for new signed releases and prepare the update here. You’ll confirm before the app quits and relaunches.")
                             .font(Typo.caption(10))
                             .foregroundColor(Palette.textMuted)
+
+                        if let update = appUpdater.availableUpdate {
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "gift.fill")
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundColor(Palette.detach)
+                                    Text("New version v\(update.version) is ready")
+                                        .font(Typo.monoBold(10))
+                                        .foregroundColor(Palette.detach)
+                                }
+
+                                if !update.releaseNotes.isEmpty {
+                                    Text(String(update.releaseNotes.prefix(180)) + (update.releaseNotes.count > 180 ? "..." : ""))
+                                        .font(Typo.caption(9))
+                                        .foregroundColor(Palette.textMuted)
+                                        .lineLimit(3)
+                                }
+                            }
+                            .padding(8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 5)
+                                    .fill(Palette.surfaceHov.opacity(0.65))
+                                    .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Palette.detach.opacity(0.35), lineWidth: 0.5))
+                            )
+                        } else if appUpdater.isChecking {
+                            Text("Checking for updates...")
+                                .font(Typo.caption(9))
+                                .foregroundColor(Palette.textMuted)
+                        } else if let error = appUpdater.lastError {
+                            Text(error)
+                                .font(Typo.caption(9))
+                                .foregroundColor(Palette.detach.opacity(0.9))
+                        } else if let checked = appUpdater.lastChecked {
+                            Text("Last checked \(checked, style: .relative)")
+                                .font(Typo.caption(9))
+                                .foregroundColor(Palette.textMuted.opacity(0.8))
+                        }
 
                         if let status = appUpdater.statusMessage {
                             Text(status)
@@ -326,7 +364,7 @@ struct SettingsContentView: View {
                             Button {
                                 appUpdater.promptForUpdate()
                             } label: {
-                                Text(appUpdater.isUpdating ? "Updating…" : "Update Lattices")
+                                Text(appUpdater.isUpdating ? "Preparing…" : (appUpdater.availableUpdate == nil ? "Check for Updates" : "Update to v\(appUpdater.availableUpdate?.version ?? "")"))
                                     .font(Typo.monoBold(10))
                                     .foregroundColor(Palette.text)
                                     .padding(.horizontal, 12)
@@ -339,6 +377,43 @@ struct SettingsContentView: View {
                             }
                             .buttonStyle(.plain)
                             .disabled(appUpdater.isUpdating)
+
+                            Button {
+                                Task { await appUpdater.check() }
+                            } label: {
+                                Text(appUpdater.isChecking ? "Checking..." : "Check Now")
+                                    .font(Typo.caption(9))
+                                    .foregroundColor(Palette.textMuted.opacity(0.9))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(appUpdater.isChecking)
+
+                            Toggle("Auto", isOn: $appUpdater.autoCheckEnabled)
+                                .font(Typo.caption(9))
+                                .toggleStyle(.checkbox)
+                                .foregroundColor(Palette.textMuted.opacity(0.9))
+
+                            if appUpdater.availableUpdate != nil {
+                                Button {
+                                    appUpdater.viewCurrentRelease()
+                                } label: {
+                                    Text("Release Notes")
+                                        .font(Typo.caption(9))
+                                        .foregroundColor(Palette.textMuted.opacity(0.9))
+                                }
+                                .buttonStyle(.plain)
+
+                                Button {
+                                    appUpdater.skipCurrentUpdate()
+                                } label: {
+                                    Text("Skip")
+                                        .font(Typo.caption(9))
+                                        .foregroundColor(Palette.textMuted.opacity(0.75))
+                                }
+                                .buttonStyle(.plain)
+                            }
+
+                            Spacer()
 
                             Text("CLI: `lattices app update`")
                                 .font(Typo.caption(9))
