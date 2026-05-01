@@ -43,6 +43,7 @@ final class DesktopModel: ObservableObject {
         "storeuid",
         // Third-party helpers
         "CursorUIViewService",
+        "Codex Computer Use",
         "Electron Helper",
         "Google Chrome Helper",
     ]

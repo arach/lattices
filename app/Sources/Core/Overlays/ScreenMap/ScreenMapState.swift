@@ -144,7 +144,7 @@ enum CanvasDragMode {
 
 final class ScreenMapEditorState: ObservableObject {
     @Published var windows: [ScreenMapWindowEntry]
-    @Published var selectedLayers: Set<Int> = [0]  // empty = show all
+    @Published var selectedLayers: Set<Int> = []  // empty = show all
     @Published var draggingWindowId: UInt32? = nil
     var canvasDragMode: CanvasDragMode = .move
     var currentCursorMode: CanvasDragMode = .move
@@ -153,7 +153,7 @@ final class ScreenMapEditorState: ObservableObject {
     @Published var zoomLevel: CGFloat = 1.0   // 1.0 = fit-all
     @Published var panOffset: CGPoint = .zero  // canvas-local pixels
     @Published var focusedDisplayIndex: Int? = nil  // nil = all-displays view
-    @Published var activeViewportPreset: ScreenMapViewportPreset? = .main
+    @Published var activeViewportPreset: ScreenMapViewportPreset? = .overview
     @Published var windowSearchQuery: String = ""
     @Published var isTilingMode: Bool = false
     var isSearching: Bool { !windowSearchQuery.isEmpty }
@@ -380,10 +380,11 @@ final class ScreenMapEditorState: ObservableObject {
         return "L\(layer)"
     }
 
-    /// Windows visible for the active layer filter
+    /// Windows visible on the current desktop for the active layer filter.
     var visibleWindows: [ScreenMapWindowEntry] {
-        guard !selectedLayers.isEmpty else { return windows }
-        return windows.filter { selectedLayers.contains($0.layer) }
+        let onscreen = windows.filter(\.isOnScreen)
+        guard !selectedLayers.isEmpty else { return onscreen }
+        return onscreen.filter { selectedLayers.contains($0.layer) }
     }
 
     private var worldScopedDisplays: [DisplayGeometry] {
@@ -398,7 +399,7 @@ final class ScreenMapEditorState: ObservableObject {
 
     var canvasWorldBounds: CGRect {
         var rects = worldScopedDisplays.map(\.cgRect)
-        rects.append(contentsOf: worldScopedWindows.map(\.virtualFrame))
+        rects.append(contentsOf: worldScopedWindows.filter(\.hasEdits).map(\.virtualFrame))
 
         if rects.isEmpty {
             return CGRect(origin: bboxOrigin, size: screenSize)
@@ -409,7 +410,7 @@ final class ScreenMapEditorState: ObservableObject {
             union = union.union(rect)
         }
 
-        let pad: CGFloat = focusedDisplayIndex == nil ? 120 : 80
+        let pad: CGFloat = focusedDisplayIndex == nil ? 180 : 120
         return union.insetBy(dx: -pad, dy: -pad)
     }
 
@@ -1424,7 +1425,7 @@ final class ScreenMapController: ObservableObject {
 
     private func finalizeDisplayFocusChange(flashLabel: Bool) {
         guard let ed = editor else { return }
-        focusViewportPreset(ed.activeViewportPreset ?? .main, flashView: false)
+        focusViewportPreset(ed.activeViewportPreset ?? .overview, flashView: false)
         if flashLabel {
             flash(ed.focusedDisplay?.label ?? "All displays")
         }
@@ -1454,6 +1455,7 @@ final class ScreenMapController: ObservableObject {
         guard newZoom != ed.zoomLevel else { return }
         ed.activeViewportPreset = nil
         ed.zoomLevel = newZoom
+        ed.scale = ed.fitScale * newZoom
         objectWillChange.send()
     }
 
@@ -1677,7 +1679,7 @@ final class ScreenMapController: ObservableObject {
     func enter() {
         let existingSets = windowSets
         guard let windowList = CGWindowListCopyWindowInfo(
-            [.optionAll, .excludeDesktopElements], kCGNullWindowID
+            [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID
         ) as? [[String: Any]] else { return }
 
         struct CGWin {
@@ -1724,7 +1726,7 @@ final class ScreenMapController: ObservableObject {
             guard CGRectMakeWithDictionaryRepresentation(boundsDict, &rect) else { continue }
             guard rect.width >= 100 && rect.height >= 50 else { continue }
             let app = info[kCGWindowOwnerName as String] as? String ?? ""
-            if app == "Lattices" || app == "lattices" || app == "AutoFill" { continue }
+            if app == "Lattices" || app == "lattices" || app == "AutoFill" || app == "Codex Computer Use" { continue }
             let pid = info[kCGWindowOwnerPID as String] as? Int32 ?? 0
             let title = info[kCGWindowName as String] as? String ?? ""
             let dIdx = displayIndex(for: rect)
@@ -1844,15 +1846,14 @@ final class ScreenMapController: ObservableObject {
             }
         }
 
-        // Auto-focus the display where the mouse cursor is
-        if screens.count > 1 {
+        // Start monitor-first: focus the display under the cursor, or the first display.
+        if !displayGeometries.isEmpty {
             let mouseLocation = NSEvent.mouseLocation
             let mouseCG = CGPoint(x: mouseLocation.x, y: primaryHeight - mouseLocation.y)
-            for disp in displayGeometries {
-                if disp.cgRect.contains(mouseCG) {
-                    newEditor.focusedDisplayIndex = disp.index
-                    break
-                }
+            if let display = displayGeometries.first(where: { $0.cgRect.contains(mouseCG) }) {
+                newEditor.focusedDisplayIndex = display.index
+            } else {
+                newEditor.focusedDisplayIndex = displayGeometries[0].index
             }
         }
 
@@ -1867,7 +1868,12 @@ final class ScreenMapController: ObservableObject {
             self.activeWindowSetID = nil
         }
         selectedWindowIds = []
-        focusViewportPreset(.main, flashView: false)
+        focusViewportPreset(.overview, flashView: false)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
+            guard let self,
+                  self.editor?.activeViewportPreset == .overview else { return }
+            self.focusViewportPreset(.overview, flashView: false)
+        }
     }
 
     /// Re-snapshot, preserving display/layer context
@@ -1914,10 +1920,15 @@ final class ScreenMapController: ObservableObject {
         ed.activeViewportPreset = preset
         let rect = ed.viewportRect(for: preset)
         DiagnosticLog.shared.info("[Canvas] preset → \(preset.title)")
+        if preset == .overview {
+            ed.zoomLevel = 1
+            ed.scale = ed.fitScale
+            ed.panOffset = .zero
+        }
         queueCanvasNavigation(
             centeredOn: CGPoint(x: rect.midX, y: rect.midY),
             rect: rect,
-            zoomToFit: true
+            zoomToFit: preset != .overview
         )
         if flashView {
             flash(preset.title)
@@ -1960,6 +1971,14 @@ final class ScreenMapController: ObservableObject {
         }
 
         setViewport(centeredOn: target.center, zoomLevel: targetZoom)
+        if target.zoomToFit {
+            ed.pendingCanvasNavigation = ScreenMapCanvasNavigationTarget(
+                center: target.center,
+                rect: nil,
+                zoomToFit: false
+            )
+            ed.canvasNavigationRevision &+= 1
+        }
         if shouldLogView {
             let viewport = ed.viewportWorldRect
             DiagnosticLog.shared.info(
