@@ -249,18 +249,18 @@ export default function App() {
         <section className="next-section fade-in fade-in-delay-2">
           <div className="next-card">
             <div className="next-copy">
-              <div className="next-kicker">Coming into view</div>
-              <h2>A companion cockpit for your workspace</h2>
+              <div className="next-kicker">Opening for TestFlight</div>
+              <h2>Lats.dev for iPad</h2>
               <p>
-                Lattices is growing a second surface: an iPad-ready deck for
-                trackpad control, window actions, live workspace state, and
-                shortcuts that stay beside your keyboard.
+                A new companion app and domain for controlling your Mac workspace
+                from beside the keyboard: trackpad gestures, window actions, live
+                state, and shortcuts tuned for iPad. Early testing starts next.
               </p>
             </div>
             <div className="next-preview" aria-hidden="true">
               <div className="deck-shell">
                 <div className="deck-top">
-                  <span>lats deck</span>
+                  <span>lats.dev</span>
                   <span>mac · live</span>
                 </div>
                 <div className="deck-trackpad">

@@ -4,7 +4,6 @@ description: "Seven releases in eight days: companion surfaces, bridge security,
 date: "2026-05-01"
 tags: ["release", "macos", "ipad", "updates", "workspace-management"]
 author: "Arach Tchoupani"
-draft: true
 ---
 
 This was a dense week for Lattices: seven releases in eight days, from `v0.4.3` through `v0.4.9`.
@@ -25,15 +24,15 @@ The CLI and app also got a needed product reset. Bare `lattices` now orients you
 
 ## Companion surfaces
 
-The companion work was one of the largest chunks of the week, but it was not the only story.
+The upcoming Lats.dev companion app was one of the largest chunks of the week, but it was not the only story.
 
-We added the foundation for a local-network companion: shared `DeckKit` models, Mac bridge endpoints for deck/cockpit/trackpad control, a Mac-side cockpit editor, persisted shortcut layouts, iPhone/iPad discovery, action execution, and a Talkie-style trackpad surface.
+We added the foundation for a local-network companion: shared `DeckKit` models, Mac bridge endpoints for deck, cockpit, and trackpad control, a Mac-side cockpit editor, persisted shortcut layouts, iPhone/iPad discovery, action execution, and a Talkie-style trackpad surface.
 
 That grew into live cockpit data: CPU, memory, GPU, battery, thermal state, SkyLight Spaces, activity logs, transcript lines, cockpit replay state, agent state, tinted preview windows, and forwarded keyboard input through `keys.send`.
 
-On iPad, the Lats Deck prototype became a full-screen companion surface with a cockpit shell, trackpad area, shortcut grid, and status bar. The Home dashboard followed with real `DeckRuntimeSnapshot` wiring, honest empty states, machine sections, scenes, routines, sync status, recent activity, cloud state, and a voice error model.
+On iPad, the Lats.dev prototype became a full-screen companion surface with a cockpit shell, trackpad area, shortcut grid, and status bar. The Home dashboard followed with real `DeckRuntimeSnapshot` wiring, honest empty states, machine sections, scenes, routines, sync status, recent activity, cloud state, and a voice error model.
 
-**So what:** Lattices is starting to become a workspace system with multiple surfaces, not just a Mac menu bar app.
+**So what:** Lattices is starting to become a workspace system with multiple surfaces, and Lats.dev is the next companion surface to watch.
 
 ## Bridge security
 
@@ -106,4 +105,4 @@ Every current release ships through GitHub with a signed, notarized DMG. Recent 
 
 The week was not just a pile of features. It was a broad pass across product surface, control ergonomics, trust, architecture, and distribution.
 
-The companion cockpit is important, but it is one part of the larger release: Lattices got easier to install, easier to update, safer to pair, less surprising at the CLI, and more flexible in how you control your workspace.
+Lats.dev is the separate new companion story, and the broader Lattices release train matters too: Lattices got easier to install, easier to update, safer to pair, less surprising at the CLI, and more flexible in how you control your workspace.

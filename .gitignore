@@ -44,6 +44,8 @@ find_talkie.js
 .derived/
 iOS/LatticesCompanion/.derived-data/
 iOS/LatticesCompanion/.derived-data-sim/
+iOS/LatticesCompanion/.derived-data-release/
+iOS/LatticesCompanion/.archives/
 iOS/LatticesCompanion/.device-id.local
 
 # Swift package local build state
