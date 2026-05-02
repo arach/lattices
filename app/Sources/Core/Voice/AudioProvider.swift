@@ -43,13 +43,15 @@ final class AudioLayer: ObservableObject {
     @Published var providerName: String = "none"
     @Published var agentResponse: AgentResponse?
 
+    private var pendingVoiceStart = false
+    private var voiceConnectionRetry: DispatchWorkItem?
 
     private init() {
         let vox = VoxAudioProvider()
         provider = vox
         providerName = "vox"
-        // Connection is managed by VoiceCommandWindow — not here.
-        // Connecting here would race with (and destroy) the existing WebSocket.
+        // Voice entry points can arrive from the desktop UI, daemon, or iOS
+        // bridge, so connection setup is handled lazily when capture starts.
     }
 
     /// Start a voice command capture. Transcription is piped to the intent engine.
@@ -69,6 +71,47 @@ final class AudioLayer: ObservableObject {
             return
         }
 
+        pendingVoiceStart = true
+        voiceConnectionRetry?.cancel()
+        startVoiceCommandWhenReady(provider: provider, attempt: 0)
+    }
+
+    private func startVoiceCommandWhenReady(provider: any AudioProvider, attempt: Int) {
+        guard pendingVoiceStart, !isListening else { return }
+
+        if provider.isAvailable {
+            pendingVoiceStart = false
+            beginVoiceCommand(provider: provider)
+            return
+        }
+
+        let client = VoxClient.shared
+        if attempt == 0 {
+            let launched = launchVoxIfNeeded()
+            executionResult = launched ? "Starting Vox..." : "Connecting to Vox..."
+            client.connect()
+        } else if case .disconnected = client.connectionState {
+            client.connect()
+        } else if case .unavailable = client.connectionState {
+            client.connect()
+        }
+
+        guard attempt < 40 else {
+            pendingVoiceStart = false
+            executionResult = "Vox unavailable — open Vox and try again"
+            DiagnosticLog.shared.warn("AudioLayer: Vox connection failed before voice start")
+            return
+        }
+
+        let retry = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.startVoiceCommandWhenReady(provider: provider, attempt: attempt + 1)
+        }
+        voiceConnectionRetry = retry
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: retry)
+    }
+
+    private func beginVoiceCommand(provider: any AudioProvider) {
         isListening = true
 
         provider.startListening { [weak self] transcription in
@@ -85,7 +128,7 @@ final class AudioLayer: ObservableObject {
                 self.isListening = false
 
                 // Empty transcript = transcription failed, don't try to execute
-                guard !transcription.text.isEmpty else {
+                guard !transcription.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     if self.executionResult == nil || self.executionResult == "Transcribing..." {
                         self.executionResult = "No speech detected"
                     }
@@ -98,19 +141,54 @@ final class AudioLayer: ObservableObject {
         }
     }
 
+    private func launchVoxIfNeeded() -> Bool {
+        guard VoxClient.shared.discoverDaemon() == nil else { return false }
+
+        let candidates = [
+            "/Applications/Vox.app",
+            NSHomeDirectory() + "/Applications/Vox.app",
+        ]
+
+        guard let path = candidates.first(where: { FileManager.default.fileExists(atPath: $0) }) else {
+            DiagnosticLog.shared.warn("AudioLayer: Vox daemon unavailable and Vox.app was not found")
+            return false
+        }
+
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = false
+        NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: path), configuration: configuration) { _, error in
+            if let error {
+                DiagnosticLog.shared.warn("AudioLayer: failed to open Vox — \(error.localizedDescription)")
+            } else {
+                DiagnosticLog.shared.info("AudioLayer: opened Vox for voice command")
+            }
+        }
+        return true
+    }
+
     /// Track whether we already executed for this recording session.
     private var didExecuteIntent = false
 
     func stopVoiceCommand() {
+        if pendingVoiceStart, !isListening {
+            pendingVoiceStart = false
+            voiceConnectionRetry?.cancel()
+            voiceConnectionRetry = nil
+            executionResult = "Voice cancelled"
+            return
+        }
+
         guard let provider = provider, isListening else { return }
 
+        pendingVoiceStart = false
         isListening = false
         executionResult = "Transcribing..."
 
         provider.stopListening { [weak self] transcription in
             DispatchQueue.main.async {
                 guard let self = self else { return }
-                if let t = transcription {
+                if let t = transcription,
+                   !t.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     self.lastTranscript = t.text
                     // Skip if the streaming callback already executed the intent
                     guard !self.didExecuteIntent else { return }
@@ -150,9 +228,9 @@ final class AudioLayer: ObservableObject {
 
             do {
                 let result = try matcher.execute(match)
-                executionResult = "ok"
+                executionResult = voiceResultSummary(for: match, result: result)
                 executionData = result
-                DiagnosticLog.shared.info("AudioLayer: executed '\(match.intentName)' → ok")
+                DiagnosticLog.shared.info("AudioLayer: executed '\(match.intentName)' → \(executionResult ?? "ok")")
             } catch {
                 DiagnosticLog.shared.info("AudioLayer: intent error — \(error.localizedDescription), asking Assistant provider")
                 executionResult = "thinking..."
@@ -227,9 +305,9 @@ final class AudioLayer: ObservableObject {
 
             do {
                 let execResult = try PhraseMatcher.shared.execute(intentMatch)
-                self.executionResult = "ok"
+                self.executionResult = self.voiceResultSummary(for: intentMatch, result: execResult)
                 self.executionData = execResult
-                DiagnosticLog.shared.info("AudioLayer: Assistant-resolved executed → \(execResult)")
+                DiagnosticLog.shared.info("AudioLayer: Assistant-resolved executed → \(self.executionResult ?? "\(execResult)")")
             } catch {
                 self.executionResult = error.localizedDescription
                 self.executionData = nil
@@ -278,6 +356,48 @@ final class AudioLayer: ObservableObject {
             "lattices", "workspace"
         ]
         return assistantTopics.contains(where: lower.contains)
+    }
+
+    private func voiceResultSummary(for match: IntentMatch, result: JSON) -> String {
+        if let summary = result["summary"]?.stringValue, !summary.isEmpty {
+            return summary
+        }
+        if let message = result["message"]?.stringValue, !message.isEmpty {
+            return message
+        }
+        if result["ok"]?.boolValue == false {
+            return result["reason"]?.stringValue ?? "Voice command did not complete"
+        }
+
+        switch match.intentName {
+        case "tile_window":
+            let position = match.slots["position"]?.stringValue
+                ?? result["position"]?.stringValue
+                ?? "requested position"
+            return "Moved window to \(position)"
+
+        case "focus":
+            let target = result["focused"]?.stringValue
+                ?? match.slots["app"]?.stringValue
+                ?? "target"
+            return "Focused \(target)"
+
+        case "launch":
+            if let launched = result["launched"]?.stringValue {
+                return "Launched \(launched)"
+            }
+            let target = match.slots["project"]?.stringValue ?? "requested target"
+            return "Opened \(target)"
+
+        case "kill":
+            let target = match.slots["session"]?.stringValue
+                ?? match.slots["app"]?.stringValue
+                ?? "target"
+            return "Closed \(target)"
+
+        default:
+            return "ok"
+        }
     }
 }
 
