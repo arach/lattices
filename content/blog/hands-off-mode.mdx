@@ -13,47 +13,45 @@ import ArchDiagram from '../../site/src/components/blog/ArchDiagram'
 import ContextExplorer from '../../site/src/components/blog/ContextExplorer'
 import TestResults from '../../site/src/components/blog/TestResults'
 
-I've been building Lattices, a macOS workspace manager, for a while now. It tiles windows, manages tmux sessions, does OCR search across your desktop.
+I've been building Lattices for a while — it tiles windows, manages tmux sessions, does OCR search across the desktop. Standard workspace manager stuff.
 
-But I kept wanting to do things without reaching for a hotkey. Deep in code, thinking "I need Chrome next to this terminal" — I just wanted to *say* it.
-
-So I built hands-off mode.
+But I kept wanting to do things without reaching for a hotkey. Deep in code, thinking "I need Chrome next to this terminal" — I just wanted to *say* it. So I built hands-off mode.
 
 <StatsRow client:load />
 
-## The idea
+## What it does
 
-One hotkey. You speak. Things happen. No panel, no UI, no visual chrome.
+Press **Ctrl+Cmd+M**, say "tile Chrome left and iTerm right", press again. You hear a quick "Got it" followed by "Chrome left, iTerm right" and your windows slide into place. About 2 seconds total. No panel, no UI, no visual chrome.
 
-Press **Ctrl+Cmd+M**, say "tile Chrome left and iTerm right", press again. You hear a quick "Got it" followed by "Chrome left, iTerm right" and your windows slide into place. About 2 seconds total.
+The harder case: "I have too many terminals, organize them." The system looks at your desktop, sees 8 iTerm windows scattered across two monitors, and distributes them in a grid. Or "set up for a code review" puts the GitHub PR on the left and your terminal on the right.
 
-The harder case: "I have too many terminals, organize them" — the system looks at your desktop, sees 8 iTerm windows scattered across two monitors, and distributes them in a grid. Or "set up for a code review" puts the GitHub PR on the left and your terminal on the right.
+## It was slow for a long time
 
-## Six iterations to get here
-
-The early versions were slow. Even after moving past the initial prototypes, we were still at 6-7 seconds end-to-end. The user would speak, wait, and then their windows would silently rearrange. Not terrible, but not the instant-feeling interaction we wanted.
-
-Several iterations later, it feels natural — about 1 second to first response, 2 seconds end-to-end.
+The early versions were brutal. 6-7 seconds end-to-end. You'd speak, wait, and then your windows would silently rearrange. It worked, but it felt like talking to someone through a wall.
 
 <LatencyJourney client:load />
 
-The biggest single win was switching to direct API calls instead of shelling out to a CLI. After that, it was death by a thousand optimizations: persistent processes, streaming audio, cached phrases, and a narrate-before-act UX pattern that makes the whole thing feel intentional rather than magic.
+The biggest single win was switching to direct API calls instead of shelling out to a CLI. After that it was death by a thousand cuts: persistent processes, streaming audio, cached phrases, and a narrate-before-act pattern that makes the whole thing feel deliberate instead of magical.
 
-## How a turn works
+We're at about 1 second to first response now, 2 seconds end-to-end.
 
-Every voice command follows the same pipeline. The key insight: **the user should hear feedback before anything moves**.
+## The turn pipeline
+
+Every voice command follows the same flow. The part I'm most happy with: the user hears feedback before anything moves.
 
 <TurnPipeline client:load />
 
-The cached ack sound is important. It plays in under 50ms — before inference even starts — so the user knows the system heard them. Then the AI narrates what it's *about* to do, and only *then* do windows move. The user is never surprised.
+A cached ack sound plays in under 50ms — before inference even starts — so you know the system heard you. Then the AI narrates what it's *about* to do, and only *then* do windows move. You're never surprised by something happening silently.
 
-## The architecture
+That narrate-before-act pattern was one of those things that sounds obvious in retrospect but took us a few iterations to land on. The silent version felt broken even when it was doing the right thing.
 
-The system spans three layers: a native Swift app that owns the desktop, a persistent bun worker for inference and TTS, and cloud APIs for the heavy lifting.
+## Three layers
+
+Swift app owns the desktop. A persistent bun worker handles inference and TTS. Cloud APIs do the heavy lifting.
 
 <ArchDiagram client:load />
 
-Swift and the worker communicate over **stdin/stdout JSON lines**. The worker stays alive between turns — no cold starts. System prompts are loaded from `.md` files on disk and hot-reload on save, so prompt iteration doesn't require rebuilding.
+Swift and the worker communicate over stdin/stdout JSON lines. The worker stays alive between turns — no cold starts. System prompts live in `.md` files on disk and hot-reload on save, so I can iterate on prompts without rebuilding anything.
 
 The inference layer wraps the Vercel AI SDK and supports five providers. Swapping models is one line:
 
@@ -66,7 +64,7 @@ const { text } = await infer("tile chrome left", {
 });
 ```
 
-For TTS, we stream OpenAI's response directly into `ffplay` via stdin pipe — PCM format, no decoding overhead. Playback begins on the first audio chunk:
+For TTS, we stream OpenAI's response directly into `ffplay` via stdin pipe — PCM, no decoding overhead. Playback starts on the first audio chunk:
 
 ```typescript
 const player = spawn("ffplay", [
@@ -82,35 +80,33 @@ while (true) {
 }
 ```
 
-## The context problem
+## Context makes or breaks it
 
-A voice assistant is only as good as the information it has. Our first snapshot sent window titles and positions. That's it. Two iTerm windows both named "Claude Code" looked identical to the AI.
-
-The fix: send *everything*.
+Our first snapshot sent window titles and positions. That's it. Two iTerm windows both named "Claude Code" looked identical to the AI. Useless.
 
 <ContextExplorer client:load />
 
-A typical snapshot is about 2,000 tokens — nothing for a modern LLM. But the intelligence difference is dramatic. Every window gets its frame, Z-order, and on-screen status. Every terminal tab gets its working directory, running processes, tmux session name, and whether Claude Code is active. All screens with their resolutions. The active layer.
+The fix was sending everything. Every window gets its frame, Z-order, and on-screen status. Every terminal tab gets its working directory, running processes, tmux session name, and whether Claude Code is active. All screens with their resolutions. The active layer.
 
-"Focus on the lattices Claude Code" goes from "I see several Claude Code windows" to correctly identifying the one in `~/dev/lattices` and focusing it.
+A typical snapshot is about 2,000 tokens — nothing for a modern LLM. But the intelligence difference is dramatic. "Focus on the lattices Claude Code" goes from "I see several Claude Code windows" to correctly identifying the one in `~/dev/lattices` and focusing it.
 
-## Testing at scale
+## 100 scenarios, 202 assertions
 
-We built an automated test suite: 100 scenarios, 8 categories, 202 individual assertions. Each scenario feeds a transcript and desktop snapshot through the inference pipeline and checks the response against specific conditions.
+We built a test suite that feeds transcripts and desktop snapshots through the inference pipeline and checks responses against specific conditions. 100 scenarios across 8 categories.
 
 <TestResults client:load />
 
-The weakest area — error handling at 67% — is a known issue. The model *says* Photoshop isn't running (correct) but still sends a focus action (wrong). Function calling with typed parameters would fix this: the model calls `tile_window()` with a validated window reference, and we reject impossible actions before execution.
+The weakest area is error handling at 67%. The model *says* Photoshop isn't running (correct) but still sends a focus action (wrong). Function calling with typed parameters would fix this — the model calls `tile_window()` with a validated window reference, and we reject impossible actions before execution. Haven't shipped that yet.
 
-## What matters most
+## What actually matters
 
-The dual-model pattern is tempting: fire a fast model (Groq, 500ms) for a spoken ack while a smarter model (Grok, 1.2s) generates the actual actions. By the time the ack finishes playing, the smart response is ready.
+There's a dual-model pattern I keep thinking about: fire a fast model (Groq, 500ms) for a spoken ack while a smarter model (Grok, 1.2s) generates the actual actions. By the time the ack finishes playing, the smart response is ready.
 
-And Stage Manager awareness. We figured out how to detect stages, classify windows, and programmatically create new stages by simulating drag events. No other window manager does this. "Put Chrome and iTerm in a new stage" would just work.
+And we figured out Stage Manager awareness — how to detect stages, classify windows, and programmatically create new stages by simulating drag events. No other window manager does this. "Put Chrome and iTerm in a new stage" would just work.
 
-But honestly, the thing that matters most is the **prompt**. Every improvement to the system prompt has a bigger impact than any architectural change. When we added the rule "if spoken says you'll do something, actions must include it," empty-actions bugs nearly vanished. When we added concrete JSON examples for each scenario type, accuracy jumped across the board.
+But honestly, the thing that matters most is the prompt. Every improvement to the system prompt has had more impact than any architectural change. When we added the rule "if spoken says you'll do something, actions must include it," empty-action bugs nearly vanished. When we added concrete JSON examples for each scenario type, accuracy jumped across the board.
 
-The code is fast enough. The architecture is right. Now it's about making the AI genuinely helpful.
+The code is fast enough. The architecture is right. Now it's about making the AI genuinely helpful — and that's all prompt work.
 
 ---
 
