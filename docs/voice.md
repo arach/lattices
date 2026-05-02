@@ -134,6 +134,24 @@ reaches 75% of the model's limit, the session auto-resets.
 
 Context usage and session cost are shown in the AI corner header.
 
+## Hands-off inference
+
+Hands-off voice uses the shared inference wrapper in `lib/infer.ts`.
+By default it chooses the lowest-latency configured provider and, when
+Groq credentials are present, uses `groq/llama-3.1-8b-instant`.
+
+Credentials are read from process env, `.env.local`, `.env`,
+`~/.lattices/inference.json`, then `~/.config/speakeasy/settings.json`.
+For Groq, either `GROQ_API_KEY` or the common typo `GROK_API_KEY` works
+when the key has Groq's `gsk_` prefix.
+
+Override the voice engine if needed:
+
+```bash
+LATTICES_VOICE_PROVIDER=groq
+LATTICES_VOICE_MODEL=llama-3.1-8b-instant
+```
+
 ## Configuration
 
 Open **Settings > AI** to configure:

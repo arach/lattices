@@ -4,7 +4,7 @@
  *
  * Usage: echo '{"transcript":"tile chrome left","snapshot":{...}}' | bun run bin/handsoff-infer.ts
  *
- * Reads JSON from stdin, calls Groq via lib/infer.ts, prints JSON result to stdout.
+ * Reads JSON from stdin, calls the configured voice inference provider, prints JSON result to stdout.
  * All logging goes to stderr so it doesn't pollute the JSON output.
  */
 
@@ -14,7 +14,9 @@ import {
   normalizeAssistantPlan,
   tryLocalAssistantPlan,
 } from "./assistant-intelligence.ts";
-import { inferJSON } from "../lib/infer.ts";
+import { inferJSON, resolveVoiceInferenceOptions } from "../lib/infer.ts";
+
+const INFER_TIMEOUT_MS = 15_000;
 
 // ── Read input from stdin ──────────────────────────────────────────
 
@@ -36,6 +38,7 @@ const req = JSON.parse(input) as {
 const transcript = req.transcript ?? "";
 const systemPrompt = buildAssistantSystemPrompt();
 const userMessage = buildAssistantContextMessage(transcript, req.snapshot ?? {});
+const voiceInference = resolveVoiceInferenceOptions();
 
 const localPlan = tryLocalAssistantPlan(transcript, req.snapshot ?? {});
 if (localPlan) {
@@ -50,14 +53,18 @@ const messages = (req.history ?? []).map((h) => ({
   content: h.content,
 }));
 
+const controller = new AbortController();
+const timer = setTimeout(() => controller.abort(), INFER_TIMEOUT_MS);
+
 try {
   const { data, raw } = await inferJSON(userMessage, {
-    provider: "groq",
-    model: "llama-3.3-70b-versatile",
+    provider: voiceInference.provider,
+    model: voiceInference.model,
     system: systemPrompt,
     messages,
     temperature: 0.2,
     maxTokens: 512,
+    abortSignal: controller.signal,
     tag: "hands-off",
   });
 
@@ -83,5 +90,7 @@ try {
       _meta: { error: err.message },
     })
   );
-  process.exit(1);
+  process.exitCode = 1;
+} finally {
+  clearTimeout(timer);
 }

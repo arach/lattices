@@ -554,9 +554,9 @@ private extension LatticesDeckHost {
         let currentSpaceName = spacesState.currentSpaceName
         let voice = DeckVoiceState(
             phase: currentVoicePhase(),
-            transcript: handsOff.lastTranscript ?? audio.lastTranscript,
+            transcript: currentVoiceTranscript(handsOff: handsOff, audio: audio),
             transcriptLines: buildTranscriptLines(handsOff: handsOff, audio: audio),
-            responseSummary: handsOff.lastResponse ?? audio.executionResult,
+            responseSummary: currentVoiceResponseSummary(handsOff: handsOff, audio: audio),
             provider: audio.providerName == "none" ? "vox" : audio.providerName
         )
         let desktop = DeckDesktopSummary(
@@ -783,6 +783,24 @@ private extension LatticesDeckHost {
             return .reasoning
         }
         return .idle
+    }
+
+    @MainActor
+    func currentVoiceTranscript(handsOff: HandsOffSession, audio: AudioLayer) -> String? {
+        if audio.isListening || audio.executionResult != nil || audio.lastTranscript != nil {
+            return audio.lastTranscript
+        }
+        return handsOff.lastTranscript
+    }
+
+    @MainActor
+    func currentVoiceResponseSummary(handsOff: HandsOffSession, audio: AudioLayer) -> String? {
+        switch handsOff.state {
+        case .connecting, .listening, .thinking:
+            return handsOff.lastResponse ?? audio.executionResult
+        case .idle:
+            return audio.executionResult ?? handsOff.lastResponse
+        }
     }
 
     @MainActor

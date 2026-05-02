@@ -3,7 +3,7 @@
  * Hands-off worker — long-running process that handles both inference and TTS.
  *
  * Reads newline-delimited JSON commands from stdin, writes JSON responses to stdout.
- * Keeps SpeakEasy and inference warm — no cold starts.
+ * Keeps TTS and inference warm — no cold starts.
  *
  * Commands:
  *   {"cmd":"infer","transcript":"...","snapshot":{...},"history":[...]}
@@ -23,9 +23,10 @@ import {
   normalizeAssistantPlan,
   tryLocalAssistantPlan,
 } from "./assistant-intelligence.ts";
-import { infer } from "../lib/infer.ts";
+import { infer, resolveVoiceInferenceOptions } from "../lib/infer.ts";
 
 const INFER_TIMEOUT_MS = 15_000;
+const voiceInference = resolveVoiceInferenceOptions();
 
 /** Call infer and parse JSON if possible, otherwise treat as spoken-only response */
 async function inferSmart(prompt: string, options: any): Promise<{ data: any; raw: any }> {
@@ -291,12 +292,15 @@ log("worker started, streaming TTS ready");
 
 const systemPrompt = buildAssistantSystemPrompt();
 log("system prompt loaded");
+log(`voice inference: ${voiceInference.provider}/${voiceInference.model}`);
 
 // ── Auto-restart on file changes ───────────────────────────────────
 
 const watchFiles = [
   assistantPromptPath,
   join(import.meta.dir, "assistant-intelligence.ts"),
+  join(import.meta.dir, "..", ".env"),
+  join(import.meta.dir, "..", ".env.local"),
   import.meta.path, // this script itself
 ];
 
@@ -376,8 +380,8 @@ async function processLine(line: string) {
         }));
 
         const { data, raw } = await inferSmart(userMessage, {
-          provider: "xai",
-          model: "grok-4.20-beta-0309-non-reasoning",
+          provider: voiceInference.provider,
+          model: voiceInference.model,
           system: systemPrompt,
           messages,
           temperature: 0.2,
@@ -416,7 +420,7 @@ async function processLine(line: string) {
       //
       // Timeline:
       //   t=0  ──┬── ack TTS (fire & forget)
-      //          └── Groq inference
+      //          └── model inference
       //   t=~600ms ─┬── narrate TTS (what we're doing)
       //             └── execute actions (in parallel with narrate)
       //   t=done ── respond with results
@@ -445,8 +449,8 @@ async function processLine(line: string) {
         const userMessage = buildAssistantContextMessage(transcript, snap);
         try {
           const { data, raw } = await inferSmart(userMessage, {
-            provider: "xai",
-            model: "grok-4.20-beta-0309-non-reasoning",
+            provider: voiceInference.provider,
+            model: voiceInference.model,
             system: systemPrompt,
             messages,
             temperature: 0.2,
