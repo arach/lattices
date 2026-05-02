@@ -2,8 +2,12 @@ import AppKit
 import Combine
 import CoreGraphics
 
-final class KeyboardRemapController {
+final class KeyboardRemapController: ObservableObject {
     static let shared = KeyboardRemapController()
+
+    /// Live state of the event-tap circuit breaker. SettingsView observes
+    /// this to surface "paused" / "disabled" status and a re-arm button.
+    @Published private(set) var breakerState: EventTapBreaker.State = .armed
 
     private static let syntheticMarker: Int64 = 0x4C4B524D
 
@@ -14,8 +18,24 @@ final class KeyboardRemapController {
     private var capsLayerActive = false
     private var capsUsedAsModifier = false
     private let breaker = EventTapBreaker(label: "KeyboardRemap")
+    private let budgetMeter = TapBudgetMeter(label: "KeyboardRemap")
 
-    private init() {}
+    private init() {
+        breaker.onStateChanged = { [weak self] newState in
+            self?.breakerState = newState
+        }
+    }
+
+    /// Re-enable the tap after a breaker trip, clearing trip history.
+    /// Settings UI calls this when the user explicitly chooses to recover
+    /// from a `disabled` state.
+    func reArmAfterBreakerTrip() {
+        dispatchPrecondition(condition: .onQueue(.main))
+        breaker.reset()
+        if let tap = eventTap {
+            CGEvent.tapEnable(tap: tap, enable: true)
+        }
+    }
 
     func start() {
         installObserversIfNeeded()
@@ -59,6 +79,10 @@ final class KeyboardRemapController {
     }
 
     private func installEventTap() {
+        // Fresh install is a clean slate — drop any stale trip history so
+        // the new tap's first failure is judged on its own merits.
+        breaker.reset()
+
         var mask = CGEventMask(0)
         mask |= CGEventMask(1) << CGEventType.keyDown.rawValue
         mask |= CGEventMask(1) << CGEventType.keyUp.rawValue
@@ -111,6 +135,12 @@ final class KeyboardRemapController {
     }
 
     private func handleEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+        let started = CFAbsoluteTimeGetCurrent()
+        defer {
+            let elapsedMs = (CFAbsoluteTimeGetCurrent() - started) * 1000
+            budgetMeter.record(durationMs: elapsedMs)
+        }
+
         if type == .tapDisabledByTimeout {
             // OS killed the tap because a callback was too slow. Run through
             // the breaker — it backs off in escalating cooldowns rather than

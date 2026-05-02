@@ -45,8 +45,12 @@ private struct MouseGestureOverlayTheme {
     )
 }
 
-final class MouseGestureController {
+final class MouseGestureController: ObservableObject {
     static let shared = MouseGestureController()
+
+    /// Live state of the event-tap circuit breaker. SettingsView observes
+    /// this to surface "paused" / "disabled" status and a re-arm button.
+    @Published private(set) var breakerState: EventTapBreaker.State = .armed
 
     private struct GestureOutcome {
         let label: String
@@ -95,6 +99,7 @@ final class MouseGestureController {
     private var installedObservers = false
     private let shapeRecognizer = ShapeRecognizer()
     private let breaker = EventTapBreaker(label: "MouseGesture")
+    private let budgetMeter = TapBudgetMeter(label: "MouseGesture")
 
     // Tap-thread-side mirror of "which button (if any) is currently being
     // tracked as a gesture". The tap callback runs on EventTapThread; main
@@ -114,7 +119,11 @@ final class MouseGestureController {
         trackingLock.lock(); trackingButtonNumber = value; trackingLock.unlock()
     }
 
-    private init() {}
+    private init() {
+        breaker.onStateChanged = { [weak self] newState in
+            self?.breakerState = newState
+        }
+    }
 
     func start() {
         installObserversIfNeeded()
@@ -181,7 +190,22 @@ final class MouseGestureController {
         }
     }
 
+    /// Re-enable the tap after a breaker trip, clearing trip history.
+    /// Settings UI calls this when the user explicitly chooses to recover
+    /// from a `disabled` state.
+    func reArmAfterBreakerTrip() {
+        dispatchPrecondition(condition: .onQueue(.main))
+        breaker.reset()
+        if let tap = eventTap {
+            CGEvent.tapEnable(tap: tap, enable: true)
+        }
+    }
+
     private func installEventTap() {
+        // Fresh install is a clean slate — drop any stale trip history so
+        // the new tap's first failure is judged on its own merits.
+        breaker.reset()
+
         var mask = CGEventMask(0)
         mask |= CGEventMask(1) << CGEventType.leftMouseDown.rawValue
         mask |= CGEventMask(1) << CGEventType.leftMouseUp.rawValue
@@ -239,6 +263,12 @@ final class MouseGestureController {
     }
 
     private func handleEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+        let started = CFAbsoluteTimeGetCurrent()
+        defer {
+            let elapsedMs = (CFAbsoluteTimeGetCurrent() - started) * 1000
+            budgetMeter.record(durationMs: elapsedMs)
+        }
+
         if type == .tapDisabledByTimeout {
             // OS killed the tap because a callback was too slow. Run through
             // the breaker — it backs off in escalating cooldowns rather than
