@@ -82,7 +82,7 @@ final class KeyboardRemapController {
         runLoopSource = source
 
         if let source {
-            CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+            EventTapThread.shared.add(source: source)
         }
         CGEvent.tapEnable(tap: tap, enable: true)
         DiagnosticLog.shared.info("KeyboardRemap: keyboard event tap installed")
@@ -90,7 +90,7 @@ final class KeyboardRemapController {
 
     private func removeEventTap() {
         if let source = runLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
+            EventTapThread.shared.remove(source: source)
         }
         runLoopSource = nil
         if let tap = eventTap {
