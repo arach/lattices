@@ -90,6 +90,9 @@ struct SettingsContentView: View {
                 selectedTab = .companion
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .latticesShowAssistantSettings)) { _ in
+            selectedTab = .ai
+        }
     }
 
     // MARK: - Back Bar

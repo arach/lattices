@@ -6,6 +6,35 @@ private enum MouseGestureAccessory {
     case mic
 }
 
+private enum MouseGestureOverlayStyle: Equatable {
+    case drawing
+    case thinLine
+    case thickLine
+}
+
+private enum MouseGestureVisualPhase: String {
+    case started
+    case updated
+    case recognized
+    case completed
+}
+
+private struct MouseGestureOverlayTheme {
+    let graphite: NSColor
+    let graphiteDark: NSColor
+    let accent: NSColor
+    let highlight: NSColor
+    let failure: NSColor
+
+    static let graffiti = MouseGestureOverlayTheme(
+        graphite: NSColor(calibratedRed: 0.66, green: 0.69, blue: 0.73, alpha: 1.0),
+        graphiteDark: NSColor(calibratedRed: 0.16, green: 0.17, blue: 0.19, alpha: 1.0),
+        accent: NSColor(calibratedRed: 0.34, green: 0.78, blue: 1.0, alpha: 1.0),
+        highlight: NSColor(calibratedRed: 0.82, green: 0.94, blue: 1.0, alpha: 1.0),
+        failure: NSColor(calibratedRed: 0.98, green: 0.52, blue: 0.42, alpha: 1.0)
+    )
+}
+
 final class MouseGestureController {
     static let shared = MouseGestureController()
 
@@ -21,6 +50,8 @@ final class MouseGestureController {
         let overlay: MouseGestureOverlay
         var currentPoint: CGPoint
         var lockedDirection: MouseGestureDirection?
+        var pathPoints: [GesturePathPoint]
+        var visual: MouseShortcutVisualDefinition?
 
         init(buttonNumber: Int64, startPoint: CGPoint, overlay: MouseGestureOverlay) {
             self.buttonNumber = buttonNumber
@@ -28,6 +59,19 @@ final class MouseGestureController {
             self.overlay = overlay
             self.currentPoint = startPoint
             self.lockedDirection = nil
+            self.pathPoints = [
+                GesturePathPoint(point: startPoint, timestamp: Date().timeIntervalSinceReferenceDate)
+            ]
+            self.visual = nil
+        }
+
+        func recordPoint(_ point: CGPoint) {
+            if let last = pathPoints.last {
+                let dx = point.x - last.x
+                let dy = point.y - last.y
+                guard sqrt(dx * dx + dy * dy) >= 2 else { return }
+            }
+            pathPoints.append(GesturePathPoint(point: point, timestamp: Date().timeIntervalSinceReferenceDate))
         }
     }
 
@@ -39,6 +83,7 @@ final class MouseGestureController {
     private var retainedOverlays: [ObjectIdentifier: MouseGestureOverlay] = [:]
     private var subscriptions: Set<AnyCancellable> = []
     private var installedObservers = false
+    private let shapeRecognizer = ShapeRecognizer()
 
     private init() {}
 
@@ -112,6 +157,7 @@ final class MouseGestureController {
         mask |= CGEventMask(1) << CGEventType.leftMouseDown.rawValue
         mask |= CGEventMask(1) << CGEventType.leftMouseUp.rawValue
         mask |= CGEventMask(1) << CGEventType.rightMouseDown.rawValue
+        mask |= CGEventMask(1) << CGEventType.rightMouseDragged.rawValue
         mask |= CGEventMask(1) << CGEventType.rightMouseUp.rawValue
         mask |= CGEventMask(1) << CGEventType.otherMouseDown.rawValue
         mask |= CGEventMask(1) << CGEventType.otherMouseDragged.rawValue
@@ -172,8 +218,14 @@ final class MouseGestureController {
         }
 
         switch type {
-        case .leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp:
+        case .leftMouseDown, .leftMouseUp:
             return handlePassiveMouseButtonEvent(type: type, event: event)
+        case .rightMouseDown:
+            return handleMouseDown(event, buttonNumber: Int64(CGMouseButton.right.rawValue))
+        case .rightMouseDragged:
+            return handleMouseDragged(event, buttonNumber: Int64(CGMouseButton.right.rawValue))
+        case .rightMouseUp:
+            return handleMouseUp(event, buttonNumber: Int64(CGMouseButton.right.rawValue))
         default:
             break
         }
@@ -272,6 +324,7 @@ final class MouseGestureController {
             self.releaseOverlay(overlay)
         }
         let newSession = GestureSession(buttonNumber: buttonNumber, startPoint: point, overlay: overlay)
+        newSession.visual = MouseShortcutStore.shared.visualHint(for: button)
         session = newSession
         DiagnosticLog.shared.info("MouseGesture: began at \(format(point)) button=\(buttonNumber)")
         recordObservedEvent(
@@ -298,6 +351,8 @@ final class MouseGestureController {
         MouseShortcutStore.shared.reloadIfNeeded()
 
         session.currentPoint = event.location
+        session.recordPoint(event.location)
+        let button = MouseShortcutButton(rawButtonNumber: Int(buttonNumber))
         let delta = CGPoint(
             x: event.location.x - session.startPoint.x,
             y: event.location.y - session.startPoint.y
@@ -308,7 +363,6 @@ final class MouseGestureController {
         if direction != session.lockedDirection {
             session.lockedDirection = direction
             if let direction {
-                let button = MouseShortcutButton(rawButtonNumber: Int(buttonNumber))
                 let triggerEvent = MouseShortcutTriggerEvent(button: button, kind: .drag, direction: direction, device: nil)
                 let match = MouseShortcutStore.shared.match(for: triggerEvent)
                 DiagnosticLog.shared.info("MouseGesture: locked \(label(for: direction)) via \(triggerEvent.triggerName)")
@@ -336,10 +390,27 @@ final class MouseGestureController {
                 origin: session.startPoint,
                 direction: direction,
                 label: nil,
+                style: overlayStyle(for: button),
+                visual: session.visual,
+                visualPhase: .updated,
+                shape: nil,
+                success: nil,
+                pathPoints: session.pathPoints,
                 progress: previewProgress
             )
         } else {
-            session.overlay.track(origin: session.startPoint, direction: nil, label: nil, progress: 0)
+            session.overlay.track(
+                origin: session.startPoint,
+                direction: nil,
+                label: nil,
+                style: overlayStyle(for: MouseShortcutButton(rawButtonNumber: Int(buttonNumber))),
+                visual: session.visual,
+                visualPhase: .updated,
+                shape: nil,
+                success: nil,
+                pathPoints: session.pathPoints,
+                progress: 0
+            )
         }
 
         return nil
@@ -367,6 +438,8 @@ final class MouseGestureController {
         guard session.buttonNumber == buttonNumber else {
             return Unmanaged.passUnretained(event)
         }
+        session.currentPoint = event.location
+        session.recordPoint(event.location)
 
         let delta = CGPoint(
             x: event.location.x - session.startPoint.x,
@@ -376,7 +449,57 @@ final class MouseGestureController {
         let direction = Self.resolveDirection(delta: delta, threshold: tuning.dragThreshold, axisBias: tuning.axisBias)
         self.session = nil
 
+        let shapeResult = shapeRecognizer.recognize(points: session.pathPoints)
+        if let shape = shapeResult.shape {
+            let shapeTrigger = MouseShortcutTriggerEvent(button: button, kind: .shape, shape: shape)
+            let shapeMatch = MouseShortcutStore.shared.match(for: shapeTrigger)
+            if let shapeMatch {
+                let commitDirection = shapeResult.segments.last?.direction ?? direction ?? .right
+                let dismissBeforeAction = shouldDismissOverlayBeforeAction(match: shapeMatch)
+                if dismissBeforeAction {
+                    session.overlay.dismiss(immediately: true)
+                }
+
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    if !dismissBeforeAction {
+                        self.retainOverlay(session.overlay)
+                    }
+                    let outcome = self.performAction(match: shapeMatch, startPoint: session.startPoint)
+                    DiagnosticLog.shared.info("MouseGesture: \(shape.displayName) -> \(outcome.label) -> \(outcome.success ? "ok" : "blocked")")
+                    self.recordObservedEvent(
+                        phase: "up",
+                        button: button,
+                        location: event.location,
+                        delta: delta,
+                        modifiers: event.flags,
+                        candidate: shapeTrigger.triggerName,
+                        match: shapeMatch,
+                        note: "shape fired confidence=\(String(format: "%.2f", Double(shapeResult.confidence)))",
+                        appInfo: appInfo
+                    )
+                    if !dismissBeforeAction {
+                        session.overlay.commit(
+                            origin: session.startPoint,
+                            direction: commitDirection,
+                            label: outcome.label,
+                            success: outcome.success,
+                            style: self.overlayStyle(for: button),
+                            visual: shapeMatch.rule.visual ?? session.visual,
+                            visualPhase: .completed,
+                            shape: shape,
+                            pathPoints: session.pathPoints,
+                            accessory: outcome.accessory
+                        )
+                    }
+                }
+                return nil
+            }
+        }
+
         guard let direction else {
+            let clickTrigger = MouseShortcutTriggerEvent(button: button, kind: .click, direction: nil, device: nil)
+            let clickMatch = MouseShortcutStore.shared.match(for: clickTrigger)
             DiagnosticLog.shared.info("MouseGesture: released without a gesture at \(format(event.location))")
             recordObservedEvent(
                 phase: "up",
@@ -384,18 +507,27 @@ final class MouseGestureController {
                 location: event.location,
                 delta: delta,
                 modifiers: event.flags,
-                candidate: nil,
-                match: nil,
-                note: "replay click",
+                candidate: clickMatch != nil ? clickTrigger.triggerName : nil,
+                match: clickMatch,
+                note: clickMatch != nil ? "click action" : "replay click",
                 appInfo: appInfo
             )
-            DispatchQueue.main.async { [weak self] in
-                session.overlay.dismiss()
-                self?.replayMouseClick(
-                    buttonNumber: buttonNumber,
-                    at: session.startPoint,
-                    flags: event.flags
-                )
+            if let clickMatch {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    session.overlay.dismiss(immediately: true)
+                    let outcome = self.performAction(match: clickMatch, startPoint: session.startPoint)
+                    DiagnosticLog.shared.info("MouseGesture: \(outcome.label) -> \(outcome.success ? "ok" : "blocked")")
+                }
+            } else {
+                DispatchQueue.main.async { [weak self] in
+                    session.overlay.dismiss()
+                    self?.replayMouseClick(
+                        buttonNumber: buttonNumber,
+                        at: session.startPoint,
+                        flags: event.flags
+                    )
+                }
             }
             return nil
         }
@@ -431,6 +563,11 @@ final class MouseGestureController {
                     direction: direction,
                     label: outcome.label,
                     success: outcome.success,
+                    style: self.overlayStyle(for: button),
+                    visual: match?.rule.visual ?? session.visual,
+                    visualPhase: .completed,
+                    shape: nil,
+                    pathPoints: session.pathPoints,
                     accessory: outcome.accessory
                 )
             }
@@ -473,6 +610,14 @@ final class MouseGestureController {
                 success: sent,
                 accessory: nil
             )
+        case .appActivate:
+            let activated = activateApplication(named: match.action.app)
+            let appLabel = match.action.app?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return GestureOutcome(
+                label: activated ? "\(appLabel?.isEmpty == false ? appLabel! : "App") Focused" : "App Activation Blocked",
+                success: activated,
+                accessory: nil
+            )
         }
     }
 
@@ -489,13 +634,31 @@ final class MouseGestureController {
         }
     }
 
+    private func overlayStyle(for button: MouseShortcutButton) -> MouseGestureOverlayStyle {
+        switch button {
+        case .button4:
+            return .thinLine
+        case .button5:
+            return .thickLine
+        case .middle:
+            return .drawing
+        case .right, .number:
+            return .drawing
+        }
+    }
+
     private func clearSession() {
         session?.overlay.dismiss(immediately: true)
         session = nil
     }
 
     private func replayMouseClick(buttonNumber: Int64, at point: CGPoint, flags: CGEventFlags) {
-        let events: [CGEventType] = [.otherMouseDown, .otherMouseUp]
+        let events: [CGEventType]
+        if buttonNumber == Int64(CGMouseButton.right.rawValue) {
+            events = [.rightMouseDown, .rightMouseUp]
+        } else {
+            events = [.otherMouseDown, .otherMouseUp]
+        }
         for type in events {
             guard let mouseButton = CGMouseButton(rawValue: UInt32(buttonNumber)) else { continue }
             guard let event = CGEvent(
@@ -527,7 +690,7 @@ final class MouseGestureController {
         switch match.action.type {
         case .spacePrevious, .spaceNext, .screenMapToggle:
             return true
-        case .dictationStart, .shortcutSend:
+        case .dictationStart, .shortcutSend, .appActivate:
             return false
         }
     }
@@ -619,6 +782,40 @@ final class MouseGestureController {
             )
         )
     }
+
+    private func activateApplication(named appName: String?) -> Bool {
+        guard let appName, !appName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return false
+        }
+
+        if let running = NSWorkspace.shared.runningApplications.first(where: { app in
+            app.localizedName?.localizedCaseInsensitiveCompare(appName) == .orderedSame
+                || app.bundleIdentifier?.localizedCaseInsensitiveContains(appName) == true
+        }) {
+            return running.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+        }
+
+        let fileManager = FileManager.default
+        let trimmedName = appName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let appFilenames = trimmedName.hasSuffix(".app") ? [trimmedName] : [trimmedName + ".app", trimmedName]
+        let roots = [
+            "/Applications",
+            "/System/Applications",
+            fileManager.homeDirectoryForCurrentUser.appendingPathComponent("Applications").path,
+        ]
+
+        for root in roots {
+            for filename in appFilenames {
+                let url = URL(fileURLWithPath: root).appendingPathComponent(filename)
+                guard fileManager.fileExists(atPath: url.path) else { continue }
+                NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+                return true
+            }
+        }
+
+        _ = ProcessQuery.shell(["/usr/bin/open", "-a", trimmedName])
+        return true
+    }
 }
 
 private final class MouseGestureOverlay {
@@ -653,14 +850,32 @@ private final class MouseGestureOverlay {
         window.orderFrontRegardless()
     }
 
-    func track(origin: CGPoint, direction: MouseGestureDirection?, label: String?, progress: CGFloat) {
+    func track(
+        origin: CGPoint,
+        direction: MouseGestureDirection?,
+        label: String?,
+        style: MouseGestureOverlayStyle,
+        visual: MouseShortcutVisualDefinition?,
+        visualPhase: MouseGestureVisualPhase,
+        shape: GestureShapeLabel?,
+        success: Bool?,
+        pathPoints: [GesturePathPoint],
+        progress: CGFloat
+    ) {
         fadeTimer?.invalidate()
         window.alphaValue = 1
-        if let direction {
+        let localPath = localPath(from: pathPoints)
+        if direction != nil || localPath.count > 1 {
             overlayView.state = .tracking(
                 origin: localPoint(from: origin),
                 direction: direction,
                 label: label,
+                style: style,
+                visual: visual,
+                visualPhase: visualPhase,
+                shape: shape,
+                success: success,
+                path: localPath,
                 progress: progress
             )
         } else {
@@ -674,6 +889,11 @@ private final class MouseGestureOverlay {
         direction: MouseGestureDirection,
         label: String,
         success: Bool,
+        style: MouseGestureOverlayStyle,
+        visual: MouseShortcutVisualDefinition?,
+        visualPhase: MouseGestureVisualPhase,
+        shape: GestureShapeLabel?,
+        pathPoints: [GesturePathPoint],
         accessory: MouseGestureAccessory?
     ) {
         fadeTimer?.invalidate()
@@ -683,6 +903,11 @@ private final class MouseGestureOverlay {
             direction: direction,
             label: label,
             success: success,
+            style: style,
+            visual: visual,
+            visualPhase: visualPhase,
+            shape: shape,
+            path: localPath(from: pathPoints),
             accessory: accessory,
             accessoryAnimationDuration: accessoryAnimationDuration
         )
@@ -722,6 +947,10 @@ private final class MouseGestureOverlay {
         return CGPoint(x: cgPoint.x - screen.frame.minX, y: nsY - screen.frame.minY)
     }
 
+    private func localPath(from pathPoints: [GesturePathPoint]) -> [CGPoint] {
+        pathPoints.map { localPoint(from: $0.cgPoint) }
+    }
+
     private func finishDismissal() {
         let callback = onDismiss
         onDismiss = nil
@@ -730,14 +959,32 @@ private final class MouseGestureOverlay {
 }
 
 private final class MouseGestureOverlayView: NSView {
+    private let theme = MouseGestureOverlayTheme.graffiti
+
     enum State {
         case idle
-        case tracking(origin: CGPoint, direction: MouseGestureDirection?, label: String?, progress: CGFloat)
+        case tracking(
+            origin: CGPoint,
+            direction: MouseGestureDirection?,
+            label: String?,
+            style: MouseGestureOverlayStyle,
+            visual: MouseShortcutVisualDefinition?,
+            visualPhase: MouseGestureVisualPhase,
+            shape: GestureShapeLabel?,
+            success: Bool?,
+            path: [CGPoint],
+            progress: CGFloat
+        )
         case committed(
             origin: CGPoint,
             direction: MouseGestureDirection,
             label: String,
             success: Bool,
+            style: MouseGestureOverlayStyle,
+            visual: MouseShortcutVisualDefinition?,
+            visualPhase: MouseGestureVisualPhase,
+            shape: GestureShapeLabel?,
+            path: [CGPoint],
             accessory: MouseGestureAccessory?,
             accessoryAnimationDuration: TimeInterval
         )
@@ -790,23 +1037,80 @@ private final class MouseGestureOverlayView: NSView {
         switch state {
         case .idle:
             break
-        case .tracking(let origin, let direction, let label, let progress):
+        case .tracking(let origin, let direction, let label, let style, let visual, let visualPhase, let shape, let success, let path, let progress):
             drawOrigin(at: origin, in: ctx, alpha: 0.88)
-            if let direction {
+            if path.count > 1 {
+                drawGesturePath(
+                    path,
+                    fallbackOrigin: origin,
+                    direction: direction,
+                    label: label,
+                    success: true,
+                    committed: false,
+                    style: style,
+                    accessory: nil,
+                    progressOverride: progress,
+                    in: ctx
+                )
+                drawVisualPOCIfNeeded(
+                    visual,
+                    phase: visualPhase,
+                    shape: shape,
+                    success: success,
+                    points: path,
+                    label: label,
+                    in: ctx
+                )
+            } else if let direction {
                 drawArrow(
                     from: origin,
                     direction: direction,
                     label: label,
                     success: true,
                     committed: false,
+                    style: style,
                     accessory: nil,
                     progressOverride: progress,
                     in: ctx
                 )
             }
-        case .committed(let origin, let direction, let label, let success, let accessory, _):
+        case .committed(let origin, let direction, let label, let success, let style, let visual, let visualPhase, let shape, let path, let accessory, _):
             drawOrigin(at: origin, in: ctx, alpha: 1.0)
-            drawArrow(from: origin, direction: direction, label: label, success: success, committed: true, accessory: accessory, progressOverride: nil, in: ctx)
+            if path.count > 1 {
+                drawGesturePath(
+                    path,
+                    fallbackOrigin: origin,
+                    direction: direction,
+                    label: label,
+                    success: success,
+                    committed: true,
+                    style: style,
+                    accessory: accessory,
+                    progressOverride: nil,
+                    in: ctx
+                )
+                drawVisualPOCIfNeeded(
+                    visual,
+                    phase: visualPhase,
+                    shape: shape,
+                    success: success,
+                    points: path,
+                    label: label,
+                    in: ctx
+                )
+            } else {
+                drawArrow(
+                    from: origin,
+                    direction: direction,
+                    label: label,
+                    success: success,
+                    committed: true,
+                    style: style,
+                    accessory: accessory,
+                    progressOverride: nil,
+                    in: ctx
+                )
+            }
         }
     }
 
@@ -824,6 +1128,7 @@ private final class MouseGestureOverlayView: NSView {
         label: String?,
         success: Bool,
         committed: Bool,
+        style: MouseGestureOverlayStyle,
         accessory: MouseGestureAccessory?,
         progressOverride: CGFloat?,
         in ctx: CGContext
@@ -839,6 +1144,7 @@ private final class MouseGestureOverlayView: NSView {
             : NSColor(calibratedRed: 0.98, green: 0.52, blue: 0.42, alpha: 1.0)
         let strokeAlpha = committed ? 0.92 : (0.48 + 0.44 * clampedProgress)
         let glowAlpha = committed ? 0.2 : (0.08 + 0.08 * clampedProgress)
+        let metrics = arrowMetrics(for: style)
 
         ctx.saveGState()
         ctx.setLineCap(.round)
@@ -847,7 +1153,7 @@ private final class MouseGestureOverlayView: NSView {
         glowPath.move(to: origin)
         glowPath.addLine(to: end)
         ctx.addPath(glowPath)
-        ctx.setLineWidth(16)
+        ctx.setLineWidth(metrics.glowWidth)
         ctx.setStrokeColor(accent.withAlphaComponent(glowAlpha).cgColor)
         ctx.strokePath()
 
@@ -855,11 +1161,11 @@ private final class MouseGestureOverlayView: NSView {
         linePath.move(to: origin)
         linePath.addLine(to: end)
         ctx.addPath(linePath)
-        ctx.setLineWidth(5)
+        ctx.setLineWidth(metrics.lineWidth)
         ctx.setStrokeColor(accent.withAlphaComponent(strokeAlpha).cgColor)
         ctx.strokePath()
 
-        drawArrowHead(at: end, direction: direction, color: accent)
+        drawArrowHead(at: end, direction: direction, color: accent, size: metrics.headSize)
         if let label, (!committed || clampedProgress >= labelRevealThreshold) {
             drawLabel(label, from: origin, to: end, direction: direction, color: accent)
         }
@@ -869,8 +1175,300 @@ private final class MouseGestureOverlayView: NSView {
         ctx.restoreGState()
     }
 
-    private func drawArrowHead(at end: CGPoint, direction: MouseGestureDirection, color: NSColor) {
-        let size: CGFloat = 15
+    private func drawGesturePath(
+        _ points: [CGPoint],
+        fallbackOrigin: CGPoint,
+        direction: MouseGestureDirection?,
+        label: String?,
+        success: Bool,
+        committed: Bool,
+        style: MouseGestureOverlayStyle,
+        accessory: MouseGestureAccessory?,
+        progressOverride: CGFloat?,
+        in ctx: CGContext
+    ) {
+        guard points.count > 1 else { return }
+        let accent = success ? theme.accent : theme.failure
+        let stroke = success ? theme.graphite : theme.failure
+        let metrics = arrowMetrics(for: style)
+        let pathProgress = progressOverride ?? currentArrowProgress(committed: committed)
+        let clampedProgress = min(1, max(0, pathProgress))
+        let strokeAlpha = committed ? 0.92 : (0.48 + 0.44 * clampedProgress)
+        let glowAlpha = committed ? 0.28 : (0.12 + 0.12 * clampedProgress)
+        let visiblePoints = visiblePathPoints(points, progress: committed ? clampedProgress : 1)
+        guard visiblePoints.count > 1 else { return }
+
+        let path = smoothedGesturePath(from: visiblePoints)
+
+        ctx.saveGState()
+        ctx.setLineCap(.round)
+        ctx.setLineJoin(.round)
+
+        drawGestureGuideDots(around: visiblePoints, accent: accent, in: ctx)
+
+        ctx.addPath(path)
+        ctx.setLineWidth(metrics.glowWidth + 10)
+        ctx.setStrokeColor(theme.graphiteDark.withAlphaComponent(committed ? 0.44 : 0.30).cgColor)
+        ctx.strokePath()
+
+        ctx.addPath(path)
+        ctx.setLineWidth(metrics.glowWidth)
+        ctx.setStrokeColor(accent.withAlphaComponent(glowAlpha).cgColor)
+        ctx.strokePath()
+
+        ctx.addPath(path)
+        ctx.setLineWidth(metrics.lineWidth)
+        ctx.setStrokeColor(stroke.withAlphaComponent(strokeAlpha).cgColor)
+        ctx.strokePath()
+
+        ctx.addPath(path)
+        ctx.setLineWidth(max(1, metrics.lineWidth * 0.28))
+        ctx.setStrokeColor((success ? theme.highlight : accent).withAlphaComponent(success ? strokeAlpha * 0.62 : strokeAlpha).cgColor)
+        ctx.strokePath()
+
+        let end = visiblePoints.last ?? fallbackOrigin
+        let resolvedDirection = direction ?? pathDirection(from: visiblePoints)
+        if let resolvedDirection {
+            drawArrowHead(at: end, direction: resolvedDirection, color: stroke, size: metrics.headSize)
+            if let label, (!committed || clampedProgress >= labelRevealThreshold) {
+                drawLabel(label, from: fallbackOrigin, to: end, direction: resolvedDirection, color: accent)
+            }
+            if committed, let accessory, clampedProgress >= labelRevealThreshold {
+                drawAccessory(accessory, from: fallbackOrigin, to: end, direction: resolvedDirection, color: accent, in: ctx)
+            }
+        }
+        ctx.restoreGState()
+    }
+
+    private func drawGestureGuideDots(around points: [CGPoint], accent: NSColor, in ctx: CGContext) {
+        guard !points.isEmpty else { return }
+        let minX = (points.map(\.x).min() ?? 0) - 34
+        let maxX = (points.map(\.x).max() ?? 0) + 34
+        let minY = (points.map(\.y).min() ?? 0) - 34
+        let maxY = (points.map(\.y).max() ?? 0) + 34
+        let spacing: CGFloat = 34
+        let dotRadius: CGFloat = 2.2
+        let startX = floor(minX / spacing) * spacing
+        let startY = floor(minY / spacing) * spacing
+
+        var y = startY
+        while y <= maxY {
+            var x = startX
+            while x <= maxX {
+                let point = CGPoint(x: x, y: y)
+                let distance = nearestDistance(from: point, to: points)
+                let closeness = max(0, 1 - min(distance / 96, 1))
+                let alpha = 0.08 + closeness * 0.20
+                let radius = dotRadius + closeness * 1.2
+                ctx.setFillColor(accent.withAlphaComponent(alpha).cgColor)
+                ctx.fillEllipse(in: CGRect(x: x - radius, y: y - radius, width: radius * 2, height: radius * 2))
+                x += spacing
+            }
+            y += spacing
+        }
+    }
+
+    private func nearestDistance(from point: CGPoint, to points: [CGPoint]) -> CGFloat {
+        points.reduce(CGFloat.greatestFiniteMagnitude) { nearest, candidate in
+            let dx = point.x - candidate.x
+            let dy = point.y - candidate.y
+            return min(nearest, sqrt(dx * dx + dy * dy))
+        }
+    }
+
+    private func drawVisualPOCIfNeeded(
+        _ visual: MouseShortcutVisualDefinition?,
+        phase: MouseGestureVisualPhase,
+        shape: GestureShapeLabel?,
+        success: Bool?,
+        points: [CGPoint],
+        label: String?,
+        in ctx: CGContext
+    ) {
+        guard let visual, visual.isLottiePOC, let end = points.last else { return }
+        let marker = visual.marker(phase: phase.rawValue, shape: shape, success: success) ?? fallbackMarker(phase: phase, success: success)
+        let previous = points.dropLast().last ?? end
+        let velocity = CGPoint(x: end.x - previous.x, y: end.y - previous.y)
+        let speed = min(1, sqrt(velocity.x * velocity.x + velocity.y * velocity.y) / 42)
+        let anchor = CGPoint(x: end.x + 28, y: end.y + 22 - speed * 8)
+        drawLottieCatPOC(marker: marker, at: anchor, velocity: velocity, label: label, in: ctx)
+    }
+
+    private func fallbackMarker(phase: MouseGestureVisualPhase, success: Bool?) -> String {
+        switch phase {
+        case .started:
+            return "curious"
+        case .updated:
+            return "follow"
+        case .recognized:
+            return "pounce"
+        case .completed:
+            return success == false ? "confused" : "celebrate"
+        }
+    }
+
+    private func drawLottieCatPOC(
+        marker: String,
+        at center: CGPoint,
+        velocity: CGPoint,
+        label: String?,
+        in ctx: CGContext
+    ) {
+        let mood = marker.lowercased()
+        let bodyColor = NSColor(calibratedRed: 0.13, green: 0.14, blue: 0.16, alpha: 0.92)
+        let faceColor = theme.highlight.withAlphaComponent(0.94)
+        let accent = mood.contains("confused") ? theme.failure : theme.accent
+        let tilt = max(-0.34, min(0.34, velocity.x / 160))
+        let hop: CGFloat = mood.contains("pounce") || mood.contains("celebrate") ? 7 : 0
+        let headCenter = CGPoint(x: center.x, y: center.y + hop)
+        let headRadius: CGFloat = mood.contains("pounce") ? 16 : 14
+
+        ctx.saveGState()
+        ctx.translateBy(x: headCenter.x, y: headCenter.y)
+        ctx.rotate(by: tilt)
+        ctx.translateBy(x: -headCenter.x, y: -headCenter.y)
+
+        ctx.setFillColor(theme.graphiteDark.withAlphaComponent(0.24).cgColor)
+        ctx.fillEllipse(in: CGRect(x: headCenter.x - 22, y: headCenter.y - 18, width: 44, height: 36))
+
+        let leftEar = CGMutablePath()
+        leftEar.move(to: CGPoint(x: headCenter.x - 12, y: headCenter.y + 9))
+        leftEar.addLine(to: CGPoint(x: headCenter.x - 7, y: headCenter.y + 25))
+        leftEar.addLine(to: CGPoint(x: headCenter.x - 1, y: headCenter.y + 11))
+        leftEar.closeSubpath()
+        ctx.addPath(leftEar)
+        ctx.setFillColor(bodyColor.cgColor)
+        ctx.fillPath()
+
+        let rightEar = CGMutablePath()
+        rightEar.move(to: CGPoint(x: headCenter.x + 12, y: headCenter.y + 9))
+        rightEar.addLine(to: CGPoint(x: headCenter.x + 7, y: headCenter.y + 25))
+        rightEar.addLine(to: CGPoint(x: headCenter.x + 1, y: headCenter.y + 11))
+        rightEar.closeSubpath()
+        ctx.addPath(rightEar)
+        ctx.setFillColor(bodyColor.cgColor)
+        ctx.fillPath()
+
+        ctx.setFillColor(bodyColor.cgColor)
+        ctx.fillEllipse(in: CGRect(x: headCenter.x - headRadius, y: headCenter.y - headRadius, width: headRadius * 2, height: headRadius * 2))
+        ctx.setStrokeColor(accent.withAlphaComponent(0.72).cgColor)
+        ctx.setLineWidth(1.4)
+        ctx.strokeEllipse(in: CGRect(x: headCenter.x - headRadius, y: headCenter.y - headRadius, width: headRadius * 2, height: headRadius * 2))
+
+        let eyeY = headCenter.y + 2
+        let blink = mood.contains("pounce") || mood.contains("celebrate")
+        drawCatEye(at: CGPoint(x: headCenter.x - 5, y: eyeY), blink: blink, color: faceColor, in: ctx)
+        drawCatEye(at: CGPoint(x: headCenter.x + 5, y: eyeY), blink: blink, color: faceColor, in: ctx)
+
+        ctx.setStrokeColor(faceColor.withAlphaComponent(0.82).cgColor)
+        ctx.setLineWidth(1)
+        let mouth = CGMutablePath()
+        mouth.move(to: CGPoint(x: headCenter.x - 3, y: headCenter.y - 5))
+        mouth.addQuadCurve(to: CGPoint(x: headCenter.x + 3, y: headCenter.y - 5), control: CGPoint(x: headCenter.x, y: headCenter.y - (mood.contains("confused") ? 2 : 8)))
+        ctx.addPath(mouth)
+        ctx.strokePath()
+
+        if mood.contains("celebrate"), let label {
+            drawCatToast(label, near: CGPoint(x: headCenter.x + 18, y: headCenter.y + 18), color: accent)
+        }
+
+        ctx.restoreGState()
+    }
+
+    private func drawCatEye(at point: CGPoint, blink: Bool, color: NSColor, in ctx: CGContext) {
+        ctx.setStrokeColor(color.cgColor)
+        ctx.setFillColor(color.cgColor)
+        if blink {
+            ctx.setLineWidth(1.4)
+            let path = CGMutablePath()
+            path.move(to: CGPoint(x: point.x - 2.4, y: point.y))
+            path.addLine(to: CGPoint(x: point.x + 2.4, y: point.y))
+            ctx.addPath(path)
+            ctx.strokePath()
+        } else {
+            ctx.fillEllipse(in: CGRect(x: point.x - 1.7, y: point.y - 1.7, width: 3.4, height: 3.4))
+        }
+    }
+
+    private func drawCatToast(_ label: String, near point: CGPoint, color: NSColor) {
+        let shortLabel = label.replacingOccurrences(of: " Focused", with: "!")
+        let font = NSFont.monospacedSystemFont(ofSize: 9, weight: .bold)
+        let attributed = NSAttributedString(
+            string: shortLabel,
+            attributes: [
+                .font: font,
+                .foregroundColor: theme.highlight.withAlphaComponent(0.96),
+            ]
+        )
+        let size = attributed.size()
+        let rect = CGRect(x: point.x, y: point.y, width: size.width + 12, height: size.height + 7)
+        let bubble = NSBezierPath(roundedRect: rect, xRadius: 8, yRadius: 8)
+        theme.graphiteDark.withAlphaComponent(0.72).setFill()
+        bubble.fill()
+        color.withAlphaComponent(0.5).setStroke()
+        bubble.lineWidth = 1
+        bubble.stroke()
+        attributed.draw(in: CGRect(x: rect.minX + 6, y: rect.minY + 3.5, width: size.width, height: size.height))
+    }
+
+    private func smoothedGesturePath(from points: [CGPoint]) -> CGPath {
+        let path = CGMutablePath()
+        guard let first = points.first else { return path }
+        path.move(to: first)
+
+        guard points.count > 2 else {
+            if let last = points.last {
+                path.addLine(to: last)
+            }
+            return path
+        }
+
+        for index in 0..<(points.count - 1) {
+            let previous = points[max(index - 1, 0)]
+            let current = points[index]
+            let next = points[index + 1]
+            let nextNext = points[min(index + 2, points.count - 1)]
+            let tension: CGFloat = 0.34
+            let control1 = CGPoint(
+                x: current.x + (next.x - previous.x) * tension,
+                y: current.y + (next.y - previous.y) * tension
+            )
+            let control2 = CGPoint(
+                x: next.x - (nextNext.x - current.x) * tension,
+                y: next.y - (nextNext.y - current.y) * tension
+            )
+            path.addCurve(to: next, control1: control1, control2: control2)
+        }
+        return path
+    }
+
+    private func visiblePathPoints(_ points: [CGPoint], progress: CGFloat) -> [CGPoint] {
+        guard progress < 1, points.count > 2 else { return points }
+        let clamped = min(1, max(0.04, progress))
+        let count = max(2, Int(ceil(CGFloat(points.count) * clamped)))
+        return Array(points.prefix(count))
+    }
+
+    private func pathDirection(from points: [CGPoint]) -> MouseGestureDirection? {
+        guard points.count >= 2 else { return nil }
+        let window = points.suffix(min(6, points.count))
+        guard let first = window.first, let last = window.last else { return nil }
+        let delta = CGPoint(x: last.x - first.x, y: last.y - first.y)
+        return MouseGestureController.resolveDirection(delta: delta, threshold: 4, axisBias: 1.0)
+    }
+
+    private func arrowMetrics(for style: MouseGestureOverlayStyle) -> (lineWidth: CGFloat, glowWidth: CGFloat, headSize: CGFloat) {
+        switch style {
+        case .thinLine:
+            return (2.4, 7, 10)
+        case .thickLine:
+            return (8.5, 20, 18)
+        case .drawing:
+            return (5, 16, 15)
+        }
+    }
+
+    private func drawArrowHead(at end: CGPoint, direction: MouseGestureDirection, color: NSColor, size: CGFloat) {
         let path = NSBezierPath()
 
         switch direction {
@@ -898,17 +1496,31 @@ private final class MouseGestureOverlayView: NSView {
     }
 
     private func drawLabel(_ label: String, from origin: CGPoint, to end: CGPoint, direction: MouseGestureDirection, color: NSColor) {
-        let font = NSFont.monospacedSystemFont(ofSize: 11, weight: .semibold)
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .foregroundColor: NSColor.white.withAlphaComponent(0.94),
+        let display = labelComponents(for: label)
+        let titleFont = NSFont.systemFont(ofSize: 15, weight: .heavy)
+        let kickerFont = NSFont.monospacedSystemFont(ofSize: 8, weight: .bold)
+        let titleAttributes: [NSAttributedString.Key: Any] = [
+            .font: titleFont,
+            .foregroundColor: theme.highlight.withAlphaComponent(0.98),
         ]
-        let attributed = NSAttributedString(string: label, attributes: attributes)
-        let textSize = attributed.size()
-        let paddingX: CGFloat = 10
-        let paddingY: CGFloat = 6
+        let kickerAttributes: [NSAttributedString.Key: Any] = [
+            .font: kickerFont,
+            .foregroundColor: color.withAlphaComponent(0.84),
+        ]
+        let title = NSAttributedString(string: display.title, attributes: titleAttributes)
+        let kicker = display.kicker.map { NSAttributedString(string: $0, attributes: kickerAttributes) }
+        let titleSize = title.size()
+        let kickerSize = kicker?.size() ?? .zero
+        let gap: CGFloat = kicker == nil ? 0 : 2
+        let textSize = CGSize(
+            width: max(titleSize.width, kickerSize.width),
+            height: titleSize.height + gap + kickerSize.height
+        )
+        let paddingX: CGFloat = 14
+        let paddingY: CGFloat = 8
+        let tickWidth: CGFloat = 6
         let bubbleSize = CGSize(
-            width: textSize.width + paddingX * 2,
+            width: textSize.width + paddingX * 2 + tickWidth,
             height: textSize.height + paddingY * 2
         )
         let bubbleOrigin = labelOrigin(from: origin, to: end, direction: direction, bubbleSize: bubbleSize)
@@ -919,22 +1531,66 @@ private final class MouseGestureOverlayView: NSView {
             height: bubbleSize.height
         )
 
-        let bg = NSBezierPath(roundedRect: rect, xRadius: 10, yRadius: 10)
-        NSColor.black.withAlphaComponent(0.42).setFill()
+        ctxSaveForLabel(rotationDegrees: -4, around: CGPoint(x: rect.midX, y: rect.midY))
+
+        let shadowRect = rect.insetBy(dx: -5, dy: -5)
+        let shadow = NSBezierPath(roundedRect: shadowRect, xRadius: 15, yRadius: 15)
+        theme.graphiteDark.withAlphaComponent(0.24).setFill()
+        shadow.fill()
+
+        let bg = NSBezierPath(roundedRect: rect, xRadius: 13, yRadius: 13)
+        theme.graphiteDark.withAlphaComponent(0.82).setFill()
         bg.fill()
 
-        let border = NSBezierPath(roundedRect: rect, xRadius: 10, yRadius: 10)
-        color.withAlphaComponent(0.26).setStroke()
-        border.lineWidth = 1
+        let border = NSBezierPath(roundedRect: rect, xRadius: 13, yRadius: 13)
+        theme.graphite.withAlphaComponent(0.46).setStroke()
+        border.lineWidth = 1.2
         border.stroke()
 
-        let textRect = CGRect(
-            x: rect.minX + paddingX,
-            y: rect.minY + paddingY,
-            width: textSize.width,
-            height: textSize.height
+        let tickRect = CGRect(
+            x: rect.minX + 8,
+            y: rect.midY - 7,
+            width: 3,
+            height: 14
         )
-        attributed.draw(in: textRect)
+        let tick = NSBezierPath(roundedRect: tickRect, xRadius: 1.5, yRadius: 1.5)
+        color.withAlphaComponent(0.82).setFill()
+        tick.fill()
+
+        let titleRect = CGRect(
+            x: rect.minX + paddingX + tickWidth,
+            y: rect.minY + paddingY + kickerSize.height + gap,
+            width: titleSize.width,
+            height: titleSize.height
+        )
+        title.draw(in: titleRect)
+
+        if let kicker {
+            let kickerRect = CGRect(
+                x: rect.minX + paddingX + tickWidth + 1,
+                y: rect.minY + paddingY,
+                width: kickerSize.width,
+                height: kickerSize.height
+            )
+            kicker.draw(in: kickerRect)
+        }
+
+        NSGraphicsContext.current?.cgContext.restoreGState()
+    }
+
+    private func labelComponents(for label: String) -> (title: String, kicker: String?) {
+        if label.hasSuffix(" Focused") {
+            return (String(label.dropLast(" Focused".count)), "FOCUSED")
+        }
+        return (label, nil)
+    }
+
+    private func ctxSaveForLabel(rotationDegrees: CGFloat, around center: CGPoint) {
+        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+        ctx.saveGState()
+        ctx.translateBy(x: center.x, y: center.y)
+        ctx.rotate(by: rotationDegrees * .pi / 180)
+        ctx.translateBy(x: -center.x, y: -center.y)
     }
 
     private func labelOrigin(from origin: CGPoint, to end: CGPoint, direction: MouseGestureDirection, bubbleSize: CGSize) -> CGPoint {
@@ -1045,7 +1701,7 @@ private final class MouseGestureOverlayView: NSView {
         accessoryAnimationDuration = 0
         accessoryAnimationDelay = 0
 
-        if case .committed(_, _, _, _, let accessory, let duration) = state, accessory != nil {
+        if case .committed(_, _, _, _, _, _, _, _, _, let accessory, let duration) = state, accessory != nil {
             accessoryAnimationStartedAt = Date()
             accessoryAnimationDuration = duration
             accessoryAnimationDelay = replayLeadInDuration * 0.86
@@ -1180,9 +1836,9 @@ private final class MouseGestureOverlayView: NSView {
         switch state {
         case .idle:
             return nil
-        case .tracking(_, let direction, _, _):
+        case .tracking(_, let direction, _, _, _, _, _, _, _, _):
             return direction
-        case .committed(_, let direction, _, _, _, _):
+        case .committed(_, let direction, _, _, _, _, _, _, _, _, _):
             return direction
         }
     }
@@ -1195,7 +1851,7 @@ private final class MouseGestureOverlayView: NSView {
     }
 
     private func trackingProgress(from state: State) -> CGFloat? {
-        if case .tracking(_, _, _, let progress) = state {
+        if case .tracking(_, _, _, _, _, _, _, _, _, let progress) = state {
             return progress
         }
         return nil

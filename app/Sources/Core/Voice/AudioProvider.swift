@@ -130,6 +130,16 @@ final class AudioLayer: ObservableObject {
         // Clear previous agent response
         agentResponse = nil
 
+        if shouldAnswerWithAssistant(transcription.text) {
+            DiagnosticLog.shared.info("AudioLayer: question-like voice request, asking Assistant provider")
+            matchedIntent = nil
+            matchedSlots = [:]
+            executionResult = "thinking..."
+            executionData = nil
+            assistantQuestion(transcription: transcription)
+            return
+        }
+
         if let match = matcher.match(text: transcription.text) {
             matchedIntent = match.intentName
             matchConfidence = match.confidence
@@ -144,91 +154,130 @@ final class AudioLayer: ObservableObject {
                 executionData = result
                 DiagnosticLog.shared.info("AudioLayer: executed '\(match.intentName)' → ok")
             } catch {
-                DiagnosticLog.shared.info("AudioLayer: intent error — \(error.localizedDescription), falling back to Claude")
+                DiagnosticLog.shared.info("AudioLayer: intent error — \(error.localizedDescription), asking Assistant provider")
                 executionResult = "thinking..."
                 executionData = nil
-                claudeFallback(transcription: transcription)
+                assistantFallback(transcription: transcription)
             }
 
-            // Fire parallel Haiku advisor for 5+ word utterances
+            // Fire parallel provider-backed advisor for 5+ word utterances.
             fireAdvisor(transcript: transcription.text, matched: "\(match.intentName)(\(matchedSlots))")
 
         } else {
-            // No local match — Claude fallback
-            DiagnosticLog.shared.info("AudioLayer: no phrase match for '\(transcription.text)', falling back to Claude")
+            // No local match — ask the selected Assistant provider.
+            DiagnosticLog.shared.info("AudioLayer: no phrase match for '\(transcription.text)', asking Assistant provider")
             matchedIntent = nil
             matchedSlots = [:]
             executionResult = "thinking..."
             executionData = nil
-            claudeFallback(transcription: transcription)
+            assistantFallback(transcription: transcription)
         }
     }
 
-    /// Fire the Haiku advisor in parallel — non-blocking, result arrives later.
+    /// Fire the selected Assistant provider in parallel — non-blocking, result arrives later.
     private func fireAdvisor(transcript: String, matched: String) {
-        let haiku = AgentPool.shared.haiku
-        guard haiku.isReady else {
-            DiagnosticLog.shared.info("AudioLayer: advisor skipped (haiku not ready)")
+        let assistant = PiChatSession.shared
+        guard assistant.isProviderInferenceReady else {
+            DiagnosticLog.shared.info("AudioLayer: advisor skipped (Assistant provider not ready)")
             return
         }
 
-        let message = "Transcript: \"\(transcript)\"\nMatched: \(matched)"
-        DiagnosticLog.shared.info("AudioLayer: firing haiku advisor")
+        DiagnosticLog.shared.info("AudioLayer: firing Assistant advisor via \(assistant.currentProvider.name)")
 
-        haiku.send(message: message) { [weak self] response in
+        assistant.askVoiceAdvisor(transcript: transcript, matched: matched) { [weak self] response in
             guard let self = self, let response = response else { return }
             self.agentResponse = response
             if let commentary = response.commentary {
-                DiagnosticLog.shared.info("AudioLayer: haiku says — \(commentary)")
+                DiagnosticLog.shared.info("AudioLayer: Assistant advisor says — \(commentary)")
             }
             if let suggestion = response.suggestion {
-                DiagnosticLog.shared.info("AudioLayer: haiku suggests — \(suggestion.label) → \(suggestion.intent)")
+                DiagnosticLog.shared.info("AudioLayer: Assistant advisor suggests — \(suggestion.label) → \(suggestion.intent)")
             }
         }
     }
 
-    private func claudeFallback(transcription: Transcription) {
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self else { return }
+    private func assistantFallback(transcription: Transcription) {
+        let assistant = PiChatSession.shared
+        guard assistant.isProviderInferenceReady else {
+            executionResult = "Connect an Assistant provider in Settings"
+            DiagnosticLog.shared.info("AudioLayer: Assistant provider not ready")
+            return
+        }
 
-            let result = ClaudeFallback.resolve(
-                transcript: transcription.text,
-                windows: DesktopModel.shared.windows.values.map { $0 },
-                intentCatalog: PhraseMatcher.shared.catalog()
+        assistant.resolveVoiceIntent(transcript: transcription.text) { [weak self] resolved in
+            guard let self else { return }
+            guard let resolved else {
+                self.executionResult = "Assistant couldn't resolve intent"
+                DiagnosticLog.shared.info("AudioLayer: Assistant provider returned no intent")
+                return
+            }
+
+            DiagnosticLog.shared.info("AudioLayer: Assistant resolved → \(resolved.intent) \(resolved.slots)")
+            self.matchedIntent = resolved.intent
+            self.matchedSlots = resolved.slots.reduce(into: [:]) { dict, pair in
+                dict[pair.key] = pair.value.stringValue ?? "\(pair.value)"
+            }
+
+            let intentMatch = IntentMatch(
+                intentName: resolved.intent,
+                slots: resolved.slots,
+                confidence: 0.8,
+                matchedPhrase: "assistant-provider"
             )
 
-            DispatchQueue.main.async {
-                guard let resolved = result else {
-                    self.executionResult = "Claude couldn't resolve intent"
-                    DiagnosticLog.shared.info("AudioLayer: Claude fallback returned nil")
-                    return
-                }
-
-                DiagnosticLog.shared.info("AudioLayer: Claude resolved → \(resolved.intent) \(resolved.slots)")
-                self.matchedIntent = resolved.intent
-                self.matchedSlots = resolved.slots.reduce(into: [:]) { dict, pair in
-                    dict[pair.key] = pair.value.stringValue ?? "\(pair.value)"
-                }
-
-                let intentMatch = IntentMatch(
-                    intentName: resolved.intent,
-                    slots: resolved.slots,
-                    confidence: 0.8,
-                    matchedPhrase: "claude-fallback"
-                )
-
-                do {
-                    let execResult = try PhraseMatcher.shared.execute(intentMatch)
-                    self.executionResult = "ok"
-                    self.executionData = execResult
-                    DiagnosticLog.shared.info("AudioLayer: Claude-resolved executed → \(execResult)")
-                } catch {
-                    self.executionResult = error.localizedDescription
-                    self.executionData = nil
-                    DiagnosticLog.shared.info("AudioLayer: Claude-resolved execution error — \(error.localizedDescription)")
-                }
+            do {
+                let execResult = try PhraseMatcher.shared.execute(intentMatch)
+                self.executionResult = "ok"
+                self.executionData = execResult
+                DiagnosticLog.shared.info("AudioLayer: Assistant-resolved executed → \(execResult)")
+            } catch {
+                self.executionResult = error.localizedDescription
+                self.executionData = nil
+                DiagnosticLog.shared.info("AudioLayer: Assistant-resolved execution error — \(error.localizedDescription)")
             }
         }
+    }
+
+    private func assistantQuestion(transcription: Transcription) {
+        let assistant = PiChatSession.shared
+        guard assistant.isProviderInferenceReady else {
+            executionResult = "Connect an Assistant provider in Settings"
+            DiagnosticLog.shared.info("AudioLayer: Assistant provider not ready for question")
+            return
+        }
+
+        assistant.answerVoiceQuestion(transcription.text) { [weak self] response in
+            guard let self else { return }
+            guard let response else {
+                self.executionResult = "Assistant couldn't answer"
+                DiagnosticLog.shared.info("AudioLayer: Assistant provider returned no answer")
+                return
+            }
+            self.agentResponse = response
+            self.executionResult = "ok"
+            self.executionData = nil
+            if let commentary = response.commentary {
+                DiagnosticLog.shared.info("AudioLayer: Assistant answered — \(commentary.prefix(160))")
+            }
+        }
+    }
+
+    private func shouldAnswerWithAssistant(_ text: String) -> Bool {
+        let lower = text.lowercased()
+        let questionStarters = [
+            "what", "how", "why", "where", "when", "who",
+            "can you tell", "tell me about", "explain", "summarize", "describe"
+        ]
+        let asksQuestion = text.contains("?") || questionStarters.contains(where: lower.hasPrefix)
+        guard asksQuestion else { return false }
+
+        let assistantTopics = [
+            "setting", "settings", "configured", "enabled", "disabled",
+            "mouse", "shortcut", "shortcuts", "gesture", "gestures",
+            "ocr", "terminal", "scan root", "assistant", "provider",
+            "lattices", "workspace"
+        ]
+        return assistantTopics.contains(where: lower.contains)
     }
 }
 

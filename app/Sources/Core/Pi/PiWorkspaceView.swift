@@ -19,14 +19,6 @@ struct PiWorkspaceView: View {
                 .fill(Palette.border)
                 .frame(height: 0.5)
 
-            if session.hasPiBinary && session.isAuthPanelVisible {
-                authPanel
-
-                Rectangle()
-                    .fill(Palette.border)
-                    .frame(height: 0.5)
-            }
-
             transcript
 
             Rectangle()
@@ -36,14 +28,7 @@ struct PiWorkspaceView: View {
             if session.hasPiBinary && !session.needsProviderSetup {
                 composer
             } else if session.needsProviderSetup {
-                if session.isAuthPanelVisible {
-                    setupLockedPanel
-                } else {
-                    PiProviderSetupCallout(session: session, compact: false)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 14)
-                        .background(Palette.surface.opacity(0.22))
-                }
+                providerSettingsPrompt
             } else {
                 PiInstallCallout(session: session, compact: false)
                     .padding(.horizontal, 16)
@@ -70,7 +55,7 @@ struct PiWorkspaceView: View {
                         .fill(session.hasPiBinary ? Palette.running : Palette.kill)
                         .frame(width: 7, height: 7)
 
-                    Text("WORKSPACE CHAT")
+                    Text("WORKSPACE ASSISTANT")
                         .font(Typo.geistMonoBold(11))
                         .foregroundColor(Palette.text)
 
@@ -89,8 +74,8 @@ struct PiWorkspaceView: View {
                         ? session.authStepDescription
                         : (session.needsProviderSetup
                             ? "Next step: connect a provider to unlock chat."
-                            : "Full conversation surface for longer prompts, auth, and provider switching."))
-                    : "Install Pi to unlock longer prompts, provider auth, and the full in-app assistant surface.")
+                            : "Full conversation surface for settings, longer prompts, planning, debugging, and second opinions."))
+                    : "Settings chat is ready here. Install the provider runtime to unlock longer prompts and provider-backed chat.")
                     .font(Typo.mono(10))
                     .foregroundColor(Palette.textDim)
             }
@@ -98,13 +83,7 @@ struct PiWorkspaceView: View {
             Spacer()
 
             HStack(spacing: 6) {
-                capsuleLabel(session.currentProvider.name.uppercased(), tint: Palette.textDim)
-
-                if session.hasPiBinary && !session.needsProviderSetup {
-                    actionChip(session.isAuthPanelVisible ? "AUTH -" : "AUTH +") {
-                        session.toggleAuthPanel()
-                    }
-                }
+                settingsGearButton
 
                 if session.hasConversationHistory {
                     actionChip("RESET") {
@@ -115,6 +94,51 @@ struct PiWorkspaceView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
+    }
+
+    private var settingsGearButton: some View {
+        Button {
+            SettingsWindowController.shared.showAssistant()
+        } label: {
+            Image(systemName: "gearshape")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(Palette.textMuted)
+                .frame(width: 26, height: 24)
+                .background(
+                    Capsule()
+                        .fill(Color.white.opacity(0.03))
+                        .overlay(Capsule().strokeBorder(Palette.border, lineWidth: 0.5))
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var providerSettingsPrompt: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Circle()
+                .fill(Palette.detach)
+                .frame(width: 7, height: 7)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("CONNECT A PROVIDER")
+                    .font(Typo.geistMonoBold(10))
+                    .foregroundColor(Palette.text)
+
+                Text("Choose OpenAI, Groq, OpenRouter, or MiniMax in Settings to unlock provider-backed chat.")
+                    .font(Typo.mono(10))
+                    .foregroundColor(Palette.textDim)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer()
+
+            actionChip("SETTINGS", tint: Palette.running) {
+                SettingsWindowController.shared.showAssistant()
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(Palette.surface.opacity(0.22))
     }
 
     private var authPanel: some View {
@@ -184,29 +208,54 @@ struct PiWorkspaceView: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 if session.currentProvider.authMode == .apiKey {
-                    HStack(spacing: 8) {
-                        SecureField(session.currentProvider.tokenPlaceholder, text: $session.authToken)
-                            .textFieldStyle(.plain)
-                            .font(Typo.mono(11))
-                            .foregroundColor(Palette.text)
-                            .focused($authFieldFocused)
-                            .onSubmit {
-                                session.saveSelectedToken()
+                    if session.hasSelectedCredential && !session.isEditingStoredCredential {
+                        HStack(spacing: 8) {
+                            Circle()
+                                .fill(Palette.running)
+                                .frame(width: 6, height: 6)
+
+                            Text("\(session.currentProvider.name) credential saved")
+                                .font(Typo.mono(10))
+                                .foregroundColor(Palette.textDim)
+
+                            Spacer()
+
+                            actionChip("REPLACE") {
+                                session.beginReplacingSelectedCredential()
                             }
 
-                        actionChip("SAVE KEY") {
-                            session.saveSelectedToken()
-                        }
-
-                        if session.hasSelectedCredential {
                             actionChip("CLEAR") {
                                 session.removeSelectedCredential()
                             }
                         }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(authCardBackground(tint: Palette.running))
+                    } else {
+                        HStack(spacing: 8) {
+                            SecureField(session.currentProvider.tokenPlaceholder, text: $session.authToken)
+                                .textFieldStyle(.plain)
+                                .font(Typo.mono(11))
+                                .foregroundColor(Palette.text)
+                                .focused($authFieldFocused)
+                                .onSubmit {
+                                    session.saveSelectedToken()
+                                }
+
+                            actionChip("SAVE KEY") {
+                                session.saveSelectedToken()
+                            }
+
+                            if session.hasSelectedCredential {
+                                actionChip("CANCEL") {
+                                    session.cancelReplacingSelectedCredential()
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(authCardBackground(tint: Palette.running))
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(authCardBackground(tint: Palette.running))
                 } else {
                     HStack(spacing: 8) {
                         actionChip("CONNECT") {
@@ -343,7 +392,7 @@ struct PiWorkspaceView: View {
                     .font(Typo.geistMonoBold(12))
                     .foregroundColor(Palette.running)
 
-                TextField("Ask Pi something heavier...", text: $session.draft, axis: .vertical)
+                TextField("Ask about settings or planning...", text: $session.draft, axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(Typo.mono(12))
                     .foregroundColor(Palette.text)
@@ -395,7 +444,7 @@ struct PiWorkspaceView: View {
         switch role {
         case .system: return "system"
         case .user: return "you"
-        case .assistant: return "pi"
+        case .assistant: return "assistant"
         }
     }
 

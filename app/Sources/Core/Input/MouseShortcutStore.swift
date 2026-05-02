@@ -36,6 +36,10 @@ final class MouseShortcutStore: ObservableObject {
         enabledRules.map { "\($0.trigger.triggerName) -> \($0.action.type.rawValue)" }
     }
 
+    func visualHint(for button: MouseShortcutButton) -> MouseShortcutVisualDefinition? {
+        enabledRules.first { $0.trigger.button == button && $0.visual != nil }?.visual
+    }
+
     func ensureConfigFile() {
         guard !FileManager.default.fileExists(atPath: configURL.path) else { return }
         write(config: .defaults)
@@ -77,9 +81,16 @@ final class MouseShortcutStore: ObservableObject {
         for rule in enabledRules {
             guard rule.trigger.kind == event.kind,
                   rule.trigger.button == event.button,
-                  rule.trigger.direction == event.direction,
                   rule.device.matches(event.device) else {
                 continue
+            }
+            switch event.kind {
+            case .drag:
+                guard rule.trigger.direction == event.direction else { continue }
+            case .shape:
+                guard rule.trigger.shape == event.shape else { continue }
+            case .click:
+                break
             }
 
             return MouseShortcutMatchResult(
