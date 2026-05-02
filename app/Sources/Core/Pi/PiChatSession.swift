@@ -40,7 +40,7 @@ struct PiProvider: Identifiable, Equatable {
             authMode: .oauth,
             tokenLabel: "OAuth",
             tokenPlaceholder: "",
-            helpText: "Uses Pi's device-code login. Personal access tokens are not accepted on this path."
+            helpText: "Uses device-code login. Personal access tokens are not accepted on this path."
         ),
         PiProvider(
             id: "openai-codex",
@@ -48,7 +48,7 @@ struct PiProvider: Identifiable, Equatable {
             authMode: .oauth,
             tokenLabel: "OAuth",
             tokenPlaceholder: "",
-            helpText: "Uses Pi's browser login for ChatGPT Plus/Pro Codex access."
+            helpText: "Uses browser login for ChatGPT Plus/Pro Codex access."
         ),
         PiProvider(
             id: "openai",
@@ -56,7 +56,7 @@ struct PiProvider: Identifiable, Equatable {
             authMode: .apiKey,
             tokenLabel: "API key",
             tokenPlaceholder: "sk-...",
-            helpText: "Stores an OpenAI API key in Pi's auth.json for this app and Pi CLI to reuse."
+            helpText: "Stores an OpenAI API key for this app and the provider runtime to reuse."
         ),
         PiProvider(
             id: "anthropic",
@@ -64,7 +64,7 @@ struct PiProvider: Identifiable, Equatable {
             authMode: .apiKey,
             tokenLabel: "API key",
             tokenPlaceholder: "sk-ant-...",
-            helpText: "Stores an Anthropic API key for Pi. OAuth-capable Anthropic flows can be added later."
+            helpText: "Stores an Anthropic API key for provider-backed chat."
         ),
         PiProvider(
             id: "google",
@@ -72,7 +72,7 @@ struct PiProvider: Identifiable, Equatable {
             authMode: .apiKey,
             tokenLabel: "API key",
             tokenPlaceholder: "AIza...",
-            helpText: "Stores a Gemini API key for Pi's Google provider."
+            helpText: "Stores a Gemini API key for provider-backed chat."
         ),
         PiProvider(
             id: "openrouter",
@@ -80,7 +80,7 @@ struct PiProvider: Identifiable, Equatable {
             authMode: .apiKey,
             tokenLabel: "API key",
             tokenPlaceholder: "sk-or-...",
-            helpText: "Stores an OpenRouter API key for Pi."
+            helpText: "Stores an OpenRouter API key for provider-backed chat."
         ),
         PiProvider(
             id: "groq",
@@ -88,7 +88,7 @@ struct PiProvider: Identifiable, Equatable {
             authMode: .apiKey,
             tokenLabel: "API key",
             tokenPlaceholder: "gsk_...",
-            helpText: "Stores a Groq API key for Pi."
+            helpText: "Stores a Groq API key for provider-backed chat."
         ),
         PiProvider(
             id: "xai",
@@ -96,7 +96,7 @@ struct PiProvider: Identifiable, Equatable {
             authMode: .apiKey,
             tokenLabel: "API key",
             tokenPlaceholder: "xai-...",
-            helpText: "Stores an xAI API key for Pi."
+            helpText: "Stores an xAI API key for provider-backed chat."
         ),
         PiProvider(
             id: "mistral",
@@ -104,7 +104,7 @@ struct PiProvider: Identifiable, Equatable {
             authMode: .apiKey,
             tokenLabel: "API key",
             tokenPlaceholder: "",
-            helpText: "Stores a Mistral API key for Pi."
+            helpText: "Stores a Mistral API key for provider-backed chat."
         ),
         PiProvider(
             id: "minimax",
@@ -112,7 +112,7 @@ struct PiProvider: Identifiable, Equatable {
             authMode: .apiKey,
             tokenLabel: "API key",
             tokenPlaceholder: "",
-            helpText: "Stores a MiniMax API key for Pi."
+            helpText: "Stores a MiniMax API key for provider-backed chat."
         ),
     ]
 
@@ -128,7 +128,7 @@ final class PiChatSession: ObservableObject {
     @Published private(set) var messages: [PiChatMessage] = [
         PiChatMessage(
             role: .system,
-            text: "Pi dock ready. This is a lightweight in-app conversation surface, not a full terminal.",
+            text: "Assistant ready. This is a lightweight in-app conversation surface, not a full terminal.",
             timestamp: Date()
         )
     ]
@@ -151,6 +151,7 @@ final class PiChatSession: ObservableObject {
             }
             UserDefaults.standard.set(authProviderID, forKey: Self.selectedProviderDefaultsKey)
             authToken = ""
+            isEditingStoredCredential = false
             authPromptInput = ""
             pendingAuthPrompt = nil
             authNoticeText = nil
@@ -163,6 +164,7 @@ final class PiChatSession: ObservableObject {
         }
     }
     @Published var authToken: String = ""
+    @Published var isEditingStoredCredential: Bool = false
     @Published var authPromptInput: String = ""
     @Published private(set) var isAuthenticating: Bool = false
     @Published private(set) var authenticatingProviderID: String?
@@ -177,6 +179,8 @@ final class PiChatSession: ObservableObject {
 
     private let queue = DispatchQueue(label: "pi-chat-session", qos: .userInitiated)
     private let sessionFileURL: URL
+    private let voiceAdvisorSessionFileURL: URL
+    private let voiceResolverSessionFileURL: URL
     private let authFileURL: URL
     private var authProcess: Process?
     private var authProcessIdentifier: Int32?
@@ -198,6 +202,8 @@ final class PiChatSession: ObservableObject {
         let dir = base.appendingPathComponent("Lattices/pi-chat", isDirectory: true)
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
         sessionFileURL = dir.appendingPathComponent("session.jsonl")
+        voiceAdvisorSessionFileURL = dir.appendingPathComponent("voice-advisor.jsonl")
+        voiceResolverSessionFileURL = dir.appendingPathComponent("voice-resolver.jsonl")
         authFileURL = Self.piAgentDirURL().appendingPathComponent("auth.json")
 
         if let savedProvider = UserDefaults.standard.string(forKey: Self.selectedProviderDefaultsKey),
@@ -216,6 +222,10 @@ final class PiChatSession: ObservableObject {
 
     var hasPiBinary: Bool {
         piBinaryPath != nil
+    }
+
+    var isProviderInferenceReady: Bool {
+        hasPiBinary && !needsProviderSetup
     }
 
     var piInstallCommand: String {
@@ -288,7 +298,7 @@ final class PiChatSession: ObservableObject {
             return prompt.message
         }
         if latestAuthURL == nil {
-            return "Stay here for a second while Pi prepares the browser step."
+            return "Stay here for a second while the sign-in page is prepared."
         }
         if authVerificationCode != nil {
             return authVerificationCodeCopied
@@ -313,7 +323,7 @@ final class PiChatSession: ObservableObject {
 
     var setupStatusSummary: String {
         if !hasPiBinary {
-            return "Install Pi to enable the assistant"
+            return "Install the provider runtime to enable provider chat"
         }
         if isAuthenticating {
             return authStepShortText
@@ -389,12 +399,12 @@ final class PiChatSession: ObservableObject {
     func copyPiInstallCommand() {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(piInstallCommand, forType: .string)
-        appendSystemMessage("Copied the Pi install command to the clipboard.")
+        appendSystemMessage("Copied the provider runtime install command to the clipboard.")
     }
 
     func installPiInTerminal() {
         Preferences.shared.terminal.launch(command: piInstallCommand, in: NSHomeDirectory())
-        appendSystemMessage("Opened \(Preferences.shared.terminal.rawValue) and started the Pi install.")
+        appendSystemMessage("Opened \(Preferences.shared.terminal.rawValue) and started the provider runtime install.")
     }
 
     func sendDraft() {
@@ -409,6 +419,14 @@ final class PiChatSession: ObservableObject {
         guard !trimmed.isEmpty else { return }
         guard !isSending else { return }
 
+        messages.append(PiChatMessage(role: .user, text: trimmed, timestamp: Date()))
+
+        if let localResponse = handleLocalSettingsCommand(trimmed) {
+            messages.append(PiChatMessage(role: .assistant, text: localResponse, timestamp: Date()))
+            statusText = hasPiBinary ? (needsProviderSetup ? "setup ai" : "idle") : "missing pi"
+            return
+        }
+
         refreshBinaryAvailability()
 
         guard let piPath = piBinaryPath else {
@@ -422,11 +440,10 @@ final class PiChatSession: ObservableObject {
             return
         }
 
-        messages.append(PiChatMessage(role: .user, text: trimmed, timestamp: Date()))
-
         let provider = currentProvider
         isSending = true
         statusText = "thinking..."
+        let prompt = providerPrompt(for: trimmed)
 
         queue.async { [weak self] in
             guard let self else { return }
@@ -437,7 +454,7 @@ final class PiChatSession: ObservableObject {
                 "--provider", provider.id,
                 "-p",
                 "--session", self.sessionFileURL.path,
-                trimmed,
+                prompt,
             ]
 
             var env = ProcessInfo.processInfo.environment
@@ -469,7 +486,7 @@ final class PiChatSession: ObservableObject {
                 DispatchQueue.main.async {
                     self.isSending = false
                     self.statusText = "launch failed"
-                    self.appendSystemMessage("Failed to launch Pi: \(error.localizedDescription)")
+                    self.appendSystemMessage("Failed to launch the provider runtime: \(error.localizedDescription)")
                 }
                 return
             }
@@ -487,7 +504,7 @@ final class PiChatSession: ObservableObject {
                     return
                 }
 
-                let message = !stderr.isEmpty ? stderr : (stdout.isEmpty ? "Pi returned no output." : stdout)
+                let message = !stderr.isEmpty ? stderr : (stdout.isEmpty ? "The provider runtime returned no output." : stdout)
                 if let friendly = self.friendlyAuthFailureMessage(for: message) {
                     self.statusText = "setup ai"
                     self.authErrorText = friendly
@@ -501,6 +518,140 @@ final class PiChatSession: ObservableObject {
                     self.isAuthPanelVisible = true
                 }
             }
+        }
+    }
+
+    func askVoiceAdvisor(transcript: String, matched: String, callback: @escaping (AgentResponse?) -> Void) {
+        runProviderInference(
+            prompt: voiceAdvisorPrompt(transcript: transcript, matched: matched),
+            sessionURL: voiceAdvisorSessionFileURL,
+            label: "voice advisor"
+        ) { output in
+            guard let output, !output.isEmpty else {
+                callback(nil)
+                return
+            }
+            callback(AgentResponse.parse(text: output))
+        }
+    }
+
+    func answerVoiceQuestion(_ transcript: String, callback: @escaping (AgentResponse?) -> Void) {
+        runProviderInference(
+            prompt: voiceQuestionPrompt(transcript: transcript),
+            sessionURL: voiceAdvisorSessionFileURL,
+            label: "voice question"
+        ) { output in
+            guard let output, !output.isEmpty else {
+                callback(nil)
+                return
+            }
+            callback(AgentResponse(commentary: output, suggestion: nil, raw: output))
+        }
+    }
+
+    func resolveVoiceIntent(transcript: String, callback: @escaping (ResolvedIntent?) -> Void) {
+        runProviderInference(
+            prompt: voiceResolverPrompt(transcript: transcript),
+            sessionURL: voiceResolverSessionFileURL,
+            label: "voice resolver"
+        ) { output in
+            guard let output,
+                  let jsonStr = Self.extractJSON(from: output),
+                  let data = jsonStr.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let intent = json["intent"] as? String,
+                  intent != "unknown" else {
+                callback(nil)
+                return
+            }
+
+            var slots: [String: JSON] = [:]
+            if let rawSlots = json["slots"] as? [String: Any] {
+                for (key, value) in rawSlots {
+                    if let value = value as? String {
+                        slots[key] = .string(value)
+                    } else if let value = value as? Int {
+                        slots[key] = .int(value)
+                    } else if let value = value as? Bool {
+                        slots[key] = .bool(value)
+                    }
+                }
+            }
+            callback(ResolvedIntent(intent: intent, slots: slots))
+        }
+    }
+
+    private func runProviderInference(
+        prompt: String,
+        sessionURL: URL,
+        label: String,
+        callback: @escaping (String?) -> Void
+    ) {
+        refreshBinaryAvailability()
+
+        guard let piPath = piBinaryPath else {
+            DiagnosticLog.shared.info("Assistant inference[\(label)]: provider runtime not installed")
+            callback(nil)
+            return
+        }
+        guard !needsProviderSetup else {
+            DiagnosticLog.shared.info("Assistant inference[\(label)]: selected provider needs credentials")
+            callback(nil)
+            return
+        }
+
+        let provider = currentProvider
+        let hasStoredCredential = storedCredentialKinds[provider.id] != nil
+
+        queue.async {
+            let timer = DiagnosticLog.shared.startTimed("Assistant inference[\(label)] via \(provider.name)")
+
+            let proc = Process()
+            proc.executableURL = URL(fileURLWithPath: piPath)
+            proc.arguments = [
+                "--provider", provider.id,
+                "-p",
+                "--session", sessionURL.path,
+                prompt,
+            ]
+
+            var env = ProcessInfo.processInfo.environment
+            env.removeValue(forKey: "CLAUDECODE")
+            Self.sanitizeEnvironment(&env, for: provider.id, hasStoredCredential: hasStoredCredential)
+            proc.environment = env
+
+            let outPipe = Pipe()
+            let errPipe = Pipe()
+            proc.standardOutput = outPipe
+            proc.standardError = errPipe
+
+            do {
+                try proc.run()
+                proc.waitUntilExit()
+            } catch {
+                DiagnosticLog.shared.warn("Assistant inference[\(label)]: launch failed — \(error)")
+                DiagnosticLog.shared.finish(timer)
+                DispatchQueue.main.async { callback(nil) }
+                return
+            }
+
+            DiagnosticLog.shared.finish(timer)
+            let stdout = String(data: outPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let stderr = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+            if !stderr.isEmpty {
+                DiagnosticLog.shared.info("Assistant inference[\(label)] stderr: \(stderr.prefix(200))")
+            }
+
+            guard proc.terminationStatus == 0, !stdout.isEmpty else {
+                DiagnosticLog.shared.info("Assistant inference[\(label)]: empty/error response")
+                DispatchQueue.main.async { callback(nil) }
+                return
+            }
+
+            DispatchQueue.main.async { callback(stdout) }
         }
     }
 
@@ -519,10 +670,11 @@ final class PiChatSession: ObservableObject {
                 ]
             }
             authToken = ""
+            isEditingStoredCredential = false
             authNoticeText = "Saved \(currentProvider.tokenLabel.lowercased()) for \(currentProvider.name)."
             authErrorText = nil
             reloadAuthState()
-            appendSystemMessage("Saved \(currentProvider.name) credentials to Pi auth storage.")
+            appendSystemMessage("Saved \(currentProvider.name) credentials.")
             isAuthPanelVisible = false
             prepareForDisplay()
         } catch {
@@ -537,8 +689,9 @@ final class PiChatSession: ObservableObject {
             }
             authNoticeText = "Removed saved credentials for \(currentProvider.name)."
             authErrorText = nil
+            isEditingStoredCredential = true
             reloadAuthState()
-            appendSystemMessage("Removed saved \(currentProvider.name) credentials from Pi auth storage.")
+            appendSystemMessage("Removed saved \(currentProvider.name) credentials.")
             prepareForDisplay()
         } catch {
             authErrorText = "Failed to remove credentials: \(error.localizedDescription)"
@@ -554,6 +707,19 @@ final class PiChatSession: ObservableObject {
         startOAuthLogin(for: currentProvider)
     }
 
+    func beginReplacingSelectedCredential() {
+        authToken = ""
+        authErrorText = nil
+        authNoticeText = nil
+        isEditingStoredCredential = true
+    }
+
+    func cancelReplacingSelectedCredential() {
+        authToken = ""
+        authErrorText = nil
+        isEditingStoredCredential = false
+    }
+
     func submitAuthPrompt() {
         guard let prompt = pendingAuthPrompt else { return }
         let value = authPromptInput.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -563,7 +729,7 @@ final class PiChatSession: ObservableObject {
 
     private func submitAuthPromptValue(_ value: String) {
         guard let handle = authInputHandle else {
-            authErrorText = "Pi auth input pipe is no longer available."
+            authErrorText = "The auth input pipe is no longer available."
             return
         }
 
@@ -639,17 +805,17 @@ final class PiChatSession: ObservableObject {
         refreshBinaryAvailability()
 
         guard hasPiBinary else {
-            authErrorText = "Install Pi before starting auth."
+            authErrorText = "Install the provider runtime before starting auth."
             return
         }
 
         guard let nodePath = nodeBinaryPath else {
-            authErrorText = "Node.js is required for Pi OAuth login."
+            authErrorText = "Node.js is required for OAuth login."
             return
         }
 
         guard let oauthModuleURL = resolveOAuthModuleURL() else {
-            authErrorText = "Couldn't locate Pi's OAuth module next to the installed `pi` CLI."
+            authErrorText = "Couldn't locate the OAuth module next to the installed provider runtime."
             return
         }
 
@@ -783,11 +949,11 @@ final class PiChatSession: ObservableObject {
                 NSWorkspace.shared.open(url)
             }
             if authVerificationCode != nil {
-                appendSystemMessage("Pi auth is ready. The sign-in code is copied, and you can reopen the browser page here if needed.")
+                appendSystemMessage("Auth is ready. The sign-in code is copied, and you can reopen the browser page here if needed.")
             } else if let instructions, !instructions.isEmpty {
-                appendSystemMessage("Pi auth: \(instructions) If nothing opened, use OPEN AGAIN.")
+                appendSystemMessage("Auth: \(instructions) If nothing opened, use OPEN AGAIN.")
             } else {
-                appendSystemMessage("Pi auth is ready in your browser. If nothing opened, use OPEN AGAIN.")
+                appendSystemMessage("Auth is ready in your browser. If nothing opened, use OPEN AGAIN.")
             }
 
         case "progress":
@@ -795,7 +961,7 @@ final class PiChatSession: ObservableObject {
 
         case "success":
             guard var credentials = json["credentials"] as? [String: Any] else {
-                authErrorText = "Pi auth completed but returned no credentials."
+                authErrorText = "Auth completed but returned no credentials."
                 return
             }
             let providerID = authenticatingProviderID ?? authProviderID
@@ -808,7 +974,7 @@ final class PiChatSession: ObservableObject {
                 reloadAuthState()
                 authNoticeText = "Saved OAuth credentials for \(provider.name)."
                 authErrorText = nil
-                appendSystemMessage("Saved \(provider.name) OAuth credentials to Pi auth storage.")
+                appendSystemMessage("Saved \(provider.name) OAuth credentials.")
                 isAuthPanelVisible = false
                 prepareForDisplay()
             } catch {
@@ -816,9 +982,9 @@ final class PiChatSession: ObservableObject {
             }
 
         case "error":
-            let message = json["message"] as? String ?? "Unknown Pi auth error."
+            let message = json["message"] as? String ?? "Unknown auth error."
             authErrorText = message
-            appendSystemMessage("Pi auth failed: \(message)")
+            appendSystemMessage("Auth failed: \(message)")
 
         default:
             authNoticeText = line
@@ -886,9 +1052,9 @@ final class PiChatSession: ObservableObject {
     private func structuredWelcomeMessage() -> String {
         if !hasPiBinary {
             return """
-            Welcome to Pi Workspace.
+            Welcome to the Workspace Assistant.
 
-            Pi powers the in-app assistant. Install it first, then come back here and refresh.
+            I can manage app settings here. Install the provider runtime to unlock provider-backed chat for longer planning and coding prompts.
 
             Install command:
             \(piInstallCommand)
@@ -897,7 +1063,7 @@ final class PiChatSession: ObservableObject {
 
         if isAuthenticating {
             return """
-            Welcome to Pi Workspace.
+            Welcome to the Workspace Assistant.
 
             \(authStepTitle)
 
@@ -907,19 +1073,485 @@ final class PiChatSession: ObservableObject {
 
         if needsProviderSetup {
             return """
-            Welcome to Pi Workspace.
+            Welcome to the Workspace Assistant.
 
             Next step: connect \(currentProvider.name).
 
-            The setup panel above is open. Once you finish that one step, the chat box unlocks automatically.
+            Open Settings with the gear icon, choose a provider, and save its API key to unlock provider-backed chat.
             """
         }
 
         return """
-        Welcome to Pi Workspace.
+        Welcome to the Workspace Assistant.
 
-        You're connected with \(currentProvider.name). Ask for code help, planning, debugging, or a second opinion.
+        You're connected with \(currentProvider.name). I can manage Lattices settings locally, or use the provider for code help, planning, debugging, and second opinions.
         """
+    }
+
+    private func handleLocalSettingsCommand(_ text: String) -> String? {
+        let lower = text.lowercased()
+        let prefs = Preferences.shared
+
+        if lower.contains("open settings") || lower.contains("show settings") {
+            SettingsWindowController.shared.show()
+            return "Opened Settings."
+        }
+
+        if lower.contains("scan root") || lower.contains("project root") || lower.contains("project scan") {
+            if let root = extractPathValue(from: text) {
+                prefs.scanRoot = root
+                ProjectScanner.shared.updateRoot(root)
+                ProjectScanner.shared.scan()
+                return "Set project scan root to \(root) and started a rescan."
+            }
+            return nil
+        }
+
+        if lower.contains("terminal") {
+            if let terminal = parseTerminal(from: lower) {
+                guard terminal.isInstalled else {
+                    return "\(terminal.rawValue) is not installed, so I left the terminal set to \(prefs.terminal.rawValue)."
+                }
+                prefs.terminal = terminal
+                return "Set terminal to \(terminal.rawValue)."
+            }
+            return nil
+        }
+
+        if lower.contains("detach mode") || lower.contains("interaction mode") || lower.contains("learning mode") || lower.contains("auto mode") {
+            if lower.contains("auto") {
+                prefs.mode = .auto
+                return "Set detach mode to Auto."
+            }
+            if lower.contains("learning") {
+                prefs.mode = .learning
+                return "Set detach mode to Learning."
+            }
+            return nil
+        }
+
+        if lower.contains("drag") && lower.contains("snap") {
+            if let enabled = parseBooleanIntent(from: lower) {
+                prefs.dragSnapEnabled = enabled
+                return "\(enabled ? "Enabled" : "Disabled") drag-to-snap."
+            }
+            return nil
+        }
+
+        if lower.contains("mouse") && (lower.contains("gesture") || lower.contains("shortcut")) {
+            if let enabled = parseBooleanIntent(from: lower) {
+                prefs.mouseGesturesEnabled = enabled
+                return "\(enabled ? "Enabled" : "Disabled") mouse gestures."
+            }
+            return nil
+        }
+
+        if lower.contains("companion") && lower.contains("bridge") {
+            if let enabled = parseBooleanIntent(from: lower) {
+                prefs.companionBridgeEnabled = enabled
+                return "\(enabled ? "Enabled" : "Disabled") the companion bridge."
+            }
+            return nil
+        }
+
+        if lower.contains("companion") && lower.contains("trackpad") {
+            if let enabled = parseBooleanIntent(from: lower) {
+                prefs.companionTrackpadEnabled = enabled
+                return "\(enabled ? "Enabled" : "Disabled") companion trackpad."
+            }
+            return nil
+        }
+
+        if lower.contains("ocr") || lower.contains("screen text") || lower.contains("text recognition") {
+            if lower.contains("accuracy") {
+                if lower.contains("fast") {
+                    prefs.ocrAccuracy = "fast"
+                    return "Set OCR accuracy to Fast."
+                }
+                if lower.contains("accurate") {
+                    prefs.ocrAccuracy = "accurate"
+                    return "Set OCR accuracy to Accurate."
+                }
+                return nil
+            }
+
+            if let enabled = parseBooleanIntent(from: lower) {
+                OcrModel.shared.setEnabled(enabled)
+                return "\(enabled ? "Enabled" : "Disabled") screen text recognition."
+            }
+            return nil
+        }
+
+        if lower.contains("advisor") || lower.contains("voice advisor") {
+            return nil
+        }
+
+        if lower.contains("open assistant settings") || lower.contains("show assistant settings") {
+            SettingsWindowController.shared.showAssistant()
+            return "Opened Assistant settings."
+        }
+
+        return nil
+    }
+
+    private func providerPrompt(for userText: String) -> String {
+        """
+        You are the Workspace Assistant, the in-app assistant for Lattices.
+
+        Use the structured context as ground truth. Answer naturally and concretely. For informational questions, explain what is currently configured and what the available choices mean. For setting changes, describe what should change; the host app is responsible for applying supported changes.
+
+        Structured context:
+        \(assistantKnowledgeBrief())
+
+        User request:
+        \(userText)
+        """
+    }
+
+    private func voiceAdvisorPrompt(transcript: String, matched: String) -> String {
+        """
+        You are the same Workspace Assistant used by Lattices chat, responding through the voice command surface.
+
+        Use the shared structured context below as ground truth. The voice surface needs terse commentary and optional next actions, not a chatty answer.
+
+        Structured context:
+        \(assistantKnowledgeBrief())
+
+        Voice transcript:
+        "\(transcript)"
+
+        Local match already handled:
+        \(matched)
+
+        Respond with ONLY a JSON object:
+        {"commentary": "short observation or null", "suggestion": {"label": "button text", "intent": "intent_name", "slots": {"key": "value"}} or null}
+
+        Rules:
+        - commentary: 1 sentence max. null if the matched command fully covers the request.
+        - suggestion: a follow-up action. null if none needed.
+        - Never suggest what was already executed.
+        - Suggestions MUST include all required slots.
+        - Be terse and useful.
+        """
+    }
+
+    private func voiceQuestionPrompt(transcript: String) -> String {
+        """
+        You are the same Workspace Assistant used by Lattices chat, responding through the voice surface.
+
+        This is an informational question, not necessarily a command. Use the shared structured context below, answer naturally, and include concrete current settings when relevant. Keep it short enough for voice, but do not give a clipped yes/no answer.
+
+        Structured context:
+        \(assistantKnowledgeBrief())
+
+        User said:
+        "\(transcript)"
+        """
+    }
+
+    private func voiceResolverPrompt(transcript: String) -> String {
+        let windowList = DesktopModel.shared.windows.values
+            .prefix(20)
+            .map { "\($0.app): \($0.title)" }
+            .joined(separator: "\n")
+
+        var intentList = ""
+        if case .array(let intents) = PhraseMatcher.shared.catalog() {
+            intentList = intents.compactMap { intent -> String? in
+                guard let name = intent["intent"]?.stringValue else { return nil }
+                var slotNames: [String] = []
+                if case .array(let slots) = intent["slots"] {
+                    slotNames = slots.compactMap { $0["name"]?.stringValue }
+                }
+                return slotNames.isEmpty ? name : "\(name)(\(slotNames.joined(separator: ",")))"
+            }.joined(separator: ", ")
+        }
+
+        return """
+        You are the same Workspace Assistant used by Lattices chat, resolving a spoken command into one executable Lattices intent.
+
+        Structured context:
+        \(assistantKnowledgeBrief())
+
+        Voice transcript, possibly with transcription errors:
+        "\(transcript)"
+
+        Available intents:
+        \(intentList)
+
+        Current windows:
+        \(windowList)
+
+        Return ONLY a JSON object like:
+        {"intent":"search","slots":{"query":"dewey"},"reasoning":"user wants to find dewey windows"}
+
+        Rules:
+        - Use intent "unknown" if the request cannot be mapped confidently.
+        - Include all required slots.
+        - For search, extract the key term.
+        - Use app/window names from the current windows list when targeting windows.
+        """
+    }
+
+    private func assistantKnowledgeBrief() -> String {
+        assistantContextJSON()
+    }
+
+    private func assistantContextJSON() -> String {
+        let payload = assistantContextPayload()
+        guard JSONSerialization.isValidJSONObject(payload),
+              let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys]),
+              let text = String(data: data, encoding: .utf8) else {
+            return #"{"error":"context unavailable"}"#
+        }
+        return text
+    }
+
+    private func assistantContextPayload() -> [String: Any] {
+        let prefs = Preferences.shared
+        MouseShortcutStore.shared.reloadIfNeeded()
+
+        return [
+            "assistant": [
+                "name": "Workspace Assistant",
+                "selectedProvider": [
+                    "id": authProviderID,
+                    "name": currentProvider.name,
+                    "credential": selectedCredentialSummary,
+                ],
+                "providerRuntime": [
+                    "binary": (piBinaryPath as Any?) ?? NSNull(),
+                    "node": (nodeBinaryPath as Any?) ?? NSNull(),
+                    "authFile": authFileURL.path,
+                    "chatSession": sessionFileURL.path,
+                ],
+            ],
+            "currentSettings": [
+                "terminal": prefs.terminal.rawValue,
+                "detachMode": prefs.mode.rawValue,
+                "scanRoot": prefs.scanRoot.isEmpty ? NSNull() : prefs.scanRoot,
+                "dragToSnap": prefs.dragSnapEnabled,
+                "companionBridge": prefs.companionBridgeEnabled,
+                "companionTrackpad": prefs.companionTrackpadEnabled,
+                "ocr": [
+                    "enabled": prefs.ocrEnabled,
+                    "accuracy": prefs.ocrAccuracy,
+                    "quickIntervalSeconds": prefs.ocrQuickInterval,
+                    "deepIntervalSeconds": prefs.ocrDeepInterval,
+                    "quickWindowLimit": prefs.ocrQuickLimit,
+                    "deepWindowLimit": prefs.ocrDeepLimit,
+                    "deepScanBudget": prefs.ocrDeepBudget,
+                ],
+                "mouseShortcuts": mouseShortcutContextPayload(),
+            ],
+            "settingsCatalog": [
+                [
+                    "id": "terminal",
+                    "type": "enum",
+                    "choices": Terminal.allCases.map(\.rawValue),
+                    "installedChoices": Terminal.installed.map(\.rawValue),
+                    "description": "Terminal app used when Lattices launches workspaces.",
+                ],
+                [
+                    "id": "detachMode",
+                    "type": "enum",
+                    "choices": ["learning", "auto"],
+                    "description": "Learning mode shows tmux hints; auto mode stays quieter.",
+                ],
+                [
+                    "id": "scanRoot",
+                    "type": "path",
+                    "description": "Root directory scanned for projects containing .lattices.json.",
+                ],
+                [
+                    "id": "dragToSnap",
+                    "type": "boolean",
+                    "description": "Enables drag-to-snap window zones.",
+                ],
+                [
+                    "id": "mouseShortcuts",
+                    "type": "boolean-plus-json-rules",
+                    "description": "Middle-click and drag gesture shortcuts controlled by mouseGestures.enabled plus ~/.lattices/mouse-shortcuts.json.",
+                ],
+                [
+                    "id": "ocr",
+                    "type": "object",
+                    "description": "Screen text recognition settings, including enablement, cadence, and accuracy.",
+                ],
+                [
+                    "id": "assistantProvider",
+                    "type": "enum-plus-api-key",
+                    "choices": ["openai", "groq", "openrouter", "minimax"],
+                    "description": "Provider-backed inference for chat and voice.",
+                ],
+            ],
+            "settingsFiles": [
+                "workspace": "\(NSHomeDirectory())/.lattices/workspace.json",
+                "mouseShortcuts": MouseShortcutStore.shared.configURL.path,
+                "snapZones": "\(NSHomeDirectory())/.lattices/snap-zones.json",
+                "ocrDatabase": "\(NSHomeDirectory())/.lattices/ocr.db",
+                "diagnostics": "\(NSHomeDirectory())/.lattices/lattices.log",
+            ],
+            "cliCommands": [
+                "lattices",
+                "lattices init",
+                "lattices sync",
+                "lattices restart [pane]",
+                "lattices tile <position>",
+                "lattices group [id]",
+                "lattices layer [name|index]",
+                "lattices windows --json",
+                "lattices search <query>",
+                "lattices app restart",
+            ],
+            "runtimeSnapshot": [
+                "installedTerminals": Terminal.installed.map(\.rawValue),
+                "discoveredProjectCount": ProjectScanner.shared.projects.count,
+            ],
+        ]
+    }
+
+    private func mouseShortcutContextPayload() -> [String: Any] {
+        let prefs = Preferences.shared
+        let store = MouseShortcutStore.shared
+        store.reloadIfNeeded()
+
+        return [
+            "enabled": prefs.mouseGesturesEnabled,
+            "configFile": store.configURL.path,
+            "tuning": [
+                "dragThresholdPx": Double(store.tuning.dragThreshold),
+                "holdTolerancePx": Double(store.tuning.holdTolerance),
+                "axisBias": Double(store.tuning.axisBias),
+            ],
+            "activeMappings": store.enabledRules.map { rule in
+                [
+                    "id": rule.id,
+                    "trigger": rule.trigger.displayLabel,
+                    "action": rule.action.label,
+                    "summary": rule.summary,
+                ]
+            },
+        ]
+    }
+
+    private func settingsSummary() -> String {
+        let prefs = Preferences.shared
+        return """
+        Current settings:
+        Terminal: \(prefs.terminal.rawValue)
+        Detach mode: \(prefs.mode.rawValue)
+        Scan root: \(prefs.scanRoot.isEmpty ? "not set" : prefs.scanRoot)
+        Drag-to-snap: \(prefs.dragSnapEnabled ? "on" : "off")
+        Mouse gestures: \(prefs.mouseGesturesEnabled ? "on" : "off")
+        Companion bridge: \(prefs.companionBridgeEnabled ? "on" : "off")
+        Companion trackpad: \(prefs.companionTrackpadEnabled ? "on" : "off")
+        OCR: \(prefs.ocrEnabled ? "on" : "off"), \(prefs.ocrAccuracy)
+        Voice assistant: same provider as chat, \(currentProvider.name)
+
+        \(mouseShortcutSummary())
+        """
+    }
+
+    private func mouseShortcutSummary() -> String {
+        let prefs = Preferences.shared
+        let store = MouseShortcutStore.shared
+        store.reloadIfNeeded()
+        let mappings = store.summaryLines
+        let mappingText = mappings.isEmpty
+            ? "- No active mouse shortcut mappings."
+            : mappings.map { "- \($0)" }.joined(separator: "\n")
+
+        return """
+        Mouse shortcuts:
+        - Middle-click shortcuts are \(prefs.mouseGesturesEnabled ? "enabled" : "disabled").
+        - Config file: \(store.configURL.path)
+        - Drag threshold: \(Int(store.tuning.dragThreshold)) px; hold tolerance: \(Int(store.tuning.holdTolerance)) px; axis bias: \(String(format: "%.1f", Double(store.tuning.axisBias))).
+        Active mappings:
+        \(mappingText)
+        """
+    }
+
+    private static func extractJSON(from text: String) -> String? {
+        let cleaned = text
+            .replacingOccurrences(of: "```json", with: "")
+            .replacingOccurrences(of: "```", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let start = cleaned.firstIndex(of: "{"),
+              let end = cleaned.lastIndex(of: "}") else { return nil }
+        return String(cleaned[start...end])
+    }
+
+    private func settingsHelpText() -> String {
+        """
+        I can manage Lattices settings from chat. Try:
+        - set terminal to Ghostty
+        - set scan root to ~/dev
+        - turn OCR off
+        - set OCR accuracy to fast
+        - enable drag snap
+        - disable mouse gestures
+        - set detach mode to auto
+        - open assistant settings
+        - open settings
+        """
+    }
+
+    private func parseTerminal(from lower: String) -> Terminal? {
+        let aliases: [(Terminal, [String])] = [
+            (.iterm2, ["iterm2", "iterm"]),
+            (.warp, ["warp"]),
+            (.ghostty, ["ghostty"]),
+            (.kitty, ["kitty"]),
+            (.alacritty, ["alacritty"]),
+            (.terminal, ["terminal.app", "apple terminal", "terminal"]),
+        ]
+
+        return aliases.first { _, names in
+            names.contains { lower.contains($0) }
+        }?.0
+    }
+
+    private func parseBooleanIntent(from lower: String) -> Bool? {
+        let offTokens = ["turn off", "disable", "disabled", "off", "false", "stop"]
+        if offTokens.contains(where: lower.contains) {
+            return false
+        }
+
+        let onTokens = ["turn on", "enable", "enabled", "on", "true", "start"]
+        if onTokens.contains(where: lower.contains) {
+            return true
+        }
+
+        return nil
+    }
+
+    private func extractPathValue(from text: String) -> String? {
+        let markers = [" to ", " at ", " root "]
+        let lower = text.lowercased()
+
+        for marker in markers {
+            guard let range = lower.range(of: marker) else { continue }
+            let raw = text[range.upperBound...]
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\"'`"))
+            guard !raw.isEmpty else { continue }
+            return (raw as NSString).expandingTildeInPath
+        }
+
+        return nil
+    }
+
+    private func extractFirstNumber(from text: String) -> Double? {
+        let pattern = #"(?<![A-Za-z0-9_])\$?([0-9]+(?:\.[0-9]+)?)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let nsRange = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = regex.firstMatch(in: text, range: nsRange),
+              match.numberOfRanges > 1,
+              let range = Range(match.range(at: 1), in: text) else {
+            return nil
+        }
+        return Double(text[range])
     }
 
     private func friendlyAuthFailureMessage(for message: String) -> String? {
@@ -937,10 +1569,10 @@ final class PiChatSession: ObservableObject {
         guard authHints.contains(where: lowercased.contains) else { return nil }
 
         if currentProvider.authMode == .oauth {
-            return "This provider is not connected yet. Use the setup panel to sign in with \(currentProvider.name), then come back and send your first prompt."
+            return "This provider is not connected yet. Open Settings with the gear icon, connect \(currentProvider.name), then come back and send your first prompt."
         }
 
-        return "This provider still needs an API key. Paste your \(currentProvider.tokenLabel.lowercased()) into the setup panel above, save it, and then try again."
+        return "This provider still needs an API key. Open Settings with the gear icon, save your \(currentProvider.tokenLabel.lowercased()), and then try again."
     }
 
     private func shouldAutoSubmitPrompt(_ prompt: PiAuthPrompt) -> Bool {

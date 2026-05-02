@@ -845,6 +845,8 @@ struct ClaudeResolvedIntent {
     let slots: [String: JSON]
 }
 
+typealias ResolvedIntent = ClaudeResolvedIntent
+
 struct ClaudeAgentPlan {
     let steps: [ClaudeResolvedIntent]
     let reasoning: String

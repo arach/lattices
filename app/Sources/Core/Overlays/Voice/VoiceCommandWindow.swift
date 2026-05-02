@@ -968,15 +968,14 @@ struct VoiceCommandView: View {
         let slots = state.intentSlots.map { "\($0.key)=\($0.value)" }.joined(separator: ", ")
         let matchStr = slots.isEmpty ? matched : "\(matched)(\(slots))"
 
-        let haiku = AgentPool.shared.haiku
-        guard haiku.isReady else {
-            state.appendLog("AI not ready")
+        let assistant = PiChatSession.shared
+        guard assistant.isProviderInferenceReady else {
+            state.appendLog("Assistant provider not ready")
             return
         }
 
-        state.appendLog("Asking AI...")
-        let message = "Transcript: \"\(transcript)\"\nMatched: \(matchStr)"
-        haiku.send(message: message) { [weak state] response in
+        state.appendLog("Asking Assistant...")
+        assistant.askVoiceAdvisor(transcript: transcript, matched: matchStr) { [weak state] response in
             guard let state = state, let response = response else { return }
             state.agentResponse = response
         }
@@ -985,7 +984,7 @@ struct VoiceCommandView: View {
     private func executeSuggestion(_ suggestion: AgentResponse.AgentSuggestion) {
         var slotsDict = suggestion.slots
 
-        // If the intent needs a query slot and Haiku didn't include one,
+        // If the intent needs a query slot and the assistant did not include one,
         // try to extract it from the label or fall back to the original query
         if suggestion.intent == "search" && slotsDict["query"] == nil {
             // Try extracting from label: "Deep search Vox" → "Vox"
@@ -1124,7 +1123,7 @@ struct VoiceCommandView: View {
 
     // MARK: - AI Corner (bottom-right)
 
-    @ObservedObject private var haikuSession = AgentPool.shared.haiku
+    @ObservedObject private var assistantSession = PiChatSession.shared
 
     private var aiCorner: some View {
         VStack(spacing: 0) {
@@ -1139,20 +1138,9 @@ struct VoiceCommandView: View {
                     .tracking(1)
                 Spacer()
 
-                // Context usage indicator
-                let stats = haikuSession.sessionStats
-                if stats.contextWindow > 0 {
-                    let pct = Int(stats.contextUsage * 100)
-                    Text("\(pct)%")
-                        .font(Typo.geistMono(8))
-                        .foregroundColor(pct > 60 ? Palette.detach : Palette.textMuted.opacity(0.6))
-                }
-
-                if stats.costUSD > 0 {
-                    Text("$\(String(format: "%.3f", stats.costUSD))")
-                        .font(Typo.geistMono(8))
-                        .foregroundColor(Palette.textMuted.opacity(0.6))
-                }
+                Text(assistantSession.currentProvider.name)
+                    .font(Typo.geistMono(8))
+                    .foregroundColor(Palette.textMuted.opacity(0.65))
 
                 if state.agentResponse != nil {
                     Button(action: { copyAIResponse() }) {
@@ -1163,7 +1151,7 @@ struct VoiceCommandView: View {
                     .buttonStyle(.plain)
                 }
 
-                if haikuSession.isReady {
+                if assistantSession.isProviderInferenceReady {
                     Circle()
                         .fill(Palette.running.opacity(0.6))
                         .frame(width: 4, height: 4)

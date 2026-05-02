@@ -6,10 +6,21 @@ enum MouseGestureDirection: String, CaseIterable, Codable, Equatable {
     case right
     case up
     case down
+
+    var displayLabel: String {
+        switch self {
+        case .left: return "Left"
+        case .right: return "Right"
+        case .up: return "Up"
+        case .down: return "Down"
+        }
+    }
 }
 
 enum MouseShortcutTriggerKind: String, Codable, Equatable {
     case drag
+    case click
+    case shape
 }
 
 enum MouseShortcutActionType: String, Codable, Equatable {
@@ -18,6 +29,7 @@ enum MouseShortcutActionType: String, Codable, Equatable {
     case screenMapToggle = "screenmap.toggle"
     case dictationStart = "dictation.start"
     case shortcutSend = "shortcut.send"
+    case appActivate = "app.activate"
 }
 
 enum MouseShortcutModifier: String, CaseIterable, Codable, Equatable {
@@ -46,6 +58,7 @@ enum MouseShortcutModifier: String, CaseIterable, Codable, Equatable {
 }
 
 enum MouseShortcutButton: Hashable, Codable, Equatable {
+    case right
     case middle
     case button4
     case button5
@@ -53,6 +66,7 @@ enum MouseShortcutButton: Hashable, Codable, Equatable {
 
     init(rawButtonNumber: Int) {
         switch rawButtonNumber {
+        case 1: self = .right
         case 2: self = .middle
         case 3: self = .button4
         case 4: self = .button5
@@ -69,11 +83,13 @@ enum MouseShortcutButton: Hashable, Codable, Equatable {
 
         let stringValue = try container.decode(String.self)
         switch stringValue.lowercased() {
+        case "right", "button.right":
+            self = .right
         case "middle", "button.middle":
             self = .middle
-        case "button4", "button.button4":
+        case "back", "button.back", "button4", "button.button4":
             self = .button4
-        case "button5", "button.button5":
+        case "forward", "button.forward", "button5", "button.button5":
             self = .button5
         default:
             if let raw = Int(stringValue.filter(\.isNumber)) {
@@ -91,6 +107,7 @@ enum MouseShortcutButton: Hashable, Codable, Equatable {
 
     var rawButtonNumber: Int {
         switch self {
+        case .right: return 1
         case .middle: return 2
         case .button4: return 3
         case .button5: return 4
@@ -100,27 +117,30 @@ enum MouseShortcutButton: Hashable, Codable, Equatable {
 
     var configValue: String {
         switch self {
+        case .right: return "right"
         case .middle: return "middle"
-        case .button4: return "button4"
-        case .button5: return "button5"
+        case .button4: return "back"
+        case .button5: return "forward"
         case .number(let value): return "button\(value)"
         }
     }
 
     var displayLabel: String {
         switch self {
+        case .right: return "Right Click"
         case .middle: return "Middle Click"
-        case .button4: return "Button 4"
-        case .button5: return "Button 5"
+        case .button4: return "Back Button"
+        case .button5: return "Forward Button"
         case .number(let value): return "Button \(value)"
         }
     }
 
     var triggerToken: String {
         switch self {
+        case .right: return "button.right"
         case .middle: return "button.middle"
-        case .button4: return "button.button4"
-        case .button5: return "button.button5"
+        case .button4: return "button.back"
+        case .button5: return "button.forward"
         case .number(let value): return "button.\(value)"
         }
     }
@@ -226,10 +246,37 @@ struct MouseShortcutDeviceSelector: Codable, Equatable {
 struct MouseShortcutTrigger: Codable, Equatable {
     var button: MouseShortcutButton
     var kind: MouseShortcutTriggerKind
-    var direction: MouseGestureDirection
+    var direction: MouseGestureDirection?
+    var shape: GestureShapeLabel?
 
     var triggerName: String {
-        "\(button.triggerToken).\(kind.rawValue).\(direction.rawValue)"
+        let detail: String?
+        switch kind {
+        case .drag:
+            detail = direction?.rawValue
+        case .shape:
+            detail = shape?.rawValue
+        case .click:
+            detail = nil
+        }
+        return ([button.triggerToken, kind.rawValue] + [detail].compactMap { $0 }).joined(separator: ".")
+    }
+
+    var displayLabel: String {
+        switch kind {
+        case .click:
+            return "\(button.displayLabel) click"
+        case .drag:
+            if let direction {
+                return "\(button.displayLabel) drag \(direction.displayLabel.lowercased())"
+            }
+            return "\(button.displayLabel) drag"
+        case .shape:
+            if let shape {
+                return "\(button.displayLabel) \(shape.displayName)"
+            }
+            return "\(button.displayLabel) shape"
+        }
     }
 }
 
@@ -248,6 +295,13 @@ struct MouseShortcutKeyStroke: Codable, Equatable {
 struct MouseShortcutActionDefinition: Codable, Equatable {
     var type: MouseShortcutActionType
     var shortcut: MouseShortcutKeyStroke?
+    var app: String?
+
+    init(type: MouseShortcutActionType, shortcut: MouseShortcutKeyStroke? = nil, app: String? = nil) {
+        self.type = type
+        self.shortcut = shortcut
+        self.app = app
+    }
 
     var label: String {
         switch type {
@@ -261,7 +315,47 @@ struct MouseShortcutActionDefinition: Codable, Equatable {
             return "Dictation"
         case .shortcutSend:
             return shortcut?.displayLabel ?? "Send Shortcut"
+        case .appActivate:
+            return app.map { "Activate \($0)" } ?? "Activate App"
         }
+    }
+}
+
+struct MouseShortcutVisualDefinition: Codable, Equatable {
+    var renderer: String
+    var asset: String?
+    var character: String?
+    var events: [String: String]?
+
+    init(
+        renderer: String = "native",
+        asset: String? = nil,
+        character: String? = nil,
+        events: [String: String]? = nil
+    ) {
+        self.renderer = renderer
+        self.asset = asset
+        self.character = character
+        self.events = events
+    }
+
+    var isLottiePOC: Bool {
+        renderer.localizedCaseInsensitiveCompare("lottie") == .orderedSame
+    }
+
+    func marker(phase: String, shape: GestureShapeLabel?, success: Bool?) -> String? {
+        let keys: [String] = [
+            success.map { "\(phase).\($0 ? "success" : "failure")" },
+            shape.map { "recognized:\($0.rawValue)" },
+            phase,
+        ].compactMap { $0 }
+
+        for key in keys {
+            if let marker = events?[key] {
+                return marker
+            }
+        }
+        return nil
     }
 }
 
@@ -271,6 +365,23 @@ struct MouseShortcutRule: Codable, Equatable, Identifiable {
     var device: MouseShortcutDeviceSelector
     var trigger: MouseShortcutTrigger
     var action: MouseShortcutActionDefinition
+    var visual: MouseShortcutVisualDefinition?
+
+    init(
+        id: String,
+        enabled: Bool,
+        device: MouseShortcutDeviceSelector,
+        trigger: MouseShortcutTrigger,
+        action: MouseShortcutActionDefinition,
+        visual: MouseShortcutVisualDefinition? = nil
+    ) {
+        self.id = id
+        self.enabled = enabled
+        self.device = device
+        self.trigger = trigger
+        self.action = action
+        self.visual = visual
+    }
 
     var summary: String {
         "\(trigger.triggerName) -> \(action.type.rawValue)"
@@ -302,29 +413,29 @@ struct MouseShortcutConfig: Codable, Equatable {
                 id: "space-previous",
                 enabled: true,
                 device: .any,
-                trigger: MouseShortcutTrigger(button: .middle, kind: .drag, direction: .left),
-                action: MouseShortcutActionDefinition(type: .spacePrevious, shortcut: nil)
+                trigger: MouseShortcutTrigger(button: .middle, kind: .drag, direction: .left, shape: nil),
+                action: MouseShortcutActionDefinition(type: .spacePrevious)
             ),
             MouseShortcutRule(
                 id: "space-next",
                 enabled: true,
                 device: .any,
-                trigger: MouseShortcutTrigger(button: .middle, kind: .drag, direction: .right),
-                action: MouseShortcutActionDefinition(type: .spaceNext, shortcut: nil)
+                trigger: MouseShortcutTrigger(button: .middle, kind: .drag, direction: .right, shape: nil),
+                action: MouseShortcutActionDefinition(type: .spaceNext)
             ),
             MouseShortcutRule(
                 id: "screenmap-overview",
                 enabled: true,
                 device: .any,
-                trigger: MouseShortcutTrigger(button: .middle, kind: .drag, direction: .down),
-                action: MouseShortcutActionDefinition(type: .screenMapToggle, shortcut: nil)
+                trigger: MouseShortcutTrigger(button: .middle, kind: .drag, direction: .down, shape: nil),
+                action: MouseShortcutActionDefinition(type: .screenMapToggle)
             ),
             MouseShortcutRule(
                 id: "dictation",
                 enabled: true,
                 device: .any,
-                trigger: MouseShortcutTrigger(button: .middle, kind: .drag, direction: .up),
-                action: MouseShortcutActionDefinition(type: .dictationStart, shortcut: nil)
+                trigger: MouseShortcutTrigger(button: .middle, kind: .drag, direction: .up, shape: nil),
+                action: MouseShortcutActionDefinition(type: .dictationStart)
             ),
         ]
     )
@@ -339,11 +450,26 @@ struct MouseShortcutMatchResult {
 struct MouseShortcutTriggerEvent {
     let button: MouseShortcutButton
     let kind: MouseShortcutTriggerKind
-    let direction: MouseGestureDirection
+    let direction: MouseGestureDirection?
+    let shape: GestureShapeLabel?
     let device: MouseInputDeviceInfo?
 
+    init(
+        button: MouseShortcutButton,
+        kind: MouseShortcutTriggerKind,
+        direction: MouseGestureDirection? = nil,
+        shape: GestureShapeLabel? = nil,
+        device: MouseInputDeviceInfo? = nil
+    ) {
+        self.button = button
+        self.kind = kind
+        self.direction = direction
+        self.shape = shape
+        self.device = device
+    }
+
     var triggerName: String {
-        MouseShortcutTrigger(button: button, kind: kind, direction: direction).triggerName
+        MouseShortcutTrigger(button: button, kind: kind, direction: direction, shape: shape).triggerName
     }
 }
 

@@ -18,6 +18,13 @@ final class SettingsWindowController {
         ScreenMapWindowController.shared.showPage(.companionSettings)
     }
 
+    func showAssistant() {
+        ScreenMapWindowController.shared.showPage(.settings)
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .latticesShowAssistantSettings, object: nil)
+        }
+    }
+
     func close() {
         ScreenMapWindowController.shared.close()
     }

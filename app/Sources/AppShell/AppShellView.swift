@@ -14,9 +14,9 @@ enum AppPage: String, CaseIterable {
     var label: String {
         switch self {
         case .home:             return "Home"
-        case .screenMap:        return "Screen Map"
+        case .screenMap:        return "Layout"
         case .desktopInventory: return "Desktop Inventory"
-        case .pi:               return "Pi"
+        case .pi:               return "Assistant"
         case .settings:         return "Settings"
         case .companionSettings:return "Settings"
         case .docs:             return "Docs"
@@ -28,7 +28,7 @@ enum AppPage: String, CaseIterable {
         case .home:             return "house"
         case .screenMap:        return "rectangle.3.group"
         case .desktopInventory: return "macwindow.on.rectangle"
-        case .pi:               return "terminal"
+        case .pi:               return "bubble.left.and.bubble.right"
         case .settings:         return "gearshape"
         case .companionSettings:return "ipad.and.iphone"
         case .docs:             return "book"
