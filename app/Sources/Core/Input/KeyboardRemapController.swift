@@ -13,6 +13,7 @@ final class KeyboardRemapController {
     private var installedObservers = false
     private var capsLayerActive = false
     private var capsUsedAsModifier = false
+    private let breaker = EventTapBreaker(label: "KeyboardRemap")
 
     private init() {}
 
@@ -85,6 +86,10 @@ final class KeyboardRemapController {
             EventTapThread.shared.add(source: source)
         }
         CGEvent.tapEnable(tap: tap, enable: true)
+        breaker.rearm = { [weak self] in
+            guard let self, let tap = self.eventTap else { return }
+            CGEvent.tapEnable(tap: tap, enable: true)
+        }
         DiagnosticLog.shared.info("KeyboardRemap: keyboard event tap installed")
     }
 
@@ -106,7 +111,15 @@ final class KeyboardRemapController {
     }
 
     private func handleEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
-        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+        if type == .tapDisabledByTimeout {
+            // OS killed the tap because a callback was too slow. Run through
+            // the breaker — it backs off in escalating cooldowns rather than
+            // re-enabling immediately and getting killed again.
+            breaker.recordTrip()
+            return Unmanaged.passUnretained(event)
+        }
+        if type == .tapDisabledByUserInput {
+            // User-driven disable (rare). Re-enable directly, no cooldown.
             if let eventTap {
                 CGEvent.tapEnable(tap: eventTap, enable: true)
             }
