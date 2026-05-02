@@ -15,6 +15,8 @@ class Preferences: ObservableObject {
         static let cockpitLayout = "companion.cockpit.layout"
     }
 
+    private static let dismissedCapabilitiesKey = "permissions.dismissed"
+
     @Published var terminal: Terminal {
         didSet { UserDefaults.standard.set(terminal.rawValue, forKey: "terminal") }
     }
@@ -140,6 +142,30 @@ class Preferences: ObservableObject {
         didSet { UserDefaults.standard.set(ocrAccuracy, forKey: "ocr.accuracy") }
     }
 
+    // MARK: - Permissions Assistant
+
+    /// Capabilities the user has explicitly snoozed. Cleared per-capability when
+    /// the user re-enters the relevant feature. Persisted as raw values.
+    @Published var dismissedCapabilities: Set<String> {
+        didSet {
+            UserDefaults.standard.set(Array(dismissedCapabilities), forKey: Self.dismissedCapabilitiesKey)
+        }
+    }
+
+    func dismissCapability(_ rawValue: String) {
+        dismissedCapabilities.insert(rawValue)
+    }
+
+    func clearDismissal(_ rawValue: String) {
+        if dismissedCapabilities.contains(rawValue) {
+            dismissedCapabilities.remove(rawValue)
+        }
+    }
+
+    func isCapabilityDismissed(_ rawValue: String) -> Bool {
+        dismissedCapabilities.contains(rawValue)
+    }
+
     init() {
         if let saved = UserDefaults.standard.string(forKey: "terminal"),
            let t = Terminal(rawValue: saved), t.isInstalled {
@@ -201,8 +227,14 @@ class Preferences: ObservableObject {
         let savedBudgetUSD = UserDefaults.standard.double(forKey: "claude.advisorBudget")
         self.advisorBudgetUSD = savedBudgetUSD > 0 ? savedBudgetUSD : 0.50
 
-        // Search & OCR
-        self.ocrEnabled = !UserDefaults.standard.bool(forKey: "ocr.disabled")
+        // Search & OCR. Default off until the user explicitly enables it from
+        // the Permissions Assistant or Search settings. Honors any explicit
+        // ocr.disabled value already saved (true=off, false=on).
+        if UserDefaults.standard.object(forKey: "ocr.disabled") != nil {
+            self.ocrEnabled = !UserDefaults.standard.bool(forKey: "ocr.disabled")
+        } else {
+            self.ocrEnabled = false
+        }
 
         let savedInterval = UserDefaults.standard.double(forKey: "ocr.interval")
         self.ocrQuickInterval = savedInterval > 0 ? savedInterval : 60
@@ -221,6 +253,9 @@ class Preferences: ObservableObject {
 
         let savedAcc = UserDefaults.standard.string(forKey: "ocr.accuracy") ?? "accurate"
         self.ocrAccuracy = savedAcc
+
+        let dismissed = UserDefaults.standard.stringArray(forKey: Self.dismissedCapabilitiesKey) ?? []
+        self.dismissedCapabilities = Set(dismissed)
     }
 
     func updateCompanionCockpitSlot(

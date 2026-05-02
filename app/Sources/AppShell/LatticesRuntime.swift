@@ -88,6 +88,10 @@ enum LatticesRuntime {
         isDevBuild ? "Latest local dev build" : "Signed release build"
     }
 
+    static var buildChannelLabel: String {
+        isDevBuild ? "DEV" : "RELEASE"
+    }
+
     private static func hasAppHelper(in root: String) -> Bool {
         FileManager.default.fileExists(atPath: root + "/bin/lattices-app.ts")
     }

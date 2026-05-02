@@ -18,7 +18,7 @@ struct PiProviderSetupCallout: View {
 
             Text(session.isAuthenticating
                 ? "Finish the setup above. As soon as that one step is done, the chat box unlocks."
-                : "Next step: connect \(session.currentProvider.name). You only have to do this once.")
+                : "Chat is optional. Connect \(session.currentProvider.name) when you want the in-app assistant.")
                 .font(Typo.mono(compact ? 10 : 11))
                 .foregroundColor(Palette.textDim)
                 .fixedSize(horizontal: false, vertical: true)
@@ -32,18 +32,18 @@ struct PiProviderSetupCallout: View {
                 PiAuthNextStepCard(session: session, compact: compact)
             } else {
                 Text(session.currentProvider.authMode == .oauth
-                    ? "The setup panel above is already open, so you can connect right now."
-                    : "Paste your key in the setup panel above, save it once, and you are done.")
+                    ? "This opens the provider flow in your browser."
+                    : "Open setup when you are ready to paste and save a key.")
                     .font(Typo.mono(compact ? 9 : 10))
                     .foregroundColor(Palette.textMuted)
             }
 
             if session.currentProvider.authMode == .oauth && !session.isAuthenticating {
                 primaryActionButton(
-                    "CONNECT \(session.currentProvider.name.uppercased())",
+                    "SET UP \(session.currentProvider.name.uppercased())",
                     tint: Palette.running
                 ) {
-                    session.startSelectedAuthFlow()
+                    session.toggleAuthPanel()
                 }
             }
         }

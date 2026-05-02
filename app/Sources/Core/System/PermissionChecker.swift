@@ -14,12 +14,20 @@ final class PermissionChecker: ObservableObject {
 
     var allGranted: Bool { accessibility && screenRecording }
 
+    var isSimulatingMissingPermissions: Bool {
+        CommandLine.arguments.contains("--simulate-missing-permissions")
+            || UserDefaults.standard.bool(forKey: "permissions.simulateMissing")
+    }
+
     /// Check current permission state without prompting.
-    func check() {
+    func check(pollIfMissing: Bool = false) {
         let diag = DiagnosticLog.shared
 
-        let ax = AXIsProcessTrusted()
-        let sr = CGPreflightScreenCaptureAccess()
+        let realAX = AXIsProcessTrusted()
+        let realSR = CGPreflightScreenCaptureAccess()
+        let simulating = isSimulatingMissingPermissions
+        let ax = simulating ? false : realAX
+        let sr = simulating ? false : realSR
 
         // First check: log identity info only
         if !hasLoggedInitial {
@@ -29,8 +37,11 @@ final class PermissionChecker: ObservableObject {
             let pid = ProcessInfo.processInfo.processIdentifier
             diag.info("PermissionChecker: bundleId=\(bundleId) pid=\(pid)")
             diag.info("PermissionChecker: exec=\(execPath)")
-            diag.info("AXIsProcessTrusted() → \(ax)")
-            diag.info("CGPreflightScreenCaptureAccess() → \(sr)")
+            diag.info("AXIsProcessTrusted() → \(realAX)")
+            diag.info("CGPreflightScreenCaptureAccess() → \(realSR)")
+            if simulating {
+                diag.warn("PermissionChecker: simulating missing permissions for UX preview")
+            }
         }
 
         // Log on state changes
@@ -41,11 +52,11 @@ final class PermissionChecker: ObservableObject {
         accessibility = ax
         screenRecording = sr
 
-        // If not all granted, start polling so we detect changes while user is in Settings.
-        // Once all granted, stop polling.
+        // Only poll after an intentional permission request. A passive launch-time
+        // check should not keep nudging macOS privacy state in the background.
         if allGranted {
             stopPolling()
-        } else {
+        } else if pollIfMissing {
             startPolling()
         }
     }
@@ -54,6 +65,11 @@ final class PermissionChecker: ObservableObject {
     /// which adds lattices to the Accessibility list and asks the user to toggle it on.
     func requestAccessibility() {
         let diag = DiagnosticLog.shared
+        if isSimulatingMissingPermissions {
+            diag.warn("requestAccessibility: skipped because missing-permission simulation is enabled")
+            accessibility = false
+            return
+        }
         let beforeCheck = AXIsProcessTrusted()
         diag.info("requestAccessibility: before=\(beforeCheck), prompting…")
         let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
@@ -71,6 +87,11 @@ final class PermissionChecker: ObservableObject {
     /// which adds lattices to the Screen Recording list. The user toggles it on in Settings.
     func requestScreenRecording() {
         let diag = DiagnosticLog.shared
+        if isSimulatingMissingPermissions {
+            diag.warn("requestScreenRecording: skipped because missing-permission simulation is enabled")
+            screenRecording = false
+            return
+        }
         let beforeCheck = CGPreflightScreenCaptureAccess()
         diag.info("requestScreenRecording: before=\(beforeCheck), probing…")
 

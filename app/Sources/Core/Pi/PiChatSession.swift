@@ -370,7 +370,6 @@ final class PiChatSession: ObservableObject {
             isAuthPanelVisible = true
             statusText = "connecting..."
         } else if needsProviderSetup {
-            isAuthPanelVisible = true
             statusText = "setup ai"
         } else if hasPiBinary && (statusText == "setup ai" || statusText == "missing pi") {
             statusText = "idle"
@@ -437,6 +436,8 @@ final class PiChatSession: ObservableObject {
 
         guard !needsProviderSetup else {
             prepareForDisplay()
+            isAuthPanelVisible = true
+            dockHeight = max(dockHeight, 300)
             return
         }
 
