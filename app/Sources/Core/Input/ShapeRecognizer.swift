@@ -365,6 +365,21 @@ final class ShapeRecognizer {
 
     // MARK: - Segment Building
 
+    private func makeDirectionSegment(
+        direction: MouseGestureDirection?,
+        start: Int,
+        end: Int,
+        length: CGFloat
+    ) -> DirectionSegment? {
+        guard let direction, length > 0 else { return nil }
+        return DirectionSegment(
+            direction: direction,
+            startIndex: start,
+            endIndex: end,
+            length: length
+        )
+    }
+
     private func buildDirectionRunSegments(points: [GesturePathPoint]) -> [DirectionSegment] {
         guard points.count >= 2 else { return [] }
 
@@ -373,18 +388,6 @@ final class ShapeRecognizer {
         var currentStart = 0
         var currentEnd = 0
         var currentLength: CGFloat = 0
-
-        func flushCurrent() {
-            guard let currentDirection, currentLength > 0 else { return }
-            rawSegments.append(
-                DirectionSegment(
-                    direction: currentDirection,
-                    startIndex: currentStart,
-                    endIndex: currentEnd,
-                    length: currentLength
-                )
-            )
-        }
 
         for index in 1..<points.count {
             let previous = points[index - 1]
@@ -405,14 +408,28 @@ final class ShapeRecognizer {
                 currentEnd = index
                 currentLength += length
             } else {
-                flushCurrent()
+                if let segment = makeDirectionSegment(
+                    direction: currentDirection,
+                    start: currentStart,
+                    end: currentEnd,
+                    length: currentLength
+                ) {
+                    rawSegments.append(segment)
+                }
                 currentDirection = direction
                 currentStart = index - 1
                 currentEnd = index
                 currentLength = length
             }
         }
-        flushCurrent()
+        if let segment = makeDirectionSegment(
+            direction: currentDirection,
+            start: currentStart,
+            end: currentEnd,
+            length: currentLength
+        ) {
+            rawSegments.append(segment)
+        }
 
         let merged = mergeShortDirectionRuns(rawSegments)
         let filtered = merged.filter { $0.length >= minSegmentLength }
