@@ -75,16 +75,33 @@ install_dep tmux
 install_dep bun "oven-sh/bun/bun" "oven-sh/bun"
 
 # ── Install CLI ───────────────────────────────────────────────────────
+# If run from inside the source repo, link the local checkout instead of
+# fetching from npm. Detected by package.json next to this script with
+# name "@lattices/cli".
 
-info "Installing @lattices/cli..."
-
-if command -v lattices &>/dev/null; then
-  CURRENT="$(lattices --version 2>/dev/null || echo "unknown")"
-  warn "lattices already installed ($CURRENT) — upgrading"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOCAL_MODE=0
+if [[ -f "$SCRIPT_DIR/package.json" ]] && \
+   grep -q '"@lattices/cli"' "$SCRIPT_DIR/package.json"; then
+  LOCAL_MODE=1
 fi
 
-bun install -g @lattices/cli
-ok "CLI installed → $(which lattices)"
+if [[ "$LOCAL_MODE" -eq 1 ]]; then
+  info "Linking @lattices/cli from $SCRIPT_DIR..."
+else
+  info "Installing @lattices/cli..."
+fi
+
+if command -v lattices &>/dev/null; then
+  warn "lattices already installed — replacing"
+fi
+
+if [[ "$LOCAL_MODE" -eq 1 ]]; then
+  (cd "$SCRIPT_DIR" && bun link && bun link @lattices/cli)
+else
+  bun install -g @lattices/cli
+fi
+ok "CLI installed → $(command -v lattices)"
 
 # ── Verify CLI ────────────────────────────────────────────────────────
 

@@ -43,6 +43,9 @@
     "app/Resources",
     "app/Sources",
     "app/Tests",
+    "swift/Package.swift",
+    "swift/Sources",
+    "swift/Tests",
     "assets/AppIcon.icns",
     "docs"
   ],

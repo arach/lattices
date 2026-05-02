@@ -370,7 +370,10 @@ if (cmd === "build") {
     console.error("Swift is required. Install with: xcode-select --install");
     process.exit(1);
   }
-  buildFromSource();
+  if (!buildFromSource()) {
+    console.error("Build failed.");
+    process.exit(1);
+  }
 } else if (cmd === "quit") {
   if (quit()) {
     console.log("lattices app stopped.");
