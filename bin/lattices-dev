@@ -177,6 +177,31 @@ cmd_clear_logs() {
     fi
 }
 
+cmd_link() {
+    if ! command -v bun >/dev/null 2>&1; then
+        red "bun not found. Install: curl -fsSL https://bun.sh/install | bash"
+        exit 1
+    fi
+    cd "$ROOT"
+    bun link
+    bun link @lattices/cli
+    if command -v lattices >/dev/null 2>&1; then
+        green "Linked. \`lattices\` -> $(command -v lattices)"
+    else
+        red "Linked, but \`lattices\` is not on PATH. Add bun's global bin to PATH:"
+        dim "  export PATH=\"\$HOME/.bun/bin:\$PATH\""
+    fi
+}
+
+cmd_unlink() {
+    if ! command -v bun >/dev/null 2>&1; then
+        red "bun not found."
+        exit 1
+    fi
+    bun remove -g @lattices/cli >/dev/null 2>&1 || true
+    green "Unlinked."
+}
+
 cmd_status() {
     if pgrep -x Lattices >/dev/null 2>&1; then
         local pid=$(pgrep -x Lattices)
@@ -198,6 +223,8 @@ cmd_status() {
 cmd_help() {
     echo "lattices-dev — Lattices development commands"
     echo ""
+    echo "  link         Symlink \`lattices\` to this checkout (bun link)"
+    echo "  unlink       Remove the bun link"
     echo "  restart      Quit + rebuild + relaunch"
     echo "  build        Build release binary"
     echo "  quit         Stop the running app"
@@ -210,6 +237,8 @@ cmd_help() {
 }
 
 case "${1:-help}" in
+    link)       cmd_link ;;
+    unlink)     cmd_unlink ;;
     restart)    cmd_restart ;;
     build)      cmd_build ;;
     quit|stop)  cmd_quit ;;
