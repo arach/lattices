@@ -6,11 +6,11 @@ import SwiftUI
 /// Composed of independent sections:
 ///   - HomeTopBar       (chrome — fleet pills, agent count, settings)
 ///   - HomeTargetsRow   (adaptive cards: 1, 2, 3-4 Macs)
-///   - HomeOverflowGrid (foreground machine "third monitor" tiles)
 ///   - HomeScenesGrid   (instant layout presets)
 ///   - HomeRoutinesList (agent recipes)
-///   - HomeRecentTape   (cross-fleet activity)
+///   - HomeActivityFeed (combined: attention + recent + agent narration)
 ///   - HomeSyncSection  (broadcast / fleet ops)
+///   - HomeVoicePanel   (inline voice — slides in above the cloud strip)
 ///   - HomeCloudStrip   (separate cloud aggregate)
 ///   - HomeBottomBar    (chrome — status, voice/cmd)
 ///
@@ -50,7 +50,7 @@ struct HomeView: View {
     var onVoiceCancel: (() -> Void)? = nil
     var onVoiceRemediate: ((DeckRemediationAction) -> Void)? = nil
 
-    @State private var showingVoiceOverlay: Bool = false
+    @State private var voicePanelOpen: Bool = false
 
     private var foregroundMachine: HomeMachine? {
         machines.first(where: { $0.isForeground })
@@ -72,40 +72,24 @@ struct HomeView: View {
                     connectedLayout
                 }
             }
-            voiceTrigger
-                .padding(.trailing, 18)
-                .padding(.bottom, 70) // sit above the HomeBottomBar
+            if !voicePanelOpen {
+                voiceTrigger
+                    .padding(.trailing, 18)
+                    .padding(.bottom, 70) // sit above the HomeBottomBar
+            }
         }
-        .fullScreenCover(isPresented: $showingVoiceOverlay) {
-            HomeVoiceOverlay(
-                voiceState: voiceState,
-                macLabel: voiceMacLabel,
-                isPerforming: isVoicePerforming,
-                onStart: { onVoiceStart?() },
-                onStop:  { onVoiceStop?() },
-                onCancel: {
-                    onVoiceCancel?()
-                    showingVoiceOverlay = false
-                },
-                onClose: { showingVoiceOverlay = false },
-                onRemediate: { onVoiceRemediate?($0) }
-            )
-        }
+        // Auto-open the panel when the Mac reports active voice work (a
+        // dictation kicked off elsewhere, or an error needs attention). We
+        // don't auto-open just for stale transcripts/responses — closing the
+        // panel must stay closed once the turn is done.
         .onChange(of: voiceState?.phase) { _, newPhase in
-            // Auto-close when the Mac finishes a successful turn (idle + result, no error).
-            guard showingVoiceOverlay,
-                  newPhase == .idle,
-                  voiceState?.error == nil,
-                  let summary = voiceState?.responseSummary,
-                  !summary.isEmpty,
-                  summary != "Transcribing...",
-                  summary != "thinking..."
-            else { return }
-            Task {
-                try? await Task.sleep(for: .milliseconds(1400))
-                if voiceState?.phase == .idle && voiceState?.error == nil {
-                    showingVoiceOverlay = false
-                }
+            if let newPhase, newPhase != .idle {
+                voicePanelOpen = true
+            }
+        }
+        .onChange(of: voiceState?.error?.code) { _, newCode in
+            if newCode != nil {
+                voicePanelOpen = true
             }
         }
     }
@@ -113,7 +97,7 @@ struct HomeView: View {
     private var voiceTrigger: some View {
         Button {
             onVoiceStart?()
-            showingVoiceOverlay = true
+            voicePanelOpen = true
         } label: {
             Image(systemName: "mic.fill")
                 .font(.system(size: 18, weight: .semibold))
@@ -158,7 +142,11 @@ struct HomeView: View {
 
                     HomeRoutinesList(routines: routines, onRun: onRoutine)
 
-                    HomeRecentTape(entries: recent)
+                    HomeActivityFeed(
+                        recent: recent,
+                        agentFeed: agentFeed,
+                        attention: attention
+                    )
 
                     HomeSyncSection(
                         actions: sync,
@@ -168,8 +156,24 @@ struct HomeView: View {
                 }
                 .padding(.horizontal, 24)
                 .padding(.vertical, 18)
-                .frame(maxWidth: 1100)
                 .frame(maxWidth: .infinity)
+            }
+
+            if voicePanelOpen {
+                HomeVoicePanel(
+                    voiceState: voiceState,
+                    macLabel: voiceMacLabel,
+                    isPerforming: isVoicePerforming,
+                    onStart: { onVoiceStart?() },
+                    onStop:  { onVoiceStop?() },
+                    onCancel: {
+                        onVoiceCancel?()
+                        voicePanelOpen = false
+                    },
+                    onClose: { voicePanelOpen = false },
+                    onRemediate: { onVoiceRemediate?($0) }
+                )
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
             HomeCloudStrip(cloud: cloud)
@@ -178,6 +182,7 @@ struct HomeView: View {
                 telemetry: bottomTelemetry
             )
         }
+        .animation(.easeInOut(duration: 0.22), value: voicePanelOpen)
     }
 }
 
