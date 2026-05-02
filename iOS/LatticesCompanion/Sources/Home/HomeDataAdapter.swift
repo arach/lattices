@@ -168,7 +168,20 @@ private extension HomeDataAdapter {
             lastActionAgo: firstHistory.map { agoLabel(from: $0.createdAt) },
             agentState: agentState(for: voice),
             attentionCount: snapshot?.questions.count ?? 0,
-            latencyMs: nil
+            latencyMs: nil,
+            metrics: metrics(from: snapshot?.telemetry)
+        )
+    }
+
+    /// Map `DeckSystemTelemetry` onto the gauge struct. Returns nil if no
+    /// telemetry sample exists, so the card hides its gauge cluster.
+    static func metrics(from tel: DeckSystemTelemetry?) -> HomeMachineMetrics? {
+        guard let tel else { return nil }
+        return HomeMachineMetrics(
+            cpuPercent: tel.cpuLoadPercent,
+            gpuPercent: tel.gpuLoadPercent,
+            memoryPercent: tel.memoryUsedPercent,
+            thermalPercent: tel.thermalPressurePercent
         )
     }
 

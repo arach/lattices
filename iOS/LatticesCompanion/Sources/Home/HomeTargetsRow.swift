@@ -90,58 +90,116 @@ private struct HomeTargetCard: View {
     var onEnterDeck: ((HomeMachine) -> Void)? = nil
     var onAttention: ((HomeMachine) -> Void)? = nil
 
+    /// Shared minimum card height. Picked so the gauge column has room to
+    /// breathe (status badge + tall gauges + latency) and offline cards
+    /// reserve the same space — keeps geometry identical regardless of state.
+    private var cardMinHeight: CGFloat { 156 }
+
     var body: some View {
         Button(action: { onEnterDeck?(machine) }) {
             LatsCard(padding: 12, radius: 8) {
-                VStack(alignment: .leading, spacing: 10) {
-                    headerRow
-                    identityBlock
-                    LatsHairlineDivider()
-                    bodyBlock
-                    LatsHairlineDivider()
-                    footerRow
+                HStack(alignment: .top, spacing: 14) {
+                    leftColumn
+                    rightColumn
                 }
+                .frame(minHeight: cardMinHeight)
             }
         }
         .buttonStyle(.plain)
         .opacity(emphasis == .deemphasized ? 0.78 : 1.0)
     }
 
-    // MARK: Header — icon, status, attention, chevron
+    private func hasGaugeContent(_ m: HomeMachineMetrics) -> Bool {
+        m.cpuPercent != nil
+            || m.gpuPercent != nil
+            || m.memoryPercent != nil
+            || m.thermalPercent != nil
+    }
 
-    private var headerRow: some View {
-        HStack(alignment: .top, spacing: 10) {
+    // MARK: Left column — name, identity, metadata, agent
+
+    private var leftColumn: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            nameRow
+            identityBlock
+            metadataBlock
+            Spacer(minLength: 0)
+            footerRow
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private var nameRow: some View {
+        HStack(spacing: 10) {
             iconTile
-            VStack(alignment: .leading, spacing: 3) {
-                Text(machine.name)
-                    .font(LatsFont.mono(13, weight: .semibold))
-                    .foregroundStyle(bodyText)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Text(machine.host)
-                    .font(LatsFont.mono(10))
-                    .foregroundStyle(LatsPalette.textDim)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+            Text(machine.name)
+                .font(LatsFont.mono(13, weight: .semibold))
+                .foregroundStyle(bodyText)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    // MARK: Right column — status badge above the gauge stack
+
+    private var rightColumn: some View {
+        VStack(alignment: .trailing, spacing: 10) {
+            statusStack
+
+            if let metrics = machine.metrics, hasGaugeContent(metrics) {
+                Spacer(minLength: 4)
+                HomeMachineGauges(metrics: metrics, barHeight: 80)
+                Spacer(minLength: 0)
+            } else {
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 4)
-            VStack(alignment: .trailing, spacing: 6) {
-                HStack(spacing: 6) {
-                    if machine.attentionCount > 0 {
-                        attentionDot
-                    }
-                    LatsBadge(
-                        text: machine.status.label,
-                        tint: machine.status.tint,
-                        dot: machine.status == .active
-                    )
+        }
+        .frame(width: 110, alignment: .trailing)
+    }
+
+    private var statusStack: some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            HStack(spacing: 6) {
+                if machine.attentionCount > 0 {
+                    attentionDot
                 }
-                if let lat = machine.latencyMs, machine.status != .offline {
-                    Text("\(lat)ms")
-                        .font(LatsFont.mono(9))
-                        .tracking(0.4)
-                        .foregroundStyle(LatsPalette.textFaint)
-                }
+                LatsBadge(
+                    text: machine.status.label,
+                    tint: machine.status.tint,
+                    dot: machine.status == .active
+                )
+            }
+            if let lat = machine.latencyMs, machine.status != .offline {
+                Text("\(lat)ms")
+                    .font(LatsFont.mono(9))
+                    .tracking(0.4)
+                    .foregroundStyle(LatsPalette.textFaint)
+            }
+        }
+    }
+
+    // MARK: Metadata — focus/last for live targets, paired info for offline
+
+    @ViewBuilder
+    private var metadataBlock: some View {
+        switch machine.status {
+        case .offline:
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text("PAIRED")
+                    .font(LatsFont.mono(9, weight: .bold))
+                    .tracking(0.8)
+                    .foregroundStyle(LatsPalette.textFaint)
+                    .frame(width: 50, alignment: .leading)
+                Text(machine.lastActionAgo ?? "—")
+                    .font(LatsFont.mono(11))
+                    .foregroundStyle(bodyDim)
+                Spacer(minLength: 0)
+            }
+        default:
+            VStack(alignment: .leading, spacing: 6) {
+                focusedRow
+                lastActionRow
             }
         }
     }
@@ -206,14 +264,7 @@ private struct HomeTargetCard: View {
         }
     }
 
-    // MARK: Body — focused app + window, last action
-
-    private var bodyBlock: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            focusedRow
-            lastActionRow
-        }
-    }
+    // MARK: Focused app + last action rows (active/online machines)
 
     @ViewBuilder
     private var focusedRow: some View {

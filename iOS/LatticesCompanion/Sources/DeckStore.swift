@@ -1,6 +1,15 @@
 import DeckKit
 import Foundation
 
+/// How aggressively the store should pull snapshots from the Mac. Two
+/// presets, mapped to interval values inside `DeckStore`:
+/// - `.fast`    → ~1s (active engagement: Deck open, voice in flight)
+/// - `.ambient` → ~5s (passive observation: Home idle)
+enum DeckPollPriority {
+    case fast
+    case ambient
+}
+
 @MainActor
 final class DeckStore: ObservableObject {
     @Published private(set) var discoveredBridges: [BridgeEndpoint] = []
@@ -21,6 +30,13 @@ final class DeckStore: ObservableObject {
     private let client = DeckBridgeClient()
     private let discovery = BridgeDiscovery()
     private var pollingTask: Task<Void, Never>?
+
+    /// UI hint for how aggressively to poll. Hosts flip this to `.fast` when
+    /// the user is actively engaged (Deck open, voice panel open, recording)
+    /// and back to `.ambient` when they're just looking at Home idle.
+    /// The store will *also* go fast on its own if the snapshot reports voice
+    /// activity or pending questions, so callers don't have to be exhaustive.
+    private var uiPriority: DeckPollPriority = .ambient
 
     var connectionLabel: String {
         // Prefer human-readable names (Bonjour service name / health-reported name)
@@ -114,6 +130,15 @@ final class DeckStore: ObservableObject {
         Task {
             await refreshSnapshot(endpoint: endpoint)
         }
+    }
+
+    /// Tell the store the user is actively engaged (or no longer engaged)
+    /// so it can speed up / slow down snapshot polling. Idempotent — call as
+    /// often as needed from `.onAppear` / `.onChange` hooks. The store will
+    /// independently go fast for in-snapshot signals (voice, attention) so
+    /// callers don't need to be perfect.
+    func setUIPriority(_ priority: DeckPollPriority) {
+        uiPriority = priority
     }
 
     func perform(
@@ -256,11 +281,26 @@ private extension DeckStore {
         pollingTask?.cancel()
         pollingTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1))
+                let interval = self?.currentPollInterval ?? 5.0
+                try? await Task.sleep(for: .seconds(interval))
                 guard let self else { return }
                 await self.refreshSnapshot(endpoint: endpoint)
             }
         }
+    }
+
+    /// Decide the next poll interval based on UI hint + last snapshot.
+    /// Voice activity, pending attention, or an explicit `.fast` UI hint
+    /// pull us into 1s mode; otherwise we sip at 5s. Intervals are
+    /// re-evaluated each tick so the loop adapts as state changes.
+    private var currentPollInterval: TimeInterval {
+        if uiPriority == .fast { return 1.0 }
+        if let voice = snapshot?.voice {
+            if voice.phase != .idle { return 1.0 }
+            if voice.error != nil   { return 1.0 }
+        }
+        if !(snapshot?.questions.isEmpty ?? true) { return 1.0 }
+        return 5.0
     }
 
     func preferredEndpoint(fallback: BridgeEndpoint? = nil) -> BridgeEndpoint? {

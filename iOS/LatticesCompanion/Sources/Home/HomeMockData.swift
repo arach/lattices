@@ -68,6 +68,18 @@ struct HomeMachine: Identifiable, Equatable {
     let agentState: HomeAgentState
     let attentionCount: Int   // pending attention items
     let latencyMs: Int?       // ping latency in ms
+    /// Live load gauges. nil when the machine isn't reporting telemetry
+    /// (offline / standby / discovered-but-not-paired).
+    var metrics: HomeMachineMetrics? = nil
+}
+
+/// Per-machine load metrics surfaced as gauges. All fields are 0…100
+/// percentages and any may be nil if that signal isn't available.
+struct HomeMachineMetrics: Equatable {
+    let cpuPercent: Double?
+    let gpuPercent: Double?
+    let memoryPercent: Double?
+    let thermalPercent: Double?
 }
 
 // MARK: - Scenes (layout presets — instant, deterministic)
@@ -198,7 +210,13 @@ enum HomeMock {
             lastActionAgo: "2m",
             agentState: .running(task: "writing tile spec"),
             attentionCount: 3,
-            latencyMs: 14
+            latencyMs: 14,
+            metrics: HomeMachineMetrics(
+                cpuPercent: 39,
+                gpuPercent: 12,
+                memoryPercent: 67,
+                thermalPercent: 28
+            )
         ),
         HomeMachine(
             id: "arach-mini",
