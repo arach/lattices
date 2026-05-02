@@ -1074,6 +1074,8 @@ struct SettingsContentView: View {
                             }
 
                             shortcutsTmuxCard
+
+                            mouseGesturesCard
                         }
                         .padding(.horizontal, 20)
                         .padding(.vertical, 16)
@@ -1444,6 +1446,86 @@ struct SettingsContentView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+    }
+
+    // MARK: - Mouse Gestures
+
+    private var mouseGesturesCard: some View {
+        let config = MouseShortcutConfig.load()
+
+        return shortcutSectionCard(
+            title: "Mouse Gestures",
+            eyebrow: "MX Master",
+            summary: "Hold a side button and drag in a direction. Edit ~/.lattices/mouse-shortcuts.json to remap."
+        ) {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Button 3 — Grid / Layout")
+                    .font(Typo.monoBold(11))
+                    .foregroundColor(Palette.text)
+
+                HStack(spacing: 0) {
+                    ForEach([("↑", "up"), ("←", "left"), ("→", "right"), ("↓", "down")], id: \.0) { arrow, dir in
+                        mouseGestureRow(button: "button3", direction: dir, arrow: arrow, config: config)
+                        if arrow != "↓" { Divider().frame(width: 1).background(Palette.border) }
+                    }
+                }
+                .padding(12)
+                .background(shortcutsInsetPanel)
+
+                HStack(spacing: 6) {
+                    Image(systemName: "doc.text")
+                        .font(.system(size: 9))
+                        .foregroundColor(Palette.textMuted)
+                    Text("~/.lattices/mouse-shortcuts.json")
+                        .font(Typo.mono(10))
+                        .foregroundColor(Palette.textMuted)
+                }
+            }
+        }
+    }
+
+    private func mouseGestureRow(button: String, direction: String, arrow: String, config: MouseShortcutConfig?) -> some View {
+        let actionLabel = resolveAction(for: button, direction: direction, config: config)
+
+        return HStack(spacing: 6) {
+            Text(arrow)
+                .font(.system(size: 16, weight: .bold))
+                .foregroundColor(Palette.text)
+                .frame(width: 24)
+
+            Text(actionLabel)
+                .font(Typo.mono(10.5))
+                .foregroundColor(Palette.textMuted)
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func resolveAction(for button: String, direction: String, config: MouseShortcutConfig?) -> String {
+        guard let config else {
+            switch (button, direction) {
+            case ("button3", "up"):    return "Maximize"
+            case ("button3", "left"):  return "2×2 Grid"
+            case ("button3", "right"): return "3×3 Grid"
+            case ("button3", "down"):  return "4×4 Grid"
+            default: return "—"
+            }
+        }
+
+        for rule in config.rules {
+            if rule.trigger.button == button && rule.trigger.direction == direction {
+                return formatActionType(rule.action.type)
+            }
+        }
+        return "—"
+    }
+
+    private func formatActionType(_ type: String) -> String {
+        type.replacingOccurrences(of: ".", with: " ")
+            .replacingOccurrences(of: "tile ", with: "")
+            .replacingOccurrences(of: "grid ", with: "")
+            .capitalized
     }
 
     // MARK: - Shortcut section UI
