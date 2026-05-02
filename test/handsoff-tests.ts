@@ -6,7 +6,7 @@
  * Usage: bun run test/handsoff-tests.ts
  */
 
-import { infer } from "../lib/infer.ts";
+import { infer, resolveVoiceInferenceOptions } from "../lib/infer.ts";
 import { readFileSync } from "fs";
 import { join, dirname } from "path";
 
@@ -48,6 +48,8 @@ create_layer: Save current arrangement as a named layer
 `;
 
 systemPrompt = systemPrompt.replace("{{intent_catalog}}", intentCatalog);
+const voiceInference = resolveVoiceInferenceOptions();
+const INFER_TIMEOUT_MS = 15_000;
 
 // ── Realistic snapshot ─────────────────────────────────────────────
 
@@ -699,15 +701,18 @@ async function runTest(test: Test): Promise<{ pass: number; fail: number; errors
   }));
 
   const userMessage = `USER: "${test.say}"\n\n--- DESKTOP SNAPSHOT ---\n${snapshot}\n--- END SNAPSHOT ---\n`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), INFER_TIMEOUT_MS);
 
   try {
     const raw = await infer(userMessage, {
-      provider: "xai",
-      model: "grok-4.20-beta-0309-non-reasoning",
+      provider: voiceInference.provider,
+      model: voiceInference.model,
       system: systemPrompt,
       messages,
       temperature: 0.2,
       maxTokens: 512,
+      abortSignal: controller.signal,
       tag: `test-${test.id}`,
     });
 
@@ -743,12 +748,14 @@ async function runTest(test: Test): Promise<{ pass: number; fail: number; errors
     return { pass, fail, errors };
   } catch (err: any) {
     return { pass: 0, fail: test.checks.length, errors: [`API error: ${err.message}`] };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
 // ── Main ───────────────────────────────────────────────────────────
 
-console.log(`Running ${tests.length} tests against xai/grok-4.20-beta-0309-non-reasoning...\n`);
+console.log(`Running ${tests.length} tests against ${voiceInference.provider}/${voiceInference.model}...\n`);
 
 let totalPass = 0;
 let totalFail = 0;

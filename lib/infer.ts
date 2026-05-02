@@ -3,7 +3,7 @@
  *
  * Features:
  *  - Multi-provider: groq, openai, anthropic, google, xai
- *  - Credential loading: env vars → ~/.lattices/inference.json → ~/.config/speakeasy/settings.json
+ *  - Credential loading: env vars → .env.local/.env → ~/.lattices/inference.json → ~/.config/speakeasy/settings.json
  *  - Instrumented: every call logged with timing, model, token usage
  *  - Simple API: `await infer("do something", { provider: "groq" })`
  */
@@ -48,13 +48,21 @@ export interface InferResult {
 
 // ── Default models per provider ────────────────────────────────────
 
+const PROVIDER_NAMES: ProviderName[] = ["groq", "openai", "anthropic", "google", "xai", "minimax"];
+const VOICE_PROVIDER_PRIORITY: ProviderName[] = ["groq", "xai", "openai", "google", "anthropic", "minimax"];
+
 const DEFAULT_MODELS: Record<ProviderName, string> = {
   groq: "llama-3.3-70b-versatile",
   openai: "gpt-4o-mini",
   anthropic: "claude-sonnet-4-6",
   google: "gemini-2.0-flash",
-  xai: "grok-4-1-fast",
+  xai: "grok-4-1-fast-non-reasoning",
   minimax: "MiniMax-M2.5-highspeed",
+};
+
+const VOICE_DEFAULT_MODELS: Record<ProviderName, string> = {
+  ...DEFAULT_MODELS,
+  groq: "llama-3.1-8b-instant",
 };
 
 // ── Credential loading ─────────────────────────────────────────────
@@ -69,6 +77,81 @@ interface CredentialStore {
 }
 
 let _cachedCreds: CredentialStore | null = null;
+let _cachedLocalEnv: Record<string, string> | null = null;
+
+function parseDotEnv(content: string): Record<string, string> {
+  const env: Record<string, string> = {};
+
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+
+    const match = line.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+    if (!match) continue;
+
+    const [, key, rawValue] = match;
+    let value = rawValue.trim();
+    const quote = value[0];
+    if ((quote === `"` || quote === `'`) && value.endsWith(quote)) {
+      value = value.slice(1, -1);
+    } else {
+      value = value.replace(/\s+#.*$/, "").trim();
+    }
+
+    env[key] = value;
+  }
+
+  return env;
+}
+
+function loadLocalEnv(): Record<string, string> {
+  if (_cachedLocalEnv) return _cachedLocalEnv;
+
+  const repoRoot = join(import.meta.dir, "..");
+  const candidates = [
+    join(repoRoot, ".env"),
+    join(repoRoot, ".env.local"),
+    join(process.cwd(), ".env"),
+    join(process.cwd(), ".env.local"),
+  ];
+
+  const env: Record<string, string> = {};
+  for (const file of Array.from(new Set(candidates))) {
+    if (!existsSync(file)) continue;
+    try {
+      Object.assign(env, parseDotEnv(readFileSync(file, "utf-8")));
+    } catch {}
+  }
+
+  _cachedLocalEnv = env;
+  return env;
+}
+
+export function getInferenceEnv(name: string): string | undefined {
+  return process.env[name] || loadLocalEnv()[name];
+}
+
+function firstInferenceEnv(names: string[]): string | undefined {
+  for (const name of names) {
+    const value = getInferenceEnv(name);
+    if (value) return value;
+  }
+}
+
+function normalizeProvider(value: string | undefined): ProviderName | undefined {
+  const provider = value?.trim().toLowerCase();
+  return PROVIDER_NAMES.includes(provider as ProviderName) ? (provider as ProviderName) : undefined;
+}
+
+function assignGrokAlias(creds: CredentialStore) {
+  const key = getInferenceEnv("GROK_API_KEY");
+  if (!key) return;
+
+  // People often say/type "Grok" when they mean Groq. Use the key shape to
+  // route the alias without making xAI and Groq credentials interchangeable.
+  if (!creds.groq && key.startsWith("gsk_")) creds.groq = key;
+  if (!creds.xai && key.startsWith("xai-")) creds.xai = key;
+}
 
 function loadCredentials(): CredentialStore {
   if (_cachedCreds) return _cachedCreds;
@@ -76,12 +159,19 @@ function loadCredentials(): CredentialStore {
   const creds: CredentialStore = {};
 
   // Layer 1: env vars (highest priority)
-  if (process.env.GROQ_API_KEY) creds.groq = process.env.GROQ_API_KEY;
-  if (process.env.OPENAI_API_KEY) creds.openai = process.env.OPENAI_API_KEY;
-  if (process.env.ANTHROPIC_API_KEY) creds.anthropic = process.env.ANTHROPIC_API_KEY;
-  if (process.env.GOOGLE_GENERATIVE_AI_API_KEY) creds.google = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-  if (process.env.XAI_API_KEY) creds.xai = process.env.XAI_API_KEY;
-  if (process.env.MINIMAX_API_KEY) creds.minimax = process.env.MINIMAX_API_KEY;
+  const groqKey = getInferenceEnv("GROQ_API_KEY");
+  const openaiKey = getInferenceEnv("OPENAI_API_KEY");
+  const anthropicKey = getInferenceEnv("ANTHROPIC_API_KEY");
+  const googleKey = getInferenceEnv("GOOGLE_GENERATIVE_AI_API_KEY");
+  const xaiKey = getInferenceEnv("XAI_API_KEY");
+  const minimaxKey = getInferenceEnv("MINIMAX_API_KEY");
+  if (groqKey) creds.groq = groqKey;
+  if (openaiKey) creds.openai = openaiKey;
+  if (anthropicKey) creds.anthropic = anthropicKey;
+  if (googleKey) creds.google = googleKey;
+  if (xaiKey) creds.xai = xaiKey;
+  if (minimaxKey) creds.minimax = minimaxKey;
+  assignGrokAlias(creds);
 
   // Layer 2: ~/.lattices/inference.json
   const latticesConfig = join(homedir(), ".lattices", "inference.json");
@@ -109,6 +199,8 @@ function loadCredentials(): CredentialStore {
       if (!creds.openai && p.openai?.apiKey) creds.openai = p.openai.apiKey;
       if (!creds.anthropic && p.anthropic?.apiKey) creds.anthropic = p.anthropic.apiKey;
       if (!creds.google && p.gemini?.apiKey) creds.google = p.gemini.apiKey;
+      if (!creds.xai && p.xai?.apiKey) creds.xai = p.xai.apiKey;
+      if (!creds.minimax && p.minimax?.apiKey) creds.minimax = p.minimax.apiKey;
     } catch {}
   }
 
@@ -119,12 +211,35 @@ function loadCredentials(): CredentialStore {
 /** Clear cached credentials (call if config changes at runtime) */
 export function clearCredentialCache() {
   _cachedCreds = null;
+  _cachedLocalEnv = null;
 }
 
 /** List which providers have credentials available */
 export function availableProviders(): ProviderName[] {
   const creds = loadCredentials();
   return (Object.keys(creds) as ProviderName[]).filter((k) => !!creds[k]);
+}
+
+/** Voice/hands-off defaults favor the lowest-latency configured provider. */
+export function resolveVoiceInferenceOptions(): { provider: ProviderName; model: string } {
+  const configuredProvider = normalizeProvider(firstInferenceEnv([
+    "LATTICES_VOICE_PROVIDER",
+    "LATTICES_HANDSOFF_PROVIDER",
+    "LATTICES_INFER_PROVIDER",
+  ]));
+
+  const creds = loadCredentials();
+  const provider = configuredProvider
+    ?? VOICE_PROVIDER_PRIORITY.find((name) => !!creds[name])
+    ?? "groq";
+
+  const model = firstInferenceEnv([
+    "LATTICES_VOICE_MODEL",
+    "LATTICES_HANDSOFF_MODEL",
+    "LATTICES_INFER_MODEL",
+  ]) ?? VOICE_DEFAULT_MODELS[provider];
+
+  return { provider, model };
 }
 
 // ── Provider factory ───────────────────────────────────────────────
@@ -211,7 +326,7 @@ export async function infer(
   const creds = loadCredentials();
   if (!creds[provider]) {
     throw new Error(
-      `No API key for provider "${provider}". Set it in env, ~/.lattices/inference.json, or ~/.config/speakeasy/settings.json`
+      `No API key for provider "${provider}". Set it in env, .env.local, ~/.lattices/inference.json, or ~/.config/speakeasy/settings.json`
     );
   }
 
