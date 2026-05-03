@@ -13,24 +13,22 @@ for keeping file structure as architecture.
 | `app/` | Native macOS menu bar app. Swift/AppKit/SwiftUI package. |
 | `bin/` | Published TypeScript CLI and app helper entry points. |
 | `swift/` | Shared Swift package code used by the app. |
-| `iOS/` | iOS companion app experiments and local build state. |
-| `site/` | Public marketing site. |
-| `docs-site/` | Astro documentation site. |
-| `content/` | Shared blog/content source consumed by sites. |
+| `apps/ios/` | iOS companion app experiments and local build state. |
+| `apps/site/` | Public marketing site and blog content. |
+| `apps/docs-site/` | Astro documentation site. |
 | `docs/` | Markdown docs and engineering proposals. |
 | `tools/agents/skills/` | Agent skill pack for driving Lattices. |
 | `assets/` | Shared release/app assets. |
 | `tools/release/` | Maintainer scripts for building and shipping. |
 | `tests/` | CLI, daemon, and evaluation tests. |
-| `lib/` | Shared TypeScript helpers that are not CLI entry points. |
 
 ## Problem
 
 The root currently mixes categories:
 
 - shipped product surfaces: `app/`, `bin/`, `swift/`
-- websites: `site/`, `docs-site/`, `content/`
-- companion experiments: `iOS/`
+- websites: `apps/site/`, `apps/docs-site/`
+- companion experiments: `apps/ios/`
 - generated or release output: `dist/`
 - maintainer and agent affordances: `docs/`, `tools/`, `tests/`
 
@@ -44,16 +42,13 @@ Do not reorganize everything at once. The target is:
 ```text
 apps/
   mac/            # current app/
-  ios/            # current iOS/
-  site/           # current site/
-  docs-site/      # current docs-site/
+  ios/            # iOS companion app
+  site/           # marketing site and blog content
+  docs-site/      # documentation site
 
 packages/
   cli/            # current bin/ plus TypeScript package surface
   swift/          # current swift/
-
-content/
-  blog/
 
 docs/
   proposals/
@@ -83,7 +78,8 @@ Good first moves:
 1. Treat `dist/` as generated output only.
 2. Move blog content closer to the site that owns it, or explicitly document it
    as shared content.
-3. Move `iOS/` under `apps/ios/` once companion work becomes active again.
+3. Decide whether the iOS companion remains in this repo or moves to its own
+   repo once the companion work becomes active again.
 4. Split `docs/proposals/` for numbered engineering docs such as `LAT-001`.
 5. Decide whether `bin/` remains the package root for the CLI or becomes
    `packages/cli/src/` before adding more exported modules.

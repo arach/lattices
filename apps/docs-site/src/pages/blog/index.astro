@@ -1,7 +1,7 @@
 ---
 // styles inline below
 
-const posts = await import.meta.glob('../../../../content/blog/*.md', { eager: true }) as Record<string, any>
+const posts = await import.meta.glob('../../../../site/content/blog/*.md', { eager: true }) as Record<string, any>
 
 const sortedPosts = Object.entries(posts)
   .map(([path, mod]) => ({

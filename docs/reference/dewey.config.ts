@@ -22,8 +22,8 @@ export default {
       'app-helper': 'bin/lattices-app.ts',
       'menu-bar-app': 'app/Sources/',
       'docs': 'docs/',
-      'docs-site': 'docs-site/',
-      'marketing-site': 'site/',
+      'docs-site': 'apps/docs-site/',
+      'marketing-site': 'apps/site/',
     },
 
     rules: [

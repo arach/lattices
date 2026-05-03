@@ -1,5 +1,5 @@
 <picture>
-  <img alt="lattices" src="site/public/og.png" />
+  <img alt="lattices" src="apps/site/public/og.png" />
 </picture>
 
 # lattices

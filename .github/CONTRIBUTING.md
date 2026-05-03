@@ -7,7 +7,7 @@ Lattices has a few main surfaces:
 - TypeScript CLI and published package entry points in `bin/`
 - native macOS app in `app/Sources/`
 - shared Swift package code in `swift/`
-- sites in `site/` and `docs-site/`
+- sites in `apps/site/` and `apps/docs-site/`
 - agent-facing docs and skills in `docs/` and `skills/`
 
 The CLI and app share contracts for session names, tmux title tags, daemon methods, project
@@ -57,6 +57,6 @@ Please keep PRs focused. Good PRs usually include:
 
 ## Docs
 
-Docs live in `docs/`, `README.md`, and the Astro docs site under `docs-site`. For design/proposal
+Docs live in `docs/`, `README.md`, and the Astro docs site under `apps/docs-site`. For design/proposal
 work, use numbered docs such as `LAT-001` so decisions can be discussed and approved before the
 implementation grows.

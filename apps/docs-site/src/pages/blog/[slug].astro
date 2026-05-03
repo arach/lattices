@@ -2,7 +2,7 @@
 // styles inline below
 
 export async function getStaticPaths() {
-  const posts = await import.meta.glob('../../../../content/blog/*.md', { eager: true }) as Record<string, any>
+  const posts = await import.meta.glob('../../../../site/content/blog/*.md', { eager: true }) as Record<string, any>
 
   return Object.entries(posts).map(([path, mod]) => ({
     params: { slug: path.split('/').pop()?.replace('.md', '') ?? '' },
