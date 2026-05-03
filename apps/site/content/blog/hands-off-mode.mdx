@@ -6,12 +6,12 @@ tags: ["voice", "ai", "tts", "groq", "macos", "window-management"]
 author: "Arach Tchoupani"
 ---
 
-import StatsRow from '../../site/src/components/blog/StatsRow'
-import LatencyJourney from '../../site/src/components/blog/LatencyJourney'
-import TurnPipeline from '../../site/src/components/blog/TurnPipeline'
-import ArchDiagram from '../../site/src/components/blog/ArchDiagram'
-import ContextExplorer from '../../site/src/components/blog/ContextExplorer'
-import TestResults from '../../site/src/components/blog/TestResults'
+import StatsRow from '../../src/components/blog/StatsRow'
+import LatencyJourney from '../../src/components/blog/LatencyJourney'
+import TurnPipeline from '../../src/components/blog/TurnPipeline'
+import ArchDiagram from '../../src/components/blog/ArchDiagram'
+import ContextExplorer from '../../src/components/blog/ContextExplorer'
+import TestResults from '../../src/components/blog/TestResults'
 
 I've been building Lattices for a while — it tiles windows, manages tmux sessions, does OCR search across the desktop. Standard workspace manager stuff.
 
@@ -110,4 +110,4 @@ The code is fast enough. The architecture is right. Now it's about making the AI
 
 ---
 
-Lattices is open source. The hands-off mode code lives in `bin/handsoff-worker.ts` (the worker), `lib/infer.ts` (the inference wrapper), and `docs/prompts/hands-off-system.md` (the system prompt). The test suite is at `tests/handsoff-tests.ts`.
+Lattices is open source. The hands-off mode code lives in `bin/handsoff-worker.ts` (the worker), `bin/infer.ts` (the inference wrapper), and `docs/prompts/hands-off-system.md` (the system prompt). The test suite is at `tests/handsoff-tests.ts`.

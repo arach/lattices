@@ -136,7 +136,7 @@ Context usage and session cost are shown in the AI corner header.
 
 ## Hands-off inference
 
-Hands-off voice uses the shared inference wrapper in `lib/infer.ts`.
+Hands-off voice uses the shared inference wrapper in `bin/infer.ts`.
 By default it chooses the lowest-latency configured provider and, when
 Groq credentials are present, uses `groq/llama-3.1-8b-instant`.
 

@@ -21,8 +21,8 @@
 | App Helper | `bin/lattices-app.ts` | Build, launch, quit, and restart the app |
 | Menu Bar App | `app/Sources/` | |
 | Docs | `docs/` | |
-| Docs Site | `docs-site/` | |
-| Marketing Site | `site/` | |
+| Docs Site | `apps/docs-site/` | |
+| Marketing Site | `apps/site/` | |
 
 ## Quick Navigation
 

@@ -31,7 +31,7 @@
     "./project-twin": "./bin/project-twin.ts"
   },
   "scripts": {
-    "dev": "bun --cwd docs-site dev",
+    "dev": "bun --cwd apps/docs-site dev",
     "check": "bun run check:types && bun run check:app",
     "check:types": "tsc --noEmit",
     "check:app": "env CLANG_MODULE_CACHE_PATH=/tmp/lattices-clang-cache SWIFTPM_TESTS_MODULECACHE=/tmp/lattices-swiftpm-cache swift build --package-path app",

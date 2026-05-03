@@ -3,7 +3,7 @@ name: Deploy site to GitHub Pages
 on:
   push:
     branches: [main]
-    paths: [site/**, docs-site/**, docs/**]
+    paths: [apps/site/**, apps/docs-site/**, docs/**]
   workflow_dispatch:
 
 permissions:
@@ -27,27 +27,27 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
 
-      # Landing page (site/)
+      # Landing page (apps/site/)
       - run: bun install --frozen-lockfile
-        working-directory: site
+        working-directory: apps/site
 
       - run: bun run build
-        working-directory: site
+        working-directory: apps/site
 
-      # Docs site (docs-site/) → site/dist/docs/
+      # Docs site (apps/docs-site/) → apps/site/dist/docs/
       - run: bun install --frozen-lockfile
-        working-directory: docs-site
+        working-directory: apps/docs-site
 
       - run: bun run build
-        working-directory: docs-site
+        working-directory: apps/docs-site
 
-      - run: mkdir -p site/dist/docs && cp -r docs-site/dist/* site/dist/docs/
+      - run: mkdir -p apps/site/dist/docs && cp -r apps/docs-site/dist/* apps/site/dist/docs/
 
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: site/dist
+          path: apps/site/dist
 
   deploy:
     needs: build

@@ -23,7 +23,7 @@ import {
   normalizeAssistantPlan,
   tryLocalAssistantPlan,
 } from "./assistant-intelligence.ts";
-import { infer, resolveVoiceInferenceOptions } from "../lib/infer.ts";
+import { infer, resolveVoiceInferenceOptions } from "./infer.ts";
 
 const INFER_TIMEOUT_MS = 15_000;
 const voiceInference = resolveVoiceInferenceOptions();

@@ -14,7 +14,7 @@ import {
   normalizeAssistantPlan,
   tryLocalAssistantPlan,
 } from "./assistant-intelligence.ts";
-import { inferJSON, resolveVoiceInferenceOptions } from "../lib/infer.ts";
+import { inferJSON, resolveVoiceInferenceOptions } from "./infer.ts";
 
 const INFER_TIMEOUT_MS = 15_000;
 

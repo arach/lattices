@@ -6,7 +6,7 @@
  * Usage: bun run tests/handsoff-tests.ts
  */
 
-import { infer, resolveVoiceInferenceOptions } from "../lib/infer.ts";
+import { infer, resolveVoiceInferenceOptions } from "../bin/infer.ts";
 import { readFileSync } from "fs";
 import { join, dirname } from "path";
 
