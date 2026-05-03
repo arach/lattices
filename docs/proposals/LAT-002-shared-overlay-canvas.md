@@ -41,7 +41,7 @@ Lattices already has the hard parts in pieces. The value is in unifying the canv
 
 ### HUD
 
-`app/Sources/Core/Overlays/HUD/HUDController.swift` already uses a warm, persistent model:
+`apps/mac/Sources/Core/Overlays/HUD/HUDController.swift` already uses a warm, persistent model:
 
 1. Panels are prebuilt.
 2. Panels stay ordered in the window server.
@@ -53,17 +53,17 @@ This makes the HUD feel fast. But the HUD is a set of segmented panels: top, bot
 
 ### Drag Snap
 
-`app/Sources/Core/Desktop/WindowDragSnapController.swift` creates `WindowSnapOverlayPanel` instances keyed by screen. Each panel covers a whole screen, ignores mouse events, joins all Spaces, and draws snap zones into an `NSView`.
+`apps/mac/Sources/Core/Desktop/WindowDragSnapController.swift` creates `WindowSnapOverlayPanel` instances keyed by screen. Each panel covers a whole screen, ignores mouse events, joins all Spaces, and draws snap zones into an `NSView`.
 
 This is very close to the proposed canvas, but it is owned by drag snap and only exists for that feature's model.
 
 ### Mouse Gestures
 
-`app/Sources/Core/Input/MouseGestureController.swift` creates a `MouseGestureOverlay` for a gesture session. It draws path feedback, recognition feedback, and completion labels. It is intentionally close to the input/action fast path, but its rendering should remain decorative.
+`apps/mac/Sources/Core/Input/MouseGestureController.swift` creates a `MouseGestureOverlay` for a gesture session. It draws path feedback, recognition feedback, and completion labels. It is intentionally close to the input/action fast path, but its rendering should remain decorative.
 
 ### Overlay Shells
 
-`app/Sources/Core/Overlays/OverlayPanelShell.swift` helps normal panel-based surfaces, but it is optimized for discrete overlay panels, not full-screen passive visual layers.
+`apps/mac/Sources/Core/Overlays/OverlayPanelShell.swift` helps normal panel-based surfaces, but it is optimized for discrete overlay panels, not full-screen passive visual layers.
 
 ## Proposal
 
@@ -346,8 +346,8 @@ The shared canvas must not:
 
 ## References
 
-- `app/Sources/Core/Overlays/HUD/HUDController.swift`
-- `app/Sources/Core/Desktop/WindowDragSnapController.swift`
-- `app/Sources/Core/Input/MouseGestureController.swift`
-- `app/Sources/Core/Overlays/OverlayPanelShell.swift`
+- `apps/mac/Sources/Core/Overlays/HUD/HUDController.swift`
+- `apps/mac/Sources/Core/Desktop/WindowDragSnapController.swift`
+- `apps/mac/Sources/Core/Input/MouseGestureController.swift`
+- `apps/mac/Sources/Core/Overlays/OverlayPanelShell.swift`
 - `docs/proposals/LAT-001-gesture-visual-customization.md`

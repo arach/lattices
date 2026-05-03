@@ -20,15 +20,15 @@ The root issue is not "tiling quality" in isolation. The deeper issue is that La
 
 This review is based on:
 
-- `app/Sources/WindowTiler.swift`
-- `app/Sources/WorkspaceManager.swift`
-- `app/Sources/IntentEngine.swift`
-- `app/Sources/VoiceIntentResolver.swift`
-- `app/Sources/LatticesApi.swift`
-- `app/Sources/PaletteCommand.swift`
-- `app/Sources/HUDController.swift`
-- `app/Sources/DesktopModel.swift`
-- `app/Sources/HandsOffSession.swift`
+- `apps/mac/Sources/WindowTiler.swift`
+- `apps/mac/Sources/WorkspaceManager.swift`
+- `apps/mac/Sources/IntentEngine.swift`
+- `apps/mac/Sources/VoiceIntentResolver.swift`
+- `apps/mac/Sources/LatticesApi.swift`
+- `apps/mac/Sources/PaletteCommand.swift`
+- `apps/mac/Sources/HUDController.swift`
+- `apps/mac/Sources/DesktopModel.swift`
+- `apps/mac/Sources/HandsOffSession.swift`
 - `docs/voice-command-protocol.md`
 
 ## Current Architecture

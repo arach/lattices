@@ -10,7 +10,7 @@ for keeping file structure as architecture.
 
 | Path | Role |
 | --- | --- |
-| `app/` | Native macOS menu bar app. Swift/AppKit/SwiftUI package. |
+| `apps/mac/` | Native macOS menu bar app. Swift/AppKit/SwiftUI package. |
 | `bin/` | Published TypeScript CLI and app helper entry points. |
 | `swift/` | Shared Swift package code used by the app. |
 | `apps/ios/` | iOS companion app experiments and local build state. |
@@ -26,7 +26,7 @@ for keeping file structure as architecture.
 
 The root currently mixes categories:
 
-- shipped product surfaces: `app/`, `bin/`, `swift/`
+- shipped product surfaces: `apps/mac/`, `bin/`, `swift/`
 - websites: `apps/site/`, `apps/docs-site/`
 - companion experiments: `apps/ios/`
 - generated or release output: `dist/`
@@ -41,7 +41,7 @@ Do not reorganize everything at once. The target is:
 
 ```text
 apps/
-  mac/            # current app/
+  mac/            # macOS menu bar app
   ios/            # iOS companion app
   site/           # marketing site and blog content
   docs-site/      # documentation site

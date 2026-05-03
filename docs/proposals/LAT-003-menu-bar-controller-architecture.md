@@ -40,7 +40,7 @@ The lesson is more about ownership. Clicky's menu bar controller has one job. La
 
 ## Current State
 
-The relevant code is in `app/Sources/AppShell/AppDelegate.swift`.
+The relevant code is in `apps/mac/Sources/AppShell/AppDelegate.swift`.
 
 Today, `AppDelegate` owns:
 
@@ -191,7 +191,7 @@ This is the main lesson from Clicky: use `NSPanel` where control matters. Do not
 ## Suggested File Shape
 
 ```text
-app/Sources/AppShell/
+apps/mac/Sources/AppShell/
   AppDelegate.swift
   MenuBarController.swift
   AppActivationCoordinator.swift
@@ -285,7 +285,7 @@ Manual testing should cover:
 
 ## References
 
-- `app/Sources/AppShell/AppDelegate.swift`
-- `app/Sources/AppShell/MainView.swift`
-- `app/Sources/Core/Overlays/OverlayPanelShell.swift`
+- `apps/mac/Sources/AppShell/AppDelegate.swift`
+- `apps/mac/Sources/AppShell/MainView.swift`
+- `apps/mac/Sources/Core/Overlays/OverlayPanelShell.swift`
 - `/Users/art/dev/ext/clicky/leanring-buddy/MenuBarPanelManager.swift`

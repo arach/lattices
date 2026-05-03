@@ -56,7 +56,7 @@ system input pipeline:
 
 ## Implementation
 
-- `app/Sources/MouseGestureController.swift` — CGEvent tap, gesture
+- `apps/mac/Sources/MouseGestureController.swift` — CGEvent tap, gesture
   state machine, breaker.
 - Tile actions go through `WindowTiler.tileFrontmostViaAX(...)`.
 - Grid actions enumerate visible windows via `DesktopModel.shared.allWindows()`

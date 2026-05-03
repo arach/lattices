@@ -27,10 +27,10 @@ The first supported model should be a declarative `visual` block on mouse shortc
 
 The gesture pipeline lives mainly in:
 
-- `app/Sources/Core/Input/MouseGestureController.swift`
-- `app/Sources/Core/Input/MouseGestureConfig.swift`
-- `app/Sources/Core/Input/MouseShortcutStore.swift`
-- `app/Sources/Core/Input/ShapeRecognizer.swift`
+- `apps/mac/Sources/Core/Input/MouseGestureController.swift`
+- `apps/mac/Sources/Core/Input/MouseGestureConfig.swift`
+- `apps/mac/Sources/Core/Input/MouseShortcutStore.swift`
+- `apps/mac/Sources/Core/Input/ShapeRecognizer.swift`
 
 The current/prototyped flow is:
 

@@ -1,7 +1,7 @@
 {
   "name": "@lattices/cli",
   "version": "0.4.10",
-  "description": "Agentic window manager for macOS — programmable workspace, smart layouts, managed tmux sessions, and a 35+-method agent API",
+  "description": "The agentic workspace manager for macOS — turn your desktop into a coherent API",
   "packageManager": "bun@1.3.11",
   "engines": {
     "node": ">=18"
@@ -34,7 +34,7 @@
     "dev": "bun --cwd apps/docs-site dev",
     "check": "bun run check:types && bun run check:app",
     "check:types": "tsc --noEmit",
-    "check:app": "env CLANG_MODULE_CACHE_PATH=/tmp/lattices-clang-cache SWIFTPM_TESTS_MODULECACHE=/tmp/lattices-swiftpm-cache swift build --package-path app",
+    "check:app": "env CLANG_MODULE_CACHE_PATH=/tmp/lattices-clang-cache SWIFTPM_TESTS_MODULECACHE=/tmp/lattices-swiftpm-cache swift build --package-path apps/mac",
     "test:e2e": "node --experimental-strip-types --test tests/e2e-daemon.test.mjs",
     "test:e2e:voice": "node --experimental-strip-types tests/eval-voice.js",
     "typecheck": "bun run check:types",
@@ -45,13 +45,13 @@
   "os": ["darwin"],
   "files": [
     "bin",
-    "app/Info.plist",
-    "app/Lattices.app",
-    "app/Lattices.entitlements",
-    "app/Package.swift",
-    "app/Resources",
-    "app/Sources",
-    "app/Tests",
+    "apps/mac/Info.plist",
+    "apps/mac/Lattices.app",
+    "apps/mac/Lattices.entitlements",
+    "apps/mac/Package.swift",
+    "apps/mac/Resources",
+    "apps/mac/Sources",
+    "apps/mac/Tests",
     "swift/Package.swift",
     "swift/Sources",
     "swift/Tests",

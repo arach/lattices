@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-APP_DIR="$ROOT/app"
+APP_DIR="$ROOT/apps/mac"
 BUILD_DIR="$ROOT/dist"
 APP_NAME="Lattices.app"
 DMG_NAME="Lattices.dmg"

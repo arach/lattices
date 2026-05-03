@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-APP_DIR="$ROOT/app"
+APP_DIR="$ROOT/apps/mac"
 DIST_DIR="$ROOT/dist"
 RELEASE_REPO="${LATTICES_RELEASE_REPO:-arach/lattices}"
 RELEASE_TARGET="${LATTICES_RELEASE_TARGET:-main}"

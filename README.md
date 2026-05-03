@@ -4,11 +4,11 @@
 
 # lattices
 
-The agentic window manager for macOS.
+The agentic workspace manager for macOS.
 
-Tile windows with hotkeys, manage persistent tmux sessions, index screen
-text with OCR, and give AI agents a 35-method desktop API — all from a
-native menu bar app and CLI.
+Lattices turns your Mac workspace into a coherent API, so agents can see and
+control windows, tmux sessions, screen text, and layouts. It also gives you
+an assistant to control that workspace in plain language.
 
 **[lattices.dev](https://lattices.dev)** · [Docs](https://lattices.dev/docs/overview) · [Download](https://github.com/arach/lattices/releases/latest)
 
@@ -43,7 +43,7 @@ git clone https://github.com/arach/lattices.git
 cd lattices
 
 # Build the menu bar app (requires Swift 6.2 / Xcode 26+)
-cd app && swift build -c release && cd ..
+cd apps/mac && swift build -c release && cd ../..
 
 # Install CLI dependencies
 npm install

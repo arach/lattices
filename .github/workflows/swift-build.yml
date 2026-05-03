@@ -3,13 +3,13 @@ name: Swift Build
 on:
   pull_request:
     paths:
-      - 'app/**'
+      - 'apps/mac/**'
       - '.github/workflows/swift-build.yml'
   push:
     branches:
       - main
     paths:
-      - 'app/**'
+      - 'apps/mac/**'
       - '.github/workflows/swift-build.yml'
 
 jobs:
@@ -22,5 +22,5 @@ jobs:
         run: swift --version
 
       - name: Build (debug)
-        working-directory: app
+        working-directory: apps/mac
         run: swift build -c debug

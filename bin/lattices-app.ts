@@ -8,15 +8,15 @@ import { get } from "node:https";
 import type { IncomingMessage } from "node:http";
 
 const __dirname = import.meta.dir;
-const appDir = resolve(__dirname, "../app");
+const appDir = resolve(__dirname, "../apps/mac");
 const cliRoot = resolve(__dirname, "..");
 const bundlePath = resolve(appDir, "Lattices.app");
 const binaryDir = resolve(bundlePath, "Contents/MacOS");
 const binaryPath = resolve(binaryDir, "Lattices");
-const entitlementsPath = resolve(__dirname, "../app/Lattices.entitlements");
+const entitlementsPath = resolve(__dirname, "../apps/mac/Lattices.entitlements");
 const resourcesDir = resolve(bundlePath, "Contents/Resources");
 const iconPath = resolve(__dirname, "../assets/AppIcon.icns");
-const tapSoundPath = resolve(__dirname, "../app/Resources/tap.wav");
+const tapSoundPath = resolve(__dirname, "../apps/mac/Resources/tap.wav");
 
 const REPO = "arach/lattices";
 const RELEASE_APP_ASSET_NAMES = ["Lattices.dmg"];

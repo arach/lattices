@@ -6,73 +6,55 @@ import SwiftUI
 struct SettingsContentView: View {
     private enum SettingsSection: String, CaseIterable, Identifiable {
         case general
-        case app
-        case permissions
-        case behavior
-        case companion
+        case shortcuts
         case ai
         case search
-        case shortcuts
+        case companion
 
         var id: String { rawValue }
 
         var title: String {
             switch self {
             case .general: return "General"
-            case .permissions: return "Permissions"
-            case .app: return "App"
-            case .behavior: return "Behavior"
-            case .companion: return "Companion"
+            case .shortcuts: return "Shortcuts"
             case .ai: return "AI"
             case .search: return "Search & OCR"
-            case .shortcuts: return "Shortcuts"
+            case .companion: return "LATS iOS Companion"
             }
         }
 
         var icon: String {
             switch self {
             case .general: return "slider.horizontal.3"
-            case .permissions: return "checkmark.shield"
-            case .app: return "arrow.down.circle"
-            case .behavior: return "switch.2"
-            case .companion: return "ipad.and.iphone"
+            case .shortcuts: return "command"
             case .ai: return "sparkles"
             case .search: return "text.viewfinder"
-            case .shortcuts: return "command"
+            case .companion: return "ipad.and.iphone"
             }
         }
 
         var eyebrow: String {
             switch self {
             case .general: return "Workspace"
-            case .permissions: return "Privacy"
-            case .app: return "Build"
-            case .behavior: return "Interaction"
-            case .companion: return "Local Bridge"
+            case .shortcuts: return "Controls"
             case .ai: return "Agents"
             case .search: return "Indexing"
-            case .shortcuts: return "Controls"
+            case .companion: return "Local Bridge"
             }
         }
 
         var summary: String {
             switch self {
             case .general:
-                return "Terminal defaults and project discovery."
-            case .permissions:
-                return "macOS privacy grants for window control, search, gestures, and shortcuts."
-            case .app:
-                return "Version, build channel, and signed release updates."
-            case .behavior:
-                return "Detach mode, snap behavior, mouse gestures, and keyboard remaps."
-            case .companion:
-                return "Local-network pairing, trusted iPad devices, and bridge security."
+                return "App updates, permissions, terminal defaults, project discovery, and interaction behavior."
+            case .shortcuts:
+                return "A full map of global hotkeys for workspace movement and tmux flow."
             case .ai:
                 return "Claude CLI detection plus advisor model and spending controls."
             case .search:
                 return "OCR cadence, quality, and recent capture visibility."
-            case .shortcuts:
-                return "A full map of global hotkeys for workspace movement and tmux flow."
+            case .companion:
+                return "Local-network pairing, trusted iPad devices, and bridge security."
             }
         }
     }
@@ -282,20 +264,14 @@ struct SettingsContentView: View {
         switch selectedTab {
         case .general:
             generalContent
-        case .permissions:
-            permissionsContent
-        case .app:
-            appContent
-        case .behavior:
-            behaviorContent
-        case .companion:
-            companionContent
+        case .shortcuts:
+            shortcutsContent
         case .ai:
             aiContent
         case .search:
             searchOcrContent
-        case .shortcuts:
-            shortcutsContent
+        case .companion:
+            companionContent
         }
     }
 
@@ -381,9 +357,234 @@ struct SettingsContentView: View {
         }
     }
 
+    private var permissionsDetailCard: some View {
+        settingsCard {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .center, spacing: 8) {
+                    Image(systemName: permChecker.allGranted ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(permChecker.allGranted ? Palette.running : Palette.detach)
+                    Text("macOS permissions")
+                        .font(Typo.mono(12))
+                        .foregroundColor(Palette.text)
+                    Spacer()
+                    Button {
+                        permChecker.check()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(Palette.textDim)
+                            .frame(width: 24, height: 22)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Refresh permission status")
+                }
+
+                Text("Window discovery, gestures, remaps, OCR, and synthetic shortcuts all depend on these macOS grants.")
+                    .font(Typo.caption(10))
+                    .foregroundColor(Palette.textMuted)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    permissionSettingsRow(
+                        "Accessibility",
+                        granted: permChecker.accessibility,
+                        detail: "Required for mouse gestures, keyboard remaps, window movement, and focusing windows."
+                    ) {
+                        permChecker.requestAccessibility()
+                    }
+
+                    permissionSettingsRow(
+                        "Screen Recording",
+                        granted: permChecker.screenRecording,
+                        detail: "Required for reliable window titles, OCR, and Space-aware window discovery."
+                    ) {
+                        permChecker.requestScreenRecording()
+                    }
+
+                    permissionReviewRow(
+                        "Automation",
+                        detail: "Needed when Lattices sends shortcuts through System Events, including gesture-triggered dictation."
+                    ) {
+                        permChecker.openAutomationSettings()
+                    }
+
+                    permissionReviewRow(
+                        "Input Monitoring",
+                        detail: "Useful to review if global input capture or synthetic shortcut behavior starts failing."
+                    ) {
+                        permChecker.openInputMonitoringSettings()
+                    }
+                }
+            }
+        }
+    }
+
+    private var appUpdateCard: some View {
+        settingsCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: LatticesRuntime.isDevBuild ? "hammer.fill" : "checkmark.seal.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(LatticesRuntime.isDevBuild ? Palette.detach : Palette.running)
+                        .frame(width: 24, height: 24)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 8) {
+                            Text("Lattices app")
+                                .font(Typo.mono(12))
+                                .foregroundColor(Palette.text)
+                            buildChannelBadge
+                            Spacer()
+                        }
+
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text(appUpdater.currentDisplayVersion)
+                                .font(Typo.heading(20))
+                                .foregroundColor(Palette.text)
+                            Text(LatticesRuntime.buildStatusLabel)
+                                .font(Typo.monoBold(10))
+                                .foregroundColor(LatticesRuntime.isDevBuild ? Palette.detach : Palette.running)
+                        }
+                    }
+                }
+
+                if let update = appUpdater.availableUpdate {
+                    Text("New version v\(update.version) is ready")
+                        .font(Typo.monoBold(10))
+                        .foregroundColor(Palette.detach)
+                } else if appUpdater.isChecking {
+                    Text("Checking for updates...")
+                        .font(Typo.caption(9))
+                        .foregroundColor(Palette.textMuted)
+                } else if let error = appUpdater.lastError {
+                    Text(error)
+                        .font(Typo.caption(9))
+                        .foregroundColor(Palette.detach.opacity(0.9))
+                } else if let checked = appUpdater.lastChecked {
+                    Text("Last checked \(checked, style: .relative)")
+                        .font(Typo.caption(9))
+                        .foregroundColor(Palette.textMuted.opacity(0.8))
+                }
+
+                HStack(spacing: 10) {
+                    Button {
+                        appUpdater.promptForUpdate()
+                    } label: {
+                        Text(appUpdater.isUpdating ? "Preparing..." : (appUpdater.availableUpdate == nil ? "Check for Updates" : "Update to v\(appUpdater.availableUpdate?.version ?? "")"))
+                            .font(Typo.monoBold(10))
+                            .foregroundColor(Palette.text)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 5)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(Palette.surfaceHov)
+                                    .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(appUpdater.isUpdating)
+
+                    Button {
+                        Task { await appUpdater.check() }
+                    } label: {
+                        Text(appUpdater.isChecking ? "Checking..." : "Check Now")
+                            .font(Typo.caption(9))
+                            .foregroundColor(Palette.textMuted.opacity(0.9))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(appUpdater.isChecking)
+
+                    Toggle("Auto", isOn: $appUpdater.autoCheckEnabled)
+                        .font(Typo.caption(9))
+                        .toggleStyle(.checkbox)
+                        .foregroundColor(Palette.textMuted.opacity(0.9))
+
+                    Spacer()
+                }
+            }
+        }
+    }
+
+    private var interactionBehaviorCard: some View {
+        settingsCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Behavior")
+                    .font(Typo.mono(12))
+                    .foregroundColor(Palette.text)
+
+                HStack {
+                    Text("Detach mode")
+                        .font(Typo.mono(10))
+                        .foregroundColor(Palette.textDim)
+                    Spacer()
+                    Picker("", selection: $prefs.mode) {
+                        Text("Learning").tag(InteractionMode.learning)
+                        Text("Auto").tag(InteractionMode.auto)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(width: 160)
+                }
+
+                cardDivider
+
+                Toggle("Drag-to-snap", isOn: $prefs.dragSnapEnabled)
+                    .font(Typo.caption(10))
+                    .toggleStyle(.switch)
+                    .foregroundColor(Palette.textMuted)
+
+                HStack {
+                    Text("Snap modifier")
+                        .font(Typo.mono(10))
+                        .foregroundColor(Palette.textDim)
+                    Spacer()
+                    Picker("", selection: snapModifierBinding) {
+                        ForEach(SnapModifierKey.allCases) { modifier in
+                            Text(modifier.shortLabel).tag(modifier)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(width: 220)
+                }
+
+                cardDivider
+
+                Toggle("Middle-click gestures", isOn: $prefs.mouseGesturesEnabled)
+                    .font(Typo.caption(10))
+                    .toggleStyle(.switch)
+                    .foregroundColor(Palette.textMuted)
+
+                breakerStatusRow(
+                    state: mouseGestureController.breakerState,
+                    label: "Mouse gestures"
+                ) {
+                    mouseGestureController.reArmAfterBreakerTrip()
+                }
+
+                Toggle("Caps Lock as Hyper", isOn: $prefs.keyboardRemapsEnabled)
+                    .font(Typo.caption(10))
+                    .toggleStyle(.switch)
+                    .foregroundColor(Palette.textMuted)
+
+                breakerStatusRow(
+                    state: keyboardRemapController.breakerState,
+                    label: "Keyboard remaps"
+                ) {
+                    keyboardRemapController.reArmAfterBreakerTrip()
+                }
+            }
+        }
+    }
+
     private var generalContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
+                appUpdateCard
+
+                permissionsAssistantCard
+                permissionsDetailCard
+
                 settingsCard {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Terminal")
@@ -476,6 +677,8 @@ struct SettingsContentView: View {
                         }
                     }
                 }
+
+                interactionBehaviorCard
             }
             .padding(16)
             .frame(maxWidth: 760, alignment: .leading)

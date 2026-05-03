@@ -115,7 +115,7 @@ The first host-side integration now lives in the Lattices macOS app.
 
 - `swift/DeckKit` continues to own the shared manifest, snapshot,
   action, and security contract.
-- `app/Sources/LatticesDeckHost.swift` is the first concrete Mac host.
+- `apps/mac/Sources/LatticesDeckHost.swift` is the first concrete Mac host.
 - The menu bar app daemon now exposes:
   - `deck.manifest`
   - `deck.snapshot`

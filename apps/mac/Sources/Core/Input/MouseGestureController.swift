@@ -95,6 +95,7 @@ final class MouseGestureController: ObservableObject {
     private var runLoopSource: CFRunLoopSource?
     private var session: GestureSession?
     private var retainedOverlays: [ObjectIdentifier: MouseGestureOverlay] = [:]
+    private var staleSessionTimer: Timer?
     private var subscriptions: Set<AnyCancellable> = []
     private var installedObservers = false
     private let shapeRecognizer = ShapeRecognizer()
@@ -106,7 +107,7 @@ final class MouseGestureController: ObservableObject {
     // owns the full GestureSession but the tap thread needs a fast,
     // synchronous answer to "should I consume this drag/up event?". Lock
     // protects cross-thread access (tap thread reads/writes; main writes
-    // via clearSession() or processMouseDownConsume's bail path).
+    // via clearSession(clearTracking:) or processMouseDownConsume's bail path).
     private let trackingLock = NSLock()
     private var trackingButtonNumber: Int64? = nil
 
@@ -463,7 +464,7 @@ final class MouseGestureController: ObservableObject {
             return
         }
 
-        clearSession()
+        clearSession(clearTracking: false)
         let overlay = MouseGestureOverlay(screen: screen)
         overlay.onDismiss = { [weak self, weak overlay] in
             guard let self, let overlay else { return }
@@ -472,6 +473,7 @@ final class MouseGestureController: ObservableObject {
         let newSession = GestureSession(buttonNumber: snapshot.buttonNumber, startPoint: snapshot.location, overlay: overlay)
         newSession.visual = MouseShortcutStore.shared.visualHint(for: button)
         session = newSession
+        scheduleStaleSessionCleanup(for: newSession)
         DiagnosticLog.shared.info("MouseGesture: began at \(format(snapshot.location)) button=\(snapshot.buttonNumber)")
         recordObservedEvent(
             phase: "down",
@@ -510,6 +512,7 @@ final class MouseGestureController: ObservableObject {
 
         session.currentPoint = snapshot.location
         session.recordPoint(snapshot.location)
+        scheduleStaleSessionCleanup(for: session)
         let button = MouseShortcutButton(rawButtonNumber: Int(snapshot.buttonNumber))
         let delta = CGPoint(
             x: snapshot.location.x - session.startPoint.x,
@@ -628,6 +631,8 @@ final class MouseGestureController: ObservableObject {
         let tuning = MouseShortcutStore.shared.tuning
         let direction = Self.resolveDirection(delta: delta, threshold: tuning.dragThreshold, axisBias: tuning.axisBias)
         self.session = nil
+        staleSessionTimer?.invalidate()
+        staleSessionTimer = nil
 
         let shapeResult = shapeRecognizer.recognize(points: session.pathPoints)
         if let shape = shapeResult.shape {
@@ -826,13 +831,17 @@ final class MouseGestureController: ObservableObject {
         }
     }
 
-    private func clearSession() {
+    private func clearSession(clearTracking: Bool = true) {
+        staleSessionTimer?.invalidate()
+        staleSessionTimer = nil
         session?.overlay.dismiss(immediately: true)
         session = nil
         // Keep tap-side tracking in sync with main-side session lifetime so a
         // subsequent drag/up isn't consumed for a session that no longer
         // exists.
-        setTrackingButton(nil)
+        if clearTracking {
+            setTrackingButton(nil)
+        }
     }
 
     private func replayMouseClick(buttonNumber: Int64, at point: CGPoint, flags: CGEventFlags) {
@@ -868,14 +877,8 @@ final class MouseGestureController: ObservableObject {
         "\(Int(point.x)),\(Int(point.y))"
     }
 
-    private func shouldDismissOverlayBeforeAction(match: MouseShortcutMatchResult?) -> Bool {
-        guard let match else { return false }
-        switch match.action.type {
-        case .spacePrevious, .spaceNext, .screenMapToggle:
-            return true
-        case .dictationStart, .shortcutSend, .appActivate:
-            return false
-        }
+    private func shouldDismissOverlayBeforeAction(match _: MouseShortcutMatchResult?) -> Bool {
+        true
     }
 
     private func previewProgress(dominantDistance: CGFloat, threshold: CGFloat) -> CGFloat {
@@ -891,6 +894,17 @@ final class MouseGestureController: ObservableObject {
 
     private func releaseOverlay(_ overlay: MouseGestureOverlay) {
         retainedOverlays.removeValue(forKey: ObjectIdentifier(overlay))
+    }
+
+    private func scheduleStaleSessionCleanup(for session: GestureSession) {
+        staleSessionTimer?.invalidate()
+        let timer = Timer(timeInterval: 3.0, repeats: false) { [weak self, weak session] _ in
+            guard let self, let session, self.session === session else { return }
+            DiagnosticLog.shared.warn("MouseGesture: stale gesture session dismissed")
+            self.clearSession()
+        }
+        staleSessionTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
     }
 
     private func currentAppInfo() -> (name: String?, bundleId: String?) {
@@ -932,6 +946,10 @@ final class MouseGestureController: ObservableObject {
 
     private func sendShortcut(_ shortcut: MouseShortcutKeyStroke?) -> Bool {
         guard let shortcut else { return false }
+        if sendShortcutWithCGEvent(shortcut) {
+            return true
+        }
+
         let modifiers = shortcut.modifiers.map(\.appleScriptToken).joined(separator: ", ")
         let command: String
 
@@ -953,17 +971,79 @@ final class MouseGestureController: ObservableObject {
         end tell
         return "ok"
         """
-        return ProcessQuery.shell(["/usr/bin/osascript", "-e", script]) == "ok"
+        let result = ProcessQuery.shell(["/usr/bin/osascript", "-e", script])
+        if result != "ok" {
+            DiagnosticLog.shared.warn("MouseGesture: AppleScript shortcut send failed for \(shortcut.displayLabel)")
+        }
+        return result == "ok"
     }
 
     private func sendDictationShortcut() -> Bool {
         sendShortcut(
             MouseShortcutKeyStroke(
                 key: "a",
-                keyCode: nil,
+                keyCode: 0,
                 modifiers: [.command, .shift]
             )
         )
+    }
+
+    private func sendShortcutWithCGEvent(_ shortcut: MouseShortcutKeyStroke) -> Bool {
+        guard let keyCode = shortcut.keyCode.map(CGKeyCode.init) ?? keyCode(for: shortcut.key) else {
+            return false
+        }
+        guard let source = CGEventSource(stateID: .combinedSessionState),
+              let down = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
+              let up = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false) else {
+            DiagnosticLog.shared.warn("MouseGesture: CGEvent shortcut source unavailable for \(shortcut.displayLabel)")
+            return false
+        }
+
+        let flags = cgEventFlags(for: shortcut.modifiers)
+        down.flags = flags
+        up.flags = flags
+        down.setIntegerValueField(.eventSourceUserData, value: Self.syntheticMarker)
+        up.setIntegerValueField(.eventSourceUserData, value: Self.syntheticMarker)
+        down.post(tap: .cghidEventTap)
+        usleep(12_000)
+        up.post(tap: .cghidEventTap)
+        return true
+    }
+
+    private func cgEventFlags(for modifiers: [MouseShortcutModifier]) -> CGEventFlags {
+        var flags: CGEventFlags = []
+        for modifier in modifiers {
+            switch modifier {
+            case .command:
+                flags.insert(.maskCommand)
+            case .option:
+                flags.insert(.maskAlternate)
+            case .control:
+                flags.insert(.maskControl)
+            case .shift:
+                flags.insert(.maskShift)
+            }
+        }
+        return flags
+    }
+
+    private func keyCode(for key: String?) -> CGKeyCode? {
+        guard let key = key?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+              !key.isEmpty else {
+            return nil
+        }
+        let codes: [String: CGKeyCode] = [
+            "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6, "x": 7,
+            "c": 8, "v": 9, "b": 11, "q": 12, "w": 13, "e": 14, "r": 15,
+            "y": 16, "t": 17, "1": 18, "2": 19, "3": 20, "4": 21, "6": 22,
+            "5": 23, "=": 24, "9": 25, "7": 26, "-": 27, "8": 28, "0": 29,
+            "]": 30, "o": 31, "u": 32, "[": 33, "i": 34, "p": 35, "enter": 36,
+            "return": 36, "l": 37, "j": 38, "'": 39, "k": 40, ";": 41,
+            "\\": 42, ",": 43, "/": 44, "n": 45, "m": 46, ".": 47, "tab": 48,
+            "space": 49, "`": 50, "delete": 51, "backspace": 51, "escape": 53,
+            "esc": 53, "left": 123, "right": 124, "down": 125, "up": 126,
+        ]
+        return codes[key]
     }
 
     private func activateApplication(named appName: String?) -> Bool {

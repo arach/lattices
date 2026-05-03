@@ -443,10 +443,10 @@ Those existing RPC names can remain stable while their internals are replaced.
 
 Files likely involved:
 
-- `app/Sources/LatticesApi.swift`
-- new planner/executor files under `app/Sources/`
-- `app/Sources/WindowTiler.swift`
-- `app/Sources/WorkspaceManager.swift`
+- `apps/mac/Sources/LatticesApi.swift`
+- new planner/executor files under `apps/mac/Sources/`
+- `apps/mac/Sources/WindowTiler.swift`
+- `apps/mac/Sources/WorkspaceManager.swift`
 
 Deliverables:
 
@@ -474,9 +474,9 @@ Deliverables:
 
 Files likely involved:
 
-- `app/Sources/VoiceIntentResolver.swift`
-- `app/Sources/IntentEngine.swift`
-- `app/Sources/HandsOffSession.swift`
+- `apps/mac/Sources/VoiceIntentResolver.swift`
+- `apps/mac/Sources/IntentEngine.swift`
+- `apps/mac/Sources/HandsOffSession.swift`
 
 Deliverables:
 
@@ -488,8 +488,8 @@ Deliverables:
 
 Files likely involved:
 
-- `app/Sources/HUDController.swift`
-- `app/Sources/PaletteCommand.swift`
+- `apps/mac/Sources/HUDController.swift`
+- `apps/mac/Sources/PaletteCommand.swift`
 
 Deliverables:
 

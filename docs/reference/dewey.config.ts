@@ -9,7 +9,7 @@ export default {
 
   agent: {
     criticalContext: [
-      'lattices has TWO primary interfaces: a TypeScript CLI (`bin/lattices.ts`) and a native Swift menu bar app (`app/Sources/`)',
+      'lattices has TWO primary interfaces: a TypeScript CLI (`bin/lattices.ts`) and a native Swift menu bar app (`apps/mac/Sources/`)',
       'Session names are `<basename>-<sha256-6chars>` — both CLI and app must produce identical hashes',
       'The app finds terminal windows via a `[lattices:session-name]` tag embedded in the tmux window title',
       'Window navigation falls through CG → AX → AppleScript depending on macOS permissions',
@@ -20,7 +20,7 @@ export default {
     entryPoints: {
       'cli': 'bin/lattices.ts',
       'app-helper': 'bin/lattices-app.ts',
-      'menu-bar-app': 'app/Sources/',
+      'menu-bar-app': 'apps/mac/Sources/',
       'docs': 'docs/',
       'docs-site': 'apps/docs-site/',
       'marketing-site': 'apps/site/',
@@ -28,12 +28,12 @@ export default {
 
     rules: [
       { pattern: 'cli', instruction: 'Check bin/lattices.ts for CLI commands and session logic' },
-      { pattern: 'app', instruction: 'Check app/Sources/ for Swift menu bar app code' },
+      { pattern: 'app', instruction: 'Check apps/mac/Sources/ for Swift menu bar app code' },
       { pattern: 'config', instruction: 'Check docs/config.md for .lattices.json format and CLI reference' },
-      { pattern: 'tiling', instruction: 'Check app/Sources/Core/Desktop/WindowTiler.swift and app/Sources/Core/Desktop/PlacementSpec.swift' },
-      { pattern: 'palette', instruction: 'Check app/Sources/Core/Actions/PaletteCommand.swift for command palette actions' },
-      { pattern: 'terminal', instruction: 'Check app/Sources/Core/Workspace/Terminal/Terminal.swift for supported terminals and launch logic' },
-      { pattern: 'daemon', instruction: 'Check app/Sources/Core/Daemon/DaemonServer.swift and app/Sources/Core/Daemon/LatticesApi.swift for WebSocket API' },
+      { pattern: 'tiling', instruction: 'Check apps/mac/Sources/Core/Desktop/WindowTiler.swift and apps/mac/Sources/Core/Desktop/PlacementSpec.swift' },
+      { pattern: 'palette', instruction: 'Check apps/mac/Sources/Core/Actions/PaletteCommand.swift for command palette actions' },
+      { pattern: 'terminal', instruction: 'Check apps/mac/Sources/Core/Workspace/Terminal/Terminal.swift for supported terminals and launch logic' },
+      { pattern: 'daemon', instruction: 'Check apps/mac/Sources/Core/Daemon/DaemonServer.swift and apps/mac/Sources/Core/Daemon/LatticesApi.swift for WebSocket API' },
       { pattern: 'api', instruction: 'Check docs/api.md for the daemon RPC reference' },
       { pattern: 'twin', instruction: 'Check docs/twins.md and bin/project-twin.ts for the Pi-backed project twin runtime' },
     ],

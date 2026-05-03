@@ -6,7 +6,7 @@
 
 **IMPORTANT:** Read these rules before making any changes:
 
-- lattices has TWO primary interfaces: a TypeScript CLI (`bin/lattices.ts`) and a native Swift menu bar app (`app/Sources/`)
+- lattices has TWO primary interfaces: a TypeScript CLI (`bin/lattices.ts`) and a native Swift menu bar app (`apps/mac/Sources/`)
 - Session names are `<basename>-<sha256-6chars>` — both CLI and app must produce identical hashes
 - The app finds terminal windows via a `[lattices:session-name]` tag embedded in the tmux window title
 - Window navigation falls through CG → AX → AppleScript depending on macOS permissions
@@ -19,7 +19,7 @@
 |-----------|------|---------|
 | CLI | `bin/lattices.ts` | Published command-line workspace manager |
 | App Helper | `bin/lattices-app.ts` | Build, launch, quit, and restart the app |
-| Menu Bar App | `app/Sources/` | |
+| Menu Bar App | `apps/mac/Sources/` | |
 | Docs | `docs/` | |
 | Docs Site | `apps/docs-site/` | |
 | Marketing Site | `apps/site/` | |
@@ -27,12 +27,12 @@
 ## Quick Navigation
 
 - Working with **cli**? → Check bin/lattices.ts for CLI commands and session logic
-- Working with **app**? → Check app/Sources/ for Swift menu bar app code
+- Working with **app**? → Check apps/mac/Sources/ for Swift menu bar app code
 - Working with **config**? → Check docs/config.md for .lattices.json format and CLI reference
-- Working with **tiling**? → Check app/Sources/Core/Desktop/WindowTiler.swift and app/Sources/Core/Desktop/PlacementSpec.swift
-- Working with **palette**? → Check app/Sources/Core/Actions/PaletteCommand.swift for command palette actions
-- Working with **terminal**? → Check app/Sources/Core/Workspace/Terminal/Terminal.swift for supported terminals and launch logic
-- Working with **daemon**? → Check app/Sources/Core/Daemon/DaemonServer.swift and app/Sources/Core/Daemon/LatticesApi.swift for WebSocket API
+- Working with **tiling**? → Check apps/mac/Sources/Core/Desktop/WindowTiler.swift and apps/mac/Sources/Core/Desktop/PlacementSpec.swift
+- Working with **palette**? → Check apps/mac/Sources/Core/Actions/PaletteCommand.swift for command palette actions
+- Working with **terminal**? → Check apps/mac/Sources/Core/Workspace/Terminal/Terminal.swift for supported terminals and launch logic
+- Working with **daemon**? → Check apps/mac/Sources/Core/Daemon/DaemonServer.swift and apps/mac/Sources/Core/Daemon/LatticesApi.swift for WebSocket API
 - Working with **api**? → Check docs/api.md for the daemon RPC reference
 
 ## Quickstart
