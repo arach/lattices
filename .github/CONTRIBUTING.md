@@ -5,7 +5,7 @@ Thanks for helping make Lattices better.
 Lattices has a few main surfaces:
 
 - TypeScript CLI and published package entry points in `bin/`
-- native macOS app in `app/Sources/`
+- native macOS app in `apps/mac/Sources/`
 - shared Swift package code in `swift/`
 - sites in `apps/site/` and `apps/docs-site/`
 - agent-facing docs and skills in `docs/` and `skills/`

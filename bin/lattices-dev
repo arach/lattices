@@ -4,7 +4,7 @@
 set -euo pipefail
 
 SCRIPT_PATH="$(readlink -f "$0" 2>/dev/null || python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$0")"
-APP_DIR="$(cd "$(dirname "$SCRIPT_PATH")/../app" && pwd)"
+APP_DIR="$(cd "$(dirname "$SCRIPT_PATH")/../apps/mac" && pwd)"
 ROOT="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
 LOG_FILE="$HOME/.lattices/lattices.log"
 BINARY="$APP_DIR/.build/release/Lattices"

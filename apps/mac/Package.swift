@@ -5,7 +5,7 @@ let package = Package(
     name: "Lattices",
     platforms: [.macOS(.v13)],
     dependencies: [
-        .package(path: "../swift")
+        .package(path: "../../swift")
     ],
     targets: [
         .executableTarget(

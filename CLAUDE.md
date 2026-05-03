@@ -7,14 +7,14 @@ Lattices is a macOS developer workspace manager that pairs tmux sessions with a 
 ## Structure
 - **CLI**: `bin/lattices.ts` (TypeScript, Bun/Node-compatible runtime) — main CLI entry point
 - **App helper**: `bin/lattices-app.ts` — build/launch/quit/restart the menu bar app
-- **Swift menu bar app**: `app/Sources/` — native macOS app (SwiftUI + AppKit)
+- **Swift menu bar app**: `apps/mac/Sources/` — native macOS app (SwiftUI + AppKit)
 - **Docs**: `docs/` — documentation source files
 
 ## Build Commands
 
 ### Swift App
 ```bash
-cd app && swift build -c release
+cd apps/mac && swift build -c release
 ```
 
 ### CLI

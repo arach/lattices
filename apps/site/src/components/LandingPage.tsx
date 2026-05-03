@@ -190,16 +190,16 @@ export default function App() {
           <h1>
             The agentic
             <br />
-            <span className="accent">window manager</span>
+            <span className="accent">workspace manager</span>
           </h1>
           <div className="hero-pillars">
             <div className="hero-pillar">
-              <h2>Programmable workspace</h2>
-              <p>35+ RPC methods. AI agents and scripts drive the same desktop you do.</p>
+              <h2>Desktop as an API</h2>
+              <p>35+ RPC methods expose windows, sessions, layouts, and live workspace state through one coherent interface.</p>
             </div>
             <div className="hero-pillar">
-              <h2>Smart layout manager</h2>
-              <p>Tile with hotkeys, organize into layers, search text across every window.</p>
+              <h2>Workspace assistant for you</h2>
+              <p>Ask for layouts, focus, screen search, voice actions, and recovery help in plain language.</p>
             </div>
             <div className="hero-pillar">
               <h2>Managed tmux sessions</h2>

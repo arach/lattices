@@ -549,7 +549,7 @@ function resolvePanes(dir: string): PaneConfig[] {
 
 function detectProjectType(dir: string): string | null {
   // Check for lattices-style hybrid project (Swift app + Node CLI)
-  if (existsSync(resolve(dir, "app/Package.swift")) && existsSync(resolve(dir, "bin/lattices-app.ts")))
+  if (existsSync(resolve(dir, "apps/mac/Package.swift")) && existsSync(resolve(dir, "bin/lattices-app.ts")))
     return "lattices-app";
   if (existsSync(resolve(dir, "Package.swift"))) return "swift";
   if (existsSync(resolve(dir, "Cargo.toml"))) return "rust";

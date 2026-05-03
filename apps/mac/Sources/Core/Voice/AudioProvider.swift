@@ -402,7 +402,7 @@ final class AudioLayer: ObservableObject {
 }
 
 // Old IntentExtractor removed — PhraseMatcher handles all intent matching now.
-// See app/Sources/Intents/LatticeIntent.swift
+// See apps/mac/Sources/Intents/LatticeIntent.swift
 
 
 // MARK: - Vox Audio Provider (WebSocket JSON-RPC via VoxClient)
