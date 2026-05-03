@@ -15,6 +15,8 @@ ENTITLEMENTS="$APP_DIR/Lattices.entitlements"
 ICON="$ROOT/assets/AppIcon.icns"
 TAP_SOUND="$APP_DIR/Resources/tap.wav"
 VERSION="$(node -p "require('$ROOT/package.json').version" 2>/dev/null || echo '0.1.0')"
+GIT_REVISION="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+BUILD_TIMESTAMP="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
 red()   { printf "\033[31m%s\033[0m\n" "$*"; }
 green() { printf "\033[32m%s\033[0m\n" "$*"; }
@@ -93,6 +95,14 @@ write_info_plist() {
     <string>$VERSION</string>
     <key>CFBundleShortVersionString</key>
     <string>$VERSION</string>
+    <key>LatticesBuildChannel</key>
+    <string>dev</string>
+    <key>LatticesBuildTrack</key>
+    <string>latest</string>
+    <key>LatticesBuildRevision</key>
+    <string>$GIT_REVISION</string>
+    <key>LatticesBuildTimestamp</key>
+    <string>$BUILD_TIMESTAMP</string>
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
     <key>LSUIElement</key>

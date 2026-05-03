@@ -29,6 +29,14 @@
     <string>0.4.10</string>
     <key>CFBundleShortVersionString</key>
     <string>0.4.10</string>
+    <key>LatticesBuildChannel</key>
+    <string>dev</string>
+    <key>LatticesBuildTrack</key>
+    <string>latest</string>
+    <key>LatticesBuildRevision</key>
+    <string>921e181</string>
+    <key>LatticesBuildTimestamp</key>
+    <string>2026-05-03T18:07:28Z</string>
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
     <key>LSUIElement</key>

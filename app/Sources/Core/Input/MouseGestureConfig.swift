@@ -323,19 +323,25 @@ struct MouseShortcutActionDefinition: Codable, Equatable {
 
 struct MouseShortcutVisualDefinition: Codable, Equatable {
     var renderer: String
+    var theme: String?
     var asset: String?
     var character: String?
+    var markers: [String: String]?
     var events: [String: String]?
 
     init(
         renderer: String = "native",
+        theme: String? = nil,
         asset: String? = nil,
         character: String? = nil,
+        markers: [String: String]? = nil,
         events: [String: String]? = nil
     ) {
         self.renderer = renderer
+        self.theme = theme
         self.asset = asset
         self.character = character
+        self.markers = markers
         self.events = events
     }
 
@@ -351,6 +357,9 @@ struct MouseShortcutVisualDefinition: Codable, Equatable {
         ].compactMap { $0 }
 
         for key in keys {
+            if let marker = markers?[key] {
+                return marker
+            }
             if let marker = events?[key] {
                 return marker
             }

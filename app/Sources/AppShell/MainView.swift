@@ -108,19 +108,19 @@ struct MainView: View {
                     Spacer()
 
                     headerButton(icon: "house") {
-                        (NSApp.delegate as? AppDelegate)?.dismissPopover()
+                        MenuBarController.shared.dismissPopover()
                         ScreenMapWindowController.shared.showPage(.home)
                     }
                     headerButton(icon: "rectangle.3.group") {
-                        (NSApp.delegate as? AppDelegate)?.dismissPopover()
+                        MenuBarController.shared.dismissPopover()
                         ScreenMapWindowController.shared.showPage(.screenMap)
                     }
                     headerButton(icon: "magnifyingglass") {
-                        (NSApp.delegate as? AppDelegate)?.dismissPopover()
+                        MenuBarController.shared.dismissPopover()
                         ScreenMapWindowController.shared.showPage(.desktopInventory)
                     }
                     headerButton(icon: "command") {
-                        (NSApp.delegate as? AppDelegate)?.dismissPopover()
+                        MenuBarController.shared.dismissPopover()
                         CommandPaletteWindow.shared.toggle()
                     }
                     headerButton(icon: "arrow.clockwise") { scanner.scan(); inventory.refresh() }
