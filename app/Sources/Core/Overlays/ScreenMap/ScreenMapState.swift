@@ -2760,9 +2760,10 @@ final class ScreenMapController: ObservableObject {
 
         var captures: [UInt32: NSImage] = [:]
         for win in visible {
-            if let cgImage = CGWindowListCreateImage(
-                .null, .optionIncludingWindow, CGWindowID(win.id),
-                [.boundsIgnoreFraming, .bestResolution]
+            if let cgImage = WindowCapture.image(
+                listOption: .optionIncludingWindow,
+                windowID: CGWindowID(win.id),
+                imageOption: [.boundsIgnoreFraming, .bestResolution]
             ) {
                 captures[win.id] = NSImage(cgImage: cgImage,
                     size: NSSize(width: win.virtualFrame.width, height: win.virtualFrame.height))
@@ -2985,11 +2986,10 @@ final class WindowBezel {
 
         // Capture window content for screenshot tool compositing
         let windowSnapshot: NSImage? = {
-            guard let cgImage = CGWindowListCreateImage(
-                .null,
-                .optionIncludingWindow,
-                win.id,
-                [.bestResolution, .boundsIgnoreFraming]
+            guard let cgImage = WindowCapture.image(
+                listOption: .optionIncludingWindow,
+                windowID: win.id,
+                imageOption: [.bestResolution, .boundsIgnoreFraming]
             ) else { return nil }
             return NSImage(cgImage: cgImage, size: NSSize(width: cgFrame.width, height: cgFrame.height))
         }()

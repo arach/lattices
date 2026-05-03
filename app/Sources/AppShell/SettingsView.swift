@@ -67,6 +67,7 @@ struct SettingsContentView: View {
     @ObservedObject var appUpdater: AppUpdater = .shared
     @ObservedObject var mouseShortcutStore: MouseShortcutStore = .shared
     @ObservedObject var keyboardRemapStore: KeyboardRemapStore = .shared
+    @ObservedObject var permChecker: PermissionChecker = .shared
     var onBack: (() -> Void)? = nil
 
     @State private var selectedTab: SettingsSection = .general
@@ -86,6 +87,7 @@ struct SettingsContentView: View {
         .clipped()
         .background(PanelBackground())
         .onAppear {
+            permChecker.check()
             if page == .companionSettings {
                 selectedTab = .companion
             }
@@ -617,6 +619,66 @@ struct SettingsContentView: View {
                                     )
                             }
                             .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+                settingsCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(alignment: .center, spacing: 8) {
+                            Image(systemName: permChecker.allGranted ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(permChecker.allGranted ? Palette.running : Palette.detach)
+                            Text("Permissions")
+                                .font(Typo.mono(12))
+                                .foregroundColor(Palette.text)
+                            Spacer()
+                            Button {
+                                permChecker.check()
+                            } label: {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundColor(Palette.textDim)
+                                    .frame(width: 24, height: 22)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Refresh permission status")
+                        }
+
+                        Text("Lattices uses macOS privacy permissions for window discovery, tiling, gestures, remaps, and synthetic shortcuts.")
+                            .font(Typo.caption(10))
+                            .foregroundColor(Palette.textMuted)
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            permissionSettingsRow(
+                                "Accessibility",
+                                granted: permChecker.accessibility,
+                                detail: "Required for mouse gestures, keyboard remaps, window movement, and focusing windows."
+                            ) {
+                                permChecker.requestAccessibility()
+                            }
+
+                            permissionSettingsRow(
+                                "Screen Recording",
+                                granted: permChecker.screenRecording,
+                                detail: "Required for reliable window titles, OCR, and Space-aware window discovery."
+                            ) {
+                                permChecker.requestScreenRecording()
+                            }
+
+                            permissionReviewRow(
+                                "Automation",
+                                detail: "Needed when Lattices sends shortcuts through System Events, including gesture-triggered dictation."
+                            ) {
+                                permChecker.openAutomationSettings()
+                            }
+
+                            permissionReviewRow(
+                                "Input Monitoring",
+                                detail: "Useful to review if global input capture or synthetic shortcut behavior starts failing."
+                            ) {
+                                permChecker.openInputMonitoringSettings()
+                            }
                         }
                     }
                 }
@@ -1780,6 +1842,102 @@ struct SettingsContentView: View {
             )
             .frame(height: 0.5)
             .padding(.vertical, 3)
+    }
+
+    private func permissionSettingsRow(
+        _ title: String,
+        granted: Bool,
+        detail: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button {
+            if granted {
+                permChecker.check()
+            } else {
+                action()
+            }
+        } label: {
+            permissionRowContent(
+                title,
+                status: granted ? "granted" : "not set",
+                statusColor: granted ? Palette.running : Palette.detach,
+                icon: granted ? "checkmark.circle.fill" : "exclamationmark.circle.fill",
+                iconColor: granted ? Palette.running : Palette.detach,
+                detail: detail,
+                showsExternalLink: !granted
+            )
+        }
+        .buttonStyle(.plain)
+        .help(granted ? "Refresh permission status" : "Open macOS permission flow")
+    }
+
+    private func permissionReviewRow(
+        _ title: String,
+        detail: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            permissionRowContent(
+                title,
+                status: "review",
+                statusColor: Palette.textDim,
+                icon: "gearshape.2.fill",
+                iconColor: Palette.textDim,
+                detail: detail,
+                showsExternalLink: true
+            )
+        }
+        .buttonStyle(.plain)
+        .help("Open macOS Privacy & Security settings")
+    }
+
+    private func permissionRowContent(
+        _ title: String,
+        status: String,
+        statusColor: Color,
+        icon: String,
+        iconColor: Color,
+        detail: String,
+        showsExternalLink: Bool
+    ) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(iconColor)
+                .frame(width: 12, height: 16)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(title)
+                        .font(Typo.mono(10))
+                        .foregroundColor(Palette.text)
+                    Text(status)
+                        .font(Typo.mono(9))
+                        .foregroundColor(statusColor)
+                    Spacer()
+                    if showsExternalLink {
+                        Image(systemName: "arrow.up.forward.square")
+                            .font(.system(size: 9))
+                            .foregroundColor(Palette.textMuted)
+                    }
+                }
+
+                Text(detail)
+                    .font(Typo.caption(9))
+                    .foregroundColor(Palette.textMuted.opacity(0.75))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 5)
+                .fill(Palette.surfaceHov.opacity(status == "not set" ? 0.75 : 0.35))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5)
+                        .strokeBorder(status == "not set" ? Palette.detach.opacity(0.22) : Palette.borderLit.opacity(0.6), lineWidth: 0.5)
+                )
+        )
     }
 
     // MARK: - Shortcuts

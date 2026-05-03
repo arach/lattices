@@ -80,12 +80,12 @@ await daemonCall('window.place', {
 
 ## Requirements
 
-- macOS 13.0+
+- macOS 26.0+
 - Node.js 18+
 
 ### Dev dependencies
 
-- Swift 5.9+ — only to build the menu bar app from source
+- Swift 6.2 / Xcode 26+ — only to build the menu bar app from source
 - tmux — needed for persistent terminal sessions (`brew install tmux`)
 
 ## Next steps

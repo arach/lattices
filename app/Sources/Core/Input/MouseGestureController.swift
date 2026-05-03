@@ -599,7 +599,7 @@ final class MouseGestureController {
         case .dictationStart:
             let sent = sendDictationShortcut()
             return GestureOutcome(
-                label: sent ? "Dictation" : "Dictation Blocked",
+                label: sent ? "Dictation" : "Permission Needed",
                 success: sent,
                 accessory: sent ? .mic : nil
             )

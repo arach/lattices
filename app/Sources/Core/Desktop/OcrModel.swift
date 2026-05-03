@@ -213,11 +213,10 @@ final class OcrModel: ObservableObject {
 
             // Phase 1: capture + hash all windows (cheap)
             for win in windows {
-                if let cgImage = CGWindowListCreateImage(
-                    .null,
-                    .optionIncludingWindow,
-                    CGWindowID(win.wid),
-                    [.boundsIgnoreFraming, .bestResolution]
+                if let cgImage = WindowCapture.image(
+                    listOption: .optionIncludingWindow,
+                    windowID: CGWindowID(win.wid),
+                    imageOption: [.boundsIgnoreFraming, .bestResolution]
                 ) {
                     let hash = self.imageHash(cgImage)
                     newHashes[win.wid] = hash
@@ -320,11 +319,10 @@ final class OcrModel: ObservableObject {
 
         let win = windows[index]
 
-        if let cgImage = CGWindowListCreateImage(
-            .null,
-            .optionIncludingWindow,
-            CGWindowID(win.wid),
-            [.boundsIgnoreFraming, .bestResolution]
+        if let cgImage = WindowCapture.image(
+            listOption: .optionIncludingWindow,
+            windowID: CGWindowID(win.wid),
+            imageOption: [.boundsIgnoreFraming, .bestResolution]
         ) {
             let hash = imageHash(cgImage)
             newHashes[win.wid] = hash

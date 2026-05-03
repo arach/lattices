@@ -53,11 +53,10 @@ final class WindowPreviewStore: ObservableObject {
         queue.async { [weak self] in
             guard let self else { return }
 
-            let cgImage = CGWindowListCreateImage(
-                .null,
-                .optionIncludingWindow,
-                CGWindowID(wid),
-                [.boundsIgnoreFraming, .nominalResolution]
+            let cgImage = WindowCapture.image(
+                listOption: .optionIncludingWindow,
+                windowID: CGWindowID(wid),
+                imageOption: [.boundsIgnoreFraming, .nominalResolution]
             )
 
             let image = cgImage.map {

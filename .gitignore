@@ -50,3 +50,8 @@ iOS/LatticesCompanion/.device-id.local
 
 # Swift package local build state
 swift/.build/
+swift/.swiftpm/
+
+# Xcode per-user state
+iOS/LatticesCompanion/LatticesCompanion.xcodeproj/xcuserdata/
+iOS/LatticesCompanion/LatticesCompanion.xcodeproj/project.xcworkspace/xcuserdata/
