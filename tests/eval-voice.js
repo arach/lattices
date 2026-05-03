@@ -4,7 +4,7 @@
 // Tests the full pipeline: text -> preamble strip -> phrase match -> slot resolution
 // Requires the Lattices daemon to be running (ws://127.0.0.1:9399)
 //
-// Run: node --experimental-strip-types test/eval-voice.js
+// Run: node --experimental-strip-types tests/eval-voice.js
 // Flags:
 //   --verbose    Show slot details for passing tests
 //   --only=N     Run only test number N (1-based)

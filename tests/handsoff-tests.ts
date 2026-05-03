@@ -3,7 +3,7 @@
  * Automated test suite for hands-off mode.
  * Runs 100 scenarios through the inference pipeline and scores results.
  *
- * Usage: bun run test/handsoff-tests.ts
+ * Usage: bun run tests/handsoff-tests.ts
  */
 
 import { infer, resolveVoiceInferenceOptions } from "../lib/infer.ts";
