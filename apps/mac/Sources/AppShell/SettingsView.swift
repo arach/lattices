@@ -148,7 +148,7 @@ struct SettingsContentView: View {
     private var settingsBody: some View {
         HStack(spacing: 0) {
             settingsSidebar
-                .frame(width: 220, alignment: .top)
+                .frame(width: 190, alignment: .top)
 
             Rectangle()
                 .fill(Palette.border)
@@ -198,23 +198,22 @@ struct SettingsContentView: View {
                 Image(systemName: section.icon)
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(active ? Palette.text : Palette.textMuted)
-                    .frame(width: 16, alignment: .center)
+                    .frame(width: 16, height: 18, alignment: .center)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(section.title)
                         .font(Typo.mono(11))
                         .foregroundColor(active ? Palette.text : Palette.textMuted)
 
-                    Text(section.summary)
-                        .font(Typo.caption(9.5))
-                        .foregroundColor(Palette.textMuted.opacity(active ? 0.9 : 0.7))
-                        .fixedSize(horizontal: false, vertical: true)
+                    Text(section.eyebrow)
+                        .font(Typo.caption(9))
+                        .foregroundColor(Palette.textMuted.opacity(active ? 0.85 : 0.62))
                 }
 
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 9)
+            .padding(.vertical, 8)
             .contentShape(RoundedRectangle(cornerRadius: 8))
             .background(
                 ZStack {
@@ -301,21 +300,41 @@ struct SettingsContentView: View {
     private var permissionsAssistantCard: some View {
         let missing = Capability.allCases.filter { !$0.isGranted }
         return settingsCard {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .center, spacing: 8) {
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(missing.isEmpty ? Palette.running : Palette.detach)
-                    Text("Permissions")
-                        .font(Typo.mono(12))
-                        .foregroundColor(Palette.text)
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill((missing.isEmpty ? Palette.running : Palette.detach).opacity(0.13))
+                        .overlay(
+                            Image(systemName: missing.isEmpty ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(missing.isEmpty ? Palette.running : Palette.detach)
+                        )
+                        .frame(width: 26, height: 26)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Permissions")
+                            .font(Typo.mono(12))
+                            .foregroundColor(Palette.text)
+                        Text(missing.isEmpty ? "Ready for window control, gestures, and OCR" : "\(missing.count) permission \(missing.count == 1 ? "needs" : "need") attention")
+                            .font(Typo.caption(9.5))
+                            .foregroundColor(Palette.textMuted)
+                    }
+
                     Spacer()
+
                     Text(missing.isEmpty ? "All on" : "\(missing.count) off")
-                        .font(Typo.caption(10))
+                        .font(Typo.monoBold(9.5))
                         .foregroundColor(missing.isEmpty ? Palette.running : Palette.detach)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(
+                            Capsule()
+                                .fill((missing.isEmpty ? Palette.running : Palette.detach).opacity(0.10))
+                                .overlay(Capsule().strokeBorder((missing.isEmpty ? Palette.running : Palette.detach).opacity(0.18), lineWidth: 0.5))
+                        )
                 }
 
-                Text("The Permissions Assistant introduces each capability before any macOS prompt. Open it any time to review status or enable something new.")
+                Text("The assistant explains each macOS prompt before you grant it. Advanced privacy panes stay available for review when a synthetic shortcut or input capture needs macOS-level repair.")
                     .font(Typo.caption(10))
                     .foregroundColor(Palette.textMuted)
 
@@ -338,21 +357,54 @@ struct SettingsContentView: View {
                     Spacer(minLength: 0)
                 }
 
-                Button {
-                    PermissionsAssistantWindowController.shared.show(focus: missing.first)
-                } label: {
-                    Text(missing.isEmpty ? "Open Permissions Assistant" : "Set up permissions")
-                        .font(Typo.monoBold(10))
-                        .foregroundColor(Palette.text)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 5)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(Palette.surfaceHov)
-                                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
-                        )
+                HStack(spacing: 8) {
+                    Button {
+                        PermissionsAssistantWindowController.shared.show(focus: missing.first)
+                    } label: {
+                        Text(missing.isEmpty ? "Open Assistant" : "Set Up")
+                            .font(Typo.monoBold(10))
+                            .foregroundColor(Palette.text)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 5)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(Palette.surfaceHov)
+                                    .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
+                            )
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        permChecker.check()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(Palette.textDim)
+                            .frame(width: 24, height: 22)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Refresh permission status")
+
+                    Spacer()
+
+                    Button {
+                        permChecker.openAutomationSettings()
+                    } label: {
+                        Text("Automation")
+                            .font(Typo.caption(9))
+                            .foregroundColor(Palette.textMuted.opacity(0.9))
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        permChecker.openInputMonitoringSettings()
+                    } label: {
+                        Text("Input Monitoring")
+                            .font(Typo.caption(9))
+                            .foregroundColor(Palette.textMuted.opacity(0.9))
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
         }
     }
@@ -421,31 +473,41 @@ struct SettingsContentView: View {
 
     private var appUpdateCard: some View {
         settingsCard {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: LatticesRuntime.isDevBuild ? "hammer.fill" : "checkmark.seal.fill")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(LatticesRuntime.isDevBuild ? Palette.detach : Palette.running)
-                        .frame(width: 24, height: 24)
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .center, spacing: 10) {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill((LatticesRuntime.isDevBuild ? Palette.detach : Palette.running).opacity(0.13))
+                        .overlay(
+                            Image(systemName: LatticesRuntime.isDevBuild ? "hammer.fill" : "checkmark.seal.fill")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(LatticesRuntime.isDevBuild ? Palette.detach : Palette.running)
+                        )
+                        .frame(width: 30, height: 30)
 
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 8) {
                             Text("Lattices app")
                                 .font(Typo.mono(12))
                                 .foregroundColor(Palette.text)
                             buildChannelBadge
-                            Spacer()
                         }
 
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
                             Text(appUpdater.currentDisplayVersion)
-                                .font(Typo.heading(20))
+                                .font(Typo.monoBold(13))
                                 .foregroundColor(Palette.text)
                             Text(LatticesRuntime.buildStatusLabel)
-                                .font(Typo.monoBold(10))
+                                .font(Typo.monoBold(9.5))
                                 .foregroundColor(LatticesRuntime.isDevBuild ? Palette.detach : Palette.running)
                         }
                     }
+
+                    Spacer()
+
+                    Toggle("Auto", isOn: $appUpdater.autoCheckEnabled)
+                        .font(Typo.caption(9))
+                        .toggleStyle(.checkbox)
+                        .foregroundColor(Palette.textMuted.opacity(0.9))
                 }
 
                 if let update = appUpdater.availableUpdate {
@@ -494,11 +556,6 @@ struct SettingsContentView: View {
                     .buttonStyle(.plain)
                     .disabled(appUpdater.isChecking)
 
-                    Toggle("Auto", isOn: $appUpdater.autoCheckEnabled)
-                        .font(Typo.caption(9))
-                        .toggleStyle(.checkbox)
-                        .foregroundColor(Palette.textMuted.opacity(0.9))
-
                     Spacer()
                 }
             }
@@ -508,7 +565,7 @@ struct SettingsContentView: View {
     private var interactionBehaviorCard: some View {
         settingsCard {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Behavior")
+                Text("Session behavior")
                     .font(Typo.mono(12))
                     .foregroundColor(Palette.text)
 
@@ -526,12 +583,39 @@ struct SettingsContentView: View {
                     .frame(width: 160)
                 }
 
-                cardDivider
+                Text(prefs.mode == .learning
+                    ? "Shows keybinding hints when you detach from a tmux session."
+                    : "Detaches sessions quietly once Lattices has done the workspace handoff.")
+                    .font(Typo.caption(9.5))
+                    .foregroundColor(Palette.textMuted.opacity(0.75))
+            }
+        }
+    }
 
-                Toggle("Drag-to-snap", isOn: $prefs.dragSnapEnabled)
-                    .font(Typo.caption(10))
-                    .toggleStyle(.switch)
-                    .foregroundColor(Palette.textMuted)
+    private var inputControlsCard: some View {
+        shortcutSectionCard(
+            title: "Input Controls",
+            eyebrow: "Gestures & Remaps",
+            summary: "Mouse gestures, drag snapping, and Hyper key remaps live alongside the shortcuts they trigger."
+        ) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Drag-to-snap")
+                            .font(Typo.monoBold(11))
+                            .foregroundColor(Palette.text)
+                        Text("Hold a modifier while dragging a window to reveal snap targets.")
+                            .font(Typo.caption(10))
+                            .foregroundColor(Palette.textMuted)
+                    }
+
+                    Spacer()
+
+                    Toggle("", isOn: $prefs.dragSnapEnabled)
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                        .labelsHidden()
+                }
 
                 HStack {
                     Text("Snap modifier")
@@ -550,10 +634,23 @@ struct SettingsContentView: View {
 
                 cardDivider
 
-                Toggle("Middle-click gestures", isOn: $prefs.mouseGesturesEnabled)
-                    .font(Typo.caption(10))
-                    .toggleStyle(.switch)
-                    .foregroundColor(Palette.textMuted)
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Middle-click gestures")
+                            .font(Typo.monoBold(11))
+                            .foregroundColor(Palette.text)
+                        Text("Directional mouse gestures can switch Spaces, open the Screen Map, or trigger dictation.")
+                            .font(Typo.caption(10))
+                            .foregroundColor(Palette.textMuted)
+                    }
+
+                    Spacer()
+
+                    Toggle("", isOn: $prefs.mouseGesturesEnabled)
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                        .labelsHidden()
+                }
 
                 breakerStatusRow(
                     state: mouseGestureController.breakerState,
@@ -562,10 +659,25 @@ struct SettingsContentView: View {
                     mouseGestureController.reArmAfterBreakerTrip()
                 }
 
-                Toggle("Caps Lock as Hyper", isOn: $prefs.keyboardRemapsEnabled)
-                    .font(Typo.caption(10))
-                    .toggleStyle(.switch)
-                    .foregroundColor(Palette.textMuted)
+                cardDivider
+
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Caps Lock as Hyper")
+                            .font(Typo.monoBold(11))
+                            .foregroundColor(Palette.text)
+                        Text("Hold Caps Lock for Hyper shortcuts, tap it for Escape.")
+                            .font(Typo.caption(10))
+                            .foregroundColor(Palette.textMuted)
+                    }
+
+                    Spacer()
+
+                    Toggle("", isOn: $prefs.keyboardRemapsEnabled)
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                        .labelsHidden()
+                }
 
                 breakerStatusRow(
                     state: keyboardRemapController.breakerState,
@@ -583,7 +695,6 @@ struct SettingsContentView: View {
                 appUpdateCard
 
                 permissionsAssistantCard
-                permissionsDetailCard
 
                 settingsCard {
                     VStack(alignment: .leading, spacing: 8) {
@@ -1192,35 +1303,7 @@ struct SettingsContentView: View {
             VStack(alignment: .leading, spacing: 12) {
                 companionBridgeOverviewCard
                 companionTrustedDevicesCard
-
-                settingsCard {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Input")
-                            .font(Typo.mono(11))
-                            .foregroundColor(Palette.text)
-
-                        HStack(alignment: .top, spacing: 12) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Trackpad proxy")
-                                    .font(Typo.mono(10))
-                                    .foregroundColor(Palette.textDim)
-                                Text("Allow paired companions with the input.trackpad grant to move the Mac pointer through the encrypted bridge.")
-                                    .font(Typo.caption(9.5))
-                                    .foregroundColor(Palette.textMuted.opacity(0.75))
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-
-                            Spacer()
-
-                            Toggle("", isOn: $prefs.companionTrackpadEnabled)
-                                .toggleStyle(.switch)
-                                .controlSize(.small)
-                                .labelsHidden()
-                                .disabled(!prefs.companionBridgeEnabled)
-                                .opacity(prefs.companionBridgeEnabled ? 1 : 0.45)
-                        }
-                    }
-                }
+                companionCockpitCard
             }
             .padding(16)
             .frame(maxWidth: 760, alignment: .leading)
@@ -2284,9 +2367,8 @@ struct SettingsContentView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         VStack(alignment: .leading, spacing: 16) {
-                            companionCockpitCard
-
                             shortcutsOverviewCard
+                            inputControlsCard
 
                             LazyVGrid(columns: sectionColumns, alignment: .leading, spacing: 16) {
                                 shortcutsAppCard
