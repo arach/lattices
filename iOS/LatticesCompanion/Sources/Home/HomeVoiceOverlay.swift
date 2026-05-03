@@ -7,9 +7,8 @@ import SwiftUI
 /// for the Mac that's actually listening.
 ///
 /// Presented as `.fullScreenCover` from `HomeView` when the user taps the
-/// voice button in `HomeBottomBar`. Auto-dismisses ~1.4s after the Mac
-/// returns to `idle` with a successful `responseSummary`; sticks around when
-/// there's an error so the user can read + retry.
+/// voice button. The overlay stays open until the user closes it so command
+/// results remain visible for review.
 struct HomeVoiceOverlay: View {
     let voiceState: DeckVoiceState?
     let macLabel: String
@@ -371,7 +370,7 @@ struct HomeVoiceOverlay: View {
 
 // MARK: - Voice orb
 
-private struct VoiceOrb: View {
+struct VoiceOrb: View {
     let phase: DeckVoicePhase
     let severity: DeckErrorSeverity?
 

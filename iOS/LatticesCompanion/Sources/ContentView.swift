@@ -103,6 +103,14 @@ struct ContentView: View {
                 LatsSettingsView(store: store)
                     .preferredColorScheme(.dark)
             }
+            // Adaptive polling: speed up while the user is in the cockpit
+            // (Deck or settings) — Home alone runs in ambient mode.
+            .onChange(of: showLatsDeck) { _, isOpen in
+                store.setUIPriority(isOpen ? .fast : .ambient)
+            }
+            .onChange(of: showSettings) { _, isOpen in
+                store.setUIPriority(isOpen ? .fast : .ambient)
+            }
         }
         .preferredColorScheme(.dark)
     }
