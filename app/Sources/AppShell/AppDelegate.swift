@@ -3,6 +3,7 @@ import Carbon
 
 extension Notification.Name {
     static let latticesPopoverWillShow = Notification.Name("latticesPopoverWillShow")
+    static let latticesShowGeneralSettings = Notification.Name("latticesShowGeneralSettings")
     static let latticesShowAssistantSettings = Notification.Name("latticesShowAssistantSettings")
 }
 

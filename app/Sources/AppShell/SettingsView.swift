@@ -6,6 +6,9 @@ import SwiftUI
 struct SettingsContentView: View {
     private enum SettingsSection: String, CaseIterable, Identifiable {
         case general
+        case app
+        case permissions
+        case behavior
         case companion
         case ai
         case search
@@ -16,6 +19,9 @@ struct SettingsContentView: View {
         var title: String {
             switch self {
             case .general: return "General"
+            case .permissions: return "Permissions"
+            case .app: return "App"
+            case .behavior: return "Behavior"
             case .companion: return "Companion"
             case .ai: return "AI"
             case .search: return "Search & OCR"
@@ -26,6 +32,9 @@ struct SettingsContentView: View {
         var icon: String {
             switch self {
             case .general: return "slider.horizontal.3"
+            case .permissions: return "checkmark.shield"
+            case .app: return "arrow.down.circle"
+            case .behavior: return "switch.2"
             case .companion: return "ipad.and.iphone"
             case .ai: return "sparkles"
             case .search: return "text.viewfinder"
@@ -36,6 +45,9 @@ struct SettingsContentView: View {
         var eyebrow: String {
             switch self {
             case .general: return "Workspace"
+            case .permissions: return "Privacy"
+            case .app: return "Build"
+            case .behavior: return "Interaction"
             case .companion: return "Local Bridge"
             case .ai: return "Agents"
             case .search: return "Indexing"
@@ -46,7 +58,13 @@ struct SettingsContentView: View {
         var summary: String {
             switch self {
             case .general:
-                return "Terminal defaults, scan roots, window snapping, and app updates."
+                return "Terminal defaults and project discovery."
+            case .permissions:
+                return "macOS privacy grants for window control, search, gestures, and shortcuts."
+            case .app:
+                return "Version, build channel, and signed release updates."
+            case .behavior:
+                return "Detach mode, snap behavior, mouse gestures, and keyboard remaps."
             case .companion:
                 return "Local-network pairing, trusted iPad devices, and bridge security."
             case .ai:
@@ -93,6 +111,9 @@ struct SettingsContentView: View {
             if page == .companionSettings {
                 selectedTab = .companion
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .latticesShowGeneralSettings)) { _ in
+            selectedTab = .general
         }
         .onReceive(NotificationCenter.default.publisher(for: .latticesShowAssistantSettings)) { _ in
             selectedTab = .ai
@@ -261,6 +282,12 @@ struct SettingsContentView: View {
         switch selectedTab {
         case .general:
             generalContent
+        case .permissions:
+            permissionsContent
+        case .app:
+            appContent
+        case .behavior:
+            behaviorContent
         case .companion:
             companionContent
         case .ai:
@@ -357,156 +384,6 @@ struct SettingsContentView: View {
     private var generalContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                permissionsAssistantCard
-
-                settingsCard {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(alignment: .center, spacing: 8) {
-                            Image(systemName: "arrow.down.circle")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(Palette.running)
-                            Text("Lattices app")
-                                .font(Typo.mono(12))
-                                .foregroundColor(Palette.text)
-                            buildChannelBadge
-                            Spacer()
-                            Text("Current \(appUpdater.currentDisplayVersion)")
-                                .font(Typo.caption(10))
-                                .foregroundColor(Palette.textMuted)
-                        }
-
-                        Text("Lattices can check for new signed releases and prepare the update here. You’ll confirm before the app quits and relaunches.")
-                            .font(Typo.caption(10))
-                            .foregroundColor(Palette.textMuted)
-
-                        HStack(spacing: 6) {
-                            Image(systemName: LatticesRuntime.isDevBuild ? "hammer.fill" : "checkmark.seal.fill")
-                                .font(.system(size: 9, weight: .semibold))
-                                .foregroundColor(LatticesRuntime.isDevBuild ? Palette.running : Palette.textMuted)
-                            Text(LatticesRuntime.buildStatusLabel)
-                                .font(Typo.monoBold(9))
-                                .foregroundColor(LatticesRuntime.isDevBuild ? Palette.running.opacity(0.9) : Palette.textMuted.opacity(0.9))
-                            if let revision = LatticesRuntime.buildRevision {
-                                Text(revision)
-                                    .font(Typo.caption(9))
-                                    .foregroundColor(Palette.textMuted.opacity(0.75))
-                            }
-                            Spacer()
-                        }
-
-                        if let update = appUpdater.availableUpdate {
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "gift.fill")
-                                        .font(.system(size: 10, weight: .semibold))
-                                        .foregroundColor(Palette.detach)
-                                    Text("New version v\(update.version) is ready")
-                                        .font(Typo.monoBold(10))
-                                        .foregroundColor(Palette.detach)
-                                }
-
-                                if !update.releaseNotes.isEmpty {
-                                    Text(String(update.releaseNotes.prefix(180)) + (update.releaseNotes.count > 180 ? "..." : ""))
-                                        .font(Typo.caption(9))
-                                        .foregroundColor(Palette.textMuted)
-                                        .lineLimit(3)
-                                }
-                            }
-                            .padding(8)
-                            .background(
-                                RoundedRectangle(cornerRadius: 5)
-                                    .fill(Palette.surfaceHov.opacity(0.65))
-                                    .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Palette.detach.opacity(0.35), lineWidth: 0.5))
-                            )
-                        } else if appUpdater.isChecking {
-                            Text("Checking for updates...")
-                                .font(Typo.caption(9))
-                                .foregroundColor(Palette.textMuted)
-                        } else if let error = appUpdater.lastError {
-                            Text(error)
-                                .font(Typo.caption(9))
-                                .foregroundColor(Palette.detach.opacity(0.9))
-                        } else if let checked = appUpdater.lastChecked {
-                            Text("Last checked \(checked, style: .relative)")
-                                .font(Typo.caption(9))
-                                .foregroundColor(Palette.textMuted.opacity(0.8))
-                        }
-
-                        if let status = appUpdater.statusMessage {
-                            Text(status)
-                                .font(Typo.caption(9))
-                                .foregroundColor(Palette.running.opacity(0.85))
-                        }
-
-                        if let reason = appUpdater.unavailableReason {
-                            Text(reason)
-                                .font(Typo.caption(9))
-                                .foregroundColor(Palette.detach.opacity(0.9))
-                        }
-
-                        HStack(spacing: 10) {
-                            Button {
-                                appUpdater.promptForUpdate()
-                            } label: {
-                                Text(appUpdater.isUpdating ? "Preparing…" : (appUpdater.availableUpdate == nil ? "Check for Updates" : "Update to v\(appUpdater.availableUpdate?.version ?? "")"))
-                                    .font(Typo.monoBold(10))
-                                    .foregroundColor(Palette.text)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 5)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .fill(Palette.surfaceHov)
-                                            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
-                                    )
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(appUpdater.isUpdating)
-
-                            Button {
-                                Task { await appUpdater.check() }
-                            } label: {
-                                Text(appUpdater.isChecking ? "Checking..." : "Check Now")
-                                    .font(Typo.caption(9))
-                                    .foregroundColor(Palette.textMuted.opacity(0.9))
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(appUpdater.isChecking)
-
-                            Toggle("Auto", isOn: $appUpdater.autoCheckEnabled)
-                                .font(Typo.caption(9))
-                                .toggleStyle(.checkbox)
-                                .foregroundColor(Palette.textMuted.opacity(0.9))
-
-                            if appUpdater.availableUpdate != nil {
-                                Button {
-                                    appUpdater.viewCurrentRelease()
-                                } label: {
-                                    Text("Release Notes")
-                                        .font(Typo.caption(9))
-                                        .foregroundColor(Palette.textMuted.opacity(0.9))
-                                }
-                                .buttonStyle(.plain)
-
-                                Button {
-                                    appUpdater.skipCurrentUpdate()
-                                } label: {
-                                    Text("Skip")
-                                        .font(Typo.caption(9))
-                                        .foregroundColor(Palette.textMuted.opacity(0.75))
-                                }
-                                .buttonStyle(.plain)
-                            }
-
-                            Spacer()
-
-                            Text("CLI: `lattices app update`")
-                                .font(Typo.caption(9))
-                                .foregroundColor(Palette.textMuted.opacity(0.8))
-                        }
-                    }
-                }
-
-                // ── Terminal ──
                 settingsCard {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Terminal")
@@ -527,37 +404,12 @@ struct SettingsContentView: View {
                     }
                 }
 
-                // ── tmux ──
                 settingsCard {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("tmux")
+                        Text("Project discovery")
                             .font(Typo.mono(11))
                             .foregroundColor(Palette.text)
 
-                        // Mode
-                        HStack {
-                            Text("Detach mode")
-                                .font(Typo.mono(10))
-                                .foregroundColor(Palette.textDim)
-                            Spacer()
-                            Picker("", selection: $prefs.mode) {
-                                Text("Learning").tag(InteractionMode.learning)
-                                Text("Auto").tag(InteractionMode.auto)
-                            }
-                            .pickerStyle(.segmented)
-                            .labelsHidden()
-                            .frame(width: 160)
-                        }
-
-                        Text(prefs.mode == .learning
-                            ? "Shows keybinding hints on detach"
-                            : "Detaches sessions silently")
-                            .font(Typo.caption(9))
-                            .foregroundColor(Palette.textMuted.opacity(0.7))
-
-                        cardDivider
-
-                        // Project scan root
                         Text("Project scan root")
                             .font(Typo.mono(10))
                             .foregroundColor(Palette.textDim)
@@ -624,6 +476,17 @@ struct SettingsContentView: View {
                         }
                     }
                 }
+            }
+            .padding(16)
+            .frame(maxWidth: 760, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var permissionsContent: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                permissionsAssistantCard
 
                 settingsCard {
                     VStack(alignment: .leading, spacing: 10) {
@@ -682,6 +545,202 @@ struct SettingsContentView: View {
                                 permChecker.openInputMonitoringSettings()
                             }
                         }
+                    }
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: 760, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var appContent: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                settingsCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: LatticesRuntime.isDevBuild ? "hammer.fill" : "checkmark.seal.fill")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(LatticesRuntime.isDevBuild ? Palette.detach : Palette.running)
+                                .frame(width: 24, height: 24)
+
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack(spacing: 8) {
+                                    Text("Lattices app")
+                                        .font(Typo.mono(12))
+                                        .foregroundColor(Palette.text)
+                                    buildChannelBadge
+                                    Spacer()
+                                }
+
+                                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                    Text(appUpdater.currentDisplayVersion)
+                                        .font(Typo.heading(20))
+                                        .foregroundColor(Palette.text)
+                                    Text(LatticesRuntime.buildStatusLabel)
+                                        .font(Typo.monoBold(10))
+                                        .foregroundColor(LatticesRuntime.isDevBuild ? Palette.detach : Palette.running)
+                                }
+
+                                if let revision = LatticesRuntime.buildRevision {
+                                    Text("Build \(revision)")
+                                        .font(Typo.caption(9))
+                                        .foregroundColor(Palette.textMuted.opacity(0.8))
+                                }
+                            }
+                        }
+
+                        Text("Lattices can check for new signed releases and prepare the update here. You’ll confirm before the app quits and relaunches.")
+                            .font(Typo.caption(10))
+                            .foregroundColor(Palette.textMuted)
+
+                        if let update = appUpdater.availableUpdate {
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "gift.fill")
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundColor(Palette.detach)
+                                    Text("New version v\(update.version) is ready")
+                                        .font(Typo.monoBold(10))
+                                        .foregroundColor(Palette.detach)
+                                }
+
+                                if !update.releaseNotes.isEmpty {
+                                    Text(String(update.releaseNotes.prefix(180)) + (update.releaseNotes.count > 180 ? "..." : ""))
+                                        .font(Typo.caption(9))
+                                        .foregroundColor(Palette.textMuted)
+                                        .lineLimit(3)
+                                }
+                            }
+                            .padding(8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 5)
+                                    .fill(Palette.surfaceHov.opacity(0.65))
+                                    .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Palette.detach.opacity(0.35), lineWidth: 0.5))
+                            )
+                        } else if appUpdater.isChecking {
+                            Text("Checking for updates...")
+                                .font(Typo.caption(9))
+                                .foregroundColor(Palette.textMuted)
+                        } else if let error = appUpdater.lastError {
+                            Text(error)
+                                .font(Typo.caption(9))
+                                .foregroundColor(Palette.detach.opacity(0.9))
+                        } else if let checked = appUpdater.lastChecked {
+                            Text("Last checked \(checked, style: .relative)")
+                                .font(Typo.caption(9))
+                                .foregroundColor(Palette.textMuted.opacity(0.8))
+                        }
+
+                        if let status = appUpdater.statusMessage {
+                            Text(status)
+                                .font(Typo.caption(9))
+                                .foregroundColor(Palette.running.opacity(0.85))
+                        }
+
+                        if let reason = appUpdater.unavailableReason {
+                            Text(reason)
+                                .font(Typo.caption(9))
+                                .foregroundColor(Palette.detach.opacity(0.9))
+                        }
+
+                        HStack(spacing: 10) {
+                            Button {
+                                appUpdater.promptForUpdate()
+                            } label: {
+                                Text(appUpdater.isUpdating ? "Preparing..." : (appUpdater.availableUpdate == nil ? "Check for Updates" : "Update to v\(appUpdater.availableUpdate?.version ?? "")"))
+                                    .font(Typo.monoBold(10))
+                                    .foregroundColor(Palette.text)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 5)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(Palette.surfaceHov)
+                                            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(appUpdater.isUpdating)
+
+                            Button {
+                                Task { await appUpdater.check() }
+                            } label: {
+                                Text(appUpdater.isChecking ? "Checking..." : "Check Now")
+                                    .font(Typo.caption(9))
+                                    .foregroundColor(Palette.textMuted.opacity(0.9))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(appUpdater.isChecking)
+
+                            Toggle("Auto", isOn: $appUpdater.autoCheckEnabled)
+                                .font(Typo.caption(9))
+                                .toggleStyle(.checkbox)
+                                .foregroundColor(Palette.textMuted.opacity(0.9))
+
+                            if appUpdater.availableUpdate != nil {
+                                Button {
+                                    appUpdater.viewCurrentRelease()
+                                } label: {
+                                    Text("Release Notes")
+                                        .font(Typo.caption(9))
+                                        .foregroundColor(Palette.textMuted.opacity(0.9))
+                                }
+                                .buttonStyle(.plain)
+
+                                Button {
+                                    appUpdater.skipCurrentUpdate()
+                                } label: {
+                                    Text("Skip")
+                                        .font(Typo.caption(9))
+                                        .foregroundColor(Palette.textMuted.opacity(0.75))
+                                }
+                                .buttonStyle(.plain)
+                            }
+
+                            Spacer()
+
+                            Text("CLI: `lattices app update`")
+                                .font(Typo.caption(9))
+                                .foregroundColor(Palette.textMuted.opacity(0.8))
+                        }
+                    }
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: 760, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var behaviorContent: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                settingsCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("tmux")
+                            .font(Typo.mono(11))
+                            .foregroundColor(Palette.text)
+
+                        HStack {
+                            Text("Detach mode")
+                                .font(Typo.mono(10))
+                                .foregroundColor(Palette.textDim)
+                            Spacer()
+                            Picker("", selection: $prefs.mode) {
+                                Text("Learning").tag(InteractionMode.learning)
+                                Text("Auto").tag(InteractionMode.auto)
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+                            .frame(width: 160)
+                        }
+
+                        Text(prefs.mode == .learning
+                            ? "Shows keybinding hints on detach"
+                            : "Detaches sessions silently")
+                            .font(Typo.caption(9))
+                            .foregroundColor(Palette.textMuted.opacity(0.7))
                     }
                 }
 
