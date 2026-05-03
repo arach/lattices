@@ -877,14 +877,8 @@ final class MouseGestureController: ObservableObject {
         "\(Int(point.x)),\(Int(point.y))"
     }
 
-    private func shouldDismissOverlayBeforeAction(match: MouseShortcutMatchResult?) -> Bool {
-        guard let match else { return false }
-        switch match.action.type {
-        case .spacePrevious, .spaceNext, .screenMapToggle:
-            return true
-        case .dictationStart, .shortcutSend, .appActivate:
-            return false
-        }
+    private func shouldDismissOverlayBeforeAction(match _: MouseShortcutMatchResult?) -> Bool {
+        true
     }
 
     private func previewProgress(dominantDistance: CGFloat, threshold: CGFloat) -> CGFloat {
