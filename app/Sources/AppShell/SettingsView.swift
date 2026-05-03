@@ -68,6 +68,8 @@ struct SettingsContentView: View {
     @ObservedObject var mouseShortcutStore: MouseShortcutStore = .shared
     @ObservedObject var keyboardRemapStore: KeyboardRemapStore = .shared
     @ObservedObject var permChecker: PermissionChecker = .shared
+    @ObservedObject var mouseGestureController: MouseGestureController = .shared
+    @ObservedObject var keyboardRemapController: KeyboardRemapController = .shared
     var onBack: (() -> Void)? = nil
 
     @State private var selectedTab: SettingsSection = .general
@@ -768,6 +770,13 @@ struct SettingsContentView: View {
                             }
                         }
 
+                        breakerStatusRow(
+                            state: mouseGestureController.breakerState,
+                            label: "Mouse gestures"
+                        ) {
+                            mouseGestureController.reArmAfterBreakerTrip()
+                        }
+
                         HStack(spacing: 8) {
                             Button {
                                 mouseShortcutStore.openConfiguration()
@@ -863,6 +872,13 @@ struct SettingsContentView: View {
                                     .font(Typo.caption(9))
                                     .foregroundColor(Palette.textMuted.opacity(0.6))
                             }
+                        }
+
+                        breakerStatusRow(
+                            state: keyboardRemapController.breakerState,
+                            label: "Keyboard remaps"
+                        ) {
+                            keyboardRemapController.reArmAfterBreakerTrip()
                         }
 
                         HStack(spacing: 8) {
@@ -1938,6 +1954,53 @@ struct SettingsContentView: View {
                         .strokeBorder(status == "not set" ? Palette.detach.opacity(0.22) : Palette.borderLit.opacity(0.6), lineWidth: 0.5)
                 )
         )
+    }
+
+    @ViewBuilder
+    private func breakerStatusRow(
+        state: EventTapBreaker.State,
+        label: String,
+        onReArm: @escaping () -> Void
+    ) -> some View {
+        switch state {
+        case .armed:
+            EmptyView()
+        case .paused(let cooldownSec):
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(Color.orange)
+                    .frame(width: 6, height: 6)
+                Text("\(label) paused — \(cooldownSec)s cooldown")
+                    .font(Typo.caption(9))
+                    .foregroundColor(Palette.textMuted)
+                Spacer()
+            }
+        case .disabled:
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(Color.red)
+                    .frame(width: 6, height: 6)
+                Text("\(label) disabled — tap callback exceeded OS budget repeatedly")
+                    .font(Typo.caption(9))
+                    .foregroundColor(Palette.textMuted)
+                Spacer()
+                Button {
+                    onReArm()
+                } label: {
+                    Text("Re-enable")
+                        .font(Typo.monoBold(10))
+                        .foregroundColor(Palette.text)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 3)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Palette.surfaceHov)
+                                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     // MARK: - Shortcuts

@@ -8,6 +8,11 @@ final class KeyboardRemapStore: ObservableObject {
     @Published private(set) var config: KeyboardRemapConfig
 
     let configURL: URL
+    /// Lock-protected mirror of `config` for tap-thread reads. The keyboard
+    /// event tap runs on EventTapThread and must not read the @Published
+    /// SwiftUI-facing config directly while main may be mutating it.
+    private let stateLock = NSLock()
+    private var snapshot: KeyboardRemapConfig
     private var lastLoadedModifiedDate: Date?
 
     private init() {
@@ -16,12 +21,14 @@ final class KeyboardRemapStore: ObservableObject {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         self.configURL = dir.appendingPathComponent("keyboard-remaps.json")
         self.config = .defaults
+        self.snapshot = .defaults
         ensureConfigFile()
         reload()
     }
 
     var enabledRules: [KeyboardRemapRule] {
-        config.rules.filter(\.enabled)
+        stateLock.lock(); defer { stateLock.unlock() }
+        return snapshot.rules.filter(\.enabled)
     }
 
     var summaryLines: [String] {
@@ -38,23 +45,51 @@ final class KeyboardRemapStore: ObservableObject {
     }
 
     func reload() {
+        // @Published mutation must run on main; hop if called off-main.
+        if !Thread.isMainThread {
+            DispatchQueue.main.async { [weak self] in self?.reload() }
+            return
+        }
+        let newDate = modifiedDate()
+        let newConfig: KeyboardRemapConfig
         guard let data = FileManager.default.contents(atPath: configURL.path) else {
-            config = .defaults
+            newConfig = .defaults
+            stateLock.lock()
+            snapshot = newConfig
+            lastLoadedModifiedDate = newDate
+            stateLock.unlock()
+            config = newConfig
             return
         }
 
         do {
-            config = try JSONDecoder().decode(KeyboardRemapConfig.self, from: data)
-            lastLoadedModifiedDate = modifiedDate()
+            newConfig = try JSONDecoder().decode(KeyboardRemapConfig.self, from: data)
         } catch {
             DiagnosticLog.shared.error("KeyboardRemapStore: failed to decode keyboard-remaps.json - \(error.localizedDescription)")
-            config = .defaults
+            newConfig = .defaults
         }
+
+        stateLock.lock()
+        snapshot = newConfig
+        lastLoadedModifiedDate = newDate
+        stateLock.unlock()
+        config = newConfig
     }
 
     func reloadIfNeeded() {
+        // Called from the keyboard event-tap thread on every key event. The
+        // `stat` is cheap and thread-safe; the @Published mutation is hopped
+        // to main inside reload(). We claim the new mtime up-front so
+        // concurrent calls don't queue duplicate reloads while one is in
+        // flight (if reload fails, we'll retry on the next mtime change).
         let currentModifiedDate = modifiedDate()
-        guard currentModifiedDate != lastLoadedModifiedDate else { return }
+        stateLock.lock()
+        let needsReload = currentModifiedDate != lastLoadedModifiedDate
+        if needsReload {
+            lastLoadedModifiedDate = currentModifiedDate
+        }
+        stateLock.unlock()
+        guard needsReload else { return }
         reload()
     }
 
@@ -74,7 +109,11 @@ final class KeyboardRemapStore: ObservableObject {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         guard let data = try? encoder.encode(config) else { return }
         try? data.write(to: configURL, options: .atomic)
-        lastLoadedModifiedDate = modifiedDate()
+        let newDate = modifiedDate()
+        stateLock.lock()
+        snapshot = config
+        lastLoadedModifiedDate = newDate
+        stateLock.unlock()
     }
 
     private func modifiedDate() -> Date? {
