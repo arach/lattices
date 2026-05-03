@@ -73,6 +73,28 @@ lattices app
 # Cmd+Shift+M
 ```
 
+## Repository layout
+
+Lattices has a few product surfaces in one repo: the macOS app, the CLI, the
+Swift package code, and the web/docs sites. The current root is transitional,
+so this map is the shortest way to get oriented:
+
+| Path | What lives there |
+| --- | --- |
+| `app/` | Native macOS menu bar app. |
+| `bin/` | Published CLI entry points and TypeScript runtime modules. |
+| `swift/` | Shared Swift package code. |
+| `iOS/` | Companion app work. |
+| `docs/` | Product docs, API docs, and engineering notes. |
+| `docs-site/` | Documentation website. |
+| `site/` | Marketing website. |
+| `content/` | Shared site/blog content. |
+| `scripts/` | Release and packaging scripts. |
+| `test/` | Integration and evaluation tests. |
+
+See [Repository Structure](docs/repo-structure.md) for the cleanup plan and the
+target `apps/` / `packages/` shape.
+
 ## Persistent terminal sessions
 
 Declare your dev environment in a `.lattices.json`: which panes, which
