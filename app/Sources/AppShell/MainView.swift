@@ -14,7 +14,6 @@ struct MainView: View {
     @StateObject private var inventory = InventoryManager.shared
     @State private var searchText = ""
     @State private var hasCheckedSetup = false
-    @State private var bannerDismissed = false
     @State private var tmuxBannerDismissed = false
     @ObservedObject private var tmuxModel = TmuxModel.shared
     @State private var orphanSectionCollapsed = true
@@ -93,8 +92,11 @@ struct MainView: View {
         permChecker.check()
         DiagnosticLog.shared.finish(tPerm)
 
-        bannerDismissed = false
         DiagnosticLog.shared.finish(tTotal)
+    }
+
+    private var visiblyMissingCapabilities: [Capability] {
+        Capability.allCases.filter { !$0.isGranted && !prefs.isCapabilityDismissed($0.rawValue) }
     }
 
     private var mainContent: some View {
@@ -104,6 +106,7 @@ struct MainView: View {
                     Text("Lattices")
                         .font(Typo.mono(14))
                         .foregroundColor(Palette.text)
+                    buildChannelBadge
 
                     Spacer()
 
@@ -157,8 +160,8 @@ struct MainView: View {
                 .padding(.bottom, 10)
             }
 
-            // Permission banner
-            if !permChecker.allGranted && !bannerDismissed {
+            // Permission banner — only when something is missing AND not snoozed
+            if !visiblyMissingCapabilities.isEmpty {
                 permissionBanner
             }
 
@@ -401,12 +404,20 @@ struct MainView: View {
                 SettingsWindowController.shared.show()
             }
 
-            HStack(spacing: 4) {
-                if !permChecker.allGranted {
-                    Circle()
-                        .fill(Palette.detach)
-                        .frame(width: 5, height: 5)
+            if !permChecker.allGranted {
+                Button {
+                    PermissionsAssistantWindowController.shared.show()
+                } label: {
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(Palette.detach)
+                            .frame(width: 5, height: 5)
+                        Text("Permissions")
+                            .font(Typo.mono(9))
+                            .foregroundColor(Palette.textMuted)
+                    }
                 }
+                .buttonStyle(.plain)
             }
 
             Spacer()
@@ -502,33 +513,61 @@ struct MainView: View {
     // MARK: - Permission banner
 
     private var permissionBanner: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        let missing = visiblyMissingCapabilities
+
+        return VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Image(systemName: "exclamationmark.triangle.fill")
+                Image(systemName: "sparkles")
                     .font(.system(size: 10))
                     .foregroundColor(Palette.detach)
-                Text("PERMISSIONS NEEDED")
+                Text("OPTIONAL CAPABILITIES")
                     .font(Typo.monoBold(10))
                     .foregroundColor(Palette.detach)
                 Spacer()
-                Button { bannerDismissed = true } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 8, weight: .bold))
+                Button {
+                    for cap in missing { prefs.dismissCapability(cap.rawValue) }
+                } label: {
+                    Text("Maybe later")
+                        .font(Typo.mono(9))
                         .foregroundColor(Palette.textMuted)
                 }
                 .buttonStyle(.plain)
             }
 
-            permissionRow("Accessibility", granted: permChecker.accessibility) {
-                permChecker.requestAccessibility()
-            }
-            permissionRow("Screen Capture", granted: permChecker.screenRecording) {
-                permChecker.requestScreenRecording()
+            Text(bannerSummary(missing))
+                .font(Typo.mono(10))
+                .foregroundColor(Palette.text)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 8) {
+                ForEach(missing) { cap in
+                    capabilityChip(cap)
+                }
+                Spacer(minLength: 0)
             }
 
-            Text("Click a row to continue the permission flow in macOS.")
-                .font(Typo.mono(9))
-                .foregroundColor(Palette.textMuted)
+            Button {
+                PermissionsAssistantWindowController.shared.show(focus: missing.first)
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 10, weight: .semibold))
+                    Text("Open Permissions Assistant")
+                        .font(Typo.monoBold(10))
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Palette.detach.opacity(0.18))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .strokeBorder(Palette.detach.opacity(0.45), lineWidth: 0.5)
+                        )
+                )
+            }
+            .buttonStyle(.plain)
         }
         .padding(12)
         .background(
@@ -541,6 +580,56 @@ struct MainView: View {
         )
         .padding(.horizontal, 14)
         .padding(.bottom, 10)
+    }
+
+    private func bannerSummary(_ missing: [Capability]) -> String {
+        switch missing.count {
+        case 0: return ""
+        case 1: return "\(missing[0].title) is off. Lattices works without it."
+        default: return "\(missing.count) capabilities are off. Turn on whichever you want; the rest of the app works without them."
+        }
+    }
+
+    private func capabilityChip(_ cap: Capability) -> some View {
+        Button {
+            PermissionsAssistantWindowController.shared.show(focus: cap)
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: cap.iconName)
+                    .font(.system(size: 9, weight: .semibold))
+                Text(cap.title)
+                    .font(Typo.mono(9))
+            }
+            .foregroundColor(Palette.textDim)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(
+                Capsule()
+                    .fill(Palette.surface)
+                    .overlay(
+                        Capsule().strokeBorder(Palette.border, lineWidth: 0.5)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var buildChannelBadge: some View {
+        let tint = LatticesRuntime.isDevBuild ? Palette.detach : Palette.running
+
+        return Text(LatticesRuntime.buildChannelLabel)
+            .font(Typo.monoBold(9))
+            .foregroundColor(tint)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(
+                Capsule()
+                    .fill(tint.opacity(0.12))
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(tint.opacity(0.28), lineWidth: 0.5)
+                    )
+            )
     }
 
     // MARK: - tmux banner
@@ -605,42 +694,6 @@ struct MainView: View {
         )
         .padding(.horizontal, 14)
         .padding(.bottom, 10)
-    }
-
-    private func permissionRow(_ name: String, granted: Bool, open: @escaping () -> Void) -> some View {
-        Button(action: { if !granted { open() } }) {
-            HStack(spacing: 6) {
-                Image(systemName: granted ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 10))
-                    .foregroundColor(granted ? Palette.running : Palette.detach)
-                Text(name)
-                    .font(Typo.mono(10))
-                    .foregroundColor(Palette.text)
-                Spacer()
-                if granted {
-                    Text("granted")
-                        .font(Typo.mono(9))
-                        .foregroundColor(Palette.running)
-                } else {
-                    HStack(spacing: 4) {
-                        Text("not set")
-                            .font(Typo.mono(9))
-                            .foregroundColor(Palette.detach)
-                        Image(systemName: "arrow.up.forward.square")
-                            .font(.system(size: 9))
-                            .foregroundColor(Palette.detach)
-                    }
-                }
-            }
-            .padding(.vertical, 4)
-            .padding(.horizontal, 8)
-            .background(
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(granted ? Color.clear : Palette.detach.opacity(0.06))
-            )
-        }
-        .buttonStyle(.plain)
-        .disabled(granted)
     }
 
     // MARK: - Helpers

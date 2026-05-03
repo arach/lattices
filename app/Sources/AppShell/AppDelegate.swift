@@ -51,6 +51,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 ScreenMapWindowController.shared.showPage(.screenMap)
             }
         }
+
+        // Explicit preview entry point for development/demo flows. This still
+        // requires a launch argument; the assistant never opens automatically.
+        if CommandLine.arguments.contains("--permissions-assistant") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                PermissionsAssistantWindowController.shared.show()
+            }
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {

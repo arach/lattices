@@ -63,6 +63,21 @@ struct AppShellView: View {
         }
         .onChange(of: windowController.activePage) { page in
             syncPageState(page)
+            clearRelevantDismissals(for: page)
+        }
+    }
+
+    /// Entering a feature page clears its capability snooze — the user is
+    /// telling us they want this to work, so the banner can resurface.
+    private func clearRelevantDismissals(for page: AppPage) {
+        let prefs = Preferences.shared
+        switch page {
+        case .screenMap:
+            prefs.clearDismissal(Capability.windowControl.rawValue)
+        case .desktopInventory:
+            prefs.clearDismissal(Capability.screenSearch.rawValue)
+        default:
+            break
         }
     }
 

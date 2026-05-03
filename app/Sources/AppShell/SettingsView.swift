@@ -291,9 +291,70 @@ struct SettingsContentView: View {
 
     // MARK: - General
 
+    private var permissionsAssistantCard: some View {
+        let missing = Capability.allCases.filter { !$0.isGranted }
+        return settingsCard {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .center, spacing: 8) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(missing.isEmpty ? Palette.running : Palette.detach)
+                    Text("Permissions")
+                        .font(Typo.mono(12))
+                        .foregroundColor(Palette.text)
+                    Spacer()
+                    Text(missing.isEmpty ? "All on" : "\(missing.count) off")
+                        .font(Typo.caption(10))
+                        .foregroundColor(missing.isEmpty ? Palette.running : Palette.detach)
+                }
+
+                Text("The Permissions Assistant introduces each capability before any macOS prompt. Open it any time to review status or enable something new.")
+                    .font(Typo.caption(10))
+                    .foregroundColor(Palette.textMuted)
+
+                HStack(spacing: 8) {
+                    ForEach(Capability.allCases) { cap in
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(cap.isGranted ? Palette.running : Palette.detach)
+                                .frame(width: 5, height: 5)
+                            Text(cap.title)
+                                .font(Typo.mono(9))
+                                .foregroundColor(Palette.textMuted)
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            Capsule().fill(Palette.surface)
+                        )
+                    }
+                    Spacer(minLength: 0)
+                }
+
+                Button {
+                    PermissionsAssistantWindowController.shared.show(focus: missing.first)
+                } label: {
+                    Text(missing.isEmpty ? "Open Permissions Assistant" : "Set up permissions")
+                        .font(Typo.monoBold(10))
+                        .foregroundColor(Palette.text)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Palette.surfaceHov)
+                                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
     private var generalContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
+                permissionsAssistantCard
+
                 settingsCard {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(alignment: .center, spacing: 8) {
@@ -303,6 +364,7 @@ struct SettingsContentView: View {
                             Text("Lattices app")
                                 .font(Typo.mono(12))
                                 .foregroundColor(Palette.text)
+                            buildChannelBadge
                             Spacer()
                             Text("Current \(appUpdater.currentDisplayVersion)")
                                 .font(Typo.caption(10))
@@ -1307,6 +1369,20 @@ struct SettingsContentView: View {
             }
             .padding(16)
         }
+    }
+
+    private var buildChannelBadge: some View {
+        let tint = LatticesRuntime.isDevBuild ? Palette.detach : Palette.running
+
+        return Text(LatticesRuntime.buildChannelLabel)
+            .font(Typo.monoBold(9))
+            .foregroundColor(tint)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(
+                Capsule()
+                    .fill(tint.opacity(0.12))
+            )
     }
 
     // MARK: - Search & OCR

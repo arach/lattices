@@ -4,8 +4,8 @@ import AppKit
 // MARK: - Onboarding Flow
 
 /// A step-by-step welcome screen shown on first launch.
-/// Walks the user through granting Accessibility, Screen Recording,
-/// choosing a project root, and optionally installing tmux.
+/// Keeps setup quiet: permissions are introduced as optional capabilities
+/// and requested later from the feature that needs them.
 struct OnboardingView: View {
     @ObservedObject private var permChecker = PermissionChecker.shared
     @ObservedObject private var prefs = Preferences.shared
@@ -15,8 +15,7 @@ struct OnboardingView: View {
 
     enum Step: Int, CaseIterable {
         case welcome
-        case accessibility
-        case screenRecording
+        case capabilities
         case projectRoot
         case tmux
         case done
@@ -39,8 +38,7 @@ struct OnboardingView: View {
             Group {
                 switch step {
                 case .welcome:      welcomeStep
-                case .accessibility: accessibilityStep
-                case .screenRecording: screenRecordingStep
+                case .capabilities:  capabilitiesStep
                 case .projectRoot:  projectRootStep
                 case .tmux:         tmuxStep
                 case .done:         doneStep
@@ -98,24 +96,37 @@ struct OnboardingView: View {
         }
     }
 
-    private var accessibilityStep: some View {
-        permissionStep(
-            icon: "hand.raised.fill",
-            title: "Accessibility",
-            description: "Lattices needs Accessibility access to read window titles, move and resize windows, and tile your workspace.",
-            granted: permChecker.accessibility,
-            action: { permChecker.requestAccessibility() }
-        )
-    }
+    private var capabilitiesStep: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "slider.horizontal.3")
+                .font(.system(size: 28))
+                .foregroundColor(.white.opacity(0.7))
 
-    private var screenRecordingStep: some View {
-        permissionStep(
-            icon: "rectangle.dashed.badge.record",
-            title: "Screen Capture",
-            description: "Allows Lattices to index on-screen text with OCR so you can search across all your windows. On newer macOS versions this finishes in System Settings under Screen & System Audio Recording.",
-            granted: permChecker.screenRecording,
-            action: { permChecker.requestScreenRecording() }
-        )
+            Text("Enable more when you need it")
+                .font(Typo.title(16))
+                .foregroundColor(Palette.text)
+
+            Text("Lattices launches projects without any extra permissions. Click a capability to set it up now in the Permissions Assistant — or skip and turn it on later.")
+                .font(Typo.body(12))
+                .foregroundColor(Palette.textDim)
+                .multilineTextAlignment(.center)
+                .lineSpacing(3)
+
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Capability.allCases) { cap in
+                    capabilityRow(cap)
+                }
+            }
+            .padding(10)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Palette.surface)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .strokeBorder(Palette.border, lineWidth: 0.5)
+                    )
+            )
+        }
     }
 
     private var projectRootStep: some View {
@@ -251,8 +262,7 @@ struct OnboardingView: View {
                 .foregroundColor(Palette.text)
 
             VStack(alignment: .leading, spacing: 8) {
-                statusRow("Accessibility", granted: permChecker.accessibility)
-                statusRow("Screen Recording", granted: permChecker.screenRecording)
+                statusRow("Permission prompts", granted: true, detail: "shown when needed")
                 statusRow("Project root", granted: !prefs.scanRoot.isEmpty,
                           detail: prefs.scanRoot.isEmpty ? "not set" : abbreviatePath(prefs.scanRoot))
                 statusRow("tmux", granted: tmux.isAvailable,
@@ -293,43 +303,47 @@ struct OnboardingView: View {
 
     // MARK: - Shared helpers
 
-    private func permissionStep(icon: String, title: String, description: String, granted: Bool, action: @escaping () -> Void) -> some View {
-        VStack(spacing: 16) {
-            Image(systemName: icon)
-                .font(.system(size: 28))
-                .foregroundColor(.white.opacity(0.7))
-
-            Text(title)
-                .font(Typo.title(16))
-                .foregroundColor(Palette.text)
-
-            Text(description)
-                .font(Typo.body(12))
-                .foregroundColor(Palette.textDim)
-                .multilineTextAlignment(.center)
-                .lineSpacing(3)
-
-            if granted {
-                HStack(spacing: 6) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(Palette.running)
-                    Text("Granted")
+    private func capabilityRow(_ cap: Capability) -> some View {
+        let granted = cap.isGranted
+        return Button {
+            PermissionsAssistantWindowController.shared.show(focus: cap)
+        } label: {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: cap.iconName)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(granted ? Palette.running : Palette.text.opacity(0.85))
+                    .frame(width: 18)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(cap.title)
                         .font(Typo.monoBold(11))
-                        .foregroundColor(Palette.running)
+                        .foregroundColor(Palette.text)
+                    Text(cap.requirementLabel)
+                        .font(Typo.mono(10))
+                        .foregroundColor(Palette.textMuted)
                 }
-            } else {
-                Button(action: action) {
-                    Text("Grant \(title)")
-                        .angularButton(.white, filled: false)
-                }
-                .buttonStyle(.plain)
-
-                Text("macOS may send you to System Settings to finish this step.")
-                    .font(Typo.mono(10))
-                    .foregroundColor(Palette.textMuted)
-                    .multilineTextAlignment(.center)
+                Spacer(minLength: 0)
+                Text(granted ? "ON" : "Set up")
+                    .font(Typo.monoBold(9))
+                    .foregroundColor(granted ? Palette.running : Palette.textDim)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(
+                        Capsule().fill((granted ? Palette.running : Palette.borderLit).opacity(0.12))
+                    )
             }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+            .background(
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(Color.clear)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 5)
+                            .strokeBorder(Palette.border.opacity(0.6), lineWidth: 0.5)
+                    )
+            )
         }
+        .buttonStyle(.plain)
     }
 
     private func statusRow(_ label: String, granted: Bool, detail: String? = nil) -> some View {
@@ -382,8 +396,6 @@ struct OnboardingView: View {
 
     private var nextLabel: String {
         switch step {
-        case .accessibility where !permChecker.accessibility: return "Continue anyway"
-        case .screenRecording where !permChecker.screenRecording: return "Continue anyway"
         case .projectRoot where prefs.scanRoot.isEmpty: return "Skip for now"
         case .tmux where !tmux.isAvailable: return "Skip"
         default: return "Continue"

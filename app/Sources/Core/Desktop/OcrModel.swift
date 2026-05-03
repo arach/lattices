@@ -86,9 +86,15 @@ final class OcrModel: ObservableObject {
     func setEnabled(_ on: Bool) {
         enabled = on
         prefs.ocrEnabled = on
-        if on && timer == nil {
-            start()
-        } else if !on {
+        if on {
+            // User intentionally turning on OCR clears any prior snooze and is
+            // the moment we ask macOS for Screen Recording.
+            prefs.clearDismissal(Capability.screenSearch.rawValue)
+            if timer == nil {
+                PermissionChecker.shared.requestScreenRecording()
+                start()
+            }
+        } else {
             stop()
         }
     }
