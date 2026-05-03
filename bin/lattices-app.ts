@@ -68,6 +68,27 @@ function packageVersion(): string {
   }
 }
 
+function gitRevision(): string {
+  try {
+    return execSync("git rev-parse --short HEAD", {
+      cwd: cliRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return "unknown";
+  }
+}
+
+function xmlEscape(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
 function launch(extraArgs: string[] = []): void {
   if (isRunning()) {
     console.log("lattices app is already running.");
@@ -133,9 +154,35 @@ function signBundle(): void {
   } catch {}
 }
 
-function writeInfoPlist(): void {
+type BundleBuildMetadata = {
+  channel?: "dev" | "release";
+  track?: string;
+  revision?: string;
+  timestamp?: string;
+};
+
+function buildMetadataPlist(metadata: BundleBuildMetadata): string {
+  if (metadata.channel !== "dev") return "";
+
+  const track = metadata.track ?? "latest";
+  const revision = metadata.revision ?? gitRevision();
+  const timestamp = metadata.timestamp ?? new Date().toISOString();
+
+  return `    <key>LatticesBuildChannel</key>
+    <string>dev</string>
+    <key>LatticesBuildTrack</key>
+    <string>${xmlEscape(track)}</string>
+    <key>LatticesBuildRevision</key>
+    <string>${xmlEscape(revision)}</string>
+    <key>LatticesBuildTimestamp</key>
+    <string>${xmlEscape(timestamp)}</string>
+`;
+}
+
+function writeInfoPlist(metadata: BundleBuildMetadata = {}): void {
   mkdirSync(resolve(bundlePath, "Contents"), { recursive: true });
   const version = packageVersion();
+  const buildMetadata = buildMetadataPlist(metadata);
   const plist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -167,7 +214,7 @@ function writeInfoPlist(): void {
     <string>${version}</string>
     <key>CFBundleShortVersionString</key>
     <string>${version}</string>
-    <key>LSMinimumSystemVersion</key>
+${buildMetadata}    <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
     <key>LSUIElement</key>
     <true/>
@@ -209,7 +256,7 @@ function buildFromSource(): boolean {
 
   mkdirSync(binaryDir, { recursive: true });
   execSync(`cp '${builtPath}' '${binaryPath}'`);
-  writeInfoPlist();
+  writeInfoPlist({ channel: "dev", track: "latest" });
   syncBundleResources();
 
   // Re-sign the bundle so macOS TCC recognizes a stable identity across rebuilds.

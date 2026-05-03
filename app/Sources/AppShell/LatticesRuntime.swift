@@ -55,7 +55,46 @@ enum LatticesRuntime {
             ?? "unknown"
     }
 
+    static var appDisplayVersion: String {
+        let base = appVersion == "unknown" ? "unknown" : "v\(appVersion)"
+        guard isDevBuild else { return base }
+
+        let track = buildTrack ?? "latest"
+        return "\(base)-dev.\(track)"
+    }
+
+    static var buildChannel: String {
+        let raw = Bundle.main.infoDictionary?["LatticesBuildChannel"] as? String
+        return raw?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? "release"
+    }
+
+    static var buildTrack: String? {
+        normalizedInfoValue("LatticesBuildTrack")
+    }
+
+    static var buildRevision: String? {
+        normalizedInfoValue("LatticesBuildRevision")
+    }
+
+    static var buildTimestamp: String? {
+        normalizedInfoValue("LatticesBuildTimestamp")
+    }
+
+    static var isDevBuild: Bool {
+        buildChannel == "dev"
+    }
+
+    static var buildStatusLabel: String {
+        isDevBuild ? "Latest local dev build" : "Signed release build"
+    }
+
     private static func hasAppHelper(in root: String) -> Bool {
         FileManager.default.fileExists(atPath: root + "/bin/lattices-app.ts")
+    }
+
+    private static func normalizedInfoValue(_ key: String) -> String? {
+        guard let raw = Bundle.main.infoDictionary?[key] as? String else { return nil }
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty || value == "unknown" ? nil : value
     }
 }

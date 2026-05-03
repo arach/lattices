@@ -31,6 +31,7 @@ final class AppUpdater: ObservableObject {
     private init() {}
 
     var currentVersion: String { LatticesRuntime.appVersion }
+    var currentDisplayVersion: String { LatticesRuntime.appDisplayVersion }
 
     var canUpdate: Bool {
         LatticesRuntime.bunPath != nil && LatticesRuntime.appHelperScriptPath != nil
@@ -124,7 +125,7 @@ final class AppUpdater: ObservableObject {
                 } else {
                     presentAlert(
                         title: "Lattices Is Up to Date",
-                        message: "You’re running \(currentVersion), which is the latest published release."
+                        message: "You’re running \(currentDisplayVersion), which is the latest available build for this install."
                     )
                 }
             }
@@ -140,7 +141,7 @@ final class AppUpdater: ObservableObject {
         if let update = availableUpdate {
             alert.messageText = "Update Lattices?"
             alert.informativeText = """
-            Current version: \(currentVersion)
+            Current version: \(currentDisplayVersion)
             New version: \(update.version)
 
             Lattices will download the signed release, quit briefly, replace the app, and relaunch when the update is ready.
@@ -148,7 +149,7 @@ final class AppUpdater: ObservableObject {
         } else {
             alert.messageText = "Check and update Lattices?"
             alert.informativeText = """
-            Current version: \(currentVersion)
+            Current version: \(currentDisplayVersion)
             New version: latest published release
 
             Lattices will download the signed release, quit briefly, replace the app, and relaunch when the update is ready.

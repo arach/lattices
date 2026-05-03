@@ -304,7 +304,7 @@ struct SettingsContentView: View {
                                 .font(Typo.mono(12))
                                 .foregroundColor(Palette.text)
                             Spacer()
-                            Text("Current v\(appUpdater.currentVersion)")
+                            Text("Current \(appUpdater.currentDisplayVersion)")
                                 .font(Typo.caption(10))
                                 .foregroundColor(Palette.textMuted)
                         }
@@ -312,6 +312,21 @@ struct SettingsContentView: View {
                         Text("Lattices can check for new signed releases and prepare the update here. You’ll confirm before the app quits and relaunches.")
                             .font(Typo.caption(10))
                             .foregroundColor(Palette.textMuted)
+
+                        HStack(spacing: 6) {
+                            Image(systemName: LatticesRuntime.isDevBuild ? "hammer.fill" : "checkmark.seal.fill")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundColor(LatticesRuntime.isDevBuild ? Palette.running : Palette.textMuted)
+                            Text(LatticesRuntime.buildStatusLabel)
+                                .font(Typo.monoBold(9))
+                                .foregroundColor(LatticesRuntime.isDevBuild ? Palette.running.opacity(0.9) : Palette.textMuted.opacity(0.9))
+                            if let revision = LatticesRuntime.buildRevision {
+                                Text(revision)
+                                    .font(Typo.caption(9))
+                                    .foregroundColor(Palette.textMuted.opacity(0.75))
+                            }
+                            Spacer()
+                        }
 
                         if let update = appUpdater.availableUpdate {
                             VStack(alignment: .leading, spacing: 6) {

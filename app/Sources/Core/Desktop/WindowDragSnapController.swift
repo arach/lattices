@@ -36,7 +36,6 @@ final class WindowDragSnapController {
 
     private var dragCandidate: DragWindowCandidate?
     private var activeSession: DragSession?
-    private var overlayPanels: [String: WindowSnapOverlayPanel] = [:]
     private var modifierModeEnabled = false
     private var windowHasMoved = false
 
@@ -203,9 +202,7 @@ final class WindowDragSnapController {
     }
 
     private func hideOverlays() {
-        for panel in overlayPanels.values {
-            panel.orderOut(nil)
-        }
+        ScreenOverlayCanvasController.shared.removeLayers(owner: .dragSnap)
     }
 
     private func captureFocusedWindow(at mouseLocation: NSPoint) -> DragWindowCandidate? {
@@ -271,7 +268,7 @@ final class WindowDragSnapController {
 
         var resolved: [ResolvedSnapZone] = []
         for screen in NSScreen.screens {
-            let screenID = Self.screenID(for: screen)
+            let screenID = ScreenOverlayCanvasController.screenID(for: screen)
             for (zone, placement, triggerFractions, priority) in baseZones {
                 let triggerRect = Self.screenRect(for: triggerFractions, on: screen)
                 let previewRect = Self.screenRect(fromAX: WindowTiler.tileFrame(for: placement, on: screen))
@@ -312,17 +309,14 @@ final class WindowDragSnapController {
     private func render(zones: [ResolvedSnapZone], hoveredZone: ResolvedSnapZone?) {
         let config = WorkspaceManager.shared.snapZonesConfig
         let grouped = Dictionary(grouping: zones, by: \.screenID)
-        let activeScreenIDs = Set(grouped.keys)
+        var layers: [ScreenOverlayLayerSnapshot] = []
 
         for screen in NSScreen.screens {
-            let screenID = Self.screenID(for: screen)
+            let screenID = ScreenOverlayCanvasController.screenID(for: screen)
             guard let screenZones = grouped[screenID], !screenZones.isEmpty else { continue }
 
-            let panel = overlayPanels[screenID] ?? makeOverlayPanel(for: screen)
-            panel.setFrame(screen.frame, display: false)
-
             let localZones = screenZones.map {
-                WindowSnapOverlayView.Zone(
+                ScreenOverlaySnapZone(
                     id: $0.id,
                     label: $0.label,
                     rect: $0.visibleRect.offsetBy(dx: -screen.frame.minX, dy: -screen.frame.minY),
@@ -334,7 +328,7 @@ final class WindowDragSnapController {
                 ? hoveredZone?.previewRect.offsetBy(dx: -screen.frame.minX, dy: -screen.frame.minY)
                 : nil
 
-            panel.overlayView.model = WindowSnapOverlayView.Model(
+            let payload = ScreenOverlaySnapZonesPayload(
                 zones: localZones,
                 previewRect: previewRect,
                 previewLabel: nil,
@@ -344,26 +338,20 @@ final class WindowDragSnapController {
                 cornerRadius: config.cornerRadius ?? SnapZonesConfig.defaults.cornerRadius ?? 18
             )
 
-            panel.orderFrontRegardless()
+            layers.append(
+                ScreenOverlayLayerSnapshot(
+                    id: ScreenOverlayLayerID("dragSnap.\(screenID)"),
+                    owner: .dragSnap,
+                    screen: .screen(id: screenID),
+                    zIndex: 100,
+                    opacity: 1,
+                    payload: .snapZones(payload),
+                    expiresAt: nil
+                )
+            )
         }
 
-        for (screenID, panel) in overlayPanels where !activeScreenIDs.contains(screenID) {
-            panel.orderOut(nil)
-        }
-    }
-
-    private func makeOverlayPanel(for screen: NSScreen) -> WindowSnapOverlayPanel {
-        let panel = WindowSnapOverlayPanel(frame: screen.frame)
-        overlayPanels[Self.screenID(for: screen)] = panel
-        return panel
-    }
-
-    private static func screenID(for screen: NSScreen) -> String {
-        let key = NSDeviceDescriptionKey("NSScreenNumber")
-        if let number = screen.deviceDescription[key] as? NSNumber {
-            return number.stringValue
-        }
-        return screen.localizedName
+        ScreenOverlayCanvasController.shared.replaceLayers(owner: .dragSnap, with: layers)
     }
 
     private static func screenRect(for fractions: (CGFloat, CGFloat, CGFloat, CGFloat), on screen: NSScreen) -> CGRect {
@@ -437,192 +425,5 @@ final class WindowDragSnapController {
 
     private static func clamp(_ value: CGFloat, min lower: CGFloat, max upper: CGFloat) -> CGFloat {
         Swift.max(lower, Swift.min(upper, value))
-    }
-}
-
-private final class WindowSnapOverlayPanel: NSPanel {
-    let overlayView = WindowSnapOverlayView(frame: .zero)
-
-    init(frame: CGRect) {
-        super.init(
-            contentRect: frame,
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-
-        isOpaque = false
-        backgroundColor = .clear
-        hasShadow = false
-        ignoresMouseEvents = true
-        level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.maximumWindow)))
-        collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
-        isMovable = false
-        hidesOnDeactivate = false
-        animationBehavior = .none
-        overlayView.frame = NSRect(origin: .zero, size: frame.size)
-        overlayView.autoresizingMask = [.width, .height]
-        contentView = overlayView
-    }
-
-    override var canBecomeKey: Bool { false }
-    override var canBecomeMain: Bool { false }
-}
-
-private final class WindowSnapOverlayView: NSView {
-    struct Zone {
-        let id: String
-        let label: String
-        let rect: CGRect
-        let isHovered: Bool
-    }
-
-    struct Model {
-        let zones: [Zone]
-        let previewRect: CGRect?
-        let previewLabel: String?
-        let zoneOpacity: CGFloat
-        let highlightOpacity: CGFloat
-        let previewOpacity: CGFloat
-        let cornerRadius: CGFloat
-
-        static let empty = Model(
-            zones: [],
-            previewRect: nil,
-            previewLabel: nil,
-            zoneOpacity: 0.10,
-            highlightOpacity: 0.22,
-            previewOpacity: 0.18,
-            cornerRadius: 18
-        )
-    }
-
-    var model: Model = .empty {
-        didSet { needsDisplay = true }
-    }
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        wantsLayer = true
-        layer?.backgroundColor = NSColor.clear.cgColor
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        NSColor.clear.setFill()
-        bounds.fill()
-
-        for zone in model.zones {
-            drawZone(zone)
-        }
-
-        if let previewRect = model.previewRect {
-            drawPreview(previewRect, label: model.previewLabel)
-        }
-    }
-
-    private func drawZone(_ zone: Zone) {
-        let rect = zone.rect.insetBy(dx: 1.5, dy: 1.5)
-        let radius = min(model.cornerRadius, min(rect.width, rect.height) * 0.34)
-        let path = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
-        let idleStrength = max(0.35, min(model.zoneOpacity / 0.10, 1.4))
-        let hoverStrength = max(0.35, min(model.highlightOpacity / 0.22, 1.4))
-
-        let shadow = NSShadow()
-        shadow.shadowBlurRadius = zone.isHovered ? 18 : 10
-        shadow.shadowOffset = NSSize(width: 0, height: -2)
-        shadow.shadowColor = NSColor.black.withAlphaComponent(zone.isHovered ? 0.20 : 0.10)
-
-        NSGraphicsContext.saveGraphicsState()
-        shadow.set()
-        let baseTop = NSColor(
-            calibratedWhite: 0.13,
-            alpha: zone.isHovered ? 0.42 * hoverStrength : 0.22 * idleStrength
-        )
-        let baseBottom = NSColor(
-            calibratedWhite: 0.07,
-            alpha: zone.isHovered ? 0.34 * hoverStrength : 0.15 * idleStrength
-        )
-        NSGradient(starting: baseTop, ending: baseBottom)?.draw(in: path, angle: -90)
-        NSGraphicsContext.restoreGraphicsState()
-
-        if zone.isHovered {
-            let glowPath = path.copy() as! NSBezierPath
-            glowPath.lineWidth = 6
-            NSColor(calibratedRed: 0.25, green: 0.84, blue: 0.58, alpha: model.highlightOpacity * 0.28).setStroke()
-            glowPath.stroke()
-        }
-
-        path.lineWidth = zone.isHovered ? 1.6 : 1.0
-        NSColor(
-            calibratedRed: 0.52,
-            green: 0.94,
-            blue: 0.72,
-            alpha: zone.isHovered ? 0.54 * hoverStrength : 0.10 * idleStrength
-        ).setStroke()
-        path.stroke()
-
-        let lipRect = CGRect(x: rect.minX + 1.5, y: rect.maxY - 2.5, width: rect.width - 3, height: 2)
-        if lipRect.width > 0 {
-            let lipPath = NSBezierPath(roundedRect: lipRect, xRadius: 1, yRadius: 1)
-            NSColor.white.withAlphaComponent(zone.isHovered ? 0.18 : 0.08).setFill()
-            lipPath.fill()
-        }
-
-        drawLabel(zone.label, in: rect, emphasized: zone.isHovered)
-    }
-
-    private func drawPreview(_ rect: CGRect, label: String?) {
-        let previewRect = rect.insetBy(dx: 10, dy: 10)
-        let radius = min(model.cornerRadius, min(previewRect.width, previewRect.height) * 0.14)
-        let path = NSBezierPath(roundedRect: previewRect, xRadius: radius, yRadius: radius)
-
-        NSColor(calibratedWhite: 1.0, alpha: model.previewOpacity * 0.22).setFill()
-        path.fill()
-
-        path.lineWidth = 1.6
-        path.setLineDash([10, 8], count: 2, phase: 0)
-        NSColor(
-            calibratedRed: 0.44,
-            green: 0.90,
-            blue: 0.68,
-            alpha: max(0.34, model.previewOpacity * 3.2)
-        ).setStroke()
-        path.stroke()
-        path.setLineDash([], count: 0, phase: 0)
-
-        let innerPath = NSBezierPath(roundedRect: previewRect.insetBy(dx: 7, dy: 7), xRadius: max(radius - 4, 8), yRadius: max(radius - 4, 8))
-        innerPath.lineWidth = 1
-        NSColor.white.withAlphaComponent(max(0.08, model.previewOpacity * 1.2)).setStroke()
-        innerPath.stroke()
-
-        if let label {
-            let tagRect = CGRect(x: previewRect.minX + 14, y: previewRect.maxY - 34, width: 110, height: 24)
-            let tagPath = NSBezierPath(roundedRect: tagRect, xRadius: 12, yRadius: 12)
-            NSColor(calibratedWhite: 0.08, alpha: 0.62).setFill()
-            tagPath.fill()
-            NSColor.white.withAlphaComponent(0.10).setStroke()
-            tagPath.lineWidth = 1
-            tagPath.stroke()
-            drawLabel(label, in: tagRect, emphasized: true)
-        }
-    }
-
-    private func drawLabel(_ label: String, in rect: CGRect, emphasized: Bool) {
-        let font = NSFont.monospacedSystemFont(ofSize: emphasized ? 11 : 10, weight: emphasized ? .semibold : .medium)
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .foregroundColor: NSColor.white.withAlphaComponent(emphasized ? 0.92 : 0.72),
-        ]
-        let attr = NSAttributedString(string: label.uppercased(), attributes: attributes)
-        let size = attr.size()
-        let drawPoint = CGPoint(
-            x: rect.midX - size.width / 2,
-            y: rect.midY - size.height / 2
-        )
-        attr.draw(at: drawPoint)
     }
 }
