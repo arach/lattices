@@ -952,6 +952,10 @@ final class MouseGestureController: ObservableObject {
 
     private func sendShortcut(_ shortcut: MouseShortcutKeyStroke?) -> Bool {
         guard let shortcut else { return false }
+        if sendShortcutWithCGEvent(shortcut) {
+            return true
+        }
+
         let modifiers = shortcut.modifiers.map(\.appleScriptToken).joined(separator: ", ")
         let command: String
 
@@ -973,17 +977,79 @@ final class MouseGestureController: ObservableObject {
         end tell
         return "ok"
         """
-        return ProcessQuery.shell(["/usr/bin/osascript", "-e", script]) == "ok"
+        let result = ProcessQuery.shell(["/usr/bin/osascript", "-e", script])
+        if result != "ok" {
+            DiagnosticLog.shared.warn("MouseGesture: AppleScript shortcut send failed for \(shortcut.displayLabel)")
+        }
+        return result == "ok"
     }
 
     private func sendDictationShortcut() -> Bool {
         sendShortcut(
             MouseShortcutKeyStroke(
                 key: "a",
-                keyCode: nil,
+                keyCode: 0,
                 modifiers: [.command, .shift]
             )
         )
+    }
+
+    private func sendShortcutWithCGEvent(_ shortcut: MouseShortcutKeyStroke) -> Bool {
+        guard let keyCode = shortcut.keyCode.map(CGKeyCode.init) ?? keyCode(for: shortcut.key) else {
+            return false
+        }
+        guard let source = CGEventSource(stateID: .combinedSessionState),
+              let down = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
+              let up = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false) else {
+            DiagnosticLog.shared.warn("MouseGesture: CGEvent shortcut source unavailable for \(shortcut.displayLabel)")
+            return false
+        }
+
+        let flags = cgEventFlags(for: shortcut.modifiers)
+        down.flags = flags
+        up.flags = flags
+        down.setIntegerValueField(.eventSourceUserData, value: Self.syntheticMarker)
+        up.setIntegerValueField(.eventSourceUserData, value: Self.syntheticMarker)
+        down.post(tap: .cghidEventTap)
+        usleep(12_000)
+        up.post(tap: .cghidEventTap)
+        return true
+    }
+
+    private func cgEventFlags(for modifiers: [MouseShortcutModifier]) -> CGEventFlags {
+        var flags: CGEventFlags = []
+        for modifier in modifiers {
+            switch modifier {
+            case .command:
+                flags.insert(.maskCommand)
+            case .option:
+                flags.insert(.maskAlternate)
+            case .control:
+                flags.insert(.maskControl)
+            case .shift:
+                flags.insert(.maskShift)
+            }
+        }
+        return flags
+    }
+
+    private func keyCode(for key: String?) -> CGKeyCode? {
+        guard let key = key?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+              !key.isEmpty else {
+            return nil
+        }
+        let codes: [String: CGKeyCode] = [
+            "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6, "x": 7,
+            "c": 8, "v": 9, "b": 11, "q": 12, "w": 13, "e": 14, "r": 15,
+            "y": 16, "t": 17, "1": 18, "2": 19, "3": 20, "4": 21, "6": 22,
+            "5": 23, "=": 24, "9": 25, "7": 26, "-": 27, "8": 28, "0": 29,
+            "]": 30, "o": 31, "u": 32, "[": 33, "i": 34, "p": 35, "enter": 36,
+            "return": 36, "l": 37, "j": 38, "'": 39, "k": 40, ";": 41,
+            "\\": 42, ",": 43, "/": 44, "n": 45, "m": 46, ".": 47, "tab": 48,
+            "space": 49, "`": 50, "delete": 51, "backspace": 51, "escape": 53,
+            "esc": 53, "left": 123, "right": 124, "down": 125, "up": 126,
+        ]
+        return codes[key]
     }
 
     private func activateApplication(named appName: String?) -> Bool {

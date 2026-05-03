@@ -641,6 +641,14 @@ enum WindowTiler {
             "switchToAdjacentSpace: offset=\(offset) point=\(formatCGPoint(context.point)) displayId=\(context.display.displayId) active=\(context.activeSpaceId) displayCurrent=\(context.display.currentSpaceId) resolved=\(context.currentSpaceId) target=\(targetText) spaces=\(spaces)"
         )
 
+        if let target = context.target {
+            let switched = switchToSpace(spaceId: target.id)
+            DiagnosticLog.shared.info("switchToAdjacentSpace: SkyLight \(switched ? "reached" : "missed") target \(target.id)")
+            if switched {
+                return true
+            }
+        }
+
         if getDisplaySpaces().count == 1 {
             if let finalSpaceId = switchToAdjacentSpaceViaSystemShortcut(
                 offset: offset,
@@ -663,10 +671,7 @@ enum WindowTiler {
             DiagnosticLog.shared.warn("switchToAdjacentSpace: system shortcut stayed on \(context.currentSpaceId), falling back to SkyLight target \(target.id)")
         }
 
-        guard let target = context.target else { return false }
-        let switched = switchToSpace(spaceId: target.id)
-        DiagnosticLog.shared.info("switchToAdjacentSpace: SkyLight \(switched ? "reached" : "missed") target \(target.id)")
-        return switched
+        return false
     }
 
     /// Find a window by its title tag and return its CGWindowID and owner PID
@@ -2094,16 +2099,17 @@ enum WindowTiler {
 
     private static func switchToAdjacentSpaceViaSystemShortcut(offset: Int, displayId: String, initialSpaceId: Int) -> Int? {
         let keyCode: CGKeyCode = offset < 0 ? 123 : 124
-        let script = """
-        tell application "System Events"
-            key code \(keyCode) using control down
-        end tell
-        return "ok"
-        """
-        let result = ProcessQuery.shell(["/usr/bin/osascript", "-e", script])
-        if result != "ok" {
-            DiagnosticLog.shared.warn("switchToAdjacentSpace: system shortcut script did not complete for offset \(offset)")
+        guard let source = CGEventSource(stateID: .combinedSessionState),
+              let down = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
+              let up = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false) else {
+            DiagnosticLog.shared.warn("switchToAdjacentSpace: system shortcut event source unavailable for offset \(offset)")
+            return nil
         }
+        down.flags = .maskControl
+        up.flags = .maskControl
+        down.post(tap: .cghidEventTap)
+        usleep(12_000)
+        up.post(tap: .cghidEventTap)
         return waitForSpaceChange(displayId: displayId, initialSpaceId: initialSpaceId, timeout: 1.2)
     }
 
