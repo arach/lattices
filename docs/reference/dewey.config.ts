@@ -4,22 +4,22 @@ export default {
     name: 'lattices',
     tagline: 'macOS developer workspace manager — tmux sessions with a native menu bar app for tiling, navigation, and project management',
     type: 'cli-tool',
-    version: '0.1.0',
+    version: '0.4.10',
   },
 
   agent: {
     criticalContext: [
-      'lattices has TWO interfaces: a Node.js CLI (`bin/lattices.js`) and a native Swift menu bar app (`app/Sources/`)',
+      'lattices has TWO primary interfaces: a TypeScript CLI (`bin/lattices.ts`) and a native Swift menu bar app (`app/Sources/`)',
       'Session names are `<basename>-<sha256-6chars>` — both CLI and app must produce identical hashes',
       'The app finds terminal windows via a `[lattices:session-name]` tag embedded in the tmux window title',
       'Window navigation falls through CG → AX → AppleScript depending on macOS permissions',
       'Space switching uses private SkyLight framework APIs loaded via dlopen at runtime',
-      'The daemon runs on ws://127.0.0.1:9399 with 20 RPC methods and 3 real-time events',
+      'The daemon runs on ws://127.0.0.1:9399 with 35+ RPC methods and real-time events',
     ],
 
     entryPoints: {
-      'cli': 'bin/lattices.js',
-      'app-helper': 'bin/lattices-app.js',
+      'cli': 'bin/lattices.ts',
+      'app-helper': 'bin/lattices-app.ts',
       'menu-bar-app': 'app/Sources/',
       'docs': 'docs/',
       'docs-site': 'docs-site/',
@@ -27,14 +27,14 @@ export default {
     },
 
     rules: [
-      { pattern: 'cli', instruction: 'Check bin/lattices.js for CLI commands and session logic' },
+      { pattern: 'cli', instruction: 'Check bin/lattices.ts for CLI commands and session logic' },
       { pattern: 'app', instruction: 'Check app/Sources/ for Swift menu bar app code' },
       { pattern: 'config', instruction: 'Check docs/config.md for .lattices.json format and CLI reference' },
-      { pattern: 'tiling', instruction: 'Check app/Sources/WindowTiler.swift and bin/lattices.js tilePresets' },
-      { pattern: 'palette', instruction: 'Check app/Sources/PaletteCommand.swift for command palette actions' },
-      { pattern: 'terminal', instruction: 'Check app/Sources/Terminal.swift for supported terminals and launch logic' },
-      { pattern: 'daemon', instruction: 'Check app/Sources/DaemonServer.swift and app/Sources/LatticesApi.swift for WebSocket API' },
-      { pattern: 'api', instruction: 'Check docs/api.md for the full 20-method RPC reference' },
+      { pattern: 'tiling', instruction: 'Check app/Sources/Core/Desktop/WindowTiler.swift and app/Sources/Core/Desktop/PlacementSpec.swift' },
+      { pattern: 'palette', instruction: 'Check app/Sources/Core/Actions/PaletteCommand.swift for command palette actions' },
+      { pattern: 'terminal', instruction: 'Check app/Sources/Core/Workspace/Terminal/Terminal.swift for supported terminals and launch logic' },
+      { pattern: 'daemon', instruction: 'Check app/Sources/Core/Daemon/DaemonServer.swift and app/Sources/Core/Daemon/LatticesApi.swift for WebSocket API' },
+      { pattern: 'api', instruction: 'Check docs/api.md for the daemon RPC reference' },
       { pattern: 'twin', instruction: 'Check docs/twins.md and bin/project-twin.ts for the Pi-backed project twin runtime' },
     ],
 
@@ -56,10 +56,10 @@ export default {
     },
 
     prerequisites: [
-      'macOS 13.0+',
+      'macOS 26.0+',
       'tmux (brew install tmux)',
       'Node.js >= 18',
-      'Swift 5.9+ (only if building the menu bar app from source)',
+      'Swift 6.2 / Xcode 26+ (only if building the menu bar app from source)',
     ],
 
     steps: [
