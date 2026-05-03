@@ -18,10 +18,10 @@ for keeping file structure as architecture.
 | `docs-site/` | Astro documentation site. |
 | `content/` | Shared blog/content source consumed by sites. |
 | `docs/` | Markdown docs and engineering proposals. |
-| `skills/` | Agent skill pack for driving Lattices. |
+| `tools/agents/skills/` | Agent skill pack for driving Lattices. |
 | `assets/` | Shared release/app assets. |
-| `scripts/` | Maintainer scripts for building and shipping. |
-| `test/` | CLI, daemon, and evaluation tests. |
+| `tools/release/` | Maintainer scripts for building and shipping. |
+| `tests/` | CLI, daemon, and evaluation tests. |
 | `lib/` | Shared TypeScript helpers that are not CLI entry points. |
 
 ## Problem
@@ -32,7 +32,7 @@ The root currently mixes categories:
 - websites: `site/`, `docs-site/`, `content/`
 - companion experiments: `iOS/`
 - generated or release output: `dist/`
-- maintainer and agent affordances: `docs/`, `skills/`, `scripts/`, `test/`
+- maintainer and agent affordances: `docs/`, `tools/`, `tests/`
 
 That makes the project feel larger than it is. It also makes it harder to see
 which directories are architecture and which are support material.
@@ -59,8 +59,8 @@ docs/
   proposals/
 
 tools/
-  scripts/        # current scripts/
-  skills/         # current skills/
+  release/        # release/build scripts
+  agents/skills/  # agent skill pack
 ```
 
 This is intentionally similar to the `apps/` and `packages/` split used by

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ROOT="$SCRIPT_DIR/.."
+ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 APP_DIR="$ROOT/app"
 DIST_DIR="$ROOT/dist"
 RELEASE_REPO="${LATTICES_RELEASE_REPO:-arach/lattices}"
@@ -14,7 +14,7 @@ DRY_RUN=0
 
 usage() {
     cat <<'EOF'
-Usage: ./scripts/ship.sh [dmg|bin] [--dry-run]
+Usage: ./tools/release/ship.sh [dmg|bin] [--dry-run]
 
 Build the release asset and upload it to the public GitHub release feed.
 

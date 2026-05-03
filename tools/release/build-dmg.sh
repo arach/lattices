@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ROOT="$SCRIPT_DIR/.."
+ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 APP_DIR="$ROOT/app"
 BUILD_DIR="$ROOT/dist"
 APP_NAME="Lattices.app"
@@ -128,4 +128,4 @@ spctl --assess --type open --context context:primary-signature -v "$BUILD_DIR/$D
 
 echo ""
 echo "To ship:"
-echo "  ./scripts/ship.sh"
+echo "  ./tools/release/ship.sh"
