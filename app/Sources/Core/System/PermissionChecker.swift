@@ -152,6 +152,20 @@ final class PermissionChecker: ObservableObject {
         }
     }
 
+    /// Opens System Settings → Privacy & Security → Automation.
+    func openAutomationSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    /// Opens System Settings → Privacy & Security → Input Monitoring.
+    func openInputMonitoringSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
     @available(macOS 15.0, *)
     private func probeScreenCaptureShareableContent() async -> String {
         await withCheckedContinuation { continuation in

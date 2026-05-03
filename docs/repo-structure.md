@@ -1,0 +1,104 @@
+# Repository Structure
+
+Lattices is a small project with several real product surfaces. The root should
+make those surfaces obvious.
+
+This document is the current maintainer-facing map and the proposed direction
+for keeping file structure as architecture.
+
+## Current Top-Level Areas
+
+| Path | Role |
+| --- | --- |
+| `app/` | Native macOS menu bar app. Swift/AppKit/SwiftUI package. |
+| `bin/` | Published TypeScript CLI and app helper entry points. |
+| `swift/` | Shared Swift package code used by the app. |
+| `iOS/` | iOS companion app experiments and local build state. |
+| `site/` | Public marketing site. |
+| `docs-site/` | Astro documentation site. |
+| `content/` | Shared blog/content source consumed by sites. |
+| `docs/` | Markdown docs and engineering proposals. |
+| `skills/` | Agent skill pack for driving Lattices. |
+| `assets/` | Shared release/app assets. |
+| `scripts/` | Maintainer scripts for building and shipping. |
+| `test/` | CLI, daemon, and evaluation tests. |
+| `lib/` | Shared TypeScript helpers that are not CLI entry points. |
+
+## Problem
+
+The root currently mixes categories:
+
+- shipped product surfaces: `app/`, `bin/`, `swift/`
+- websites: `site/`, `docs-site/`, `content/`
+- companion experiments: `iOS/`
+- generated or release output: `dist/`
+- maintainer and agent affordances: `docs/`, `skills/`, `scripts/`, `test/`
+
+That makes the project feel larger than it is. It also makes it harder to see
+which directories are architecture and which are support material.
+
+## Target Shape
+
+Do not reorganize everything at once. The target is:
+
+```text
+apps/
+  mac/            # current app/
+  ios/            # current iOS/
+  site/           # current site/
+  docs-site/      # current docs-site/
+
+packages/
+  cli/            # current bin/ plus TypeScript package surface
+  swift/          # current swift/
+
+content/
+  blog/
+
+docs/
+  proposals/
+
+tools/
+  scripts/        # current scripts/
+  skills/         # current skills/
+```
+
+This is intentionally similar to the `apps/` and `packages/` split used by
+small monorepos such as Flue, but adapted for Lattices' macOS app plus CLI
+shape.
+
+## Migration Rules
+
+- Move one category at a time.
+- Keep published npm entry points stable.
+- Keep app bundle and release scripts working after each move.
+- Update docs and agent instructions in the same PR as any move.
+- Avoid renames that only satisfy aesthetics without reducing ambiguity.
+- Keep generated output ignored and out of the architectural map.
+
+## Near-Term Cleanup
+
+Good first moves:
+
+1. Treat `dist/` as generated output only.
+2. Move blog content closer to the site that owns it, or explicitly document it
+   as shared content.
+3. Move `iOS/` under `apps/ios/` once companion work becomes active again.
+4. Split `docs/proposals/` for numbered engineering docs such as `LAT-001`.
+5. Decide whether `bin/` remains the package root for the CLI or becomes
+   `packages/cli/src/` before adding more exported modules.
+
+## What Stays Boring
+
+Root files should be few and intentional:
+
+- `README.md`
+- `AGENTS.md`
+- `package.json`
+- lockfile
+- TypeScript config
+- license/security/contribution docs
+- release/install affordances
+
+Everything else should either be a product surface, a package, docs, content,
+or tooling.

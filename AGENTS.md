@@ -6,19 +6,19 @@
 
 **IMPORTANT:** Read these rules before making any changes:
 
-- lattices has TWO interfaces: a Node.js CLI (`bin/lattices.js`) and a native Swift menu bar app (`app/Sources/`)
+- lattices has TWO primary interfaces: a TypeScript CLI (`bin/lattices.ts`) and a native Swift menu bar app (`app/Sources/`)
 - Session names are `<basename>-<sha256-6chars>` — both CLI and app must produce identical hashes
 - The app finds terminal windows via a `[lattices:session-name]` tag embedded in the tmux window title
 - Window navigation falls through CG → AX → AppleScript depending on macOS permissions
 - Space switching uses private SkyLight framework APIs loaded via dlopen at runtime
-- The daemon runs on ws://127.0.0.1:9399 with 20 RPC methods and 3 real-time events
+- The daemon runs on ws://127.0.0.1:9399 with 35+ RPC methods and real-time events
 
 ## Project Structure
 
 | Component | Path | Purpose |
 |-----------|------|---------|
-| Cli | `bin/lattices.js` | |
-| App Helper | `bin/lattices-app.js` | |
+| CLI | `bin/lattices.ts` | Published command-line workspace manager |
+| App Helper | `bin/lattices-app.ts` | Build, launch, quit, and restart the app |
 | Menu Bar App | `app/Sources/` | |
 | Docs | `docs/` | |
 | Docs Site | `docs-site/` | |
@@ -26,14 +26,14 @@
 
 ## Quick Navigation
 
-- Working with **cli**? → Check bin/lattices.js for CLI commands and session logic
+- Working with **cli**? → Check bin/lattices.ts for CLI commands and session logic
 - Working with **app**? → Check app/Sources/ for Swift menu bar app code
 - Working with **config**? → Check docs/config.md for .lattices.json format and CLI reference
-- Working with **tiling**? → Check app/Sources/WindowTiler.swift and bin/lattices.js tilePresets
-- Working with **palette**? → Check app/Sources/PaletteCommand.swift for command palette actions
-- Working with **terminal**? → Check app/Sources/Terminal.swift for supported terminals and launch logic
-- Working with **daemon**? → Check app/Sources/DaemonServer.swift and app/Sources/LatticesApi.swift for WebSocket API
-- Working with **api**? → Check docs/api.md for the full 20-method RPC reference
+- Working with **tiling**? → Check app/Sources/Core/Desktop/WindowTiler.swift and app/Sources/Core/Desktop/PlacementSpec.swift
+- Working with **palette**? → Check app/Sources/Core/Actions/PaletteCommand.swift for command palette actions
+- Working with **terminal**? → Check app/Sources/Core/Workspace/Terminal/Terminal.swift for supported terminals and launch logic
+- Working with **daemon**? → Check app/Sources/Core/Daemon/DaemonServer.swift and app/Sources/Core/Daemon/LatticesApi.swift for WebSocket API
+- Working with **api**? → Check docs/api.md for the daemon RPC reference
 
 ## Quickstart
 
@@ -138,7 +138,7 @@ It has two parts:
 
 ### Daemon
 The lattices daemon is a WebSocket server (`ws://127.0.0.1:9399`) that
-runs inside the menu bar app. It exposes 20 RPC methods and 3 real-time
+runs inside the menu bar app. It exposes 35+ RPC methods and real-time
 events, giving scripts and AI agents full programmatic control over
 sessions, windows, layers, and projects. See the
 [API reference](/docs/api).
@@ -214,7 +214,7 @@ Tiling uses AppleScript bounds and respects the menu bar and dock.
 
 ```
 ┌─────────────────────────────┐
-│  AI Agents / Scripts        │  ← daemon API: 20 RPC methods, real-time events
+│  AI Agents / Scripts        │  ← daemon API: 35+ RPC methods, real-time events
 ├─────────────────────────────┤
 │  Menu bar app (Swift/AppKit)│  ← GUI: command palette, tiling, project list
 ├─────────────────────────────┤
@@ -798,10 +798,10 @@ if (await isDaemonRunning()) {
 
 ### What it provides
 
-- **20 RPC methods** — read windows, sessions, projects, spaces, layers;
+- **35+ RPC methods** — read windows, sessions, projects, spaces, layers;
   launch/kill/sync sessions; tile/focus/move windows; switch layers;
   manage tab groups
-- **3 real-time events** — `windows.changed`, `tmux.changed`,
+- **real-time events** — `windows.changed`, `tmux.changed`,
   `layer.switched` — broadcast to all connected clients
 - **Window tracking** — the daemon monitors the desktop window list
   and correlates windows to lattices sessions via title tags
@@ -1145,7 +1145,7 @@ No `tile` — just focuses the window wherever it is.
 # Daemon API
 
 The lattices menu bar app runs a WebSocket daemon on `ws://127.0.0.1:9399`.
-It exposes 20 RPC methods and 3 real-time events — everything the app
+It exposes 35+ RPC methods and real-time events — everything the app
 can do, agents and scripts can do too.
 
 ## Who this is for
@@ -1868,7 +1868,7 @@ lattices solves both sides:
 - **For you** — run `lattices` in any project to get a pre-configured
   tmux session. Use the menu bar app to launch, tile, and navigate
   sessions with a command palette.
-- **For agents** — the daemon API exposes 20 RPC methods over WebSocket.
+- **For agents** — the daemon API exposes 35+ RPC methods over WebSocket.
   Agents can discover projects, launch sessions, tile windows, and
   switch workspace layers programmatically.
 
@@ -1878,7 +1878,7 @@ lattices solves both sides:
 |-----------|-------------|
 | **CLI** (`lattices`) | Create, manage, and tile tmux sessions from the terminal |
 | **Menu bar app** | Native macOS companion with command palette, tiling, and project discovery |
-| **Daemon API** | WebSocket server on `ws://127.0.0.1:9399` — 20 methods, 3 real-time events |
+| **Daemon API** | WebSocket server on `ws://127.0.0.1:9399` — 35+ methods, real-time events |
 | **Node.js client** | Zero-dependency `daemonCall()` helper for scripting |
 
 ## Quick taste
@@ -1905,10 +1905,10 @@ await daemonCall('window.tile', { session: 'frontend-a1b2c3', position: 'left' }
 
 ## Requirements
 
-- macOS 13.0+
+- macOS 26.0+
 - tmux (`brew install tmux`)
 - Node.js 18+
-- Swift 5.9+ (only needed to build the menu bar app from source)
+- Swift 6.2 / Xcode 26+ (only needed to build the menu bar app from source)
 
 ## Next steps
 
@@ -1916,6 +1916,3 @@ await daemonCall('window.tile', { session: 'frontend-a1b2c3', position: 'left' }
 - [Concepts](/docs/concepts) — architecture, glossary, and how it all works
 - [Configuration](/docs/config) — `.lattices.json` format and CLI commands
 - [Daemon API](/docs/api) — full RPC method reference for agents and scripts
-
----
-Generated by [Dewey](https://github.com/arach/dewey) | Last updated: 2026-03-03
