@@ -46,6 +46,15 @@ final class MouseShortcutStore: ObservableObject {
         return Set(snapshot.rules.filter(\.enabled).map { Int64($0.trigger.button.rawButtonNumber) })
     }
 
+    func hasEnabledRule(button: MouseShortcutButton, kind: MouseShortcutTriggerKind) -> Bool {
+        stateLock.lock(); defer { stateLock.unlock() }
+        return snapshot.rules.contains { rule in
+            rule.enabled
+                && rule.trigger.button == button
+                && rule.trigger.kind == kind
+        }
+    }
+
     var summaryLines: [String] {
         stateLock.lock(); defer { stateLock.unlock() }
         return snapshot.rules.filter(\.enabled).map { "\($0.trigger.triggerName) -> \($0.action.type.rawValue)" }

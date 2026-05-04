@@ -31,6 +31,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         WindowDragSnapController.shared.start()
         MouseGestureController.shared.start()
         KeyboardRemapController.shared.start()
+        SecureEventInputMonitor.shared.start()
 
         if !OnboardingWindowController.shared.showIfNeeded() {
             PermissionChecker.shared.check()
@@ -67,6 +68,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         removeSystemInputBoundaryObservers()
+        SecureEventInputMonitor.shared.stop()
         KeyboardRemapController.shared.stop()
         AppServicesBootstrap.stop()
     }
