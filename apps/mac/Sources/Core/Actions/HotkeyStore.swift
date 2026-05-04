@@ -25,6 +25,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
     case unifiedWindow
     case hud
     case mouseFinder
+    case overlayActors
     // Layers
     case layer1, layer2, layer3, layer4, layer5, layer6, layer7, layer8, layer9
     case layerNext, layerPrev, layerTag
@@ -47,6 +48,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .unifiedWindow:   return "Workspace Home"
         case .hud:             return "HUD"
         case .mouseFinder:     return "Find Mouse"
+        case .overlayActors:   return "Toggle Overlay Actors"
         case .layer1:          return "Layer 1"
         case .layer2:          return "Layer 2"
         case .layer3:          return "Layer 3"
@@ -80,7 +82,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
 
     var group: HotkeyGroup {
         switch self {
-        case .palette, .screenMap, .bezel, .cheatSheet, .desktopInventory, .omniSearch, .voiceCommand, .handsOff, .unifiedWindow, .hud, .mouseFinder: return .app
+        case .palette, .screenMap, .bezel, .cheatSheet, .desktopInventory, .omniSearch, .voiceCommand, .handsOff, .unifiedWindow, .hud, .mouseFinder, .overlayActors: return .app
         case .layer1, .layer2, .layer3, .layer4, .layer5,
              .layer6, .layer7, .layer8, .layer9,
              .layerNext, .layerPrev, .layerTag: return .layers
@@ -101,6 +103,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .unifiedWindow:   return 207
         case .hud:             return 208
         case .mouseFinder:     return 209
+        case .overlayActors:   return 210
         case .layer1:          return 101
         case .layer2:          return 102
         case .layer3:          return 103
@@ -250,6 +253,7 @@ class HotkeyStore: ObservableObject {
         bind(.omniSearch, 23, hyper)       // Hyper+5
         bind(.cheatSheet, 22, hyper)       // Hyper+6
         bind(.mouseFinder, 26, hyper)      // Hyper+7
+        bind(.overlayActors, 28, hyper)    // Hyper+8
 
         // Layers: Cmd+Option+1-9
         let layerKeyCodes: [UInt32] = [18, 19, 20, 21, 23, 22, 26, 28, 25]

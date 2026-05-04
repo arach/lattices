@@ -16,6 +16,7 @@ let package = Package(
             path: "Sources",
             resources: [
                 .copy("../Resources/tap.wav"),
+                .copy("../Resources/Pets"),
             ]
         ),
         .testTarget(

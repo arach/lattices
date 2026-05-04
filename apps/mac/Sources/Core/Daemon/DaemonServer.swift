@@ -121,6 +121,11 @@ final class DaemonServer: ObservableObject {
         }
         guard clientFd >= 0 else { return }
 
+        // A client can disconnect immediately after a large response. On Darwin,
+        // writing to that socket can otherwise raise SIGPIPE and terminate the app.
+        var noSigPipe: Int32 = 1
+        setsockopt(clientFd, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
+
         let id = UUID()
         let client = WebSocketClient(id: id, fd: clientFd)
 

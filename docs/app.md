@@ -228,6 +228,7 @@ Shows keyboard shortcut reference:
 | Hyper+4            | Desktop inventory    |
 | Hyper+5            | Omni search          |
 | Hyper+6            | Cheat sheet          |
+| Hyper+8            | Hide/show persistent overlay actors |
 | Cmd+Option+1/2/3  | Switch workspace layer |
 | Ctrl+B  D         | Detach from session  |
 | Ctrl+B  X         | Kill current pane    |

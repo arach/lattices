@@ -1,0 +1,6 @@
+{
+  "id": "scout-ranger",
+  "displayName": "Scout Ranger",
+  "description": "A tiny chunky robot field-general companion for Scout and Codex sessions.",
+  "spritesheetPath": "spritesheet.webp"
+}
