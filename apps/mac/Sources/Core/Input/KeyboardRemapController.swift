@@ -174,7 +174,7 @@ final class KeyboardRemapController: ObservableObject {
             return Unmanaged.passUnretained(event)
         }
 
-        KeyboardRemapStore.shared.reloadIfNeeded()
+        KeyboardRemapStore.shared.scheduleReloadCheckIfNeeded()
         guard let rule = KeyboardRemapStore.shared.capsLockRule,
               rule.toIfHeld == .hyper else {
             return Unmanaged.passUnretained(event)

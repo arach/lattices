@@ -14,6 +14,9 @@ final class KeyboardRemapStore: ObservableObject {
     private let stateLock = NSLock()
     private var snapshot: KeyboardRemapConfig
     private var lastLoadedModifiedDate: Date?
+    private var lastReloadCheckAt: Date = .distantPast
+    private var reloadCheckInFlight = false
+    private let reloadCheckInterval: TimeInterval = 1.0
 
     private init() {
         let dir = FileManager.default.homeDirectoryForCurrentUser
@@ -76,18 +79,33 @@ final class KeyboardRemapStore: ObservableObject {
         config = newConfig
     }
 
-    func reloadIfNeeded() {
-        // Called from the keyboard event-tap thread on every key event. The
-        // `stat` is cheap and thread-safe; the @Published mutation is hopped
-        // to main inside reload(). We claim the new mtime up-front so
-        // concurrent calls don't queue duplicate reloads while one is in
-        // flight (if reload fails, we'll retry on the next mtime change).
+    func scheduleReloadCheckIfNeeded() {
+        // Called from the keyboard event-tap thread. Keep this path to memory
+        // bookkeeping only; filesystem work runs off the tap callback.
+        let now = Date()
+        stateLock.lock()
+        guard !reloadCheckInFlight,
+              now.timeIntervalSince(lastReloadCheckAt) >= reloadCheckInterval else {
+            stateLock.unlock()
+            return
+        }
+        reloadCheckInFlight = true
+        lastReloadCheckAt = now
+        stateLock.unlock()
+
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            self?.reloadIfNeeded()
+        }
+    }
+
+    private func reloadIfNeeded() {
         let currentModifiedDate = modifiedDate()
         stateLock.lock()
         let needsReload = currentModifiedDate != lastLoadedModifiedDate
         if needsReload {
             lastLoadedModifiedDate = currentModifiedDate
         }
+        reloadCheckInFlight = false
         stateLock.unlock()
         guard needsReload else { return }
         reload()
