@@ -21,11 +21,12 @@ final class KeyboardRemapController: ObservableObject {
     private var capsLayerLastEventAt: CFAbsoluteTime?
     private var bypassUntil: CFAbsoluteTime = 0
     private var lastCapsLayerStaleLogAt: CFAbsoluteTime = 0
-    private var pressedKeyCodes = Set<Int64>()
+    private var pressedKeyCodes: [Int64: CFAbsoluteTime] = [:]
     private let breaker = EventTapBreaker(label: "KeyboardRemap")
     private let budgetMeter = TapBudgetMeter(label: "KeyboardRemap")
     private let maxCapsLayerIdleDuration: TimeInterval = 2.0
     private let maxCapsLayerHeldDuration: TimeInterval = 20.0
+    private let maxTrackedKeyDownDuration: TimeInterval = 120.0
     private let emergencyBypassDuration: TimeInterval = 3.0
 
     private init() {
@@ -182,7 +183,8 @@ final class KeyboardRemapController: ObservableObject {
             return Unmanaged.passUnretained(event)
         }
 
-        updatePressedKeys(type: type, keyCode: event.getIntegerValueField(.keyboardEventKeycode))
+        expireStalePressedKeys(now: started)
+        updatePressedKeys(type: type, keyCode: event.getIntegerValueField(.keyboardEventKeycode), now: started)
         if shouldTriggerEmergencyReset(type: type, event: event) {
             emergencyClear(now: started)
             InputCaptureResetCenter.reset(reason: "keyboard emergency chord")
@@ -295,15 +297,24 @@ final class KeyboardRemapController: ObservableObject {
         DiagnosticLog.shared.warn("KeyboardRemap: emergency bypass via Escape")
     }
 
-    private func updatePressedKeys(type: CGEventType, keyCode: Int64) {
+    private func updatePressedKeys(type: CGEventType, keyCode: Int64, now: CFAbsoluteTime) {
         switch type {
         case .keyDown:
-            pressedKeyCodes.insert(keyCode)
+            pressedKeyCodes[keyCode] = now
         case .keyUp:
-            pressedKeyCodes.remove(keyCode)
+            pressedKeyCodes.removeValue(forKey: keyCode)
         default:
             break
         }
+    }
+
+    private func expireStalePressedKeys(now: CFAbsoluteTime) {
+        let staleKeys = pressedKeyCodes.filter { now - $0.value > maxTrackedKeyDownDuration }.map(\.key)
+        guard !staleKeys.isEmpty else { return }
+        for keyCode in staleKeys {
+            pressedKeyCodes.removeValue(forKey: keyCode)
+        }
+        DiagnosticLog.shared.warn("KeyboardRemap: cleared stale key-down state for \(staleKeys.count) key(s)")
     }
 
     private func shouldTriggerEmergencyReset(type: CGEventType, event: CGEvent) -> Bool {
@@ -311,7 +322,7 @@ final class KeyboardRemapController: ObservableObject {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags
         return keyCode == 40
-            && pressedKeyCodes.contains(53)
+            && pressedKeyCodes[53] != nil
             && flags.contains(.maskShift)
     }
 
