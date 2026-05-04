@@ -287,6 +287,13 @@ final class LatticesApi {
             Field(name: "tmuxSessionCount", type: "int", required: true, description: "Active tmux session count"),
         ]))
 
+        api.model(ApiModel(name: "OverlayLayer", fields: [
+            Field(name: "id", type: "string", required: true, description: "Overlay layer identifier"),
+            Field(name: "kind", type: "string", required: true, description: "Overlay kind: toast, label, highlight, pet"),
+            Field(name: "owner", type: "string", required: true, description: "Layer owner namespace"),
+            Field(name: "expiresAt", type: "double", required: false, description: "Expiration timestamp (Unix seconds)"),
+        ]))
+
         // ── Endpoints: Read ─────────────────────────────────────
 
         api.register(Endpoint(
@@ -812,6 +819,49 @@ final class LatticesApi {
                 let request = try Self.decodeDeckActionRequest(from: params)
                 let result = try LatticesDeckHost.shared.performSync(request)
                 return try Self.encodeDeckValue(result)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "overlay.publish",
+            description: "Publish a transient visual layer on the invisible screen overlay canvas",
+            access: .mutate,
+            params: [
+                Param(name: "kind", type: "string", required: true, description: "toast, label, highlight, or pet"),
+                Param(name: "id", type: "string", required: false, description: "Stable layer id; generated if omitted"),
+                Param(name: "text", type: "string", required: false, description: "Toast/label text"),
+                Param(name: "detail", type: "string", required: false, description: "Secondary toast/label text"),
+                Param(name: "message", type: "string", required: false, description: "Pet speech/message"),
+                Param(name: "glyph", type: "string", required: false, description: "Pet glyph, emoji, or short symbol"),
+                Param(name: "name", type: "string", required: false, description: "Pet name"),
+                Param(name: "x", type: "double", required: false, description: "Screen-local x coordinate"),
+                Param(name: "y", type: "double", required: false, description: "Screen-local y coordinate"),
+                Param(name: "w", type: "double", required: false, description: "Highlight width"),
+                Param(name: "h", type: "double", required: false, description: "Highlight height"),
+                Param(name: "placement", type: "string", required: false, description: "top, bottom, center, cursor, or point"),
+                Param(name: "style", type: "string", required: false, description: "info, success, warning, danger, or playful"),
+                Param(name: "display", type: "int", required: false, description: "Display index; omit for all displays"),
+                Param(name: "ttlMs", type: "int", required: false, description: "Time to live in milliseconds"),
+                Param(name: "opacity", type: "double", required: false, description: "Opacity 0-1"),
+                Param(name: "zIndex", type: "int", required: false, description: "Layer ordering"),
+            ],
+            returns: .object(model: "OverlayLayer"),
+            handler: { params in
+                try Self.publishOverlay(params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "overlay.clear",
+            description: "Clear overlay layers published through the daemon API",
+            access: .mutate,
+            params: [
+                Param(name: "id", type: "string", required: false, description: "Specific layer id to clear"),
+                Param(name: "owner", type: "string", required: false, description: "Owner namespace to clear; defaults to agentApi"),
+            ],
+            returns: .ok,
+            handler: { params in
+                try Self.clearOverlay(params)
             }
         ))
 
@@ -1918,6 +1968,179 @@ final class LatticesApi {
 }
 
 private extension LatticesApi {
+    static func publishOverlay(_ params: JSON?) throws -> JSON {
+        guard let params else {
+            throw RouterError.missingParam("kind")
+        }
+        guard let kind = params["kind"]?.stringValue?.lowercased(), !kind.isEmpty else {
+            throw RouterError.missingParam("kind")
+        }
+
+        let id = params["id"]?.stringValue ?? "agent-\(UUID().uuidString)"
+        let style = try parseOverlayStyle(params["style"]?.stringValue)
+        let placement = try parseOverlayPlacement(params["placement"]?.stringValue)
+        let screen = try parseOverlayScreen(params["display"]?.intValue)
+        let point = parseOverlayPoint(params)
+        let opacity = CGFloat(max(0.05, min(params["opacity"]?.numericDouble ?? 1.0, 1.0)))
+        let zIndex = params["zIndex"]?.intValue ?? 500
+        let ttlMs = params["ttlMs"]?.intValue ?? defaultOverlayTTL(for: kind)
+        let expiresAt = ttlMs > 0 ? Date().addingTimeInterval(Double(ttlMs) / 1000.0) : nil
+        let payload: ScreenOverlayPayload
+
+        switch kind {
+        case "toast":
+            let text = try requiredString(params, "text")
+            payload = .toast(ScreenOverlayTextPayload(
+                text: text,
+                detail: params["detail"]?.stringValue,
+                point: point,
+                placement: placement,
+                style: style
+            ))
+        case "label":
+            let text = try requiredString(params, "text")
+            payload = .label(ScreenOverlayTextPayload(
+                text: text,
+                detail: params["detail"]?.stringValue,
+                point: point,
+                placement: placement == .top ? .point : placement,
+                style: style
+            ))
+        case "highlight":
+            guard let rect = parseOverlayRect(params) else {
+                throw RouterError.custom("highlight requires x, y, w, and h")
+            }
+            payload = .highlight(ScreenOverlayHighlightPayload(
+                rect: rect,
+                label: params["text"]?.stringValue ?? params["label"]?.stringValue,
+                style: style,
+                cornerRadius: CGFloat(params["cornerRadius"]?.numericDouble ?? 10)
+            ))
+        case "pet":
+            let glyph = params["glyph"]?.stringValue ?? "✦"
+            payload = .pet(ScreenOverlayPetPayload(
+                glyph: String(glyph.prefix(4)),
+                name: params["name"]?.stringValue,
+                message: params["message"]?.stringValue ?? params["text"]?.stringValue,
+                point: point,
+                placement: placement,
+                style: style
+            ))
+        default:
+            throw RouterError.custom("Unsupported overlay kind: \(kind)")
+        }
+
+        let layer = ScreenOverlayLayerSnapshot(
+            id: ScreenOverlayLayerID(id),
+            owner: .agentApi,
+            screen: screen,
+            zIndex: zIndex,
+            opacity: opacity,
+            payload: payload,
+            expiresAt: expiresAt
+        )
+
+        runOnMain {
+            ScreenOverlayCanvasController.shared.publishLayer(layer)
+        }
+
+        var result: [String: JSON] = [
+            "id": .string(id),
+            "kind": .string(kind),
+            "owner": .string(ScreenOverlayOwner.agentApi.rawValue),
+        ]
+        if let expiresAt {
+            result["expiresAt"] = .double(expiresAt.timeIntervalSince1970)
+        }
+        return .object(result)
+    }
+
+    static func clearOverlay(_ params: JSON?) throws -> JSON {
+        let owner = try parseOverlayOwner(params?["owner"]?.stringValue)
+        if let id = params?["id"]?.stringValue, !id.isEmpty {
+            runOnMain {
+                ScreenOverlayCanvasController.shared.removeLayer(id: ScreenOverlayLayerID(id))
+            }
+        } else {
+            runOnMain {
+                ScreenOverlayCanvasController.shared.removeLayers(owner: owner)
+            }
+        }
+        return .object(["ok": .bool(true)])
+    }
+
+    static func runOnMain(_ work: @escaping () -> Void) {
+        if Thread.isMainThread {
+            work()
+        } else {
+            DispatchQueue.main.sync(execute: work)
+        }
+    }
+
+    static func parseOverlayScreen(_ displayIndex: Int?) throws -> ScreenOverlayScreenTarget {
+        guard let displayIndex else { return .all }
+        guard displayIndex >= 0, displayIndex < NSScreen.screens.count else {
+            throw RouterError.custom("Invalid display index: \(displayIndex)")
+        }
+        return .screen(id: ScreenOverlayCanvasController.screenID(for: NSScreen.screens[displayIndex]))
+    }
+
+    static func parseOverlayPoint(_ params: JSON) -> CGPoint? {
+        guard let x = params["x"]?.numericDouble,
+              let y = params["y"]?.numericDouble else { return nil }
+        return CGPoint(x: x, y: y)
+    }
+
+    static func parseOverlayRect(_ params: JSON) -> CGRect? {
+        guard let x = params["x"]?.numericDouble,
+              let y = params["y"]?.numericDouble,
+              let w = params["w"]?.numericDouble,
+              let h = params["h"]?.numericDouble else { return nil }
+        return CGRect(x: x, y: y, width: w, height: h)
+    }
+
+    static func parseOverlayPlacement(_ value: String?) throws -> ScreenOverlayPlacement {
+        let raw = value?.lowercased() ?? ScreenOverlayPlacement.top.rawValue
+        guard let placement = ScreenOverlayPlacement(rawValue: raw) else {
+            throw RouterError.custom("Unsupported overlay placement: \(raw)")
+        }
+        return placement
+    }
+
+    static func parseOverlayStyle(_ value: String?) throws -> ScreenOverlayStyle {
+        let raw = value?.lowercased() ?? ScreenOverlayStyle.info.rawValue
+        guard let style = ScreenOverlayStyle(rawValue: raw) else {
+            throw RouterError.custom("Unsupported overlay style: \(raw)")
+        }
+        return style
+    }
+
+    static func parseOverlayOwner(_ value: String?) throws -> ScreenOverlayOwner {
+        let raw = value ?? ScreenOverlayOwner.agentApi.rawValue
+        guard let owner = ScreenOverlayOwner(rawValue: raw) else {
+            throw RouterError.custom("Unsupported overlay owner: \(raw)")
+        }
+        return owner
+    }
+
+    static func defaultOverlayTTL(for kind: String) -> Int {
+        switch kind {
+        case "highlight":
+            return 2500
+        case "pet":
+            return 4200
+        default:
+            return 2800
+        }
+    }
+
+    static func requiredString(_ params: JSON, _ key: String) throws -> String {
+        guard let value = params[key]?.stringValue, !value.isEmpty else {
+            throw RouterError.missingParam(key)
+        }
+        return value
+    }
+
     static func decodeDeckActionRequest(from json: JSON?) throws -> DeckActionRequest {
         guard let json else {
             throw RouterError.missingParam("actionID")
