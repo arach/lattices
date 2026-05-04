@@ -8,6 +8,8 @@ extension Notification.Name {
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
+    private var notificationObservers: [NSObjectProtocol] = []
+
     static func updateActivationPolicy() {
         AppActivationCoordinator.shared.refresh()
     }
@@ -16,6 +18,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         NSApp.appearance = NSAppearance(named: .darkAqua)
         registerDeepLinkHandler()
+        installSystemInputBoundaryObservers()
 
         MenuBarController.shared.start()
         registerVisibleSurfaces()
@@ -63,8 +66,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        removeSystemInputBoundaryObservers()
         KeyboardRemapController.shared.stop()
         AppServicesBootstrap.stop()
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        resetInputCapture(reason: "app became active")
+    }
+
+    func applicationWillResignActive(_ notification: Notification) {
+        resetInputCapture(reason: "app resigned active")
     }
 
     private func registerVisibleSurfaces() {
@@ -75,6 +87,53 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         coordinator.registerSurface(id: "mainWindow") { MainWindow.shared.isVisible }
         coordinator.registerSurface(id: "screenMap") { ScreenMapWindowController.shared.isVisible }
         coordinator.registerSurface(id: "omniSearch") { OmniSearchWindow.shared.isVisible }
+    }
+
+    private func installSystemInputBoundaryObservers() {
+        let center = NSWorkspace.shared.notificationCenter
+        notificationObservers.append(center.addObserver(
+            forName: NSWorkspace.willSleepNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.resetInputCapture(reason: "system will sleep")
+        })
+        notificationObservers.append(center.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.resetInputCapture(reason: "system did wake")
+        })
+        notificationObservers.append(center.addObserver(
+            forName: NSWorkspace.screensDidWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.resetInputCapture(reason: "screens did wake")
+        })
+        notificationObservers.append(center.addObserver(
+            forName: NSWorkspace.screensDidSleepNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.resetInputCapture(reason: "screens did sleep")
+        })
+    }
+
+    private func removeSystemInputBoundaryObservers() {
+        let center = NSWorkspace.shared.notificationCenter
+        for observer in notificationObservers {
+            center.removeObserver(observer)
+        }
+        notificationObservers.removeAll()
+    }
+
+    private func resetInputCapture(reason: String) {
+        DiagnosticLog.shared.warn("InputCapture: reset for \(reason)")
+        ScreenOverlayCanvasController.shared.resetInputCapture(reason: reason)
+        MouseGestureController.shared.resetForSystemInputBoundary(reason: reason)
+        KeyboardRemapController.shared.resetForSystemInputBoundary(reason: reason)
     }
 
     // MARK: - Deep Links

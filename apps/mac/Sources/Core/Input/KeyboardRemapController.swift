@@ -50,6 +50,18 @@ final class KeyboardRemapController: ObservableObject {
         clearCapsLayer()
     }
 
+    func resetForSystemInputBoundary(reason: String) {
+        dispatchPrecondition(condition: .onQueue(.main))
+        clearCapsLayer()
+        breaker.reset()
+        if let eventTap {
+            CGEvent.tapEnable(tap: eventTap, enable: true)
+        } else {
+            refresh()
+        }
+        DiagnosticLog.shared.warn("KeyboardRemap: reset for \(reason)")
+    }
+
     private func installObserversIfNeeded() {
         guard !installedObservers else { return }
         installedObservers = true

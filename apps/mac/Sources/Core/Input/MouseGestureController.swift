@@ -157,6 +157,18 @@ final class MouseGestureController: ObservableObject {
         removeEventTap()
     }
 
+    func resetForSystemInputBoundary(reason: String) {
+        dispatchPrecondition(condition: .onQueue(.main))
+        clearSession()
+        breaker.reset()
+        if let eventTap {
+            CGEvent.tapEnable(tap: eventTap, enable: true)
+        } else {
+            refresh()
+        }
+        DiagnosticLog.shared.warn("MouseGesture: reset for \(reason)")
+    }
+
     static func resolveDirection(
         delta: CGPoint,
         threshold: CGFloat = 68,

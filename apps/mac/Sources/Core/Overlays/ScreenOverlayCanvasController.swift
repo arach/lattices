@@ -204,6 +204,12 @@ final class ScreenOverlayCanvasController {
         updateLifecycleMonitors()
     }
 
+    func resetInputCapture(reason: String) {
+        dragState = nil
+        resetPointerCapture()
+        DiagnosticLog.shared.warn("ScreenOverlay: input capture reset for \(reason)")
+    }
+
     @discardableResult
     func moveLayer(id: ScreenOverlayLayerID, to target: CGPoint, durationMs: Int, easing: String?) -> Bool {
         guard let layer = layersByID[id],
