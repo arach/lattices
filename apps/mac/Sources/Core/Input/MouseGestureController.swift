@@ -110,14 +110,35 @@ final class MouseGestureController: ObservableObject {
     // via clearSession(clearTracking:) or processMouseDownConsume's bail path).
     private let trackingLock = NSLock()
     private var trackingButtonNumber: Int64? = nil
+    private var trackingStartedAt: CFAbsoluteTime?
+    private var lastTrackingStaleLogAt: CFAbsoluteTime = 0
+    private let maxTapThreadTrackingDuration: TimeInterval = 3.0
 
     private func currentTrackingButton() -> Int64? {
-        trackingLock.lock(); defer { trackingLock.unlock() }
+        trackingLock.lock()
+        defer { trackingLock.unlock() }
+        let now = CFAbsoluteTimeGetCurrent()
+        if let startedAt = trackingStartedAt,
+           now - startedAt > maxTapThreadTrackingDuration {
+            let staleButton = trackingButtonNumber
+            trackingButtonNumber = nil
+            trackingStartedAt = nil
+            if now - lastTrackingStaleLogAt > 1 {
+                lastTrackingStaleLogAt = now
+                DispatchQueue.main.async {
+                    DiagnosticLog.shared.warn("MouseGesture: stale tap-side tracking cleared for button=\(staleButton.map(String.init) ?? "unknown")")
+                }
+            }
+            return nil
+        }
         return trackingButtonNumber
     }
 
     private func setTrackingButton(_ value: Int64?) {
-        trackingLock.lock(); trackingButtonNumber = value; trackingLock.unlock()
+        trackingLock.lock()
+        trackingButtonNumber = value
+        trackingStartedAt = value == nil ? nil : CFAbsoluteTimeGetCurrent()
+        trackingLock.unlock()
     }
 
     private init() {

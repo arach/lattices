@@ -126,6 +126,7 @@ final class ScreenOverlayCanvasController {
     private var localDismissMonitor: Any?
     private var dragState: OverlayActorDragState?
     private var agentActorsHidden = false
+    private let maxActorDragDuration: TimeInterval = 8.0
 
     private init() {}
 
@@ -173,19 +174,32 @@ final class ScreenOverlayCanvasController {
     func removeLayer(id: ScreenOverlayLayerID) {
         layersByID.removeValue(forKey: id)
         motionsByLayerID.removeValue(forKey: id)
+        if dragState?.id == id {
+            dragState = nil
+            resetPointerCapture()
+        }
         render()
         updateLifecycleMonitors()
     }
 
     func removeLayers(owner: ScreenOverlayOwner) {
+        let removedIDs = Set(layersByID.values.filter { $0.owner == owner }.map(\.id))
         layersByID = layersByID.filter { _, layer in layer.owner != owner }
         motionsByLayerID = motionsByLayerID.filter { id, _ in layersByID[id] != nil }
+        if let dragState, removedIDs.contains(dragState.id) {
+            self.dragState = nil
+            resetPointerCapture()
+        }
         render()
         updateLifecycleMonitors()
     }
 
     func toggleAgentActorsVisibility() {
         agentActorsHidden.toggle()
+        if agentActorsHidden {
+            dragState = nil
+            resetPointerCapture()
+        }
         render()
         updateLifecycleMonitors()
     }
@@ -383,9 +397,7 @@ final class ScreenOverlayCanvasController {
                 self.localDismissMonitor = nil
             }
             dragState = nil
-            for window in windowsByScreenID.values {
-                window.ignoresMouseEvents = true
-            }
+            resetPointerCapture()
         }
     }
 
@@ -429,9 +441,15 @@ final class ScreenOverlayCanvasController {
     }
 
     private func updatePointerCapture(at globalPoint: CGPoint) {
-        let hitWindow = hitActor(at: globalPoint) != nil ? screenLocalPoint(for: globalPoint)?.window : nil
+        clearStaleActorDragIfNeeded()
+        let captureWindow: ScreenOverlayWindow?
+        if let dragState {
+            captureWindow = windowsByScreenID[dragState.screenID]
+        } else {
+            captureWindow = hitActor(at: globalPoint)?.window
+        }
         for window in windowsByScreenID.values {
-            window.ignoresMouseEvents = dragState == nil && window !== hitWindow
+            window.ignoresMouseEvents = window !== captureWindow
         }
     }
 
@@ -443,8 +461,10 @@ final class ScreenOverlayCanvasController {
         motionsByLayerID.removeValue(forKey: hit.id)
         dragState = OverlayActorDragState(
             id: hit.id,
+            screenID: hit.screenID,
             offset: CGPoint(x: hit.localPoint.x - currentPoint.x, y: hit.localPoint.y - currentPoint.y),
-            lastPoint: currentPoint
+            lastPoint: currentPoint,
+            startedAt: Date()
         )
         layersByID[hit.id] = layer.replacingPayload(.pet(payload.moved(to: currentPoint, state: "idle", isDragging: true)))
         render()
@@ -458,12 +478,15 @@ final class ScreenOverlayCanvasController {
               let hit = screenLocalPoint(for: globalPoint),
               let layer = layersByID[dragState.id],
               case .pet(let payload) = layer.payload else { return false }
+        clearStaleActorDragIfNeeded()
+        guard self.dragState != nil else { return false }
         let nextPoint = CGPoint(
             x: hit.localPoint.x - dragState.offset.x,
             y: hit.localPoint.y - dragState.offset.y
         )
         let state = nextPoint.x < dragState.lastPoint.x - 1 ? "run_left" : "run_right"
         layersByID[dragState.id] = layer.replacingPayload(.pet(payload.moved(to: nextPoint, state: state, isDragging: true)))
+        dragState.screenID = hit.screenID
         dragState.lastPoint = nextPoint
         self.dragState = dragState
         render()
@@ -476,6 +499,7 @@ final class ScreenOverlayCanvasController {
               let layer = layersByID[dragState.id],
               case .pet(let payload) = layer.payload else {
             self.dragState = nil
+            resetPointerCapture()
             return
         }
         layersByID[dragState.id] = layer.replacingPayload(.pet(payload.moved(to: dragState.lastPoint, state: "idle", isDragging: false)))
@@ -483,6 +507,19 @@ final class ScreenOverlayCanvasController {
         render()
         updateLifecycleMonitors()
         updatePointerCapture(at: NSEvent.mouseLocation)
+    }
+
+    private func clearStaleActorDragIfNeeded() {
+        guard let dragState,
+              Date().timeIntervalSince(dragState.startedAt) > maxActorDragDuration else { return }
+        DiagnosticLog.shared.warn("ScreenOverlay: stale actor drag cleared for \(dragState.id.rawValue)")
+        endActorDrag()
+    }
+
+    private func resetPointerCapture() {
+        for window in windowsByScreenID.values {
+            window.ignoresMouseEvents = true
+        }
     }
 
     private func closeActor(at globalPoint: CGPoint) -> Bool {
@@ -500,19 +537,19 @@ final class ScreenOverlayCanvasController {
         return true
     }
 
-    private func hitActor(at globalPoint: CGPoint) -> (id: ScreenOverlayLayerID, localPoint: CGPoint)? {
+    private func hitActor(at globalPoint: CGPoint) -> (id: ScreenOverlayLayerID, window: ScreenOverlayWindow, screenID: String, localPoint: CGPoint)? {
         guard let hit = screenLocalPoint(for: globalPoint) else { return nil }
         guard let id = hit.window.overlayView.layerID(at: hit.localPoint) else { return nil }
-        return (id, hit.localPoint)
+        return (id, hit.window, hit.screenID, hit.localPoint)
     }
 
-    private func screenLocalPoint(for globalPoint: CGPoint) -> (window: ScreenOverlayWindow, localPoint: CGPoint)? {
-        for window in windowsByScreenID.values where window.frame.contains(globalPoint) {
+    private func screenLocalPoint(for globalPoint: CGPoint) -> (window: ScreenOverlayWindow, screenID: String, localPoint: CGPoint)? {
+        for (screenID, window) in windowsByScreenID where window.frame.contains(globalPoint) {
             let localPoint = CGPoint(
                 x: globalPoint.x - window.frame.minX,
                 y: globalPoint.y - window.frame.minY
             )
-            return (window, localPoint)
+            return (window, screenID, localPoint)
         }
         return nil
     }
@@ -524,6 +561,10 @@ final class ScreenOverlayCanvasController {
             return !layer.isDismissible
         }
         motionsByLayerID = motionsByLayerID.filter { id, _ in layersByID[id] != nil }
+        if let dragState, layersByID[dragState.id] == nil {
+            self.dragState = nil
+            resetPointerCapture()
+        }
         guard layersByID.count != before else { return }
         render()
         updateLifecycleMonitors()
@@ -532,8 +573,10 @@ final class ScreenOverlayCanvasController {
 
 private struct OverlayActorDragState {
     let id: ScreenOverlayLayerID
+    var screenID: String
     let offset: CGPoint
     var lastPoint: CGPoint
+    let startedAt: Date
 }
 
 private extension ScreenOverlayLayerSnapshot {

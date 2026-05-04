@@ -17,8 +17,11 @@ final class KeyboardRemapController: ObservableObject {
     private var installedObservers = false
     private var capsLayerActive = false
     private var capsUsedAsModifier = false
+    private var capsLayerActivatedAt: CFAbsoluteTime?
+    private var lastCapsLayerStaleLogAt: CFAbsoluteTime = 0
     private let breaker = EventTapBreaker(label: "KeyboardRemap")
     private let budgetMeter = TapBudgetMeter(label: "KeyboardRemap")
+    private let maxCapsLayerDuration: TimeInterval = 2.0
 
     private init() {
         breaker.onStateChanged = { [weak self] newState in
@@ -44,8 +47,7 @@ final class KeyboardRemapController: ObservableObject {
 
     func stop() {
         removeEventTap()
-        capsLayerActive = false
-        capsUsedAsModifier = false
+        clearCapsLayer()
     }
 
     private func installObserversIfNeeded() {
@@ -171,6 +173,7 @@ final class KeyboardRemapController: ObservableObject {
             return handleCapsLockFlagsChanged(event, rule: rule)
         }
 
+        clearStaleCapsLayerIfNeeded(now: started)
         guard capsLayerActive else {
             return Unmanaged.passUnretained(event)
         }
@@ -193,11 +196,11 @@ final class KeyboardRemapController: ObservableObject {
         if isDown {
             capsLayerActive = true
             capsUsedAsModifier = false
+            capsLayerActivatedAt = CFAbsoluteTimeGetCurrent()
             DiagnosticLog.shared.info("KeyboardRemap: Caps Lock layer active")
         } else {
             let shouldTap = capsLayerActive && !capsUsedAsModifier && rule.toIfAlone == .escape
-            capsLayerActive = false
-            capsUsedAsModifier = false
+            clearCapsLayer()
             if shouldTap {
                 postKeyTap(keyCode: 53)
             }
@@ -205,6 +208,24 @@ final class KeyboardRemapController: ObservableObject {
         }
 
         return nil
+    }
+
+    private func clearCapsLayer() {
+        capsLayerActive = false
+        capsUsedAsModifier = false
+        capsLayerActivatedAt = nil
+    }
+
+    private func clearStaleCapsLayerIfNeeded(now: CFAbsoluteTime) {
+        guard capsLayerActive,
+              let activatedAt = capsLayerActivatedAt,
+              now - activatedAt > maxCapsLayerDuration else { return }
+
+        clearCapsLayer()
+        if now - lastCapsLayerStaleLogAt > 1 {
+            lastCapsLayerStaleLogAt = now
+            DiagnosticLog.shared.warn("KeyboardRemap: stale Caps Lock layer cleared after \(String(format: "%.1f", maxCapsLayerDuration))s")
+        }
     }
 
     private func normalizedFlags(_ flags: CGEventFlags) -> CGEventFlags {
