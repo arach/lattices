@@ -833,6 +833,8 @@ final class LatticesApi {
                 Param(name: "detail", type: "string", required: false, description: "Secondary toast/label text"),
                 Param(name: "message", type: "string", required: false, description: "Pet speech/message"),
                 Param(name: "glyph", type: "string", required: false, description: "Pet glyph, emoji, or short symbol"),
+                Param(name: "petId", type: "string", required: false, description: "Bundled pet id from Resources/Pets"),
+                Param(name: "state", type: "string", required: false, description: "Pet animation state"),
                 Param(name: "name", type: "string", required: false, description: "Pet name"),
                 Param(name: "x", type: "double", required: false, description: "Screen-local x coordinate"),
                 Param(name: "y", type: "double", required: false, description: "Screen-local y coordinate"),
@@ -844,6 +846,7 @@ final class LatticesApi {
                 Param(name: "ttlMs", type: "int", required: false, description: "Time to live in milliseconds"),
                 Param(name: "opacity", type: "double", required: false, description: "Opacity 0-1"),
                 Param(name: "zIndex", type: "int", required: false, description: "Layer ordering"),
+                Param(name: "dismissible", type: "bool", required: false, description: "Whether click-away dismissal removes the layer"),
             ],
             returns: .object(model: "OverlayLayer"),
             handler: { params in
@@ -862,6 +865,50 @@ final class LatticesApi {
             returns: .ok,
             handler: { params in
                 try Self.clearOverlay(params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "overlay.actor.publish",
+            description: "Create or update a small generative overlay actor",
+            access: .mutate,
+            params: [
+                Param(name: "id", type: "string", required: false, description: "Stable actor id; generated if omitted"),
+                Param(name: "renderer", type: "string", required: false, description: "Renderer type; sprite is currently supported"),
+                Param(name: "asset", type: "string", required: false, description: "Bundled sprite asset id"),
+                Param(name: "state", type: "string", required: false, description: "Actor state or animation name"),
+                Param(name: "name", type: "string", required: false, description: "Actor display name"),
+                Param(name: "message", type: "string", required: false, description: "Attached message text"),
+                Param(name: "x", type: "double", required: false, description: "Screen-local x coordinate"),
+                Param(name: "y", type: "double", required: false, description: "Screen-local y coordinate"),
+                Param(name: "placement", type: "string", required: false, description: "top, bottom, center, cursor, or point"),
+                Param(name: "style", type: "string", required: false, description: "info, success, warning, danger, or playful"),
+                Param(name: "display", type: "int", required: false, description: "Display index; omit for all displays"),
+                Param(name: "ttlMs", type: "int", required: false, description: "Time to live in milliseconds; omit or pass 0 for persistent"),
+                Param(name: "opacity", type: "double", required: false, description: "Opacity 0-1"),
+                Param(name: "zIndex", type: "int", required: false, description: "Layer ordering"),
+                Param(name: "dismissible", type: "bool", required: false, description: "Whether click-away dismissal removes the actor; defaults false"),
+            ],
+            returns: .object(model: "OverlayLayer"),
+            handler: { params in
+                try Self.publishOverlayActor(params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "overlay.actor.moveTo",
+            description: "Move an overlay actor with app-owned easing",
+            access: .mutate,
+            params: [
+                Param(name: "id", type: "string", required: true, description: "Actor id"),
+                Param(name: "x", type: "double", required: true, description: "Target screen-local x coordinate"),
+                Param(name: "y", type: "double", required: true, description: "Target screen-local y coordinate"),
+                Param(name: "durationMs", type: "int", required: false, description: "Animation duration in milliseconds"),
+                Param(name: "easing", type: "string", required: false, description: "linear, easeInOut, or spring"),
+            ],
+            returns: .ok,
+            handler: { params in
+                try Self.moveOverlayActor(params)
             }
         ))
 
@@ -2020,11 +2067,15 @@ private extension LatticesApi {
             let glyph = params["glyph"]?.stringValue ?? "✦"
             payload = .pet(ScreenOverlayPetPayload(
                 glyph: String(glyph.prefix(4)),
+                petID: params["petId"]?.stringValue,
+                state: params["state"]?.stringValue,
                 name: params["name"]?.stringValue,
                 message: params["message"]?.stringValue ?? params["text"]?.stringValue,
                 point: point,
                 placement: placement,
-                style: style
+                style: style,
+                isDragging: false,
+                dismissible: params["dismissible"]?.boolValue ?? true
             ))
         default:
             throw RouterError.custom("Unsupported overlay kind: \(kind)")
@@ -2067,6 +2118,97 @@ private extension LatticesApi {
             }
         }
         return .object(["ok": .bool(true)])
+    }
+
+    static func publishOverlayActor(_ params: JSON?) throws -> JSON {
+        guard let params else {
+            throw RouterError.missingParam("id")
+        }
+        let id = params["id"]?.stringValue ?? "actor-\(UUID().uuidString)"
+        let renderer = params["renderer"]?.stringValue?.lowercased() ?? "sprite"
+        guard renderer == "sprite" || renderer == "pet" else {
+            throw RouterError.custom("Unsupported overlay actor renderer: \(renderer)")
+        }
+
+        let style = try parseOverlayStyle(params["style"]?.stringValue)
+        let point = parseOverlayPoint(params)
+        let placement = try parseOverlayPlacement(params["placement"]?.stringValue ?? (point == nil ? "bottom" : "point"))
+        let screen = try parseOverlayScreen(params["display"]?.intValue)
+        let opacity = CGFloat(max(0.05, min(params["opacity"]?.numericDouble ?? 1.0, 1.0)))
+        let zIndex = params["zIndex"]?.intValue ?? 520
+        let ttlMs = params["ttlMs"]?.intValue ?? 0
+        let expiresAt = ttlMs > 0 ? Date().addingTimeInterval(Double(ttlMs) / 1000.0) : nil
+        let asset = params["asset"]?.stringValue ?? params["petId"]?.stringValue
+        let message = params["message"]?.stringValue ?? params["text"]?.stringValue
+
+        let layer = ScreenOverlayLayerSnapshot(
+            id: ScreenOverlayLayerID(id),
+            owner: .agentApi,
+            screen: screen,
+            zIndex: zIndex,
+            opacity: opacity,
+            payload: .pet(ScreenOverlayPetPayload(
+                glyph: String((params["glyph"]?.stringValue ?? "✦").prefix(4)),
+                petID: asset,
+                state: params["state"]?.stringValue ?? "idle",
+                name: params["name"]?.stringValue,
+                message: message,
+                point: point,
+                placement: placement,
+                style: style,
+                isDragging: false,
+                dismissible: params["dismissible"]?.boolValue ?? false
+            )),
+            expiresAt: expiresAt
+        )
+
+        runOnMain {
+            ScreenOverlayCanvasController.shared.publishLayer(layer)
+        }
+
+        var result: [String: JSON] = [
+            "id": .string(id),
+            "kind": .string("actor"),
+            "owner": .string(ScreenOverlayOwner.agentApi.rawValue),
+            "renderer": .string(renderer),
+        ]
+        if let expiresAt {
+            result["expiresAt"] = .double(expiresAt.timeIntervalSince1970)
+        }
+        return .object(result)
+    }
+
+    static func moveOverlayActor(_ params: JSON?) throws -> JSON {
+        guard let params else {
+            throw RouterError.missingParam("id")
+        }
+        let id = try requiredString(params, "id")
+        guard let x = params["x"]?.numericDouble else {
+            throw RouterError.missingParam("x")
+        }
+        guard let y = params["y"]?.numericDouble else {
+            throw RouterError.missingParam("y")
+        }
+        let durationMs = params["durationMs"]?.intValue ?? 700
+        let easing = params["easing"]?.stringValue
+        var moved = false
+        runOnMain {
+            moved = ScreenOverlayCanvasController.shared.moveLayer(
+                id: ScreenOverlayLayerID(id),
+                to: CGPoint(x: x, y: y),
+                durationMs: durationMs,
+                easing: easing
+            )
+        }
+        guard moved else {
+            throw RouterError.custom("Overlay actor not found or not movable: \(id)")
+        }
+        return .object([
+            "ok": .bool(true),
+            "id": .string(id),
+            "x": .double(x),
+            "y": .double(y),
+        ])
     }
 
     static func runOnMain(_ work: @escaping () -> Void) {

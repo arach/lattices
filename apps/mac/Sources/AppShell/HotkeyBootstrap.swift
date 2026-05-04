@@ -29,6 +29,7 @@ enum HotkeyBootstrap {
         }
         store.register(action: .hud) { HUDController.shared.toggle() }
         store.register(action: .mouseFinder) { MouseFinder.shared.find() }
+        store.register(action: .overlayActors) { ScreenOverlayCanvasController.shared.toggleAgentActorsVisibility() }
         store.register(action: .omniSearch) { OmniSearchWindow.shared.toggle() }
 
         registerLayerHotkeys(store: store)
