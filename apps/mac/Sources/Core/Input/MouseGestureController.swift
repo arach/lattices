@@ -93,6 +93,7 @@ final class MouseGestureController: ObservableObject {
 
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
+    private var installedEventMask: CGEventMask = 0
     private var session: GestureSession?
     private var retainedOverlays: [ObjectIdentifier: MouseGestureOverlay] = [:]
     private var staleSessionTimer: Timer?
@@ -106,6 +107,9 @@ final class MouseGestureController: ObservableObject {
         let buttonNumber: Int64
         let startPoint: CGPoint
         let nativeClickPassthrough: Bool
+        var nativeClickBalanced: Bool
+        let dragThreshold: CGFloat
+        let axisBias: CGFloat
         let startedAt: CFAbsoluteTime
     }
 
@@ -139,14 +143,11 @@ final class MouseGestureController: ObservableObject {
         return tapTrackingState
     }
 
-    private func currentTrackingButton() -> Int64? {
-        currentTrackingState()?.buttonNumber
-    }
-
     private func setTrackingButton(
         _ value: Int64?,
         startPoint: CGPoint = .zero,
-        nativeClickPassthrough: Bool = false
+        nativeClickPassthrough: Bool = false,
+        tuning: MouseShortcutTuning = .defaults
     ) {
         trackingLock.lock()
         if let value {
@@ -154,12 +155,30 @@ final class MouseGestureController: ObservableObject {
                 buttonNumber: value,
                 startPoint: startPoint,
                 nativeClickPassthrough: nativeClickPassthrough,
+                nativeClickBalanced: !nativeClickPassthrough,
+                dragThreshold: tuning.dragThreshold,
+                axisBias: tuning.axisBias,
                 startedAt: CFAbsoluteTimeGetCurrent()
             )
         } else {
             tapTrackingState = nil
         }
         trackingLock.unlock()
+    }
+
+    private func markNativeClickBalanced(buttonNumber: Int64) -> Bool {
+        trackingLock.lock()
+        defer { trackingLock.unlock() }
+        guard var state = tapTrackingState,
+              state.buttonNumber == buttonNumber,
+              state.nativeClickPassthrough,
+              !state.nativeClickBalanced else {
+            return false
+        }
+
+        state.nativeClickBalanced = true
+        tapTrackingState = state
+        return true
     }
 
     private init() {
@@ -238,10 +257,16 @@ final class MouseGestureController: ObservableObject {
             return
         }
 
+        let desiredMask = desiredEventMask()
         if eventTap == nil {
-            installEventTap()
+            installEventTap(mask: desiredMask)
         } else if let eventTap {
-            CGEvent.tapEnable(tap: eventTap, enable: true)
+            if installedEventMask != desiredMask {
+                removeEventTap()
+                installEventTap(mask: desiredMask)
+            } else {
+                CGEvent.tapEnable(tap: eventTap, enable: true)
+            }
         }
     }
 
@@ -256,20 +281,18 @@ final class MouseGestureController: ObservableObject {
         }
     }
 
-    private func installEventTap() {
-        // Fresh install is a clean slate — drop any stale trip history so
-        // the new tap's first failure is judged on its own merits.
-        breaker.reset()
-
+    private func desiredEventMask() -> CGEventMask {
         var mask = CGEventMask(0)
-        mask |= CGEventMask(1) << CGEventType.leftMouseDown.rawValue
-        mask |= CGEventMask(1) << CGEventType.leftMouseUp.rawValue
-        mask |= CGEventMask(1) << CGEventType.rightMouseDown.rawValue
-        mask |= CGEventMask(1) << CGEventType.rightMouseDragged.rawValue
-        mask |= CGEventMask(1) << CGEventType.rightMouseUp.rawValue
         mask |= CGEventMask(1) << CGEventType.otherMouseDown.rawValue
         mask |= CGEventMask(1) << CGEventType.otherMouseDragged.rawValue
         mask |= CGEventMask(1) << CGEventType.otherMouseUp.rawValue
+        return mask
+    }
+
+    private func installEventTap(mask: CGEventMask) {
+        // Fresh install is a clean slate — drop any stale trip history so
+        // the new tap's first failure is judged on its own merits.
+        breaker.reset()
 
         let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
@@ -288,6 +311,7 @@ final class MouseGestureController: ObservableObject {
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         eventTap = tap
         runLoopSource = source
+        installedEventMask = mask
 
         if let source {
             EventTapThread.shared.add(source: source)
@@ -309,6 +333,7 @@ final class MouseGestureController: ObservableObject {
             CFMachPortInvalidate(tap)
         }
         eventTap = nil
+        installedEventMask = 0
     }
 
     private static let eventTapCallback: CGEventTapCallBack = { _, type, event, userInfo in
@@ -352,19 +377,6 @@ final class MouseGestureController: ObservableObject {
             return Unmanaged.passUnretained(event)
         }
 
-        switch type {
-        case .leftMouseDown, .leftMouseUp:
-            return handlePassiveMouseButtonEvent(type: type, event: event)
-        case .rightMouseDown:
-            return handleMouseDown(event, buttonNumber: Int64(CGMouseButton.right.rawValue))
-        case .rightMouseDragged:
-            return handleMouseDragged(event, buttonNumber: Int64(CGMouseButton.right.rawValue))
-        case .rightMouseUp:
-            return handleMouseUp(event, buttonNumber: Int64(CGMouseButton.right.rawValue))
-        default:
-            break
-        }
-
         let buttonNumber = event.getIntegerValueField(.mouseEventButtonNumber)
         if buttonNumber < 2 {
             return Unmanaged.passUnretained(event)
@@ -389,52 +401,13 @@ final class MouseGestureController: ObservableObject {
     // MouseEventSnapshot, and hand the heavy work to main async — so a slow
     // main thread never adds latency to mouse events at the head-insert tap.
 
-    private func handlePassiveMouseButtonEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
-        let snapshot = MouseEventSnapshot(
-            location: event.location,
-            flags: event.flags,
-            buttonNumber: event.getIntegerValueField(.mouseEventButtonNumber)
-        )
-        DispatchQueue.main.async { [weak self] in
-            self?.processPassiveMouseButton(type: type, snapshot: snapshot)
-        }
-        return Unmanaged.passUnretained(event)
-    }
-
     private func isEmergencyMouseReset(type: CGEventType, event: CGEvent) -> Bool {
         switch type {
-        case .leftMouseDown, .rightMouseDown, .otherMouseDown:
+        case .otherMouseDown:
             return event.flags.intersection(.latticesHyper) == .latticesHyper
         default:
             return false
         }
-    }
-
-    private func processPassiveMouseButton(type: CGEventType, snapshot: MouseEventSnapshot) {
-        dispatchPrecondition(condition: .onQueue(.main))
-        guard MouseInputEventViewer.shared.isCaptureActive else { return }
-
-        let phase: String
-        switch type {
-        case .leftMouseDown, .rightMouseDown:
-            phase = "down"
-        case .leftMouseUp, .rightMouseUp:
-            phase = "up"
-        default:
-            return
-        }
-
-        recordObservedEvent(
-            phase: phase,
-            button: MouseShortcutButton(rawButtonNumber: Int(snapshot.buttonNumber)),
-            location: snapshot.location,
-            delta: .zero,
-            modifiers: snapshot.flags,
-            candidate: nil,
-            match: nil,
-            note: "pass-through primary button",
-            appInfo: currentAppInfo()
-        )
     }
 
     private func handleMouseDown(_ event: CGEvent, buttonNumber: Int64) -> Unmanaged<CGEvent>? {
@@ -448,6 +421,7 @@ final class MouseGestureController: ObservableObject {
         let button = MouseShortcutButton(rawButtonNumber: Int(buttonNumber))
         let needsNativeClickCapture = MouseShortcutStore.shared.hasEnabledRule(button: button, kind: .click)
             || MouseShortcutStore.shared.hasEnabledRule(button: button, kind: .shape)
+        let tuning = MouseShortcutStore.shared.tuning
         let nativeClickPassthrough = buttonNumber >= 2 && !needsNativeClickCapture
         let canRecognize = Preferences.shared.mouseGesturesEnabled
             && MouseShortcutStore.shared.watchedButtonNumbers.contains(buttonNumber)
@@ -472,7 +446,8 @@ final class MouseGestureController: ObservableObject {
         setTrackingButton(
             buttonNumber,
             startPoint: snapshot.location,
-            nativeClickPassthrough: nativeClickPassthrough
+            nativeClickPassthrough: nativeClickPassthrough,
+            tuning: tuning
         )
         DispatchQueue.main.async { [weak self] in
             self?.processMouseDownConsume(
@@ -572,7 +547,8 @@ final class MouseGestureController: ObservableObject {
     }
 
     private func handleMouseDragged(_ event: CGEvent, buttonNumber: Int64) -> Unmanaged<CGEvent>? {
-        guard currentTrackingButton() == buttonNumber else {
+        guard let trackingState = currentTrackingState(),
+              trackingState.buttonNumber == buttonNumber else {
             return Unmanaged.passUnretained(event)
         }
         let snapshot = MouseEventSnapshot(
@@ -580,6 +556,28 @@ final class MouseGestureController: ObservableObject {
             flags: event.flags,
             buttonNumber: buttonNumber
         )
+
+        let delta = CGPoint(
+            x: snapshot.location.x - trackingState.startPoint.x,
+            y: snapshot.location.y - trackingState.startPoint.y
+        )
+        let direction = Self.resolveDirection(
+            delta: delta,
+            threshold: trackingState.dragThreshold,
+            axisBias: trackingState.axisBias
+        )
+        if direction != nil,
+           markNativeClickBalanced(buttonNumber: buttonNumber) {
+            postSyntheticMouseUp(
+                buttonNumber: buttonNumber,
+                at: snapshot.location,
+                flags: snapshot.flags
+            )
+            DispatchQueue.main.async {
+                DiagnosticLog.shared.info("MouseGesture: balanced native mouseUp for claimed gesture button=\(buttonNumber)")
+            }
+        }
+
         DispatchQueue.main.async { [weak self] in
             self?.processMouseDragged(snapshot: snapshot)
         }
@@ -677,8 +675,11 @@ final class MouseGestureController: ObservableObject {
                 x: snapshot.location.x - trackingState.startPoint.x,
                 y: snapshot.location.y - trackingState.startPoint.y
             )
-            let tuning = MouseShortcutStore.shared.tuning
-            let direction = Self.resolveDirection(delta: delta, threshold: tuning.dragThreshold, axisBias: tuning.axisBias)
+            let direction = Self.resolveDirection(
+                delta: delta,
+                threshold: trackingState.dragThreshold,
+                axisBias: trackingState.axisBias
+            )
             if direction == nil {
                 setTrackingButton(nil)
                 DispatchQueue.main.async { [weak self] in
@@ -982,13 +983,7 @@ final class MouseGestureController: ObservableObject {
     }
 
     private func replayMouseClick(buttonNumber: Int64, at point: CGPoint, flags: CGEventFlags) {
-        let events: [CGEventType]
-        if buttonNumber == Int64(CGMouseButton.right.rawValue) {
-            events = [.rightMouseDown, .rightMouseUp]
-        } else {
-            events = [.otherMouseDown, .otherMouseUp]
-        }
-        for type in events {
+        for type in [CGEventType.otherMouseDown, .otherMouseUp] {
             guard let mouseButton = CGMouseButton(rawValue: UInt32(buttonNumber)) else { continue }
             guard let event = CGEvent(
                 mouseEventSource: nil,
@@ -1002,6 +997,23 @@ final class MouseGestureController: ObservableObject {
             event.flags = flags
             event.post(tap: CGEventTapLocation.cghidEventTap)
         }
+    }
+
+    private func postSyntheticMouseUp(buttonNumber: Int64, at point: CGPoint, flags: CGEventFlags) {
+        guard let mouseButton = CGMouseButton(rawValue: UInt32(buttonNumber)),
+              let event = CGEvent(
+                  mouseEventSource: nil,
+                  mouseType: .otherMouseUp,
+                  mouseCursorPosition: point,
+                  mouseButton: mouseButton
+              ) else {
+            return
+        }
+
+        event.setIntegerValueField(CGEventField.mouseEventButtonNumber, value: buttonNumber)
+        event.setIntegerValueField(CGEventField.eventSourceUserData, value: Self.syntheticMarker)
+        event.flags = flags
+        event.post(tap: CGEventTapLocation.cghidEventTap)
     }
 
     private func screen(containing cgPoint: CGPoint) -> NSScreen? {
