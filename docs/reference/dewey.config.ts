@@ -4,7 +4,7 @@ export default {
     name: 'lattices',
     tagline: 'macOS developer workspace manager — tmux sessions with a native menu bar app for tiling, navigation, and project management',
     type: 'cli-tool',
-    version: '0.4.11',
+    version: '0.4.12',
   },
 
   agent: {
