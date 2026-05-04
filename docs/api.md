@@ -160,6 +160,125 @@ try {
 
 ---
 
+## Overlay UI
+
+The macOS app exposes a shared desktop overlay canvas for lightweight
+agent-visible UI. Use `overlay.publish` for transient passive visuals,
+and `overlay.actor.*` for persistent, movable actor surfaces.
+
+Persistent actors are useful for representing agents or processes on the
+desktop. Each actor has a stable `id`, can be moved independently, can be
+dragged by the user, and can be hidden/restored with **Hyper+8**. Right-click
+an actor to close that specific actor.
+
+| Method | Type | Description |
+|--------|------|-------------|
+| `overlay.publish` | write | Publish a transient toast, label, highlight, or pet layer |
+| `overlay.clear` | write | Clear one overlay layer by id, or clear an owner namespace |
+| `overlay.actor.publish` | write | Create or update a persistent generative overlay actor |
+| `overlay.actor.moveTo` | write | Move an actor with app-owned easing |
+
+#### `overlay.publish`
+
+Publish a transient layer on the screen overlay canvas.
+
+**Params**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `kind` | string | yes | `toast`, `label`, `highlight`, or `pet` |
+| `id` | string | no | Stable layer id; generated if omitted |
+| `text` | string | no | Toast/label text or pet message fallback |
+| `detail` | string | no | Secondary toast/label text |
+| `message` | string | no | Pet message |
+| `petId` | string | no | Bundled pet id from `apps/mac/Resources/Pets` |
+| `state` | string | no | Pet animation state |
+| `placement` | string | no | `top`, `bottom`, `center`, `cursor`, or `point` |
+| `x`, `y` | double | no | Screen-local point for `point` placement |
+| `w`, `h` | double | no | Highlight size |
+| `ttlMs` | int | no | Time to live in milliseconds |
+| `dismissible` | bool | no | Whether click-away dismissal removes the layer; defaults `true` |
+
+Example:
+
+```js
+await daemonCall('overlay.publish', {
+  kind: 'highlight',
+  x: 160,
+  y: 120,
+  w: 480,
+  h: 260,
+  text: 'Needs review',
+  style: 'warning',
+  ttlMs: 3000
+})
+```
+
+#### `overlay.actor.publish`
+
+Create or update a generative overlay actor. Actors default to persistent:
+omit `ttlMs` or pass `0`, and `dismissible` defaults to `false`.
+
+**Params**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | string | no | Stable actor id; generated if omitted |
+| `renderer` | string | no | `sprite` is currently supported |
+| `asset` | string | no | Bundled sprite asset id, such as `scout-ranger` |
+| `state` | string | no | Actor state or animation name |
+| `name` | string | no | Actor display name |
+| `message` | string | no | Attached message text |
+| `placement` | string | no | `top`, `bottom`, `center`, `cursor`, or `point` |
+| `x`, `y` | double | no | Screen-local point for `point` placement |
+| `ttlMs` | int | no | Time to live; `0` means persistent |
+| `dismissible` | bool | no | Whether click-away dismissal removes the actor |
+
+Example:
+
+```js
+await daemonCall('overlay.actor.publish', {
+  id: 'agent-scout',
+  renderer: 'sprite',
+  asset: 'scout-ranger',
+  state: 'waiting',
+  name: 'Scout',
+  message: 'Waiting for feedback',
+  placement: 'point',
+  x: 640,
+  y: 320,
+  ttlMs: 0
+})
+```
+
+#### `overlay.actor.moveTo`
+
+Move an actor with app-owned animation. The app interpolates position and
+switches directional sprite states while moving.
+
+**Params**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | string | yes | Actor id |
+| `x`, `y` | double | yes | Target screen-local point |
+| `durationMs` | int | no | Animation duration |
+| `easing` | string | no | `linear`, `easeInOut`, or `spring` |
+
+Example:
+
+```js
+await daemonCall('overlay.actor.moveTo', {
+  id: 'agent-scout',
+  x: 820,
+  y: 280,
+  durationMs: 800,
+  easing: 'spring'
+})
+```
+
+---
+
 ## System
 
 | Method | Type | Description |

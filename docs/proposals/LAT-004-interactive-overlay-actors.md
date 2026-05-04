@@ -184,12 +184,15 @@ Expected interactions:
 - click: primary action, open compact surface, or emit event
 - double-click: optional secondary action
 - drag: move actor and optionally pin final position
+- right-click: close that actor without clearing other actors
 - drop: emit dropped item payload if supported
 - Escape: dismiss the active surface
 - click-away: dismiss transient surfaces when appropriate
 - context menu: mute, snooze, hide, settings, inspect source
 
 Dismissal should normally dismiss the current message/surface, not delete the actor.
+Persistent actors can be parked globally with the overlay actor hotkey
+without clearing their ids or state. The initial shortcut is **Hyper+8**.
 
 ## Motion
 

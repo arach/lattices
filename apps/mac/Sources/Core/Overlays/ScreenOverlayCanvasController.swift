@@ -413,7 +413,14 @@ final class ScreenOverlayCanvasController {
             endActorDrag()
             updatePointerCapture(at: NSEvent.mouseLocation)
             return wasDragging
-        case .rightMouseDown, .otherMouseDown, .rightMouseDragged, .otherMouseDragged:
+        case .rightMouseDown:
+            updatePointerCapture(at: NSEvent.mouseLocation)
+            if closeActor(at: NSEvent.mouseLocation) {
+                return true
+            }
+            dismissAgentOverlays()
+            return false
+        case .otherMouseDown, .rightMouseDragged, .otherMouseDragged:
             dismissAgentOverlays()
             return false
         default:
@@ -476,6 +483,21 @@ final class ScreenOverlayCanvasController {
         render()
         updateLifecycleMonitors()
         updatePointerCapture(at: NSEvent.mouseLocation)
+    }
+
+    private func closeActor(at globalPoint: CGPoint) -> Bool {
+        guard let hit = hitActor(at: globalPoint),
+              let layer = layersByID[hit.id],
+              layer.isParkableActor else { return false }
+        layersByID.removeValue(forKey: hit.id)
+        motionsByLayerID.removeValue(forKey: hit.id)
+        if dragState?.id == hit.id {
+            dragState = nil
+        }
+        render()
+        updateLifecycleMonitors()
+        updatePointerCapture(at: globalPoint)
+        return true
     }
 
     private func hitActor(at globalPoint: CGPoint) -> (id: ScreenOverlayLayerID, localPoint: CGPoint)? {
