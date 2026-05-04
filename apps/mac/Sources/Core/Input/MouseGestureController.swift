@@ -102,6 +102,13 @@ final class MouseGestureController: ObservableObject {
     private let breaker = EventTapBreaker(label: "MouseGesture")
     private let budgetMeter = TapBudgetMeter(label: "MouseGesture")
 
+    private struct TapTrackingState {
+        let buttonNumber: Int64
+        let startPoint: CGPoint
+        let nativeClickPassthrough: Bool
+        let startedAt: CFAbsoluteTime
+    }
+
     // Tap-thread-side mirror of "which button (if any) is currently being
     // tracked as a gesture". The tap callback runs on EventTapThread; main
     // owns the full GestureSession but the tap thread needs a fast,
@@ -109,35 +116,49 @@ final class MouseGestureController: ObservableObject {
     // protects cross-thread access (tap thread reads/writes; main writes
     // via clearSession(clearTracking:) or processMouseDownConsume's bail path).
     private let trackingLock = NSLock()
-    private var trackingButtonNumber: Int64? = nil
-    private var trackingStartedAt: CFAbsoluteTime?
+    private var tapTrackingState: TapTrackingState?
     private var lastTrackingStaleLogAt: CFAbsoluteTime = 0
     private let maxTapThreadTrackingDuration: TimeInterval = 3.0
 
-    private func currentTrackingButton() -> Int64? {
+    private func currentTrackingState() -> TapTrackingState? {
         trackingLock.lock()
         defer { trackingLock.unlock() }
         let now = CFAbsoluteTimeGetCurrent()
-        if let startedAt = trackingStartedAt,
-           now - startedAt > maxTapThreadTrackingDuration {
-            let staleButton = trackingButtonNumber
-            trackingButtonNumber = nil
-            trackingStartedAt = nil
+        if let state = tapTrackingState,
+           now - state.startedAt > maxTapThreadTrackingDuration {
+            let staleButton = state.buttonNumber
+            tapTrackingState = nil
             if now - lastTrackingStaleLogAt > 1 {
                 lastTrackingStaleLogAt = now
                 DispatchQueue.main.async {
-                    DiagnosticLog.shared.warn("MouseGesture: stale tap-side tracking cleared for button=\(staleButton.map(String.init) ?? "unknown")")
+                    DiagnosticLog.shared.warn("MouseGesture: stale tap-side tracking cleared for button=\(staleButton)")
                 }
             }
             return nil
         }
-        return trackingButtonNumber
+        return tapTrackingState
     }
 
-    private func setTrackingButton(_ value: Int64?) {
+    private func currentTrackingButton() -> Int64? {
+        currentTrackingState()?.buttonNumber
+    }
+
+    private func setTrackingButton(
+        _ value: Int64?,
+        startPoint: CGPoint = .zero,
+        nativeClickPassthrough: Bool = false
+    ) {
         trackingLock.lock()
-        trackingButtonNumber = value
-        trackingStartedAt = value == nil ? nil : CFAbsoluteTimeGetCurrent()
+        if let value {
+            tapTrackingState = TapTrackingState(
+                buttonNumber: value,
+                startPoint: startPoint,
+                nativeClickPassthrough: nativeClickPassthrough,
+                startedAt: CFAbsoluteTimeGetCurrent()
+            )
+        } else {
+            tapTrackingState = nil
+        }
         trackingLock.unlock()
     }
 
@@ -155,6 +176,18 @@ final class MouseGestureController: ObservableObject {
     func stop() {
         clearSession()
         removeEventTap()
+    }
+
+    func resetForSystemInputBoundary(reason: String) {
+        dispatchPrecondition(condition: .onQueue(.main))
+        clearSession()
+        breaker.reset()
+        if let eventTap {
+            CGEvent.tapEnable(tap: eventTap, enable: true)
+        } else {
+            refresh()
+        }
+        DiagnosticLog.shared.warn("MouseGesture: reset for \(reason)")
     }
 
     static func resolveDirection(
@@ -310,6 +343,15 @@ final class MouseGestureController: ObservableObject {
             return Unmanaged.passUnretained(event)
         }
 
+        if isEmergencyMouseReset(type: type, event: event) {
+            setTrackingButton(nil)
+            DispatchQueue.main.async { [weak self] in
+                self?.clearSession()
+                InputCaptureResetCenter.reset(reason: "Hyper mouse click")
+            }
+            return Unmanaged.passUnretained(event)
+        }
+
         switch type {
         case .leftMouseDown, .leftMouseUp:
             return handlePassiveMouseButtonEvent(type: type, event: event)
@@ -359,6 +401,15 @@ final class MouseGestureController: ObservableObject {
         return Unmanaged.passUnretained(event)
     }
 
+    private func isEmergencyMouseReset(type: CGEventType, event: CGEvent) -> Bool {
+        switch type {
+        case .leftMouseDown, .rightMouseDown, .otherMouseDown:
+            return event.flags.intersection(.latticesHyper) == .latticesHyper
+        default:
+            return false
+        }
+    }
+
     private func processPassiveMouseButton(type: CGEventType, snapshot: MouseEventSnapshot) {
         dispatchPrecondition(condition: .onQueue(.main))
         guard MouseInputEventViewer.shared.isCaptureActive else { return }
@@ -394,6 +445,10 @@ final class MouseGestureController: ObservableObject {
         )
         // NSScreen.screens reads are safe off-main; Preferences/Store snapshot
         // reads are lock-protected (see MouseShortcutStore).
+        let button = MouseShortcutButton(rawButtonNumber: Int(buttonNumber))
+        let needsNativeClickCapture = MouseShortcutStore.shared.hasEnabledRule(button: button, kind: .click)
+            || MouseShortcutStore.shared.hasEnabledRule(button: button, kind: .shape)
+        let nativeClickPassthrough = buttonNumber >= 2 && !needsNativeClickCapture
         let canRecognize = Preferences.shared.mouseGesturesEnabled
             && MouseShortcutStore.shared.watchedButtonNumbers.contains(buttonNumber)
         let onScreen = (screen(containing: snapshot.location) != nil)
@@ -414,11 +469,18 @@ final class MouseGestureController: ObservableObject {
         // Mark this button as actively tracked before the OS sees a follow-up
         // drag/up — the tap thread reads this on subsequent events to decide
         // whether to consume them.
-        setTrackingButton(buttonNumber)
+        setTrackingButton(
+            buttonNumber,
+            startPoint: snapshot.location,
+            nativeClickPassthrough: nativeClickPassthrough
+        )
         DispatchQueue.main.async { [weak self] in
-            self?.processMouseDownConsume(snapshot: snapshot)
+            self?.processMouseDownConsume(
+                snapshot: snapshot,
+                nativeClickPassthrough: nativeClickPassthrough
+            )
         }
-        return nil
+        return nativeClickPassthrough ? Unmanaged.passUnretained(event) : nil
     }
 
     private enum MouseDownPassthroughReason {
@@ -460,7 +522,7 @@ final class MouseGestureController: ObservableObject {
         }
     }
 
-    private func processMouseDownConsume(snapshot: MouseEventSnapshot) {
+    private func processMouseDownConsume(snapshot: MouseEventSnapshot, nativeClickPassthrough: Bool) {
         dispatchPrecondition(condition: .onQueue(.main))
         MouseShortcutStore.shared.reloadIfNeeded()
         let button = MouseShortcutButton(rawButtonNumber: Int(snapshot.buttonNumber))
@@ -504,7 +566,7 @@ final class MouseGestureController: ObservableObject {
             modifiers: snapshot.flags,
             candidate: nil,
             match: nil,
-            note: "tracking",
+            note: nativeClickPassthrough ? "tracking; native click passes through" : "tracking",
             appInfo: appInfo
         )
     }
@@ -602,14 +664,32 @@ final class MouseGestureController: ObservableObject {
             flags: event.flags,
             buttonNumber: buttonNumber
         )
-        guard currentTrackingButton() == buttonNumber else {
+        guard let trackingState = currentTrackingState(),
+              trackingState.buttonNumber == buttonNumber else {
             DispatchQueue.main.async { [weak self] in
                 self?.processMouseUpNoSession(snapshot: snapshot)
             }
             return Unmanaged.passUnretained(event)
         }
-        // We consumed the matching mouseDown; clear tap-side tracking so a
-        // subsequent drag/up for this button falls through.
+
+        if trackingState.nativeClickPassthrough {
+            let delta = CGPoint(
+                x: snapshot.location.x - trackingState.startPoint.x,
+                y: snapshot.location.y - trackingState.startPoint.y
+            )
+            let tuning = MouseShortcutStore.shared.tuning
+            let direction = Self.resolveDirection(delta: delta, threshold: tuning.dragThreshold, axisBias: tuning.axisBias)
+            if direction == nil {
+                setTrackingButton(nil)
+                DispatchQueue.main.async { [weak self] in
+                    self?.processMouseUpNativeClickPassthrough(snapshot: snapshot)
+                }
+                return Unmanaged.passUnretained(event)
+            }
+        }
+
+        // Clear tap-side tracking so a subsequent drag/up for this button
+        // falls through.
         setTrackingButton(nil)
         DispatchQueue.main.async { [weak self] in
             self?.processMouseUp(snapshot: snapshot)
@@ -630,6 +710,42 @@ final class MouseGestureController: ObservableObject {
             note: "no active session",
             appInfo: currentAppInfo()
         )
+    }
+
+    private func processMouseUpNativeClickPassthrough(snapshot: MouseEventSnapshot) {
+        dispatchPrecondition(condition: .onQueue(.main))
+        guard let activeSession = session,
+              activeSession.buttonNumber == snapshot.buttonNumber else {
+            recordObservedEvent(
+                phase: "up",
+                button: MouseShortcutButton(rawButtonNumber: Int(snapshot.buttonNumber)),
+                location: snapshot.location,
+                delta: .zero,
+                modifiers: snapshot.flags,
+                candidate: nil,
+                match: nil,
+                note: "native click passthrough",
+                appInfo: currentAppInfo()
+            )
+            return
+        }
+
+        let delta = CGPoint(
+            x: snapshot.location.x - activeSession.startPoint.x,
+            y: snapshot.location.y - activeSession.startPoint.y
+        )
+        recordObservedEvent(
+            phase: "up",
+            button: MouseShortcutButton(rawButtonNumber: Int(snapshot.buttonNumber)),
+            location: snapshot.location,
+            delta: delta,
+            modifiers: snapshot.flags,
+            candidate: nil,
+            match: nil,
+            note: "native click passthrough",
+            appInfo: currentAppInfo()
+        )
+        clearSession()
     }
 
     private func processMouseUp(snapshot: MouseEventSnapshot) {
