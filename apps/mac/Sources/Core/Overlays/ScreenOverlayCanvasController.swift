@@ -125,6 +125,7 @@ final class ScreenOverlayCanvasController {
     private var globalDismissMonitor: Any?
     private var localDismissMonitor: Any?
     private var dragState: OverlayActorDragState?
+    private var actorDragTimeoutTimer: Timer?
     private var agentActorsHidden = false
     private let maxActorDragDuration: TimeInterval = 8.0
 
@@ -176,6 +177,7 @@ final class ScreenOverlayCanvasController {
         motionsByLayerID.removeValue(forKey: id)
         if dragState?.id == id {
             dragState = nil
+            cancelActorDragTimeout()
             resetPointerCapture()
         }
         render()
@@ -188,6 +190,7 @@ final class ScreenOverlayCanvasController {
         motionsByLayerID = motionsByLayerID.filter { id, _ in layersByID[id] != nil }
         if let dragState, removedIDs.contains(dragState.id) {
             self.dragState = nil
+            cancelActorDragTimeout()
             resetPointerCapture()
         }
         render()
@@ -198,6 +201,7 @@ final class ScreenOverlayCanvasController {
         agentActorsHidden.toggle()
         if agentActorsHidden {
             dragState = nil
+            cancelActorDragTimeout()
             resetPointerCapture()
         }
         render()
@@ -206,6 +210,7 @@ final class ScreenOverlayCanvasController {
 
     func resetInputCapture(reason: String) {
         dragState = nil
+        cancelActorDragTimeout()
         resetPointerCapture()
         DiagnosticLog.shared.warn("ScreenOverlay: input capture reset for \(reason)")
     }
@@ -403,6 +408,7 @@ final class ScreenOverlayCanvasController {
                 self.localDismissMonitor = nil
             }
             dragState = nil
+            cancelActorDragTimeout()
             resetPointerCapture()
         }
     }
@@ -472,6 +478,7 @@ final class ScreenOverlayCanvasController {
             lastPoint: currentPoint,
             startedAt: Date()
         )
+        scheduleActorDragTimeout()
         layersByID[hit.id] = layer.replacingPayload(.pet(payload.moved(to: currentPoint, state: "idle", isDragging: true)))
         render()
         updateLifecycleMonitors()
@@ -510,6 +517,7 @@ final class ScreenOverlayCanvasController {
         }
         layersByID[dragState.id] = layer.replacingPayload(.pet(payload.moved(to: dragState.lastPoint, state: "idle", isDragging: false)))
         self.dragState = nil
+        cancelActorDragTimeout()
         render()
         updateLifecycleMonitors()
         updatePointerCapture(at: NSEvent.mouseLocation)
@@ -520,6 +528,20 @@ final class ScreenOverlayCanvasController {
               Date().timeIntervalSince(dragState.startedAt) > maxActorDragDuration else { return }
         DiagnosticLog.shared.warn("ScreenOverlay: stale actor drag cleared for \(dragState.id.rawValue)")
         endActorDrag()
+    }
+
+    private func scheduleActorDragTimeout() {
+        cancelActorDragTimeout()
+        actorDragTimeoutTimer = Timer.scheduledTimer(withTimeInterval: maxActorDragDuration, repeats: false) { [weak self] _ in
+            guard let self, self.dragState != nil else { return }
+            DiagnosticLog.shared.warn("ScreenOverlay: actor drag timed out; releasing pointer capture")
+            self.endActorDrag()
+        }
+    }
+
+    private func cancelActorDragTimeout() {
+        actorDragTimeoutTimer?.invalidate()
+        actorDragTimeoutTimer = nil
     }
 
     private func resetPointerCapture() {
@@ -536,6 +558,7 @@ final class ScreenOverlayCanvasController {
         motionsByLayerID.removeValue(forKey: hit.id)
         if dragState?.id == hit.id {
             dragState = nil
+            cancelActorDragTimeout()
         }
         render()
         updateLifecycleMonitors()
@@ -569,6 +592,7 @@ final class ScreenOverlayCanvasController {
         motionsByLayerID = motionsByLayerID.filter { id, _ in layersByID[id] != nil }
         if let dragState, layersByID[dragState.id] == nil {
             self.dragState = nil
+            cancelActorDragTimeout()
             resetPointerCapture()
         }
         guard layersByID.count != before else { return }
