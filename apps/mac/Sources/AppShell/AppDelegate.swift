@@ -130,10 +130,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func resetInputCapture(reason: String) {
-        DiagnosticLog.shared.warn("InputCapture: reset for \(reason)")
-        ScreenOverlayCanvasController.shared.resetInputCapture(reason: reason)
-        MouseGestureController.shared.resetForSystemInputBoundary(reason: reason)
-        KeyboardRemapController.shared.resetForSystemInputBoundary(reason: reason)
+        InputCaptureResetCenter.reset(reason: reason)
     }
 
     // MARK: - Deep Links

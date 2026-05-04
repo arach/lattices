@@ -18,10 +18,15 @@ final class KeyboardRemapController: ObservableObject {
     private var capsLayerActive = false
     private var capsUsedAsModifier = false
     private var capsLayerActivatedAt: CFAbsoluteTime?
+    private var capsLayerLastEventAt: CFAbsoluteTime?
+    private var bypassUntil: CFAbsoluteTime = 0
     private var lastCapsLayerStaleLogAt: CFAbsoluteTime = 0
+    private var pressedKeyCodes = Set<Int64>()
     private let breaker = EventTapBreaker(label: "KeyboardRemap")
     private let budgetMeter = TapBudgetMeter(label: "KeyboardRemap")
-    private let maxCapsLayerDuration: TimeInterval = 2.0
+    private let maxCapsLayerIdleDuration: TimeInterval = 2.0
+    private let maxCapsLayerHeldDuration: TimeInterval = 20.0
+    private let emergencyBypassDuration: TimeInterval = 3.0
 
     private init() {
         breaker.onStateChanged = { [weak self] newState in
@@ -53,6 +58,7 @@ final class KeyboardRemapController: ObservableObject {
     func resetForSystemInputBoundary(reason: String) {
         dispatchPrecondition(condition: .onQueue(.main))
         clearCapsLayer()
+        pressedKeyCodes.removeAll()
         breaker.reset()
         if let eventTap {
             CGEvent.tapEnable(tap: eventTap, enable: true)
@@ -159,11 +165,13 @@ final class KeyboardRemapController: ObservableObject {
             // OS killed the tap because a callback was too slow. Run through
             // the breaker — it backs off in escalating cooldowns rather than
             // re-enabling immediately and getting killed again.
+            clearCapsLayer()
             breaker.recordTrip()
             return Unmanaged.passUnretained(event)
         }
         if type == .tapDisabledByUserInput {
             // User-driven disable (rare). Re-enable directly, no cooldown.
+            clearCapsLayer()
             if let eventTap {
                 CGEvent.tapEnable(tap: eventTap, enable: true)
             }
@@ -171,6 +179,17 @@ final class KeyboardRemapController: ObservableObject {
         }
 
         if event.getIntegerValueField(.eventSourceUserData) == Self.syntheticMarker {
+            return Unmanaged.passUnretained(event)
+        }
+
+        updatePressedKeys(type: type, keyCode: event.getIntegerValueField(.keyboardEventKeycode))
+        if shouldTriggerEmergencyReset(type: type, event: event) {
+            emergencyClear(now: started)
+            InputCaptureResetCenter.reset(reason: "keyboard emergency chord")
+            return Unmanaged.passUnretained(event)
+        }
+
+        if started < bypassUntil {
             return Unmanaged.passUnretained(event)
         }
 
@@ -185,17 +204,23 @@ final class KeyboardRemapController: ObservableObject {
             return handleCapsLockFlagsChanged(event, rule: rule)
         }
 
-        clearStaleCapsLayerIfNeeded(now: started)
+        reconcileCapsLayer(event: event, type: type, now: started)
         guard capsLayerActive else {
             return Unmanaged.passUnretained(event)
         }
 
         switch type {
         case .keyDown:
+            if keyCode == 53 {
+                emergencyClear(now: started)
+                return Unmanaged.passUnretained(event)
+            }
             capsUsedAsModifier = true
+            capsLayerLastEventAt = started
             event.flags = normalizedFlags(event.flags).union(.latticesHyper)
             return Unmanaged.passUnretained(event)
         case .keyUp:
+            capsLayerLastEventAt = started
             event.flags = normalizedFlags(event.flags).union(.latticesHyper)
             return Unmanaged.passUnretained(event)
         default:
@@ -208,7 +233,9 @@ final class KeyboardRemapController: ObservableObject {
         if isDown {
             capsLayerActive = true
             capsUsedAsModifier = false
-            capsLayerActivatedAt = CFAbsoluteTimeGetCurrent()
+            let now = CFAbsoluteTimeGetCurrent()
+            capsLayerActivatedAt = now
+            capsLayerLastEventAt = now
             DiagnosticLog.shared.info("KeyboardRemap: Caps Lock layer active")
         } else {
             let shouldTap = capsLayerActive && !capsUsedAsModifier && rule.toIfAlone == .escape
@@ -226,18 +253,66 @@ final class KeyboardRemapController: ObservableObject {
         capsLayerActive = false
         capsUsedAsModifier = false
         capsLayerActivatedAt = nil
+        capsLayerLastEventAt = nil
     }
 
-    private func clearStaleCapsLayerIfNeeded(now: CFAbsoluteTime) {
-        guard capsLayerActive,
-              let activatedAt = capsLayerActivatedAt,
-              now - activatedAt > maxCapsLayerDuration else { return }
+    private func reconcileCapsLayer(event: CGEvent, type: CGEventType, now: CFAbsoluteTime) {
+        guard capsLayerActive else { return }
 
+        // If a release event was dropped, later key events often arrive
+        // without the physical Caps flag. Treat that as an input boundary and
+        // fail open before rewriting the user's key.
+        if type == .keyDown || type == .keyUp,
+           !event.flags.contains(.maskAlphaShift) {
+            clearCapsLayer(reason: "physical Caps flag cleared", now: now)
+            return
+        }
+
+        if let lastEventAt = capsLayerLastEventAt,
+           now - lastEventAt > maxCapsLayerIdleDuration {
+            clearCapsLayer(reason: "idle", now: now)
+            return
+        }
+
+        if let activatedAt = capsLayerActivatedAt,
+           now - activatedAt > maxCapsLayerHeldDuration {
+            clearCapsLayer(reason: "held too long", now: now)
+        }
+    }
+
+    private func clearCapsLayer(reason: String, now: CFAbsoluteTime) {
         clearCapsLayer()
         if now - lastCapsLayerStaleLogAt > 1 {
             lastCapsLayerStaleLogAt = now
-            DiagnosticLog.shared.warn("KeyboardRemap: stale Caps Lock layer cleared after \(String(format: "%.1f", maxCapsLayerDuration))s")
+            DiagnosticLog.shared.warn("KeyboardRemap: Caps Lock layer cleared (\(reason))")
         }
+    }
+
+    private func emergencyClear(now: CFAbsoluteTime) {
+        clearCapsLayer()
+        pressedKeyCodes.removeAll()
+        bypassUntil = now + emergencyBypassDuration
+        DiagnosticLog.shared.warn("KeyboardRemap: emergency bypass via Escape")
+    }
+
+    private func updatePressedKeys(type: CGEventType, keyCode: Int64) {
+        switch type {
+        case .keyDown:
+            pressedKeyCodes.insert(keyCode)
+        case .keyUp:
+            pressedKeyCodes.remove(keyCode)
+        default:
+            break
+        }
+    }
+
+    private func shouldTriggerEmergencyReset(type: CGEventType, event: CGEvent) -> Bool {
+        guard type == .keyDown else { return false }
+        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+        let flags = event.flags
+        return keyCode == 40
+            && pressedKeyCodes.contains(53)
+            && flags.contains(.maskShift)
     }
 
     private func normalizedFlags(_ flags: CGEventFlags) -> CGEventFlags {

@@ -322,6 +322,15 @@ final class MouseGestureController: ObservableObject {
             return Unmanaged.passUnretained(event)
         }
 
+        if isEmergencyMouseReset(type: type, event: event) {
+            setTrackingButton(nil)
+            DispatchQueue.main.async { [weak self] in
+                self?.clearSession()
+                InputCaptureResetCenter.reset(reason: "Hyper mouse click")
+            }
+            return Unmanaged.passUnretained(event)
+        }
+
         switch type {
         case .leftMouseDown, .leftMouseUp:
             return handlePassiveMouseButtonEvent(type: type, event: event)
@@ -369,6 +378,15 @@ final class MouseGestureController: ObservableObject {
             self?.processPassiveMouseButton(type: type, snapshot: snapshot)
         }
         return Unmanaged.passUnretained(event)
+    }
+
+    private func isEmergencyMouseReset(type: CGEventType, event: CGEvent) -> Bool {
+        switch type {
+        case .leftMouseDown, .rightMouseDown, .otherMouseDown:
+            return event.flags.intersection(.latticesHyper) == .latticesHyper
+        default:
+            return false
+        }
     }
 
     private func processPassiveMouseButton(type: CGEventType, snapshot: MouseEventSnapshot) {
