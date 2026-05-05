@@ -2,78 +2,147 @@
 
 ## Concept
 
-Hold a mouse button → drag in a direction → release to execute an action.
-The MX Master 3S back-side button (button 3) triggers grid layouts.
+Mouse gestures are a user-level shortcut system for the macOS app. Hold a
+configured mouse button, draw a direction or shape, then release to run the
+matched action.
 
-## Button Mapping
+The app code owns the recognizer, action dispatcher, and JSON schema. Your
+actual gesture mappings live in:
 
-Defaults — remap by editing `~/.lattices/mouse-shortcuts.json`:
+```bash
+~/.lattices/mouse-shortcuts.json
+```
 
-- **Button 3 (Back)** — grid layouts (Maximize / 2×2 / 3×3 / 4×4)
+That file is machine-local preference data. It is not project config, and it
+should not be committed to this repository unless you are intentionally adding
+an example fixture or changing the schema.
 
-## Gesture Detection
+## Config Ownership
 
-1. Button held → start tracking mouse movement
-2. After 30px of movement, commit to a direction (↑ ← → ↓)
-3. Show HUD feedback badge: current direction + predicted action
-4. Release → execute the action
+There are two layers:
 
-If released before 30px threshold → no action (treated as a normal click).
+- **Code defaults** in `MouseGestureConfig.swift` provide a minimal starter
+  config when no user file exists.
+- **User rules** in `~/.lattices/mouse-shortcuts.json` are the source of truth
+  after the file has been created.
+
+Do not add personal shortcuts by changing `MouseGestureConfig.swift`. Add them
+to the user JSON file instead. The Settings UI can open that file from
+**Settings -> Shortcuts -> Mouse Gestures -> Configure...**.
+
+## Button Names
+
+The config accepts these common button names:
+
+| Config value | Meaning |
+|---|---|
+| `middle` | Middle button / wheel click |
+| `back` | Back side button, often mouse button 4 |
+| `forward` | Forward side button, often mouse button 5 |
+| `right` | Right mouse button |
+| `buttonN` | Explicit numbered button fallback |
+
+Normal clicks pass through when a configured button is only being watched for
+drag or shape gestures. Once movement crosses the gesture threshold and matches
+a real gesture, Lattices claims the interaction.
+
+## Trigger Kinds
+
+Rules match one of three trigger kinds:
+
+| Kind | Required fields | Example |
+|---|---|---|
+| `click` | `button` | Middle click sends paste |
+| `drag` | `button`, `direction` | Middle drag left switches Space |
+| `shape` | `button`, `shape` | Back-button L shape activates iTerm |
+
+Directions are `up`, `down`, `left`, and `right`.
+
+Useful two-movement shapes include:
+
+| Shape | Motion |
+|---|---|
+| `l-shape-down-right` | Down, then right |
+| `l-shape-down-left` | Down, then left |
+| `l-shape-up-right` | Up, then right |
+| `l-shape-up-left` | Up, then left |
+| `reverse-l-right-down` | Right, then down |
+| `reverse-l-left-down` | Left, then down |
+| `v-shape` | Down, then up |
+| `reverse-v` | Up, then down |
 
 ## Actions
 
-### Button 3 — Grid / Tile
+Supported action types include:
 
-| Direction | Action | Result |
-|-----------|--------|--------|
-| ↑ Up | Maximize | Frontmost window fills the screen |
-| ← Left | 2×2 grid | Distribute frontmost 4 windows |
-| → Right | 3×3 grid | Distribute frontmost 9 windows |
-| ↓ Down | 4×4 grid | Distribute frontmost 16 windows |
+| Type | Purpose |
+|---|---|
+| `space.previous` | Switch to the previous macOS Space |
+| `space.next` | Switch to the next macOS Space |
+| `screenmap.toggle` | Open the Screen Map overview |
+| `dictation.start` | Start dictation |
+| `shortcut.send` | Send a keyboard shortcut |
+| `app.activate` | Activate an app by name |
 
-Grid distributes the visible non-Lattices windows to fill the grid cells on
-the screen the cursor is on.
+## Example: Enter Gesture
 
-## HUD Feedback
+This is a user-level rule, not a code default. Add it to
+`~/.lattices/mouse-shortcuts.json` if you want the back button plus a quick
+down-then-left shape to press Enter:
 
-While dragging:
-- Small floating badge near the cursor: direction arrow + action name
-- Floats above all windows, fades out on release
+```json
+{
+  "id": "back-down-left-enter",
+  "enabled": true,
+  "device": "any",
+  "trigger": {
+    "button": "back",
+    "kind": "shape",
+    "shape": "l-shape-down-left"
+  },
+  "action": {
+    "type": "shortcut.send",
+    "shortcut": {
+      "key": "enter",
+      "keyCode": 36,
+      "modifiers": []
+    }
+  }
+}
+```
 
-## Safety: self-healing event tap
+## Visuals
+
+Rules may include an optional `visual` block for feedback. Visuals are
+decorative: they must never decide whether a gesture matches or whether an
+action runs. If a visual asset is missing or slow, the gesture should still
+execute through the native action path.
+
+Shape gestures can opt into native matrix completion feedback with
+`"visual": { "renderer": "matrix" }`. When enabled, Lattices smooths the
+captured path, replays it briefly inside a small 3x3 rounded-cell matrix, then
+snaps into a compact confirmation glyph and action label. This is feedback
+only; the matched rule has already dispatched.
+
+## Implementation
+
+- `apps/mac/Sources/Core/Input/MouseGestureController.swift` owns the CGEvent
+  tap, gesture session state, passthrough behavior, and action dispatch.
+- `apps/mac/Sources/Core/Input/MouseGestureConfig.swift` defines the Codable
+  schema and initial fallback defaults.
+- `apps/mac/Sources/Core/Input/MouseShortcutStore.swift` loads the user-level
+  JSON file and provides thread-safe snapshots to the event tap.
+- `apps/mac/Sources/Core/Input/ShapeRecognizer.swift` converts raw gesture
+  paths into direction and shape labels.
+
+## Safety
 
 The controller installs a session-wide CGEvent tap. To avoid blocking the
 system input pipeline:
 
-- The tap callback never blocks — actions dispatch async to the main queue.
-- A circuit breaker trips on (a) OS `tapDisabledByTimeout` events, or
-  (b) any single action that exceeds 500ms.
-- Cooldowns escalate inside a 10-minute rolling window: **30s → 2min →
-  permanent** (until config reload or app restart).
-- A center-screen badge surfaces "Mouse gestures paused — resuming in Ns"
-  on trip and "Mouse gestures resumed" on auto-recover. All trips log to
-  `~/.lattices/lattices.log`.
-
-## Implementation
-
-- `apps/mac/Sources/MouseGestureController.swift` — CGEvent tap, gesture
-  state machine, breaker.
-- Tile actions go through `WindowTiler.tileFrontmostViaAX(...)`.
-- Grid actions enumerate visible windows via `DesktopModel.shared.allWindows()`
-  and batch-move them with `WindowTiler.batchMoveAndRaiseWindows(...)`.
-
-## Settings UI
-
-**Settings → Shortcuts → Mouse Gestures**:
-
-- Button 3 grid card showing the active mapping
-- Hint to edit `~/.lattices/mouse-shortcuts.json` for remapping
-
-## Edge Cases
-
-- Multiple monitors: gesture executes on the screen the cursor starts on
-- Button held + cursor leaves the screen: still tracks; action applies
-  to the starting screen
-- Short press (< 30px movement): ignored, treated as a normal click
-- Slow action / OS tap timeout: breaker trips, gestures pause briefly,
-  then auto-recover
+- The tap callback does only cheap work and dispatches heavier work async.
+- A circuit breaker handles OS tap timeout events and pauses gestures when
+  needed.
+- Short, unmatched clicks are replayed or passed through so native app behavior
+  remains intact.
+- The emergency reset chord clears stuck input capture state.

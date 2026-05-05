@@ -581,6 +581,9 @@ final class MouseGestureController: ObservableObject {
         DispatchQueue.main.async { [weak self] in
             self?.processMouseDragged(snapshot: snapshot)
         }
+        if trackingState.nativeClickPassthrough, direction == nil {
+            return Unmanaged.passUnretained(event)
+        }
         return nil
     }
 
@@ -1026,8 +1029,13 @@ final class MouseGestureController: ObservableObject {
         "\(Int(point.x)),\(Int(point.y))"
     }
 
-    private func shouldDismissOverlayBeforeAction(match _: MouseShortcutMatchResult?) -> Bool {
-        true
+    private func shouldDismissOverlayBeforeAction(match: MouseShortcutMatchResult?) -> Bool {
+        switch match?.action.type {
+        case .shortcutSend, .appActivate:
+            return match?.rule.visual == nil
+        case .spacePrevious, .spaceNext, .screenMapToggle, .dictationStart, .none:
+            return true
+        }
     }
 
     private func previewProgress(dominantDistance: CGFloat, threshold: CGFloat) -> CGFloat {
@@ -1417,10 +1425,17 @@ private final class MouseGestureOverlayView: NSView {
     private var committedStartProgress: CGFloat = 0
     private var accessoryAnimationDelay: TimeInterval = 0
     private let committedArrowAnimationDuration: TimeInterval = 0.06
+    private let matrixCompletionAnimationDuration: TimeInterval = 0.30
     private let arrowAnimationDelay: TimeInterval = 0.012
     private let labelRevealThreshold: CGFloat = 0.8
 
     var replayLeadInDuration: TimeInterval {
+        if case .committed(_, _, _, _, _, let visual, _, let shape, let path, _, _) = state,
+           shape != nil,
+           path.count > 1,
+           shouldDrawMatrixCompletion(visual) {
+            return matrixCompletionAnimationDuration + 0.05
+        }
         if committedStartProgress >= labelRevealThreshold {
             return 0
         }
@@ -1487,20 +1502,31 @@ private final class MouseGestureOverlayView: NSView {
                 )
             }
         case .committed(let origin, let direction, let label, let success, let style, let visual, let visualPhase, let shape, let path, let accessory, _):
-            drawOrigin(at: origin, in: ctx, alpha: 1.0)
             if path.count > 1 {
-                drawGesturePath(
-                    path,
-                    fallbackOrigin: origin,
-                    direction: direction,
-                    label: label,
-                    success: success,
-                    committed: true,
-                    style: style,
-                    accessory: accessory,
-                    progressOverride: nil,
-                    in: ctx
-                )
+                if shape != nil, shouldDrawMatrixCompletion(visual) {
+                    drawMatrixGestureCompletion(
+                        path,
+                        label: label,
+                        success: success,
+                        direction: direction,
+                        accessory: accessory,
+                        in: ctx
+                    )
+                } else {
+                    drawOrigin(at: origin, in: ctx, alpha: 1.0)
+                    drawGesturePath(
+                        path,
+                        fallbackOrigin: origin,
+                        direction: direction,
+                        label: label,
+                        success: success,
+                        committed: true,
+                        style: style,
+                        accessory: accessory,
+                        progressOverride: nil,
+                        in: ctx
+                    )
+                }
                 drawVisualPOCIfNeeded(
                     visual,
                     phase: visualPhase,
@@ -1511,6 +1537,7 @@ private final class MouseGestureOverlayView: NSView {
                     in: ctx
                 )
             } else {
+                drawOrigin(at: origin, in: ctx, alpha: 1.0)
                 drawArrow(
                     from: origin,
                     direction: direction,
@@ -1650,6 +1677,276 @@ private final class MouseGestureOverlayView: NSView {
             }
         }
         ctx.restoreGState()
+    }
+
+    private func drawMatrixGestureCompletion(
+        _ points: [CGPoint],
+        label: String,
+        success: Bool,
+        direction: MouseGestureDirection,
+        accessory: MouseGestureAccessory?,
+        in ctx: CGContext
+    ) {
+        guard points.count > 1 else { return }
+        let progress = min(1, max(0, currentArrowProgress(committed: true)))
+        let cleanedPoints = cleanedMatrixGesturePoints(points)
+        let matrixRect = matrixGestureRect(for: cleanedPoints)
+        let transformedPoints = transformGesturePoints(cleanedPoints, into: matrixRect.insetBy(dx: 16, dy: 16))
+        let visiblePoints = visiblePathPoints(transformedPoints, progress: progress)
+        let accent = success ? theme.accent : theme.failure
+        let activeCells = matrixCellsTouched(by: visiblePoints, in: matrixRect)
+        let pulsePoint = visiblePoints.last ?? transformedPoints.last ?? CGPoint(x: matrixRect.midX, y: matrixRect.midY)
+        let completionAlpha = min(1, max(0, (progress - 0.68) / 0.22))
+
+        ctx.saveGState()
+
+        let halo = NSBezierPath(roundedRect: matrixRect.insetBy(dx: -9, dy: -9), xRadius: 16, yRadius: 16)
+        theme.graphiteDark.withAlphaComponent(0.20 + 0.14 * completionAlpha).setFill()
+        halo.fill()
+
+        drawMatrixCells(
+            in: matrixRect,
+            activeCells: activeCells,
+            completionAlpha: completionAlpha,
+            accent: accent,
+            success: success,
+            context: ctx
+        )
+
+        if visiblePoints.count > 1 {
+            let replayPath = smoothedGesturePath(from: visiblePoints)
+            ctx.addPath(replayPath)
+            ctx.setLineCap(.round)
+            ctx.setLineJoin(.round)
+            ctx.setLineWidth(14)
+            ctx.setStrokeColor(accent.withAlphaComponent(0.16 + 0.16 * completionAlpha).cgColor)
+            ctx.strokePath()
+
+            ctx.addPath(replayPath)
+            ctx.setLineWidth(5)
+            ctx.setStrokeColor(accent.withAlphaComponent(0.72).cgColor)
+            ctx.strokePath()
+
+            ctx.addPath(replayPath)
+            ctx.setLineWidth(1.8)
+            ctx.setStrokeColor(theme.highlight.withAlphaComponent(0.86).cgColor)
+            ctx.strokePath()
+        }
+
+        let pulseRadius = 8 + 10 * easeOut(progress)
+        ctx.setFillColor(accent.withAlphaComponent(0.18 * (1 - completionAlpha * 0.45)).cgColor)
+        ctx.fillEllipse(in: CGRect(
+            x: pulsePoint.x - pulseRadius,
+            y: pulsePoint.y - pulseRadius,
+            width: pulseRadius * 2,
+            height: pulseRadius * 2
+        ))
+        ctx.setFillColor(theme.highlight.withAlphaComponent(0.96).cgColor)
+        ctx.fillEllipse(in: CGRect(x: pulsePoint.x - 3, y: pulsePoint.y - 3, width: 6, height: 6))
+
+        if completionAlpha > 0.1 {
+            drawMatrixConfirmationGlyph(in: matrixRect, alpha: completionAlpha, accent: accent, context: ctx)
+        }
+
+        if progress >= 0.76 {
+            let labelAlpha = min(1, max(0, (progress - 0.76) / 0.18))
+            drawMatrixLabel(label, near: matrixRect, alpha: labelAlpha, accent: accent)
+        }
+
+        if let accessory, progress >= labelRevealThreshold {
+            drawAccessory(accessory, from: CGPoint(x: matrixRect.midX, y: matrixRect.midY), to: pulsePoint, direction: direction, color: accent, in: ctx)
+        }
+
+        ctx.restoreGState()
+    }
+
+    private func drawMatrixCells(
+        in rect: CGRect,
+        activeCells: Set<Int>,
+        completionAlpha: CGFloat,
+        accent: NSColor,
+        success: Bool,
+        context ctx: CGContext
+    ) {
+        let cellSize: CGFloat = 13
+        let gap: CGFloat = 7
+        let gridSize = cellSize * 3 + gap * 2
+        let startX = rect.midX - gridSize / 2
+        let startY = rect.midY - gridSize / 2
+        let logoCells: Set<Int> = [0, 3, 6, 7, 8]
+
+        for row in 0..<3 {
+            for col in 0..<3 {
+                let idx = row * 3 + col
+                let x = startX + CGFloat(col) * (cellSize + gap)
+                let y = startY + CGFloat(row) * (cellSize + gap)
+                let cellRect = CGRect(x: x, y: y, width: cellSize, height: cellSize)
+                let isActive = activeCells.contains(idx)
+                let isLogoCell = logoCells.contains(idx)
+                let baseAlpha: CGFloat = isLogoCell ? 0.20 : 0.11
+                let activeAlpha: CGFloat = success ? 0.88 : 0.70
+                let snapAlpha = isLogoCell ? completionAlpha * 0.36 : 0
+                let fillAlpha = max(baseAlpha + snapAlpha, isActive ? activeAlpha : baseAlpha)
+                let fill = isActive ? accent : theme.highlight
+
+                let glow = NSBezierPath(roundedRect: cellRect.insetBy(dx: -4, dy: -4), xRadius: 6, yRadius: 6)
+                accent.withAlphaComponent(isActive ? 0.14 : snapAlpha * 0.16).setFill()
+                glow.fill()
+
+                let cell = NSBezierPath(roundedRect: cellRect, xRadius: 3, yRadius: 3)
+                fill.withAlphaComponent(fillAlpha).setFill()
+                cell.fill()
+            }
+        }
+    }
+
+    private func drawMatrixConfirmationGlyph(in rect: CGRect, alpha: CGFloat, accent: NSColor, context ctx: CGContext) {
+        let path = CGMutablePath()
+        let x0 = rect.midX + 23
+        let y0 = rect.midY + 22
+        path.move(to: CGPoint(x: x0, y: y0))
+        path.addLine(to: CGPoint(x: x0, y: rect.midY - 24))
+        path.addLine(to: CGPoint(x: rect.midX - 23, y: rect.midY - 24))
+
+        ctx.addPath(path)
+        ctx.setLineCap(.round)
+        ctx.setLineJoin(.round)
+        ctx.setLineWidth(3)
+        ctx.setStrokeColor(accent.withAlphaComponent(0.54 * alpha).cgColor)
+        ctx.strokePath()
+
+        let arrow = NSBezierPath()
+        let end = CGPoint(x: rect.midX - 23, y: rect.midY - 24)
+        arrow.move(to: end)
+        arrow.line(to: CGPoint(x: end.x + 8, y: end.y + 6))
+        arrow.move(to: end)
+        arrow.line(to: CGPoint(x: end.x + 8, y: end.y - 6))
+        accent.withAlphaComponent(0.70 * alpha).setStroke()
+        arrow.lineWidth = 2
+        arrow.lineCapStyle = .round
+        arrow.stroke()
+    }
+
+    private func drawMatrixLabel(_ label: String, near rect: CGRect, alpha: CGFloat, accent: NSColor) {
+        let font = NSFont.monospacedSystemFont(ofSize: 9, weight: .bold)
+        let display = labelComponents(for: label).title
+        let attributed = NSAttributedString(
+            string: display,
+            attributes: [
+                .font: font,
+                .foregroundColor: theme.highlight.withAlphaComponent(0.94 * alpha),
+            ]
+        )
+        let size = attributed.size()
+        let bubbleRect = CGRect(
+            x: rect.midX - (size.width + 16) / 2,
+            y: rect.minY - size.height - 13,
+            width: size.width + 16,
+            height: size.height + 7
+        )
+        let bubble = NSBezierPath(roundedRect: bubbleRect, xRadius: 8, yRadius: 8)
+        theme.graphiteDark.withAlphaComponent(0.78 * alpha).setFill()
+        bubble.fill()
+        accent.withAlphaComponent(0.38 * alpha).setStroke()
+        bubble.lineWidth = 1
+        bubble.stroke()
+        attributed.draw(in: CGRect(
+            x: bubbleRect.minX + 8,
+            y: bubbleRect.minY + 3.5,
+            width: size.width,
+            height: size.height
+        ))
+    }
+
+    private func cleanedMatrixGesturePoints(_ points: [CGPoint]) -> [CGPoint] {
+        let simplified = simplifyGesturePoints(points, minimumDistance: 5)
+        guard simplified.count > 2 else { return simplified }
+
+        var cleaned: [CGPoint] = []
+        for index in simplified.indices {
+            let previous = simplified[max(index - 1, simplified.startIndex)]
+            let current = simplified[index]
+            let next = simplified[min(index + 1, simplified.index(before: simplified.endIndex))]
+            cleaned.append(CGPoint(
+                x: (previous.x + current.x * 2 + next.x) / 4,
+                y: (previous.y + current.y * 2 + next.y) / 4
+            ))
+        }
+        return cleaned
+    }
+
+    private func simplifyGesturePoints(_ points: [CGPoint], minimumDistance: CGFloat) -> [CGPoint] {
+        guard var last = points.first else { return [] }
+        var result = [last]
+        for point in points.dropFirst() {
+            let dx = point.x - last.x
+            let dy = point.y - last.y
+            if sqrt(dx * dx + dy * dy) >= minimumDistance {
+                result.append(point)
+                last = point
+            }
+        }
+        if let final = points.last, result.last != final {
+            result.append(final)
+        }
+        return result
+    }
+
+    private func matrixGestureRect(for points: [CGPoint]) -> CGRect {
+        let end = points.last ?? CGPoint(x: bounds.midX, y: bounds.midY)
+        let size = CGSize(width: 88, height: 88)
+        var origin = CGPoint(x: end.x + 24, y: end.y + 18)
+
+        if origin.x + size.width > bounds.width - 12 {
+            origin.x = end.x - size.width - 24
+        }
+        if origin.y + size.height > bounds.height - 12 {
+            origin.y = end.y - size.height - 18
+        }
+        origin.x = min(max(origin.x, 12), max(12, bounds.width - size.width - 12))
+        origin.y = min(max(origin.y, 12), max(12, bounds.height - size.height - 12))
+
+        return CGRect(origin: origin, size: size)
+    }
+
+    private func transformGesturePoints(_ points: [CGPoint], into rect: CGRect) -> [CGPoint] {
+        guard !points.isEmpty else { return [] }
+        let minX = points.map(\.x).min() ?? 0
+        let maxX = points.map(\.x).max() ?? minX
+        let minY = points.map(\.y).min() ?? 0
+        let maxY = points.map(\.y).max() ?? minY
+        let sourceWidth = max(maxX - minX, 1)
+        let sourceHeight = max(maxY - minY, 1)
+        let scale = min(rect.width / sourceWidth, rect.height / sourceHeight)
+        let scaledWidth = sourceWidth * scale
+        let scaledHeight = sourceHeight * scale
+        let offsetX = rect.midX - scaledWidth / 2
+        let offsetY = rect.midY - scaledHeight / 2
+
+        return points.map { point in
+            CGPoint(
+                x: offsetX + (point.x - minX) * scale,
+                y: offsetY + (point.y - minY) * scale
+            )
+        }
+    }
+
+    private func matrixCellsTouched(by points: [CGPoint], in rect: CGRect) -> Set<Int> {
+        guard !points.isEmpty else { return [] }
+        let cellSize: CGFloat = 13
+        let gap: CGFloat = 7
+        let gridSize = cellSize * 3 + gap * 2
+        let startX = rect.midX - gridSize / 2
+        let startY = rect.midY - gridSize / 2
+        let step = cellSize + gap
+
+        var touched = Set<Int>()
+        for point in points {
+            let col = min(2, max(0, Int(round((point.x - startX - cellSize / 2) / step))))
+            let row = min(2, max(0, Int(round((point.y - startY - cellSize / 2) / step))))
+            touched.insert(row * 3 + col)
+        }
+        return touched
     }
 
     private func drawGestureGuideDots(around points: [CGPoint], accent: NSColor, in ctx: CGContext) {
@@ -2050,7 +2347,8 @@ private final class MouseGestureOverlayView: NSView {
             let shouldRestart = oldDirection != newDirection || !oldCommitted
             if shouldRestart {
                 let previousProgress = trackingProgress(from: oldState)
-                committedStartProgress = max(0, min(1, previousProgress ?? 0))
+                let isMatrixReplay = isCommittedShapeReplay(state: newState)
+                committedStartProgress = isMatrixReplay ? 0 : max(0, min(1, previousProgress ?? 0))
                 if committedStartProgress >= 0.94 {
                     arrowAnimationTimer?.invalidate()
                     arrowAnimationTimer = nil
@@ -2058,7 +2356,8 @@ private final class MouseGestureOverlayView: NSView {
                     arrowAnimationDuration = 0
                     committedStartProgress = 1
                 } else {
-                    startArrowAnimation(duration: committedArrowAnimationDuration)
+                    let duration = isMatrixReplay ? matrixCompletionAnimationDuration : committedArrowAnimationDuration
+                    startArrowAnimation(duration: duration)
                 }
             }
             return
@@ -2260,6 +2559,19 @@ private final class MouseGestureOverlayView: NSView {
             return true
         }
         return false
+    }
+
+    private func isCommittedShapeReplay(state: State) -> Bool {
+        if case .committed(_, _, _, _, _, let visual, _, let shape, let path, _, _) = state {
+            return shape != nil && path.count > 1 && shouldDrawMatrixCompletion(visual)
+        }
+        return false
+    }
+
+    private func shouldDrawMatrixCompletion(_ visual: MouseShortcutVisualDefinition?) -> Bool {
+        guard let visual else { return false }
+        return visual.renderer.localizedCaseInsensitiveCompare("matrix") == .orderedSame
+            || visual.theme?.localizedCaseInsensitiveCompare("matrix") == .orderedSame
     }
 
     private func trackingProgress(from state: State) -> CGFloat? {

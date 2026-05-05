@@ -1,0 +1,122 @@
+---
+title: "Mouse Gestures That Answer Back"
+description: "Lattices now lets user-level mouse shortcut rules opt into a tiny matrix completion animation: your gesture, cleaned up, replayed, and confirmed."
+date: "2026-05-05"
+tags: ["macos", "mouse-gestures", "design", "release"]
+author: "Arach Tchoupani"
+---
+
+Mouse gestures are at their best when they feel physical. You hold a button,
+move through space, release, and something happens. The trap is that the
+software can make that feel either magical or weirdly silent.
+
+This release adds a small bit of magic: user-level mouse shortcut rules can opt
+into a matrix completion animation. When a shape gesture matches, Lattices takes
+the captured gesture path, cleans it up, replays it inside a tiny 3x3 matrix,
+then snaps into a confirmation glyph and label.
+
+It is deliberately small. It is not a mascot, not a system-wide animation
+layer, and not part of whether the action succeeds. It is feedback: the app
+showing that it understood your motion.
+
+## Your Gesture, Cleaner
+
+The first version of shape feedback had a tempting simplification: recognize a
+shape, then replay a perfect canonical version of it.
+
+That was too clean.
+
+The better version keeps the personality of the actual gesture. Lattices already
+captures the path points for recognition and drawing. The matrix renderer uses
+those points as source material:
+
+1. simplify the captured path
+2. smooth out tiny hand wobble
+3. scale the result into a compact matrix
+4. replay the path quickly
+5. pulse the active cells
+6. show the action label
+
+So the animation is not a literal raw trail, but it is still yours. The gesture
+becomes UI.
+
+## Why A Matrix
+
+The Lattices mark is a 3x3 grid of rounded cells: an L made from the left column
+and bottom row. That is already the product's visual language for spatial
+control.
+
+Putting gesture confirmation into the same grammar makes it feel native to the
+app. A back-button down-then-left gesture that sends Return can resolve as a
+small matrix movement, a corner pulse, and a `Return` tag. The shape does not
+need a character or a long flourish. It just needs to feel recognized.
+
+## User-Level, Opt-In
+
+This is intentionally not a committed default for every gesture.
+
+Mouse shortcuts live in:
+
+```bash
+~/.lattices/mouse-shortcuts.json
+```
+
+That file is machine-local preference data. The app code owns the schema,
+recognizer, and fallback defaults, but personal shortcut mappings belong to the
+user.
+
+The matrix completion renderer follows the same rule. A shortcut opts in with a
+`visual` block:
+
+```json
+{
+  "id": "back-down-left-enter",
+  "enabled": true,
+  "device": "any",
+  "trigger": {
+    "button": "back",
+    "kind": "shape",
+    "shape": "l-shape-down-left"
+  },
+  "action": {
+    "type": "shortcut.send",
+    "shortcut": {
+      "key": "enter",
+      "keyCode": 36,
+      "modifiers": []
+    }
+  },
+  "visual": {
+    "renderer": "matrix",
+    "theme": "lattices",
+    "message": "Return"
+  }
+}
+```
+
+No `visual` block, no embellishment. The action still runs.
+
+## The Boundary
+
+The important engineering boundary is that visuals never decide behavior.
+
+Gesture recognition, rule matching, and action dispatch remain the fast path.
+Matrix completion is downstream of that. If the renderer changes, misses a
+frame, or is disabled, the matched action is unaffected.
+
+That keeps the feature in the right emotional category: delightful feedback, not
+fragile input plumbing.
+
+## What Shipped
+
+This release includes:
+
+- sub-threshold middle-button movement passthrough, so Chrome middle-click tab
+  close keeps working while Lattices watches for real gestures
+- clearer documentation that mouse shortcuts are user-level config, not project
+  defaults
+- an opt-in native `matrix` visual renderer for shape gesture completions
+- a local Return gesture example: back button, down then left, release
+
+The small interaction is the point. When a gesture completes, Lattices can now
+answer back in its own visual language.
