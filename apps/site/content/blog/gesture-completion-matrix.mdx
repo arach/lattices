@@ -15,6 +15,20 @@ into a matrix completion animation. When a shape gesture matches, Lattices takes
 the captured gesture path, cleans it up, replays it inside a tiny 3x3 matrix,
 then snaps into a confirmation glyph and label.
 
+<figure class="gesture-demo">
+  <video
+    src="/blog/gesture-completion-matrix.mp4"
+    poster="/blog/gesture-completion-matrix-poster.png"
+    autoplay
+    muted
+    loop
+    playsinline
+    preload="metadata"
+    aria-label="Simulated Lattices matrix gesture completion for a back-button down-left Return gesture"
+  />
+  <figcaption>A simulated replay of the down-left Return gesture resolving into matrix feedback.</figcaption>
+</figure>
+
 It is deliberately small. It is not a mascot, not a system-wide animation
 layer, and not part of whether the action succeeds. It is feedback: the app
 showing that it understood your motion.

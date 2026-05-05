@@ -220,6 +220,27 @@ code { font-family: 'JetBrains Mono', 'SF Mono', monospace; }
   margin: 48px 0;
 }
 
+.prose .gesture-demo {
+  margin: 32px 0 36px;
+}
+
+.prose .gesture-demo video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  border: 1px solid var(--border-lit);
+  border-radius: 8px;
+  background: #111113;
+}
+
+.prose .gesture-demo figcaption {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  margin-top: 10px;
+  text-align: center;
+}
+
 .prose strong { color: rgba(255, 255, 255, 0.9); font-weight: 500; }
 .prose em { color: rgba(255, 255, 255, 0.5); }
 
