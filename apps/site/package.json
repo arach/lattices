@@ -10,7 +10,7 @@
     "lint": "eslint .",
     "og": "node scripts/generate-og.js",
     "render:gesture": "remotion render scripts/remotion/gesture-completion.tsx GestureCompletion public/blog/gesture-completion-matrix.mp4 --codec h264 --pixel-format yuv420p",
-    "render:gesture:poster": "remotion still scripts/remotion/gesture-completion.tsx GestureCompletion public/blog/gesture-completion-matrix-poster.png --frame 262"
+    "render:gesture:poster": "remotion still scripts/remotion/gesture-completion.tsx GestureCompletion public/blog/gesture-completion-matrix-poster.png --frame 344"
   },
   "dependencies": {
     "@arach/arc": "^0.3.1",

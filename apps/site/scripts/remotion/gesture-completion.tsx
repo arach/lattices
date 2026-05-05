@@ -5,6 +5,7 @@ import {
   Composition,
   interpolate,
   registerRoot,
+  Sequence,
   spring,
   staticFile,
   useCurrentFrame,
@@ -14,7 +15,7 @@ import {
 const width = 720
 const height = 450
 const fps = 30
-const durationInFrames = 270
+const durationInFrames = 360
 
 type Point = [number, number]
 type Rect = { x: number; y: number; width: number; height: number }
@@ -265,14 +266,15 @@ const GestureCompletion: React.FC = () => {
   const matrixRect = { x: 452, y: 122, width: 118, height: 118 }
 
   const startProgress = spring({ frame: frame - 17, fps: configFps, config: { damping: 17, mass: 0.72, stiffness: 88 }, durationInFrames: 24 })
-  const stopProgress = spring({ frame: frame - 172, fps: configFps, config: { damping: 17, mass: 0.72, stiffness: 88 }, durationInFrames: 24 })
-  const transcriptProgress = interpolate(frame, [204, 236], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
-  const enterProgress = spring({ frame: frame - 238, fps: configFps, config: { damping: 17, mass: 0.72, stiffness: 92 }, durationInFrames: 19 })
-  const confirmation = spring({ frame: frame - 257, fps: configFps, config: { damping: 14, mass: 0.65, stiffness: 150 }, durationInFrames: 10 })
-  const fade = interpolate(frame, [262, 269], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
-  const recording = interpolate(frame, [49, 60, 165, 176], [0, 1, 1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
-  const thinking = interpolate(frame, [186, 196, 212, 222], [0, 1, 1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
-  const matrixIntro = spring({ frame: frame - 232, fps: configFps, config: { damping: 16, mass: 0.7, stiffness: 118 }, durationInFrames: 12 })
+  const stopProgress = spring({ frame: frame - 224, fps: configFps, config: { damping: 17, mass: 0.72, stiffness: 88 }, durationInFrames: 24 })
+  const transcriptProgress = interpolate(frame, [276, 306], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  const enterProgress = spring({ frame: frame - 318, fps: configFps, config: { damping: 17, mass: 0.72, stiffness: 92 }, durationInFrames: 19 })
+  const confirmation = spring({ frame: frame - 337, fps: configFps, config: { damping: 14, mass: 0.65, stiffness: 150 }, durationInFrames: 10 })
+  const fade = interpolate(frame, [352, 359], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  const recording = interpolate(frame, [49, 60, 213, 224], [0, 1, 1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  const thinking = interpolate(frame, [246, 256, 270, 280], [0, 1, 1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  const promptReview = interpolate(frame, [306, 316, 334, 344], [0, 1, 1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  const matrixIntro = spring({ frame: frame - 312, fps: configFps, config: { damping: 16, mass: 0.7, stiffness: 118 }, durationInFrames: 12 })
   const shownCharacters = Math.floor(transcriptText.length * transcriptProgress)
   const enterPoints = transformGestureInto(enterGesture, matrixRect, 28)
   const shownEnter = visiblePoints(enterPoints, enterProgress)
@@ -281,7 +283,9 @@ const GestureCompletion: React.FC = () => {
 
   return (
     <AbsoluteFill style={{ backgroundColor: '#111113', opacity: fade }}>
-      <Audio src={staticFile('blog/gesture-recording-voice.m4a')} startFrom={0} endAt={130} volume={0.55} />
+      <Sequence from={60}>
+        <Audio src={staticFile('blog/gesture-recording-voice.mp3')} volume={0.7} />
+      </Sequence>
       <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img">
         <defs>
           <radialGradient id="stageGlow" cx="50%" cy="50%" r="64%">
@@ -339,18 +343,36 @@ const GestureCompletion: React.FC = () => {
         <DrawGesturePath points={startDictationGesture} progress={startProgress} width={4.5} glow={15} opacity={interpolate(frame, [12, 20, 45, 56], [0, 1, 1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })} />
         <RecognitionPill x={508} y={155} label="dictation" start={42} end={64} />
 
-        <ClickRipple x={stopDictationGesture[0][0]} y={stopDictationGesture[0][1]} frameOffset={164} />
-        <DrawGesturePath points={stopDictationGesture} progress={stopProgress} width={4.5} glow={15} opacity={interpolate(frame, [166, 174, 196, 206], [0, 1, 1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })} />
-        <RecognitionPill x={514} y={294} label="stop" start={197} end={219} />
+        <ClickRipple x={stopDictationGesture[0][0]} y={stopDictationGesture[0][1]} frameOffset={216} />
+        <DrawGesturePath points={stopDictationGesture} progress={stopProgress} width={4.5} glow={15} opacity={interpolate(frame, [218, 226, 248, 258], [0, 1, 1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })} />
+        <RecognitionPill x={514} y={294} label="stop" start={249} end={271} />
 
         <rect x={prompt.x} y={prompt.y} width={prompt.width} height={prompt.height} rx="18" fill="rgba(17,17,19,0.95)" stroke="rgba(255,255,255,0.10)" />
         <circle cx={prompt.x + 28} cy={prompt.y + 42} r="10" fill="rgba(51,199,115,0.12)" stroke="rgba(51,199,115,0.36)" />
         <WrappedPromptText text={transcriptText} characters={shownCharacters} x={prompt.x + 54} y={prompt.y + 36} />
+        <g opacity={promptReview}>
+          <circle
+            cx={prompt.x + 112 + Math.sin(frame * 0.09) * 86}
+            cy={prompt.y + 48 + Math.cos(frame * 0.11) * 18}
+            r="5"
+            fill="rgba(51,199,115,0.18)"
+            stroke="rgba(51,199,115,0.55)"
+          />
+          <rect
+            x={prompt.x + 50}
+            y={prompt.y + 20}
+            width="300"
+            height="44"
+            rx="12"
+            fill="none"
+            stroke="rgba(51,199,115,0.16)"
+          />
+        </g>
         <rect x={prompt.x + prompt.width - 48} y={prompt.y + 24} width="34" height="34" rx="10" fill={confirmation > 0.25 ? 'rgba(51,199,115,0.72)' : 'rgba(255,255,255,0.08)'} />
         <path d={`M ${prompt.x + prompt.width - 34} ${prompt.y + 41} L ${prompt.x + prompt.width - 24} ${prompt.y + 31} L ${prompt.x + prompt.width - 14} ${prompt.y + 41}`} fill="none" stroke="rgba(244,255,248,0.84)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
 
-        <ClickRipple x={enterGesture[0][0]} y={enterGesture[0][1]} frameOffset={229} />
-        <DrawGesturePath points={enterGesture} progress={enterProgress} width={4.5} glow={15} opacity={interpolate(frame, [231, 238, 252, 262], [0, 1, 0.7, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })} />
+        <ClickRipple x={enterGesture[0][0]} y={enterGesture[0][1]} frameOffset={309} />
+        <DrawGesturePath points={enterGesture} progress={enterProgress} width={4.5} glow={15} opacity={interpolate(frame, [311, 318, 332, 342], [0, 1, 0.7, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })} />
 
         <g opacity={matrixOpacity}>
           <rect x={matrixRect.x} y={matrixRect.y} width={matrixRect.width} height={matrixRect.height} rx="18" fill="rgba(28,28,30,0.90)" stroke="rgba(255,255,255,0.08)" />
