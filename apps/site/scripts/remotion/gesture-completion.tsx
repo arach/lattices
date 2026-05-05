@@ -1,10 +1,12 @@
 import React from 'react'
 import {
   AbsoluteFill,
+  Audio,
   Composition,
   interpolate,
   registerRoot,
   spring,
+  staticFile,
   useCurrentFrame,
   useVideoConfig,
 } from 'remotion'
@@ -12,32 +14,39 @@ import {
 const width = 720
 const height = 450
 const fps = 30
-const durationInFrames = 150
+const durationInFrames = 270
 
 type Point = [number, number]
 type Rect = { x: number; y: number; width: number; height: number }
 
-const enterGesture: Point[] = [
-  [472, 138],
-  [475, 172],
-  [470, 214],
-  [474, 254],
-  [458, 284],
-  [407, 291],
-  [350, 288],
-  [294, 292],
-  [248, 288],
+const startDictationGesture: Point[] = [
+  [506, 268],
+  [507, 244],
+  [505, 218],
+  [506, 194],
+  [508, 174],
 ]
 
-const middleUpGesture: Point[] = [
-  [0, 58],
-  [1, 42],
-  [-1, 26],
-  [0, 11],
-  [1, 0],
+const stopDictationGesture: Point[] = [
+  [512, 178],
+  [512, 205],
+  [510, 230],
+  [512, 254],
+  [514, 274],
+]
+
+const enterGesture: Point[] = [
+  [520, 292],
+  [522, 318],
+  [519, 342],
+  [498, 354],
+  [466, 354],
+  [438, 352],
 ]
 
 const logoCells = new Set([0, 3, 6, 7, 8])
+const transcriptText = 'Lattices supports mouse gestures, dictation, and shortcuts without touching the keyboard.'
+
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 const easeOut = (value: number) => 1 - Math.pow(1 - clamp(value, 0, 1), 3)
 
@@ -48,22 +57,6 @@ const pathLength = (points: Point[]) =>
   }, 0)
 
 const pointsToPath = (points: Point[]) => points.map(([x, y], index) => `${index === 0 ? 'M' : 'L'} ${x} ${y}`).join(' ')
-
-const transformGestureInto = (points: Point[], rect: Rect, inset = 18): Point[] => {
-  const xs = points.map(([x]) => x)
-  const ys = points.map(([, y]) => y)
-  const minX = Math.min(...xs)
-  const maxX = Math.max(...xs)
-  const minY = Math.min(...ys)
-  const maxY = Math.max(...ys)
-  const sourceWidth = Math.max(maxX - minX, 1)
-  const sourceHeight = Math.max(maxY - minY, 1)
-  const scale = Math.min((rect.width - inset * 2) / sourceWidth, (rect.height - inset * 2) / sourceHeight)
-  const offsetX = rect.x + rect.width / 2 - (sourceWidth * scale) / 2
-  const offsetY = rect.y + rect.height / 2 - (sourceHeight * scale) / 2
-
-  return points.map(([x, y]) => [offsetX + (x - minX) * scale, offsetY + (y - minY) * scale])
-}
 
 const visiblePoints = (points: Point[], progress: number): Point[] => {
   const targetLength = pathLength(points) * clamp(progress, 0, 1)
@@ -92,10 +85,26 @@ const visiblePoints = (points: Point[], progress: number): Point[] => {
   return visible
 }
 
+const transformGestureInto = (points: Point[], rect: Rect, inset = 20): Point[] => {
+  const xs = points.map(([x]) => x)
+  const ys = points.map(([, y]) => y)
+  const minX = Math.min(...xs)
+  const maxX = Math.max(...xs)
+  const minY = Math.min(...ys)
+  const maxY = Math.max(...ys)
+  const sourceWidth = Math.max(maxX - minX, 1)
+  const sourceHeight = Math.max(maxY - minY, 1)
+  const scale = Math.min((rect.width - inset * 2) / sourceWidth, (rect.height - inset * 2) / sourceHeight)
+  const offsetX = rect.x + rect.width / 2 - (sourceWidth * scale) / 2
+  const offsetY = rect.y + rect.height / 2 - (sourceHeight * scale) / 2
+
+  return points.map(([x, y]) => [offsetX + (x - minX) * scale, offsetY + (y - minY) * scale])
+}
+
 const cellsTouched = (points: Point[], rect: Rect) => {
   const cells = new Set<number>()
-  const cell = 18
-  const gap = 10
+  const cell = 17
+  const gap = 9
   const grid = cell * 3 + gap * 2
   const startX = rect.x + rect.width / 2 - grid / 2
   const startY = rect.y + rect.height / 2 - grid / 2
@@ -110,15 +119,16 @@ const cellsTouched = (points: Point[], rect: Rect) => {
   return cells
 }
 
-const DrawGesturePath: React.FC<{ points: Point[]; progress: number; width?: number; glow?: number }> = ({
+const DrawGesturePath: React.FC<{ points: Point[]; progress: number; width?: number; glow?: number; opacity?: number }> = ({
   points,
   progress,
   width: strokeWidth = 5,
   glow = 18,
+  opacity = 1,
 }) => {
   const length = pathLength(points)
   return (
-    <>
+    <g opacity={opacity}>
       <path
         d={pointsToPath(points)}
         fill="none"
@@ -152,32 +162,98 @@ const DrawGesturePath: React.FC<{ points: Point[]; progress: number; width?: num
         strokeDasharray={length}
         strokeDashoffset={length * (1 - progress)}
       />
-    </>
+    </g>
   )
 }
 
-const MouseGesture: React.FC<{ x: number; y: number; label: string; progress: number; opacity: number }> = ({
-  x,
-  y,
-  label,
-  progress,
-  opacity,
-}) => {
-  const points = middleUpGesture.map(([px, py]) => [x + px, y + py] as Point)
-  const shown = visiblePoints(points, progress)
-  const tip = shown[shown.length - 1] ?? points[0]
+const ClickRipple: React.FC<{ x: number; y: number; frameOffset: number; label?: string }> = ({ x, y, frameOffset, label }) => {
+  const frame = useCurrentFrame()
+  const progress = easeOut((frame - frameOffset) / 15)
+  const opacity = interpolate(frame, [frameOffset, frameOffset + 15, frameOffset + 30], [0, 1, 0], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  })
 
   return (
     <g opacity={opacity}>
-      <rect x={x - 19} y={y + 48} width="38" height="54" rx="19" fill="rgba(244,255,248,0.09)" stroke="rgba(244,255,248,0.16)" />
-      <rect x={x - 4} y={y + 56} width="8" height="14" rx="4" fill="rgba(51,199,115,0.72)" />
-      <DrawGesturePath points={points} progress={progress} width={4.5} glow={15} />
-      <circle cx={tip[0]} cy={tip[1]} r="7" fill="rgba(51,199,115,0.22)" />
-      <circle cx={tip[0]} cy={tip[1]} r="2.8" fill="#f4fff8" />
-      <text x={x} y={y + 124} textAnchor="middle" fill="rgba(255,255,255,0.42)" fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize="10">
+      <circle cx={x} cy={y} r={6 + progress * 24} fill="none" stroke="rgba(51,199,115,0.42)" strokeWidth="2" />
+      <circle cx={x} cy={y} r="4" fill="#f4fff8" />
+      {label ? (
+        <text x={x} y={y + 36} textAnchor="middle" fill="rgba(255,255,255,0.38)" fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize="10">
+          {label}
+        </text>
+      ) : null}
+    </g>
+  )
+}
+
+const RecognitionPill: React.FC<{ x: number; y: number; label: string; start: number; end: number }> = ({ x, y, label, start, end }) => {
+  const frame = useCurrentFrame()
+  const opacity = interpolate(frame, [start, start + 8, end - 8, end], [0, 1, 1, 0], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  })
+  const lift = interpolate(frame, [start, start + 14], [6, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+
+  return (
+    <g opacity={opacity} transform={`translate(0 ${lift})`}>
+      <rect x={x - 54} y={y - 15} width="108" height="30" rx="9" fill="rgba(17,17,19,0.92)" stroke="rgba(51,199,115,0.34)" />
+      <text x={x} y={y + 4} textAnchor="middle" fill="#f4fff8" fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize="11" fontWeight="700">
         {label}
       </text>
     </g>
+  )
+}
+
+const VoiceParticles: React.FC<{ active: number }> = ({ active }) => {
+  const frame = useCurrentFrame()
+  return (
+    <g opacity={active}>
+      {Array.from({ length: 18 }, (_, index) => {
+        const angle = index * 1.24
+        const radius = 18 + ((frame * 1.7 + index * 13) % 54)
+        const x = 276 + Math.cos(angle) * radius
+        const y = 166 + Math.sin(angle * 0.72) * radius * 0.42
+        const dotOpacity = 0.18 + 0.38 * Math.abs(Math.sin(frame * 0.08 + index))
+        return <circle key={index} cx={x} cy={y} r={1.5 + (index % 3) * 0.7} fill={`rgba(51,199,115,${dotOpacity})`} />
+      })}
+    </g>
+  )
+}
+
+const wrapWords = (text: string, maxLineLength: number) => {
+  const lines: string[] = []
+  let current = ''
+
+  for (const word of text.split(' ')) {
+    const next = current ? `${current} ${word}` : word
+    if (next.length > maxLineLength && current) {
+      lines.push(current)
+      current = word
+    } else {
+      current = next
+    }
+  }
+
+  if (current) {
+    lines.push(current)
+  }
+
+  return lines
+}
+
+const WrappedPromptText: React.FC<{ text: string; characters: number; x: number; y: number }> = ({ text, characters, x, y }) => {
+  const shown = text.slice(0, characters)
+  const lines = wrapWords(shown, 50)
+
+  return (
+    <>
+      {lines.slice(0, 3).map((line, index) => (
+        <text key={index} x={x} y={y + index * 19} fill="rgba(255,255,255,0.66)" fontFamily="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" fontSize="12.5">
+          {line}
+        </text>
+      ))}
+    </>
   )
 }
 
@@ -186,25 +262,26 @@ const GestureCompletion: React.FC = () => {
   const { fps: configFps } = useVideoConfig()
   const shell = { x: 86, y: 46, width: 548, height: 358 }
   const prompt = { x: 132, y: 270, width: 456, height: 82 }
-  const matrixRect = { x: 452, y: 130, width: 118, height: 118 }
-  const startGesture = spring({ frame: frame - 8, fps: configFps, config: { damping: 16, mass: 0.7, stiffness: 88 }, durationInFrames: 18 })
-  const stopGesture = spring({ frame: frame - 47, fps: configFps, config: { damping: 16, mass: 0.7, stiffness: 88 }, durationInFrames: 18 })
-  const transcript = interpolate(frame, [65, 92], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
-  const enterReplay = spring({ frame: frame - 100, fps: configFps, config: { damping: 17, mass: 0.72, stiffness: 92 }, durationInFrames: 22 })
-  const confirmation = spring({ frame: frame - 122, fps: configFps, config: { damping: 14, mass: 0.65, stiffness: 150 }, durationInFrames: 12 })
-  const fade = interpolate(frame, [140, 149], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
-  const recording = interpolate(frame, [18, 28, 48, 58], [0, 1, 1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
-  const thinking = interpolate(frame, [58, 68, 82, 92], [0, 1, 1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
-  const matrixIntro = spring({ frame: frame - 94, fps: configFps, config: { damping: 16, mass: 0.7, stiffness: 118 }, durationInFrames: 14 })
-  const enterPoints = transformGestureInto(enterGesture, matrixRect, 30)
-  const shownEnter = visiblePoints(enterPoints, enterReplay)
+  const matrixRect = { x: 452, y: 122, width: 118, height: 118 }
+
+  const startProgress = spring({ frame: frame - 17, fps: configFps, config: { damping: 17, mass: 0.72, stiffness: 88 }, durationInFrames: 24 })
+  const stopProgress = spring({ frame: frame - 172, fps: configFps, config: { damping: 17, mass: 0.72, stiffness: 88 }, durationInFrames: 24 })
+  const transcriptProgress = interpolate(frame, [204, 236], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  const enterProgress = spring({ frame: frame - 238, fps: configFps, config: { damping: 17, mass: 0.72, stiffness: 92 }, durationInFrames: 19 })
+  const confirmation = spring({ frame: frame - 257, fps: configFps, config: { damping: 14, mass: 0.65, stiffness: 150 }, durationInFrames: 10 })
+  const fade = interpolate(frame, [262, 269], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  const recording = interpolate(frame, [49, 60, 165, 176], [0, 1, 1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  const thinking = interpolate(frame, [186, 196, 212, 222], [0, 1, 1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  const matrixIntro = spring({ frame: frame - 232, fps: configFps, config: { damping: 16, mass: 0.7, stiffness: 118 }, durationInFrames: 12 })
+  const shownCharacters = Math.floor(transcriptText.length * transcriptProgress)
+  const enterPoints = transformGestureInto(enterGesture, matrixRect, 28)
+  const shownEnter = visiblePoints(enterPoints, enterProgress)
   const activeCells = cellsTouched(shownEnter, matrixRect)
-  const typedText = 'Write a release note for the gesture flow.'
-  const shownCharacters = Math.floor(typedText.length * transcript)
   const matrixOpacity = easeOut(matrixIntro)
 
   return (
     <AbsoluteFill style={{ backgroundColor: '#111113', opacity: fade }}>
+      <Audio src={staticFile('blog/gesture-recording-voice.m4a')} startFrom={0} endAt={130} volume={0.55} />
       <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img">
         <defs>
           <radialGradient id="stageGlow" cx="50%" cy="50%" r="64%">
@@ -236,30 +313,21 @@ const GestureCompletion: React.FC = () => {
           mouse-only prompt
         </text>
 
-        <rect x={132} y={112} width="330" height="112" rx="14" fill="rgba(255,255,255,0.035)" stroke="rgba(255,255,255,0.06)" />
-        <text x={154} y={145} fill="rgba(255,255,255,0.46)" fontFamily="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" fontSize="13">
-          Ready for dictation
+        <rect x={132} y={108} width="330" height="116" rx="14" fill="rgba(255,255,255,0.035)" stroke="rgba(255,255,255,0.06)" />
+        <text x={154} y={141} fill="rgba(255,255,255,0.46)" fontFamily="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" fontSize="13">
+          {recording > 0.1 ? 'Recording voice prompt' : 'Ready for dictation'}
         </text>
         <g opacity={recording}>
           <circle cx={154} cy={178} r="5" fill="#33c773" />
-          {[0, 1, 2, 3, 4].map((index) => {
-            const waveHeight = 10 + Math.abs(Math.sin((frame + index * 5) * 0.25)) * 22
-            return (
-              <rect
-                key={index}
-                x={172 + index * 12}
-                y={178 - waveHeight / 2}
-                width="5"
-                height={waveHeight}
-                rx="2.5"
-                fill="rgba(51,199,115,0.72)"
-              />
-            )
+          {[0, 1, 2, 3, 4, 5].map((index) => {
+            const waveHeight = 10 + Math.abs(Math.sin((frame + index * 5) * 0.25)) * 24
+            return <rect key={index} x={172 + index * 12} y={178 - waveHeight / 2} width="5" height={waveHeight} rx="2.5" fill="rgba(51,199,115,0.72)" />
           })}
-          <text x={246} y={183} fill="rgba(255,255,255,0.56)" fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize="11">
+          <text x={258} y={183} fill="rgba(255,255,255,0.56)" fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize="11">
             recording
           </text>
         </g>
+        <VoiceParticles active={recording} />
         <g opacity={thinking}>
           <circle cx={154} cy={178} r="5" fill="rgba(255,255,255,0.32)" />
           <text x={172} y={183} fill="rgba(255,255,255,0.48)" fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize="11">
@@ -267,25 +335,28 @@ const GestureCompletion: React.FC = () => {
           </text>
         </g>
 
-        <MouseGesture x={510} y={84} label="middle + up" progress={startGesture} opacity={interpolate(frame, [0, 6, 34, 42], [0, 1, 1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })} />
-        <MouseGesture x={510} y={84} label="middle + up" progress={stopGesture} opacity={interpolate(frame, [39, 45, 70, 78], [0, 1, 1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })} />
+        <ClickRipple x={startDictationGesture[0][0]} y={startDictationGesture[0][1]} frameOffset={9} />
+        <DrawGesturePath points={startDictationGesture} progress={startProgress} width={4.5} glow={15} opacity={interpolate(frame, [12, 20, 45, 56], [0, 1, 1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })} />
+        <RecognitionPill x={508} y={155} label="dictation" start={42} end={64} />
+
+        <ClickRipple x={stopDictationGesture[0][0]} y={stopDictationGesture[0][1]} frameOffset={164} />
+        <DrawGesturePath points={stopDictationGesture} progress={stopProgress} width={4.5} glow={15} opacity={interpolate(frame, [166, 174, 196, 206], [0, 1, 1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })} />
+        <RecognitionPill x={514} y={294} label="stop" start={197} end={219} />
 
         <rect x={prompt.x} y={prompt.y} width={prompt.width} height={prompt.height} rx="18" fill="rgba(17,17,19,0.95)" stroke="rgba(255,255,255,0.10)" />
         <circle cx={prompt.x + 28} cy={prompt.y + 42} r="10" fill="rgba(51,199,115,0.12)" stroke="rgba(51,199,115,0.36)" />
-        <text x={prompt.x + 54} y={prompt.y + 37} fill="rgba(255,255,255,0.62)" fontFamily="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" fontSize="14">
-          {typedText.slice(0, shownCharacters)}
-        </text>
-        <text x={prompt.x + 54 + Math.min(280, shownCharacters * 7.1)} y={prompt.y + 37} fill="rgba(51,199,115,0.75)" fontFamily="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" fontSize="14" opacity={shownCharacters < typedText.length && transcript > 0 ? 1 : 0}>
-          |
-        </text>
+        <WrappedPromptText text={transcriptText} characters={shownCharacters} x={prompt.x + 54} y={prompt.y + 36} />
         <rect x={prompt.x + prompt.width - 48} y={prompt.y + 24} width="34" height="34" rx="10" fill={confirmation > 0.25 ? 'rgba(51,199,115,0.72)' : 'rgba(255,255,255,0.08)'} />
         <path d={`M ${prompt.x + prompt.width - 34} ${prompt.y + 41} L ${prompt.x + prompt.width - 24} ${prompt.y + 31} L ${prompt.x + prompt.width - 14} ${prompt.y + 41}`} fill="none" stroke="rgba(244,255,248,0.84)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
 
+        <ClickRipple x={enterGesture[0][0]} y={enterGesture[0][1]} frameOffset={229} />
+        <DrawGesturePath points={enterGesture} progress={enterProgress} width={4.5} glow={15} opacity={interpolate(frame, [231, 238, 252, 262], [0, 1, 0.7, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })} />
+
         <g opacity={matrixOpacity}>
-          <rect x={matrixRect.x} y={matrixRect.y} width={matrixRect.width} height={matrixRect.height} rx="18" fill="rgba(28,28,30,0.88)" stroke="rgba(255,255,255,0.08)" />
+          <rect x={matrixRect.x} y={matrixRect.y} width={matrixRect.width} height={matrixRect.height} rx="18" fill="rgba(28,28,30,0.90)" stroke="rgba(255,255,255,0.08)" />
           {Array.from({ length: 9 }, (_, index) => {
-            const cell = 18
-            const gap = 10
+            const cell = 17
+            const gap = 9
             const grid = cell * 3 + gap * 2
             const row = Math.floor(index / 3)
             const col = index % 3
@@ -300,7 +371,7 @@ const GestureCompletion: React.FC = () => {
               </g>
             )
           })}
-          <DrawGesturePath points={enterPoints} progress={enterReplay} width={5} glow={15} />
+          <DrawGesturePath points={transformGestureInto(enterGesture, matrixRect, 28)} progress={enterProgress} width={4.5} glow={14} />
           <g opacity={easeOut(confirmation)}>
             <path d={`M ${matrixRect.x + 88} ${matrixRect.y + 24} L ${matrixRect.x + 88} ${matrixRect.y + 94} L ${matrixRect.x + 34} ${matrixRect.y + 94}`} fill="none" stroke="#33c773" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
             <path d={`M ${matrixRect.x + 34} ${matrixRect.y + 94} L ${matrixRect.x + 45} ${matrixRect.y + 86} M ${matrixRect.x + 34} ${matrixRect.y + 94} L ${matrixRect.x + 45} ${matrixRect.y + 102}`} fill="none" stroke="#33c773" strokeWidth="3" strokeLinecap="round" />
