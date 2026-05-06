@@ -375,16 +375,16 @@ struct MainView: View {
                 detail: "Workspace overview and project launcher",
                 hotkeyTokens: hotkeyTokens(.unifiedWindow),
                 icon: "house",
-                accentColor: Palette.text
+                accentColor: Palette.textDim
             ) {
                 ScreenMapWindowController.shared.showPage(.home)
             }
             ActionRow(
                 label: "Layout",
                 detail: "Arrange windows and layers",
-                hotkeyTokens: [],
+                hotkeyTokens: hotkeyTokens(.screenMap),
                 icon: "rectangle.3.group",
-                accentColor: Palette.running
+                accentColor: Palette.textDim
             ) {
                 ScreenMapWindowController.shared.showPage(.screenMap)
             }
@@ -393,7 +393,7 @@ struct MainView: View {
                 detail: "Windows, projects, sessions, processes, and OCR",
                 hotkeyTokens: hotkeyTokens(.omniSearch),
                 icon: "magnifyingglass",
-                accentColor: AudioLayer.shared.isListening ? Palette.running : Palette.textDim
+                accentColor: Palette.textDim
             ) {
                 ScreenMapWindowController.shared.showPage(.desktopInventory)
             }
@@ -402,7 +402,7 @@ struct MainView: View {
                 detail: "Launch, attach, and control projects",
                 hotkeyTokens: hotkeyTokens(.palette),
                 icon: "command",
-                accentColor: Palette.running
+                accentColor: Palette.textDim
             ) {
                 CommandPaletteWindow.shared.toggle()
             }

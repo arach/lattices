@@ -8,6 +8,7 @@ enum HotkeyBootstrap {
         let store = HotkeyStore.shared
         store.register(action: .palette) { CommandPaletteWindow.shared.toggle() }
         store.register(action: .unifiedWindow) { ScreenMapWindowController.shared.toggle() }
+        store.register(action: .screenMap) { ScreenMapWindowController.shared.showPage(.screenMap) }
         store.register(action: .bezel) { WorkspaceInspectorPresenter.show() }
         store.register(action: .cheatSheet) { SettingsWindowController.shared.show() }
         store.register(action: .desktopInventory) {

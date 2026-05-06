@@ -652,6 +652,10 @@ struct SettingsContentView: View {
                         .labelsHidden()
                 }
 
+                cardDivider
+
+                mouseGestureHUDSettingsControls
+
                 breakerStatusRow(
                     state: mouseGestureController.breakerState,
                     label: "Mouse gestures"
@@ -687,6 +691,61 @@ struct SettingsContentView: View {
                 }
             }
         }
+    }
+
+    private var mouseGestureHUDSettingsControls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Gesture confirmation HUD")
+                    .font(Typo.monoBold(10.5))
+                    .foregroundColor(Palette.text)
+                Text("Controls the new post-gesture confirmation layer. Gesture tracking and rule matching stay independent.")
+                    .font(Typo.caption(9.5))
+                    .foregroundColor(Palette.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 12) {
+                HStack {
+                    Text("Visual")
+                        .font(Typo.mono(10))
+                        .foregroundColor(Palette.textDim)
+                    Spacer()
+                    Toggle("", isOn: $prefs.mouseGestureHUDVisualEnabled)
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                        .labelsHidden()
+                }
+
+                HStack {
+                    Text("Audio")
+                        .font(Typo.mono(10))
+                        .foregroundColor(Palette.textDim)
+                    Spacer()
+                    Toggle("", isOn: $prefs.mouseGestureHUDAudioEnabled)
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                        .labelsHidden()
+                }
+            }
+
+            HStack {
+                Text("Style")
+                    .font(Typo.mono(10))
+                    .foregroundColor(Palette.textDim)
+                Spacer()
+                Picker("", selection: $prefs.mouseGestureHUDStyle) {
+                    ForEach(MouseGestureHUDStyle.allCases) { style in
+                        Text(style.label).tag(style)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 210)
+            }
+        }
+        .padding(10)
+        .background(shortcutsInsetPanel)
     }
 
     private var generalContent: some View {
@@ -1122,6 +1181,10 @@ struct SettingsContentView: View {
                         Text("Rules live in ~/.lattices/mouse-shortcuts.json. The current defaults preserve the working setup: middle-click drag left/right switches Spaces and drag down opens the Screen Map overview.")
                             .font(Typo.caption(9))
                             .foregroundColor(Palette.textMuted.opacity(0.7))
+
+                        cardDivider
+
+                        mouseGestureHUDSettingsControls
 
                         cardDivider
 
