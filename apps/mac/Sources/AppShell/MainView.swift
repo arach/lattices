@@ -23,6 +23,8 @@ struct MainView: View {
     )
     private let embeddedProjectCardHeight: CGFloat = 94
     private let embeddedProjectGridSpacing: CGFloat = 10
+    private let embeddedEmptyStateHeight: CGFloat = 150
+    private let embeddedProjectAreaMaxHeight: CGFloat = 360
     private var filtered: [Project] {
         if searchText.isEmpty { return scanner.projects }
         return scanner.projects.filter {
@@ -187,13 +189,7 @@ struct MainView: View {
                     .fill(Palette.border)
                     .frame(height: 0.5)
 
-                if filtered.isEmpty && !hasVisibleGroups {
-                    Spacer()
-                    emptyState
-                    Spacer()
-                } else {
-                    embeddedProjectsSection
-                }
+                embeddedProjectArea
 
                 Rectangle()
                     .fill(Palette.border)
@@ -210,6 +206,23 @@ struct MainView: View {
                 bottomBar
             }
         }
+    }
+
+    private var embeddedProjectArea: some View {
+        Group {
+            if filtered.isEmpty && !hasVisibleGroups {
+                emptyState
+                    .frame(maxWidth: .infinity)
+                    .frame(height: embeddedEmptyStateHeight)
+            } else {
+                ScrollView(.vertical, showsIndicators: true) {
+                    embeddedProjectsSection
+                        .frame(maxWidth: .infinity, alignment: .top)
+                }
+                .frame(maxHeight: embeddedProjectAreaMaxHeight, alignment: .top)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .top)
     }
 
     private var embeddedProjectsSection: some View {
