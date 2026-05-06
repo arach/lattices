@@ -242,6 +242,7 @@ final class KeyboardRemapController: ObservableObject {
         } else {
             let shouldTap = capsLayerActive && !capsUsedAsModifier && rule.toIfAlone == .escape
             clearCapsLayer()
+            releaseCapsLockLatchIfNeeded()
             if shouldTap {
                 postKeyTap(keyCode: 53)
             }
@@ -330,6 +331,13 @@ final class KeyboardRemapController: ObservableObject {
         var normalized = flags
         normalized.remove(.maskAlphaShift)
         return normalized
+    }
+
+    private func releaseCapsLockLatchIfNeeded() {
+        guard CGEventSource.flagsState(.combinedSessionState).contains(.maskAlphaShift) else {
+            return
+        }
+        postKeyTap(keyCode: 57)
     }
 
     private func postKeyTap(keyCode: CGKeyCode) {
