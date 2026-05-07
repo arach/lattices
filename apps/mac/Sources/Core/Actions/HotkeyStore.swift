@@ -23,6 +23,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
     case voiceCommand
     case handsOff
     case unifiedWindow
+    case workspaceSidebar
     case hud
     case mouseFinder
     case overlayActors
@@ -46,6 +47,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .voiceCommand:    return "Voice Command"
         case .handsOff:        return "Hands-Off Mode"
         case .unifiedWindow:   return "Workspace Home"
+        case .workspaceSidebar: return "Workspace Sidebar"
         case .hud:             return "HUD"
         case .mouseFinder:     return "Find Mouse"
         case .overlayActors:   return "Toggle Overlay Actors"
@@ -82,7 +84,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
 
     var group: HotkeyGroup {
         switch self {
-        case .palette, .screenMap, .bezel, .cheatSheet, .desktopInventory, .omniSearch, .voiceCommand, .handsOff, .unifiedWindow, .hud, .mouseFinder, .overlayActors: return .app
+        case .palette, .screenMap, .bezel, .cheatSheet, .desktopInventory, .omniSearch, .voiceCommand, .handsOff, .unifiedWindow, .workspaceSidebar, .hud, .mouseFinder, .overlayActors: return .app
         case .layer1, .layer2, .layer3, .layer4, .layer5,
              .layer6, .layer7, .layer8, .layer9,
              .layerNext, .layerPrev, .layerTag: return .layers
@@ -104,6 +106,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .hud:             return 208
         case .mouseFinder:     return 209
         case .overlayActors:   return 210
+        case .workspaceSidebar: return 211
         case .layer1:          return 101
         case .layer2:          return 102
         case .layer3:          return 103
@@ -243,6 +246,7 @@ class HotkeyStore: ObservableObject {
         // App
         bind(.palette,   46, cmdShift)   // Cmd+Shift+M
         bind(.unifiedWindow, 18, hyper)  // Hyper+1 (Workspace Home)
+        bind(.workspaceSidebar, 1, hyper) // Hyper+S (Workspace Sidebar)
         bind(.screenMap, 37, hyper)      // Hyper+L (Layout)
         bind(.bezel,     19, hyper)      // Hyper+2
         bind(.hud,       20, hyper)      // Hyper+3 (HUD overlay)

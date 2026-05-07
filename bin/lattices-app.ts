@@ -419,6 +419,7 @@ const flags = process.argv.slice(3);
 const launchFlags: string[] = [];
 if (flags.includes("--diagnostics") || flags.includes("-d")) launchFlags.push("--diagnostics");
 if (flags.includes("--screen-map") || flags.includes("-m")) launchFlags.push("--screen-map");
+if (flags.includes("--sidebar")) launchFlags.push("--sidebar");
 const shouldLaunchAfterUpdate = flags.includes("--launch") || launchFlags.length > 0;
 const shouldDetachUpdate = flags.includes("--detach");
 const isUpdateWorker = flags.includes("--worker");

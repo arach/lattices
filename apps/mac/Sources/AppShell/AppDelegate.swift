@@ -57,6 +57,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        // --sidebar flag: auto-open the desktop workspace sidebar on launch
+        if CommandLine.arguments.contains("--sidebar") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                WorkspaceSidebarWindow.shared.show()
+            }
+        }
+
         // Explicit preview entry point for development/demo flows. This still
         // requires a launch argument; the assistant never opens automatically.
         if CommandLine.arguments.contains("--permissions-assistant") {
@@ -86,6 +93,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         coordinator.registerSurface(id: "menuBarPopover") { MenuBarController.shared.isPopoverShown }
         coordinator.registerSurface(id: "commandMode") { CommandModeWindow.shared.isVisible }
         coordinator.registerSurface(id: "commandPalette") { CommandPaletteWindow.shared.isVisible }
+        coordinator.registerSurface(id: "workspaceSidebar") { WorkspaceSidebarWindow.shared.isVisible }
         coordinator.registerSurface(id: "mainWindow") { MainWindow.shared.isVisible }
         coordinator.registerSurface(id: "screenMap") { ScreenMapWindowController.shared.isVisible }
         coordinator.registerSurface(id: "omniSearch") { OmniSearchWindow.shared.isVisible }
