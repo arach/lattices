@@ -246,7 +246,7 @@ class HotkeyStore: ObservableObject {
         // App
         bind(.palette,   46, cmdShift)   // Cmd+Shift+M
         bind(.unifiedWindow, 18, hyper)  // Hyper+1 (Workspace Home)
-        bind(.workspaceSidebar, 1, hyper) // Hyper+S (Workspace Sidebar)
+        bind(.workspaceSidebar, 14, hyper) // Hyper+E (Workspace Sidebar)
         bind(.screenMap, 37, hyper)      // Hyper+L (Layout)
         bind(.bezel,     19, hyper)      // Hyper+2
         bind(.hud,       20, hyper)      // Hyper+3 (HUD overlay)

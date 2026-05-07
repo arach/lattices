@@ -670,7 +670,7 @@ struct SettingsContentView: View {
                         Text("Caps Lock as Hyper")
                             .font(Typo.monoBold(11))
                             .foregroundColor(Palette.text)
-                        Text("Hold Caps Lock for Hyper shortcuts, tap it for Escape.")
+                        Text("Hold Caps Lock for Hyper shortcuts, tap it for Escape. Lattices maps the physical key through a private F18 transport while this is enabled.")
                             .font(Typo.caption(10))
                             .foregroundColor(Palette.textMuted)
                     }
@@ -1286,7 +1286,7 @@ struct SettingsContentView: View {
                                 .labelsHidden()
                         }
 
-                        Text("Rules live in ~/.lattices/keyboard-remaps.json. The default maps hold Caps Lock to Hyper and tap Caps Lock to Escape, so the existing Hyper shortcuts work on the laptop keyboard.")
+                        Text("Rules live in ~/.lattices/keyboard-remaps.json. The default maps hold Caps Lock to Hyper and tap Caps Lock to Escape. While enabled, Lattices temporarily maps physical Caps Lock through a private F18 transport so the lock state does not latch.")
                             .font(Typo.caption(9))
                             .foregroundColor(Palette.textMuted.opacity(0.7))
 

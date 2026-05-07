@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { execSync, spawn } from "node:child_process";
+import { execFileSync, execSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, chmodSync, createWriteStream, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -23,6 +23,8 @@ const RELEASE_APP_ASSET_NAMES = ["Lattices.dmg"];
 const RELEASE_BINARY_ASSET_NAMES = ["Lattices-macos-arm64", "LatticeApp-macos-arm64"];
 type ReleaseAsset = { name: string; browser_download_url: string };
 const selfScriptPath = resolve(__dirname, "lattices-app.ts");
+const CAPS_LOCK_HID_USAGE = 0x700000039;
+const F18_HID_USAGE = 0x70000006D;
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -35,19 +37,110 @@ function isRunning(): boolean {
   }
 }
 
-function quit(): boolean {
+function sleep(ms: number): void {
+  execFileSync("/bin/sleep", [(ms / 1000).toString()], { stdio: "ignore" });
+}
+
+function waitForExit(timeoutMs: number): boolean {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!isRunning()) return true;
+    sleep(100);
+  }
+  return !isRunning();
+}
+
+type HIDKeyboardMapping = { src: number; dst: number };
+
+function hasOwnedCapsLockTransportMapping(): boolean {
   try {
-    execSync("pkill -x Lattices", { stdio: "pipe" });
-    // Wait briefly for process to exit
-    try { execSync("sleep 0.5", { stdio: "pipe" }); } catch {}
-    // Force kill if still running
-    if (isRunning()) {
-      execSync("pkill -9 -x Lattices", { stdio: "pipe" });
-    }
-    return true;
+    return execFileSync(
+      "/usr/bin/defaults",
+      ["read", "com.arach.lattices", "keyboardRemaps.capsLockHIDTransportOwned"],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }
+    ).trim() === "1";
   } catch {
     return false;
   }
+}
+
+function readHIDKeyboardMappings(): HIDKeyboardMapping[] {
+  try {
+    const output = execFileSync(
+      "/usr/bin/hidutil",
+      ["property", "--get", "UserKeyMapping"],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }
+    );
+    return Array.from(output.matchAll(/HIDKeyboardModifierMappingDst\s*=\s*(\d+);\s*HIDKeyboardModifierMappingSrc\s*=\s*(\d+);/g))
+      .map((match) => ({ dst: Number(match[1]), src: Number(match[2]) }));
+  } catch {
+    return [];
+  }
+}
+
+function writeHIDKeyboardMappings(mappings: HIDKeyboardMapping[]): void {
+  const pairs = mappings.map((mapping) => ({
+    HIDKeyboardModifierMappingSrc: mapping.src,
+    HIDKeyboardModifierMappingDst: mapping.dst,
+  }));
+  execFileSync(
+    "/usr/bin/hidutil",
+    ["property", "--set", JSON.stringify({ UserKeyMapping: pairs })],
+    { stdio: "ignore" }
+  );
+}
+
+function clearOwnedCapsLockTransportMapping(): void {
+  if (!hasOwnedCapsLockTransportMapping()) return;
+
+  const mappings = readHIDKeyboardMappings();
+  const filtered = mappings.filter((mapping) => (
+    mapping.src !== CAPS_LOCK_HID_USAGE || mapping.dst !== F18_HID_USAGE
+  ));
+
+  if (filtered.length !== mappings.length) {
+    try {
+      writeHIDKeyboardMappings(filtered);
+    } catch {
+      console.log("Warning: failed to clear Caps Lock HID transport mapping.");
+      return;
+    }
+  }
+
+  try {
+    execFileSync("/usr/bin/defaults", ["delete", "com.arach.lattices", "keyboardRemaps.capsLockHIDTransportOwned"], { stdio: "ignore" });
+  } catch {}
+  try {
+    execFileSync("/usr/bin/defaults", ["delete", "com.arach.lattices", "keyboardRemaps.capsLockHIDTransportOriginalMappings"], { stdio: "ignore" });
+  } catch {}
+}
+
+function quit(): boolean {
+  if (!isRunning()) {
+    clearOwnedCapsLockTransportMapping();
+    return false;
+  }
+
+  try {
+    execFileSync(
+      "/usr/bin/osascript",
+      ["-e", 'tell application id "com.arach.lattices" to quit'],
+      { stdio: "ignore" }
+    );
+  } catch {}
+
+  if (!waitForExit(2_000)) {
+    try { execSync("pkill -x Lattices", { stdio: "pipe" }); } catch {}
+    waitForExit(1_000);
+  }
+
+  if (isRunning()) {
+    try { execSync("pkill -9 -x Lattices", { stdio: "pipe" }); } catch {}
+    waitForExit(500);
+  }
+
+  clearOwnedCapsLockTransportMapping();
+  return !isRunning();
 }
 
 function hasSwift(): boolean {
@@ -112,8 +205,8 @@ function relaunchIfNeeded(shouldLaunch: boolean, extraArgs: string[] = []): void
 function resolveSigningIdentity(): string | null {
   try {
     const identities = execSync("security find-identity -v -p codesigning", { stdio: "pipe" }).toString();
-    return identities.match(/"(Developer ID Application:[^"]+)"/)?.[1]
-        || identities.match(/"(Apple Development:[^"]+)"/)?.[1]
+    return identities.match(/^\s*\d+\)\s+([A-F0-9]{40})\s+"Developer ID Application:[^"]+"/m)?.[1]
+        || identities.match(/^\s*\d+\)\s+([A-F0-9]{40})\s+"Apple Development:[^"]+"/m)?.[1]
         || null;
   } catch {
     return null;

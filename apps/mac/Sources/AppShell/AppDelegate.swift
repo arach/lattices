@@ -25,6 +25,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         HotkeyBootstrap.registerHotkeys()
 
         DispatchQueue.main.async { HUDController.shared.warmUp() }
+        DispatchQueue.main.async { WorkspaceSidebarWindow.shared.warmUp() }
         DispatchQueue.main.async { MenuBarController.shared.warmUpPopover() }
         DispatchQueue.main.async { ScreenOverlayCanvasController.shared.warmUp() }
 
