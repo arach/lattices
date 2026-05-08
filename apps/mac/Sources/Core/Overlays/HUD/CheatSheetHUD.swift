@@ -367,7 +367,6 @@ struct CheatSheetView: View {
 
             shortcutRow(action: .palette)
             shortcutRow(action: .unifiedWindow)
-            shortcutRow(action: .workspaceSidebar)
             shortcutRow(action: .bezel)
             shortcutRow(action: .hud)
             shortcutRow(action: .voiceCommand)

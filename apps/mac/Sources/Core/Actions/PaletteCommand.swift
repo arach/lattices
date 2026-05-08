@@ -375,16 +375,6 @@ enum CommandBuilder {
         ))
 
         commands.append(PaletteCommand(
-            id: "app-workspace-sidebar",
-            title: "Workspace Sidebar",
-            subtitle: "Toggle the desktop workspace rail",
-            icon: "sidebar.left",
-            category: .app,
-            badge: nil,
-            action: { WorkspaceSidebarWindow.shared.toggle() }
-        ))
-
-        commands.append(PaletteCommand(
             id: "app-windows-list",
             title: "Search",
             subtitle: "Browse windows, displays, spaces, and screen text",

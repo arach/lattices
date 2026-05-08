@@ -73,7 +73,7 @@ struct HUDLeftBar: View {
         VStack(spacing: 0) {
             searchBar
 
-            Rectangle().fill(Palette.border).frame(height: 0.5)
+            HUDHairline(opacity: 0.85)
 
             // Tile mode banner
             if state.tileMode {
@@ -93,13 +93,13 @@ struct HUDLeftBar: View {
                 .padding(.vertical, 8)
                 .background(Palette.running.opacity(0.08))
 
-                Rectangle().fill(Palette.running.opacity(0.3)).frame(height: 0.5)
+                HUDHairline(opacity: 0.8)
             }
 
             // Scrollable sections
             ScrollViewReader { proxy in
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 18) {
                         // Sections
                         ForEach(sections, id: \.key) { sec in
                             sectionView(sec, proxy: proxy)
@@ -110,8 +110,8 @@ struct HUDLeftBar: View {
                             layersSection(layers)
                         }
                     }
-                    .padding(.vertical, 10)
-                    .padding(.horizontal, 10)
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 11)
                 }
                 .onChange(of: state.selectedIndex) { _ in
                     let items = visibleItems
@@ -121,19 +121,22 @@ struct HUDLeftBar: View {
                 }
             }
 
-            Rectangle().fill(Palette.border).frame(height: 0.5)
+            HUDHairline(opacity: 0.75)
 
             // Minimap (pinned at bottom, docked mode only)
             if state.minimapMode == .docked {
                 minimapDocked
             }
 
-            Rectangle().fill(Palette.border).frame(height: 0.5)
+            HUDHairline(opacity: 0.65)
 
             footer
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Palette.bgSidebar)
+        .background(HUDPanelBackground())
+        .overlay(alignment: .trailing) {
+            HUDHairline(axis: .vertical, opacity: 1.1)
+        }
         .overlay(alignment: .trailing) {
             resizeHandle
         }
@@ -195,10 +198,10 @@ struct HUDLeftBar: View {
             Color.clear
             VStack(spacing: 4) {
                 Capsule()
-                    .fill(Palette.borderLit.opacity(0.9))
+                    .fill(HUDChrome.cyan.opacity(0.55))
                     .frame(width: 2, height: 28)
                 Capsule()
-                    .fill(Palette.border.opacity(0.9))
+                    .fill(Color.white.opacity(0.15))
                     .frame(width: 2, height: 18)
             }
         }
@@ -225,7 +228,7 @@ struct HUDLeftBar: View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 13, weight: .medium))
-                .foregroundColor(state.focus == .search ? Palette.text : Palette.textMuted.opacity(0.85))
+                .foregroundColor(state.focus == .search ? HUDChrome.cyan : Palette.textMuted.opacity(0.85))
 
             ZStack(alignment: .leading) {
                 if state.query.isEmpty {
@@ -260,9 +263,11 @@ struct HUDLeftBar: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 15)
+        .padding(.vertical, 11)
         .background(searchBarBackground)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
         .contentShape(Rectangle())
         .onTapGesture {
             state.focus = .search
@@ -280,7 +285,7 @@ struct HUDLeftBar: View {
         if !sec.items.isEmpty {
             let isExpanded = state.isSectionExpanded(sec.key)
             let isHovered = hoveredSectionKey == sec.key
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 5) {
                 Button {
                     state.toggleSection(sec.key)
                 } label: {
@@ -292,21 +297,21 @@ struct HUDLeftBar: View {
 
                         Image(systemName: sec.icon)
                             .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(Palette.textMuted)
+                            .foregroundColor(isExpanded ? HUDChrome.cyan.opacity(0.9) : Palette.textMuted)
                         Text(sec.title)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(Palette.textMuted.opacity(0.9))
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(isExpanded ? Palette.text.opacity(0.88) : Palette.textMuted.opacity(0.9))
                         Text("\(sec.items.count)")
                             .font(.system(size: 10, weight: .medium))
                             .foregroundColor(Palette.textDim)
                         Spacer()
                         shortcutBadge("\(sec.key)")
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
                     .background(
                         RoundedRectangle(cornerRadius: 6)
-                            .fill(isHovered ? Palette.surface.opacity(0.65) : Color.clear)
+                            .fill(isHovered ? Color.white.opacity(0.045) : Color.clear)
                     )
                     .contentShape(Rectangle())
                 }
@@ -338,18 +343,18 @@ struct HUDLeftBar: View {
         let subtitleText = subtitle(for: item)
         let isHovered = hoveredItemID == item.id
         let rowFill: Color = {
-            if isTiled { return Palette.running.opacity(0.12) }
-            if isMultiSelected { return Palette.surfaceHov.opacity(0.9) }
-            if isSelected { return Palette.surfaceHov }
-            if isHovered { return Palette.surface.opacity(0.92) }
-            if state.selectedItem == item { return Palette.surface.opacity(0.8) }
+            if isTiled { return Palette.running.opacity(0.14) }
+            if isMultiSelected { return HUDChrome.cyan.opacity(0.13) }
+            if isSelected { return Color.white.opacity(0.085) }
+            if isHovered { return Color.white.opacity(0.055) }
+            if state.selectedItem == item { return Color.white.opacity(0.045) }
             return Color.clear
         }()
         let rowStroke: Color = {
             if isTiled { return Palette.running.opacity(0.45) }
-            if isMultiSelected { return Color.blue.opacity(0.25) }
-            if isSelected { return Palette.borderLit }
-            if isHovered { return Palette.border.opacity(0.9) }
+            if isMultiSelected { return HUDChrome.cyan.opacity(0.38) }
+            if isSelected { return HUDChrome.cyan.opacity(0.42) }
+            if isHovered { return Color.white.opacity(0.16) }
             return Color.clear
         }()
 
@@ -390,13 +395,21 @@ struct HUDLeftBar: View {
             .padding(.vertical, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 7)
+                RoundedRectangle(cornerRadius: 9)
                     .fill(rowFill)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 7)
-                            .strokeBorder(rowStroke, lineWidth: 0.5)
+                        RoundedRectangle(cornerRadius: 9)
+                            .strokeBorder(rowStroke, lineWidth: isSelected ? 0.8 : 0.5)
                     )
             )
+            .overlay(alignment: .leading) {
+                if isSelected || isMultiSelected || isTiled {
+                    Capsule()
+                        .fill(isTiled ? LinearGradient(colors: [Palette.running, Palette.running], startPoint: .top, endPoint: .bottom) : HUDChrome.activeGradient)
+                        .frame(width: 3, height: 24)
+                        .padding(.leading, 1)
+                }
+            }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -423,9 +436,14 @@ struct HUDLeftBar: View {
     }
 
     private func statusDot(for item: HUDItem) -> some View {
-        Circle()
-            .fill(dotColor(for: item))
-            .frame(width: 7, height: 7)
+        ZStack {
+            Circle()
+                .fill(dotColor(for: item).opacity(0.18))
+                .frame(width: 15, height: 15)
+            Circle()
+                .fill(dotColor(for: item))
+                .frame(width: 6, height: 6)
+        }
     }
 
     private func dotColor(for item: HUDItem) -> Color {
@@ -459,21 +477,21 @@ struct HUDLeftBar: View {
 
     private func layersSection(_ layers: [Layer]) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 Image(systemName: "square.stack.3d.up")
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(Palette.textMuted)
+                    .foregroundColor(HUDChrome.amber.opacity(0.9))
                 Text("Layers")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(Palette.textMuted.opacity(0.9))
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(Palette.text.opacity(0.86))
                 Text("\(layers.count)")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(Palette.textDim)
                 Spacer()
                 shortcutBadge("[ ]")
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
 
             ForEach(Array(layers.enumerated()), id: \.element.id) { idx, layer in
                 let isActive = idx == workspace.activeLayerIndex
@@ -485,13 +503,13 @@ struct HUDLeftBar: View {
                 } label: {
                     HStack(spacing: 10) {
                         Circle()
-                            .fill(isActive ? Palette.running : Palette.textMuted.opacity(0.2))
-                            .frame(width: 7, height: 7)
+                            .fill(isActive ? HUDChrome.activeGradient : LinearGradient(colors: [Palette.textMuted.opacity(0.25), Palette.textMuted.opacity(0.25)], startPoint: .top, endPoint: .bottom))
+                            .frame(width: 8, height: 8)
 
                         VStack(alignment: .leading, spacing: 2) {
                             Text(layer.label)
                                 .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(isActive ? Palette.text : Palette.textMuted)
+                            .foregroundColor(isActive ? Palette.text : Palette.textMuted)
                                 .lineLimit(1)
 
                             Text("\(counts.running)/\(counts.total) projects")
@@ -517,14 +535,7 @@ struct HUDLeftBar: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        RoundedRectangle(cornerRadius: 7)
-                            .fill(isActive ? Palette.running.opacity(0.06) : (isHovered ? Palette.surface.opacity(0.75) : Color.clear))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 7)
-                                    .strokeBorder(isActive ? Palette.running.opacity(0.2) : (isHovered ? Palette.border : Color.clear), lineWidth: 0.5)
-                            )
-                    )
+                    .hudGlass(cornerRadius: 9, active: isActive, hovered: isHovered)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -608,8 +619,9 @@ struct HUDLeftBar: View {
 
                 ZStack(alignment: .topLeading) {
                     // Screen background
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Palette.surface.opacity(0.4))
+                    RoundedRectangle(cornerRadius: 7)
+                        .fill(Color.white.opacity(0.045))
+                        .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5))
                         .frame(width: drawW, height: drawH)
                         .offset(x: offsetX, y: offsetY)
 
@@ -652,11 +664,18 @@ struct HUDLeftBar: View {
                     }
                 }
                 .frame(width: mapWidth, height: mapHeight)
-                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .clipShape(RoundedRectangle(cornerRadius: 7))
                 .padding(.horizontal, 10)
                 .padding(.bottom, 8)
             }
         }
+        .background(
+            RoundedRectangle(cornerRadius: 11)
+                .fill(Color.white.opacity(0.035))
+                .overlay(RoundedRectangle(cornerRadius: 11).strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
+        )
+        .padding(.horizontal, 9)
+        .padding(.vertical, 8)
     }
 
     // MARK: - Minimap helpers
@@ -773,11 +792,11 @@ struct HUDLeftBar: View {
                 .padding(.horizontal, 4)
                 .padding(.vertical, 2)
                 .background(
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Palette.surface)
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.white.opacity(0.055))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 3)
-                                .strokeBorder(Palette.border, lineWidth: 0.5)
+                            RoundedRectangle(cornerRadius: 4)
+                                .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
                         )
                 )
             Text(label)
@@ -793,31 +812,32 @@ struct HUDLeftBar: View {
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
             .background(
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Palette.surface)
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(Color.white.opacity(0.05))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 4)
-                            .strokeBorder(Palette.border, lineWidth: 0.5)
+                        RoundedRectangle(cornerRadius: 5)
+                            .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5)
                     )
             )
     }
 
     private var searchBarBackground: some View {
-        RoundedRectangle(cornerRadius: 8)
+        RoundedRectangle(cornerRadius: 12)
             .fill(
                 state.focus == .search
-                    ? Palette.surface.opacity(0.6)
-                    : (isSearchHovered ? Palette.surface.opacity(0.3) : Color.clear)
+                    ? Color.white.opacity(0.075)
+                    : (isSearchHovered ? Color.white.opacity(0.045) : Color.white.opacity(0.025))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: 12)
                     .strokeBorder(
                         state.focus == .search
-                            ? Palette.borderLit
-                            : (isSearchHovered ? Palette.border.opacity(0.85) : Color.clear),
-                        lineWidth: 0.5
+                            ? HUDChrome.cyan.opacity(0.40)
+                            : (isSearchHovered ? Color.white.opacity(0.16) : Color.white.opacity(0.08)),
+                        lineWidth: 0.75
                     )
             )
+            .shadow(color: Color.black.opacity(state.focus == .search ? 0.22 : 0.10), radius: 10, y: 4)
     }
 
     // MARK: - Actions

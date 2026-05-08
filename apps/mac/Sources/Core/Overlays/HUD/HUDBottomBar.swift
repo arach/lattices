@@ -23,7 +23,10 @@ struct HUDBottomBar: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: 48)
-        .background(Palette.bg)
+        .background(HUDPanelBackground())
+        .overlay(alignment: .top) {
+            HUDHairline(opacity: 0.85)
+        }
     }
 
     // MARK: - Action playback (what just happened)
@@ -82,11 +85,11 @@ struct HUDBottomBar: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
         .background(
-            RoundedRectangle(cornerRadius: 5)
+            RoundedRectangle(cornerRadius: 8)
                 .fill(Palette.running.opacity(0.06))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 5)
-                        .strokeBorder(Palette.running.opacity(0.2), lineWidth: 0.5)
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(Palette.running.opacity(0.24), lineWidth: 0.5)
                 )
         )
     }
@@ -212,11 +215,11 @@ struct HUDBottomBar: View {
                 .foregroundColor(Palette.text)
                 .frame(width: 16, height: 16)
                 .background(
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Palette.surface)
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.white.opacity(0.055))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 3)
-                                .strokeBorder(Palette.border, lineWidth: 0.5)
+                            RoundedRectangle(cornerRadius: 4)
+                                .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
                         )
                 )
             Text(hint)

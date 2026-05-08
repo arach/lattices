@@ -87,7 +87,6 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 
         let actions: [(String, String, Selector)] = [
             ("Home", "", #selector(menuWorkspace)),
-            ("Workspace Sidebar", "", #selector(menuWorkspaceSidebar)),
             ("Layout", "", #selector(menuLayout)),
             ("Search", "", #selector(menuSearch)),
             ("Command Palette", "⌘⇧M", #selector(menuCommandPalette)),
@@ -137,7 +136,6 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 
     @objc private func menuCommandPalette() { CommandPaletteWindow.shared.toggle() }
     @objc private func menuWorkspace() { ScreenMapWindowController.shared.showPage(.home) }
-    @objc private func menuWorkspaceSidebar() { WorkspaceSidebarWindow.shared.toggle() }
     @objc private func menuLayout() { ScreenMapWindowController.shared.showPage(.screenMap) }
     @objc private func menuSearch() { ScreenMapWindowController.shared.showPage(.desktopInventory) }
     @objc private func menuProjects() { DispatchQueue.main.async { self.showProjectsPopover() } }

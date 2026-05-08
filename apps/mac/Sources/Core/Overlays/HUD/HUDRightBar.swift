@@ -16,14 +16,17 @@ struct HUDRightBar: View {
             inspectorPane
                 .frame(maxHeight: .infinity)
 
-            Rectangle().fill(Palette.border).frame(height: 0.5)
+            HUDHairline(opacity: 0.75)
 
             // Bottom half: conversation
             conversationPane
                 .frame(maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Palette.bg)
+        .background(HUDPanelBackground())
+        .overlay(alignment: .leading) {
+            HUDHairline(axis: .vertical, opacity: 1.0)
+        }
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -86,7 +89,7 @@ struct HUDRightBar: View {
                 previewSection(for: previewWindow, title: "Window Preview")
             }
 
-            Rectangle().fill(Palette.border).frame(height: 0.5)
+            HUDHairline(opacity: 0.70)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
@@ -128,7 +131,7 @@ struct HUDRightBar: View {
 
             previewSection(for: window, title: "Live Preview")
 
-            Rectangle().fill(Palette.border).frame(height: 0.5)
+            HUDHairline(opacity: 0.70)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
@@ -198,7 +201,7 @@ struct HUDRightBar: View {
             // Header with voice state
             conversationHeader
 
-            Rectangle().fill(Palette.border).frame(height: 0.5)
+            HUDHairline(opacity: 0.70)
 
             // Messages
             if handsOff.conversationHistory.isEmpty {
