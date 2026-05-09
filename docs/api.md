@@ -167,9 +167,10 @@ agent-visible UI. Use `overlay.publish` for transient passive visuals,
 and `overlay.actor.*` for persistent, movable actor surfaces.
 
 Persistent actors are useful for representing agents or processes on the
-desktop. Each actor has a stable `id`, can be moved independently, can be
-dragged by the user, and can be hidden/restored with **Hyper+8**. Right-click
-an actor to close that specific actor.
+desktop. Each actor has a stable `id`, can be moved independently through the
+API, dragged by the user, hidden/restored with **Hyper+8**, and closed with
+right-click. Click event callbacks and action surfaces are planned follow-on
+capabilities.
 
 | Method | Type | Description |
 |--------|------|-------------|
@@ -233,6 +234,13 @@ omit `ttlMs` or pass `0`, and `dismissible` defaults to `false`.
 | `x`, `y` | double | no | Screen-local point for `point` placement |
 | `ttlMs` | int | no | Time to live; `0` means persistent |
 | `dismissible` | bool | no | Whether click-away dismissal removes the actor |
+
+Bundled sprite assets:
+
+| Asset | Notes |
+|-------|-------|
+| `assistant-spark` | Animated states include `idle`, `run_right`, `run_left`, `waving`, `jumping`, `failed`, `waiting`, `running`, and `review` |
+| `scout-ranger` | Bundled sprite asset with default frame fallback |
 
 Example:
 
