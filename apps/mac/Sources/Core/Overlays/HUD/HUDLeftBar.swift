@@ -7,6 +7,7 @@ struct HUDLeftBar: View {
     @ObservedObject private var scanner = ProjectScanner.shared
     @ObservedObject private var desktop = DesktopModel.shared
     @ObservedObject private var workspace = WorkspaceManager.shared
+    @ObservedObject private var xp = HUDExperienceStore.shared
     @FocusState private var searchFieldFocused: Bool
     @State private var resizeStartWidth: CGFloat?
     @State private var isSearchHovered: Bool = false
@@ -135,11 +136,18 @@ struct HUDLeftBar: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(HUDPanelBackground())
         .overlay(alignment: .trailing) {
-            HUDHairline(axis: .vertical, opacity: 1.1)
+            // Only show the vertical hairline when chrome is on (adjacent to desktop, not floating)
+            if xp.showChrome {
+                HUDHairline(axis: .vertical, opacity: 0.8)
+            }
         }
         .overlay(alignment: .trailing) {
             resizeHandle
         }
+        .clipShape(
+            RoundedRectangle(cornerRadius: xp.showChrome ? 0 : 14, style: .continuous)
+        )
+        .hudEdgeGlow()
         .onAppear { syncState() }
         .onChange(of: state.query) { _ in
             state.selectedIndex = 0
@@ -751,6 +759,33 @@ struct HUDLeftBar: View {
             keyBadge("⇥", label: "Focus")
             keyBadge("↵", label: "Go")
             keyBadge("[ ]", label: "Layer")
+
+            // Experience badge (visible when no top bar)
+            if !xp.showChrome && xp.presetIndex > 0 {
+                Button {
+                    let name = xp.cyclePreset()
+                    state.showFeedback(name, autoClearAfter: 1.4)
+                } label: {
+                    HStack(spacing: 3) {
+                        Text(xp.currentPreset.name)
+                            .font(Typo.mono(8))
+                            .foregroundColor(HUDChrome.cyan.opacity(0.65))
+                        Image(systemName: "chevron.right.2")
+                            .font(.system(size: 7, weight: .semibold))
+                            .foregroundColor(HUDChrome.cyan.opacity(0.35))
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(HUDChrome.cyan.opacity(0.07))
+                            .overlay(RoundedRectangle(cornerRadius: 4)
+                                .strokeBorder(HUDChrome.cyan.opacity(0.18), lineWidth: 0.5))
+                    )
+                }
+                .buttonStyle(.plain)
+                .help("Cycle experience (⌥X)")
+            }
 
             Spacer()
 

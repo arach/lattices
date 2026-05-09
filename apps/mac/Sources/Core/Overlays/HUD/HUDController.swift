@@ -36,11 +36,15 @@ final class HUDController {
     private var minimapPanels: [NSPanel] = []
     private var keyMonitor: Any?
     private var clickMonitor: Any?
+    private var mouseMovedMonitor: Any?
     private var minimapObserver: AnyCancellable?
     private var sidebarWidthObserver: AnyCancellable?
     private var selectionObserver: AnyCancellable?
     private var previewObserver: AnyCancellable?
     private var previewImageObserver: AnyCancellable?
+    private var experienceObserver: AnyCancellable?
+    private var panelMoveObservers: [Any] = []
+    private var lastMouseUpdate: Date = .distantPast
     private let state = HUDState()
     private let previewModel = WindowPreviewStore.shared
 
@@ -152,7 +156,7 @@ final class HUDController {
         state.hoverPreviewAnchorScreenY = nil
         state.previewInteractionActive = false
         state.selectedItems = []
-        state.focus = .search
+        state.focus = .list
         previewSettledItemID = nil
         previewSettledAnchorScreenY = nil
         state.resetSectionDefaults(hasRunningProjects: ProjectScanner.shared.projects.contains(where: \.isRunning))
@@ -167,10 +171,11 @@ final class HUDController {
 
         // ── INSTANT SHOW ── alphaValue flip, zero animation
         let isExpanded = state.minimapMode == .expanded
-        topPanel?.alphaValue = 1
-        topPanel?.ignoresMouseEvents = false
-        bottomPanel?.alphaValue = 1
-        bottomPanel?.ignoresMouseEvents = false
+        let showChrome = HUDExperienceStore.shared.showChrome
+        topPanel?.alphaValue = showChrome ? 1 : 0
+        topPanel?.ignoresMouseEvents = !showChrome
+        bottomPanel?.alphaValue = showChrome ? 1 : 0
+        bottomPanel?.ignoresMouseEvents = !showChrome
         leftPanel?.alphaValue = 1
         leftPanel?.ignoresMouseEvents = false
         updateRightPanelVisibility(animated: false)
@@ -188,6 +193,15 @@ final class HUDController {
         leftPanel?.makeKey()
 
         installMonitors()
+        applyExperienceToAllPanels()
+
+        let xp = HUDExperienceStore.shared
+        if xp.has(.mouseSpecular) || xp.has(.meshLight) {
+            installMouseMovedMonitor()
+        }
+        if xp.has(.liveCapture) {
+            captureDesktop()
+        }
 
         DispatchQueue.main.async { ProjectScanner.shared.scan() }
     }
@@ -197,12 +211,12 @@ final class HUDController {
     func dismiss() {
         guard isVisible else { return }
         removeMonitors()
+        removeMouseMovedMonitor()
 
         // Restore untiled windows only if user actually tiled something
         if !state.tiledWindows.isEmpty {
             restoreUntiled()
         } else {
-            // Just clean up tile state without moving anything
             state.tileSnapshot = []
             state.tileMode = false
         }
@@ -212,30 +226,43 @@ final class HUDController {
             state.voiceActive = false
         }
 
+        let xp = HUDExperienceStore.shared
         let sf = (positionedScreen ?? mouseScreen()).visibleFrame
 
-        NSAnimationContext.runAnimationGroup({ [weak self] ctx in
-            guard let self else { return }
-            ctx.duration = 0.12
-            ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
-            let sideHeight = max(0, sf.height - topHeight - bottomHeight)
+        let isAmbient = xp.has(.ambientPresence) && xp.currentPreset.ambientOpacity > 0
+        if isAmbient || !xp.showChrome {
+            // Floating sidebar or ambient — simple fade, no slide-out
+            let targetAlpha = isAmbient ? xp.currentPreset.ambientOpacity : 0.0
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.18
+                for p in self.allPanels { p.animator().alphaValue = targetAlpha }
+            }
+            for p in allPanels { p.ignoresMouseEvents = true }
+        } else {
+            // Chrome layout — original slide-out animation
+            NSAnimationContext.runAnimationGroup({ [weak self] ctx in
+                guard let self else { return }
+                ctx.duration = 0.12
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
+                let sideHeight = max(0, sf.height - topHeight - bottomHeight)
 
-            topPanel?.animator().setFrame(
-                NSRect(x: sf.minX, y: sf.maxY,
-                       width: sf.width, height: topHeight), display: false)
-            bottomPanel?.animator().setFrame(
-                NSRect(x: sf.minX, y: sf.minY - bottomHeight,
-                       width: sf.width, height: bottomHeight), display: false)
-            leftPanel?.animator().setFrame(
-                NSRect(x: sf.minX - leftWidth * 0.3, y: sf.minY + bottomHeight, width: leftWidth, height: sideHeight), display: false)
-            rightPanel?.animator().setFrame(
-                NSRect(x: sf.maxX + rightWidth * 0.3 - rightWidth, y: sf.minY + bottomHeight, width: rightWidth, height: sideHeight), display: false)
-            for p in allPanels { p.animator().alphaValue = 0 }
-        }) { [weak self] in
-            guard let self, let screen = self.positionedScreen else { return }
-            self.positionAllPanels(on: screen)
-            for panel in self.allPanels {
-                panel.ignoresMouseEvents = true
+                topPanel?.animator().setFrame(
+                    NSRect(x: sf.minX, y: sf.maxY,
+                           width: sf.width, height: topHeight), display: false)
+                bottomPanel?.animator().setFrame(
+                    NSRect(x: sf.minX, y: sf.minY - bottomHeight,
+                           width: sf.width, height: bottomHeight), display: false)
+                leftPanel?.animator().setFrame(
+                    NSRect(x: sf.minX - leftWidth * 0.3, y: sf.minY + bottomHeight,
+                           width: leftWidth, height: sideHeight), display: false)
+                rightPanel?.animator().setFrame(
+                    NSRect(x: sf.maxX + rightWidth * 0.3 - rightWidth, y: sf.minY + bottomHeight,
+                           width: rightWidth, height: sideHeight), display: false)
+                for p in allPanels { p.animator().alphaValue = 0 }
+            }) { [weak self] in
+                guard let self, let screen = self.positionedScreen else { return }
+                self.positionAllPanels(on: screen)
+                for panel in self.allPanels { panel.ignoresMouseEvents = true }
             }
         }
     }
@@ -249,15 +276,29 @@ final class HUDController {
     private func positionAllPanels(on screen: NSScreen) {
         let sf = screen.visibleFrame
         let sideHeight = max(0, sf.height - topHeight - bottomHeight)
+        let isFreeform = HUDExperienceStore.shared.has(.freeformWidgets)
+        let wps = WidgetPositionStore.shared
 
-        topPanel?.setFrame(NSRect(x: sf.minX, y: sf.maxY - topHeight,
-                                  width: sf.width, height: topHeight), display: false)
-        bottomPanel?.setFrame(NSRect(x: sf.minX, y: sf.minY,
-                                     width: sf.width, height: bottomHeight), display: false)
-        leftPanel?.setFrame(NSRect(x: sf.minX, y: sf.minY + bottomHeight,
-                                   width: leftWidth, height: sideHeight), display: false)
-        rightPanel?.setFrame(NSRect(x: sf.maxX - rightWidth, y: sf.minY + bottomHeight,
-                                    width: rightWidth, height: sideHeight), display: false)
+        func place(_ panel: NSPanel?, widget: WidgetPositionStore.Widget, default defaultFrame: NSRect) {
+            guard let panel else { return }
+            let frame = isFreeform ? (wps.position(for: widget, on: screen) ?? defaultFrame) : defaultFrame
+            panel.setFrame(frame, display: false)
+        }
+
+        place(topPanel,    widget: .top,    default: NSRect(x: sf.minX, y: sf.maxY - topHeight, width: sf.width, height: topHeight))
+        place(bottomPanel, widget: .bottom, default: NSRect(x: sf.minX, y: sf.minY, width: sf.width, height: bottomHeight))
+
+        let showChrome = HUDExperienceStore.shared.showChrome
+        if showChrome {
+            place(leftPanel,  widget: .left,  default: NSRect(x: sf.minX, y: sf.minY + bottomHeight, width: leftWidth, height: sideHeight))
+            place(rightPanel, widget: .right, default: NSRect(x: sf.maxX - rightWidth, y: sf.minY + bottomHeight, width: rightWidth, height: sideHeight))
+        } else {
+            let inset:  CGFloat = 10
+            let vInset: CGFloat = 12
+            let floatH  = sf.height - vInset * 2
+            place(leftPanel,  widget: .left,  default: NSRect(x: sf.minX + inset, y: sf.minY + vInset, width: leftWidth, height: floatH))
+            place(rightPanel, widget: .right, default: NSRect(x: sf.minX + inset + leftWidth + 10, y: sf.minY + vInset, width: rightWidth, height: floatH))
+        }
         if let previewPanel,
            let frame = previewFrame(on: screen, itemID: previewSettledItemID ?? state.transientPreviewItem?.id) {
             previewPanel.setFrame(frame, display: false)
@@ -342,6 +383,7 @@ final class HUDController {
 
         let pp = makePanel()
         pp.hasShadow = true
+        pp.isMovableByWindowBackground = true
         pp.contentMinSize = NSSize(width: previewWidth, height: previewHeight)
         pp.contentMaxSize = NSSize(width: previewWidth, height: previewHeight)
         let ppHosting = NSHostingView(rootView:
@@ -412,6 +454,35 @@ final class HUDController {
                     self?.updatePreviewPanelVisibility(animated: true)
                 }
             }
+
+        // Re-apply experience settings when preset changes
+        experienceObserver = HUDExperienceStore.shared.$presetIndex
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.applyExperienceToAllPanels() }
+
+        // Save panel positions while dragged in freeform mode
+        let panels: [(NSPanel?, WidgetPositionStore.Widget)] = [
+            (tp, .top), (bp, .bottom), (lp, .left), (rp, .right)
+        ]
+        for (panel, widget) in panels {
+            guard let panel else { continue }
+            let obs = NotificationCenter.default.addObserver(
+                forName: NSWindow.didMoveNotification,
+                object: panel,
+                queue: .main
+            ) { [weak self, weak panel] _ in
+                guard let self, let panel,
+                      HUDExperienceStore.shared.has(.freeformWidgets),
+                      let screen = panel.screen ?? self.positionedScreen else { return }
+                WidgetPositionStore.shared.save(position: panel.frame, for: widget, on: screen)
+            }
+            panelMoveObservers.append(obs)
+        }
+        // Preview panel snaps back to sidebar on next hover via updatePreviewPanelVisibility.
+
+        // Preview panel snaps back to sidebar on next hover via updatePreviewPanelVisibility —
+        // no didMoveNotification observer needed (fires at 60fps during animations).
     }
 
     private func updateRightPanelVisibility(animated: Bool) {
@@ -636,9 +707,31 @@ final class HUDController {
             return nil
         }
 
+        // Option+X: cycle experience preset from ANY context (including search)
+        if keyCode == 7 && event.modifierFlags.contains(.option) {
+            let name = HUDExperienceStore.shared.cyclePreset()
+            state.showFeedback(name, autoClearAfter: 1.4)
+            applyExperienceToAllPanels()
+            return nil
+        }
+
         // V key (keyCode 9): toggle voice mode (works from any non-search context)
         if keyCode == 9 && state.focus != .search {
             toggleVoice()
+            return nil
+        }
+
+        // C key (keyCode 8): toggle top/bottom chrome bars
+        if keyCode == 8 && state.focus != .search {
+            toggleChrome()
+            return nil
+        }
+
+        // X key (keyCode 7): cycle HUD experience preset
+        if keyCode == 7 && state.focus != .search {
+            let name = HUDExperienceStore.shared.cyclePreset()
+            state.showFeedback(name, autoClearAfter: 1.4)
+            applyExperienceToAllPanels()
             return nil
         }
 
@@ -1117,6 +1210,60 @@ final class HUDController {
 
     private func playCue(_ phrase: String) {
         HandsOffSession.shared.playCachedCue(phrase)
+    }
+
+    // MARK: - Experience helpers
+
+    private func toggleChrome() {
+        let xp = HUDExperienceStore.shared
+        xp.toggleChrome()
+        guard let screen = positionedScreen ?? NSScreen.main ?? NSScreen.screens.first else { return }
+        positionAllPanels(on: screen)
+        let show = xp.showChrome
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.14
+            topPanel?.animator().alphaValue = show ? 1 : 0
+            bottomPanel?.animator().alphaValue = show ? 1 : 0
+        }
+        topPanel?.ignoresMouseEvents = !show
+        bottomPanel?.ignoresMouseEvents = !show
+        state.showFeedback(show ? "Chrome on" : "Chrome off", autoClearAfter: 1.2)
+    }
+
+    private func applyExperienceToAllPanels() {
+        let isFreeform = HUDExperienceStore.shared.has(.freeformWidgets)
+        for p in allPanels { p.isMovableByWindowBackground = isFreeform }
+        // Sidebar and preview are always draggable; position is only persisted in freeform mode
+        leftPanel?.isMovableByWindowBackground = true
+        previewPanel?.isMovableByWindowBackground = true
+    }
+
+    private func installMouseMovedMonitor() {
+        guard mouseMovedMonitor == nil else { return }
+        mouseMovedMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
+            guard let self else { return }
+            let now = Date()
+            guard now.timeIntervalSince(self.lastMouseUpdate) > 0.033 else { return } // ~30 fps cap
+            self.lastMouseUpdate = now
+            let pos = NSEvent.mouseLocation
+            DispatchQueue.main.async {
+                HUDExperienceStore.shared.mousePosition = pos
+            }
+        }
+    }
+
+    private func removeMouseMovedMonitor() {
+        if let m = mouseMovedMonitor { NSEvent.removeMonitor(m); mouseMovedMonitor = nil }
+    }
+
+    private func captureDesktop() {
+        guard let screen = positionedScreen ?? NSScreen.main ?? NSScreen.screens.first else { return }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let image = DesktopCapture.shared.captureScreen(screen)
+            DispatchQueue.main.async {
+                HUDExperienceStore.shared.capturedBackground = image
+            }
+        }
     }
 
     // MARK: - Event monitors

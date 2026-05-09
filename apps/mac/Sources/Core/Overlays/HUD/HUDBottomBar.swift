@@ -24,9 +24,7 @@ struct HUDBottomBar: View {
         .frame(maxWidth: .infinity)
         .frame(height: 48)
         .background(HUDPanelBackground())
-        .overlay(alignment: .top) {
-            HUDHairline(opacity: 0.85)
-        }
+        .hudEdgeGlow()
     }
 
     // MARK: - Action playback (what just happened)
@@ -235,7 +233,7 @@ struct HUDBottomBar: View {
             Image(systemName: "keyboard")
                 .font(.system(size: 10))
                 .foregroundColor(Palette.textMuted.opacity(0.4))
-            Text("V voice  / search  1-4 jump  ⇥ tab  ↵ go  ⎋ close")
+            Text("V voice  / search  ⌥X theme  C chrome  ↵ go  ⎋ close")
                 .font(Typo.mono(9))
                 .foregroundColor(Palette.textMuted.opacity(0.5))
             Spacer()

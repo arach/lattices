@@ -6,6 +6,7 @@ struct HUDTopBar: View {
     @ObservedObject var state: HUDState
     @ObservedObject private var handsOff = HandsOffSession.shared
     @ObservedObject private var workspace = WorkspaceManager.shared
+    @ObservedObject private var xp = HUDExperienceStore.shared
     var onDismiss: () -> Void
 
     var body: some View {
@@ -13,6 +14,12 @@ struct HUDTopBar: View {
             // Logo
             logo
                 .padding(.leading, 16)
+
+            // Experience badge
+            if xp.presetIndex > 0 {
+                experienceBadge
+                    .padding(.leading, 10)
+            }
 
             // Voice status (when active)
             if state.voiceActive {
@@ -56,9 +63,37 @@ struct HUDTopBar: View {
         .frame(maxWidth: .infinity)
         .frame(height: 44)
         .background(HUDPanelBackground())
-        .overlay(alignment: .bottom) {
-            HUDHairline(opacity: 0.9)
+        .hudEdgeGlow()
+    }
+
+    // MARK: - Experience badge
+
+    private var experienceBadge: some View {
+        Button {
+            let name = xp.cyclePreset()
+            state.showFeedback(name, autoClearAfter: 1.4)
+        } label: {
+            HStack(spacing: 4) {
+                Text(xp.currentPreset.name)
+                    .font(Typo.mono(8))
+                    .foregroundColor(HUDChrome.cyan.opacity(0.75))
+                Image(systemName: "chevron.right.2")
+                    .font(.system(size: 7, weight: .semibold))
+                    .foregroundColor(HUDChrome.cyan.opacity(0.40))
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(HUDChrome.cyan.opacity(0.08))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .strokeBorder(HUDChrome.cyan.opacity(0.22), lineWidth: 0.5)
+                    )
+            )
         }
+        .buttonStyle(.plain)
+        .help("Cycle experience (⌥X)")
     }
 
     // MARK: - Layer strip (Hyprland-style workspace bar)
