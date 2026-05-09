@@ -40,6 +40,7 @@ jobs:
 
     env:
       SHOULD_PUBLISH: ${{ (github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.publish)) && '1' || '0' }}
+      REQUESTED_PUBLISH: ${{ (github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.publish)) && '1' || '0' }}
 
     steps:
       - name: Checkout
@@ -74,6 +75,45 @@ jobs:
 
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Resolve release signing mode
+        env:
+          CERT_BASE64: ${{ secrets.DEVELOPER_ID_APPLICATION_CERT_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_APPLICATION_CERT_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+          APP_STORE_CONNECT_KEY_ID: ${{ vars.APP_STORE_CONNECT_KEY_ID || secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ vars.APP_STORE_CONNECT_ISSUER_ID || secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          MANUAL_PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish && '1' || '0' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$REQUESTED_PUBLISH" != "1" ]]; then
+            echo "SHOULD_PUBLISH=0" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          missing=()
+          [[ -n "$CERT_BASE64" ]] || missing+=("DEVELOPER_ID_APPLICATION_CERT_BASE64")
+          [[ -n "$CERT_PASSWORD" ]] || missing+=("DEVELOPER_ID_APPLICATION_CERT_PASSWORD")
+          [[ -n "$KEYCHAIN_PASSWORD" ]] || missing+=("KEYCHAIN_PASSWORD")
+          [[ -n "$APP_STORE_CONNECT_API_KEY_P8" ]] || missing+=("APP_STORE_CONNECT_API_KEY_P8")
+          [[ -n "$APP_STORE_CONNECT_KEY_ID" ]] || missing+=("APP_STORE_CONNECT_KEY_ID")
+          [[ -n "$APP_STORE_CONNECT_ISSUER_ID" ]] || missing+=("APP_STORE_CONNECT_ISSUER_ID")
+
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing release signing/notary configuration: %s\n' "${missing[*]}" >&2
+            if [[ "$MANUAL_PUBLISH" == "1" ]]; then
+              exit 1
+            fi
+
+            echo "::notice::Release signing/notary secrets are not configured. Building an unsigned DMG artifact without publishing a GitHub release."
+            echo "SHOULD_PUBLISH=0" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          echo "SHOULD_PUBLISH=1" >> "$GITHUB_ENV"
 
       - name: Import Developer ID certificate
         if: env.SHOULD_PUBLISH == '1'
