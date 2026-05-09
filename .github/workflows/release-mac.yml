@@ -1,0 +1,211 @@
+name: Release Mac DMG
+
+on:
+  pull_request:
+    paths:
+      - 'apps/mac/**'
+      - 'assets/AppIcon.icns'
+      - 'tools/release/**'
+      - '.github/workflows/release-mac.yml'
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+    paths:
+      - 'apps/mac/**'
+      - 'assets/AppIcon.icns'
+      - 'tools/release/**'
+      - '.github/workflows/release-mac.yml'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version, for example 0.4.15. Defaults to package.json.'
+        required: false
+        type: string
+      publish:
+        description: 'Sign, notarize, and upload to the GitHub release.'
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  dmg:
+    name: Build DMG
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    env:
+      SHOULD_PUBLISH: ${{ (github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.publish)) && '1' || '0' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          swift --version
+          hdiutil version
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          elif [[ -n "${{ inputs.version || '' }}" ]]; then
+            version="${{ inputs.version }}"
+          else
+            version="$(node -p "require('./package.json').version")"
+          fi
+
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid version: $version" >&2
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Import Developer ID certificate
+        if: env.SHOULD_PUBLISH == '1'
+        env:
+          CERT_BASE64: ${{ secrets.DEVELOPER_ID_APPLICATION_CERT_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_APPLICATION_CERT_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$CERT_BASE64" || -z "$CERT_PASSWORD" || -z "$KEYCHAIN_PASSWORD" ]]; then
+            echo "Missing Developer ID certificate secrets." >&2
+            echo "Required: DEVELOPER_ID_APPLICATION_CERT_BASE64, DEVELOPER_ID_APPLICATION_CERT_PASSWORD, KEYCHAIN_PASSWORD" >&2
+            exit 1
+          fi
+
+          keychain="$RUNNER_TEMP/lattices-release.keychain-db"
+          cert_path="$RUNNER_TEMP/developer-id-application.p12"
+
+          printf '%s' "$CERT_BASE64" | tr -d '[:space:]' | base64 -D > "$cert_path"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          security import "$cert_path" \
+            -k "$keychain" \
+            -P "$CERT_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$keychain"
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          security default-keychain -d user -s "$keychain"
+
+          identity="$(security find-identity -v -p codesigning "$keychain" | awk '/"Developer ID Application:/{print $2; exit}')"
+          if [[ -z "$identity" ]]; then
+            echo "Developer ID Application identity was not imported" >&2
+            security find-identity -v -p codesigning "$keychain" >&2
+            exit 1
+          fi
+
+          echo "LATTICES_SIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
+          security find-identity -v -p codesigning "$keychain"
+
+      - name: Configure App Store Connect notarization
+        if: env.SHOULD_PUBLISH == '1'
+        env:
+          APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+          APP_STORE_CONNECT_KEY_ID: ${{ vars.APP_STORE_CONNECT_KEY_ID || secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ vars.APP_STORE_CONNECT_ISSUER_ID || secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$APP_STORE_CONNECT_API_KEY_P8" || -z "$APP_STORE_CONNECT_KEY_ID" || -z "$APP_STORE_CONNECT_ISSUER_ID" ]]; then
+            echo "Missing App Store Connect notarization secrets/vars." >&2
+            echo "Required: APP_STORE_CONNECT_API_KEY_P8, APP_STORE_CONNECT_KEY_ID, APP_STORE_CONNECT_ISSUER_ID" >&2
+            exit 1
+          fi
+
+          key_path="$RUNNER_TEMP/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
+          printf '%s' "$APP_STORE_CONNECT_API_KEY_P8" > "$key_path"
+          chmod 600 "$key_path"
+
+          xcrun notarytool store-credentials lattices-notarytool \
+            --key-id "$APP_STORE_CONNECT_KEY_ID" \
+            --issuer "$APP_STORE_CONNECT_ISSUER_ID" \
+            --key "$key_path"
+
+          echo "LATTICES_NOTARY_PROFILE=lattices-notarytool" >> "$GITHUB_ENV"
+
+      - name: Build DMG
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$SHOULD_PUBLISH" == "1" ]]; then
+            bash tools/release/build-dmg.sh "$VERSION"
+          else
+            LATTICES_SKIP_SIGN=1 LATTICES_SKIP_NOTARIZE=1 bash tools/release/build-dmg.sh "$VERSION"
+          fi
+
+      - name: Verify DMG
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          hdiutil verify dist/Lattices.dmg
+          if [[ "$SHOULD_PUBLISH" == "1" ]]; then
+            codesign --verify --verbose dist/Lattices.dmg
+            spctl --assess --type open --context context:primary-signature --verbose dist/Lattices.dmg
+          fi
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lattices-${{ steps.version.outputs.version }}-dmg
+          path: dist/Lattices.dmg
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        if: env.SHOULD_PUBLISH == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          release_tag="v$VERSION"
+          dmg_path="$RUNNER_TEMP/Lattices.dmg"
+          versioned_dmg_path="$RUNNER_TEMP/Lattices-$VERSION.dmg"
+          notes_path="$RUNNER_TEMP/release-notes.md"
+
+          cp dist/Lattices.dmg "$dmg_path"
+          cp dist/Lattices.dmg "$versioned_dmg_path"
+          cat > "$notes_path" <<EOF
+          Release $VERSION
+
+          Download and install Lattices for Mac.
+          EOF
+
+          if gh release view "$release_tag" >/dev/null 2>&1; then
+            gh release upload "$release_tag" "$dmg_path" "$versioned_dmg_path" --clobber
+            gh release edit "$release_tag" \
+              --title "Lattices $VERSION" \
+              --notes-file "$notes_path"
+          else
+            gh release create "$release_tag" "$dmg_path" "$versioned_dmg_path" \
+              --title "Lattices $VERSION" \
+              --notes-file "$notes_path"
+          fi
