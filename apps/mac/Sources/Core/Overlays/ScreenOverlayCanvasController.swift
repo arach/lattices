@@ -248,7 +248,7 @@ final class ScreenOverlayCanvasController {
     }
 
     private func makeWindow(for screen: NSScreen) -> ScreenOverlayWindow {
-        let window = ScreenOverlayWindow(frame: screen.frame)
+        let window = ScreenOverlayWindow(frame: screen.frame, controller: self)
         windowsByScreenID[Self.screenID(for: screen)] = window
         return window
     }
@@ -371,7 +371,10 @@ final class ScreenOverlayCanvasController {
         let hasAgentLayer = layersByID.values.contains { $0.owner == .agentApi }
         if hasAgentLayer, globalDismissMonitor == nil {
             let mask: NSEvent.EventTypeMask = [
+                .mouseMoved,
                 .leftMouseDown,
+                .leftMouseDragged,
+                .leftMouseUp,
                 .rightMouseDown,
                 .otherMouseDown,
             ]
@@ -403,9 +406,40 @@ final class ScreenOverlayCanvasController {
     }
 
     @discardableResult
-    private func handlePointerEvent(_ event: NSEvent) -> Bool {
+    private func handlePointerEvent(_ event: NSEvent, at globalPoint: CGPoint? = nil) -> Bool {
+        let point = globalPoint ?? NSEvent.mouseLocation
         switch event.type {
-        case .leftMouseDown, .rightMouseDown, .otherMouseDown:
+        case .mouseMoved:
+            clearStaleActorDragIfNeeded()
+            updatePointerCapture(at: point)
+            return false
+        case .leftMouseDown:
+            if beginActorDrag(at: point) {
+                return true
+            }
+            dismissAgentOverlays()
+            return false
+        case .leftMouseDragged:
+            if dragState != nil {
+                return dragActor(to: point)
+            }
+            updatePointerCapture(at: point)
+            return false
+        case .leftMouseUp:
+            if dragState != nil {
+                endActorDrag()
+                updatePointerCapture(at: point)
+                return true
+            }
+            updatePointerCapture(at: point)
+            return false
+        case .rightMouseDown:
+            if closeActor(at: point) {
+                return true
+            }
+            dismissAgentOverlays()
+            return false
+        case .otherMouseDown:
             dismissAgentOverlays()
             return false
         default:
@@ -414,14 +448,29 @@ final class ScreenOverlayCanvasController {
     }
 
     private func updatePointerCapture(at globalPoint: CGPoint) {
-        resetPointerCapture()
+        if let dragState {
+            for (screenID, window) in windowsByScreenID {
+                window.ignoresMouseEvents = screenID != dragState.screenID
+            }
+            return
+        }
+
+        guard let hit = hitActor(at: globalPoint) else {
+            resetPointerCapture()
+            return
+        }
+
+        for (screenID, window) in windowsByScreenID {
+            window.ignoresMouseEvents = screenID != hit.screenID
+        }
     }
 
     private func beginActorDrag(at globalPoint: CGPoint) -> Bool {
         guard let hit = hitActor(at: globalPoint),
               let layer = layersByID[hit.id],
               case .pet(let payload) = layer.payload else { return false }
-        let currentPoint = motionsByLayerID[hit.id]?.point(at: Date()) ?? payload.point ?? hit.localPoint
+        let currentPoint = motionsByLayerID[hit.id]?.point(at: Date())
+            ?? CGPoint(x: hit.rect.midX, y: hit.rect.midY)
         motionsByLayerID.removeValue(forKey: hit.id)
         dragState = OverlayActorDragState(
             id: hit.id,
@@ -506,7 +555,8 @@ final class ScreenOverlayCanvasController {
     private func closeActor(at globalPoint: CGPoint) -> Bool {
         guard let hit = hitActor(at: globalPoint),
               let layer = layersByID[hit.id],
-              layer.isParkableActor else { return false }
+              layer.owner == .agentApi,
+              case .pet = layer.payload else { return false }
         layersByID.removeValue(forKey: hit.id)
         motionsByLayerID.removeValue(forKey: hit.id)
         if dragState?.id == hit.id {
@@ -519,10 +569,19 @@ final class ScreenOverlayCanvasController {
         return true
     }
 
-    private func hitActor(at globalPoint: CGPoint) -> (id: ScreenOverlayLayerID, window: ScreenOverlayWindow, screenID: String, localPoint: CGPoint)? {
+    private func hitActor(at globalPoint: CGPoint) -> (id: ScreenOverlayLayerID, window: ScreenOverlayWindow, screenID: String, localPoint: CGPoint, rect: CGRect)? {
         guard let hit = screenLocalPoint(for: globalPoint) else { return nil }
-        guard let id = hit.window.overlayView.layerID(at: hit.localPoint) else { return nil }
-        return (id, hit.window, hit.screenID, hit.localPoint)
+        guard let layerHit = hit.window.overlayView.layerHit(at: hit.localPoint) else { return nil }
+        return (layerHit.id, hit.window, hit.screenID, hit.localPoint, layerHit.rect)
+    }
+
+    fileprivate func handleWindowEvent(_ event: NSEvent, in window: NSWindow) -> Bool {
+        let location = event.locationInWindow
+        let globalPoint = CGPoint(
+            x: window.frame.minX + location.x,
+            y: window.frame.minY + location.y
+        )
+        return handlePointerEvent(event, at: globalPoint)
     }
 
     private func screenLocalPoint(for globalPoint: CGPoint) -> (window: ScreenOverlayWindow, screenID: String, localPoint: CGPoint)? {
@@ -645,8 +704,10 @@ private struct OverlayLayerMotion {
 
 private final class ScreenOverlayWindow: NSPanel {
     let overlayView = ScreenOverlayCanvasView(frame: .zero)
+    weak var controller: ScreenOverlayCanvasController?
 
-    init(frame: CGRect) {
+    init(frame: CGRect, controller: ScreenOverlayCanvasController) {
+        self.controller = controller
         super.init(
             contentRect: frame,
             styleMask: [.borderless, .nonactivatingPanel],
@@ -658,6 +719,7 @@ private final class ScreenOverlayWindow: NSPanel {
         backgroundColor = .clear
         hasShadow = false
         ignoresMouseEvents = true
+        acceptsMouseMovedEvents = true
         level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.maximumWindow)))
         collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
         isMovable = false
@@ -671,6 +733,13 @@ private final class ScreenOverlayWindow: NSPanel {
 
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
+
+    override func sendEvent(_ event: NSEvent) {
+        if controller?.handleWindowEvent(event, in: self) == true {
+            return
+        }
+        super.sendEvent(event)
+    }
 }
 
 private final class ScreenOverlayCanvasView: NSView {
@@ -688,6 +757,8 @@ private final class ScreenOverlayCanvasView: NSView {
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func draw(_ dirtyRect: NSRect) {
         NSColor.clear.setFill()
@@ -713,10 +784,14 @@ private final class ScreenOverlayCanvasView: NSView {
         }
     }
 
-    func layerID(at point: CGPoint) -> ScreenOverlayLayerID? {
-        interactiveRectsByLayerID
-            .first { _, rect in rect.contains(point) }
-            .map(\.key)
+    func layerHit(at point: CGPoint) -> (id: ScreenOverlayLayerID, rect: CGRect)? {
+        for layer in layers.reversed() {
+            guard let rect = interactiveRectsByLayerID[layer.id], rect.contains(point) else {
+                continue
+            }
+            return (layer.id, rect)
+        }
+        return nil
     }
 
     private func drawTextPill(_ payload: ScreenOverlayTextPayload, opacity: CGFloat, isToast: Bool) {

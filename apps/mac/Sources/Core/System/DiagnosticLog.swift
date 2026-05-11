@@ -155,6 +155,10 @@ final class AppFeedback {
         DiagnosticLog.shared.info(label)
     }
 
+    func playTapSound() {
+        playTap()
+    }
+
     private func playTap() {
         DispatchQueue.main.async {
             self.tapSound?.stop()

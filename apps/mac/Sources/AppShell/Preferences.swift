@@ -6,6 +6,22 @@ enum InteractionMode: String {
     case auto = "auto"
 }
 
+enum MouseGestureHUDStyle: String, CaseIterable, Identifiable {
+    case technical
+    case sober
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .technical:
+            return "Technical"
+        case .sober:
+            return "Sober"
+        }
+    }
+}
+
 class Preferences: ObservableObject {
     static let shared = Preferences()
 
@@ -53,6 +69,18 @@ class Preferences: ObservableObject {
     }
     @Published var mouseGesturesEnabled: Bool {
         didSet { UserDefaults.standard.set(mouseGesturesEnabled, forKey: "mouseGestures.enabled") }
+    }
+
+    @Published var mouseGestureHUDVisualEnabled: Bool {
+        didSet { UserDefaults.standard.set(mouseGestureHUDVisualEnabled, forKey: "mouseGestures.hud.visualEnabled") }
+    }
+
+    @Published var mouseGestureHUDAudioEnabled: Bool {
+        didSet { UserDefaults.standard.set(mouseGestureHUDAudioEnabled, forKey: "mouseGestures.hud.audioEnabled") }
+    }
+
+    @Published var mouseGestureHUDStyle: MouseGestureHUDStyle {
+        didSet { UserDefaults.standard.set(mouseGestureHUDStyle.rawValue, forKey: "mouseGestures.hud.style") }
     }
 
     @Published var keyboardRemapsEnabled: Bool {
@@ -214,6 +242,25 @@ class Preferences: ObservableObject {
             self.mouseGesturesEnabled = UserDefaults.standard.bool(forKey: "mouseGestures.enabled")
         } else {
             self.mouseGesturesEnabled = false
+        }
+
+        if UserDefaults.standard.object(forKey: "mouseGestures.hud.visualEnabled") != nil {
+            self.mouseGestureHUDVisualEnabled = UserDefaults.standard.bool(forKey: "mouseGestures.hud.visualEnabled")
+        } else {
+            self.mouseGestureHUDVisualEnabled = true
+        }
+
+        if UserDefaults.standard.object(forKey: "mouseGestures.hud.audioEnabled") != nil {
+            self.mouseGestureHUDAudioEnabled = UserDefaults.standard.bool(forKey: "mouseGestures.hud.audioEnabled")
+        } else {
+            self.mouseGestureHUDAudioEnabled = true
+        }
+
+        if let savedStyle = UserDefaults.standard.string(forKey: "mouseGestures.hud.style"),
+           let style = MouseGestureHUDStyle(rawValue: savedStyle) {
+            self.mouseGestureHUDStyle = style
+        } else {
+            self.mouseGestureHUDStyle = .technical
         }
 
         if UserDefaults.standard.object(forKey: "keyboardRemaps.enabled") != nil {

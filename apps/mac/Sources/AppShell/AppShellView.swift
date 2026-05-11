@@ -55,7 +55,9 @@ struct AppShellView: View {
             }
 
             contentArea
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Palette.bg)
         .onAppear {
             commandState.onDismiss = { windowController.activePage = .home }
@@ -63,6 +65,7 @@ struct AppShellView: View {
         }
         .onChange(of: windowController.activePage) { page in
             syncPageState(page)
+            windowController.applyPreferredSizing(for: page)
             clearRelevantDismissals(for: page)
         }
     }
@@ -92,7 +95,7 @@ struct AppShellView: View {
             Spacer()
         }
         .padding(.horizontal, 12)
-        .padding(.top, 8)
+        .padding(.top, 30)
         .padding(.bottom, 4)
     }
 
@@ -100,7 +103,7 @@ struct AppShellView: View {
         let isActive = windowController.activePage == tab
 
         return Button {
-            windowController.activePage = tab
+            windowController.showPage(tab)
             if tab == .screenMap { controller.enter() }
             if tab == .desktopInventory { commandState.enter() }
         } label: {
@@ -129,7 +132,7 @@ struct AppShellView: View {
         switch windowController.activePage {
         case .home:
             HomeDashboardView(onNavigate: { page in
-                windowController.activePage = page
+                windowController.showPage(page)
                 if page == .screenMap { controller.enter() }
                 if page == .desktopInventory { commandState.enter() }
             })
@@ -145,21 +148,21 @@ struct AppShellView: View {
             SettingsContentView(
                 prefs: Preferences.shared,
                 scanner: ProjectScanner.shared,
-                onBack: { windowController.activePage = .screenMap; controller.enter() }
+                onBack: { windowController.showPage(.screenMap); controller.enter() }
             )
         case .companionSettings:
             SettingsContentView(
                 page: .companionSettings,
                 prefs: Preferences.shared,
                 scanner: ProjectScanner.shared,
-                onBack: { windowController.activePage = .screenMap; controller.enter() }
+                onBack: { windowController.showPage(.screenMap); controller.enter() }
             )
         case .docs:
             SettingsContentView(
                 page: .docs,
                 prefs: Preferences.shared,
                 scanner: ProjectScanner.shared,
-                onBack: { windowController.activePage = .screenMap; controller.enter() }
+                onBack: { windowController.showPage(.screenMap); controller.enter() }
             )
         }
     }

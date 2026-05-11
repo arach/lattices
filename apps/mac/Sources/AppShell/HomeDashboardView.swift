@@ -17,6 +17,7 @@ struct HomeDashboardView: View {
             MainView(scanner: scanner, layout: .embedded)
         }
         .background(Palette.bg)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onAppear {
             piSession.refreshBinaryAvailability()
         }

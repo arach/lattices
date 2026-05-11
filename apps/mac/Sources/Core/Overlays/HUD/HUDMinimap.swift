@@ -48,7 +48,11 @@ struct HUDMinimap: View {
                 .padding(.bottom, 10)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Palette.bg)
+        .background(HUDPanelBackground())
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.75)
+        )
     }
 
     // MARK: - Map canvas
@@ -77,8 +81,9 @@ struct HUDMinimap: View {
 
                 ZStack(alignment: .topLeading) {
                     // Screen background
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Palette.surface.opacity(0.4))
+                    RoundedRectangle(cornerRadius: 9)
+                        .fill(Color.white.opacity(0.045))
+                        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5))
                         .frame(width: drawW, height: drawH)
                         .offset(x: offsetX, y: offsetY)
 
@@ -128,7 +133,7 @@ struct HUDMinimap: View {
                     }
                 }
                 .frame(width: canvasW, height: canvasH)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .clipShape(RoundedRectangle(cornerRadius: 9))
             }
         }
     }

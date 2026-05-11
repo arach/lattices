@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import CoreGraphics
+import IOKit.hidsystem
 
 final class KeyboardRemapController: ObservableObject {
     static let shared = KeyboardRemapController()
@@ -13,6 +14,7 @@ final class KeyboardRemapController: ObservableObject {
 
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
+    private var eventTapLocation: CGEventTapLocation = .cghidEventTap
     private var subscriptions: Set<AnyCancellable> = []
     private var installedObservers = false
     private var capsLayerActive = false
@@ -22,6 +24,7 @@ final class KeyboardRemapController: ObservableObject {
     private var bypassUntil: CFAbsoluteTime = 0
     private var lastCapsLayerStaleLogAt: CFAbsoluteTime = 0
     private var pressedKeyCodes: [Int64: CFAbsoluteTime] = [:]
+    private let capsLockTransport = CapsLockHIDTransportController()
     private let breaker = EventTapBreaker(label: "KeyboardRemap")
     private let budgetMeter = TapBudgetMeter(label: "KeyboardRemap")
     private let maxCapsLayerIdleDuration: TimeInterval = 2.0
@@ -53,6 +56,7 @@ final class KeyboardRemapController: ObservableObject {
 
     func stop() {
         removeEventTap()
+        capsLockTransport.disable()
         clearCapsLayer()
     }
 
@@ -78,6 +82,11 @@ final class KeyboardRemapController: ObservableObject {
             .sink { [weak self] _ in self?.refresh() }
             .store(in: &subscriptions)
 
+        KeyboardRemapStore.shared.$config
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.refresh() }
+            .store(in: &subscriptions)
+
         PermissionChecker.shared.$accessibility
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.refresh() }
@@ -88,10 +97,14 @@ final class KeyboardRemapController: ObservableObject {
         guard Preferences.shared.keyboardRemapsEnabled,
               PermissionChecker.shared.accessibility else {
             removeEventTap()
+            capsLockTransport.disable()
             return
         }
 
         KeyboardRemapStore.shared.ensureConfigFile()
+        let shouldUseCapsLockTransport = KeyboardRemapStore.shared.capsLockRule?.toIfHeld == .hyper
+        capsLockTransport.setEnabled(shouldUseCapsLockTransport)
+
         if eventTap == nil {
             installEventTap()
         } else if let eventTap {
@@ -109,14 +122,27 @@ final class KeyboardRemapController: ObservableObject {
         mask |= CGEventMask(1) << CGEventType.keyUp.rawValue
         mask |= CGEventMask(1) << CGEventType.flagsChanged.rawValue
 
-        let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .defaultTap,
-            eventsOfInterest: mask,
-            callback: Self.eventTapCallback,
-            userInfo: UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
-        )
+        let tapCandidates: [(CGEventTapLocation, String)] = [
+            (.cghidEventTap, "HID"),
+            (.cgSessionEventTap, "session"),
+        ]
+        var installedLabel = "unknown"
+        var installedLocation: CGEventTapLocation = .cghidEventTap
+        let tap = tapCandidates.lazy.compactMap { location, label -> CFMachPort? in
+            let candidate = CGEvent.tapCreate(
+                tap: location,
+                place: .headInsertEventTap,
+                options: .defaultTap,
+                eventsOfInterest: mask,
+                callback: Self.eventTapCallback,
+                userInfo: UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
+            )
+            if candidate != nil {
+                installedLabel = label
+                installedLocation = location
+            }
+            return candidate
+        }.first
 
         guard let tap else {
             DiagnosticLog.shared.warn("KeyboardRemap: failed to install keyboard event tap")
@@ -125,6 +151,7 @@ final class KeyboardRemapController: ObservableObject {
 
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         eventTap = tap
+        eventTapLocation = installedLocation
         runLoopSource = source
 
         if let source {
@@ -135,7 +162,7 @@ final class KeyboardRemapController: ObservableObject {
             guard let self, let tap = self.eventTap else { return }
             CGEvent.tapEnable(tap: tap, enable: true)
         }
-        DiagnosticLog.shared.info("KeyboardRemap: keyboard event tap installed")
+        DiagnosticLog.shared.info("KeyboardRemap: keyboard event tap installed (\(installedLabel))")
     }
 
     private func removeEventTap() {
@@ -202,6 +229,11 @@ final class KeyboardRemapController: ObservableObject {
         }
 
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+        if capsLockTransport.isActive,
+           keyCode == CapsLockHIDTransportController.transportKeyCode {
+            return handleCapsLockTransportEvent(type: type, event: event, rule: rule)
+        }
+
         if type == .flagsChanged, keyCode == rule.from.keyCode {
             return handleCapsLockFlagsChanged(event, rule: rule)
         }
@@ -233,11 +265,8 @@ final class KeyboardRemapController: ObservableObject {
     private func handleCapsLockFlagsChanged(_ event: CGEvent, rule: KeyboardRemapRule) -> Unmanaged<CGEvent>? {
         let isDown = event.flags.contains(.maskAlphaShift)
         if isDown {
-            capsLayerActive = true
-            capsUsedAsModifier = false
-            let now = CFAbsoluteTimeGetCurrent()
-            capsLayerActivatedAt = now
-            capsLayerLastEventAt = now
+            activateCapsLayer(now: CFAbsoluteTimeGetCurrent())
+            releaseCapsLockLatchIfNeeded()
             DiagnosticLog.shared.info("KeyboardRemap: Caps Lock layer active")
         } else {
             let shouldTap = capsLayerActive && !capsUsedAsModifier && rule.toIfAlone == .escape
@@ -250,6 +279,38 @@ final class KeyboardRemapController: ObservableObject {
         }
 
         return nil
+    }
+
+    private func handleCapsLockTransportEvent(
+        type: CGEventType,
+        event: CGEvent,
+        rule: KeyboardRemapRule
+    ) -> Unmanaged<CGEvent>? {
+        switch type {
+        case .keyDown:
+            if event.getIntegerValueField(.keyboardEventAutorepeat) == 0 {
+                activateCapsLayer(now: CFAbsoluteTimeGetCurrent())
+                DiagnosticLog.shared.info("KeyboardRemap: Caps Lock transport layer active")
+            }
+            return nil
+        case .keyUp:
+            let shouldTap = capsLayerActive && !capsUsedAsModifier && rule.toIfAlone == .escape
+            clearCapsLayer()
+            if shouldTap {
+                postKeyTap(keyCode: 53)
+            }
+            DiagnosticLog.shared.info("KeyboardRemap: Caps Lock transport layer inactive")
+            return nil
+        default:
+            return Unmanaged.passUnretained(event)
+        }
+    }
+
+    private func activateCapsLayer(now: CFAbsoluteTime) {
+        capsLayerActive = true
+        capsUsedAsModifier = false
+        capsLayerActivatedAt = now
+        capsLayerLastEventAt = now
     }
 
     private func clearCapsLayer() {
@@ -265,7 +326,8 @@ final class KeyboardRemapController: ObservableObject {
         // If a release event was dropped, later key events often arrive
         // without the physical Caps flag. Treat that as an input boundary and
         // fail open before rewriting the user's key.
-        if type == .keyDown || type == .keyUp,
+        if !capsLockTransport.isActive,
+           type == .keyDown || type == .keyUp,
            !event.flags.contains(.maskAlphaShift) {
             clearCapsLayer(reason: "physical Caps flag cleared", now: now)
             return
@@ -334,10 +396,14 @@ final class KeyboardRemapController: ObservableObject {
     }
 
     private func releaseCapsLockLatchIfNeeded() {
-        guard CGEventSource.flagsState(.combinedSessionState).contains(.maskAlphaShift) else {
+        guard eventTapLocation != .cghidEventTap ||
+              CGEventSource.flagsState(.combinedSessionState).contains(.maskAlphaShift) else {
             return
         }
-        postKeyTap(keyCode: 57)
+        let result = IOHIDSetModifierLockState(kIOMainPortDefault, Int32(kIOHIDCapsLockState), false)
+        if result != kIOReturnSuccess {
+            DiagnosticLog.shared.warn("KeyboardRemap: failed to clear Caps Lock latch (\(result))")
+        }
     }
 
     private func postKeyTap(keyCode: CGKeyCode) {
@@ -351,4 +417,164 @@ final class KeyboardRemapController: ObservableObject {
         down.post(tap: .cghidEventTap)
         up.post(tap: .cghidEventTap)
     }
+}
+
+private final class CapsLockHIDTransportController {
+    static let transportKeyCode: Int64 = 79
+
+    private static let capsLockUsage: Int64 = 0x700000039
+    private static let f18Usage: Int64 = 0x70000006D
+    private static let ownedDefaultsKey = "keyboardRemaps.capsLockHIDTransportOwned"
+    private static let originalMappingsDefaultsKey = "keyboardRemaps.capsLockHIDTransportOriginalMappings"
+
+    private var requested = false
+    private(set) var isActive = false
+    private var ownsMapping = false
+    private var originalMappings: [HIDKeyboardModifierMapping] = []
+
+    func setEnabled(_ enabled: Bool) {
+        if enabled {
+            enable()
+        } else {
+            disable()
+        }
+    }
+
+    private func enable() {
+        guard !requested else { return }
+        requested = true
+
+        guard let currentMappings = readMappings() else {
+            DiagnosticLog.shared.warn("KeyboardRemap: failed to read HID keyboard mappings")
+            requested = false
+            return
+        }
+
+        originalMappings = currentMappings
+
+        if currentMappings.contains(where: { $0.src == Self.capsLockUsage && $0.dst == Self.f18Usage }) {
+            isActive = true
+            ownsMapping = UserDefaults.standard.bool(forKey: Self.ownedDefaultsKey)
+            if ownsMapping {
+                originalMappings = restoreOriginalMappings() ?? currentMappings.filter { $0.src != Self.capsLockUsage }
+            }
+            DiagnosticLog.shared.info("KeyboardRemap: Caps Lock HID transport already active")
+            return
+        }
+
+        if let existing = currentMappings.first(where: { $0.src == Self.capsLockUsage }) {
+            DiagnosticLog.shared.warn("KeyboardRemap: Caps Lock already has HID mapping to \(existing.dst); using legacy event-tap fallback")
+            requested = false
+            return
+        }
+
+        var nextMappings = currentMappings
+        nextMappings.append(HIDKeyboardModifierMapping(src: Self.capsLockUsage, dst: Self.f18Usage))
+
+        guard writeMappings(nextMappings) else {
+            DiagnosticLog.shared.warn("KeyboardRemap: failed to apply Caps Lock HID transport")
+            requested = false
+            return
+        }
+
+        isActive = true
+        ownsMapping = true
+        persistOriginalMappings(currentMappings)
+        DiagnosticLog.shared.info("KeyboardRemap: Caps Lock mapped to F18 transport")
+    }
+
+    func disable() {
+        guard requested else { return }
+        defer {
+            requested = false
+            isActive = false
+            ownsMapping = false
+            originalMappings.removeAll()
+        }
+
+        guard ownsMapping else { return }
+        if writeMappings(originalMappings) {
+            clearPersistedOwnership()
+            DiagnosticLog.shared.info("KeyboardRemap: Caps Lock HID transport restored")
+        } else {
+            DiagnosticLog.shared.warn("KeyboardRemap: failed to restore HID keyboard mappings")
+        }
+    }
+
+    private func readMappings() -> [HIDKeyboardModifierMapping]? {
+        let result = runHIDUtil(arguments: ["property", "--get", "UserKeyMapping"])
+        guard result.status == 0 else { return nil }
+        return parseMappings(from: result.output)
+    }
+
+    private func writeMappings(_ mappings: [HIDKeyboardModifierMapping]) -> Bool {
+        let pairs = mappings
+            .map { "{\"HIDKeyboardModifierMappingSrc\":\($0.src),\"HIDKeyboardModifierMappingDst\":\($0.dst)}" }
+            .joined(separator: ",")
+        let payload = "{\"UserKeyMapping\":[\(pairs)]}"
+        return runHIDUtil(arguments: ["property", "--set", payload]).status == 0
+    }
+
+    private func runHIDUtil(arguments: [String]) -> (status: Int32, output: String) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/hidutil")
+        process.arguments = arguments
+
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            return (-1, error.localizedDescription)
+        }
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let output = String(data: data, encoding: .utf8) ?? ""
+        return (process.terminationStatus, output)
+    }
+
+    private func parseMappings(from output: String) -> [HIDKeyboardModifierMapping] {
+        let pattern = #"HIDKeyboardModifierMappingDst\s*=\s*(\d+);\s*HIDKeyboardModifierMappingSrc\s*=\s*(\d+);"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]) else {
+            return []
+        }
+
+        let range = NSRange(output.startIndex..<output.endIndex, in: output)
+        return regex.matches(in: output, range: range).compactMap { match in
+            guard match.numberOfRanges == 3,
+                  let dstRange = Range(match.range(at: 1), in: output),
+                  let srcRange = Range(match.range(at: 2), in: output),
+                  let dst = Int64(output[dstRange]),
+                  let src = Int64(output[srcRange]) else {
+                return nil
+            }
+            return HIDKeyboardModifierMapping(src: src, dst: dst)
+        }
+    }
+
+    private func persistOriginalMappings(_ mappings: [HIDKeyboardModifierMapping]) {
+        guard let data = try? JSONEncoder().encode(mappings) else { return }
+        UserDefaults.standard.set(data, forKey: Self.originalMappingsDefaultsKey)
+        UserDefaults.standard.set(true, forKey: Self.ownedDefaultsKey)
+    }
+
+    private func restoreOriginalMappings() -> [HIDKeyboardModifierMapping]? {
+        guard let data = UserDefaults.standard.data(forKey: Self.originalMappingsDefaultsKey) else {
+            return nil
+        }
+        return try? JSONDecoder().decode([HIDKeyboardModifierMapping].self, from: data)
+    }
+
+    private func clearPersistedOwnership() {
+        UserDefaults.standard.removeObject(forKey: Self.originalMappingsDefaultsKey)
+        UserDefaults.standard.set(false, forKey: Self.ownedDefaultsKey)
+    }
+}
+
+private struct HIDKeyboardModifierMapping: Codable, Equatable {
+    var src: Int64
+    var dst: Int64
 }

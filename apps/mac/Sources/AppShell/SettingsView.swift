@@ -652,6 +652,10 @@ struct SettingsContentView: View {
                         .labelsHidden()
                 }
 
+                cardDivider
+
+                mouseGestureHUDSettingsControls
+
                 breakerStatusRow(
                     state: mouseGestureController.breakerState,
                     label: "Mouse gestures"
@@ -666,7 +670,7 @@ struct SettingsContentView: View {
                         Text("Caps Lock as Hyper")
                             .font(Typo.monoBold(11))
                             .foregroundColor(Palette.text)
-                        Text("Hold Caps Lock for Hyper shortcuts, tap it for Escape.")
+                        Text("Hold Caps Lock for Hyper shortcuts, tap it for Escape. Lattices maps the physical key through a private F18 transport while this is enabled.")
                             .font(Typo.caption(10))
                             .foregroundColor(Palette.textMuted)
                     }
@@ -687,6 +691,61 @@ struct SettingsContentView: View {
                 }
             }
         }
+    }
+
+    private var mouseGestureHUDSettingsControls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Gesture confirmation HUD")
+                    .font(Typo.monoBold(10.5))
+                    .foregroundColor(Palette.text)
+                Text("Controls the new post-gesture confirmation layer. Gesture tracking and rule matching stay independent.")
+                    .font(Typo.caption(9.5))
+                    .foregroundColor(Palette.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 12) {
+                HStack {
+                    Text("Visual")
+                        .font(Typo.mono(10))
+                        .foregroundColor(Palette.textDim)
+                    Spacer()
+                    Toggle("", isOn: $prefs.mouseGestureHUDVisualEnabled)
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                        .labelsHidden()
+                }
+
+                HStack {
+                    Text("Audio")
+                        .font(Typo.mono(10))
+                        .foregroundColor(Palette.textDim)
+                    Spacer()
+                    Toggle("", isOn: $prefs.mouseGestureHUDAudioEnabled)
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                        .labelsHidden()
+                }
+            }
+
+            HStack {
+                Text("Style")
+                    .font(Typo.mono(10))
+                    .foregroundColor(Palette.textDim)
+                Spacer()
+                Picker("", selection: $prefs.mouseGestureHUDStyle) {
+                    ForEach(MouseGestureHUDStyle.allCases) { style in
+                        Text(style.label).tag(style)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 210)
+            }
+        }
+        .padding(10)
+        .background(shortcutsInsetPanel)
     }
 
     private var generalContent: some View {
@@ -1125,6 +1184,10 @@ struct SettingsContentView: View {
 
                         cardDivider
 
+                        mouseGestureHUDSettingsControls
+
+                        cardDivider
+
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Active drag mappings")
                                 .font(Typo.mono(10))
@@ -1223,7 +1286,7 @@ struct SettingsContentView: View {
                                 .labelsHidden()
                         }
 
-                        Text("Rules live in ~/.lattices/keyboard-remaps.json. The default maps hold Caps Lock to Hyper and tap Caps Lock to Escape, so the existing Hyper shortcuts work on the laptop keyboard.")
+                        Text("Rules live in ~/.lattices/keyboard-remaps.json. The default maps hold Caps Lock to Hyper and tap Caps Lock to Escape. While enabled, Lattices temporarily maps physical Caps Lock through a private F18 transport so the lock state does not latch.")
                             .font(Typo.caption(9))
                             .foregroundColor(Palette.textMuted.opacity(0.7))
 

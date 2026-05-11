@@ -4,6 +4,13 @@ import CoreGraphics
 
 private enum MouseGestureAccessory {
     case mic
+
+    var usesDesktopStatusSurface: Bool {
+        switch self {
+        case .mic:
+            return true
+        }
+    }
 }
 
 private enum MouseGestureOverlayStyle: Equatable {
@@ -36,13 +43,35 @@ private struct MouseGestureOverlayTheme {
     let highlight: NSColor
     let failure: NSColor
 
-    static let graffiti = MouseGestureOverlayTheme(
+    static let technical = MouseGestureOverlayTheme(
         graphite: NSColor(calibratedRed: 0.66, green: 0.69, blue: 0.73, alpha: 1.0),
         graphiteDark: NSColor(calibratedRed: 0.16, green: 0.17, blue: 0.19, alpha: 1.0),
         accent: NSColor(calibratedRed: 0.34, green: 0.78, blue: 1.0, alpha: 1.0),
         highlight: NSColor(calibratedRed: 0.82, green: 0.94, blue: 1.0, alpha: 1.0),
         failure: NSColor(calibratedRed: 0.98, green: 0.52, blue: 0.42, alpha: 1.0)
     )
+
+    static let sober = MouseGestureOverlayTheme(
+        graphite: NSColor(calibratedRed: 0.70, green: 0.72, blue: 0.75, alpha: 1.0),
+        graphiteDark: NSColor(calibratedRed: 0.12, green: 0.13, blue: 0.14, alpha: 1.0),
+        accent: NSColor(calibratedRed: 0.84, green: 0.88, blue: 0.92, alpha: 1.0),
+        highlight: NSColor(calibratedRed: 0.94, green: 0.96, blue: 0.98, alpha: 1.0),
+        failure: NSColor(calibratedRed: 0.92, green: 0.45, blue: 0.38, alpha: 1.0)
+    )
+
+    static func theme(for style: MouseGestureHUDStyle) -> MouseGestureOverlayTheme {
+        switch style {
+        case .technical:
+            return .technical
+        case .sober:
+            return .sober
+        }
+    }
+}
+
+private struct MouseGestureSystemCaption: Equatable {
+    let title: String
+    let detail: String
 }
 
 final class MouseGestureController: ObservableObject {
@@ -56,6 +85,19 @@ final class MouseGestureController: ObservableObject {
         let label: String
         let success: Bool
         let accessory: MouseGestureAccessory?
+        let caption: MouseGestureSystemCaption?
+
+        init(
+            label: String,
+            success: Bool,
+            accessory: MouseGestureAccessory?,
+            caption: MouseGestureSystemCaption? = nil
+        ) {
+            self.label = label
+            self.success = success
+            self.accessory = accessory
+            self.caption = caption
+        }
     }
 
     private final class GestureSession {
@@ -99,9 +141,22 @@ final class MouseGestureController: ObservableObject {
     private var staleSessionTimer: Timer?
     private var subscriptions: Set<AnyCancellable> = []
     private var installedObservers = false
+    private var frontmostApplicationObserver: NSObjectProtocol?
     private let shapeRecognizer = ShapeRecognizer()
     private let breaker = EventTapBreaker(label: "MouseGesture")
     private let budgetMeter = TapBudgetMeter(label: "MouseGesture")
+    private let appStateLock = NSLock()
+    private var frontmostBundleID: String?
+    private let browserGestureIgnoredBundleIDs: Set<String> = [
+        "com.apple.Safari",
+        "com.brave.Browser",
+        "com.google.Chrome",
+        "com.google.Chrome.canary",
+        "com.microsoft.edgemac",
+        "com.vivaldi.Vivaldi",
+        "company.thebrowser.Browser",
+        "org.mozilla.firefox",
+    ]
 
     private struct TapTrackingState {
         let buttonNumber: Int64
@@ -247,6 +302,16 @@ final class MouseGestureController: ObservableObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.refresh() }
             .store(in: &subscriptions)
+
+        updateFrontmostApplicationSnapshot(NSWorkspace.shared.frontmostApplication)
+        frontmostApplicationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            self?.updateFrontmostApplicationSnapshot(app)
+        }
     }
 
     private func refresh() {
@@ -410,19 +475,35 @@ final class MouseGestureController: ObservableObject {
         }
     }
 
+    private func updateFrontmostApplicationSnapshot(_ app: NSRunningApplication?) {
+        appStateLock.lock()
+        frontmostBundleID = app?.bundleIdentifier
+        appStateLock.unlock()
+    }
+
+    private func frontmostAppShouldBypassGestures() -> Bool {
+        appStateLock.lock()
+        defer { appStateLock.unlock() }
+        guard let frontmostBundleID else { return false }
+        return browserGestureIgnoredBundleIDs.contains(frontmostBundleID)
+    }
+
     private func handleMouseDown(_ event: CGEvent, buttonNumber: Int64) -> Unmanaged<CGEvent>? {
         let snapshot = MouseEventSnapshot(
             location: event.location,
             flags: event.flags,
             buttonNumber: buttonNumber
         )
+        if frontmostAppShouldBypassGestures() {
+            DispatchQueue.main.async { [weak self] in
+                self?.processMouseDownPassthrough(snapshot: snapshot, reason: .ignoredApp)
+            }
+            return Unmanaged.passUnretained(event)
+        }
+
         // NSScreen.screens reads are safe off-main; Preferences/Store snapshot
         // reads are lock-protected (see MouseShortcutStore).
-        let button = MouseShortcutButton(rawButtonNumber: Int(buttonNumber))
-        let needsNativeClickCapture = MouseShortcutStore.shared.hasEnabledRule(button: button, kind: .click)
-            || MouseShortcutStore.shared.hasEnabledRule(button: button, kind: .shape)
         let tuning = MouseShortcutStore.shared.tuning
-        let nativeClickPassthrough = buttonNumber >= 2 && !needsNativeClickCapture
         let canRecognize = Preferences.shared.mouseGesturesEnabled
             && MouseShortcutStore.shared.watchedButtonNumbers.contains(buttonNumber)
         let onScreen = (screen(containing: snapshot.location) != nil)
@@ -439,6 +520,13 @@ final class MouseGestureController: ObservableObject {
             }
             return Unmanaged.passUnretained(event)
         }
+
+        // Once Lattices owns a gesture-capable button, keep the full
+        // down/drag/up sequence. Letting the native down pass through and
+        // balancing it later can swallow the physical mouse-up, leaving the
+        // gesture stuck until stale cleanup. Browser apps are bypassed before
+        // this point, so their native middle/back/forward behavior survives.
+        let nativeClickPassthrough = false
 
         // Mark this button as actively tracked before the OS sees a follow-up
         // drag/up — the tap thread reads this on subsequent events to decide
@@ -460,6 +548,7 @@ final class MouseGestureController: ObservableObject {
 
     private enum MouseDownPassthroughReason {
         case offScreen
+        case ignoredApp
         case notMapped
     }
 
@@ -479,6 +568,20 @@ final class MouseGestureController: ObservableObject {
                 candidate: nil,
                 match: nil,
                 note: "off-screen",
+                appInfo: appInfo
+            )
+            clearSession()
+        case .ignoredApp:
+            DiagnosticLog.shared.info("MouseGesture: ignored click in \(appInfo.name ?? appInfo.bundleId ?? "browser")")
+            recordObservedEvent(
+                phase: "down",
+                button: button,
+                location: snapshot.location,
+                delta: .zero,
+                modifiers: snapshot.flags,
+                candidate: nil,
+                match: nil,
+                note: "ignored app",
                 appInfo: appInfo
             )
             clearSession()
@@ -523,7 +626,7 @@ final class MouseGestureController: ObservableObject {
         }
 
         clearSession(clearTracking: false)
-        let overlay = MouseGestureOverlay(screen: screen)
+        let overlay = MouseGestureOverlay(screen: screen, hudStyle: Preferences.shared.mouseGestureHUDStyle)
         overlay.onDismiss = { [weak self, weak overlay] in
             guard let self, let overlay else { return }
             self.releaseOverlay(overlay)
@@ -815,7 +918,8 @@ final class MouseGestureController: ObservableObject {
                             visualPhase: .completed,
                             shape: shape,
                             pathPoints: session.pathPoints,
-                            accessory: outcome.accessory
+                            accessory: outcome.accessory,
+                            caption: outcome.caption
                         )
                     }
                 }
@@ -894,7 +998,8 @@ final class MouseGestureController: ObservableObject {
                     visualPhase: .completed,
                     shape: nil,
                     pathPoints: session.pathPoints,
-                    accessory: outcome.accessory
+                    accessory: outcome.accessory,
+                    caption: outcome.caption
                 )
             }
         }
@@ -923,10 +1028,18 @@ final class MouseGestureController: ObservableObject {
             return GestureOutcome(label: "Screen Map Overview", success: true, accessory: nil)
         case .dictationStart:
             let sent = sendDictationShortcut()
+            let shouldRenderHUD = Preferences.shared.mouseGestureHUDVisualEnabled
+            if sent, Preferences.shared.mouseGestureHUDAudioEnabled {
+                AppFeedback.shared.playTapSound()
+            }
             return GestureOutcome(
                 label: sent ? "Dictation" : "Permission Needed",
                 success: sent,
-                accessory: sent ? .mic : nil
+                accessory: sent && shouldRenderHUD ? .mic : nil,
+                caption: shouldRenderHUD ? MouseGestureSystemCaption(
+                    title: "MOUSE GESTURE · UP · MIDDLE CLICK",
+                    detail: sent ? "ACTION INITIATED · DICTATION ENGINE" : "ACTION BLOCKED · PERMISSION REQUIRED"
+                ) : nil
             )
         case .shortcutSend:
             let sent = sendShortcut(match.action.shortcut)
@@ -1030,12 +1143,7 @@ final class MouseGestureController: ObservableObject {
     }
 
     private func shouldDismissOverlayBeforeAction(match: MouseShortcutMatchResult?) -> Bool {
-        switch match?.action.type {
-        case .shortcutSend, .appActivate:
-            return match?.rule.visual == nil
-        case .spacePrevious, .spaceNext, .screenMapToggle, .dictationStart, .none:
-            return true
-        }
+        false
     }
 
     private func previewProgress(dominantDistance: CGFloat, threshold: CGFloat) -> CGFloat {
@@ -1239,10 +1347,10 @@ final class MouseGestureController: ObservableObject {
 }
 
 private final class MouseGestureOverlay {
-    private let committedHoldDuration: TimeInterval = 0.0
-    private let fadeDuration: TimeInterval = 0.03
-    private let accessoryCommittedHoldDuration: TimeInterval = 0.0
-    private let accessoryAnimationDuration: TimeInterval = 0.10
+    private let committedHoldDuration: TimeInterval = 0.42
+    private let fadeDuration: TimeInterval = 0.18
+    private let accessoryCommittedHoldDuration: TimeInterval = 0.64
+    private let accessoryAnimationDuration: TimeInterval = 0.38
 
     private let screen: NSScreen
     private let window: NSWindow
@@ -1250,7 +1358,7 @@ private final class MouseGestureOverlay {
     private var fadeTimer: Timer?
     var onDismiss: (() -> Void)?
 
-    init(screen: NSScreen) {
+    init(screen: NSScreen, hudStyle: MouseGestureHUDStyle) {
         self.screen = screen
         self.window = NSWindow(
             contentRect: screen.frame,
@@ -1258,7 +1366,10 @@ private final class MouseGestureOverlay {
             backing: .buffered,
             defer: false
         )
-        self.overlayView = MouseGestureOverlayView(frame: NSRect(origin: .zero, size: screen.frame.size))
+        self.overlayView = MouseGestureOverlayView(
+            frame: NSRect(origin: .zero, size: screen.frame.size),
+            hudStyle: hudStyle
+        )
 
         window.isOpaque = false
         window.backgroundColor = .clear
@@ -1314,7 +1425,8 @@ private final class MouseGestureOverlay {
         visualPhase: MouseGestureVisualPhase,
         shape: GestureShapeLabel?,
         pathPoints: [GesturePathPoint],
-        accessory: MouseGestureAccessory?
+        accessory: MouseGestureAccessory?,
+        caption: MouseGestureSystemCaption?
     ) {
         fadeTimer?.invalidate()
         window.alphaValue = 1
@@ -1329,6 +1441,7 @@ private final class MouseGestureOverlay {
             shape: shape,
             path: localPath(from: pathPoints),
             accessory: accessory,
+            caption: caption,
             accessoryAnimationDuration: accessoryAnimationDuration
         )
         overlayView.needsDisplay = true
@@ -1379,7 +1492,8 @@ private final class MouseGestureOverlay {
 }
 
 private final class MouseGestureOverlayView: NSView {
-    private let theme = MouseGestureOverlayTheme.graffiti
+    private let hudStyle: MouseGestureHUDStyle
+    private let theme: MouseGestureOverlayTheme
 
     enum State {
         case idle
@@ -1406,6 +1520,7 @@ private final class MouseGestureOverlayView: NSView {
             shape: GestureShapeLabel?,
             path: [CGPoint],
             accessory: MouseGestureAccessory?,
+            caption: MouseGestureSystemCaption?,
             accessoryAnimationDuration: TimeInterval
         )
     }
@@ -1424,13 +1539,24 @@ private final class MouseGestureOverlayView: NSView {
     private var arrowAnimationDuration: TimeInterval = 0
     private var committedStartProgress: CGFloat = 0
     private var accessoryAnimationDelay: TimeInterval = 0
-    private let committedArrowAnimationDuration: TimeInterval = 0.06
-    private let matrixCompletionAnimationDuration: TimeInterval = 0.30
-    private let arrowAnimationDelay: TimeInterval = 0.012
-    private let labelRevealThreshold: CGFloat = 0.8
+    private let committedArrowAnimationDuration: TimeInterval = 0.20
+    private let matrixCompletionAnimationDuration: TimeInterval = 0.46
+    private let arrowAnimationDelay: TimeInterval = 0.04
+    private let labelRevealThreshold: CGFloat = 0.74
+
+    init(frame frameRect: NSRect, hudStyle: MouseGestureHUDStyle) {
+        self.hudStyle = hudStyle
+        self.theme = MouseGestureOverlayTheme.theme(for: hudStyle)
+        super.init(frame: frameRect)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
 
     var replayLeadInDuration: TimeInterval {
-        if case .committed(_, _, _, _, _, let visual, _, let shape, let path, _, _) = state,
+        if case .committed(_, _, _, _, _, let visual, _, let shape, let path, _, _, _) = state,
            shape != nil,
            path.count > 1,
            shouldDrawMatrixCompletion(visual) {
@@ -1501,7 +1627,7 @@ private final class MouseGestureOverlayView: NSView {
                     in: ctx
                 )
             }
-        case .committed(let origin, let direction, let label, let success, let style, let visual, let visualPhase, let shape, let path, let accessory, _):
+        case .committed(let origin, let direction, let label, let success, let style, let visual, let visualPhase, let shape, let path, let accessory, let caption, _):
             if path.count > 1 {
                 if shape != nil, shouldDrawMatrixCompletion(visual) {
                     drawMatrixGestureCompletion(
@@ -1550,6 +1676,12 @@ private final class MouseGestureOverlayView: NSView {
                     in: ctx
                 )
             }
+            if let accessory, accessory.usesDesktopStatusSurface {
+                drawDesktopStatusSurface(for: accessory, label: label, success: success, in: ctx)
+            }
+            if let caption {
+                drawSystemCaption(caption, success: success, in: ctx)
+            }
         }
     }
 
@@ -1572,7 +1704,7 @@ private final class MouseGestureOverlayView: NSView {
         progressOverride: CGFloat?,
         in ctx: CGContext
     ) {
-        let baseLength: CGFloat = 118
+        let baseLength: CGFloat = 134
         let arrowProgress = progressOverride ?? currentArrowProgress(committed: committed)
         let clampedProgress = min(1, max(0, arrowProgress))
         let length = baseLength * (committed ? max(0.14, clampedProgress) : (0.34 + 0.66 * clampedProgress))
@@ -1605,10 +1737,11 @@ private final class MouseGestureOverlayView: NSView {
         ctx.strokePath()
 
         drawArrowHead(at: end, direction: direction, color: accent, size: metrics.headSize)
-        if let label, (!committed || clampedProgress >= labelRevealThreshold) {
+        let drawsDesktopStatus = accessory?.usesDesktopStatusSurface ?? false
+        if let label, !drawsDesktopStatus, (!committed || clampedProgress >= labelRevealThreshold) {
             drawLabel(label, from: origin, to: end, direction: direction, color: accent)
         }
-        if committed, let accessory, clampedProgress >= labelRevealThreshold {
+        if committed, let accessory, !accessory.usesDesktopStatusSurface, clampedProgress >= labelRevealThreshold {
             drawAccessory(accessory, from: origin, to: end, direction: direction, color: accent, in: ctx)
         }
         ctx.restoreGState()
@@ -1643,7 +1776,9 @@ private final class MouseGestureOverlayView: NSView {
         ctx.setLineCap(.round)
         ctx.setLineJoin(.round)
 
-        drawGestureGuideDots(around: visiblePoints, accent: accent, in: ctx)
+        if !committed {
+            drawGestureGuideDots(around: visiblePoints, accent: accent, in: ctx)
+        }
 
         ctx.addPath(path)
         ctx.setLineWidth(metrics.glowWidth + 10)
@@ -1669,10 +1804,11 @@ private final class MouseGestureOverlayView: NSView {
         let resolvedDirection = direction ?? pathDirection(from: visiblePoints)
         if let resolvedDirection {
             drawArrowHead(at: end, direction: resolvedDirection, color: stroke, size: metrics.headSize)
-            if let label, (!committed || clampedProgress >= labelRevealThreshold) {
+            let drawsDesktopStatus = accessory?.usesDesktopStatusSurface ?? false
+            if let label, !drawsDesktopStatus, (!committed || clampedProgress >= labelRevealThreshold) {
                 drawLabel(label, from: fallbackOrigin, to: end, direction: resolvedDirection, color: accent)
             }
-            if committed, let accessory, clampedProgress >= labelRevealThreshold {
+            if committed, let accessory, !accessory.usesDesktopStatusSurface, clampedProgress >= labelRevealThreshold {
                 drawAccessory(accessory, from: fallbackOrigin, to: end, direction: resolvedDirection, color: accent, in: ctx)
             }
         }
@@ -1753,7 +1889,7 @@ private final class MouseGestureOverlayView: NSView {
             drawMatrixLabel(label, near: matrixRect, alpha: labelAlpha, accent: accent)
         }
 
-        if let accessory, progress >= labelRevealThreshold {
+        if let accessory, !accessory.usesDesktopStatusSurface, progress >= labelRevealThreshold {
             drawAccessory(accessory, from: CGPoint(x: matrixRect.midX, y: matrixRect.midY), to: pulsePoint, direction: direction, color: accent, in: ctx)
         }
 
@@ -2173,7 +2309,7 @@ private final class MouseGestureOverlayView: NSView {
         case .thickLine:
             return (8.5, 20, 18)
         case .drawing:
-            return (5, 16, 15)
+            return (3.2, 10, 12)
         }
     }
 
@@ -2225,9 +2361,9 @@ private final class MouseGestureOverlayView: NSView {
             width: max(titleSize.width, kickerSize.width),
             height: titleSize.height + gap + kickerSize.height
         )
-        let paddingX: CGFloat = 14
-        let paddingY: CGFloat = 8
-        let tickWidth: CGFloat = 6
+        let paddingX: CGFloat = 18
+        let paddingY: CGFloat = 11
+        let tickWidth: CGFloat = 8
         let bubbleSize = CGSize(
             width: textSize.width + paddingX * 2 + tickWidth,
             height: textSize.height + paddingY * 2
@@ -2242,25 +2378,25 @@ private final class MouseGestureOverlayView: NSView {
 
         ctxSaveForLabel(rotationDegrees: -4, around: CGPoint(x: rect.midX, y: rect.midY))
 
-        let shadowRect = rect.insetBy(dx: -5, dy: -5)
-        let shadow = NSBezierPath(roundedRect: shadowRect, xRadius: 15, yRadius: 15)
+        let shadowRect = rect.insetBy(dx: -7, dy: -7)
+        let shadow = NSBezierPath(roundedRect: shadowRect, xRadius: 17, yRadius: 17)
         theme.graphiteDark.withAlphaComponent(0.24).setFill()
         shadow.fill()
 
-        let bg = NSBezierPath(roundedRect: rect, xRadius: 13, yRadius: 13)
+        let bg = NSBezierPath(roundedRect: rect, xRadius: 15, yRadius: 15)
         theme.graphiteDark.withAlphaComponent(0.82).setFill()
         bg.fill()
 
-        let border = NSBezierPath(roundedRect: rect, xRadius: 13, yRadius: 13)
+        let border = NSBezierPath(roundedRect: rect, xRadius: 15, yRadius: 15)
         theme.graphite.withAlphaComponent(0.46).setStroke()
         border.lineWidth = 1.2
         border.stroke()
 
         let tickRect = CGRect(
-            x: rect.minX + 8,
-            y: rect.midY - 7,
+            x: rect.minX + 10,
+            y: rect.midY - 8,
             width: 3,
-            height: 14
+            height: 16
         )
         let tick = NSBezierPath(roundedRect: tickRect, xRadius: 1.5, yRadius: 1.5)
         color.withAlphaComponent(0.82).setFill()
@@ -2308,15 +2444,15 @@ private final class MouseGestureOverlayView: NSView {
 
         switch direction {
         case .left, .right:
-            proposedOrigin = CGPoint(x: midpoint.x - bubbleSize.width / 2, y: midpoint.y + 18)
+            proposedOrigin = CGPoint(x: midpoint.x - bubbleSize.width / 2, y: midpoint.y + 30)
         case .up, .down:
-            proposedOrigin = CGPoint(x: midpoint.x + 20, y: midpoint.y - bubbleSize.height / 2)
+            proposedOrigin = CGPoint(x: midpoint.x + 30, y: midpoint.y - bubbleSize.height / 2)
         }
 
-        let minX: CGFloat = 12
-        let minY: CGFloat = 12
-        let maxX = max(minX, bounds.width - bubbleSize.width - 12)
-        let maxY = max(minY, bounds.height - bubbleSize.height - 12)
+        let minX: CGFloat = 20
+        let minY: CGFloat = 20
+        let maxX = max(minX, bounds.width - bubbleSize.width - 20)
+        let maxY = max(minY, bounds.height - bubbleSize.height - 20)
 
         return CGPoint(
             x: min(max(proposedOrigin.x, minX), maxX),
@@ -2412,7 +2548,7 @@ private final class MouseGestureOverlayView: NSView {
         accessoryAnimationDuration = 0
         accessoryAnimationDelay = 0
 
-        if case .committed(_, _, _, _, _, _, _, _, _, let accessory, let duration) = state, accessory != nil {
+        if case .committed(_, _, _, _, _, _, _, _, _, let accessory, _, let duration) = state, accessory != nil {
             accessoryAnimationStartedAt = Date()
             accessoryAnimationDuration = duration
             accessoryAnimationDelay = replayLeadInDuration * 0.86
@@ -2487,6 +2623,174 @@ private final class MouseGestureOverlayView: NSView {
         }
     }
 
+    private func committedSurfaceAlpha() -> CGFloat {
+        let progress = currentArrowProgress(committed: true)
+        return min(1, max(0, (progress - 0.70) / 0.18))
+    }
+
+    private func accessorySurfaceAlpha() -> CGFloat {
+        guard let startedAt = accessoryAnimationStartedAt else {
+            return committedSurfaceAlpha()
+        }
+        let elapsed = Date().timeIntervalSince(startedAt) - accessoryAnimationDelay
+        guard elapsed > 0 else { return 0 }
+        return min(1, max(0, easeOut(CGFloat(elapsed / 0.22))))
+    }
+
+    private func drawDesktopStatusSurface(
+        for accessory: MouseGestureAccessory,
+        label: String,
+        success: Bool,
+        in ctx: CGContext
+    ) {
+        switch accessory {
+        case .mic:
+            let alpha = max(committedSurfaceAlpha(), accessorySurfaceAlpha())
+            guard alpha > 0.01 else { return }
+
+            let isSober = hudStyle == .sober
+            let accent = success ? theme.accent : theme.failure
+            let panelWidth = min(max(bounds.width * (isSober ? 0.24 : 0.30), isSober ? 280 : 320), min(isSober ? 360 : 420, bounds.width - 72))
+            let panelHeight: CGFloat = isSober ? 50 : 58
+            let topInset: CGFloat = isSober ? 48 : 38
+            let radius: CGFloat = isSober ? 10 : 14
+            let rect = CGRect(
+                x: bounds.midX - panelWidth / 2,
+                y: bounds.maxY - topInset - panelHeight,
+                width: panelWidth,
+                height: panelHeight
+            )
+
+            let shell = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
+            theme.graphiteDark.withAlphaComponent((isSober ? 0.48 : 0.54) * alpha).setFill()
+            shell.fill()
+
+            let inner = NSBezierPath(roundedRect: rect.insetBy(dx: 1, dy: 1), xRadius: max(0, radius - 1), yRadius: max(0, radius - 1))
+            theme.highlight.withAlphaComponent((isSober ? 0.026 : 0.045) * alpha).setFill()
+            inner.fill()
+
+            let border = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
+            accent.withAlphaComponent((isSober ? 0.16 : 0.28) * alpha).setStroke()
+            border.lineWidth = 1
+            border.stroke()
+
+            let iconSize: CGFloat = isSober ? 24 : 30
+            let iconBox = CGRect(x: rect.minX + 16, y: rect.midY - iconSize / 2, width: iconSize, height: iconSize)
+            let iconBg = NSBezierPath(ovalIn: iconBox)
+            accent.withAlphaComponent((isSober ? 0.06 : 0.11) * alpha).setFill()
+            iconBg.fill()
+            accent.withAlphaComponent((isSober ? 0.14 : 0.24) * alpha).setStroke()
+            iconBg.lineWidth = 1
+            iconBg.stroke()
+            drawMicGlyph(in: iconBox.insetBy(dx: iconSize * 0.27, dy: iconSize * 0.20), color: accent.withAlphaComponent((isSober ? 0.74 : 0.86) * alpha), in: ctx)
+
+            let title = NSAttributedString(
+                string: isSober ? label : label.uppercased(),
+                attributes: [
+                    .font: isSober ? NSFont.systemFont(ofSize: 12, weight: .semibold) : NSFont.monospacedSystemFont(ofSize: 10, weight: .semibold),
+                    .foregroundColor: theme.highlight.withAlphaComponent((isSober ? 0.84 : 0.92) * alpha),
+                ]
+            )
+            let detail = NSAttributedString(
+                string: success ? (isSober ? "Listening" : "DICTATION ENGINE · READY") : (isSober ? "Permission needed" : "DICTATION ENGINE · BLOCKED"),
+                attributes: [
+                    .font: isSober ? NSFont.systemFont(ofSize: 10, weight: .regular) : NSFont.monospacedSystemFont(ofSize: 8.5, weight: .medium),
+                    .foregroundColor: accent.withAlphaComponent((isSober ? 0.62 : 0.76) * alpha),
+                ]
+            )
+
+            let textX = iconBox.maxX + 12
+            title.draw(in: CGRect(x: textX, y: rect.midY + (isSober ? 1 : 2), width: rect.maxX - textX - 16, height: 16))
+            detail.draw(in: CGRect(x: textX, y: rect.midY - (isSober ? 15 : 15), width: rect.maxX - textX - 16, height: 13))
+        }
+    }
+
+    private func drawSystemCaption(_ caption: MouseGestureSystemCaption, success: Bool, in ctx: CGContext) {
+        let alpha = committedSurfaceAlpha()
+        guard alpha > 0.01 else { return }
+
+        let isSober = hudStyle == .sober
+        let accent = success ? theme.accent : theme.failure
+        let titleFont = isSober ? NSFont.systemFont(ofSize: 11, weight: .semibold) : NSFont.monospacedSystemFont(ofSize: 10, weight: .semibold)
+        let detailFont = isSober ? NSFont.systemFont(ofSize: 10, weight: .regular) : NSFont.monospacedSystemFont(ofSize: 9, weight: .medium)
+        let tagFont = NSFont.monospacedSystemFont(ofSize: 8, weight: .bold)
+        let titleText = isSober ? "Middle-click up" : caption.title
+        let detailText = isSober
+            ? (success ? "Dictation started" : "Permission needed")
+            : caption.detail
+        let title = NSAttributedString(
+            string: titleText,
+            attributes: [
+                .font: titleFont,
+                .foregroundColor: theme.highlight.withAlphaComponent((isSober ? 0.82 : 0.88) * alpha),
+            ]
+        )
+        let detail = NSAttributedString(
+            string: detailText,
+            attributes: [
+                .font: detailFont,
+                .foregroundColor: accent.withAlphaComponent((isSober ? 0.58 : 0.78) * alpha),
+            ]
+        )
+        let tag = NSAttributedString(
+            string: "LATTICES INPUT",
+            attributes: [
+                .font: tagFont,
+                .foregroundColor: accent.withAlphaComponent(0.72 * alpha),
+            ]
+        )
+
+        let titleSize = title.size()
+        let detailSize = detail.size()
+        let tagSize = tag.size()
+        let contentWidth = isSober
+            ? max(titleSize.width, detailSize.width) + 42
+            : max(titleSize.width, detailSize.width) + tagSize.width + 48
+        let panelWidth = min(max(contentWidth, isSober ? 260 : 430), bounds.width - 80)
+        let panelHeight: CGFloat = isSober ? 40 : 46
+        let radius: CGFloat = isSober ? 10 : 12
+        let rect = CGRect(
+            x: bounds.midX - panelWidth / 2,
+            y: bounds.minY + 32,
+            width: panelWidth,
+            height: panelHeight
+        )
+
+        let panel = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
+        theme.graphiteDark.withAlphaComponent((isSober ? 0.42 : 0.50) * alpha).setFill()
+        panel.fill()
+
+        let border = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
+        theme.graphite.withAlphaComponent((isSober ? 0.16 : 0.24) * alpha).setStroke()
+        border.lineWidth = 1
+        border.stroke()
+
+        let tickHeight: CGFloat = isSober ? 18 : 24
+        let tick = NSBezierPath(roundedRect: CGRect(x: rect.minX + 12, y: rect.midY - tickHeight / 2, width: 2, height: tickHeight), xRadius: 1, yRadius: 1)
+        accent.withAlphaComponent((isSober ? 0.42 : 0.62) * alpha).setFill()
+        tick.fill()
+
+        if isSober {
+            let textX = rect.minX + 28
+            title.draw(in: CGRect(x: textX, y: rect.midY + 1, width: rect.maxX - textX - 16, height: titleSize.height))
+            detail.draw(in: CGRect(x: textX, y: rect.midY - detailSize.height - 2, width: rect.maxX - textX - 16, height: detailSize.height))
+            return
+        }
+
+        let tagRect = CGRect(x: rect.minX + 24, y: rect.midY - tagSize.height / 2, width: tagSize.width, height: tagSize.height)
+        tag.draw(in: tagRect)
+        let dividerX = tagRect.maxX + 16
+        ctx.setStrokeColor(theme.graphite.withAlphaComponent(0.22 * alpha).cgColor)
+        ctx.setLineWidth(1)
+        ctx.move(to: CGPoint(x: dividerX, y: rect.minY + 10))
+        ctx.addLine(to: CGPoint(x: dividerX, y: rect.maxY - 10))
+        ctx.strokePath()
+
+        let textX = dividerX + 16
+        title.draw(in: CGRect(x: textX, y: rect.midY + 2, width: rect.maxX - textX - 16, height: titleSize.height))
+        detail.draw(in: CGRect(x: textX, y: rect.midY - detailSize.height - 3, width: rect.maxX - textX - 16, height: detailSize.height))
+    }
+
     private func drawMicGlyph(in rect: CGRect, color: NSColor, in ctx: CGContext) {
         ctx.saveGState()
         color.setStroke()
@@ -2549,7 +2853,7 @@ private final class MouseGestureOverlayView: NSView {
             return nil
         case .tracking(_, let direction, _, _, _, _, _, _, _, _):
             return direction
-        case .committed(_, let direction, _, _, _, _, _, _, _, _, _):
+        case .committed(_, let direction, _, _, _, _, _, _, _, _, _, _):
             return direction
         }
     }
@@ -2562,7 +2866,7 @@ private final class MouseGestureOverlayView: NSView {
     }
 
     private func isCommittedShapeReplay(state: State) -> Bool {
-        if case .committed(_, _, _, _, _, let visual, _, let shape, let path, _, _) = state {
+        if case .committed(_, _, _, _, _, let visual, _, let shape, let path, _, _, _) = state {
             return shape != nil && path.count > 1 && shouldDrawMatrixCompletion(visual)
         }
         return false

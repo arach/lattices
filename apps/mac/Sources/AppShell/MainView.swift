@@ -23,6 +23,8 @@ struct MainView: View {
     )
     private let embeddedProjectCardHeight: CGFloat = 94
     private let embeddedProjectGridSpacing: CGFloat = 10
+    private let embeddedEmptyStateHeight: CGFloat = 150
+    private let embeddedProjectAreaMaxHeight: CGFloat = 360
     private var filtered: [Project] {
         if searchText.isEmpty { return scanner.projects }
         return scanner.projects.filter {
@@ -187,13 +189,7 @@ struct MainView: View {
                     .fill(Palette.border)
                     .frame(height: 0.5)
 
-                if filtered.isEmpty && !hasVisibleGroups {
-                    Spacer()
-                    emptyState
-                    Spacer()
-                } else {
-                    embeddedProjectsSection
-                }
+                embeddedProjectArea
 
                 Rectangle()
                     .fill(Palette.border)
@@ -210,6 +206,23 @@ struct MainView: View {
                 bottomBar
             }
         }
+    }
+
+    private var embeddedProjectArea: some View {
+        Group {
+            if filtered.isEmpty && !hasVisibleGroups {
+                emptyState
+                    .frame(maxWidth: .infinity)
+                    .frame(height: embeddedEmptyStateHeight)
+            } else {
+                ScrollView(.vertical, showsIndicators: true) {
+                    embeddedProjectsSection
+                        .frame(maxWidth: .infinity, alignment: .top)
+                }
+                .frame(maxHeight: embeddedProjectAreaMaxHeight, alignment: .top)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .top)
     }
 
     private var embeddedProjectsSection: some View {
@@ -362,16 +375,16 @@ struct MainView: View {
                 detail: "Workspace overview and project launcher",
                 hotkeyTokens: hotkeyTokens(.unifiedWindow),
                 icon: "house",
-                accentColor: Palette.text
+                accentColor: Palette.textDim
             ) {
                 ScreenMapWindowController.shared.showPage(.home)
             }
             ActionRow(
                 label: "Layout",
                 detail: "Arrange windows and layers",
-                hotkeyTokens: [],
+                hotkeyTokens: hotkeyTokens(.screenMap),
                 icon: "rectangle.3.group",
-                accentColor: Palette.running
+                accentColor: Palette.textDim
             ) {
                 ScreenMapWindowController.shared.showPage(.screenMap)
             }
@@ -380,7 +393,7 @@ struct MainView: View {
                 detail: "Windows, projects, sessions, processes, and OCR",
                 hotkeyTokens: hotkeyTokens(.omniSearch),
                 icon: "magnifyingglass",
-                accentColor: AudioLayer.shared.isListening ? Palette.running : Palette.textDim
+                accentColor: Palette.textDim
             ) {
                 ScreenMapWindowController.shared.showPage(.desktopInventory)
             }
@@ -389,7 +402,7 @@ struct MainView: View {
                 detail: "Launch, attach, and control projects",
                 hotkeyTokens: hotkeyTokens(.palette),
                 icon: "command",
-                accentColor: Palette.running
+                accentColor: Palette.textDim
             ) {
                 CommandPaletteWindow.shared.toggle()
             }

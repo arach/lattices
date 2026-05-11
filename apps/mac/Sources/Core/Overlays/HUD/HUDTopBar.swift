@@ -6,6 +6,7 @@ struct HUDTopBar: View {
     @ObservedObject var state: HUDState
     @ObservedObject private var handsOff = HandsOffSession.shared
     @ObservedObject private var workspace = WorkspaceManager.shared
+    @ObservedObject private var xp = HUDExperienceStore.shared
     var onDismiss: () -> Void
 
     var body: some View {
@@ -13,6 +14,12 @@ struct HUDTopBar: View {
             // Logo
             logo
                 .padding(.leading, 16)
+
+            // Experience badge
+            if xp.presetIndex > 0 {
+                experienceBadge
+                    .padding(.leading, 10)
+            }
 
             // Voice status (when active)
             if state.voiceActive {
@@ -55,7 +62,38 @@ struct HUDTopBar: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: 44)
-        .background(Palette.bg)
+        .background(HUDPanelBackground())
+        .hudEdgeGlow()
+    }
+
+    // MARK: - Experience badge
+
+    private var experienceBadge: some View {
+        Button {
+            let name = xp.cyclePreset()
+            state.showFeedback(name, autoClearAfter: 1.4)
+        } label: {
+            HStack(spacing: 4) {
+                Text(xp.currentPreset.name)
+                    .font(Typo.mono(8))
+                    .foregroundColor(HUDChrome.cyan.opacity(0.75))
+                Image(systemName: "chevron.right.2")
+                    .font(.system(size: 7, weight: .semibold))
+                    .foregroundColor(HUDChrome.cyan.opacity(0.40))
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(HUDChrome.cyan.opacity(0.08))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .strokeBorder(HUDChrome.cyan.opacity(0.22), lineWidth: 0.5)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .help("Cycle experience (⌥X)")
     }
 
     // MARK: - Layer strip (Hyprland-style workspace bar)
@@ -80,14 +118,7 @@ struct HUDTopBar: View {
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(isActive ? Palette.surfaceHov : Palette.surface.opacity(0.5))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .strokeBorder(isActive ? Palette.running.opacity(0.4) : Palette.border.opacity(0.5), lineWidth: 0.5)
-                            )
-                    )
+                    .hudGlass(cornerRadius: 7, active: isActive)
                 }
                 .buttonStyle(.plain)
             }
@@ -101,7 +132,7 @@ struct HUDTopBar: View {
             latticesGrid
             Text("lattices")
                 .font(Typo.monoBold(11))
-                .foregroundColor(Palette.textMuted.opacity(0.6))
+                .foregroundColor(Palette.text.opacity(0.72))
         }
     }
 
@@ -118,10 +149,10 @@ struct HUDTopBar: View {
                     let x = CGFloat(col) * (cellSize + gap)
                     let y = CGFloat(row) * (cellSize + gap)
                     let rect = CGRect(x: x, y: y, width: cellSize, height: cellSize)
-                    let opacity: Double = solidCells.contains(idx) ? 0.5 : 0.15
+                    let opacity: Double = solidCells.contains(idx) ? 0.75 : 0.18
                     ctx.fill(
                         Path(roundedRect: rect, cornerRadius: 0.5),
-                        with: .color(.white.opacity(opacity))
+                        with: .color((solidCells.contains(idx) ? Palette.running : Color.white).opacity(opacity))
                     )
                 }
             }
@@ -188,11 +219,11 @@ struct HUDTopBar: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 4)
         .background(
-            RoundedRectangle(cornerRadius: 5)
+            RoundedRectangle(cornerRadius: 9)
                 .fill(voiceColor.opacity(0.08))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 5)
-                        .strokeBorder(voiceColor.opacity(0.2), lineWidth: 0.5)
+                    RoundedRectangle(cornerRadius: 9)
+                        .strokeBorder(voiceColor.opacity(0.24), lineWidth: 0.5)
                 )
         )
     }
@@ -225,17 +256,10 @@ struct HUDTopBar: View {
                 Text(label)
                     .font(Typo.mono(10))
             }
-            .foregroundColor(Palette.textMuted)
+            .foregroundColor(Palette.text.opacity(0.78))
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
-            .background(
-                RoundedRectangle(cornerRadius: 5)
-                    .fill(Palette.surface)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 5)
-                            .strokeBorder(Palette.border, lineWidth: 0.5)
-                    )
-            )
+            .hudGlass(cornerRadius: 8)
         }
         .buttonStyle(.plain)
         .help("\(label) (\(shortcut))")

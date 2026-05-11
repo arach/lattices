@@ -8,6 +8,7 @@ struct HUDRightBar: View {
     @ObservedObject private var handsOff = HandsOffSession.shared
     @ObservedObject private var desktop = DesktopModel.shared
     @ObservedObject private var previewModel = WindowPreviewStore.shared
+    @ObservedObject private var xp = HUDExperienceStore.shared
     var onDismiss: () -> Void
 
     var body: some View {
@@ -16,14 +17,23 @@ struct HUDRightBar: View {
             inspectorPane
                 .frame(maxHeight: .infinity)
 
-            Rectangle().fill(Palette.border).frame(height: 0.5)
+            HUDHairline(opacity: 0.75)
 
             // Bottom half: conversation
             conversationPane
                 .frame(maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Palette.bg)
+        .background(HUDPanelBackground())
+        .overlay(alignment: .leading) {
+            if xp.showChrome {
+                HUDHairline(axis: .vertical, opacity: 0.8)
+            }
+        }
+        .clipShape(
+            RoundedRectangle(cornerRadius: xp.showChrome ? 0 : 14, style: .continuous)
+        )
+        .hudEdgeGlow()
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -86,7 +96,7 @@ struct HUDRightBar: View {
                 previewSection(for: previewWindow, title: "Window Preview")
             }
 
-            Rectangle().fill(Palette.border).frame(height: 0.5)
+            HUDHairline(opacity: 0.70)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
@@ -128,7 +138,7 @@ struct HUDRightBar: View {
 
             previewSection(for: window, title: "Live Preview")
 
-            Rectangle().fill(Palette.border).frame(height: 0.5)
+            HUDHairline(opacity: 0.70)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
@@ -198,7 +208,7 @@ struct HUDRightBar: View {
             // Header with voice state
             conversationHeader
 
-            Rectangle().fill(Palette.border).frame(height: 0.5)
+            HUDHairline(opacity: 0.70)
 
             // Messages
             if handsOff.conversationHistory.isEmpty {
@@ -409,9 +419,15 @@ struct HUDHoverPreviewView: View {
     @ObservedObject var state: HUDState
     @ObservedObject private var previewModel = WindowPreviewStore.shared
     @ObservedObject private var desktop = DesktopModel.shared
+    @ObservedObject private var xp = HUDExperienceStore.shared
     @State private var renderedWindow: WindowEntry?
     @State private var renderedWindowID: UInt32?
     @State private var renderedImage: NSImage?
+
+    private var previewCornerRadii: RectangleCornerRadii {
+        let r: CGFloat = xp.showChrome ? 0 : 14
+        return .init(topLeading: 0, bottomLeading: 0, bottomTrailing: r, topTrailing: r)
+    }
 
     private var activeWindow: WindowEntry? {
         guard let item = state.transientPreviewItem else { return nil }
@@ -453,11 +469,11 @@ struct HUDHoverPreviewView: View {
                                 isLoading: previewModel.isLoading(window.wid),
                                 appName: window.app,
                                 style: WindowPreviewCardStyle(
-                                    containerCornerRadius: 12,
-                                    imageCornerRadius: 9,
-                                    imagePadding: 10,
-                                    background: Palette.bg.opacity(0.96),
-                                    border: Palette.border
+                                    containerCornerRadius: 10,
+                                    imageCornerRadius: 8,
+                                    imagePadding: 8,
+                                    background: HUDChrome.glassFill,
+                                    border: HUDChrome.glassStrokeSoft
                                 ),
                                 holdingPreviousPreview: isHoldingPreviousPreview(for: window)
                             ) {
@@ -472,30 +488,13 @@ struct HUDHoverPreviewView: View {
                     }
                     .padding(14)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .background(
-                        UnevenRoundedRectangle(
-                            cornerRadii: .init(
-                                topLeading: 6,
-                                bottomLeading: 6,
-                                bottomTrailing: 16,
-                                topTrailing: 16
-                            ),
-                            style: .continuous
-                        )
-                            .fill(Palette.bg.opacity(0.94))
-                            .overlay(
-                                UnevenRoundedRectangle(
-                                    cornerRadii: .init(
-                                        topLeading: 6,
-                                        bottomLeading: 6,
-                                        bottomTrailing: 16,
-                                        topTrailing: 16
-                                    ),
-                                    style: .continuous
-                                )
-                                    .strokeBorder(Palette.border, lineWidth: 0.5)
-                            )
+                    .background(HUDPanelBackground())
+                    .overlay(
+                        UnevenRoundedRectangle(cornerRadii: previewCornerRadii, style: .continuous)
+                            .strokeBorder(HUDChrome.glassStroke, lineWidth: 0.75)
                     )
+                    .clipShape(UnevenRoundedRectangle(cornerRadii: previewCornerRadii, style: .continuous))
+                    .hudEdgeGlow()
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -555,10 +554,10 @@ struct HUDHoverPreviewView: View {
                 .padding(.vertical, 6)
                 .background(
                     Capsule()
-                        .fill(Palette.bg.opacity(0.88))
+                        .fill(HUDChrome.glassFillStrong)
                         .overlay(
                             Capsule()
-                                .strokeBorder(Palette.border, lineWidth: 0.5)
+                                .strokeBorder(HUDChrome.glassStrokeSoft, lineWidth: 0.5)
                         )
                 )
                 .padding(14)

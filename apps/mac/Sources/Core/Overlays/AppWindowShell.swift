@@ -17,8 +17,13 @@ struct AppWindowShell {
 
     /// Create a styled NSWindow hosting a SwiftUI root view.
     static func makeWindow<V: View>(config: Config, rootView: V) -> NSWindow {
-        let hosting = NSHostingView(rootView: rootView.preferredColorScheme(.dark))
-        hosting.frame = NSRect(origin: .zero, size: config.initialSize)
+        let hosting = NSHostingView(
+            rootView: rootView
+                .preferredColorScheme(.dark)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        )
+        hosting.translatesAutoresizingMaskIntoConstraints = false
+        hosting.sizingOptions = []
 
         var styleMask: NSWindow.StyleMask = [.titled, .closable, .resizable]
         if config.miniaturizable { styleMask.insert(.miniaturizable) }
@@ -29,11 +34,21 @@ struct AppWindowShell {
             backing: .buffered,
             defer: false
         )
-        w.contentView = hosting
+        let container = NSView(frame: NSRect(origin: .zero, size: config.initialSize))
+        container.addSubview(hosting)
+        NSLayoutConstraint.activate([
+            hosting.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            hosting.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            hosting.topAnchor.constraint(equalTo: container.topAnchor),
+            hosting.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+        ])
+
+        w.contentView = container
         w.title = config.title
         w.titlebarAppearsTransparent = true
         w.titleVisibility = config.titleVisible ? .visible : .hidden
         w.isReleasedWhenClosed = false
+        w.isRestorable = false
         w.backgroundColor = NSColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1.0)
         w.appearance = NSAppearance(named: .darkAqua)
         w.minSize = config.minSize
