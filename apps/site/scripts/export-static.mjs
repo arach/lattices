@@ -11,6 +11,7 @@ const template = await readFile(join(distDir, 'index.html'), 'utf8')
 marked.use({
   mangle: false,
   headerIds: true,
+  renderer: createRenderer(),
 })
 
 const mdxComponents = [
@@ -215,4 +216,20 @@ function escapeHtml(value) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
+}
+
+function createRenderer() {
+  const renderer = new marked.Renderer()
+
+  renderer.code = (token) => {
+    const language = token.lang ? ` class="language-${escapeHtml(token.lang)}"` : ''
+    return [
+      '<div class="code-block">',
+      '<button type="button" class="code-copy-button" data-pagefind-ignore>Copy</button>',
+      `<pre><code${language}>${escapeHtml(token.text)}</code></pre>`,
+      '</div>',
+    ].join('')
+  }
+
+  return renderer
 }

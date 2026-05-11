@@ -1,3 +1,4 @@
+import { isValidElement, useState, type ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import rehypeRaw from 'rehype-raw'
 import rehypeSlug from 'rehype-slug'
@@ -45,6 +46,9 @@ const components: Components = {
   img(props) {
     return <img loading="lazy" {...props} />
   },
+  pre({ children, ...props }) {
+    return <CodeBlock {...props}>{children}</CodeBlock>
+  },
 }
 
 interface MarkdownRendererProps {
@@ -64,4 +68,59 @@ export function MarkdownRenderer({ content, className = 'markdown-body' }: Markd
       </ReactMarkdown>
     </div>
   )
+}
+
+function CodeBlock({ children, ...props }: { children?: ReactNode }) {
+  const [copied, setCopied] = useState(false)
+  const code = extractText(children).replace(/\n$/, '')
+
+  const copy = async () => {
+    if (!code) return
+    await copyText(code)
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1400)
+  }
+
+  return (
+    <div className="code-block">
+      <button
+        type="button"
+        className="code-copy-button"
+        onClick={copy}
+        aria-label={copied ? 'Copied code' : 'Copy code'}
+        data-pagefind-ignore
+      >
+        {copied ? 'Copied' : 'Copy'}
+      </button>
+      <pre {...props}>{children}</pre>
+    </div>
+  )
+}
+
+function extractText(node: ReactNode): string {
+  if (typeof node === 'string' || typeof node === 'number') return String(node)
+  if (Array.isArray(node)) return node.map(extractText).join('')
+  if (isValidElement<{ children?: ReactNode }>(node)) return extractText(node.props.children)
+  return ''
+}
+
+async function copyText(value: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value)
+      return
+    } catch {
+      // Fall through for browsers that expose Clipboard API but deny writes.
+    }
+  }
+
+  const textarea = document.createElement('textarea')
+  textarea.value = value
+  textarea.setAttribute('readonly', '')
+  textarea.style.position = 'fixed'
+  textarea.style.top = '-9999px'
+  document.body.appendChild(textarea)
+  textarea.select()
+  document.execCommand('copy')
+  textarea.remove()
 }

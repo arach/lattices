@@ -289,6 +289,13 @@
   font-size: 0.88em;
 }
 
+.code-block {
+  position: relative;
+  margin: 20px 0;
+}
+
+.markdown-body .code-block pre,
+.prose .code-block pre,
 .markdown-body pre,
 .prose pre {
   margin: 20px 0;
@@ -299,11 +306,39 @@
   background: #111;
 }
 
+.markdown-body .code-block pre,
+.prose .code-block pre {
+  margin: 0;
+  padding-right: 84px;
+}
+
 .markdown-body pre code,
 .prose pre code {
   border: 0;
   background: transparent;
   padding: 0;
+}
+
+.code-copy-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  min-width: 54px;
+  height: 28px;
+  border: 1px solid var(--docs-border-lit);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--docs-bg) 82%, transparent);
+  color: var(--docs-muted);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.code-copy-button:hover {
+  color: var(--docs-text);
+  background: var(--docs-surface);
 }
 
 .markdown-body table,

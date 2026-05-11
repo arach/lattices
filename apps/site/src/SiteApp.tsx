@@ -1,17 +1,48 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { BlogIndex, BlogPostPage } from './components/Blog'
 import { DocsPage } from './components/Docs'
 import LandingPage from './components/LandingPage'
 import { defaultDoc, getBlogPost, getDoc } from './lib/content'
 
 export default function SiteApp() {
-  const path = normalizePath(window.location.pathname)
+  const [path, setPath] = useState(() => normalizePath(window.location.pathname))
   const route = resolveRoute(path)
 
   useEffect(() => {
     document.title = route.title
     setMeta('description', route.description)
   }, [route.description, route.title])
+
+  useEffect(() => {
+    const syncPath = () => setPath(normalizePath(window.location.pathname))
+    window.addEventListener('popstate', syncPath)
+    return () => window.removeEventListener('popstate', syncPath)
+  }, [])
+
+  useEffect(() => {
+    const handleClick = (event: MouseEvent) => {
+      if (shouldIgnoreClick(event)) return
+
+      const target = event.target instanceof Element ? event.target : null
+      const anchor = target?.closest<HTMLAnchorElement>('a[href]')
+      if (!anchor || shouldIgnoreAnchor(anchor)) return
+
+      const url = new URL(anchor.href, window.location.href)
+      if (url.origin !== window.location.origin) return
+
+      const nextPath = normalizePath(url.pathname)
+      if (url.pathname === window.location.pathname && url.hash) return
+      if (resolveRoute(nextPath).kind === 'not-found') return
+
+      event.preventDefault()
+      window.history.pushState({}, '', `${url.pathname}${url.search}${url.hash}`)
+      setPath(nextPath)
+      scrollAfterNavigation(url.hash)
+    }
+
+    document.addEventListener('click', handleClick)
+    return () => document.removeEventListener('click', handleClick)
+  }, [])
 
   if (route.kind === 'home') return <LandingPage />
   if (route.kind === 'docs') return <DocsPage slug={route.slug} />
@@ -91,6 +122,40 @@ function resolveRoute(path: string): Route {
     title: 'Page not found — Lattices',
     description: 'Page not found',
   }
+}
+
+function shouldIgnoreClick(event: MouseEvent): boolean {
+  return (
+    event.defaultPrevented ||
+    event.button !== 0 ||
+    event.metaKey ||
+    event.altKey ||
+    event.ctrlKey ||
+    event.shiftKey
+  )
+}
+
+function shouldIgnoreAnchor(anchor: HTMLAnchorElement): boolean {
+  return (
+    Boolean(anchor.target && anchor.target !== '_self') ||
+    anchor.hasAttribute('download') ||
+    anchor.dataset.router === 'reload'
+  )
+}
+
+function scrollAfterNavigation(hash: string): void {
+  requestAnimationFrame(() => {
+    if (!hash) {
+      window.scrollTo({ top: 0, left: 0 })
+      return
+    }
+
+    try {
+      document.getElementById(decodeURIComponent(hash.slice(1)))?.scrollIntoView()
+    } catch {
+      document.getElementById(hash.slice(1))?.scrollIntoView()
+    }
+  })
 }
 
 function normalizePath(pathname: string): string {
