@@ -14,8 +14,8 @@ for keeping file structure as architecture.
 | `bin/` | Published TypeScript CLI and app helper entry points. |
 | `swift/` | Shared Swift package code used by the app. |
 | `apps/ios/` | iOS companion app experiments and local build state. |
-| `apps/site/` | Public marketing site and blog content. |
-| `apps/docs-site/` | Astro documentation site. |
+| `apps/site/` | Vite website, documentation, and blog content. |
+| `apps/site/scripts/agent-docs.mjs` | Agent-facing docs collector and static artifact writer. |
 | `docs/` | Markdown docs and engineering proposals. |
 | `tools/agents/skills/` | Agent skill pack for driving Lattices. |
 | `assets/` | Shared release/app assets. |
@@ -27,7 +27,7 @@ for keeping file structure as architecture.
 The root currently mixes categories:
 
 - shipped product surfaces: `apps/mac/`, `bin/`, `swift/`
-- websites: `apps/site/`, `apps/docs-site/`
+- website/docs: `apps/site/`
 - companion experiments: `apps/ios/`
 - generated or release output: `dist/`
 - maintainer and agent affordances: `docs/`, `tools/`, `tests/`
@@ -43,8 +43,7 @@ Do not reorganize everything at once. The target is:
 apps/
   mac/            # macOS menu bar app
   ios/            # iOS companion app
-  site/           # marketing site and blog content
-  docs-site/      # documentation site
+  site/           # website, documentation, and blog content
 
 packages/
   cli/            # current bin/ plus TypeScript package surface

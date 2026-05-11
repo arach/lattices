@@ -22,7 +22,7 @@ export default {
       'app-helper': 'bin/lattices-app.ts',
       'menu-bar-app': 'apps/mac/Sources/',
       'docs': 'docs/',
-      'docs-site': 'apps/docs-site/',
+      'site': 'apps/site/',
       'marketing-site': 'apps/site/',
     },
 

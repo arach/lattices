@@ -4,9 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "astro dev",
-    "build": "astro build",
-    "preview": "astro preview",
+    "dev": "vite",
+    "build": "vite build && node scripts/export-static.mjs && pagefind --site dist",
+    "agent-docs": "node scripts/agent-docs.mjs",
+    "preview": "vite preview",
     "lint": "eslint .",
     "og": "node scripts/generate-og.js",
     "render:gesture": "remotion render scripts/remotion/gesture-completion.tsx GestureCompletion public/blog/gesture-completion-matrix.mp4 --codec h264 --pixel-format yuv420p",
@@ -14,11 +15,12 @@
   },
   "dependencies": {
     "@arach/arc": "^0.3.1",
-    "@astrojs/mdx": "^5.0.1",
-    "@astrojs/react": "^5.0.0",
-    "astro": "^6.0.5",
+    "rehype-raw": "^7.0.0",
+    "rehype-slug": "^6.0.0",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@arach/og": "^0.3.0",
@@ -32,6 +34,8 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
+    "marked": "^17.0.1",
+    "pagefind": "^1.5.2",
     "puppeteer": "^24.37.5",
     "remotion": "^4.0.457",
     "typescript": "~5.9.3",
