@@ -131,6 +131,8 @@ const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span cla
   position: <span class="hl-str">'right'</span>
 })`;
 
+const showLatsDevTeaser = import.meta.env.PUBLIC_SHOW_LATS_DEV_TEASER === "true";
+
 export default function App() {
   const [pm, setPm] = useState<PkgManager>("npm");
   const [copied, setCopied] = useState(false);
@@ -199,7 +201,7 @@ export default function App() {
             </div>
             <div className="hero-pillar">
               <h2>Workspace assistant for you</h2>
-              <p>Ask for layouts, focus, screen search, voice actions, and recovery help in plain language.</p>
+              <p>Ask for layouts, focus, screen search, mouse gestures, voice actions, and small on-screen animations.</p>
             </div>
             <div className="hero-pillar">
               <h2>Managed tmux sessions</h2>
@@ -245,36 +247,37 @@ export default function App() {
           </div>
         </section>
 
-        {/* Coming soon */}
-        <section className="next-section fade-in fade-in-delay-2">
-          <div className="next-card">
-            <div className="next-copy">
-              <div className="next-kicker">Opening for TestFlight</div>
-              <h2>Lats.dev for iPad</h2>
-              <p>
-                A new companion app and domain for controlling your Mac workspace
-                from beside the keyboard: trackpad gestures, window actions, live
-                state, and shortcuts tuned for iPad. Early testing starts next.
-              </p>
-            </div>
-            <div className="next-preview" aria-hidden="true">
-              <div className="deck-shell">
-                <div className="deck-top">
-                  <span>lats.dev</span>
-                  <span>mac · live</span>
-                </div>
-                <div className="deck-trackpad">
-                  <div className="deck-crosshair" />
-                </div>
-                <div className="deck-actions">
-                  {["tile", "focus", "voice", "agent", "spaces", "keys"].map((label) => (
-                    <div className="deck-action" key={label}>{label}</div>
-                  ))}
+        {showLatsDevTeaser && (
+          <section className="next-section fade-in fade-in-delay-2">
+            <div className="next-card">
+              <div className="next-copy">
+                <div className="next-kicker">Opening for TestFlight</div>
+                <h2>Lats.dev for iPad</h2>
+                <p>
+                  A new companion app and domain for controlling your Mac workspace
+                  from beside the keyboard: trackpad gestures, window actions, live
+                  state, and shortcuts tuned for iPad. Early testing starts next.
+                </p>
+              </div>
+              <div className="next-preview" aria-hidden="true">
+                <div className="deck-shell">
+                  <div className="deck-top">
+                    <span>lats.dev</span>
+                    <span>mac · live</span>
+                  </div>
+                  <div className="deck-trackpad">
+                    <div className="deck-crosshair" />
+                  </div>
+                  <div className="deck-actions">
+                    {["tile", "focus", "voice", "agent", "spaces", "keys"].map((label) => (
+                      <div className="deck-action" key={label}>{label}</div>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
 
         {/* Menu bar app */}
         <section className="app-section" id="app">
@@ -292,6 +295,7 @@ export default function App() {
                   Command palette via <code>Cmd+Shift+M</code>
                 </li>
                 <li>Window tiling to halves, quarters, or full screen</li>
+                <li>Mouse gestures for window actions and shortcuts</li>
                 <li>
                   <a href="/docs/layers">Workspace layers</a> with <code>Cmd+Option+1/2/3</code>
                 </li>
@@ -299,6 +303,7 @@ export default function App() {
                   <a href="/docs/layers#tab-groups">Tab groups</a> — related projects as tabs in one session
                 </li>
                 <li>Cheat sheet HUD and omni search</li>
+                <li>Put little overlay animations on screen for gestures, status, and feedback</li>
                 <li>Voice commands via Vox integration <span className="beta-badge">beta</span></li>
               </ul>
               <a
@@ -343,8 +348,16 @@ export default function App() {
                 <p>Hotkeys, snap to grids, switchable window groups.</p>
               </div>
               <div className="feature">
+                <h3>Mouse gestures</h3>
+                <p>Draw shapes to tile, focus, launch, or run shortcuts with visible feedback.</p>
+              </div>
+              <div className="feature">
                 <h3>Screen text indexing</h3>
                 <p>AX + OCR. Search text across all windows.</p>
+              </div>
+              <div className="feature">
+                <h3>Screen animations</h3>
+                <p>Put little visuals on screen for gesture trails, status, and workspace cues.</p>
               </div>
               <div className="feature">
                 <h3>Voice commands <span className="beta-badge">beta</span></h3>
