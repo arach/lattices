@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { defaultDoc, getDoc, navGroups, type DocPage } from '../lib/content'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { SiteHeader } from './SiteChrome'
@@ -26,7 +27,7 @@ export function DocsPage({ slug }: DocsPageProps) {
       <SiteHeader />
       <main className="docs-shell" data-pagefind-body>
         <aside className="docs-sidebar" data-pagefind-ignore>
-          <Sidebar currentSlug={doc.slug} />
+          <Sidebar key={doc.slug} currentSlug={doc.slug} />
         </aside>
         <article className="docs-article">
           <header className="docs-article-header">
@@ -44,10 +45,41 @@ export function DocsPage({ slug }: DocsPageProps) {
 }
 
 function Sidebar({ currentSlug }: { currentSlug: string }) {
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const currentItem = navGroups.flatMap((group) => group.items).find((item) => item.id === currentSlug)
+
   return (
     <nav className="sidebar-nav" aria-label="Documentation">
+      <div className="desktop-sidebar-nav">
+        <NavGroups currentSlug={currentSlug} />
+      </div>
+      <div className={mobileOpen ? 'mobile-docs-nav open' : 'mobile-docs-nav'}>
+        <button
+          type="button"
+          className="mobile-docs-trigger"
+          aria-expanded={mobileOpen}
+          aria-controls="mobile-docs-panel"
+          onClick={() => setMobileOpen((open) => !open)}
+        >
+          <span>
+            <span className="mobile-docs-label">Docs menu</span>
+            <span className="mobile-docs-current">{currentItem?.title || 'Documentation'}</span>
+          </span>
+          <span className="mobile-docs-chevron" aria-hidden="true">{mobileOpen ? '−' : '+'}</span>
+        </button>
+        <div id="mobile-docs-panel" className="mobile-docs-panel" hidden={!mobileOpen}>
+          <NavGroups currentSlug={currentSlug} compact />
+        </div>
+      </div>
+    </nav>
+  )
+}
+
+function NavGroups({ currentSlug, compact = false }: { currentSlug: string; compact?: boolean }) {
+  return (
+    <>
       {navGroups.map((group) => (
-        <details key={group.id} open>
+        <details key={group.id} open={!compact || group.items.some((item) => item.id === currentSlug)}>
           <summary>
             <span>{group.title}</span>
             <span>▾</span>
@@ -63,7 +95,7 @@ function Sidebar({ currentSlug }: { currentSlug: string }) {
           </ul>
         </details>
       ))}
-    </nav>
+    </>
   )
 }
 
