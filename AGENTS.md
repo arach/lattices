@@ -21,8 +21,7 @@
 | App Helper | `bin/lattices-app.ts` | Build, launch, quit, and restart the app |
 | Menu Bar App | `apps/mac/Sources/` | |
 | Docs | `docs/` | |
-| Docs Site | `apps/docs-site/` | |
-| Marketing Site | `apps/site/` | |
+| Site | `apps/site/` | Vite website, docs, and blog |
 
 ## Quick Navigation
 
@@ -34,6 +33,7 @@
 - Working with **terminal**? → Check apps/mac/Sources/Core/Workspace/Terminal/Terminal.swift for supported terminals and launch logic
 - Working with **daemon**? → Check apps/mac/Sources/Core/Daemon/DaemonServer.swift and apps/mac/Sources/Core/Daemon/LatticesApi.swift for WebSocket API
 - Working with **api**? → Check docs/api.md for the daemon RPC reference
+- Working with **agent docs**? → Check docs/agents.md and apps/site/scripts/agent-docs.mjs for raw markdown, prompt, and context artifacts
 
 ## Quickstart
 

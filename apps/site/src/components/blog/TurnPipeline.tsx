@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 
 const ff = "-apple-system, BlinkMacSystemFont, 'Inter', sans-serif"
 const mono = "'JetBrains Mono', monospace"
@@ -16,7 +16,7 @@ interface Stage {
   id: string
   label: string
   time: string
-  Icon: () => JSX.Element
+  Icon: () => ReactNode
   color: string
   detail: string
   parallel?: string

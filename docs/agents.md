@@ -50,6 +50,48 @@ lattices call api.schema
 lattices voice intents
 ```
 
+## Agent documentation artifacts
+
+The site build emits agent-first files in addition to rendered pages.
+Use these when an agent needs raw markdown, prompt text, or a compact
+context bundle without scraping HTML.
+
+| Need | URL |
+|------|-----|
+| Discovery manifest | `/agent/manifest.json` or `/docs.json` |
+| Full docs with markdown bodies | `/agent/docs.json` or `/agent-docs.json` |
+| Prompt registry | `/agent/prompts.json` or `/prompts.json` |
+| Combined agent context | `/agent/context.md` or `/agent-context.md` |
+| Combined raw docs | `/agent/bundles/all.md` or `/docs/all.md` |
+| Core onboarding bundle | `/agent/bundles/core.md` |
+| Daemon/API bundle | `/agent/bundles/daemon-api.md` |
+| Voice and prompts bundle | `/agent/bundles/voice.md` |
+| Install bundle | `/agent/bundles/install.md` |
+| Raw markdown mirror | `/agent/raw/docs/<slug>.md` or `/docs/markdown/<slug>.md` |
+
+Prompt files are mirrored at `/prompts/<id>.md` and
+`/docs/prompts/<id>.md`. Nested docs keep path-safe slugs, for example
+`docs/reference/install-agent.md` becomes
+`/agent/raw/docs/reference/install-agent.md`.
+
+Local scripts can import the same convenience functions used by the
+build:
+
+```js
+import {
+  collectMarkdownArtifacts,
+  getMarkdownDoc,
+  getPrompt,
+  buildAgentManifest,
+  buildPromptRegistry,
+  buildContextBundle,
+  writeAgentArtifacts,
+} from './apps/site/scripts/agent-docs.mjs'
+```
+
+Run `bun run docs:agent` to regenerate the static artifacts without
+running the full site build.
+
 ## Placement contract
 
 At the boundary, placements may be strings for convenience.

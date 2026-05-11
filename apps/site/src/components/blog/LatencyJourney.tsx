@@ -51,10 +51,9 @@ export default function LatencyJourney() {
       </div>
 
       <div style={{ display: 'grid', gap: 4 }}>
-        {iterations.map((iter, i) => {
+        {iterations.map((iter) => {
           const isActive = active === iter.id
           const barWidth = Math.max(2, (iter.time / maxTime) * 100)
-          const prevTime = i > 0 ? iterations[i - 1].time : null
 
           return (
             <div

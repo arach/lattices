@@ -12,6 +12,18 @@
 - Daemon API: /docs/api
 - Overview: /docs/overview
 
+## Agent Retrieval Artifacts
+
+- Structured manifest: /docs.json
+- Full manifest with markdown: /agent-docs.json
+- Agent namespace manifest: /agent/manifest.json
+- Agent context bundle: /agent-context.md
+- Agent context JSON: /agent-context.json
+- Raw markdown bundle: /docs/all.md
+- Raw markdown base: /docs/markdown/
+- Prompt manifest: /prompts.json
+- Prompt bundle: /prompts/all.md
+
 ## Quickstart
 
 Get from zero to a running workspace in five steps.
