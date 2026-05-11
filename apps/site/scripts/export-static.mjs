@@ -1,12 +1,35 @@
 import { copyFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 import { marked } from 'marked'
+import { createJavaScriptRegexEngine } from 'shiki/engine/javascript'
+import { createHighlighterCore } from 'shiki/core'
+import bash from 'shiki/langs/sh.mjs'
+import javascript from 'shiki/langs/js.mjs'
+import json from 'shiki/langs/json.mjs'
+import markdown from 'shiki/langs/md.mjs'
+import mermaid from 'shiki/langs/mermaid.mjs'
+import swift from 'shiki/langs/swift.mjs'
+import typescript from 'shiki/langs/ts.mjs'
 import { writeAgentArtifacts } from './agent-docs.mjs'
 
 const siteDir = resolve(import.meta.dirname, '..')
 const repoRoot = resolve(siteDir, '..', '..')
 const distDir = join(siteDir, 'dist')
 const template = await readFile(join(distDir, 'index.html'), 'utf8')
+const shikiTheme = JSON.parse(await readFile(join(siteDir, 'src', 'data', 'lattices-shiki-theme.json'), 'utf8'))
+const highlighter = await createHighlighterCore({
+  themes: [shikiTheme],
+  langs: [
+    ...bash,
+    ...json,
+    ...javascript,
+    ...typescript,
+    ...swift,
+    ...markdown,
+    ...mermaid,
+  ],
+  engine: createJavaScriptRegexEngine(),
+})
 
 marked.use({
   mangle: false,
@@ -222,14 +245,37 @@ function createRenderer() {
   const renderer = new marked.Renderer()
 
   renderer.code = (token) => {
-    const language = token.lang ? ` class="language-${escapeHtml(token.lang)}"` : ''
+    const language = normalizeLanguage(token.lang)
+    const highlighted = highlightStaticCode(token.text, language)
+
     return [
       '<div class="code-block">',
       '<button type="button" class="code-copy-button" data-pagefind-ignore>Copy</button>',
-      `<pre><code${language}>${escapeHtml(token.text)}</code></pre>`,
+      `<div class="shiki-code">${highlighted}</div>`,
       '</div>',
     ].join('')
   }
 
   return renderer
+}
+
+function highlightStaticCode(code, language) {
+  try {
+    return highlighter.codeToHtml(code, { lang: language, theme: 'lattices-green' })
+  } catch {
+    return highlighter.codeToHtml(code, { lang: 'text', theme: 'lattices-green' })
+  }
+}
+
+function normalizeLanguage(language) {
+  const lang = language?.toLowerCase().trim()
+
+  if (!lang) return 'text'
+  if (lang === 'sh' || lang === 'shell' || lang === 'zsh') return 'bash'
+  if (lang === 'js' || lang === 'jsx') return 'javascript'
+  if (lang === 'ts' || lang === 'tsx') return 'typescript'
+
+  return ['bash', 'json', 'javascript', 'typescript', 'swift', 'markdown', 'mermaid', 'text'].includes(lang)
+    ? lang
+    : 'text'
 }

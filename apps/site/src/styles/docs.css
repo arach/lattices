@@ -108,9 +108,13 @@
   align-self: start;
 }
 
-.sidebar-nav {
+.desktop-sidebar-nav {
   display: grid;
   gap: 16px;
+}
+
+.mobile-docs-nav {
+  display: none;
 }
 
 .sidebar-nav details {
@@ -154,6 +158,64 @@
 .sidebar-nav a.active {
   color: var(--docs-accent);
   background: color-mix(in srgb, var(--docs-accent) 10%, transparent);
+}
+
+.mobile-docs-trigger {
+  display: flex;
+  width: 100%;
+  min-height: 58px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--docs-border-lit);
+  border-radius: 8px;
+  background: var(--docs-surface);
+  color: var(--docs-text);
+  padding: 10px 12px;
+  font: inherit;
+  text-align: left;
+}
+
+.mobile-docs-trigger > span:first-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mobile-docs-label {
+  color: var(--docs-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.mobile-docs-current {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-docs-chevron {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  color: var(--docs-muted);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.mobile-docs-panel {
+  margin-top: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+.mobile-docs-panel[hidden] {
+  display: none;
 }
 
 .docs-article {
@@ -294,6 +356,10 @@
   margin: 20px 0;
 }
 
+.shiki-code {
+  display: block;
+}
+
 .markdown-body .code-block pre,
 .prose .code-block pre,
 .markdown-body pre,
@@ -310,6 +376,17 @@
 .prose .code-block pre {
   margin: 0;
   padding-right: 84px;
+}
+
+.markdown-body .code-block .shiki,
+.prose .code-block .shiki {
+  background: #111113 !important;
+  box-shadow: inset 0 1px 0 rgba(95, 224, 142, 0.08);
+}
+
+.markdown-body .code-block .line,
+.prose .code-block .line {
+  min-height: 1.55em;
 }
 
 .markdown-body pre code,
@@ -546,8 +623,18 @@
   }
 
   .docs-sidebar {
-    position: static;
-    margin-bottom: 28px;
+    position: sticky;
+    top: 62px;
+    z-index: 10;
+    margin-bottom: 24px;
+  }
+
+  .desktop-sidebar-nav {
+    display: none;
+  }
+
+  .mobile-docs-nav {
+    display: block;
   }
 }
 

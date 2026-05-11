@@ -1,4 +1,4 @@
-import { isValidElement, useState, type ReactNode } from 'react'
+import { isValidElement, useEffect, useState, type ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import rehypeRaw from 'rehype-raw'
 import rehypeSlug from 'rehype-slug'
@@ -72,7 +72,28 @@ export function MarkdownRenderer({ content, className = 'markdown-body' }: Markd
 
 function CodeBlock({ children, ...props }: { children?: ReactNode }) {
   const [copied, setCopied] = useState(false)
+  const [highlighted, setHighlighted] = useState<{ key: string; html: string } | null>(null)
   const code = extractText(children).replace(/\n$/, '')
+  const language = extractLanguage(children)
+  const highlightKey = `${language || 'text'}:${code}`
+  const highlightedHtml = highlighted?.key === highlightKey ? highlighted.html : null
+
+  useEffect(() => {
+    let cancelled = false
+
+    import('../lib/highlight')
+      .then(({ highlightCode }) => highlightCode(code, language))
+      .then((html) => {
+        if (!cancelled) setHighlighted({ key: highlightKey, html })
+      })
+      .catch(() => {
+        if (!cancelled) setHighlighted(null)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [code, highlightKey, language])
 
   const copy = async () => {
     if (!code) return
@@ -92,7 +113,11 @@ function CodeBlock({ children, ...props }: { children?: ReactNode }) {
       >
         {copied ? 'Copied' : 'Copy'}
       </button>
-      <pre {...props}>{children}</pre>
+      {highlightedHtml ? (
+        <div className="shiki-code" dangerouslySetInnerHTML={{ __html: highlightedHtml }} />
+      ) : (
+        <pre {...props}>{children}</pre>
+      )}
     </div>
   )
 }
@@ -102,6 +127,18 @@ function extractText(node: ReactNode): string {
   if (Array.isArray(node)) return node.map(extractText).join('')
   if (isValidElement<{ children?: ReactNode }>(node)) return extractText(node.props.children)
   return ''
+}
+
+function extractLanguage(node: ReactNode): string | undefined {
+  if (Array.isArray(node)) {
+    return node.map(extractLanguage).find(Boolean)
+  }
+
+  if (!isValidElement<{ className?: string; children?: ReactNode }>(node)) return undefined
+
+  const className = node.props.className
+  const match = className?.match(/language-([A-Za-z0-9_-]+)/)
+  return match?.[1] || extractLanguage(node.props.children)
 }
 
 async function copyText(value: string): Promise<void> {
