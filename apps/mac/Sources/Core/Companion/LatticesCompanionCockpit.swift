@@ -36,6 +36,7 @@ enum LatticesCompanionShortcutCategory: String, CaseIterable, Identifiable {
     case mouse
     case dev
     case media
+    case talkie
 
     var id: String { rawValue }
 
@@ -57,6 +58,8 @@ enum LatticesCompanionShortcutCategory: String, CaseIterable, Identifiable {
             return "Dev"
         case .media:
             return "Media"
+        case .talkie:
+            return "Talkie"
         }
     }
 
@@ -76,6 +79,8 @@ enum LatticesCompanionShortcutCategory: String, CaseIterable, Identifiable {
             return "green"
         case .media:
             return "pink"
+        case .talkie:
+            return "violet"
         }
     }
 }
@@ -119,6 +124,13 @@ enum LatticesCompanionCockpitCatalog {
                     "layout-optimize", "mouse-find", "mouse-summon", "key-space",
                     "place-left", "place-right", "place-center", "place-maximize"
                 ]
+            ),
+            .init(
+                id: "talkie",
+                title: "Talkie",
+                subtitle: "Talkie capture, app switching, and companion actions",
+                columns: 4,
+                slotIDs: TalkieDeckProvider.talkiePageSlotIDs
             ),
             .init(
                 id: "dev",
@@ -173,6 +185,16 @@ enum LatticesCompanionCockpitCatalog {
 
     static let shortcuts: [LatticesCompanionShortcutDefinition] = [
         .init(id: "", title: "Empty", subtitle: "Leave this slot unused", iconSystemName: "square.dashed", accentToken: nil, category: .layout),
+    ] + TalkieDeckProvider.shortcuts.map {
+        LatticesCompanionShortcutDefinition(
+            id: $0.id,
+            title: $0.title,
+            subtitle: $0.subtitle,
+            iconSystemName: $0.iconSystemName,
+            accentToken: $0.accentToken,
+            category: .talkie
+        )
+    } + [
         .init(id: "voice-toggle", title: "Voice Toggle", subtitle: "Start or stop hands-off voice", iconSystemName: "waveform.badge.mic", accentToken: "voice", category: .voice),
         .init(id: "voice-cancel", title: "Voice Cancel", subtitle: "Cancel the current voice turn", iconSystemName: "xmark.circle.fill", accentToken: "rose", category: .voice),
         .init(id: "switch-app-prev", title: "Previous App", subtitle: "Focus the prior visible application", iconSystemName: "chevron.left.square.fill", accentToken: "switch", category: .switching),
@@ -239,7 +261,8 @@ enum LatticesCompanionCockpitCatalog {
         layout: LatticesCompanionCockpitLayout,
         voice: DeckVoiceState?,
         desktop: DeckDesktopSummary?,
-        layoutState: DeckLayoutState?
+        layoutState: DeckLayoutState?,
+        talkie: TalkieDeckSnapshot
     ) -> DeckCockpitState {
         let normalizedLayout = normalized(layout)
         let focusName = layoutState?.frontmostWindow?.appName ?? desktop?.activeAppName ?? "Mac"
@@ -261,7 +284,8 @@ enum LatticesCompanionCockpitCatalog {
                             slotIndex: index,
                             voice: voice,
                             desktop: desktop,
-                            layoutState: layoutState
+                            layoutState: layoutState,
+                            talkie: talkie
                         )
                     }
                 )
@@ -283,13 +307,15 @@ enum LatticesCompanionCockpitCatalog {
         slotIndex: Int,
         voice: DeckVoiceState?,
         desktop: DeckDesktopSummary?,
-        layoutState: DeckLayoutState?
+        layoutState: DeckLayoutState?,
+        talkie: TalkieDeckSnapshot
     ) -> DeckCockpitTile {
         let rendered = renderedShortcut(
             for: shortcutID,
             voice: voice,
             desktop: desktop,
-            layoutState: layoutState
+            layoutState: layoutState,
+            talkie: talkie
         )
 
         return DeckCockpitTile(
@@ -312,13 +338,18 @@ enum LatticesCompanionCockpitCatalog {
         for shortcutID: String,
         voice: DeckVoiceState?,
         desktop: DeckDesktopSummary?,
-        layoutState: DeckLayoutState?
+        layoutState: DeckLayoutState?,
+        talkie: TalkieDeckSnapshot
     ) -> RenderedShortcut {
         let frontmostWindow = layoutState?.frontmostWindow
         let activeAppName = desktop?.activeAppName ?? frontmostWindow?.appName
 
         if let keyShortcut = keyboardShortcut(for: shortcutID) {
             return keyShortcut
+        }
+
+        if let talkieShortcut = talkieShortcut(for: shortcutID, snapshot: talkie) {
+            return talkieShortcut
         }
 
         switch shortcutID {
@@ -550,6 +581,39 @@ enum LatticesCompanionCockpitCatalog {
             ],
             isEnabled: true,
             isActive: false
+        )
+    }
+
+    private static func talkieShortcut(
+        for shortcutID: String,
+        snapshot: TalkieDeckSnapshot
+    ) -> RenderedShortcut? {
+        guard let shortcut = TalkieDeckProvider.shortcut(for: shortcutID) else { return nil }
+
+        let isActive = snapshot.activeShortcutIDs.contains(shortcut.id)
+        let detail = snapshot.detailByShortcutID[shortcut.id]
+            ?? snapshot.recentResultByShortcutID[shortcut.id]
+        let subtitle: String
+        if let detail, !detail.isEmpty {
+            subtitle = detail
+        } else if snapshot.isReachable {
+            subtitle = shortcut.subtitle
+        } else if snapshot.isRunning {
+            subtitle = snapshot.lastError ?? "Talkie is running; waiting for its bridge."
+        } else {
+            subtitle = "Open Talkie on this Mac."
+        }
+
+        return RenderedShortcut(
+            title: shortcut.title,
+            subtitle: subtitle,
+            iconSystemName: shortcut.iconSystemName,
+            accentToken: shortcut.accentToken,
+            categoryTint: shortcut.accentToken,
+            actionID: snapshot.isReachable ? "talkie.perform" : "talkie.open",
+            payload: snapshot.isReachable ? ["shortcutID": .string(shortcut.id)] : [:],
+            isEnabled: true,
+            isActive: isActive
         )
     }
 }

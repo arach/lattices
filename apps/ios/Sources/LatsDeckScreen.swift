@@ -197,6 +197,7 @@ struct LatsTelemetry {
 
 struct LatsTopChrome: View {
     let deckName: String
+    let deckNames: [String]
     let accent: Color
     let onSwitcher: () -> Void
     let onClose: () -> Void
@@ -211,8 +212,8 @@ struct LatsTopChrome: View {
                 Text("·").foregroundStyle(LatsPalette.textFaint)
                 Button(action: onSwitcher) {
                     HStack(spacing: 6) {
-                        ForEach(["command", "dev", "media", "windows", "voice"], id: \.self) { name in
-                            if name != "command" {
+                        ForEach(Array(deckNames.enumerated()), id: \.offset) { index, name in
+                            if index > 0 {
                                 Text("/").font(LatsFont.mono(11)).foregroundStyle(LatsPalette.textFaint)
                             }
                             Text(name)
@@ -1754,6 +1755,13 @@ struct LatsDeckScreen: View {
         activeCockpitPage()?.title.lowercased() ?? CommandDeck.name
     }
 
+    private var deckNames: [String] {
+        let liveNames = liveSnapshot?.cockpit?.pages
+            .map { $0.title.lowercased() }
+            .filter { !$0.isEmpty } ?? []
+        return liveNames.isEmpty ? ["command", "dev", "media", "windows", "voice"] : liveNames
+    }
+
     var body: some View {
         ZStack {
             LatsPalette.bgEdge.ignoresSafeArea()
@@ -1761,6 +1769,7 @@ struct LatsDeckScreen: View {
             VStack(spacing: 0) {
                 LatsTopChrome(
                     deckName: deckName,
+                    deckNames: deckNames,
                     accent: deckAccent,
                     onSwitcher: { cycleDeck() },
                     onClose: { dismiss() }

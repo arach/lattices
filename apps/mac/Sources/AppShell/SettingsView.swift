@@ -7,6 +7,7 @@ struct SettingsContentView: View {
     private enum SettingsSection: String, CaseIterable, Identifiable {
         case general
         case shortcuts
+        case mouse
         case ai
         case search
         case companion
@@ -17,6 +18,7 @@ struct SettingsContentView: View {
             switch self {
             case .general: return "General"
             case .shortcuts: return "Shortcuts"
+            case .mouse: return "Mouse"
             case .ai: return "AI"
             case .search: return "Search & OCR"
             case .companion: return "LATS iOS Companion"
@@ -27,6 +29,7 @@ struct SettingsContentView: View {
             switch self {
             case .general: return "slider.horizontal.3"
             case .shortcuts: return "command"
+            case .mouse: return "computermouse"
             case .ai: return "sparkles"
             case .search: return "text.viewfinder"
             case .companion: return "ipad.and.iphone"
@@ -37,6 +40,7 @@ struct SettingsContentView: View {
             switch self {
             case .general: return "Workspace"
             case .shortcuts: return "Controls"
+            case .mouse: return "Input"
             case .ai: return "Agents"
             case .search: return "Indexing"
             case .companion: return "Local Bridge"
@@ -49,8 +53,10 @@ struct SettingsContentView: View {
                 return "App updates, permissions, terminal defaults, project discovery, and interaction behavior."
             case .shortcuts:
                 return "A full map of global hotkeys for workspace movement and tmux flow."
+            case .mouse:
+                return "Middle-click gestures, HUD confirmation, and rule configuration."
             case .ai:
-                return "Claude CLI detection plus advisor model and spending controls."
+                return "Provider auth, chat readiness, and voice advisor state."
             case .search:
                 return "OCR cadence, quality, and recent capture visibility."
             case .companion:
@@ -70,9 +76,11 @@ struct SettingsContentView: View {
     @ObservedObject var permChecker: PermissionChecker = .shared
     @ObservedObject var mouseGestureController: MouseGestureController = .shared
     @ObservedObject var keyboardRemapController: KeyboardRemapController = .shared
+    @ObservedObject var assistantSession: PiChatSession = .shared
     var onBack: (() -> Void)? = nil
 
     @State private var selectedTab: SettingsSection = .general
+    @FocusState private var assistantAuthFieldFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -112,6 +120,18 @@ struct SettingsContentView: View {
         Binding(
             get: { workspaceManager.snapZonesConfig.modifier ?? .command },
             set: { workspaceManager.updateSnapModifier($0) }
+        )
+    }
+
+    private var companionTrackpadBinding: Binding<Bool> {
+        Binding(
+            get: { prefs.companionTrackpadEnabled },
+            set: { enabled in
+                prefs.companionTrackpadEnabled = enabled
+                if enabled && !permChecker.accessibility {
+                    permChecker.requestAccessibility()
+                }
+            }
         )
     }
 
@@ -265,6 +285,8 @@ struct SettingsContentView: View {
             generalContent
         case .shortcuts:
             shortcutsContent
+        case .mouse:
+            mouseGesturesContent
         case .ai:
             aiContent
         case .search:
@@ -746,6 +768,122 @@ struct SettingsContentView: View {
         }
         .padding(10)
         .background(shortcutsInsetPanel)
+    }
+
+    private var mouseGesturesContent: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                settingsCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(alignment: .top, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text("Middle-click gestures")
+                                    .font(Typo.monoBold(11))
+                                    .foregroundColor(Palette.text)
+                                Text("Directional gestures can switch Spaces, open the Screen Map, trigger dictation, or run custom shortcut sequences.")
+                                    .font(Typo.caption(10))
+                                    .foregroundColor(Palette.textMuted)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer()
+                            Toggle("", isOn: $prefs.mouseGesturesEnabled)
+                                .toggleStyle(.switch)
+                                .controlSize(.small)
+                                .labelsHidden()
+                        }
+
+                        cardDivider
+
+                        mouseGestureHUDSettingsControls
+
+                        cardDivider
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Active mappings")
+                                .font(Typo.mono(10))
+                                .foregroundColor(Palette.textDim)
+
+                            ForEach(mouseShortcutStore.summaryLines.prefix(8), id: \.self) { line in
+                                Text(line)
+                                    .font(Typo.caption(9))
+                                    .foregroundColor(Palette.textMuted.opacity(0.78))
+                            }
+
+                            if mouseShortcutStore.summaryLines.isEmpty {
+                                Text("No active mappings")
+                                    .font(Typo.caption(9))
+                                    .foregroundColor(Palette.textMuted.opacity(0.6))
+                            }
+                        }
+
+                        cardDivider
+
+                        breakerStatusRow(
+                            state: mouseGestureController.breakerState,
+                            label: "Mouse gestures"
+                        ) {
+                            mouseGestureController.reArmAfterBreakerTrip()
+                        }
+
+                        HStack(spacing: 8) {
+                            Button {
+                                mouseShortcutStore.openConfiguration()
+                            } label: {
+                                Text("Configure...")
+                                    .font(Typo.monoBold(10))
+                                    .foregroundColor(Palette.text)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 4)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(Palette.surfaceHov)
+                                            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
+                                    )
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                MouseInputEventViewer.shared.show()
+                            } label: {
+                                Text("Event Viewer")
+                                    .font(Typo.monoBold(10))
+                                    .foregroundColor(Palette.text)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 4)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(Palette.surfaceHov)
+                                            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
+                                    )
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                mouseShortcutStore.restoreDefaults()
+                            } label: {
+                                Text("Restore Defaults")
+                                    .font(Typo.monoBold(10))
+                                    .foregroundColor(Palette.text)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 4)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(Palette.surfaceHov)
+                                            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        Text("Rules live in ~/.lattices/mouse-shortcuts.json. Use Event Viewer to discover what buttons your mouse emits.")
+                            .font(Typo.caption(9))
+                            .foregroundColor(Palette.textMuted.opacity(0.7))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .padding(16)
+        }
     }
 
     private var generalContent: some View {
@@ -1700,161 +1838,290 @@ struct SettingsContentView: View {
 
     private var aiContent: some View {
         ScrollView {
-            VStack(spacing: 12) {
-                // ── Claude CLI ──
-                settingsCard {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "sparkles")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(Palette.running)
-                            Text("Claude CLI")
-                                .font(Typo.mono(12))
-                                .foregroundColor(Palette.text)
-                        }
-
-                        HStack(spacing: 6) {
-                            TextField("Auto-detected", text: $prefs.claudePath)
-                                .textFieldStyle(.plain)
-                                .font(Typo.mono(11))
-                                .foregroundColor(Palette.text)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 5)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 5)
-                                        .fill(Color.white.opacity(0.06))
-                                        .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
-                                )
-
-                            Button {
-                                if let resolved = Preferences.resolveClaudePath() {
-                                    prefs.claudePath = resolved
-                                }
-                            } label: {
-                                Text("Detect")
-                                    .font(Typo.monoBold(10))
-                                    .foregroundColor(Palette.text)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 4)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .fill(Palette.surfaceHov)
-                                            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
-                                    )
-                            }
-                            .buttonStyle(.plain)
-                        }
-
-                        let resolved = Preferences.resolveClaudePath()
-                        if let path = resolved {
-                            Text("Found: \(path)")
-                                .font(Typo.caption(9))
-                                .foregroundColor(Palette.running.opacity(0.8))
-                        } else {
-                            Text("Not found — install with: npm i -g @anthropic-ai/claude-code")
-                                .font(Typo.caption(9))
-                                .foregroundColor(Palette.detach)
-                        }
-                    }
-                }
-
-                // ── Advisor ──
-                settingsCard {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Voice advisor")
-                            .font(Typo.mono(11))
-                            .foregroundColor(Palette.text)
-
-                        HStack {
-                            Text("Model")
-                                .font(Typo.mono(10))
-                                .foregroundColor(Palette.textDim)
-                            Spacer()
-                            Picker("", selection: $prefs.advisorModel) {
-                                Text("Haiku").tag("haiku")
-                                Text("Sonnet").tag("sonnet")
-                            }
-                            .pickerStyle(.segmented)
-                            .labelsHidden()
-                            .frame(width: 160)
-                        }
-
-                        Text("Haiku is fast and cheap. Sonnet is smarter but slower.")
-                            .font(Typo.caption(9))
-                            .foregroundColor(Palette.textMuted.opacity(0.7))
-
-                        cardDivider
-
-                        HStack {
-                            Text("Budget per session")
-                                .font(Typo.mono(10))
-                                .foregroundColor(Palette.textDim)
-                            Spacer()
-                            HStack(spacing: 4) {
-                                Text("$")
-                                    .font(Typo.mono(11))
-                                    .foregroundColor(Palette.textDim)
-                                TextField("0.50", value: $prefs.advisorBudgetUSD, formatter: {
-                                    let f = NumberFormatter()
-                                    f.numberStyle = .decimal
-                                    f.minimumFractionDigits = 2
-                                    f.maximumFractionDigits = 2
-                                    return f
-                                }())
-                                .textFieldStyle(.plain)
-                                .font(Typo.monoBold(11))
-                                .foregroundColor(Palette.text)
-                                .multilineTextAlignment(.center)
-                                .frame(width: 50)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 3)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 5)
-                                        .fill(Color.white.opacity(0.06))
-                                        .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
-                                )
-                            }
-                        }
-
-                        Text("Max spend per Claude CLI invocation")
-                            .font(Typo.caption(9))
-                            .foregroundColor(Palette.textMuted.opacity(0.7))
-
-                        cardDivider
-
-                        // Session stats
-                        let stats = AgentPool.shared.haiku.sessionStats
-                        HStack(spacing: 12) {
-                            if stats.contextWindow > 0 {
-                                HStack(spacing: 4) {
-                                    Circle()
-                                        .fill(stats.contextUsage > 0.6 ? Palette.detach : Palette.running)
-                                        .frame(width: 5, height: 5)
-                                    Text("Context: \(Int(stats.contextUsage * 100))%")
-                                        .font(Typo.mono(10))
-                                        .foregroundColor(Palette.textMuted)
-                                }
-                            }
-                            if stats.costUSD > 0 {
-                                Text("Session cost: $\(String(format: "%.3f", stats.costUSD))")
-                                    .font(Typo.mono(10))
-                                    .foregroundColor(Palette.textMuted)
-                            }
-
-                            Spacer()
-
-                            let learningCount = AdvisorLearningStore.shared.entryCount
-                            if learningCount > 0 {
-                                Text("\(learningCount) learned")
-                                    .font(Typo.mono(9))
-                                    .foregroundColor(Palette.textMuted.opacity(0.6))
-                            }
-                        }
-                    }
-                }
+            VStack(alignment: .leading, spacing: 12) {
+                assistantProviderCard
             }
             .padding(16)
         }
+        .onAppear {
+            assistantSession.prepareForDisplay()
+        }
+    }
+
+    private var assistantProviderCard: some View {
+        settingsCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .center, spacing: 10) {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(assistantTint.opacity(0.13))
+                        .overlay(
+                            Image(systemName: assistantIcon)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(assistantTint)
+                        )
+                        .frame(width: 30, height: 30)
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Workspace Assistant")
+                            .font(Typo.mono(12))
+                            .foregroundColor(Palette.text)
+
+                        Text(assistantSession.setupStatusSummary)
+                            .font(Typo.caption(9.5))
+                            .foregroundColor(Palette.textMuted)
+                    }
+
+                    Spacer()
+
+                    aiStatusPill(assistantStatusLabel, tint: assistantTint)
+                }
+
+                Text("The in-app chat and voice advisor use the selected provider once the Pi runtime is installed and authenticated.")
+                    .font(Typo.caption(10))
+                    .foregroundColor(Palette.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 8) {
+                    Text("Provider")
+                        .font(Typo.mono(10))
+                        .foregroundColor(Palette.textDim)
+
+                    Picker("", selection: $assistantSession.authProviderID) {
+                        ForEach(assistantSession.providerOptions) { provider in
+                            Text(provider.name).tag(provider.id)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .frame(minWidth: 190)
+
+                    aiStatusPill(
+                        assistantSession.currentProvider.authMode == .oauth ? "OAUTH" : "API KEY",
+                        tint: assistantSession.currentProvider.authMode == .oauth ? Palette.detach : Palette.running
+                    )
+
+                    Spacer()
+
+                    aiActionButton("Refresh", tint: Palette.textMuted) {
+                        assistantSession.refreshBinaryAvailability()
+                    }
+                }
+
+                Text(assistantSession.currentProvider.helpText)
+                    .font(Typo.caption(9.5))
+                    .foregroundColor(Palette.textMuted.opacity(0.8))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let path = assistantSession.piBinaryPath {
+                    Text("Runtime: \(path)")
+                        .font(Typo.caption(9))
+                        .foregroundColor(Palette.running.opacity(0.78))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+
+                cardDivider
+
+                if assistantSession.hasPiBinary {
+                    assistantCredentialControls
+                } else {
+                    PiInstallCallout(session: assistantSession, compact: false)
+                }
+
+                assistantAuthMessage
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var assistantCredentialControls: some View {
+        if assistantSession.isAuthenticating {
+            if let prompt = assistantSession.pendingAuthPrompt {
+                PiAuthPromptCard(
+                    session: assistantSession,
+                    prompt: prompt,
+                    compact: false,
+                    focus: $assistantAuthFieldFocused
+                )
+            } else {
+                PiAuthNextStepCard(session: assistantSession, compact: false)
+            }
+        } else {
+            switch assistantSession.currentProvider.authMode {
+            case .apiKey:
+                assistantApiKeyControls
+            case .oauth:
+                assistantOAuthControls
+            }
+        }
+    }
+
+    private var assistantApiKeyControls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 8) {
+                Circle()
+                    .fill(assistantSession.hasSelectedCredential ? Palette.running : Palette.detach)
+                    .frame(width: 6, height: 6)
+
+                Text(assistantSession.hasSelectedCredential ? "credential saved" : "credential needed")
+                    .font(Typo.mono(10))
+                    .foregroundColor(Palette.textMuted)
+
+                Spacer()
+
+                if assistantSession.hasSelectedCredential && !assistantSession.isEditingStoredCredential {
+                    aiActionButton("Replace", tint: Palette.detach) {
+                        assistantSession.beginReplacingSelectedCredential()
+                        assistantAuthFieldFocused = true
+                    }
+
+                    aiActionButton("Clear", tint: Palette.textMuted) {
+                        assistantSession.removeSelectedCredential()
+                    }
+                }
+            }
+
+            if !assistantSession.hasSelectedCredential || assistantSession.isEditingStoredCredential {
+                HStack(spacing: 8) {
+                    SecureField(assistantTokenPlaceholder, text: $assistantSession.authToken)
+                        .textFieldStyle(.plain)
+                        .font(Typo.mono(11))
+                        .foregroundColor(Palette.text)
+                        .focused($assistantAuthFieldFocused)
+                        .onSubmit {
+                            assistantSession.saveSelectedToken()
+                        }
+
+                    aiActionButton(
+                        "Save Key",
+                        tint: Palette.running,
+                        disabled: assistantSession.authToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ) {
+                        assistantSession.saveSelectedToken()
+                    }
+
+                    if assistantSession.hasSelectedCredential {
+                        aiActionButton("Cancel", tint: Palette.textMuted) {
+                            assistantSession.cancelReplacingSelectedCredential()
+                        }
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(shortcutsInsetPanel)
+            }
+        }
+    }
+
+    private var assistantOAuthControls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 8) {
+                Circle()
+                    .fill(assistantSession.hasSelectedCredential ? Palette.running : Palette.detach)
+                    .frame(width: 6, height: 6)
+
+                Text(assistantSession.hasSelectedCredential ? "signed in" : "sign-in required")
+                    .font(Typo.mono(10))
+                    .foregroundColor(Palette.textMuted)
+
+                Spacer()
+
+                aiActionButton(
+                    assistantSession.hasSelectedCredential ? "Reconnect" : "Sign In",
+                    tint: Palette.running
+                ) {
+                    assistantSession.startSelectedAuthFlow()
+                }
+
+                if assistantSession.hasSelectedCredential {
+                    aiActionButton("Clear", tint: Palette.textMuted) {
+                        assistantSession.removeSelectedCredential()
+                    }
+                }
+            }
+
+            Text(assistantSession.hasSelectedCredential
+                ? "\(assistantSession.currentProvider.name) is connected for provider-backed chat."
+                : "Sign in once in the browser; Lattices stores the returned OAuth credential locally.")
+                .font(Typo.caption(9.5))
+                .foregroundColor(Palette.textMuted.opacity(0.78))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    @ViewBuilder
+    private var assistantAuthMessage: some View {
+        if let error = assistantSession.authErrorText {
+            Text(error)
+                .font(Typo.caption(9.5))
+                .foregroundColor(Palette.kill.opacity(0.92))
+                .fixedSize(horizontal: false, vertical: true)
+        } else if let notice = assistantSession.authNoticeText {
+            Text(notice)
+                .font(Typo.caption(9.5))
+                .foregroundColor(Palette.running.opacity(0.82))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var assistantTint: Color {
+        if !assistantSession.hasPiBinary { return Palette.kill }
+        if assistantSession.isAuthenticating || assistantSession.needsProviderSetup { return Palette.detach }
+        return Palette.running
+    }
+
+    private var assistantIcon: String {
+        if !assistantSession.hasPiBinary { return "exclamationmark.triangle.fill" }
+        if assistantSession.isAuthenticating || assistantSession.needsProviderSetup { return "person.crop.circle.badge.questionmark" }
+        return "sparkles"
+    }
+
+    private var assistantStatusLabel: String {
+        if !assistantSession.hasPiBinary { return "INSTALL PI" }
+        if assistantSession.isAuthenticating { return "CONNECTING" }
+        if assistantSession.needsProviderSetup { return "SETUP NEEDED" }
+        return "READY"
+    }
+
+    private var assistantTokenPlaceholder: String {
+        let placeholder = assistantSession.currentProvider.tokenPlaceholder
+        return placeholder.isEmpty ? "Paste \(assistantSession.currentProvider.tokenLabel.lowercased())" : placeholder
+    }
+
+    private func aiStatusPill(_ text: String, tint: Color) -> some View {
+        Text(text)
+            .font(Typo.monoBold(9.5))
+            .foregroundColor(tint.opacity(0.95))
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(
+                Capsule()
+                    .fill(tint.opacity(0.10))
+                    .overlay(Capsule().strokeBorder(tint.opacity(0.20), lineWidth: 0.5))
+            )
+    }
+
+    private func aiActionButton(
+        _ label: String,
+        tint: Color = Palette.text,
+        disabled: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(Typo.monoBold(10))
+                .foregroundColor(disabled ? Palette.textMuted : tint)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Palette.surfaceHov)
+                        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .opacity(disabled ? 0.65 : 1)
     }
 
     private var buildChannelBadge: some View {
@@ -2525,7 +2792,7 @@ struct SettingsContentView: View {
 
                     Spacer()
 
-                    Toggle("", isOn: $prefs.companionTrackpadEnabled)
+                    Toggle("", isOn: companionTrackpadBinding)
                         .toggleStyle(.switch)
                         .labelsHidden()
                         .disabled(!prefs.companionBridgeEnabled)
@@ -3089,7 +3356,7 @@ struct SettingsContentView: View {
                             .foregroundColor(Palette.textMuted)
                             .padding(.top, 4)
 
-                        Text("When local matching fails, Claude Haiku advises with follow-up suggestions. Configure the AI model and budget in Settings → AI.")
+                        Text("When local matching fails, the selected Assistant provider can advise with follow-up suggestions. Configure provider auth in Settings → AI.")
                             .font(Typo.caption(10.5))
                             .foregroundColor(Palette.textMuted)
                             .lineSpacing(2)

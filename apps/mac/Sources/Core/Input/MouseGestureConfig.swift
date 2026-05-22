@@ -374,6 +374,7 @@ struct MouseShortcutRule: Codable, Equatable, Identifiable {
     var device: MouseShortcutDeviceSelector
     var trigger: MouseShortcutTrigger
     var action: MouseShortcutActionDefinition
+    var actions: [MouseShortcutActionDefinition]?
     var visual: MouseShortcutVisualDefinition?
 
     init(
@@ -382,6 +383,7 @@ struct MouseShortcutRule: Codable, Equatable, Identifiable {
         device: MouseShortcutDeviceSelector,
         trigger: MouseShortcutTrigger,
         action: MouseShortcutActionDefinition,
+        actions: [MouseShortcutActionDefinition]? = nil,
         visual: MouseShortcutVisualDefinition? = nil
     ) {
         self.id = id
@@ -389,11 +391,21 @@ struct MouseShortcutRule: Codable, Equatable, Identifiable {
         self.device = device
         self.trigger = trigger
         self.action = action
+        self.actions = actions
         self.visual = visual
     }
 
+    var effectiveActions: [MouseShortcutActionDefinition] {
+        if let actions, !actions.isEmpty { return actions }
+        return [action]
+    }
+
     var summary: String {
-        "\(trigger.triggerName) -> \(action.type.rawValue)"
+        let steps = effectiveActions
+        if steps.count > 1 {
+            return "\(trigger.triggerName) -> [\(steps.map(\.type.rawValue).joined(separator: " → "))]"
+        }
+        return "\(trigger.triggerName) -> \(action.type.rawValue)"
     }
 }
 

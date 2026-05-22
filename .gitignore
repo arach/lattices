@@ -4,10 +4,14 @@ node_modules/
 app/.build/
 app/.build-codex/
 app/.swiftpm/
+apps/mac/.build/
+apps/mac/.build-codex/
+apps/mac/.swiftpm/
 
 # Built .app bundle artifacts (generated for dev/publish, not tracked)
 Lattices.app/
 app/Lattices.app/
+apps/mac/Lattices.app/
 
 # Release artifacts
 dist/
@@ -19,6 +23,12 @@ site/node_modules/
 docs-site/dist/
 docs-site/node_modules/
 docs-site/.astro/
+apps/site/dist/
+apps/site/node_modules/
+apps/site/.astro/
+apps/docs-site/dist/
+apps/docs-site/node_modules/
+apps/docs-site/.astro/
 
 # macOS junk
 .DS_Store
@@ -47,6 +57,12 @@ iOS/LatticesCompanion/.derived-data-sim/
 iOS/LatticesCompanion/.derived-data-release/
 iOS/LatticesCompanion/.archives/
 iOS/LatticesCompanion/.device-id.local
+apps/ios/.derived-data/
+apps/ios/.derived-data-device/
+apps/ios/.derived-data-sim/
+apps/ios/.derived-data-release/
+apps/ios/.archives/
+apps/ios/.device-id.local
 
 # Swift package local build state
 swift/.build/
@@ -55,3 +71,9 @@ swift/.swiftpm/
 # Xcode per-user state
 iOS/LatticesCompanion/LatticesCompanion.xcodeproj/xcuserdata/
 iOS/LatticesCompanion/LatticesCompanion.xcodeproj/project.xcworkspace/xcuserdata/
+apps/ios/LatticesCompanion.xcodeproj/xcuserdata/
+apps/ios/LatticesCompanion.xcodeproj/project.xcworkspace/xcuserdata/
+
+# Generated local media/review artifacts
+artifacts/
+apps/artifacts/

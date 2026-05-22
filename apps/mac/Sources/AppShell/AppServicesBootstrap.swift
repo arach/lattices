@@ -14,7 +14,6 @@ enum AppServicesBootstrap {
         } else {
             diagnosticLog.info("CompanionBridge: disabled by preference")
         }
-        AgentPool.shared.start()
         diagnosticLog.finish(timedBoot)
     }
 

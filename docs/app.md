@@ -153,8 +153,9 @@ Press **Hyper+3** to open the voice command window. Hold **Option** to
 speak, release to stop. Lattices transcribes via Vox, matches to an
 intent, and executes. Built-in commands: find, show, open, tile, kill, scan.
 
-A Claude Haiku advisor runs in parallel, offering follow-up suggestions
-in the AI corner. Configure the model and budget in Settings > AI.
+The provider-backed assistant can run in parallel, offering follow-up
+suggestions in the AI corner. Configure the provider and credentials in
+Settings > AI.
 
 ## Settings
 
@@ -208,12 +209,12 @@ The trackpad proxy toggle lives here. Paired devices still need the
 
 | Setting              | Default        | Description                              |
 |----------------------|----------------|------------------------------------------|
-| Claude CLI path      | Auto-detected  | Path to `claude` binary                  |
-| Advisor model        | Haiku          | `haiku` (fast) or `sonnet` (smarter)     |
-| Budget per session   | $0.50          | Max spend per Claude CLI invocation      |
+| Assistant provider   | OpenAI Codex   | Provider used by in-app chat and provider-backed voice advice |
+| Pi runtime           | Auto-detected  | Runtime install/refresh controls for provider chat |
+| Provider credentials | Not set        | OAuth sign-in or local API-key storage for the selected provider |
 
-Shows live session stats: context usage %, session cost, and learned
-pattern count.
+Shows assistant readiness, runtime availability, and selected-provider
+authentication state.
 
 ### Shortcuts
 

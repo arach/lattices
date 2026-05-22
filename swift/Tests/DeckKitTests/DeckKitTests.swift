@@ -5,7 +5,7 @@ final class DeckKitTests: XCTestCase {
     func testManifestRoundTripPreservesEmbeddedSecurity() throws {
         let manifest = DeckManifest(
             product: DeckProductIdentity(
-                id: "com.arach.lattices",
+                id: "dev.lattices.app",
                 displayName: "Lattices Companion",
                 owner: "lattices"
             ),

@@ -789,7 +789,7 @@ code {
   font-size: 13px;
   color: var(--text-dim);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
 }
 
@@ -800,6 +800,7 @@ code {
   border-radius: 50%;
   background: var(--green);
   flex-shrink: 0;
+  margin-top: 7px;
 }
 
 .app-download {

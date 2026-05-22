@@ -153,7 +153,7 @@ final class SessionLayerStore: ObservableObject {
 
     func tagFrontmostWindow() {
         guard let frontApp = NSWorkspace.shared.frontmostApplication,
-              frontApp.bundleIdentifier != "com.arach.lattices" else { return }
+              frontApp.bundleIdentifier != "dev.lattices.app" else { return }
 
         let pid = frontApp.processIdentifier
         // Find the frontmost window for this app

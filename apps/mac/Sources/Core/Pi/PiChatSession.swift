@@ -123,7 +123,7 @@ struct PiProvider: Identifiable, Equatable {
 
 final class PiChatSession: ObservableObject {
     static let shared = PiChatSession()
-    private static let installCommand = "npm install -g @mariozechner/pi-coding-agent@latest"
+    private static let installCommand = "npm install -g --ignore-scripts @earendil-works/pi-coding-agent@latest"
 
     @Published private(set) var messages: [PiChatMessage] = [
         PiChatMessage(
@@ -1729,15 +1729,66 @@ final class PiChatSession: ObservableObject {
 
     private func resolveOAuthModuleURL() -> URL? {
         guard let packageRoot = resolvePiPackageRoot() else { return nil }
-        let moduleURL = packageRoot
-            .appendingPathComponent("node_modules")
-            .appendingPathComponent("@mariozechner")
-            .appendingPathComponent("pi-ai")
-            .appendingPathComponent("dist")
-            .appendingPathComponent("utils")
-            .appendingPathComponent("oauth")
-            .appendingPathComponent("index.js")
-        return FileManager.default.fileExists(atPath: moduleURL.path) ? moduleURL : nil
+        let scopedPackageRoot = packageRoot.deletingLastPathComponent()
+        let nodeModulesRoot = scopedPackageRoot.lastPathComponent.hasPrefix("@")
+            ? scopedPackageRoot.deletingLastPathComponent()
+            : scopedPackageRoot
+        let packageNames = resolvePiAiPackageNames(from: packageRoot)
+
+        var piAiRoots: [URL] = []
+        var seenRoots: Set<String> = []
+        for nodeModulesURL in [
+            packageRoot.appendingPathComponent("node_modules"),
+            nodeModulesRoot,
+        ] {
+            for packageName in packageNames {
+                let root = nodePackageURL(named: packageName, in: nodeModulesURL)
+                guard seenRoots.insert(root.path).inserted else { continue }
+                piAiRoots.append(root)
+            }
+        }
+
+        for piAiRoot in piAiRoots {
+            let moduleURL = piAiRoot.appendingPathComponent("dist/oauth.js")
+            if FileManager.default.fileExists(atPath: moduleURL.path) {
+                return moduleURL
+            }
+        }
+
+        return nil
+    }
+
+    private func resolvePiAiPackageNames(from packageRoot: URL) -> [String] {
+        var names: [String] = []
+        var seen: Set<String> = []
+
+        func appendName(_ name: String) {
+            guard !name.isEmpty, seen.insert(name).inserted else { return }
+            names.append(name)
+        }
+
+        let packageJSON = packageRoot.appendingPathComponent("package.json")
+        if let data = try? Data(contentsOf: packageJSON),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            for key in ["dependencies", "optionalDependencies", "peerDependencies", "devDependencies"] {
+                guard let dependencies = json[key] as? [String: Any] else { continue }
+                for packageName in dependencies.keys.sorted() {
+                    if packageName == "pi-ai" || packageName.hasSuffix("/pi-ai") {
+                        appendName(packageName)
+                    }
+                }
+            }
+        }
+
+        return names
+    }
+
+    private func nodePackageURL(named packageName: String, in nodeModulesURL: URL) -> URL {
+        packageName
+            .split(separator: "/")
+            .reduce(nodeModulesURL) { url, component in
+                url.appendingPathComponent(String(component))
+            }
     }
 
     private func resolvePiPackageRoot() -> URL? {

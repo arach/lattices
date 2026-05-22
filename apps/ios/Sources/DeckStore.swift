@@ -30,6 +30,29 @@ final class DeckStore: ObservableObject {
     private let client = DeckBridgeClient()
     private let discovery = BridgeDiscovery()
     private var pollingTask: Task<Void, Never>?
+    private var trackpadEventInFlight = false
+    private var queuedTrackpadEvents: [QueuedTrackpadEvent] = []
+    private let maxQueuedTrackpadEvents = 8
+
+    fileprivate struct QueuedTrackpadEvent {
+        var event: DeckTrackpadEvent
+        var dx: Double
+        var dy: Double
+
+        var canCoalesce: Bool {
+            switch event {
+            case .move, .scroll, .drag:
+                return true
+            case .click, .rightClick, .mouseDown, .mouseUp:
+                return false
+            }
+        }
+
+        mutating func coalesce(_ other: QueuedTrackpadEvent) {
+            dx += other.dx
+            dy += other.dy
+        }
+    }
 
     /// UI hint for how aggressively to poll. Hosts flip this to `.fast` when
     /// the user is actively engaged (Deck open, voice panel open, recording)
@@ -198,13 +221,49 @@ final class DeckStore: ObservableObject {
         dy: Double = 0
     ) {
         guard let endpoint = preferredEndpoint(), let health else { return }
+        let queued = QueuedTrackpadEvent(event: event, dx: dx, dy: dy)
 
+        guard !trackpadEventInFlight else {
+            enqueueTrackpadEvent(queued)
+            return
+        }
+
+        trackpadEventInFlight = true
+        sendTrackpadEvent(queued, endpoint: endpoint, health: health)
+    }
+}
+
+private extension DeckStore {
+    func enqueueTrackpadEvent(_ event: QueuedTrackpadEvent) {
+        if event.canCoalesce,
+           let last = queuedTrackpadEvents.last,
+           last.event == event.event,
+           last.canCoalesce {
+            queuedTrackpadEvents[queuedTrackpadEvents.count - 1].coalesce(event)
+        } else {
+            queuedTrackpadEvents.append(event)
+        }
+
+        while queuedTrackpadEvents.count > maxQueuedTrackpadEvents {
+            if let index = queuedTrackpadEvents.firstIndex(where: \.canCoalesce) {
+                queuedTrackpadEvents.remove(at: index)
+            } else {
+                queuedTrackpadEvents.removeFirst()
+            }
+        }
+    }
+
+    func sendTrackpadEvent(
+        _ queued: QueuedTrackpadEvent,
+        endpoint: BridgeEndpoint,
+        health: BridgeHealthResponse
+    ) {
         Task {
             do {
                 let result = try await client.trackpad(
                     endpoint: endpoint,
                     health: health,
-                    request: DeckTrackpadEventRequest(event: event, dx: dx, dy: dy)
+                    request: DeckTrackpadEventRequest(event: queued.event, dx: queued.dx, dy: queued.dy)
                 )
                 if !result.ok {
                     errorMessage = "Trackpad input was rejected. Check that the Mac bridge is enabled and has Accessibility permission."
@@ -212,11 +271,26 @@ final class DeckStore: ObservableObject {
             } catch {
                 errorMessage = error.localizedDescription
             }
+            finishTrackpadEvent()
         }
     }
-}
 
-private extension DeckStore {
+    func finishTrackpadEvent() {
+        guard let next = queuedTrackpadEvents.first else {
+            trackpadEventInFlight = false
+            return
+        }
+
+        queuedTrackpadEvents.removeFirst()
+        guard let endpoint = preferredEndpoint(), let health else {
+            trackpadEventInFlight = false
+            queuedTrackpadEvents.removeAll()
+            return
+        }
+
+        sendTrackpadEvent(next, endpoint: endpoint, health: health)
+    }
+
     func handleDiscoveryUpdate(_ bridges: [BridgeEndpoint]) {
         discoveredBridges = bridges
 

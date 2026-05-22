@@ -56,7 +56,7 @@ targets:
         product: DeckKit
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.arach.lattices.companion.ios
+        PRODUCT_BUNDLE_IDENTIFIER: dev.lattices.app.companion.ios
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         GENERATE_INFOPLIST_FILE: NO

@@ -34,6 +34,7 @@ struct OnboardingView: View {
             .padding(.top, 28)
             .padding(.bottom, 24)
 
+
             // Step content
             Group {
                 switch step {
@@ -78,6 +79,14 @@ struct OnboardingView: View {
         .frame(width: 480, height: 470)
         .background(Palette.bg)
         .preferredColorScheme(.dark)
+        .onAppear {
+            PermissionChecker.shared.check(pollIfMissing: true)
+        }
+        .onChange(of: step) { newStep in
+            if newStep == .capabilities {
+                PermissionChecker.shared.check(pollIfMissing: true)
+            }
+        }
     }
 
     // MARK: - Steps

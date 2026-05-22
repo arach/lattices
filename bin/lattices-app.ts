@@ -56,7 +56,7 @@ function hasOwnedCapsLockTransportMapping(): boolean {
   try {
     return execFileSync(
       "/usr/bin/defaults",
-      ["read", "com.arach.lattices", "keyboardRemaps.capsLockHIDTransportOwned"],
+      ["read", "dev.lattices.app", "keyboardRemaps.capsLockHIDTransportOwned"],
       { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }
     ).trim() === "1";
   } catch {
@@ -108,10 +108,10 @@ function clearOwnedCapsLockTransportMapping(): void {
   }
 
   try {
-    execFileSync("/usr/bin/defaults", ["delete", "com.arach.lattices", "keyboardRemaps.capsLockHIDTransportOwned"], { stdio: "ignore" });
+    execFileSync("/usr/bin/defaults", ["delete", "dev.lattices.app", "keyboardRemaps.capsLockHIDTransportOwned"], { stdio: "ignore" });
   } catch {}
   try {
-    execFileSync("/usr/bin/defaults", ["delete", "com.arach.lattices", "keyboardRemaps.capsLockHIDTransportOriginalMappings"], { stdio: "ignore" });
+    execFileSync("/usr/bin/defaults", ["delete", "dev.lattices.app", "keyboardRemaps.capsLockHIDTransportOriginalMappings"], { stdio: "ignore" });
   } catch {}
 }
 
@@ -124,7 +124,7 @@ function quit(): boolean {
   try {
     execFileSync(
       "/usr/bin/osascript",
-      ["-e", 'tell application id "com.arach.lattices" to quit'],
+      ["-e", 'tell application id "dev.lattices.app" to quit'],
       { stdio: "ignore" }
     );
   } catch {}
@@ -226,7 +226,7 @@ function signBundle(): void {
     console.log(`Signing with: ${identity}`);
     try {
       execSync(
-        `codesign --force --sign '${identity}'${entFlag} --identifier com.arach.lattices '${bundlePath}'`,
+        `codesign --force --options runtime --deep --sign '${identity}'${entFlag} --identifier dev.lattices.app '${bundlePath}'`,
         { stdio: "pipe" }
       );
       return;
@@ -238,7 +238,7 @@ function signBundle(): void {
   }
 
   execSync(
-    `codesign --force --sign -${entFlag} --identifier com.arach.lattices '${bundlePath}'`,
+    `codesign --force --options runtime --deep --sign -${entFlag} --identifier dev.lattices.app '${bundlePath}'`,
     { stdio: "pipe" }
   );
 
@@ -281,7 +281,7 @@ function writeInfoPlist(metadata: BundleBuildMetadata = {}): void {
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key>
-    <string>com.arach.lattices</string>
+    <string>dev.lattices.app</string>
     <key>CFBundleName</key>
     <string>Lattices</string>
     <key>CFBundleDisplayName</key>
@@ -296,7 +296,7 @@ function writeInfoPlist(metadata: BundleBuildMetadata = {}): void {
     <array>
         <dict>
             <key>CFBundleURLName</key>
-            <string>com.arach.lattices</string>
+            <string>dev.lattices.app</string>
             <key>CFBundleURLSchemes</key>
             <array>
                 <string>lattices</string>

@@ -21,7 +21,7 @@ final class OcrStore {
     static let shared = OcrStore()
 
     private var db: OpaquePointer?
-    private let queue = DispatchQueue(label: "com.arach.lattices.ocrstore", qos: .background)
+    private let queue = DispatchQueue(label: "dev.lattices.app.ocrstore", qos: .background)
 
     // Cached prepared statements
     private var insertStmt: OpaquePointer?
