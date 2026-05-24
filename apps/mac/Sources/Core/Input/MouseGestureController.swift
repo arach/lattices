@@ -1010,7 +1010,17 @@ final class MouseGestureController: ObservableObject {
             return GestureOutcome(label: "No Shortcut Assigned", success: false, accessory: nil)
         }
 
-        switch match.action.type {
+        let steps = match.rule.effectiveActions
+        let outcome = executeSingleAction(steps[0], startPoint: startPoint)
+        for step in steps.dropFirst() {
+            executeSingleAction(step, startPoint: startPoint)
+        }
+        return outcome
+    }
+
+    @discardableResult
+    private func executeSingleAction(_ action: MouseShortcutActionDefinition, startPoint: CGPoint) -> GestureOutcome {
+        switch action.type {
         case .spacePrevious:
             guard WindowTiler.adjacentSpaceTarget(offset: -1, from: startPoint) != nil else {
                 return GestureOutcome(label: "No Previous Space", success: false, accessory: nil)
@@ -1042,15 +1052,15 @@ final class MouseGestureController: ObservableObject {
                 ) : nil
             )
         case .shortcutSend:
-            let sent = sendShortcut(match.action.shortcut)
+            let sent = sendShortcut(action.shortcut)
             return GestureOutcome(
-                label: sent ? match.action.label : "Shortcut Blocked",
+                label: sent ? action.label : "Shortcut Blocked",
                 success: sent,
                 accessory: nil
             )
         case .appActivate:
-            let activated = activateApplication(named: match.action.app)
-            let appLabel = match.action.app?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let activated = activateApplication(named: action.app)
+            let appLabel = action.app?.trimmingCharacters(in: .whitespacesAndNewlines)
             return GestureOutcome(
                 label: activated ? "\(appLabel?.isEmpty == false ? appLabel! : "App") Focused" : "App Activation Blocked",
                 success: activated,

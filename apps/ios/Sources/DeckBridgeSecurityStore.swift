@@ -53,7 +53,7 @@ final class DeckBridgeSecurityStore {
     }
 
     private enum KeychainKey {
-        static let service = "com.arach.lattices.companion"
+        static let service = "dev.lattices.app.companion"
         static let account = "device.keyagreement.private"
     }
 

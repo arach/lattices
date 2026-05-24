@@ -2012,7 +2012,7 @@ enum WindowTiler {
 
     static func tileFrontmostViaAX(to placement: PlacementSpec) {
         guard let frontApp = NSWorkspace.shared.frontmostApplication,
-              frontApp.bundleIdentifier != "com.arach.lattices" else { return }
+              frontApp.bundleIdentifier != "dev.lattices.app" else { return }
 
         let appRef = AXUIElementCreateApplication(frontApp.processIdentifier)
         var focusedRef: CFTypeRef?

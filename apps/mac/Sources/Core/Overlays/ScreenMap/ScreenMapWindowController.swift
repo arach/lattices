@@ -97,6 +97,11 @@ final class ScreenMapWindowController: ObservableObject {
         settlePreferredSizing(for: page)
     }
 
+    func showAssistant() {
+        PiChatSession.shared.prepareForDisplay()
+        showPage(.pi)
+    }
+
     private func settlePreferredSizing(for page: AppPage) {
         for delay in [0.0, 0.12, 0.35] {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in

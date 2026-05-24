@@ -86,6 +86,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         let menu = NSMenu()
 
         let actions: [(String, String, Selector)] = [
+            ("Assistant", "⌘⇧A", #selector(menuAssistant)),
             ("Home", "", #selector(menuWorkspace)),
             ("Layout", "", #selector(menuLayout)),
             ("Search", "", #selector(menuSearch)),
@@ -135,6 +136,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     }
 
     @objc private func menuCommandPalette() { CommandPaletteWindow.shared.toggle() }
+    @objc private func menuAssistant() { AssistantAccess.show() }
     @objc private func menuWorkspace() { ScreenMapWindowController.shared.showPage(.home) }
     @objc private func menuLayout() { ScreenMapWindowController.shared.showPage(.screenMap) }
     @objc private func menuSearch() { ScreenMapWindowController.shared.showPage(.desktopInventory) }

@@ -12,7 +12,7 @@ matches it to an intent, and executes it.
 ## Quick start
 
 1. Install Vox (provides mic + transcription)
-2. Install [Claude Code](https://claude.ai/code) CLI (provides AI advisor)
+2. Connect an Assistant provider in **Settings > AI**
 3. Press **Hyper+3** to open the voice command window
 4. Hold **Option** and speak a command
 5. Release **Option** — Lattices transcribes and executes
@@ -106,9 +106,9 @@ Trigger an OCR scan of visible windows.
 
 ## AI advisor
 
-Every voice command fires a Claude Haiku advisor in parallel. The
-advisor provides commentary and follow-up suggestions in the **AI
-corner** (bottom-right of the voice command window).
+Every voice command can ask the selected Assistant provider for
+commentary and follow-up suggestions in the **AI corner** (bottom-right
+of the voice command window).
 
 When local matching handles the command well, the AI corner shows
 "no AI needed" with an optional "ask AI" button. When the advisor
@@ -119,20 +119,12 @@ suggestion button.
 
 1. You speak a command
 2. Local intent matching runs immediately (fast, free)
-3. Haiku advisor runs in parallel (takes ~2-5 seconds)
+3. The selected Assistant provider runs in parallel when connected
 4. If the advisor suggests something, a button appears in the AI corner
 5. Click the suggestion to execute it
 6. If you engage with a suggestion that the local matcher missed,
    it's recorded in `~/.lattices/advisor-learning.jsonl` for future
    improvement
-
-### Session persistence
-
-The advisor maintains a conversation session across voice commands.
-It remembers what you've asked and what worked. When the context
-reaches 75% of the model's limit, the session auto-resets.
-
-Context usage and session cost are shown in the AI corner header.
 
 ## Hands-off inference
 
@@ -158,17 +150,9 @@ Open **Settings > AI** to configure:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| Claude CLI path | Auto-detected | Path to the `claude` binary. Checks `~/.local/bin/claude`, `/usr/local/bin/claude`, `/opt/homebrew/bin/claude`, then `which claude`. |
-| Advisor model | Haiku | `haiku` (fast, cheap) or `sonnet` (smarter, slower) |
-| Budget per session | $0.50 | Maximum spend per Claude CLI invocation |
-
-### Installing Claude Code
-
-```bash
-npm install -g @anthropic-ai/claude-code
-```
-
-Or see [claude.ai/code](https://claude.ai/code) for other install methods.
+| Assistant provider | OpenAI Codex | Provider used by the in-app chat and provider-backed voice advisor. Supports OAuth providers such as GitHub Copilot and OpenAI Codex plus API-key providers. |
+| Pi runtime | Auto-detected | Installs or refreshes the provider runtime used by the in-app assistant. |
+| Provider credentials | Not authenticated | Sign in with OAuth or save an API key locally for the selected provider. |
 
 ## Layout
 
@@ -179,7 +163,7 @@ The voice command window has four sections:
 | **History** | Left column | Past commands with expandable details |
 | **Voice Command** | Center column | Current transcript, matched intent, results |
 | **Log** | Top-right | Rolling diagnostic log (last 12 entries) |
-| **AI Corner** | Bottom-right | Advisor commentary, suggestions, session stats |
+| **AI Corner** | Bottom-right | Advisor commentary, suggestions, provider readiness |
 
 ## Search architecture
 
@@ -231,7 +215,7 @@ mappings and phrase pattern improvements.
 
 - **Vox** — provides microphone access and
   speech-to-text transcription
-- **[Claude Code](https://claude.ai/code)** CLI — provides the AI advisor
-  (optional, voice commands work without it but no AI suggestions)
+- **Assistant provider** — enables provider-backed AI suggestions from
+  **Settings > AI** (optional, voice commands still work without it)
 - **Accessibility** permission — for window tiling and focus
 - **Screen Recording** permission — for window discovery

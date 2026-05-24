@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key>
-    <string>com.arach.lattices</string>
+    <string>dev.lattices.app</string>
     <key>CFBundleName</key>
     <string>Lattices</string>
     <key>CFBundleDisplayName</key>
@@ -18,7 +18,7 @@
     <array>
         <dict>
             <key>CFBundleURLName</key>
-            <string>com.arach.lattices</string>
+            <string>dev.lattices.app</string>
             <key>CFBundleURLSchemes</key>
             <array>
                 <string>lattices</string>
@@ -26,17 +26,17 @@
         </dict>
     </array>
     <key>CFBundleVersion</key>
-    <string>0.4.10</string>
+    <string>0.4.16</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.4.10</string>
+    <string>0.4.16</string>
     <key>LatticesBuildChannel</key>
     <string>dev</string>
     <key>LatticesBuildTrack</key>
     <string>latest</string>
     <key>LatticesBuildRevision</key>
-    <string>f802f0d</string>
+    <string>3c7b053</string>
     <key>LatticesBuildTimestamp</key>
-    <string>2026-05-03T18:54:42Z</string>
+    <string>2026-05-23T21:56:36.076Z</string>
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
     <key>LSUIElement</key>

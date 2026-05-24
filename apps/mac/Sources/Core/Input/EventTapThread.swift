@@ -29,7 +29,7 @@ final class EventTapThread {
             CFRunLoopRun()
         }
         thread.qualityOfService = .userInteractive
-        thread.name = "com.arach.lattices.EventTapThread"
+        thread.name = "dev.lattices.app.EventTapThread"
         thread.start()
         ready.wait()
     }

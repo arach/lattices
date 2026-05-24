@@ -353,6 +353,16 @@ enum CommandBuilder {
 
         // App actions
         commands.append(PaletteCommand(
+            id: "app-workspace-chat",
+            title: "Workspace Assistant",
+            subtitle: "Open AI chat (⌘⇧A)",
+            icon: "bubble.left.and.bubble.right",
+            category: .app,
+            badge: nil,
+            action: { AssistantAccess.show() }
+        ))
+
+        commands.append(PaletteCommand(
             id: "app-settings",
             title: "Settings",
             subtitle: "Terminal, scan root, mode",
@@ -392,16 +402,6 @@ enum CommandBuilder {
             category: .app,
             badge: nil,
             action: { ScreenMapWindowController.shared.showPage(.screenMap) }
-        ))
-
-        commands.append(PaletteCommand(
-            id: "app-workspace-chat",
-            title: "Workspace Chat",
-            subtitle: "Open the longer-form assistant surface",
-            icon: "bubble.left.and.bubble.right",
-            category: .app,
-            badge: nil,
-            action: { ScreenMapWindowController.shared.showPage(.pi) }
         ))
 
         commands.append(PaletteCommand(

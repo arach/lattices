@@ -8,10 +8,17 @@ struct PiChatMessage: Identifiable, Equatable {
         case assistant
     }
 
-    let id = UUID()
+    let id: UUID
     let role: Role
-    let text: String
+    var text: String
     let timestamp: Date
+
+    init(id: UUID = UUID(), role: Role, text: String, timestamp: Date) {
+        self.id = id
+        self.role = role
+        self.text = text
+        self.timestamp = timestamp
+    }
 }
 
 struct PiAuthPrompt: Equatable {
@@ -123,12 +130,12 @@ struct PiProvider: Identifiable, Equatable {
 
 final class PiChatSession: ObservableObject {
     static let shared = PiChatSession()
-    private static let installCommand = "npm install -g @mariozechner/pi-coding-agent@latest"
+    private static let installCommand = "npm install -g --ignore-scripts @earendil-works/pi-coding-agent@latest"
 
     @Published private(set) var messages: [PiChatMessage] = [
         PiChatMessage(
             role: .system,
-            text: "Assistant ready. This is a lightweight in-app conversation surface, not a full terminal.",
+            text: "Assistant ready. Uses a persistent Pi session — clear chat to start fresh.",
             timestamp: Date()
         )
     ]
@@ -160,6 +167,7 @@ final class PiChatSession: ObservableObject {
             latestAuthInstructions = nil
             authVerificationCodeCopied = false
             lastCopiedAuthVerificationCode = nil
+            invalidateChatRuntime()
             prepareForDisplay()
         }
     }
@@ -178,9 +186,9 @@ final class PiChatSession: ObservableObject {
     @Published private(set) var authVerificationCodeCopied: Bool = false
 
     private let queue = DispatchQueue(label: "pi-chat-session", qos: .userInitiated)
-    private let sessionFileURL: URL
-    private let voiceAdvisorSessionFileURL: URL
-    private let voiceResolverSessionFileURL: URL
+    private let chatSessionDirURL: URL
+    private let voiceAdvisorSessionDirURL: URL
+    private let voiceResolverSessionDirURL: URL
     private let authFileURL: URL
     private var authProcess: Process?
     private var authProcessIdentifier: Int32?
@@ -191,8 +199,29 @@ final class PiChatSession: ObservableObject {
     private var authStderrBuffer: String = ""
     private var nodeBinaryPath: String?
     private var lastCopiedAuthVerificationCode: String?
+    private var chatRuntime: PiRpcRuntime?
+    private var chatRuntimeProviderID: String?
+    private var voiceAdvisorRuntime: PiRpcRuntime?
+    private var voiceResolverRuntime: PiRpcRuntime?
+    private var voiceRuntimeProviderID: String?
+
+    private var streamingMessageID: UUID?
+    private var streamingPendingText: String?
+    private var streamingFlushScheduled: Bool = false
+    private static let streamingFlushInterval: TimeInterval = 1.0 / 30.0
 
     private static let selectedProviderDefaultsKey = "PiChatSelectedProvider"
+    private static let voiceInferenceTimeout: TimeInterval = 45
+    private static let chatAppendSystemPrompt = """
+        You are the Workspace Assistant, the in-app assistant for Lattices.
+        Use structured context from the host as ground truth. Answer naturally and concretely.
+        For informational questions, explain what is configured and what the available choices mean.
+        For setting changes, describe what should change; the host app applies supported changes.
+        """
+    private static let voiceAppendSystemPrompt = """
+        You are the Workspace Assistant for Lattices voice surfaces.
+        Respond concisely. Follow the response format requested in each prompt exactly.
+        """
     private static let dockHeightDefaultsKey = "PiChatDockHeight"
 
     private init() {
@@ -201,9 +230,12 @@ final class PiChatSession: ObservableObject {
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
         let dir = base.appendingPathComponent("Lattices/pi-chat", isDirectory: true)
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
-        sessionFileURL = dir.appendingPathComponent("session.jsonl")
-        voiceAdvisorSessionFileURL = dir.appendingPathComponent("voice-advisor.jsonl")
-        voiceResolverSessionFileURL = dir.appendingPathComponent("voice-resolver.jsonl")
+        chatSessionDirURL = dir.appendingPathComponent("sessions", isDirectory: true)
+        try? fm.createDirectory(at: chatSessionDirURL, withIntermediateDirectories: true)
+        voiceAdvisorSessionDirURL = dir.appendingPathComponent("voice-advisor-sessions", isDirectory: true)
+        try? fm.createDirectory(at: voiceAdvisorSessionDirURL, withIntermediateDirectories: true)
+        voiceResolverSessionDirURL = dir.appendingPathComponent("voice-resolver-sessions", isDirectory: true)
+        try? fm.createDirectory(at: voiceResolverSessionDirURL, withIntermediateDirectories: true)
         authFileURL = Self.piAgentDirURL().appendingPathComponent("auth.json")
 
         if let savedProvider = UserDefaults.standard.string(forKey: Self.selectedProviderDefaultsKey),
@@ -357,9 +389,27 @@ final class PiChatSession: ObservableObject {
     }
 
     func clearConversation() {
-        try? FileManager.default.removeItem(at: sessionFileURL)
         messages = []
         prepareForDisplay()
+        queue.async { [weak self] in
+            guard let self else { return }
+            if let runtime = self.chatRuntime {
+                runtime.newSession { result in
+                    if case .failure(let error) = result {
+                        DispatchQueue.main.async {
+                            self.appendSystemMessage("Could not start a new assistant session: \(error.localizedDescription)")
+                        }
+                    }
+                }
+                return
+            }
+            try? FileManager.default.removeItem(at: self.chatSessionDirURL)
+            try? FileManager.default.createDirectory(at: self.chatSessionDirURL, withIntermediateDirectories: true)
+        }
+    }
+
+    func shutdown() {
+        invalidateChatRuntime()
     }
 
     func prepareForDisplay() {
@@ -445,87 +495,66 @@ final class PiChatSession: ObservableObject {
         isSending = true
         statusText = "thinking..."
         let prompt = providerPrompt(for: trimmed)
+        let runtime = chatRuntime(piPath: piPath, provider: provider)
+        let messageID = UUID()
+        messages.append(PiChatMessage(
+            id: messageID,
+            role: .assistant,
+            text: "",
+            timestamp: Date()
+        ))
 
-        queue.async { [weak self] in
-            guard let self else { return }
+        streamingMessageID = messageID
+        streamingPendingText = nil
+        streamingFlushScheduled = false
 
-            let proc = Process()
-            proc.executableURL = URL(fileURLWithPath: piPath)
-            proc.arguments = [
-                "--provider", provider.id,
-                "-p",
-                "--session", self.sessionFileURL.path,
-                prompt,
-            ]
-
-            var env = ProcessInfo.processInfo.environment
-            env.removeValue(forKey: "CLAUDECODE")
-            if provider.id == "github-copilot", self.storedCredentialKinds[provider.id] == nil {
-                env.removeValue(forKey: "COPILOT_GITHUB_TOKEN")
-            }
-            Self.sanitizeEnvironment(&env, for: provider.id, hasStoredCredential: self.storedCredentialKinds[provider.id] != nil)
-            proc.environment = env
-
-            let outPipe = Pipe()
-            let errPipe = Pipe()
-            proc.standardOutput = outPipe
-            proc.standardError = errPipe
-
-            let stdout: String
-            let stderr: String
-            let exitCode: Int32
-
-            do {
-                try proc.run()
-                proc.waitUntilExit()
-                stdout = String(data: outPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
-                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                stderr = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
-                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                exitCode = proc.terminationStatus
-            } catch {
+        var streamedText = ""
+        runtime.promptAndFetchAssistantText(
+            prompt,
+            onEvent: { [weak self] event in
                 DispatchQueue.main.async {
-                    self.isSending = false
-                    self.statusText = "launch failed"
-                    self.appendSystemMessage("Failed to launch the provider runtime: \(error.localizedDescription)")
+                    guard let self else { return }
+                    if let delta = PiRpcRuntime.streamingDelta(from: event) {
+                        streamedText += delta
+                        if self.statusText == "thinking..." {
+                            self.statusText = "streaming..."
+                        }
+                        self.commitStreamingText(streamedText)
+                    } else if let snapshot = PiRpcRuntime.streamingSnapshot(from: event) {
+                        streamedText = snapshot
+                        if self.statusText == "thinking..." {
+                            self.statusText = "streaming..."
+                        }
+                        self.commitStreamingText(streamedText)
+                    } else if event["type"] as? String == "tool_execution_start",
+                              let toolName = event["toolName"] as? String {
+                        self.statusText = "tool: \(toolName)"
+                    }
                 }
-                return
             }
-
+        ) { [weak self] result in
             DispatchQueue.main.async {
+                guard let self else { return }
                 self.isSending = false
 
-                if exitCode == 0, !stdout.isEmpty {
+                switch result {
+                case .success(let text):
                     self.statusText = "idle"
-                    self.messages.append(PiChatMessage(
-                        role: .assistant,
-                        text: stdout,
-                        timestamp: Date()
-                    ))
-                    return
-                }
-
-                let message = !stderr.isEmpty ? stderr : (stdout.isEmpty ? "The provider runtime returned no output." : stdout)
-                if let friendly = self.friendlyAuthFailureMessage(for: message) {
-                    self.statusText = "setup ai"
-                    self.authErrorText = friendly
-                    self.isAuthPanelVisible = true
-                    self.syncStructuredWelcomeMessage()
-                    return
-                }
-                self.statusText = "error"
-                self.appendSystemMessage(message)
-                if Self.looksLikeAuthError(message) {
-                    self.isAuthPanelVisible = true
+                    self.finalizeStreaming(finalText: text)
+                case .failure(let error):
+                    self.cancelPendingStreamingFlush()
+                    self.removeMessageIfEmpty(id: messageID)
+                    self.streamingMessageID = nil
+                    self.handleInferenceFailure(error.localizedDescription)
                 }
             }
         }
     }
 
     func askVoiceAdvisor(transcript: String, matched: String, callback: @escaping (AgentResponse?) -> Void) {
-        runProviderInference(
+        runVoiceInference(
             prompt: voiceAdvisorPrompt(transcript: transcript, matched: matched),
-            sessionURL: voiceAdvisorSessionFileURL,
+            sessionDir: voiceAdvisorSessionDirURL,
             label: "voice advisor"
         ) { output in
             guard let output, !output.isEmpty else {
@@ -537,9 +566,9 @@ final class PiChatSession: ObservableObject {
     }
 
     func answerVoiceQuestion(_ transcript: String, callback: @escaping (AgentResponse?) -> Void) {
-        runProviderInference(
+        runVoiceInference(
             prompt: voiceQuestionPrompt(transcript: transcript),
-            sessionURL: voiceAdvisorSessionFileURL,
+            sessionDir: voiceAdvisorSessionDirURL,
             label: "voice question"
         ) { output in
             guard let output, !output.isEmpty else {
@@ -551,9 +580,9 @@ final class PiChatSession: ObservableObject {
     }
 
     func resolveVoiceIntent(transcript: String, callback: @escaping (ResolvedIntent?) -> Void) {
-        runProviderInference(
+        runVoiceInference(
             prompt: voiceResolverPrompt(transcript: transcript),
-            sessionURL: voiceResolverSessionFileURL,
+            sessionDir: voiceResolverSessionDirURL,
             label: "voice resolver"
         ) { output in
             guard let output,
@@ -582,9 +611,9 @@ final class PiChatSession: ObservableObject {
         }
     }
 
-    private func runProviderInference(
+    private func runVoiceInference(
         prompt: String,
-        sessionURL: URL,
+        sessionDir: URL,
         label: String,
         callback: @escaping (String?) -> Void
     ) {
@@ -602,57 +631,77 @@ final class PiChatSession: ObservableObject {
         }
 
         let provider = currentProvider
-        let hasStoredCredential = storedCredentialKinds[provider.id] != nil
+        let runtime = voiceRuntime(piPath: piPath, provider: provider, sessionDir: sessionDir)
+        let timer = DiagnosticLog.shared.startTimed("Assistant inference[\(label)] via \(provider.name) RPC")
 
-        queue.async {
-            let timer = DiagnosticLog.shared.startTimed("Assistant inference[\(label)] via \(provider.name)")
-
-            let proc = Process()
-            proc.executableURL = URL(fileURLWithPath: piPath)
-            proc.arguments = [
-                "--provider", provider.id,
-                "-p",
-                "--session", sessionURL.path,
-                prompt,
-            ]
-
-            var env = ProcessInfo.processInfo.environment
-            env.removeValue(forKey: "CLAUDECODE")
-            Self.sanitizeEnvironment(&env, for: provider.id, hasStoredCredential: hasStoredCredential)
-            proc.environment = env
-
-            let outPipe = Pipe()
-            let errPipe = Pipe()
-            proc.standardOutput = outPipe
-            proc.standardError = errPipe
-
-            do {
-                try proc.run()
-                proc.waitUntilExit()
-            } catch {
-                DiagnosticLog.shared.warn("Assistant inference[\(label)]: launch failed — \(error)")
-                DiagnosticLog.shared.finish(timer)
-                DispatchQueue.main.async { callback(nil) }
-                return
-            }
-
+        runtime.promptAndFetchAssistantText(prompt, timeout: Self.voiceInferenceTimeout) { result in
             DiagnosticLog.shared.finish(timer)
-            let stdout = String(data: outPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let stderr = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-
-            if !stderr.isEmpty {
-                DiagnosticLog.shared.info("Assistant inference[\(label)] stderr: \(stderr.prefix(200))")
+            switch result {
+            case .success(let text):
+                callback(text)
+            case .failure(let error):
+                DiagnosticLog.shared.info("Assistant inference[\(label)]: \(error.localizedDescription)")
+                callback(nil)
             }
+        }
+    }
 
-            guard proc.terminationStatus == 0, !stdout.isEmpty else {
-                DiagnosticLog.shared.info("Assistant inference[\(label)]: empty/error response")
-                DispatchQueue.main.async { callback(nil) }
-                return
-            }
+    private func updateAssistantMessage(id: UUID, text: String) {
+        guard let index = messages.firstIndex(where: { $0.id == id }) else { return }
+        messages[index].text = text
+    }
 
-            DispatchQueue.main.async { callback(stdout) }
+    private func commitStreamingText(_ text: String) {
+        streamingPendingText = text
+        if streamingFlushScheduled { return }
+        streamingFlushScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.streamingFlushInterval) { [weak self] in
+            self?.flushPendingStreamingText()
+        }
+    }
+
+    private func flushPendingStreamingText() {
+        streamingFlushScheduled = false
+        guard let id = streamingMessageID,
+              let text = streamingPendingText else { return }
+        streamingPendingText = nil
+        updateAssistantMessage(id: id, text: text)
+    }
+
+    private func cancelPendingStreamingFlush() {
+        streamingPendingText = nil
+        streamingFlushScheduled = false
+    }
+
+    private func finalizeStreaming(finalText: String) {
+        cancelPendingStreamingFlush()
+        if let id = streamingMessageID {
+            updateAssistantMessage(id: id, text: finalText)
+        }
+        streamingMessageID = nil
+    }
+
+    private func removeMessageIfEmpty(id: UUID) {
+        guard let index = messages.firstIndex(where: { $0.id == id }) else { return }
+        if messages[index].text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            messages.remove(at: index)
+        }
+    }
+
+    private func handleInferenceFailure(_ message: String) {
+        if let friendly = friendlyAuthFailureMessage(for: message) {
+            statusText = "setup ai"
+            authErrorText = friendly
+            isAuthPanelVisible = true
+            syncStructuredWelcomeMessage()
+            invalidateChatRuntime()
+            return
+        }
+        statusText = "error"
+        appendSystemMessage(message)
+        if Self.looksLikeAuthError(message) {
+            isAuthPanelVisible = true
+            invalidateChatRuntime()
         }
     }
 
@@ -675,6 +724,7 @@ final class PiChatSession: ObservableObject {
             authNoticeText = "Saved \(currentProvider.tokenLabel.lowercased()) for \(currentProvider.name)."
             authErrorText = nil
             reloadAuthState()
+            invalidateChatRuntime()
             appendSystemMessage("Saved \(currentProvider.name) credentials.")
             isAuthPanelVisible = false
             prepareForDisplay()
@@ -692,11 +742,91 @@ final class PiChatSession: ObservableObject {
             authErrorText = nil
             isEditingStoredCredential = true
             reloadAuthState()
+            invalidateChatRuntime()
             appendSystemMessage("Removed saved \(currentProvider.name) credentials.")
             prepareForDisplay()
         } catch {
             authErrorText = "Failed to remove credentials: \(error.localizedDescription)"
         }
+    }
+
+    private func chatRuntime(piPath: String, provider: PiProvider) -> PiRpcRuntime {
+        if let chatRuntime,
+           chatRuntimeProviderID == provider.id,
+           chatRuntime.isRunning {
+            return chatRuntime
+        }
+
+        chatRuntime?.stop()
+        let runtime = PiRpcRuntime(
+            piPath: piPath,
+            sessionDir: chatSessionDirURL,
+            providerID: provider.id,
+            environment: buildProcessEnvironment(for: provider),
+            appendSystemPrompt: Self.chatAppendSystemPrompt
+        )
+        chatRuntime = runtime
+        chatRuntimeProviderID = provider.id
+        return runtime
+    }
+
+    private func voiceRuntime(piPath: String, provider: PiProvider, sessionDir: URL) -> PiRpcRuntime {
+        if voiceRuntimeProviderID != provider.id {
+            voiceAdvisorRuntime?.stop()
+            voiceResolverRuntime?.stop()
+            voiceAdvisorRuntime = nil
+            voiceResolverRuntime = nil
+            voiceRuntimeProviderID = provider.id
+        }
+
+        if sessionDir == voiceAdvisorSessionDirURL,
+           let voiceAdvisorRuntime,
+           voiceAdvisorRuntime.isRunning {
+            return voiceAdvisorRuntime
+        }
+        if sessionDir == voiceResolverSessionDirURL,
+           let voiceResolverRuntime,
+           voiceResolverRuntime.isRunning {
+            return voiceResolverRuntime
+        }
+
+        let runtime = PiRpcRuntime(
+            piPath: piPath,
+            sessionDir: sessionDir,
+            providerID: provider.id,
+            environment: buildProcessEnvironment(for: provider),
+            appendSystemPrompt: Self.voiceAppendSystemPrompt,
+            disableBuiltInTools: true,
+            defaultTimeout: Self.voiceInferenceTimeout
+        )
+
+        if sessionDir == voiceAdvisorSessionDirURL {
+            voiceAdvisorRuntime = runtime
+        } else {
+            voiceResolverRuntime = runtime
+        }
+        return runtime
+    }
+
+    private func invalidateChatRuntime() {
+        chatRuntime?.stop()
+        chatRuntime = nil
+        chatRuntimeProviderID = nil
+        voiceAdvisorRuntime?.stop()
+        voiceAdvisorRuntime = nil
+        voiceResolverRuntime?.stop()
+        voiceResolverRuntime = nil
+        voiceRuntimeProviderID = nil
+    }
+
+    private func buildProcessEnvironment(for provider: PiProvider) -> [String: String] {
+        var env = ProcessInfo.processInfo.environment
+        env.removeValue(forKey: "CLAUDECODE")
+        if provider.id == "github-copilot", storedCredentialKinds[provider.id] == nil {
+            env.removeValue(forKey: "COPILOT_GITHUB_TOKEN")
+        }
+        Self.sanitizeEnvironment(&env, for: provider.id, hasStoredCredential: storedCredentialKinds[provider.id] != nil)
+        return env
     }
 
     func startSelectedAuthFlow() {
@@ -1108,7 +1238,7 @@ final class PiChatSession: ObservableObject {
             return nil
         }
 
-        if lower.contains("terminal") {
+        if lower.contains("terminal"), isSettingsMutationIntent(lower) {
             if let terminal = parseTerminal(from: lower) {
                 guard terminal.isInstalled else {
                     return "\(terminal.rawValue) is not installed, so I left the terminal set to \(prefs.terminal.rawValue)."
@@ -1119,7 +1249,8 @@ final class PiChatSession: ObservableObject {
             return nil
         }
 
-        if lower.contains("detach mode") || lower.contains("interaction mode") || lower.contains("learning mode") || lower.contains("auto mode") {
+        if isSettingsMutationIntent(lower),
+           lower.contains("detach mode") || lower.contains("interaction mode") || lower.contains("learning mode") || lower.contains("auto mode") {
             if lower.contains("auto") {
                 prefs.mode = .auto
                 return "Set detach mode to Auto."
@@ -1131,32 +1262,32 @@ final class PiChatSession: ObservableObject {
             return nil
         }
 
-        if lower.contains("drag") && lower.contains("snap") {
-            if let enabled = parseBooleanIntent(from: lower) {
+        if lower.contains("drag") && lower.contains("snap"), isSettingsMutationIntent(lower) {
+            if let enabled = parseBooleanMutation(from: lower) {
                 prefs.dragSnapEnabled = enabled
                 return "\(enabled ? "Enabled" : "Disabled") drag-to-snap."
             }
             return nil
         }
 
-        if lower.contains("mouse") && (lower.contains("gesture") || lower.contains("shortcut")) {
-            if let enabled = parseBooleanIntent(from: lower) {
+        if lower.contains("mouse") && (lower.contains("gesture") || lower.contains("shortcut")), isSettingsMutationIntent(lower) {
+            if let enabled = parseBooleanMutation(from: lower) {
                 prefs.mouseGesturesEnabled = enabled
                 return "\(enabled ? "Enabled" : "Disabled") mouse gestures."
             }
             return nil
         }
 
-        if lower.contains("companion") && lower.contains("bridge") {
-            if let enabled = parseBooleanIntent(from: lower) {
+        if lower.contains("companion") && lower.contains("bridge"), isSettingsMutationIntent(lower) {
+            if let enabled = parseBooleanMutation(from: lower) {
                 prefs.companionBridgeEnabled = enabled
                 return "\(enabled ? "Enabled" : "Disabled") the companion bridge."
             }
             return nil
         }
 
-        if lower.contains("companion") && lower.contains("trackpad") {
-            if let enabled = parseBooleanIntent(from: lower) {
+        if lower.contains("companion") && lower.contains("trackpad"), isSettingsMutationIntent(lower) {
+            if let enabled = parseBooleanMutation(from: lower) {
                 prefs.companionTrackpadEnabled = enabled
                 return "\(enabled ? "Enabled" : "Disabled") companion trackpad."
             }
@@ -1176,7 +1307,7 @@ final class PiChatSession: ObservableObject {
                 return nil
             }
 
-            if let enabled = parseBooleanIntent(from: lower) {
+            if isSettingsMutationIntent(lower), let enabled = parseBooleanMutation(from: lower) {
                 OcrModel.shared.setEnabled(enabled)
                 return "\(enabled ? "Enabled" : "Disabled") screen text recognition."
             }
@@ -1324,7 +1455,7 @@ final class PiChatSession: ObservableObject {
                     "binary": (piBinaryPath as Any?) ?? NSNull(),
                     "node": (nodeBinaryPath as Any?) ?? NSNull(),
                     "authFile": authFileURL.path,
-                    "chatSession": sessionFileURL.path,
+                    "chatSession": chatSessionDirURL.path,
                 ],
             ],
             "currentSettings": [
@@ -1513,13 +1644,65 @@ final class PiChatSession: ObservableObject {
         }?.0
     }
 
-    private func parseBooleanIntent(from lower: String) -> Bool? {
-        let offTokens = ["turn off", "disable", "disabled", "off", "false", "stop"]
+    /// Questions and status checks should reach the provider with structured context.
+    private func isInformationalSettingsQuery(_ lower: String) -> Bool {
+        if lower.contains("?") {
+            return true
+        }
+
+        let markers = [
+            "can you take a look",
+            "can you look",
+            "could you look",
+            "take a look",
+            "look at ",
+            "what are ",
+            "what is ",
+            "what's ",
+            "which ",
+            "how do ",
+            "how are ",
+            "tell me ",
+            "show me ",
+            "list ",
+            "describe ",
+            "explain ",
+            "currently ",
+            "right now",
+            "at the moment",
+            "do i have ",
+            "are there ",
+            "is there ",
+            "am i using ",
+        ]
+        return markers.contains { lower.contains($0) }
+    }
+
+    private func isSettingsMutationIntent(_ lower: String) -> Bool {
+        !isInformationalSettingsQuery(lower)
+            && (
+                lower.contains("set ")
+                || lower.contains("switch to ")
+                || lower.contains("change ")
+                || lower.contains("use ")
+                || lower.hasPrefix("enable ")
+                || lower.hasPrefix("disable ")
+                || lower.contains(" turn on ")
+                || lower.contains(" turn off ")
+                || lower.contains("turn on ")
+                || lower.contains("turn off ")
+            )
+    }
+
+    private func parseBooleanMutation(from lower: String) -> Bool? {
+        guard isSettingsMutationIntent(lower) else { return nil }
+
+        let offTokens = ["turn off", "disable", "switch off", "stop "]
         if offTokens.contains(where: lower.contains) {
             return false
         }
 
-        let onTokens = ["turn on", "enable", "enabled", "on", "true", "start"]
+        let onTokens = ["turn on", "enable", "switch on", "start "]
         if onTokens.contains(where: lower.contains) {
             return true
         }
@@ -1729,15 +1912,66 @@ final class PiChatSession: ObservableObject {
 
     private func resolveOAuthModuleURL() -> URL? {
         guard let packageRoot = resolvePiPackageRoot() else { return nil }
-        let moduleURL = packageRoot
-            .appendingPathComponent("node_modules")
-            .appendingPathComponent("@mariozechner")
-            .appendingPathComponent("pi-ai")
-            .appendingPathComponent("dist")
-            .appendingPathComponent("utils")
-            .appendingPathComponent("oauth")
-            .appendingPathComponent("index.js")
-        return FileManager.default.fileExists(atPath: moduleURL.path) ? moduleURL : nil
+        let scopedPackageRoot = packageRoot.deletingLastPathComponent()
+        let nodeModulesRoot = scopedPackageRoot.lastPathComponent.hasPrefix("@")
+            ? scopedPackageRoot.deletingLastPathComponent()
+            : scopedPackageRoot
+        let packageNames = resolvePiAiPackageNames(from: packageRoot)
+
+        var piAiRoots: [URL] = []
+        var seenRoots: Set<String> = []
+        for nodeModulesURL in [
+            packageRoot.appendingPathComponent("node_modules"),
+            nodeModulesRoot,
+        ] {
+            for packageName in packageNames {
+                let root = nodePackageURL(named: packageName, in: nodeModulesURL)
+                guard seenRoots.insert(root.path).inserted else { continue }
+                piAiRoots.append(root)
+            }
+        }
+
+        for piAiRoot in piAiRoots {
+            let moduleURL = piAiRoot.appendingPathComponent("dist/oauth.js")
+            if FileManager.default.fileExists(atPath: moduleURL.path) {
+                return moduleURL
+            }
+        }
+
+        return nil
+    }
+
+    private func resolvePiAiPackageNames(from packageRoot: URL) -> [String] {
+        var names: [String] = []
+        var seen: Set<String> = []
+
+        func appendName(_ name: String) {
+            guard !name.isEmpty, seen.insert(name).inserted else { return }
+            names.append(name)
+        }
+
+        let packageJSON = packageRoot.appendingPathComponent("package.json")
+        if let data = try? Data(contentsOf: packageJSON),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            for key in ["dependencies", "optionalDependencies", "peerDependencies", "devDependencies"] {
+                guard let dependencies = json[key] as? [String: Any] else { continue }
+                for packageName in dependencies.keys.sorted() {
+                    if packageName == "pi-ai" || packageName.hasSuffix("/pi-ai") {
+                        appendName(packageName)
+                    }
+                }
+            }
+        }
+
+        return names
+    }
+
+    private func nodePackageURL(named packageName: String, in nodeModulesURL: URL) -> URL {
+        packageName
+            .split(separator: "/")
+            .reduce(nodeModulesURL) { url, component in
+                url.appendingPathComponent(String(component))
+            }
     }
 
     private func resolvePiPackageRoot() -> URL? {
@@ -1943,6 +2177,6 @@ final class PiChatSession: ObservableObject {
     """#
 
     private var authRuntimeURL: URL {
-        sessionFileURL.deletingLastPathComponent().appendingPathComponent("oauth-runtime.json")
+        chatSessionDirURL.deletingLastPathComponent().appendingPathComponent("oauth-runtime.json")
     }
 }

@@ -7,7 +7,7 @@ PROJECT="$PROJECT_DIR/LatticesCompanion.xcodeproj"
 SCHEME="LatticesCompanion"
 DERIVED_DATA="$PROJECT_DIR/.derived-data"
 DEVICE_CACHE="$PROJECT_DIR/.device-id.local"
-BUNDLE_ID="com.arach.lattices.companion.ios"
+BUNDLE_ID="dev.lattices.app.companion.ios"
 
 resolve_device_id() {
   if [[ -n "${LATTICES_DEVICE_ID:-}" ]]; then

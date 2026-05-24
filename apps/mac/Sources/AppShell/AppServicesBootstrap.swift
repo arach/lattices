@@ -14,11 +14,11 @@ enum AppServicesBootstrap {
         } else {
             diagnosticLog.info("CompanionBridge: disabled by preference")
         }
-        AgentPool.shared.start()
         diagnosticLog.finish(timedBoot)
     }
 
     static func stop() {
+        PiChatSession.shared.shutdown()
         LatticesCompanionBridgeServer.shared.stop()
         DaemonServer.shared.stop()
     }

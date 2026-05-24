@@ -26,6 +26,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
     case hud
     case mouseFinder
     case overlayActors
+    case workspaceAssistant
     // Layers
     case layer1, layer2, layer3, layer4, layer5, layer6, layer7, layer8, layer9
     case layerNext, layerPrev, layerTag
@@ -49,6 +50,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .hud:             return "HUD"
         case .mouseFinder:     return "Find Mouse"
         case .overlayActors:   return "Toggle Overlay Actors"
+        case .workspaceAssistant: return "Workspace Assistant"
         case .layer1:          return "Layer 1"
         case .layer2:          return "Layer 2"
         case .layer3:          return "Layer 3"
@@ -82,7 +84,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
 
     var group: HotkeyGroup {
         switch self {
-        case .palette, .screenMap, .bezel, .cheatSheet, .desktopInventory, .omniSearch, .voiceCommand, .handsOff, .unifiedWindow, .hud, .mouseFinder, .overlayActors: return .app
+        case .palette, .screenMap, .bezel, .cheatSheet, .desktopInventory, .omniSearch, .voiceCommand, .handsOff, .unifiedWindow, .hud, .mouseFinder, .overlayActors, .workspaceAssistant: return .app
         case .layer1, .layer2, .layer3, .layer4, .layer5,
              .layer6, .layer7, .layer8, .layer9,
              .layerNext, .layerPrev, .layerTag: return .layers
@@ -104,6 +106,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .hud:             return 208
         case .mouseFinder:     return 209
         case .overlayActors:   return 210
+        case .workspaceAssistant: return 211
         case .layer1:          return 101
         case .layer2:          return 102
         case .layer3:          return 103
@@ -242,6 +245,7 @@ class HotkeyStore: ObservableObject {
 
         // App
         bind(.palette,   46, cmdShift)   // Cmd+Shift+M
+        bind(.workspaceAssistant, 0, cmdShift) // Cmd+Shift+A
         bind(.unifiedWindow, 18, hyper)  // Hyper+1 (Workspace Home)
         bind(.screenMap, 37, hyper)      // Hyper+L (Layout)
         bind(.bezel,     19, hyper)      // Hyper+2

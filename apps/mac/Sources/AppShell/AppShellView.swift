@@ -36,7 +36,7 @@ enum AppPage: String, CaseIterable {
     }
 
     /// Pages shown as primary tabs in the unified window
-    static var primaryTabs: [AppPage] { [.home, .screenMap, .desktopInventory, .pi] }
+    static var primaryTabs: [AppPage] { [.home, .pi, .screenMap, .desktopInventory] }
 }
 
 // MARK: - App Shell View

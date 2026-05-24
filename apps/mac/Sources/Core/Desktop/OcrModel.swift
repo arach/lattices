@@ -38,7 +38,7 @@ final class OcrModel: ObservableObject {
 
     private var timer: Timer?
     private var deepTimer: Timer?
-    private let queue = DispatchQueue(label: "com.arach.lattices.ocr", qos: .background)
+    private let queue = DispatchQueue(label: "dev.lattices.app.ocr", qos: .background)
     private let axExtractor = AccessibilityTextExtractor()
     private var imageHashes: [UInt32: Data] = [:]
     private var lastAXHashes: [UInt32: Data] = [:]

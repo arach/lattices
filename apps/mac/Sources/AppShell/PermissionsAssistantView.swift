@@ -25,6 +25,9 @@ struct PermissionsAssistantView: View {
         }
         .background(PanelBackground())
         .preferredColorScheme(.dark)
+        .onAppear {
+            PermissionChecker.shared.check(pollIfMissing: true)
+        }
     }
 
     // MARK: - Sidebar

@@ -63,7 +63,7 @@ cat > "$BUNDLE/Contents/Info.plist" << PLIST
     <key>CFBundleDisplayName</key>
     <string>Lattices</string>
     <key>CFBundleIdentifier</key>
-    <string>com.arach.lattices</string>
+    <string>dev.lattices.app</string>
     <key>CFBundleVersion</key>
     <string>$VERSION</string>
     <key>CFBundleShortVersionString</key>
@@ -78,7 +78,7 @@ cat > "$BUNDLE/Contents/Info.plist" << PLIST
     <array>
         <dict>
             <key>CFBundleURLName</key>
-            <string>com.arach.lattices</string>
+            <string>dev.lattices.app</string>
             <key>CFBundleURLSchemes</key>
             <array>
                 <string>lattices</string>

@@ -34,11 +34,25 @@ enum LatticesDeckHostError: LocalizedError {
 final class LatticesDeckHost: DeckHost, @unchecked Sendable {
     static let shared = LatticesDeckHost()
 
+    fileprivate enum SwitchCycleScope {
+        case application
+        case window
+    }
+
+    fileprivate struct SwitchCycleState {
+        var scope: SwitchCycleScope
+        var orderedWindowIDs: [UInt32]
+        var currentWindowID: UInt32
+        var updatedAt: Date
+    }
+
     private let security: DeckSecurityConfiguration
     private let replayLock = NSLock()
     private var lastReplayMessage: String?
     private var lastReplayAt: Date?
     private var lastReplayUndoActionID: String?
+    private var switchCycleState: SwitchCycleState?
+    private let switchCycleStateLifetime: TimeInterval = 6
 
     init(security: DeckSecurityConfiguration = .standaloneBonjour()) {
         self.security = security
@@ -81,7 +95,7 @@ final class LatticesDeckHost: DeckHost, @unchecked Sendable {
 
         return DeckManifest(
             product: DeckProductIdentity(
-                id: "com.arach.lattices.companion",
+                id: "dev.lattices.app.companion",
                 displayName: "Lattices Companion",
                 owner: "lattices"
             ),
@@ -95,6 +109,14 @@ final class LatticesDeckHost: DeckHost, @unchecked Sendable {
                     kind: .cockpit,
                     accentToken: "lattices-cockpit",
                     deckID: "command"
+                ),
+                DeckPage(
+                    id: "talkie",
+                    title: "Talkie",
+                    iconSystemName: "waveform.badge.mic",
+                    kind: .custom,
+                    accentToken: "violet",
+                    deckID: "talkie"
                 ),
                 DeckPage(
                     id: "dev",
@@ -237,6 +259,34 @@ private extension LatticesDeckHost {
                 }
             }
             return try voiceOutcome()
+
+        case "talkie.perform":
+            guard let shortcutID = request.payload["shortcutID"]?.stringValue else {
+                throw LatticesDeckHostError.missingPayload("shortcutID")
+            }
+            do {
+                let result = try TalkieDeckProvider.shared.trigger(shortcutID: shortcutID)
+                return ActionOutcome(
+                    summary: result.summary,
+                    detail: result.detail,
+                    suggestedActions: []
+                )
+            } catch {
+                let opened = TalkieDeckProvider.shared.openTalkie()
+                return ActionOutcome(
+                    summary: opened ? "Opened Talkie" : "Talkie shortcut failed",
+                    detail: error.localizedDescription,
+                    suggestedActions: []
+                )
+            }
+
+        case "talkie.open":
+            let opened = TalkieDeckProvider.shared.openTalkie()
+            return ActionOutcome(
+                summary: opened ? "Opened Talkie" : "Talkie not found",
+                detail: opened ? "Try the Talkie shortcut again after the bridge starts." : "Install or launch Talkie on this Mac first.",
+                suggestedActions: []
+            )
 
         case "switch.cycleApplication":
             return try cycleApplication(direction: request.payload["direction"]?.stringValue ?? "next")
@@ -579,13 +629,15 @@ private extension LatticesDeckHost {
         )
         let cockpitMode = buildCockpitModeState(handsOff: handsOff)
         let activityLog = CompanionActivityLog.shared.snapshot()
+        let talkie = TalkieDeckProvider.shared.snapshot()
 
         return DeckRuntimeSnapshot(
             updatedAt: Date(),
             cockpit: buildCockpitState(
                 voice: voice,
                 desktop: desktop,
-                layoutState: layoutState
+                layoutState: layoutState,
+                talkie: talkie
             ),
             trackpad: LatticesCompanionTrackpadController.shared.state(
                 isEnabled: Preferences.shared.companionTrackpadEnabled
@@ -607,13 +659,15 @@ private extension LatticesDeckHost {
     func buildCockpitState(
         voice: DeckVoiceState,
         desktop: DeckDesktopSummary,
-        layoutState: DeckLayoutState?
+        layoutState: DeckLayoutState?,
+        talkie: TalkieDeckSnapshot
     ) -> DeckCockpitState {
         LatticesCompanionCockpitCatalog.renderedState(
             layout: Preferences.shared.companionCockpitLayout,
             voice: voice,
             desktop: desktop,
-            layoutState: layoutState
+            layoutState: layoutState,
+            talkie: talkie
         )
     }
 
@@ -1117,71 +1171,151 @@ private extension LatticesDeckHost {
 
     @MainActor
     func nextApplicationTargetOnMainActor(direction: String) throws -> WindowEntry {
-        let windows = DesktopModel.shared.allWindows()
-            .filter { $0.isOnScreen && $0.app != "Lattices" }
-            .sorted { lhs, rhs in
-                lhs.zIndex < rhs.zIndex
+        let appTargets = switchableWindows()
+            .reduce(into: [WindowEntry]()) { result, window in
+                guard !result.contains(where: { $0.app == window.app }) else { return }
+                result.append(window)
             }
 
-        var orderedApps: [String] = []
-        for window in windows where !orderedApps.contains(window.app) {
-            orderedApps.append(window.app)
-        }
-
-        guard !orderedApps.isEmpty else {
+        guard !appTargets.isEmpty else {
             throw LatticesDeckHostError.noVisibleTargets("applications")
         }
 
-        let currentApp = currentFrontmostWindow(from: windows)?.app ?? orderedApps.first!
-        let currentIndex = orderedApps.firstIndex(of: currentApp) ?? 0
-        let targetIndex = wrappedIndex(
-            currentIndex,
-            count: orderedApps.count,
+        let target = cycleTarget(
+            in: appTargets,
+            scope: .application,
             direction: direction
         )
-        let targetApp = orderedApps[targetIndex]
-
-        guard let target = windows.first(where: { $0.app == targetApp }) else {
-            throw LatticesDeckHostError.noVisibleTargets("applications")
-        }
-
         return target
     }
 
     @MainActor
     func nextWindowTargetOnMainActor(direction: String) throws -> WindowEntry {
-        let windows = DesktopModel.shared.allWindows()
-            .filter { $0.isOnScreen && $0.app != "Lattices" }
-            .sorted { lhs, rhs in
-                lhs.zIndex < rhs.zIndex
-            }
+        let windows = switchableWindows()
 
         guard !windows.isEmpty else {
             throw LatticesDeckHostError.noVisibleTargets("windows")
         }
 
-        let currentWID = currentFrontmostWindow(from: windows)?.wid ?? windows[0].wid
-        let currentIndex = windows.firstIndex(where: { $0.wid == currentWID }) ?? 0
-        let targetIndex = wrappedIndex(
-            currentIndex,
-            count: windows.count,
+        return cycleTarget(
+            in: windows,
+            scope: .window,
             direction: direction
         )
-        return windows[targetIndex]
     }
 
-    func wrappedIndex(_ currentIndex: Int, count: Int, direction: String) -> Int {
-        guard count > 0 else { return 0 }
-        if direction.lowercased().hasPrefix("prev") {
-            return (currentIndex - 1 + count) % count
+    @MainActor
+    func switchableWindows() -> [WindowEntry] {
+        let windows = DesktopModel.shared.allWindows()
+            .filter { $0.isOnScreen && $0.app != "Lattices" }
+        let frontmostWID = currentFrontmostWindow(from: windows)?.wid
+
+        return windows.sorted { lhs, rhs in
+            if lhs.wid == frontmostWID { return true }
+            if rhs.wid == frontmostWID { return false }
+
+            let lhsInteraction = DesktopModel.shared.lastInteractionDate(for: lhs.wid) ?? .distantPast
+            let rhsInteraction = DesktopModel.shared.lastInteractionDate(for: rhs.wid) ?? .distantPast
+            if lhsInteraction != rhsInteraction {
+                return lhsInteraction > rhsInteraction
+            }
+
+            return lhs.zIndex < rhs.zIndex
         }
-        return (currentIndex + 1) % count
+    }
+
+    @MainActor
+    func cycleTarget(
+        in windows: [WindowEntry],
+        scope: SwitchCycleScope,
+        direction: String
+    ) -> WindowEntry {
+        guard windows.count > 1 else {
+            let only = windows[0]
+            switchCycleState = SwitchCycleState(
+                scope: scope,
+                orderedWindowIDs: [only.wid],
+                currentWindowID: only.wid,
+                updatedAt: Date()
+            )
+            return only
+        }
+
+        let orderedIDs = windows.map(\.wid)
+        let frontmostWID = currentFrontmostWindow(from: windows)?.wid ?? orderedIDs[0]
+        let now = Date()
+        let reusableState = reusableSwitchCycleState(
+            scope: scope,
+            orderedWindowIDs: orderedIDs,
+            frontmostWID: frontmostWID,
+            now: now
+        )
+        let anchorWID = reusableState?.currentWindowID ?? frontmostWID
+        let currentIndex = orderedIDs.firstIndex(of: anchorWID) ?? 0
+        let targetIndex = switchCycleTargetIndex(
+            currentIndex: currentIndex,
+            count: orderedIDs.count,
+            direction: direction,
+            hasReusableState: reusableState != nil
+        )
+        let target = windows[targetIndex]
+
+        switchCycleState = SwitchCycleState(
+            scope: scope,
+            orderedWindowIDs: orderedIDs,
+            currentWindowID: target.wid,
+            updatedAt: now
+        )
+        return target
+    }
+
+    func reusableSwitchCycleState(
+        scope: SwitchCycleScope,
+        orderedWindowIDs: [UInt32],
+        frontmostWID: UInt32,
+        now: Date
+    ) -> SwitchCycleState? {
+        guard let state = switchCycleState,
+              state.scope == scope,
+              state.orderedWindowIDs == orderedWindowIDs,
+              now.timeIntervalSince(state.updatedAt) <= switchCycleStateLifetime else {
+            return nil
+        }
+
+        // Immediately after a remote focus request the CG window list can lag.
+        // Reuse the explicit cursor briefly, then let outside focus changes reset it.
+        if frontmostWID != state.currentWindowID,
+           now.timeIntervalSince(state.updatedAt) > 1.2 {
+            return nil
+        }
+
+        return state
+    }
+
+    func switchCycleTargetIndex(
+        currentIndex: Int,
+        count: Int,
+        direction: String,
+        hasReusableState: Bool
+    ) -> Int {
+        guard count > 0 else { return 0 }
+        let normalized = direction.lowercased()
+
+        if normalized.hasPrefix("prev") || normalized == "last" {
+            return (currentIndex + 1) % count
+        }
+
+        if currentIndex == 0 && !hasReusableState {
+            return min(1, count - 1)
+        }
+
+        return (currentIndex - 1 + count) % count
     }
 
     @MainActor
     func frontmostWindowTarget() -> (wid: UInt32, pid: Int32)? {
         guard let app = NSWorkspace.shared.frontmostApplication,
-              app.bundleIdentifier != "com.arach.lattices" else {
+              app.bundleIdentifier != "dev.lattices.app" else {
             return nil
         }
 
@@ -1374,6 +1508,7 @@ private extension LatticesDeckHost {
         if actionID.hasPrefix("layout") { return "blue" }
         if actionID.hasPrefix("switch") { return "violet" }
         if actionID.hasPrefix("mouse") { return "teal" }
+        if actionID.hasPrefix("talkie") { return "violet" }
         if actionID.hasPrefix("key") || actionID.hasPrefix("keys") { return "amber" }
         if actionID.hasPrefix("history") { return "green" }
         return "amber"

@@ -42,6 +42,23 @@ struct HomeDashboardView: View {
 
             HStack(spacing: 10) {
                 homeActionCard(
+                    title: "Chat",
+                    subtitle: piSession.hasPiBinary
+                        ? (piSession.needsProviderSetup || piSession.isAuthenticating
+                            ? piSession.setupStatusSummary
+                            : "Standalone conversation surface")
+                        : "Install Pi to enable the assistant",
+                    icon: "bubble.left.and.bubble.right",
+                    tint: piSession.hasPiBinary ? Palette.text : Palette.kill
+                ) {
+                    if let onNavigate {
+                        onNavigate(.pi)
+                    } else {
+                        AssistantAccess.show()
+                    }
+                }
+
+                homeActionCard(
                     title: "Layout",
                     subtitle: "Arrange windows",
                     icon: "rectangle.3.group",
@@ -57,19 +74,6 @@ struct HomeDashboardView: View {
                     tint: Palette.detach
                 ) {
                     onNavigate?(.desktopInventory)
-                }
-
-                homeActionCard(
-                    title: "Chat",
-                    subtitle: piSession.hasPiBinary
-                        ? (piSession.needsProviderSetup || piSession.isAuthenticating
-                            ? piSession.setupStatusSummary
-                            : "Standalone conversation surface")
-                        : "Install Pi to enable the assistant",
-                    icon: "bubble.left.and.bubble.right",
-                    tint: piSession.hasPiBinary ? Palette.text : Palette.kill
-                ) {
-                    onNavigate?(.pi)
                 }
             }
         }

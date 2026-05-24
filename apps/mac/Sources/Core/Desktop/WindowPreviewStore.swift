@@ -10,7 +10,7 @@ final class WindowPreviewStore: ObservableObject {
     private var lastAttemptAt: [UInt32: Date] = [:]
     private var accessOrder: [UInt32] = []
     private let maxCached = 15
-    private let queue = DispatchQueue(label: "com.arach.lattices.window-preview", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "dev.lattices.app.window-preview", qos: .userInitiated)
     private let previewMaxSize = NSSize(width: 360, height: 190)
 
     func image(for wid: UInt32) -> NSImage? {

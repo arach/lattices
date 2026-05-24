@@ -77,7 +77,7 @@ final class LatticesCompanionSecurityCoordinator {
     }
 
     private enum KeychainKey {
-        static let service = "com.arach.lattices.companion.bridge"
+        static let service = "dev.lattices.app.companion.bridge"
         static let account = "bridge.keyagreement.private"
     }
 
