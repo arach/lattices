@@ -116,6 +116,9 @@ struct MainView: View {
                         MenuBarController.shared.dismissPopover()
                         ScreenMapWindowController.shared.showPage(.home)
                     }
+                    headerButton(icon: "bubble.left.and.bubble.right") {
+                        AssistantAccess.show()
+                    }
                     headerButton(icon: "rectangle.3.group") {
                         MenuBarController.shared.dismissPopover()
                         ScreenMapWindowController.shared.showPage(.screenMap)
@@ -371,12 +374,22 @@ struct MainView: View {
             .padding(.bottom, 6)
 
             ActionRow(
+                label: "Assistant",
+                detail: "AI chat for settings, planning, and workspace help",
+                hotkeyTokens: hotkeyTokens(.workspaceAssistant),
+                icon: "bubble.left.and.bubble.right",
+                accentColor: Palette.running
+            ) {
+                AssistantAccess.show()
+            }
+            ActionRow(
                 label: "Home",
                 detail: "Workspace overview and project launcher",
                 hotkeyTokens: hotkeyTokens(.unifiedWindow),
                 icon: "house",
                 accentColor: Palette.textDim
             ) {
+                MenuBarController.shared.dismissPopover()
                 ScreenMapWindowController.shared.showPage(.home)
             }
             ActionRow(

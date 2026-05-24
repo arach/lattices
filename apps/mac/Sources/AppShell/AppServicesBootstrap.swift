@@ -18,6 +18,7 @@ enum AppServicesBootstrap {
     }
 
     static func stop() {
+        PiChatSession.shared.shutdown()
         LatticesCompanionBridgeServer.shared.stop()
         DaemonServer.shared.stop()
     }

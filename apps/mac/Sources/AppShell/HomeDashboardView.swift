@@ -51,7 +51,11 @@ struct HomeDashboardView: View {
                     icon: "bubble.left.and.bubble.right",
                     tint: piSession.hasPiBinary ? Palette.text : Palette.kill
                 ) {
-                    onNavigate?(.pi)
+                    if let onNavigate {
+                        onNavigate(.pi)
+                    } else {
+                        AssistantAccess.show()
+                    }
                 }
 
                 homeActionCard(

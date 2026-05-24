@@ -16,14 +16,18 @@ struct PiChatDock: View {
         VStack(spacing: 0) {
             topHandle
 
-            transcript
+            if session.hasPiBinary && !session.needsProviderSetup {
+                PiChatTranscript(session: session, style: .dock)
+            } else {
+                legacyTranscriptPlaceholder
+            }
 
             Rectangle()
                 .fill(Palette.border)
                 .frame(height: 0.5)
 
             if session.hasPiBinary && !session.needsProviderSetup {
-                composer
+                PiChatComposer(session: session, style: .dock, focus: $composerFocused)
             } else if session.needsProviderSetup {
                 providerSettingsBar
             } else {
@@ -283,105 +287,19 @@ struct PiChatDock: View {
         }
     }
 
-    private var transcript: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.vertical, showsIndicators: true) {
-                LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(session.messages) { message in
-                        row(message)
-                            .id(message.id)
-                    }
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 10)
-            }
-            .background(Color.black.opacity(0.35))
-            .onAppear {
-                if let last = session.messages.last?.id {
-                    proxy.scrollTo(last, anchor: .bottom)
+    private var legacyTranscriptPlaceholder: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(session.messages) { message in
+                    Text(message.text)
+                        .font(Typo.mono(10))
+                        .foregroundColor(Palette.textDim)
+                        .padding(10)
                 }
             }
-            .onChange(of: session.messages.count) { _ in
-                if let last = session.messages.last?.id {
-                    withAnimation(.easeOut(duration: 0.15)) {
-                        proxy.scrollTo(last, anchor: .bottom)
-                    }
-                }
-            }
+            .padding(10)
         }
-    }
-
-    private func row(_ message: PiChatMessage) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            VStack(alignment: .leading, spacing: 4) {
-                capsuleLabel(roleLabel(for: message.role).uppercased(), tint: roleColor(for: message.role))
-
-                Text(timestamp(for: message.timestamp))
-                    .font(Typo.mono(8))
-                    .foregroundColor(Palette.textMuted)
-            }
-            .frame(width: 52, alignment: .leading)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Rectangle()
-                    .fill(roleColor(for: message.role).opacity(0.9))
-                    .frame(width: 14, height: 1.5)
-
-                Text(message.text)
-                    .font(Typo.mono(11))
-                    .foregroundColor(Palette.text)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 9)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(roleColor(for: message.role).opacity(message.role == .assistant ? 0.11 : 0.06))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(roleColor(for: message.role).opacity(0.22), lineWidth: 0.5)
-                )
-        )
-    }
-
-    private var composer: some View {
-        HStack(spacing: 10) {
-            HStack(spacing: 8) {
-                Text(">")
-                    .font(Typo.geistMonoBold(11))
-                    .foregroundColor(Palette.running)
-
-                TextField("Ask about settings...", text: $session.draft, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .font(Typo.mono(11))
-                    .foregroundColor(Palette.text)
-                    .lineLimit(1...4)
-                    .focused($composerFocused)
-                    .onSubmit {
-                        session.sendDraft()
-                    }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 9)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.black.opacity(0.38))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .strokeBorder(Palette.running.opacity(0.16), lineWidth: 0.5)
-                    )
-            )
-
-            footerButton("send", tint: Palette.running) {
-                session.sendDraft()
-            }
-            .disabled(session.isSending)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 10)
-        .background(Color.black.opacity(0.62))
+        .background(Color.black.opacity(0.35))
     }
 
     private var footerBar: some View {
@@ -483,26 +401,6 @@ struct PiChatDock: View {
         .background(Color.black.opacity(0.62))
     }
 
-    private func roleLabel(for role: PiChatMessage.Role) -> String {
-        switch role {
-        case .system: return "system"
-        case .user: return "you"
-        case .assistant: return "assistant"
-        }
-    }
-
-    private func roleColor(for role: PiChatMessage.Role) -> Color {
-        switch role {
-        case .system: return Palette.detach
-        case .user: return Palette.textDim
-        case .assistant: return Palette.running
-        }
-    }
-
-    private func timestamp(for date: Date) -> String {
-        Self.timeFormatter.string(from: date)
-    }
-
     private func capsuleLabel(_ text: String, tint: Color) -> some View {
         Text(text)
             .font(Typo.geistMonoBold(9))
@@ -561,4 +459,5 @@ struct PiChatDock: View {
                     .strokeBorder(tint.opacity(0.24), lineWidth: 0.5)
             )
     }
+
 }
