@@ -396,14 +396,23 @@ final class KeyboardRemapController: ObservableObject {
     }
 
     private func releaseCapsLockLatchIfNeeded() {
-        guard eventTapLocation != .cghidEventTap ||
-              CGEventSource.flagsState(.combinedSessionState).contains(.maskAlphaShift) else {
-            return
+        clearCapsLockLatch(reason: "event")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) { [weak self] in
+            self?.clearCapsLockLatch(reason: "settle")
         }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) { [weak self] in
+            self?.clearCapsLockLatch(reason: "deferred")
+        }
+    }
+
+    @discardableResult
+    private func clearCapsLockLatch(reason: String) -> Bool {
         let result = IOHIDSetModifierLockState(kIOMainPortDefault, Int32(kIOHIDCapsLockState), false)
         if result != kIOReturnSuccess {
-            DiagnosticLog.shared.warn("KeyboardRemap: failed to clear Caps Lock latch (\(result))")
+            DiagnosticLog.shared.warn("KeyboardRemap: failed to clear Caps Lock latch (\(reason), \(result))")
+            return false
         }
+        return true
     }
 
     private func postKeyTap(keyCode: CGKeyCode) {

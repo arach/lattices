@@ -31,6 +31,36 @@ struct ScreenOverlayLayerSnapshot {
     let expiresAt: Date?
 }
 
+struct ScreenOverlayActorVisibilitySnapshot {
+    let hidden: Bool
+    let actorCount: Int
+
+    var visible: Bool { !hidden }
+}
+
+struct ScreenOverlayActorHUD {
+    let url: String?
+    let html: String?
+    let title: String?
+    let width: CGFloat
+    let height: CGFloat
+    let readAccessPath: String?
+
+    var hasContent: Bool {
+        (url?.isEmpty == false) || (html?.isEmpty == false)
+    }
+
+    var contentKey: String {
+        [
+            url ?? "",
+            html ?? "",
+            title ?? "",
+            "\(Int(width))x\(Int(height))",
+            readAccessPath ?? "",
+        ].joined(separator: "|")
+    }
+}
+
 enum ScreenOverlayPayload {
     case snapZones(ScreenOverlaySnapZonesPayload)
     case toast(ScreenOverlayTextPayload)
@@ -77,6 +107,13 @@ struct ScreenOverlayPetPayload {
     let state: String?
     let name: String?
     let message: String?
+    let targetApp: String?
+    let targetBundleIdentifier: String?
+    let targetAppPath: String?
+    let scale: CGFloat
+    let labelHidden: Bool
+    let closeOnActivate: Bool
+    let hud: ScreenOverlayActorHUD?
     let point: CGPoint?
     let placement: ScreenOverlayPlacement
     let style: ScreenOverlayStyle
@@ -90,10 +127,83 @@ struct ScreenOverlayPetPayload {
             state: nextState ?? state,
             name: name,
             message: message,
+            targetApp: targetApp,
+            targetBundleIdentifier: targetBundleIdentifier,
+            targetAppPath: targetAppPath,
+            scale: scale,
+            labelHidden: labelHidden,
+            closeOnActivate: closeOnActivate,
+            hud: hud,
             point: point,
             placement: .point,
             style: style,
             isDragging: nextIsDragging ?? isDragging,
+            dismissible: dismissible
+        )
+    }
+
+    func withLabelHidden(_ hidden: Bool) -> ScreenOverlayPetPayload {
+        ScreenOverlayPetPayload(
+            glyph: glyph,
+            petID: petID,
+            state: state,
+            name: name,
+            message: message,
+            targetApp: targetApp,
+            targetBundleIdentifier: targetBundleIdentifier,
+            targetAppPath: targetAppPath,
+            scale: scale,
+            labelHidden: hidden,
+            closeOnActivate: closeOnActivate,
+            hud: hud,
+            point: point,
+            placement: placement,
+            style: style,
+            isDragging: isDragging,
+            dismissible: dismissible
+        )
+    }
+
+    func withScale(_ nextScale: CGFloat) -> ScreenOverlayPetPayload {
+        ScreenOverlayPetPayload(
+            glyph: glyph,
+            petID: petID,
+            state: state,
+            name: name,
+            message: message,
+            targetApp: targetApp,
+            targetBundleIdentifier: targetBundleIdentifier,
+            targetAppPath: targetAppPath,
+            scale: max(0.55, min(nextScale, 1.35)),
+            labelHidden: labelHidden,
+            closeOnActivate: closeOnActivate,
+            hud: hud,
+            point: point,
+            placement: placement,
+            style: style,
+            isDragging: isDragging,
+            dismissible: dismissible
+        )
+    }
+
+    func withHUD(_ nextHUD: ScreenOverlayActorHUD?) -> ScreenOverlayPetPayload {
+        ScreenOverlayPetPayload(
+            glyph: glyph,
+            petID: petID,
+            state: state,
+            name: name,
+            message: message,
+            targetApp: targetApp,
+            targetBundleIdentifier: targetBundleIdentifier,
+            targetAppPath: targetAppPath,
+            scale: scale,
+            labelHidden: labelHidden,
+            closeOnActivate: closeOnActivate,
+            hud: nextHUD,
+            point: point,
+            placement: placement,
+            style: style,
+            isDragging: isDragging,
             dismissible: dismissible
         )
     }
@@ -126,6 +236,8 @@ final class ScreenOverlayCanvasController {
     private var localDismissMonitor: Any?
     private var dragState: OverlayActorDragState?
     private var actorDragTimeoutTimer: Timer?
+    private var hoveredActorID: ScreenOverlayLayerID?
+    private var menuActionTargets: [ActorMenuActionTarget] = []
     private var agentActorsHidden = false
     private let maxActorDragDuration: TimeInterval = 8.0
 
@@ -175,6 +287,10 @@ final class ScreenOverlayCanvasController {
     func removeLayer(id: ScreenOverlayLayerID) {
         layersByID.removeValue(forKey: id)
         motionsByLayerID.removeValue(forKey: id)
+        if hoveredActorID == id {
+            hoveredActorID = nil
+            ScreenOverlayActorHUDController.shared.hide()
+        }
         if dragState?.id == id {
             dragState = nil
             cancelActorDragTimeout()
@@ -188,6 +304,10 @@ final class ScreenOverlayCanvasController {
         let removedIDs = Set(layersByID.values.filter { $0.owner == owner }.map(\.id))
         layersByID = layersByID.filter { _, layer in layer.owner != owner }
         motionsByLayerID = motionsByLayerID.filter { id, _ in layersByID[id] != nil }
+        if let hoveredActorID, removedIDs.contains(hoveredActorID) {
+            self.hoveredActorID = nil
+            ScreenOverlayActorHUDController.shared.hide()
+        }
         if let dragState, removedIDs.contains(dragState.id) {
             self.dragState = nil
             cancelActorDragTimeout()
@@ -198,20 +318,38 @@ final class ScreenOverlayCanvasController {
     }
 
     func toggleAgentActorsVisibility() {
-        agentActorsHidden.toggle()
+        _ = setAgentActorsHidden(!agentActorsHidden, showFeedback: true)
+    }
+
+    @discardableResult
+    func setAgentActorsHidden(_ hidden: Bool, showFeedback: Bool = false) -> ScreenOverlayActorVisibilitySnapshot {
+        agentActorsHidden = hidden
         if agentActorsHidden {
+            hoveredActorID = nil
             dragState = nil
             cancelActorDragTimeout()
             resetPointerCapture()
+            ScreenOverlayActorHUDController.shared.hide()
         }
         render()
         updateLifecycleMonitors()
+        let snapshot = agentActorsVisibility()
+        if showFeedback {
+            showActorVisibilityFeedback(snapshot)
+        }
+        return snapshot
+    }
+
+    func agentActorsVisibility() -> ScreenOverlayActorVisibilitySnapshot {
+        let count = layersByID.values.filter(\.isParkableActor).count
+        return ScreenOverlayActorVisibilitySnapshot(hidden: agentActorsHidden, actorCount: count)
     }
 
     func resetInputCapture(reason: String) {
         dragState = nil
         cancelActorDragTimeout()
         resetPointerCapture()
+        ScreenOverlayActorHUDController.shared.hide()
         DiagnosticLog.shared.warn("ScreenOverlay: input capture reset for \(reason)")
     }
 
@@ -234,6 +372,19 @@ final class ScreenOverlayCanvasController {
             restingState: restingState
         )
         layersByID[id] = layer.replacingPayload(.pet(payload.moved(to: currentPoint, state: movingState)))
+        render()
+        updateLifecycleMonitors()
+        return true
+    }
+
+    @discardableResult
+    func setActorHUD(id: ScreenOverlayLayerID, hud: ScreenOverlayActorHUD?) -> Bool {
+        guard let layer = layersByID[id],
+              case .pet(let payload) = layer.payload else { return false }
+        layersByID[id] = layer.replacingPayload(.pet(payload.withHUD(hud)))
+        if hoveredActorID == id, hud?.hasContent != true {
+            ScreenOverlayActorHUDController.shared.hide()
+        }
         render()
         updateLifecycleMonitors()
         return true
@@ -280,6 +431,7 @@ final class ScreenOverlayCanvasController {
                 }
 
             window.overlayView.layers = visibleLayers
+            window.overlayView.hoveredLayerID = agentActorsHidden ? nil : hoveredActorID
             if visibleLayers.isEmpty {
                 window.alphaValue = 0
             } else {
@@ -434,7 +586,7 @@ final class ScreenOverlayCanvasController {
             updatePointerCapture(at: point)
             return false
         case .rightMouseDown:
-            if closeActor(at: point) {
+            if showActorContextMenu(at: point) {
                 return true
             }
             dismissAgentOverlays()
@@ -449,6 +601,8 @@ final class ScreenOverlayCanvasController {
 
     private func updatePointerCapture(at globalPoint: CGPoint) {
         if let dragState {
+            setHoveredActor(nil)
+            ScreenOverlayActorHUDController.shared.hide()
             for (screenID, window) in windowsByScreenID {
                 window.ignoresMouseEvents = screenID != dragState.screenID
             }
@@ -456,12 +610,32 @@ final class ScreenOverlayCanvasController {
         }
 
         guard let hit = hitActor(at: globalPoint) else {
+            setHoveredActor(nil)
+            ScreenOverlayActorHUDController.shared.hide()
             resetPointerCapture()
             return
         }
 
+        setHoveredActor(hit.id)
+        if let layer = layersByID[hit.id],
+           case .pet(let payload) = layer.payload,
+           let hud = payload.hud,
+           hud.hasContent {
+            let globalRect = hit.rect.offsetBy(dx: hit.window.frame.minX, dy: hit.window.frame.minY)
+            ScreenOverlayActorHUDController.shared.show(actorID: hit.id, hud: hud, near: globalRect)
+        } else {
+            ScreenOverlayActorHUDController.shared.hide()
+        }
         for (screenID, window) in windowsByScreenID {
             window.ignoresMouseEvents = screenID != hit.screenID
+        }
+    }
+
+    private func setHoveredActor(_ id: ScreenOverlayLayerID?) {
+        guard hoveredActorID != id else { return }
+        hoveredActorID = id
+        for window in windowsByScreenID.values {
+            window.overlayView.hoveredLayerID = id
         }
     }
 
@@ -476,6 +650,7 @@ final class ScreenOverlayCanvasController {
             id: hit.id,
             screenID: hit.screenID,
             offset: CGPoint(x: hit.localPoint.x - currentPoint.x, y: hit.localPoint.y - currentPoint.y),
+            startPoint: currentPoint,
             lastPoint: currentPoint,
             startedAt: Date()
         )
@@ -517,12 +692,80 @@ final class ScreenOverlayCanvasController {
             resetPointerCapture()
             return
         }
-        layersByID[dragState.id] = layer.replacingPayload(.pet(payload.moved(to: dragState.lastPoint, state: "idle", isDragging: false)))
+        let settledPayload = payload.moved(to: dragState.lastPoint, state: "idle", isDragging: false)
+        let clickDistance = hypot(dragState.lastPoint.x - dragState.startPoint.x, dragState.lastPoint.y - dragState.startPoint.y)
+        if clickDistance < 6, activateActorTarget(settledPayload) {
+            if settledPayload.closeOnActivate {
+                layersByID.removeValue(forKey: dragState.id)
+                motionsByLayerID.removeValue(forKey: dragState.id)
+            } else {
+                layersByID[dragState.id] = layer.replacingPayload(.pet(settledPayload))
+            }
+            self.dragState = nil
+            cancelActorDragTimeout()
+            render()
+            updateLifecycleMonitors()
+            resetPointerCapture()
+            return
+        }
+
+        layersByID[dragState.id] = layer.replacingPayload(.pet(settledPayload))
         self.dragState = nil
         cancelActorDragTimeout()
         render()
         updateLifecycleMonitors()
         resetPointerCapture()
+    }
+
+    private func activateActorTarget(_ payload: ScreenOverlayPetPayload) -> Bool {
+        if let bundleID = payload.targetBundleIdentifier,
+           activateRunningApplication(bundleIdentifier: bundleID) {
+            return true
+        }
+        if let appName = payload.targetApp,
+           activateRunningApplication(named: appName) {
+            return true
+        }
+        if let appPath = payload.targetAppPath {
+            let url = URL(fileURLWithPath: appPath)
+            let config = NSWorkspace.OpenConfiguration()
+            NSWorkspace.shared.openApplication(at: url, configuration: config, completionHandler: nil)
+            DiagnosticLog.shared.info("ScreenOverlay: opened actor target app at \(appPath)")
+            return true
+        }
+        if let bundleID = payload.targetBundleIdentifier,
+           let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
+            let config = NSWorkspace.OpenConfiguration()
+            NSWorkspace.shared.openApplication(at: url, configuration: config, completionHandler: nil)
+            DiagnosticLog.shared.info("ScreenOverlay: opened actor target bundle \(bundleID)")
+            return true
+        }
+        if let appName = payload.targetApp {
+            NSWorkspace.shared.launchApplication(appName)
+            DiagnosticLog.shared.info("ScreenOverlay: launched actor target app \(appName)")
+            return true
+        }
+        return false
+    }
+
+    private func activateRunningApplication(bundleIdentifier: String) -> Bool {
+        guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier).first else {
+            return false
+        }
+        app.activate(options: [.activateIgnoringOtherApps, .activateAllWindows])
+        DiagnosticLog.shared.info("ScreenOverlay: activated actor target bundle \(bundleIdentifier)")
+        return true
+    }
+
+    private func activateRunningApplication(named appName: String) -> Bool {
+        guard let app = NSWorkspace.shared.runningApplications.first(where: { runningApp in
+            runningApp.localizedName?.localizedCaseInsensitiveCompare(appName) == .orderedSame
+        }) else {
+            return false
+        }
+        app.activate(options: [.activateIgnoringOtherApps, .activateAllWindows])
+        DiagnosticLog.shared.info("ScreenOverlay: activated actor target app \(appName)")
+        return true
     }
 
     private func clearStaleActorDragIfNeeded() {
@@ -569,6 +812,114 @@ final class ScreenOverlayCanvasController {
         return true
     }
 
+    private func showActorContextMenu(at globalPoint: CGPoint) -> Bool {
+        guard let hit = hitActor(at: globalPoint),
+              let layer = layersByID[hit.id],
+              layer.owner == .agentApi,
+              case .pet(let payload) = layer.payload else { return false }
+
+        menuActionTargets.removeAll()
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+
+        if payload.hasActivationTarget {
+            menu.addItem(menuItem(title: "Switch to \(payload.targetDisplayName)", action: { [weak self] in
+                _ = self?.activateActorTarget(payload)
+            }))
+            menu.addItem(.separator())
+        }
+
+        menu.addItem(menuItem(title: payload.labelHidden ? "Show Label" : "Hide Label", action: { [weak self] in
+            self?.setActorLabelHidden(id: hit.id, hidden: !payload.labelHidden)
+        }))
+
+        let sizeMenu = NSMenu()
+        sizeMenu.autoenablesItems = false
+        sizeMenu.addItem(menuItem(title: "Small", action: { [weak self] in
+            self?.setActorScale(id: hit.id, scale: 0.72)
+        }))
+        sizeMenu.addItem(menuItem(title: "Normal", action: { [weak self] in
+            self?.setActorScale(id: hit.id, scale: 1.0)
+        }))
+        sizeMenu.addItem(menuItem(title: "Large", action: { [weak self] in
+            self?.setActorScale(id: hit.id, scale: 1.18)
+        }))
+        let sizeItem = NSMenuItem(title: "Size", action: nil, keyEquivalent: "")
+        menu.addItem(sizeItem)
+        menu.setSubmenu(sizeMenu, for: sizeItem)
+
+        menu.addItem(.separator())
+        menu.addItem(menuItem(title: "Hide Actor Layer", action: { [weak self] in
+            _ = self?.setAgentActorsHidden(true, showFeedback: true)
+        }))
+        menu.addItem(menuItem(title: "Remove Actor", action: { [weak self] in
+            self?.removeActor(id: hit.id)
+        }))
+
+        menu.popUp(positioning: nil, at: hit.localPoint, in: hit.window.overlayView)
+        return true
+    }
+
+    private func menuItem(title: String, action: @escaping () -> Void) -> NSMenuItem {
+        let target = ActorMenuActionTarget(action)
+        menuActionTargets.append(target)
+        let item = NSMenuItem(title: title, action: #selector(ActorMenuActionTarget.invokeMenuAction), keyEquivalent: "")
+        item.target = target
+        return item
+    }
+
+    private func setActorLabelHidden(id: ScreenOverlayLayerID, hidden: Bool) {
+        guard let layer = layersByID[id],
+              case .pet(let payload) = layer.payload else { return }
+        layersByID[id] = layer.replacingPayload(.pet(payload.withLabelHidden(hidden)))
+        render()
+        updateLifecycleMonitors()
+    }
+
+    private func setActorScale(id: ScreenOverlayLayerID, scale: CGFloat) {
+        guard let layer = layersByID[id],
+              case .pet(let payload) = layer.payload else { return }
+        layersByID[id] = layer.replacingPayload(.pet(payload.withScale(scale)))
+        render()
+        updateLifecycleMonitors()
+    }
+
+    private func removeActor(id: ScreenOverlayLayerID) {
+        layersByID.removeValue(forKey: id)
+        motionsByLayerID.removeValue(forKey: id)
+        if hoveredActorID == id {
+            hoveredActorID = nil
+        }
+        if dragState?.id == id {
+            dragState = nil
+            cancelActorDragTimeout()
+        }
+        render()
+        updateLifecycleMonitors()
+        resetPointerCapture()
+    }
+
+    private func showActorVisibilityFeedback(_ snapshot: ScreenOverlayActorVisibilitySnapshot) {
+        let text = snapshot.hidden ? "Actor notes hidden" : "Actor notes shown"
+        let detail = snapshot.hidden ? "Press Hyper+B to bring them back." : "\(snapshot.actorCount) actor\(snapshot.actorCount == 1 ? "" : "s") available."
+        let layer = ScreenOverlayLayerSnapshot(
+            id: ScreenOverlayLayerID("actor-layer-visibility-feedback"),
+            owner: .agentApi,
+            screen: .all,
+            zIndex: 700,
+            opacity: 1,
+            payload: .toast(ScreenOverlayTextPayload(
+                text: text,
+                detail: detail,
+                point: nil,
+                placement: .bottom,
+                style: .info
+            )),
+            expiresAt: Date().addingTimeInterval(1.6)
+        )
+        publishLayer(layer)
+    }
+
     private func hitActor(at globalPoint: CGPoint) -> (id: ScreenOverlayLayerID, window: ScreenOverlayWindow, screenID: String, localPoint: CGPoint, rect: CGRect)? {
         guard let hit = screenLocalPoint(for: globalPoint) else { return nil }
         guard let layerHit = hit.window.overlayView.layerHit(at: hit.localPoint) else { return nil }
@@ -607,6 +958,10 @@ final class ScreenOverlayCanvasController {
             cancelActorDragTimeout()
             resetPointerCapture()
         }
+        if let hoveredActorID, layersByID[hoveredActorID] == nil {
+            self.hoveredActorID = nil
+            ScreenOverlayActorHUDController.shared.hide()
+        }
         guard layersByID.count != before else { return }
         render()
         updateLifecycleMonitors()
@@ -617,8 +972,21 @@ private struct OverlayActorDragState {
     let id: ScreenOverlayLayerID
     var screenID: String
     let offset: CGPoint
+    let startPoint: CGPoint
     var lastPoint: CGPoint
     let startedAt: Date
+}
+
+private final class ActorMenuActionTarget: NSObject {
+    private let action: () -> Void
+
+    init(_ action: @escaping () -> Void) {
+        self.action = action
+    }
+
+    @objc func invokeMenuAction() {
+        action()
+    }
 }
 
 private extension ScreenOverlayLayerSnapshot {
@@ -645,6 +1013,16 @@ private extension ScreenOverlayLayerSnapshot {
             payload: payload,
             expiresAt: expiresAt
         )
+    }
+}
+
+private extension ScreenOverlayPetPayload {
+    var hasActivationTarget: Bool {
+        targetBundleIdentifier != nil || targetApp != nil || targetAppPath != nil
+    }
+
+    var targetDisplayName: String {
+        targetApp ?? targetBundleIdentifier ?? targetAppPath.map { URL(fileURLWithPath: $0).deletingPathExtension().lastPathComponent } ?? "App"
     }
 }
 
@@ -746,6 +1124,9 @@ private final class ScreenOverlayCanvasView: NSView {
     var layers: [ScreenOverlayLayerSnapshot] = [] {
         didSet { needsDisplay = true }
     }
+    var hoveredLayerID: ScreenOverlayLayerID? {
+        didSet { needsDisplay = true }
+    }
     private var interactiveRectsByLayerID: [ScreenOverlayLayerID: CGRect] = [:]
 
     override init(frame frameRect: NSRect) {
@@ -778,7 +1159,7 @@ private final class ScreenOverlayCanvasView: NSView {
             case .highlight(let payload):
                 drawHighlight(payload, opacity: layer.opacity)
             case .pet(let payload):
-                drawPet(payload, id: layer.id, opacity: layer.opacity)
+                drawPet(payload, id: layer.id, opacity: layer.opacity, isHovered: hoveredLayerID == layer.id)
             }
             NSGraphicsContext.restoreGraphicsState()
         }
@@ -859,16 +1240,17 @@ private final class ScreenOverlayCanvasView: NSView {
         }
     }
 
-    private func drawPet(_ payload: ScreenOverlayPetPayload, id: ScreenOverlayLayerID, opacity: CGFloat) {
+    private func drawPet(_ payload: ScreenOverlayPetPayload, id: ScreenOverlayLayerID, opacity: CGFloat, isHovered: Bool) {
         let glyphFont = NSFont.systemFont(ofSize: 44, weight: .regular)
         let nameFont = NSFont.systemFont(ofSize: 12, weight: .semibold)
         let messageFont = NSFont.systemFont(ofSize: 12, weight: .regular)
         let glyph = attributed(payload.glyph, font: glyphFont, color: NSColor.white.withAlphaComponent(0.96 * opacity))
-        let name = payload.name.map { attributed($0, font: nameFont, color: NSColor.white.withAlphaComponent(0.96 * opacity)) }
-        let message = payload.message.map {
+        let name = payload.labelHidden ? nil : payload.name.map { attributed($0, font: nameFont, color: NSColor.white.withAlphaComponent(0.96 * opacity)) }
+        let message = payload.labelHidden ? nil : payload.message.map {
             attributed($0, font: messageFont, color: NSColor.white.withAlphaComponent(0.86 * opacity))
         }
-        let artSize = CGSize(width: 96, height: 104)
+        let actorScale = max(0.55, min(payload.scale, 1.35))
+        let artSize = CGSize(width: 96 * actorScale, height: 104 * actorScale)
         let textWidth: CGFloat = (name == nil && message == nil) ? 0 : 228
         let textHeight = textPlateHeight(name: name, message: message, width: textWidth)
         let bubbleWidth = artSize.width + (textWidth > 0 ? textWidth + 10 : 0)
@@ -893,7 +1275,13 @@ private final class ScreenOverlayCanvasView: NSView {
             : 0
         let dragScaleX: CGFloat = payload.isDragging ? 1.05 + CGFloat(sin(dragPhase * 0.9)) * 0.018 : 1
         let dragScaleY: CGFloat = payload.isDragging ? 0.98 + CGFloat(cos(dragPhase * 0.9)) * 0.018 : 1
-        let bodyRect = artRect.offsetBy(dx: 0, dy: dragLift)
+        let hoverLift: CGFloat = isHovered && !payload.isDragging ? 4 : 0
+        let hoverInset: CGFloat = isHovered && !payload.isDragging ? -3 : 0
+        let bodyRect = artRect.insetBy(dx: hoverInset, dy: hoverInset).offsetBy(dx: 0, dy: dragLift + hoverLift)
+
+        if isHovered {
+            drawActorHoverHalo(around: artRect.offsetBy(dx: 0, dy: hoverLift), style: payload.style, opacity: opacity)
+        }
 
         NSGraphicsContext.saveGraphicsState()
         if payload.isDragging {
@@ -922,8 +1310,8 @@ private final class ScreenOverlayCanvasView: NSView {
         }
         NSGraphicsContext.restoreGraphicsState()
 
+        interactiveRectsByLayerID[id] = artRect.insetBy(dx: -8, dy: -8)
         guard textWidth > 0 else {
-            interactiveRectsByLayerID[id] = artRect.insetBy(dx: -8, dy: -8)
             return
         }
         let textRect = CGRect(
@@ -932,8 +1320,7 @@ private final class ScreenOverlayCanvasView: NSView {
             width: textWidth,
             height: textHeight
         )
-        interactiveRectsByLayerID[id] = artRect.union(textRect).insetBy(dx: -8, dy: -8)
-        drawTranslucentTextWash(textRect, opacity: opacity)
+        drawTranslucentTextWash(textRect, style: payload.style, opacity: opacity, isHovered: isHovered)
 
         var cursorY = textRect.maxY - 10
         if let name {
@@ -956,13 +1343,69 @@ private final class ScreenOverlayCanvasView: NSView {
         return max(38, (name == nil ? 0 : 20) + (message == nil ? 0 : ceil(messageSize.height) + 10) + 18)
     }
 
-    private func drawTranslucentTextWash(_ rect: CGRect, opacity: CGFloat) {
-        let path = NSBezierPath(roundedRect: rect, xRadius: 8, yRadius: 8)
-        NSColor(calibratedWhite: 0.02, alpha: 0.34 * opacity).setFill()
+    private func drawActorHoverHalo(around rect: CGRect, style: ScreenOverlayStyle, opacity: CGFloat) {
+        let tint = color(for: style)
+        let haloRect = rect.insetBy(dx: -8, dy: -8)
+        let path = NSBezierPath(ovalIn: haloRect)
+        let shadow = NSShadow()
+        shadow.shadowBlurRadius = 18
+        shadow.shadowOffset = .zero
+        shadow.shadowColor = tint.withAlphaComponent(0.30 * opacity)
+
+        NSGraphicsContext.saveGraphicsState()
+        shadow.set()
+        tint.withAlphaComponent(0.12 * opacity).setFill()
+        path.fill()
+        NSGraphicsContext.restoreGraphicsState()
+    }
+
+    private func drawTranslucentTextWash(_ rect: CGRect, style: ScreenOverlayStyle, opacity: CGFloat, isHovered: Bool) {
+        let radius: CGFloat = 12
+        let path = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
+        let tint = color(for: style)
+        let hoverBoost: CGFloat = isHovered ? 1.16 : 1.0
+
+        let shadow = NSShadow()
+        shadow.shadowBlurRadius = isHovered ? 26 : 22
+        shadow.shadowOffset = NSSize(width: 0, height: -5)
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.18 * hoverBoost * opacity)
+
+        NSGraphicsContext.saveGraphicsState()
+        shadow.set()
+        NSColor(calibratedRed: 0.035, green: 0.045, blue: 0.060, alpha: 0.28 * hoverBoost * opacity).setFill()
+        path.fill()
+        NSGraphicsContext.restoreGraphicsState()
+
+        NSGraphicsContext.saveGraphicsState()
+        path.addClip()
+        NSGradient(
+            starting: NSColor(calibratedRed: 0.18, green: 0.22, blue: 0.28, alpha: 0.32 * hoverBoost * opacity),
+            ending: NSColor(calibratedRed: 0.055, green: 0.070, blue: 0.092, alpha: 0.34 * hoverBoost * opacity)
+        )?.draw(in: rect, angle: -90)
+
+        tint.withAlphaComponent((isHovered ? 0.12 : 0.08) * opacity).setFill()
         path.fill()
 
-        path.lineWidth = 0.5
-        NSColor.white.withAlphaComponent(0.10 * opacity).setStroke()
+        let lowerWash = CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: rect.height * 0.52)
+        NSGradient(
+            starting: NSColor.black.withAlphaComponent(0.04 * opacity),
+            ending: NSColor.black.withAlphaComponent(0.16 * opacity)
+        )?.draw(in: lowerWash, angle: -90)
+
+        let glossRect = CGRect(x: rect.minX + 1, y: rect.midY, width: rect.width - 2, height: rect.height * 0.45)
+        NSGradient(
+            starting: NSColor.white.withAlphaComponent(0.18 * opacity),
+            ending: NSColor.white.withAlphaComponent(0.02 * opacity)
+        )?.draw(in: glossRect, angle: -90)
+        NSGraphicsContext.restoreGraphicsState()
+
+        let innerPath = NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: radius - 0.5, yRadius: radius - 0.5)
+        innerPath.lineWidth = 0.8
+        NSColor.white.withAlphaComponent(0.26 * opacity).setStroke()
+        innerPath.stroke()
+
+        path.lineWidth = 1
+        tint.withAlphaComponent((isHovered ? 0.38 : 0.24) * opacity).setStroke()
         path.stroke()
     }
 
@@ -970,7 +1413,7 @@ private final class ScreenOverlayCanvasView: NSView {
         let shadow = NSShadow()
         shadow.shadowBlurRadius = 2
         shadow.shadowOffset = NSSize(width: 0, height: -1)
-        shadow.shadowColor = NSColor.black.withAlphaComponent(0.72 * opacity)
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.68 * opacity)
 
         NSGraphicsContext.saveGraphicsState()
         shadow.set()
@@ -978,7 +1421,7 @@ private final class ScreenOverlayCanvasView: NSView {
         NSGraphicsContext.restoreGraphicsState()
 
         let halo = NSMutableAttributedString(attributedString: text)
-        halo.addAttribute(.foregroundColor, value: NSColor.black.withAlphaComponent(0.36 * opacity), range: NSRange(location: 0, length: halo.length))
+        halo.addAttribute(.foregroundColor, value: NSColor.black.withAlphaComponent(0.32 * opacity), range: NSRange(location: 0, length: halo.length))
         halo.draw(with: rect.offsetBy(dx: 0.5, dy: -0.5), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
         halo.draw(with: rect.offsetBy(dx: -0.5, dy: -0.5), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
 

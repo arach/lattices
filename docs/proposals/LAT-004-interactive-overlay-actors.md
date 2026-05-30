@@ -192,7 +192,7 @@ Expected interactions:
 
 Dismissal should normally dismiss the current message/surface, not delete the actor.
 Persistent actors can be parked globally with the overlay actor hotkey
-without clearing their ids or state. The initial shortcut is **Hyper+8**.
+without clearing their ids or state. The initial shortcut is **Hyper+B**.
 
 ## Motion
 

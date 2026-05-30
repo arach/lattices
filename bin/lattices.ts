@@ -2,8 +2,8 @@
 
 import { createHash } from "node:crypto";
 import { execSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { basename, dirname, isAbsolute, resolve } from "node:path";
 import { homedir } from "node:os";
 
 // Daemon client (lazy-loaded to avoid blocking startup for TTY commands)
@@ -93,6 +93,52 @@ function toSessionName(dir: string): string {
 
 function esc(str: string): string {
   return str.replace(/'/g, "'\\''");
+}
+
+function appleScriptString(str: string): string {
+  return str.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function slugify(str: string): string {
+  return str
+    .toLowerCase()
+    .replace(/\.app$/i, "")
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "app";
+}
+
+function parseFlagValue(args: string[], name: string): string | undefined {
+  const prefix = `--${name}=`;
+  const exact = `--${name}`;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i].startsWith(prefix)) return args[i].slice(prefix.length);
+    if (args[i] === exact) return args[i + 1];
+  }
+  return undefined;
+}
+
+function hasFlag(args: string[], name: string): boolean {
+  return args.includes(`--${name}`);
+}
+
+function nonFlagArgs(args: string[]): string[] {
+  const valueFlags = new Set([
+    "id", "state", "ttl", "ttlMs", "x", "y", "gap", "placement", "style", "name", "scale",
+    "hud-url", "hudUrl", "hud-html", "hudHTML", "hudHtml", "hud-title", "hudTitle",
+    "hud-width", "hudWidth", "hud-height", "hudHeight", "width", "height",
+    "manifest", "root", "max-depth", "maxDepth", "read-access", "readAccess",
+  ]);
+  const out: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (!arg.startsWith("--")) {
+      out.push(arg);
+      continue;
+    }
+    const flagName = arg.slice(2);
+    if (!arg.includes("=") && valueFlags.has(flagName)) i++;
+  }
+  return out;
 }
 
 // ── Config ───────────────────────────────────────────────────────────
@@ -1226,6 +1272,787 @@ async function callCommand(method?: string, ...rest: string[]): Promise<void> {
   }
 }
 
+interface AppActorAsset {
+  id: string;
+  appName: string;
+  appPath: string;
+  bundleIdentifier?: string;
+  iconPath: string;
+  assetDir: string;
+}
+
+function plistValue(plistPath: string, key: string): string | undefined {
+  const value = runQuiet(`/usr/libexec/PlistBuddy -c 'Print :${esc(key)}' '${esc(plistPath)}' 2>/dev/null`);
+  return value?.trim() || undefined;
+}
+
+function resolveApplication(appQuery: string): string | undefined {
+  const directPath = appQuery.endsWith(".app") ? resolve(appQuery) : undefined;
+  if (directPath && existsSync(directPath)) return directPath.replace(/\/$/, "");
+
+  const script = `POSIX path of (path to application "${appleScriptString(appQuery.replace(/\.app$/i, ""))}")`;
+  const fromLaunchServices = runQuiet(`osascript -e '${esc(script)}' 2>/dev/null`);
+  if (fromLaunchServices) return fromLaunchServices.trim().replace(/\/$/, "");
+
+  const appName = appQuery.endsWith(".app") ? appQuery : `${appQuery}.app`;
+  const fromFind = runQuiet(
+    `find /Applications /System/Applications '${esc(resolve(homedir(), "Applications"))}' -maxdepth 5 -iname '${esc(appName)}' -print -quit 2>/dev/null`
+  );
+  return fromFind?.trim().replace(/\/$/, "") || undefined;
+}
+
+function resolveApplicationByBundleIdentifier(bundleIdentifier: string): string | undefined {
+  const script = `POSIX path of (path to application id "${appleScriptString(bundleIdentifier)}")`;
+  const fromLaunchServices = runQuiet(`osascript -e '${esc(script)}' 2>/dev/null`);
+  return fromLaunchServices?.trim().replace(/\/$/, "") || undefined;
+}
+
+function iconPathForApplication(appPath: string): string | undefined {
+  const resourcesDir = resolve(appPath, "Contents", "Resources");
+  const infoPlist = resolve(appPath, "Contents", "Info.plist");
+  const iconFile = plistValue(infoPlist, "CFBundleIconFile");
+  const candidates: string[] = [];
+  if (iconFile) {
+    candidates.push(resolve(resourcesDir, iconFile));
+    if (!/\.[a-z0-9]+$/i.test(iconFile)) {
+      candidates.push(resolve(resourcesDir, `${iconFile}.icns`));
+    }
+  }
+  candidates.push(
+    resolve(resourcesDir, "AppIcon.icns"),
+    resolve(resourcesDir, "icon.icns"),
+    resolve(resourcesDir, "electron.icns")
+  );
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+  const firstIcns = runQuiet(`find '${esc(resourcesDir)}' -maxdepth 1 -iname '*.icns' -print -quit 2>/dev/null`);
+  return firstIcns?.trim() || undefined;
+}
+
+function ensureAppActorAsset(appQuery: string): AppActorAsset {
+  const appPath = resolveApplication(appQuery);
+  if (!appPath) {
+    throw new Error(`Could not find application: ${appQuery}`);
+  }
+
+  const appName = basename(appPath, ".app");
+  const iconPath = iconPathForApplication(appPath);
+  if (!iconPath) {
+    throw new Error(`Could not find an icon resource in ${appPath}`);
+  }
+
+  const id = `${slugify(appName)}-icon`;
+  const assetDir = resolve(homedir(), ".codex", "pets", id);
+  const spritesheetPath = resolve(assetDir, "spritesheet.png");
+  mkdirSync(assetDir, { recursive: true });
+  run(`sips -s format png -Z 192 '${esc(iconPath)}' --out '${esc(spritesheetPath)}' >/dev/null`);
+
+  const metadata = {
+    id,
+    displayName: `${appName} Icon`,
+    description: `A one-frame overlay actor made from the ${appName} application icon.`,
+    spritesheetPath: "spritesheet.png",
+    states: {
+      idle: { row: 0, frames: 1, frameWidth: 192, frameHeight: 192 },
+      thinking: { row: 0, frames: 1, frameWidth: 192, frameHeight: 192 },
+      working: { row: 0, frames: 1, frameWidth: 192, frameHeight: 192 },
+      listening: { row: 0, frames: 1, frameWidth: 192, frameHeight: 192 },
+      waiting: { row: 0, frames: 1, frameWidth: 192, frameHeight: 192 },
+      ready: { row: 0, frames: 1, frameWidth: 192, frameHeight: 192 },
+    },
+  };
+  writeFileSync(resolve(assetDir, "pet.json"), `${JSON.stringify(metadata, null, 2)}\n`);
+
+  const bundleIdentifier = plistValue(resolve(appPath, "Contents", "Info.plist"), "CFBundleIdentifier");
+  return { id, appName, appPath, bundleIdentifier, iconPath, assetDir };
+}
+
+function ensureIconActorAsset(idSeed: string, displayName: string, iconPath: string): string {
+  if (!existsSync(iconPath)) {
+    throw new Error(`HUD icon does not exist: ${iconPath}`);
+  }
+
+  const id = `${slugify(idSeed)}-hud-icon`;
+  const assetDir = resolve(homedir(), ".codex", "pets", id);
+  const spritesheetPath = resolve(assetDir, "spritesheet.png");
+  mkdirSync(assetDir, { recursive: true });
+  run(`sips -s format png -Z 192 '${esc(iconPath)}' --out '${esc(spritesheetPath)}' >/dev/null`);
+
+  const metadata = {
+    id,
+    displayName: `${displayName} HUD Icon`,
+    description: `A one-frame overlay actor icon for the ${displayName} HUD.`,
+    spritesheetPath: "spritesheet.png",
+    states: {
+      idle: { row: 0, frames: 1, frameWidth: 192, frameHeight: 192 },
+      thinking: { row: 0, frames: 1, frameWidth: 192, frameHeight: 192 },
+      working: { row: 0, frames: 1, frameWidth: 192, frameHeight: 192 },
+      listening: { row: 0, frames: 1, frameWidth: 192, frameHeight: 192 },
+      waiting: { row: 0, frames: 1, frameWidth: 192, frameHeight: 192 },
+      ready: { row: 0, frames: 1, frameWidth: 192, frameHeight: 192 },
+    },
+  };
+  writeFileSync(resolve(assetDir, "pet.json"), `${JSON.stringify(metadata, null, 2)}\n`);
+  return id;
+}
+
+function actorUsage(): void {
+  console.log(`Usage:
+  lattices actor app <app-name> [message] [--state=idle] [--x=520 --y=340] [--show-label]
+  lattices actor switcher [app-name ...] [--x=420 --y=220 --gap=270] [--show-label]
+  lattices actor hud <actor-id> <url> [--hud-width=360 --hud-height=240]
+  lattices actor show|hide|toggle|status
+
+Examples:
+  lattices actor app Codex "Building the release"
+  lattices actor app Talkie "Hover for latest state" --hud-url=http://localhost:5173
+  lattices actor hud switch-talkie http://localhost:5173
+  lattices actor switcher Codex Talkie
+  lattices actor toggle
+  lattices actor switcher "Google Chrome" Codex Talkie --show-label --scale=0.8
+`);
+}
+
+async function actorCommand(sub?: string, ...rest: string[]): Promise<void> {
+  if (sub === "app") {
+    await actorAppCommand(rest);
+    return;
+  }
+  if (sub === "switcher") {
+    await actorSwitcherCommand(rest);
+    return;
+  }
+  if (sub === "hud") {
+    await actorHUDCommand(rest);
+    return;
+  }
+  if (sub === "show" || sub === "hide" || sub === "toggle" || sub === "status") {
+    await actorVisibilityCommand(sub, rest);
+    return;
+  }
+  actorUsage();
+}
+
+function actorHUDOptions(rest: string[]): Record<string, unknown> {
+  const hudUrl = parseFlagValue(rest, "hud-url") || parseFlagValue(rest, "hudUrl");
+  const hudHTML = parseFlagValue(rest, "hud-html") || parseFlagValue(rest, "hudHTML") || parseFlagValue(rest, "hudHtml");
+  const hudTitle = parseFlagValue(rest, "hud-title") || parseFlagValue(rest, "hudTitle");
+  const hudWidth = parseFlagValue(rest, "hud-width") || parseFlagValue(rest, "hudWidth") || parseFlagValue(rest, "width");
+  const hudHeight = parseFlagValue(rest, "hud-height") || parseFlagValue(rest, "hudHeight") || parseFlagValue(rest, "height");
+  return {
+    ...(hudUrl ? { hudUrl } : {}),
+    ...(hudHTML ? { hudHTML } : {}),
+    ...(hudTitle ? { hudTitle } : {}),
+    ...(hudWidth ? { hudWidth: Number(hudWidth) } : {}),
+    ...(hudHeight ? { hudHeight: Number(hudHeight) } : {}),
+  };
+}
+
+function shouldHideActorLabel(rest: string[]): boolean {
+  if (hasFlag(rest, "show-label") || hasFlag(rest, "showLabel")) return false;
+  return true;
+}
+
+async function actorHUDCommand(rest: string[]): Promise<void> {
+  const positional = nonFlagArgs(rest);
+  const id = positional[0];
+  if (!id) {
+    actorUsage();
+    return;
+  }
+
+  const { daemonCall } = await getDaemonClient();
+  const url = positional[1];
+  const clear = hasFlag(rest, "clear");
+  const result = await daemonCall("overlay.actor.hud", {
+    id,
+    clear,
+    ...(url && !clear ? { hudUrl: url } : {}),
+    ...actorHUDOptions(rest),
+  }, 15000) as any;
+
+  if (hasFlag(rest, "json")) {
+    console.log(JSON.stringify(result, null, 2));
+  } else if (clear) {
+    console.log(`Cleared HUD for ${id}.`);
+  } else {
+    console.log(`Attached hover HUD to ${id}.`);
+  }
+}
+
+async function actorVisibilityCommand(action: string, rest: string[]): Promise<void> {
+  const { daemonCall } = await getDaemonClient();
+  const result = await daemonCall("overlay.actor.visibility", {
+    action,
+    feedback: !hasFlag(rest, "quiet") && action !== "status",
+  }, 15000) as any;
+
+  if (hasFlag(rest, "json")) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  const state = result.visible ? "shown" : "hidden";
+  const count = Number(result.actorCount ?? 0);
+  console.log(`Actor layer ${state} (${count} actor${count === 1 ? "" : "s"}).`);
+}
+
+async function actorAppCommand(rest: string[]): Promise<void> {
+  const positional = nonFlagArgs(rest);
+  const appQuery = positional[0];
+  if (!appQuery) {
+    actorUsage();
+    return;
+  }
+  const message = positional.slice(1).join(" ") || `Tap to switch to ${appQuery}.`;
+  const asset = ensureAppActorAsset(appQuery);
+  const { daemonCall } = await getDaemonClient();
+  const id = parseFlagValue(rest, "id") || `app-${slugify(asset.appName)}`;
+  const state = parseFlagValue(rest, "state") || "idle";
+  const ttlMs = Number(parseFlagValue(rest, "ttl") || parseFlagValue(rest, "ttlMs") || 0);
+  const x = Number(parseFlagValue(rest, "x") || 520);
+  const y = Number(parseFlagValue(rest, "y") || 340);
+  const placement = parseFlagValue(rest, "placement") || "point";
+  const style = parseFlagValue(rest, "style") || "playful";
+  const dismissible = hasFlag(rest, "dismissible");
+  const labelHidden = shouldHideActorLabel(rest);
+  const closeOnActivate = hasFlag(rest, "close-on-activate") || hasFlag(rest, "closeOnActivate");
+  const scale = Number(parseFlagValue(rest, "scale") || 1);
+
+  const result = await daemonCall("overlay.actor.publish", {
+    id,
+    renderer: "sprite",
+    asset: asset.id,
+    state,
+    name: parseFlagValue(rest, "name") || asset.appName,
+    message,
+    placement,
+    x,
+    y,
+    style,
+    ttlMs,
+    dismissible,
+    labelHidden,
+    closeOnActivate,
+    scale,
+    ...actorHUDOptions(rest),
+    targetApp: asset.appName,
+    targetBundleId: asset.bundleIdentifier,
+    targetAppPath: asset.appPath,
+  }, 15000) as any;
+
+  if (!hasFlag(rest, "no-move")) {
+    await daemonCall("overlay.actor.moveTo", {
+      id,
+      x: x + 40,
+      y: y + 50,
+      durationMs: 700,
+      easing: "spring",
+    }, 15000);
+  }
+
+  if (hasFlag(rest, "json")) {
+    console.log(JSON.stringify({ ...result, asset: asset.id, appPath: asset.appPath }, null, 2));
+  } else {
+    console.log(`Published ${asset.appName} actor (${id}). Click it to switch to ${asset.appName}.`);
+  }
+}
+
+async function actorSwitcherCommand(rest: string[]): Promise<void> {
+  const appNames = nonFlagArgs(rest);
+  const apps = appNames.length ? appNames : ["Codex", "Talkie"];
+  const { daemonCall } = await getDaemonClient();
+  const startX = Number(parseFlagValue(rest, "x") || 420);
+  const y = Number(parseFlagValue(rest, "y") || 220);
+  const gap = Number(parseFlagValue(rest, "gap") || 270);
+  const ttlMs = Number(parseFlagValue(rest, "ttl") || parseFlagValue(rest, "ttlMs") || 0);
+  const style = parseFlagValue(rest, "style") || "info";
+  const dismissible = hasFlag(rest, "dismissible");
+  const labelHidden = shouldHideActorLabel(rest);
+  const closeOnActivate = hasFlag(rest, "close-on-activate") || hasFlag(rest, "closeOnActivate");
+  const scale = Number(parseFlagValue(rest, "scale") || 1);
+  const results: any[] = [];
+
+  for (let i = 0; i < apps.length; i++) {
+    const asset = ensureAppActorAsset(apps[i]);
+    const id = `switch-${slugify(asset.appName)}`;
+    const x = startX + i * gap;
+    const result = await daemonCall("overlay.actor.publish", {
+      id,
+      renderer: "sprite",
+      asset: asset.id,
+      state: "ready",
+      name: asset.appName,
+      message: `Tap to switch to ${asset.appName}.`,
+      placement: "point",
+      x,
+      y,
+      style,
+      ttlMs,
+      dismissible,
+      labelHidden,
+      closeOnActivate,
+      scale,
+      ...actorHUDOptions(rest),
+      targetApp: asset.appName,
+      targetBundleId: asset.bundleIdentifier,
+      targetAppPath: asset.appPath,
+    }, 15000) as any;
+    results.push({ ...result, asset: asset.id, appPath: asset.appPath });
+    await daemonCall("overlay.actor.moveTo", {
+      id,
+      x: x + 28,
+      y: y + 36,
+      durationMs: 650,
+      easing: "spring",
+    }, 15000);
+  }
+
+  if (hasFlag(rest, "json")) {
+    console.log(JSON.stringify(results, null, 2));
+  } else {
+    console.log(`Published app switcher for ${apps.join(", ")}.`);
+  }
+}
+
+type HUDPathField = string | {
+  path?: string;
+  format?: string;
+  schema?: string;
+  presentation?: string;
+  title?: string;
+  description?: string;
+  pollMs?: number;
+};
+
+interface HUDManifest {
+  version?: number;
+  manifestVersion?: number;
+  id?: string;
+  name?: string;
+  bundleId?: string;
+  bundleIdentifier?: string;
+  app?: string;
+  appPath?: string;
+  icon?: string;
+  entry?: string;
+  readAccess?: string | string[];
+  state?: HUDPathField;
+  events?: HUDPathField | HUDPathField[];
+  log?: HUDPathField;
+  logs?: HUDPathField[];
+  sources?: HUDPathField[] | Record<string, HUDPathField>;
+  surface?: {
+    width?: number;
+    height?: number;
+    title?: string;
+    transparent?: boolean;
+  };
+  actor?: {
+    id?: string;
+    message?: string;
+    state?: string;
+    x?: number;
+    y?: number;
+    placement?: string;
+    style?: string;
+    scale?: number;
+    labelHidden?: boolean;
+    closeOnActivate?: boolean;
+    click?: string | { type?: string };
+  };
+}
+
+interface ResolvedHUDManifest {
+  manifestPath: string;
+  rootDir: string;
+  manifest: HUDManifest;
+  id: string;
+  name: string;
+  entry: string;
+  iconPath?: string;
+  appPath?: string;
+  bundleIdentifier?: string;
+  readAccessPath?: string;
+}
+
+interface HUDRegistryEntry {
+  id: string;
+  name?: string;
+  bundleIdentifier?: string;
+  manifestPath: string;
+  registeredAt: string;
+  lastPublishedAt?: string;
+}
+
+interface HUDRegistry {
+  version: 1;
+  entries: HUDRegistryEntry[];
+}
+
+function hudUsage(): void {
+  console.log(`Usage:
+  lattices hud register [manifest] [--publish]   Register .lattices/hud/manifest.json
+  lattices hud publish [manifest-or-id]          Publish one HUD actor now
+  lattices hud sync                              Publish all registered HUD actors
+  lattices hud list                              List registered HUDs
+  lattices hud discover [root] [--register]      Find HUD manifests under a folder
+
+Manifest:
+  .lattices/hud/manifest.json
+
+Examples:
+  lattices hud register .lattices/hud/manifest.json --publish
+  lattices hud publish talkie --x=520 --y=340
+  lattices hud sync
+`);
+}
+
+function hudRegistryPath(): string {
+  return resolve(homedir(), ".lattices", "huds.json");
+}
+
+function readHUDRegistry(): HUDRegistry {
+  const path = hudRegistryPath();
+  if (!existsSync(path)) return { version: 1, entries: [] };
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as Partial<HUDRegistry>;
+    return {
+      version: 1,
+      entries: Array.isArray(parsed.entries) ? parsed.entries : [],
+    };
+  } catch (e: unknown) {
+    throw new Error(`Invalid HUD registry ${path}: ${(e as Error).message}`);
+  }
+}
+
+function writeHUDRegistry(registry: HUDRegistry): void {
+  const path = hudRegistryPath();
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(registry, null, 2)}\n`);
+}
+
+function isDirectory(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function isURLLike(value: string): boolean {
+  return /^[a-z][a-z0-9+.-]*:/i.test(value);
+}
+
+function resolveHUDPath(rootDir: string, value: HUDPathField | undefined, fallback?: string): string | undefined {
+  const raw = typeof value === "string" ? value : value?.path;
+  const path = raw || fallback;
+  if (!path) return undefined;
+  if (isURLLike(path)) return path;
+  if (path.startsWith("~/")) return resolve(homedir(), path.slice(2));
+  return isAbsolute(path) ? path : resolve(rootDir, path);
+}
+
+function resolveHUDReadAccess(rootDir: string, manifest: HUDManifest, rest: string[] = []): string {
+  const flagValue = parseFlagValue(rest, "read-access") || parseFlagValue(rest, "readAccess");
+  const declared = flagValue
+    ?? (Array.isArray(manifest.readAccess) ? manifest.readAccess[0] : manifest.readAccess);
+  if (!declared) return rootDir;
+  if (isURLLike(declared)) return rootDir;
+  if (declared.startsWith("~/")) return resolve(homedir(), declared.slice(2));
+  return isAbsolute(declared) ? declared : resolve(rootDir, declared);
+}
+
+function resolveHUDManifestInput(input?: string): string {
+  if (!input) {
+    const defaultPath = resolve(process.cwd(), ".lattices", "hud", "manifest.json");
+    if (existsSync(defaultPath)) return defaultPath;
+    throw new Error("No manifest provided and .lattices/hud/manifest.json was not found.");
+  }
+
+  const candidate = resolve(input);
+  if (existsSync(candidate)) {
+    return isDirectory(candidate) ? resolve(candidate, "manifest.json") : candidate;
+  }
+
+  const registry = readHUDRegistry();
+  const entry = registry.entries.find((item) => item.id === input);
+  if (entry) return entry.manifestPath;
+
+  throw new Error(`HUD manifest or registered id not found: ${input}`);
+}
+
+function readHUDManifest(input?: string): ResolvedHUDManifest {
+  const manifestPath = resolveHUDManifestInput(input);
+  if (!existsSync(manifestPath)) {
+    throw new Error(`HUD manifest does not exist: ${manifestPath}`);
+  }
+
+  const rootDir = dirname(manifestPath);
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as HUDManifest;
+  const id = manifest.actor?.id || manifest.id;
+  if (!id) throw new Error(`HUD manifest is missing id: ${manifestPath}`);
+
+  const name = manifest.name || id;
+  const entry = resolveHUDPath(rootDir, manifest.entry, "./index.html");
+  if (!entry) throw new Error(`HUD manifest is missing entry: ${manifestPath}`);
+  if (!isURLLike(entry) && !existsSync(entry)) {
+    throw new Error(`HUD entry does not exist: ${entry}`);
+  }
+
+  const iconPath = resolveHUDPath(rootDir, manifest.icon);
+  const appPath = resolveHUDPath(rootDir, manifest.appPath)
+    ?? (manifest.bundleId || manifest.bundleIdentifier
+      ? resolveApplicationByBundleIdentifier(manifest.bundleId || manifest.bundleIdentifier || "")
+      : undefined)
+    ?? (manifest.app ? resolveApplication(manifest.app) : undefined);
+  const bundleIdentifier = manifest.bundleId
+    ?? manifest.bundleIdentifier
+    ?? (appPath ? plistValue(resolve(appPath, "Contents", "Info.plist"), "CFBundleIdentifier") : undefined);
+
+  return {
+    manifestPath,
+    rootDir,
+    manifest,
+    id,
+    name,
+    entry,
+    iconPath: iconPath && !isURLLike(iconPath) ? iconPath : undefined,
+    appPath: appPath && !isURLLike(appPath) ? appPath : undefined,
+    bundleIdentifier,
+    readAccessPath: resolveHUDReadAccess(rootDir, manifest),
+  };
+}
+
+function numberFlag(rest: string[], name: string, fallback: number): number {
+  const raw = parseFlagValue(rest, name);
+  if (!raw) return fallback;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function numberFlagAny(rest: string[], names: string[], fallback: number): number {
+  for (const name of names) {
+    const raw = parseFlagValue(rest, name);
+    if (!raw) continue;
+    const value = Number(raw);
+    if (Number.isFinite(value)) return value;
+  }
+  return fallback;
+}
+
+function hudActorAsset(resolved: ResolvedHUDManifest): string | undefined {
+  if (resolved.iconPath) {
+    return ensureIconActorAsset(resolved.id, resolved.name, resolved.iconPath);
+  }
+
+  const appQuery = resolved.appPath || resolved.manifest.app;
+  if (!appQuery) return undefined;
+
+  try {
+    return ensureAppActorAsset(appQuery).id;
+  } catch {
+    return undefined;
+  }
+}
+
+function hudClickType(manifest: HUDManifest): string {
+  const click = manifest.actor?.click;
+  if (!click) return "activateApp";
+  return typeof click === "string" ? click : click.type || "activateApp";
+}
+
+function hudPublishPayload(resolved: ResolvedHUDManifest, rest: string[], index = 0): Record<string, unknown> {
+  const manifest = resolved.manifest;
+  const actor = manifest.actor ?? {};
+  const surface = manifest.surface ?? {};
+  const targetEnabled = hudClickType(manifest) !== "none";
+  const asset = hudActorAsset(resolved);
+  const x = numberFlag(rest, "x", actor.x ?? 420 + index * 112);
+  const y = numberFlag(rest, "y", actor.y ?? 220);
+
+  return {
+    id: resolved.id,
+    renderer: "sprite",
+    ...(asset ? { asset } : {}),
+    state: parseFlagValue(rest, "state") || actor.state || "ready",
+    name: parseFlagValue(rest, "name") || resolved.name,
+    message: actor.message || `Hover for ${resolved.name} status.`,
+    placement: parseFlagValue(rest, "placement") || actor.placement || "point",
+    x,
+    y,
+    style: parseFlagValue(rest, "style") || actor.style || "info",
+    labelHidden: actor.labelHidden ?? true,
+    closeOnActivate: actor.closeOnActivate ?? false,
+    scale: numberFlag(rest, "scale", actor.scale ?? 1),
+    hudUrl: resolved.entry,
+    hudTitle: surface.title || resolved.name,
+    hudWidth: numberFlagAny(rest, ["hud-width", "hudWidth", "width"], surface.width ?? 380),
+    hudHeight: numberFlagAny(rest, ["hud-height", "hudHeight", "height"], surface.height ?? 260),
+    hudReadAccess: resolveHUDReadAccess(resolved.rootDir, manifest, rest),
+    ...(targetEnabled && resolved.bundleIdentifier ? { targetBundleId: resolved.bundleIdentifier } : {}),
+    ...(targetEnabled && resolved.appPath ? { targetAppPath: resolved.appPath } : {}),
+    ...(targetEnabled && manifest.app ? { targetApp: manifest.app } : {}),
+  };
+}
+
+function upsertHUDRegistryEntry(resolved: ResolvedHUDManifest, published = false): HUDRegistryEntry {
+  const registry = readHUDRegistry();
+  const now = new Date().toISOString();
+  const existing = registry.entries.find((entry) => entry.id === resolved.id);
+  const next: HUDRegistryEntry = {
+    id: resolved.id,
+    name: resolved.name,
+    bundleIdentifier: resolved.bundleIdentifier,
+    manifestPath: resolved.manifestPath,
+    registeredAt: existing?.registeredAt ?? now,
+    lastPublishedAt: published ? now : existing?.lastPublishedAt,
+  };
+  registry.entries = [
+    next,
+    ...registry.entries.filter((entry) => entry.id !== resolved.id),
+  ].sort((a, b) => a.id.localeCompare(b.id));
+  writeHUDRegistry(registry);
+  return next;
+}
+
+async function publishHUDManifest(resolved: ResolvedHUDManifest, rest: string[], index = 0): Promise<Record<string, unknown>> {
+  const { daemonCall } = await getDaemonClient();
+  const payload = hudPublishPayload(resolved, rest, index);
+  const result = await daemonCall("overlay.actor.publish", payload, 15000) as Record<string, unknown>;
+  if (!hasFlag(rest, "no-move")) {
+    await daemonCall("overlay.actor.moveTo", {
+      id: resolved.id,
+      x: Number(payload.x) + 24,
+      y: Number(payload.y) + 30,
+      durationMs: 600,
+      easing: "spring",
+    }, 15000);
+  }
+  upsertHUDRegistryEntry(resolved, true);
+  return result;
+}
+
+async function hudRegisterCommand(rest: string[]): Promise<void> {
+  const manifestArg = nonFlagArgs(rest)[0] || parseFlagValue(rest, "manifest");
+  const resolved = readHUDManifest(manifestArg);
+  const entry = upsertHUDRegistryEntry(resolved, false);
+
+  if (hasFlag(rest, "publish")) {
+    await publishHUDManifest(resolved, rest);
+  }
+
+  const published = hasFlag(rest, "publish");
+  if (hasFlag(rest, "json")) {
+    console.log(JSON.stringify(entry, null, 2));
+  } else {
+    console.log(`${published ? "Registered and published" : "Registered"} HUD ${resolved.id} -> ${resolved.manifestPath}`);
+  }
+}
+
+async function hudPublishCommand(rest: string[]): Promise<void> {
+  const manifestArg = nonFlagArgs(rest)[0] || parseFlagValue(rest, "manifest");
+  const resolved = readHUDManifest(manifestArg);
+  const result = await publishHUDManifest(resolved, rest);
+
+  if (hasFlag(rest, "json")) {
+    console.log(JSON.stringify({ ...result, manifestPath: resolved.manifestPath }, null, 2));
+  } else {
+    console.log(`Published HUD actor ${resolved.id}. Hover it for ${resolved.name}.`);
+  }
+}
+
+async function hudSyncCommand(rest: string[]): Promise<void> {
+  const registry = readHUDRegistry();
+  const results: Record<string, unknown>[] = [];
+  for (let i = 0; i < registry.entries.length; i++) {
+    const resolved = readHUDManifest(registry.entries[i].id);
+    results.push(await publishHUDManifest(resolved, rest, i));
+  }
+
+  if (hasFlag(rest, "json")) {
+    console.log(JSON.stringify(results, null, 2));
+  } else {
+    console.log(`Published ${results.length} registered HUD actor${results.length === 1 ? "" : "s"}.`);
+  }
+}
+
+function hudListCommand(rest: string[]): void {
+  const registry = readHUDRegistry();
+  if (hasFlag(rest, "json")) {
+    console.log(JSON.stringify(registry, null, 2));
+    return;
+  }
+  if (!registry.entries.length) {
+    console.log("No registered HUDs. Run lattices hud register .lattices/hud/manifest.json");
+    return;
+  }
+  console.log("Registered HUDs:\n");
+  for (const entry of registry.entries) {
+    console.log(`  ${entry.id}${entry.name ? ` (${entry.name})` : ""}`);
+    console.log(`    manifest: ${entry.manifestPath}`);
+    if (entry.bundleIdentifier) console.log(`    bundle:   ${entry.bundleIdentifier}`);
+    if (entry.lastPublishedAt) console.log(`    shown:    ${entry.lastPublishedAt}`);
+    console.log();
+  }
+}
+
+function hudDiscoverCommand(rest: string[]): void {
+  const root = resolve(nonFlagArgs(rest)[0] || parseFlagValue(rest, "root") || process.cwd());
+  const maxDepth = Number(parseFlagValue(rest, "max-depth") || parseFlagValue(rest, "maxDepth") || 6);
+  const out = runQuiet(`find '${esc(root)}' -maxdepth ${maxDepth} -path '*/.lattices/hud/manifest.json' -print 2>/dev/null`);
+  const manifests = out ? out.split("\n").filter(Boolean) : [];
+
+  if (hasFlag(rest, "register")) {
+    for (const manifestPath of manifests) {
+      upsertHUDRegistryEntry(readHUDManifest(manifestPath), false);
+    }
+  }
+
+  if (hasFlag(rest, "json")) {
+    console.log(JSON.stringify(manifests, null, 2));
+    return;
+  }
+
+  if (!manifests.length) {
+    console.log(`No HUD manifests found under ${root}`);
+    return;
+  }
+  for (const manifestPath of manifests) console.log(manifestPath);
+  if (hasFlag(rest, "register")) {
+    console.log(`\nRegistered ${manifests.length} HUD manifest${manifests.length === 1 ? "" : "s"}.`);
+  }
+}
+
+async function hudCommand(sub?: string, ...rest: string[]): Promise<void> {
+  try {
+    switch (sub) {
+    case "register":
+      await hudRegisterCommand(rest);
+      return;
+    case "publish":
+    case "show":
+      await hudPublishCommand(rest);
+      return;
+    case "sync":
+      await hudSyncCommand(rest);
+      return;
+    case "list":
+    case "ls":
+      hudListCommand(rest);
+      return;
+    case "discover":
+      hudDiscoverCommand(rest);
+      return;
+    default:
+      hudUsage();
+    }
+  } catch (e: unknown) {
+    console.log(`Error: ${(e as Error).message}`);
+  }
+}
+
 async function layerCommand(sub?: string, ...rest: string[]): Promise<void> {
   try {
     const { daemonCall } = await getDaemonClient();
@@ -1749,6 +2576,12 @@ Usage:
   lattices voice status       Voice provider status
   lattices voice simulate <t> Parse and execute a voice command
   lattices voice intents      List all available intents
+  lattices actor app <app> [message]  Show a clickable app-icon actor
+  lattices actor switcher [apps...]   Show a clickable app switcher row
+  lattices actor hud <id> <url>       Attach a hover web HUD to an actor
+  lattices actor toggle       Hide/show the sticky actor layer
+  lattices hud register [manifest]    Register a .lattices/hud/manifest.json
+  lattices hud publish [id|manifest]  Publish a registered/static HUD actor
   lattices assistant plan <t> Preview the TS assistant planner
   lattices call <method> [p]  Raw daemon API call (params as JSON)
   lattices scan               Show text from all visible windows
@@ -2287,6 +3120,14 @@ switch (command) {
     break;
   case "voice":
     await voiceCommand(args[1], ...args.slice(2));
+    break;
+  case "actor":
+  case "actors":
+    await actorCommand(args[1], ...args.slice(2));
+    break;
+  case "hud":
+  case "huds":
+    await hudCommand(args[1], ...args.slice(2));
     break;
   case "assistant":
     await assistantCommand(args[1], ...args.slice(2));

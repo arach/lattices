@@ -168,7 +168,7 @@ and `overlay.actor.*` for persistent, movable actor surfaces.
 
 Persistent actors are useful for representing agents or processes on the
 desktop. Each actor has a stable `id`, can be moved independently through the
-API, dragged by the user, hidden/restored with **Hyper+8**, and closed with
+API, dragged by the user, hidden/restored with **Hyper+B**, and closed with
 right-click. Click event callbacks and action surfaces are planned follow-on
 capabilities.
 
@@ -178,6 +178,8 @@ capabilities.
 | `overlay.clear` | write | Clear one overlay layer by id, or clear an owner namespace |
 | `overlay.actor.publish` | write | Create or update a persistent generative overlay actor |
 | `overlay.actor.moveTo` | write | Move an actor with app-owned easing |
+| `overlay.actor.hud` | write | Attach, update, or clear a hover web HUD for an actor |
+| `overlay.actor.visibility` | write | Show, hide, toggle, or inspect the sticky actor layer |
 
 #### `overlay.publish`
 
@@ -230,6 +232,17 @@ omit `ttlMs` or pass `0`, and `dismissible` defaults to `false`.
 | `state` | string | no | Actor state or animation name |
 | `name` | string | no | Actor display name |
 | `message` | string | no | Attached message text |
+| `targetApp` | string | no | App name to activate when the actor is clicked |
+| `targetBundleId` | string | no | Bundle identifier to activate when the actor is clicked |
+| `targetAppPath` | string | no | `.app` bundle path to open when the actor is clicked |
+| `scale` | double | no | Actor scale multiplier |
+| `labelHidden` | bool | no | Hide the actor label/message |
+| `closeOnActivate` | bool | no | Remove the actor after activating its target app |
+| `hudUrl` | string | no | URL to render in a transparent hover HUD web view |
+| `hudHTML` | string | no | Inline HTML to render in a transparent hover HUD web view |
+| `hudWidth` | double | no | Hover HUD width |
+| `hudHeight` | double | no | Hover HUD height |
+| `hudReadAccess` | string | no | Local folder a file-backed HUD may read |
 | `placement` | string | no | `top`, `bottom`, `center`, `cursor`, or `point` |
 | `x`, `y` | double | no | Screen-local point for `point` placement |
 | `ttlMs` | int | no | Time to live; `0` means persistent |
@@ -284,6 +297,117 @@ await daemonCall('overlay.actor.moveTo', {
   easing: 'spring'
 })
 ```
+
+#### `overlay.actor.hud`
+
+Attach a transparent, blurred hover HUD to an actor. The HUD is backed by a
+native `WKWebView`, so apps can point it at a local static HTML dashboard or,
+in development, a local URL.
+
+**Params**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | string | yes | Actor id |
+| `hudUrl` | string | no | URL or file path to render |
+| `hudHTML` | string | no | Inline HTML to render instead of a URL |
+| `hudTitle` | string | no | HUD title metadata |
+| `hudWidth` | double | no | HUD width |
+| `hudHeight` | double | no | HUD height |
+| `hudReadAccess` | string | no | Local folder a file-backed HUD may read |
+| `clear` | bool | no | Remove the actor HUD |
+
+Example:
+
+```js
+await daemonCall('overlay.actor.hud', {
+  id: 'switch-talkie',
+  hudUrl: '/Users/you/dev/talkie/.lattices/hud/index.html',
+  hudReadAccess: '/Users/you/Library/Application Support/Talkie/HUD',
+  hudWidth: 380,
+  hudHeight: 260
+})
+```
+
+#### `overlay.actor.visibility`
+
+Show, hide, toggle, or inspect the persistent actor layer without destroying
+the actors. This is the daemon equivalent of the app's **Hyper+B** shortcut.
+
+**Params**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `action` | string | no | `show`, `hide`, `toggle`, or `status` |
+| `visible` | bool | no | Set layer visibility directly |
+| `hidden` | bool | no | Set layer hidden state directly |
+| `feedback` | bool | no | Show a short desktop feedback toast |
+
+Example:
+
+```js
+await daemonCall('overlay.actor.visibility', { action: 'toggle' })
+```
+
+### Static HUD Manifests
+
+Apps and projects can expose a local hover dashboard without running a web
+server by publishing a static bundle at:
+
+```txt
+.lattices/hud/
+  manifest.json
+  index.html
+  assets/
+```
+
+Minimal manifest:
+
+```json
+{
+  "version": 1,
+  "id": "talkie",
+  "name": "Talkie",
+  "bundleId": "com.usabletalkie.Talkie",
+  "icon": "./assets/icon.png",
+  "entry": "./index.html",
+  "readAccess": "~/Library/Application Support/Talkie/HUD",
+  "surface": { "width": 380, "height": 260 },
+  "actor": {
+    "labelHidden": true,
+    "click": "activateApp"
+  },
+  "sources": [
+    {
+      "path": "~/Library/Application Support/Talkie/HUD/activity.jsonl",
+      "format": "jsonl",
+      "schema": "talkie.activity.v1",
+      "presentation": "timeline"
+    }
+  ]
+}
+```
+
+The CLI resolves this manifest into `overlay.actor.publish` with a file-backed
+HUD URL. The macOS app loads `entry` through `WKWebView.loadFileURL`, allowing
+read access to the HUD folder by default, or to the manifest's `readAccess`
+folder when one is declared.
+
+`sources` is descriptive metadata for app-owned state, logs, or event streams.
+Lattices does not append to those logs. The app writes them in its normal
+runtime location, and the custom HUD renderer decides how to present them.
+
+Useful commands:
+
+```bash
+lattices hud register .lattices/hud/manifest.json --publish
+lattices hud publish talkie
+lattices hud sync
+lattices hud discover ~/dev --register
+```
+
+For packaged apps, keep the renderer files in the app bundle and point mutable
+sources at an app-owned folder such as `~/Library/Application Support/...`.
 
 ---
 

@@ -79,6 +79,27 @@ Available when `layers` are configured in `~/.lattices/workspace.json`
 | Refresh Projects  | Re-scan for .lattices.json configs        |
 | Quit Lattices      | Exit the menu bar app                    |
 
+## Overlay actors and HUDs
+
+Persistent overlay actors can be hidden or restored with **Hyper+B**. Apps can
+publish a static hover dashboard by exposing:
+
+```txt
+.lattices/hud/manifest.json
+```
+
+Register and publish one:
+
+```bash
+lattices hud register .lattices/hud/manifest.json --publish
+```
+
+The manifest points to a local `index.html`, optional icon, app activation
+target, HUD dimensions, and optional app-owned `sources` metadata for logs or
+state files. Lattices hosts the actor and loads the dashboard through a
+transparent `WKWebView`; the app owns the renderer and writes its own logs in
+the places it already uses.
+
 ## Project discovery
 
 The app scans a configurable root directory (up to 3 levels deep)
@@ -229,7 +250,7 @@ Shows keyboard shortcut reference:
 | Hyper+4            | Desktop inventory    |
 | Hyper+5            | Omni search          |
 | Hyper+6            | Cheat sheet          |
-| Hyper+8            | Hide/show persistent overlay actors |
+| Hyper+B            | Hide/show persistent overlay actors |
 | Cmd+Option+1/2/3  | Switch workspace layer |
 | Ctrl+B  D         | Detach from session  |
 | Ctrl+B  X         | Kill current pane    |

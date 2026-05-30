@@ -146,6 +146,10 @@ Run `lattices init` in your project directory to generate a starter
 | `lattices windows [--json]`  | List all visible windows                          |
 | `lattices window assign <wid> <layer>` | Tag a window to a layer                |
 | `lattices window map [--json]` | Show all window→layer assignments                |
+| `lattices actor toggle`      | Hide/show persistent overlay actors               |
+| `lattices hud register [manifest]` | Register a `.lattices/hud/manifest.json`   |
+| `lattices hud publish [id\|manifest]` | Publish a static HUD actor to the desktop |
+| `lattices hud sync`          | Publish all registered HUD actors                 |
 | `lattices search <query>`      | Search windows by title, app, session, OCR       |
 | `lattices search <q> --deep`   | Deep search: index + live terminal inspection    |
 | `lattices search <q> --wid`    | Print matching window IDs only (pipeable)        |
