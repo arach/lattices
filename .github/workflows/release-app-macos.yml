@@ -1,22 +1,9 @@
-name: Release Mac DMG
+name: Release App macOS
 
 on:
-  pull_request:
-    paths:
-      - 'apps/mac/**'
-      - 'assets/AppIcon.icns'
-      - 'tools/release/**'
-      - '.github/workflows/release-mac.yml'
   push:
-    branches:
-      - main
     tags:
-      - 'v*'
-    paths:
-      - 'apps/mac/**'
-      - 'assets/AppIcon.icns'
-      - 'tools/release/**'
-      - '.github/workflows/release-mac.yml'
+      - 'app-macos-v*'
   workflow_dispatch:
     inputs:
       version:
@@ -61,7 +48,12 @@ jobs:
           set -euo pipefail
 
           if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
-            version="${GITHUB_REF_NAME#v}"
+            tag="${GITHUB_REF_NAME}"
+            if [[ "$tag" == app-macos-v* ]]; then
+              version="${tag#app-macos-v}"
+            else
+              version="${tag#v}"
+            fi
           elif [[ -n "${{ inputs.version || '' }}" ]]; then
             version="${{ inputs.version }}"
           else

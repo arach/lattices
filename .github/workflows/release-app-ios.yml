@@ -1,0 +1,62 @@
+name: Release App iOS
+
+on:
+  push:
+    tags:
+      - 'app-ios-v*'
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: 'Upload the IPA to App Store Connect'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  ios:
+    name: Archive iOS app
+    runs-on: macos-latest
+    timeout-minutes: 75
+    env:
+      SHOULD_UPLOAD: ${{ (github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.upload)) && '1' || '0' }}
+      ASC_API_KEY_ID: ${{ vars.APP_STORE_CONNECT_KEY_ID || secrets.APP_STORE_CONNECT_KEY_ID }}
+      ASC_API_ISSUER_ID: ${{ vars.APP_STORE_CONNECT_ISSUER_ID || secrets.APP_STORE_CONNECT_ISSUER_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo xcode-select -s /Applications/Xcode.app
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Configure App Store Connect API key
+        if: env.SHOULD_UPLOAD == '1'
+        env:
+          APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${ASC_API_KEY_ID:?Missing APP_STORE_CONNECT_KEY_ID}"
+          : "${ASC_API_ISSUER_ID:?Missing APP_STORE_CONNECT_ISSUER_ID}"
+          : "${APP_STORE_CONNECT_API_KEY_P8:?Missing APP_STORE_CONNECT_API_KEY_P8}"
+
+          key_path="$RUNNER_TEMP/AuthKey_${ASC_API_KEY_ID}.p8"
+          printf '%s' "$APP_STORE_CONNECT_API_KEY_P8" > "$key_path"
+          chmod 600 "$key_path"
+          echo "ASC_API_KEY_PATH=$key_path" >> "$GITHUB_ENV"
+
+      - name: Archive or upload
+        shell: bash
+        run: |
+          set -euo pipefail
+          command="archive"
+          if [[ "$SHOULD_UPLOAD" == "1" ]]; then
+            command="all"
+          fi
+          apps/ios/build-testflight.sh "$command"
