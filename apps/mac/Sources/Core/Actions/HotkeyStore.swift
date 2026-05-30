@@ -257,7 +257,7 @@ class HotkeyStore: ObservableObject {
         bind(.omniSearch, 23, hyper)       // Hyper+5
         bind(.cheatSheet, 22, hyper)       // Hyper+6
         bind(.mouseFinder, 26, hyper)      // Hyper+7
-        bind(.overlayActors, 28, hyper)    // Hyper+8
+        bind(.overlayActors, 11, hyper)    // Hyper+B
 
         // Layers: Cmd+Option+1-9
         let layerKeyCodes: [UInt32] = [18, 19, 20, 21, 23, 22, 26, 28, 25]

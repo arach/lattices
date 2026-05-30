@@ -836,6 +836,17 @@ final class LatticesApi {
                 Param(name: "petId", type: "string", required: false, description: "Bundled pet id from Resources/Pets"),
                 Param(name: "state", type: "string", required: false, description: "Pet animation state"),
                 Param(name: "name", type: "string", required: false, description: "Pet name"),
+                Param(name: "targetApp", type: "string", required: false, description: "App name to activate when this pet is clicked"),
+                Param(name: "targetBundleId", type: "string", required: false, description: "Bundle identifier to activate when this pet is clicked"),
+                Param(name: "targetAppPath", type: "string", required: false, description: "Application bundle path to open when this pet is clicked"),
+                Param(name: "scale", type: "double", required: false, description: "Actor scale multiplier"),
+                Param(name: "labelHidden", type: "bool", required: false, description: "Hide the actor label/message"),
+                Param(name: "closeOnActivate", type: "bool", required: false, description: "Remove the actor after activating its target app"),
+                Param(name: "hudUrl", type: "string", required: false, description: "URL to render in a hover HUD web view"),
+                Param(name: "hudHTML", type: "string", required: false, description: "Inline HTML to render in a hover HUD web view"),
+                Param(name: "hudWidth", type: "double", required: false, description: "Hover HUD width"),
+                Param(name: "hudHeight", type: "double", required: false, description: "Hover HUD height"),
+                Param(name: "hudReadAccess", type: "string", required: false, description: "Local folder the file-backed HUD may read"),
                 Param(name: "x", type: "double", required: false, description: "Screen-local x coordinate"),
                 Param(name: "y", type: "double", required: false, description: "Screen-local y coordinate"),
                 Param(name: "w", type: "double", required: false, description: "Highlight width"),
@@ -879,6 +890,17 @@ final class LatticesApi {
                 Param(name: "state", type: "string", required: false, description: "Actor state or animation name"),
                 Param(name: "name", type: "string", required: false, description: "Actor display name"),
                 Param(name: "message", type: "string", required: false, description: "Attached message text"),
+                Param(name: "targetApp", type: "string", required: false, description: "App name to activate when this actor is clicked"),
+                Param(name: "targetBundleId", type: "string", required: false, description: "Bundle identifier to activate when this actor is clicked"),
+                Param(name: "targetAppPath", type: "string", required: false, description: "Application bundle path to open when this actor is clicked"),
+                Param(name: "scale", type: "double", required: false, description: "Actor scale multiplier"),
+                Param(name: "labelHidden", type: "bool", required: false, description: "Hide the actor label/message"),
+                Param(name: "closeOnActivate", type: "bool", required: false, description: "Remove the actor after activating its target app"),
+                Param(name: "hudUrl", type: "string", required: false, description: "URL to render in a hover HUD web view"),
+                Param(name: "hudHTML", type: "string", required: false, description: "Inline HTML to render in a hover HUD web view"),
+                Param(name: "hudWidth", type: "double", required: false, description: "Hover HUD width"),
+                Param(name: "hudHeight", type: "double", required: false, description: "Hover HUD height"),
+                Param(name: "hudReadAccess", type: "string", required: false, description: "Local folder the file-backed HUD may read"),
                 Param(name: "x", type: "double", required: false, description: "Screen-local x coordinate"),
                 Param(name: "y", type: "double", required: false, description: "Screen-local y coordinate"),
                 Param(name: "placement", type: "string", required: false, description: "top, bottom, center, cursor, or point"),
@@ -909,6 +931,42 @@ final class LatticesApi {
             returns: .ok,
             handler: { params in
                 try Self.moveOverlayActor(params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "overlay.actor.hud",
+            description: "Attach, update, or clear a hover web HUD for an overlay actor",
+            access: .mutate,
+            params: [
+                Param(name: "id", type: "string", required: true, description: "Actor id"),
+                Param(name: "hudUrl", type: "string", required: false, description: "URL to render in the hover HUD web view"),
+                Param(name: "hudHTML", type: "string", required: false, description: "Inline HTML to render in the hover HUD web view"),
+                Param(name: "hudTitle", type: "string", required: false, description: "HUD title metadata"),
+                Param(name: "hudWidth", type: "double", required: false, description: "HUD width"),
+                Param(name: "hudHeight", type: "double", required: false, description: "HUD height"),
+                Param(name: "hudReadAccess", type: "string", required: false, description: "Local folder the file-backed HUD may read"),
+                Param(name: "clear", type: "bool", required: false, description: "Clear the actor HUD"),
+            ],
+            returns: .ok,
+            handler: { params in
+                try Self.setOverlayActorHUD(params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "overlay.actor.visibility",
+            description: "Show, hide, toggle, or inspect the persistent overlay actor layer",
+            access: .mutate,
+            params: [
+                Param(name: "action", type: "string", required: false, description: "show, hide, toggle, or status"),
+                Param(name: "visible", type: "bool", required: false, description: "Set actor layer visibility"),
+                Param(name: "hidden", type: "bool", required: false, description: "Set actor layer hidden state"),
+                Param(name: "feedback", type: "bool", required: false, description: "Show a short desktop feedback toast"),
+            ],
+            returns: .custom("Object with ok, visible, hidden, and actorCount"),
+            handler: { params in
+                try Self.setOverlayActorVisibility(params)
             }
         ))
 
@@ -2071,6 +2129,13 @@ private extension LatticesApi {
                 state: params["state"]?.stringValue,
                 name: params["name"]?.stringValue,
                 message: params["message"]?.stringValue ?? params["text"]?.stringValue,
+                targetApp: params["targetApp"]?.stringValue ?? params["app"]?.stringValue,
+                targetBundleIdentifier: params["targetBundleId"]?.stringValue ?? params["bundleIdentifier"]?.stringValue,
+                targetAppPath: params["targetAppPath"]?.stringValue,
+                scale: CGFloat(max(0.55, min(params["scale"]?.numericDouble ?? 1.0, 1.35))),
+                labelHidden: params["labelHidden"]?.boolValue ?? false,
+                closeOnActivate: params["closeOnActivate"]?.boolValue ?? false,
+                hud: try parseActorHUD(params),
                 point: point,
                 placement: placement,
                 style: style,
@@ -2153,6 +2218,13 @@ private extension LatticesApi {
                 state: params["state"]?.stringValue ?? "idle",
                 name: params["name"]?.stringValue,
                 message: message,
+                targetApp: params["targetApp"]?.stringValue ?? params["app"]?.stringValue,
+                targetBundleIdentifier: params["targetBundleId"]?.stringValue ?? params["bundleIdentifier"]?.stringValue,
+                targetAppPath: params["targetAppPath"]?.stringValue,
+                scale: CGFloat(max(0.55, min(params["scale"]?.numericDouble ?? 1.0, 1.35))),
+                labelHidden: params["labelHidden"]?.boolValue ?? false,
+                closeOnActivate: params["closeOnActivate"]?.boolValue ?? false,
+                hud: try parseActorHUD(params),
                 point: point,
                 placement: placement,
                 style: style,
@@ -2209,6 +2281,95 @@ private extension LatticesApi {
             "x": .double(x),
             "y": .double(y),
         ])
+    }
+
+    static func setOverlayActorHUD(_ params: JSON?) throws -> JSON {
+        guard let params else {
+            throw RouterError.missingParam("id")
+        }
+        let id = try requiredString(params, "id")
+        let hud = params["clear"]?.boolValue == true ? nil : try parseActorHUD(params, requireContent: true)
+        var updated = false
+
+        runOnMain {
+            updated = ScreenOverlayCanvasController.shared.setActorHUD(id: ScreenOverlayLayerID(id), hud: hud)
+        }
+        guard updated else {
+            throw RouterError.custom("Overlay actor not found or not HUD-capable: \(id)")
+        }
+        return .object(["ok": .bool(true), "id": .string(id), "hasHUD": .bool(hud?.hasContent == true)])
+    }
+
+    static func setOverlayActorVisibility(_ params: JSON?) throws -> JSON {
+        let action = params?["action"]?.stringValue?.lowercased()
+        let feedback = params?["feedback"]?.boolValue ?? true
+        var snapshot = ScreenOverlayActorVisibilitySnapshot(hidden: false, actorCount: 0)
+
+        runOnMain {
+            let controller = ScreenOverlayCanvasController.shared
+            if let visible = params?["visible"]?.boolValue {
+                snapshot = controller.setAgentActorsHidden(!visible, showFeedback: feedback)
+                return
+            }
+            if let hidden = params?["hidden"]?.boolValue {
+                snapshot = controller.setAgentActorsHidden(hidden, showFeedback: feedback)
+                return
+            }
+
+            switch action {
+            case nil, "toggle":
+                let current = controller.agentActorsVisibility()
+                snapshot = controller.setAgentActorsHidden(!current.hidden, showFeedback: feedback)
+            case "show", "on":
+                snapshot = controller.setAgentActorsHidden(false, showFeedback: feedback)
+            case "hide", "off":
+                snapshot = controller.setAgentActorsHidden(true, showFeedback: feedback)
+            case "status":
+                snapshot = controller.agentActorsVisibility()
+            default:
+                snapshot = controller.agentActorsVisibility()
+            }
+        }
+
+        if let action,
+           !["toggle", "show", "on", "hide", "off", "status"].contains(action),
+           params?["visible"]?.boolValue == nil,
+           params?["hidden"]?.boolValue == nil {
+            throw RouterError.custom("Unsupported actor visibility action: \(action)")
+        }
+
+        return .object([
+            "ok": .bool(true),
+            "visible": .bool(snapshot.visible),
+            "hidden": .bool(snapshot.hidden),
+            "actorCount": .int(snapshot.actorCount),
+        ])
+    }
+
+    static func parseActorHUD(_ params: JSON, requireContent: Bool = false) throws -> ScreenOverlayActorHUD? {
+        let url = params["hudUrl"]?.stringValue
+            ?? params["hudURL"]?.stringValue
+            ?? params["hud"]?.stringValue
+        let html = params["hudHTML"]?.stringValue
+            ?? params["hudHtml"]?.stringValue
+        guard url?.isEmpty == false || html?.isEmpty == false else {
+            if requireContent {
+                throw RouterError.missingParam("hudUrl")
+            }
+            return nil
+        }
+
+        let width = CGFloat(max(220, min(params["hudWidth"]?.numericDouble ?? params["width"]?.numericDouble ?? 360, 720)))
+        let height = CGFloat(max(140, min(params["hudHeight"]?.numericDouble ?? params["height"]?.numericDouble ?? 240, 560)))
+        return ScreenOverlayActorHUD(
+            url: url,
+            html: html,
+            title: params["hudTitle"]?.stringValue ?? params["title"]?.stringValue,
+            width: width,
+            height: height,
+            readAccessPath: params["hudReadAccess"]?.stringValue
+                ?? params["readAccess"]?.stringValue
+        )
     }
 
     static func runOnMain(_ work: @escaping () -> Void) {
