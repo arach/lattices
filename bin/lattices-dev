@@ -185,7 +185,7 @@ cmd_restart() {
     /usr/bin/osascript -e 'tell application id "dev.lattices.app" to quit' >/dev/null 2>&1 || true
     pkill -x Lattices 2>/dev/null && sleep 1 || true
     cmd_build
-    open "$INSTALL_BUNDLE"
+    open "$INSTALL_BUNDLE" --args --lattices-cli-root "$ROOT"
     green "Lattices restarted."
 }
 
@@ -204,7 +204,7 @@ cmd_launch() {
         dim "Lattices is already running."
     else
         ensure_install_bundle
-        open "$INSTALL_BUNDLE"
+        open "$INSTALL_BUNDLE" --args --lattices-cli-root "$ROOT"
         green "Lattices launched."
     fi
 }

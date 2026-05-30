@@ -15,9 +15,10 @@ final class PermissionChecker: ObservableObject {
     private var burstRefreshTask: Task<Void, Never>?
     private var hasLoggedInitial = false
     private var screenProbeInFlight = false
-    private var screenRecordingProbeGranted = false
+    private var screenRecordingProbeGrantedUntil: Date?
     private var screenProbeCooldownUntil: Date?
     private static let deniedScreenProbeCooldown: TimeInterval = 20
+    private static let successfulScreenProbeTTL: TimeInterval = 8
 
     var allGranted: Bool { accessibility && screenRecording }
 
@@ -29,17 +30,22 @@ final class PermissionChecker: ObservableObject {
     /// Check current permission state without prompting.
     func check(pollIfMissing: Bool = false, probeScreenRecordingIfMissing: Bool = false) {
         let diag = DiagnosticLog.shared
-        lastCheckedAt = Date()
+        let now = Date()
+        lastCheckedAt = now
 
         let realAX = AXIsProcessTrusted()
         let realSR = CGPreflightScreenCaptureAccess()
         let simulating = isSimulatingMissingPermissions
         let ax = simulating ? false : realAX
         if realSR {
-            screenRecordingProbeGranted = true
+            screenRecordingProbeGrantedUntil = nil
             screenProbeCooldownUntil = nil
         }
-        let sr = simulating ? false : (realSR || screenRecordingProbeGranted)
+        let hasRecentProbeGrant = screenRecordingProbeGrantedUntil.map { $0 > now } ?? false
+        if !realSR && !hasRecentProbeGrant {
+            screenRecordingProbeGrantedUntil = nil
+        }
+        let sr = simulating ? false : (realSR || hasRecentProbeGrant)
 
         // First check: log identity info only
         if !hasLoggedInitial {
@@ -294,7 +300,7 @@ final class PermissionChecker: ObservableObject {
             accessibility = false
         case .screenSearch:
             screenRecording = false
-            screenRecordingProbeGranted = false
+            screenRecordingProbeGrantedUntil = nil
         }
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -404,7 +410,9 @@ final class PermissionChecker: ObservableObject {
         case .screenSearch:
             let result = CGRequestScreenCaptureAccess()
             diag.info("CGRequestScreenCaptureAccess(after reset) → \(result)")
-            screenRecordingProbeGranted = result
+            screenRecordingProbeGrantedUntil = result
+                ? Date().addingTimeInterval(Self.successfulScreenProbeTTL)
+                : nil
             screenRecording = result
             if !result {
                 openScreenRecordingSettings()
@@ -431,14 +439,14 @@ final class PermissionChecker: ObservableObject {
             diag.info("ScreenCaptureKit permission recheck probe → \(result)")
 
             guard result.hasPrefix("ok ") else {
-                self.screenRecordingProbeGranted = false
+                self.screenRecordingProbeGrantedUntil = nil
                 self.screenProbeCooldownUntil = Date().addingTimeInterval(Self.deniedScreenProbeCooldown)
                 self.screenRecording = CGPreflightScreenCaptureAccess()
                 return
             }
 
             self.screenProbeCooldownUntil = nil
-            self.screenRecordingProbeGranted = true
+            self.screenRecordingProbeGrantedUntil = Date().addingTimeInterval(Self.successfulScreenProbeTTL)
             if !self.screenRecording {
                 diag.info("Permissions: Accessibility \(self.accessibility ? "✓" : "✗"), Screen Recording ✓")
             }

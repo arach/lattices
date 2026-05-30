@@ -357,7 +357,7 @@ struct PermissionsAssistantView: View {
                             HStack(spacing: 4) {
                                 Image(systemName: "trash")
                                     .font(.system(size: 9))
-                                Text("Clear Row")
+                                Text("Clear Current Row")
                                     .font(Typo.monoBold(10))
                             }
                             .foregroundColor(Palette.textMuted)
@@ -373,7 +373,7 @@ struct PermissionsAssistantView: View {
                             )
                         }
                         .buttonStyle(.plain)
-                        .help("Clears Lattices' saved macOS permission row, then reopens this privacy pane.")
+                        .help("Clears the saved macOS permission row for this currently running Lattices app, then reopens this privacy pane.")
 
                         Button {
                             showDragAssistant(cap, openSettings: true)

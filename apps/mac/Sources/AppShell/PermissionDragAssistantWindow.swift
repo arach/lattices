@@ -309,9 +309,9 @@ private struct PermissionDragAssistantView: View {
                     Button {
                         PermissionChecker.shared.resetSavedApproval(for: capability)
                     } label: {
-                        Label("Clear Row", systemImage: "trash")
+                        Label("Clear Current Row", systemImage: "trash")
                     }
-                    .help("Clears Lattices' saved macOS permission row, then reopens this privacy pane.")
+                    .help("Clears the saved macOS permission row for this currently running Lattices app, then reopens this privacy pane.")
                 }
 
                 Button {
