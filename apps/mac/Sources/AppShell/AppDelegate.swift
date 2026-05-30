@@ -9,6 +9,7 @@ extension Notification.Name {
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var notificationObservers: [NSObjectProtocol] = []
+    private var systemSettingsWasFrontmost = false
 
     static func updateActivationPolicy() {
         AppActivationCoordinator.shared.refresh()
@@ -75,6 +76,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidBecomeActive(_ notification: Notification) {
         resetInputCapture(reason: "app became active")
+        PermissionChecker.shared.passiveRecheck(reason: "app became active")
     }
 
     func applicationWillResignActive(_ notification: Notification) {
@@ -87,6 +89,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         coordinator.registerSurface(id: "commandMode") { CommandModeWindow.shared.isVisible }
         coordinator.registerSurface(id: "commandPalette") { CommandPaletteWindow.shared.isVisible }
         coordinator.registerSurface(id: "mainWindow") { MainWindow.shared.isVisible }
+        coordinator.registerSurface(id: "permissionsAssistant") { PermissionsAssistantWindowController.shared.isVisible }
+        coordinator.registerSurface(id: "permissionDragAssistant") { PermissionDragAssistantWindowController.shared.isVisible }
         coordinator.registerSurface(id: "screenMap") { ScreenMapWindowController.shared.isVisible }
         coordinator.registerSurface(id: "omniSearch") { OmniSearchWindow.shared.isVisible }
     }
@@ -121,6 +125,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] _ in
             self?.resetInputCapture(reason: "screens did sleep")
         })
+        notificationObservers.append(center.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else {
+                return
+            }
+            self?.handleFrontmostApplicationChanged(app)
+        })
     }
 
     private func removeSystemInputBoundaryObservers() {
@@ -133,6 +147,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func resetInputCapture(reason: String) {
         InputCaptureResetCenter.reset(reason: reason)
+    }
+
+    private func handleFrontmostApplicationChanged(_ app: NSRunningApplication) {
+        let isSettings = Self.isSystemSettings(app)
+        let isThisApp = app.processIdentifier == ProcessInfo.processInfo.processIdentifier
+
+        if isSettings || systemSettingsWasFrontmost || isThisApp {
+            PermissionChecker.shared.passiveRecheck(reason: "frontmost app changed")
+        }
+
+        systemSettingsWasFrontmost = isSettings
+    }
+
+    private static func isSystemSettings(_ app: NSRunningApplication) -> Bool {
+        switch app.bundleIdentifier {
+        case "com.apple.systempreferences", "com.apple.SystemSettings":
+            return true
+        default:
+            return app.localizedName == "System Settings"
+        }
     }
 
     // MARK: - Deep Links

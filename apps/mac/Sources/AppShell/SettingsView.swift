@@ -2237,6 +2237,19 @@ struct SettingsContentView: View {
                             Spacer()
                         }
                         .padding(.leading, 32)
+
+                        if !permChecker.screenRecording {
+                            cardDivider
+
+                            PermissionAppDragCard(
+                                title: "OCR needs the current Lattices app in Screen Recording",
+                                permissionName: "Screen Recording",
+                                detail: "If an older Lattices entry is already listed, remove it and drag this app into the list from scratch.",
+                                onOpenSettings: {
+                                    PermissionDragAssistantWindowController.shared.show(focus: .screenSearch, openSettings: true)
+                                }
+                            )
+                        }
                     }
                 }
 

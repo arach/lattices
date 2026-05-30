@@ -2481,7 +2481,7 @@ private extension LatticesApi {
 
     static func frontmostWindowTarget() -> (wid: UInt32, pid: Int32)? {
         guard let app = NSWorkspace.shared.frontmostApplication,
-              app.bundleIdentifier != "dev.lattices.app" else {
+              !LatticesRuntime.isLatticesBundleIdentifier(app.bundleIdentifier) else {
             return nil
         }
 

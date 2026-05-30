@@ -89,6 +89,83 @@ enum FilterPreset: String, CaseIterable {
     }
 }
 
+// MARK: - Inventory Sort
+
+enum InventorySortField: String, CaseIterable {
+    case grouped   // default hierarchy: display -> space -> app -> windows
+    case app       // app name, then window title
+    case lastSeen  // last interaction date
+    case size      // window area
+    case tile      // tile position label (untiled last)
+
+    /// Default direction when this field becomes active.
+    var defaultDirection: SortDirection {
+        switch self {
+        case .grouped, .app, .tile: return .asc
+        case .lastSeen, .size:      return .desc
+        }
+    }
+}
+
+enum SortDirection {
+    case asc, desc
+    mutating func toggle() { self = (self == .asc) ? .desc : .asc }
+}
+
+// MARK: - Arrange Layouts
+
+/// Multi-window layouts for the "Arrange as" context menu.
+/// Shapes are arrays of column counts per row, matching WindowTiler.gridShape conventions.
+enum ArrangeLayout: String, CaseIterable, Identifiable {
+    case split    // 2 only: side-by-side halves
+    case columns  // 2-4: N equal-width columns
+    case stack    // 2-3: N equal-height rows
+    case grid     // 3-4: 2x2 (or 1-up + 2-below for 3)
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .split:   return "Split"
+        case .columns: return "Columns"
+        case .stack:   return "Stack"
+        case .grid:    return "Grid"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .split:   return "rectangle.split.2x1"
+        case .columns: return "rectangle.split.3x1"
+        case .stack:   return "rectangle.split.1x2"
+        case .grid:    return "rectangle.split.2x2"
+        }
+    }
+
+    /// Whether this layout supports the given selection count.
+    func supports(count: Int) -> Bool {
+        switch self {
+        case .split:   return count == 2
+        case .columns: return (2...4).contains(count)
+        case .stack:   return (2...3).contains(count)
+        case .grid:    return (3...4).contains(count)
+        }
+    }
+
+    /// Grid shape (rows by columns-per-row) for a given selection count.
+    /// Returns nil if the layout does not support the count.
+    func shape(for count: Int) -> [Int]? {
+        guard supports(count: count) else { return nil }
+        switch self {
+        case .split:                return [2]              // 2 cols
+        case .columns:              return [count]          // N cols
+        case .stack:                return Array(repeating: 1, count: count)
+        case .grid where count == 3: return [1, 2]          // 1 on top, 2 below
+        case .grid:                 return [2, 2]           // 4 -> 2x2
+        }
+    }
+}
+
 // MARK: - State Machine
 
 final class CommandModeState: ObservableObject {
@@ -101,6 +178,8 @@ final class CommandModeState: ObservableObject {
     }
     @Published var desktopMode: DesktopInventoryMode = .browsing
     @Published var activePreset: FilterPreset? = nil
+    @Published var sortField: InventorySortField = .grouped
+    @Published var sortDirection: SortDirection = .asc
     @Published var searchQuery: String = ""
     @Published var isSearching: Bool = false
     @Published var gridPreviewPlacement: PlacementSpec? = nil
@@ -363,9 +442,91 @@ final class CommandModeState: ObservableObject {
         return (width, height)
     }
 
-    /// Flat window list for keyboard navigation (respects active filter)
+    /// True when the user has selected a flat sort (anything other than the default grouping).
+    var isFlatSorted: Bool { sortField != .grouped }
+
+    /// Flat window list for keyboard navigation (respects active filter and sort mode)
     var flatWindowList: [DesktopInventorySnapshot.InventoryWindowInfo] {
-        filteredSnapshot?.allWindows ?? []
+        let base = filteredSnapshot?.allWindows ?? []
+        guard isFlatSorted else { return base }
+        return Self.sortWindows(base, by: sortField, direction: sortDirection)
+    }
+
+    /// Windows belonging to a display, sorted by the active field+direction.
+    /// Used by the inventory view when sortField != .grouped to render a flat
+    /// per-display list instead of the grouped display -> space -> app hierarchy.
+    func sortedWindows(
+        in display: DesktopInventorySnapshot.DisplayInfo
+    ) -> [DesktopInventorySnapshot.InventoryWindowInfo] {
+        let windows = display.spaces.flatMap { $0.apps.flatMap(\.windows) }
+        return Self.sortWindows(windows, by: sortField, direction: sortDirection)
+    }
+
+    /// Cycle behavior: clicking the active column flips direction; clicking another
+    /// column sets that field with its default direction. Clicking the currently
+    /// active flat column a third time returns to grouped view.
+    func toggleSort(_ field: InventorySortField) {
+        if sortField == field {
+            // Flip direction; on second flip (back to default direction) for a
+            // flat field, return to grouped view.
+            if field != .grouped, sortDirection != field.defaultDirection {
+                sortField = .grouped
+                sortDirection = InventorySortField.grouped.defaultDirection
+            } else {
+                sortDirection.toggle()
+            }
+        } else {
+            sortField = field
+            sortDirection = field.defaultDirection
+        }
+    }
+
+    private static func sortWindows(
+        _ windows: [DesktopInventorySnapshot.InventoryWindowInfo],
+        by field: InventorySortField,
+        direction: SortDirection
+    ) -> [DesktopInventorySnapshot.InventoryWindowInfo] {
+        let model = DesktopModel.shared
+        let asc = direction == .asc
+
+        return windows.sorted { lhs, rhs in
+            switch field {
+            case .grouped:
+                return lhs.id < rhs.id  // never used (caller skips), but provide stable order
+
+            case .app:
+                let la = (lhs.appName ?? "").lowercased()
+                let ra = (rhs.appName ?? "").lowercased()
+                if la != ra { return asc ? la < ra : la > ra }
+                let lt = lhs.title.lowercased(), rt = rhs.title.lowercased()
+                if lt != rt { return asc ? lt < rt : lt > rt }
+                return lhs.id < rhs.id
+
+            case .lastSeen:
+                let l = model.lastInteractionDate(for: lhs.id) ?? .distantPast
+                let r = model.lastInteractionDate(for: rhs.id) ?? .distantPast
+                if l != r { return asc ? l < r : l > r }
+                return lhs.id < rhs.id
+
+            case .size:
+                let la = lhs.frame.w * lhs.frame.h
+                let ra = rhs.frame.w * rhs.frame.h
+                if la != ra { return asc ? la < ra : la > ra }
+                return lhs.id < rhs.id
+
+            case .tile:
+                // Untiled (nil) always sinks to the bottom, regardless of direction.
+                switch (lhs.tilePosition, rhs.tilePosition) {
+                case (nil, nil): return lhs.id < rhs.id
+                case (nil, _):   return false
+                case (_, nil):   return true
+                case let (.some(l), .some(r)):
+                    let ll = l.label, rl = r.label
+                    if ll != rl { return asc ? ll < rl : ll > rl }
+                    return lhs.id < rhs.id
+                }
+            }
+        }
     }
 
     var ocrMatchSnippets: [UInt32: String] {
@@ -424,6 +585,8 @@ final class CommandModeState: ObservableObject {
                 clearSelection()
                 desktopMode = .browsing
                 activePreset = nil
+                sortField = .grouped
+                sortDirection = InventorySortField.grouped.defaultDirection
                 phase = .inventory
                 onPanelResize?(chordPanelSize.0, chordPanelSize.1)
                 return true
@@ -632,6 +795,11 @@ final class CommandModeState: ObservableObject {
         case 46: // m → screen map editor (standalone window)
             if isSearching { deactivateSearch() }
             ScreenMapWindowController.shared.show()
+            return true
+
+        case 15: // r toggles recency sort (shortcut for lastSeen desc)
+            if isSearching { return false }
+            toggleSort(.lastSeen)
             return true
 
         case 18, 19, 20, 21, 23, 22: // 1-6 → filter presets (only when no selection and not searching)
@@ -966,6 +1134,26 @@ final class CommandModeState: ObservableObject {
         let grid = shape.map(String.init).joined(separator: "+")
         let region = placement.map { " in \(self.regionLabel(for: $0))" } ?? ""
         flash("\(windows.count) windows\(region) [\(grid)]")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            self?.desktopSnapshot = self?.buildDesktopInventory()
+        }
+    }
+
+    /// Arrange selected windows in an explicit layout (split / columns / stack / grid).
+    /// Falls back to the smart grid distribution if the layout does not support the count.
+    func arrangeSelected(as layout: ArrangeLayout) {
+        let windows = flatWindowList.filter { selectedWindowIds.contains($0.id) }
+        guard !windows.isEmpty else { return }
+        guard let shape = layout.shape(for: windows.count) else {
+            flash("\(layout.label) doesn't support \(windows.count) windows")
+            return
+        }
+        savePositions(for: windows)
+        WindowTiler.batchRaiseAndDistribute(
+            windows: windows.map { (wid: $0.id, pid: $0.pid) },
+            shape: shape
+        )
+        flash("Arranged \(windows.count) windows as \(layout.label)")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
             self?.desktopSnapshot = self?.buildDesktopInventory()
         }

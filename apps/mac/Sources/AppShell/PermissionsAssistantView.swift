@@ -7,6 +7,13 @@ import SwiftUI
 struct PermissionsAssistantView: View {
     @ObservedObject private var permChecker = PermissionChecker.shared
     @ObservedObject private var prefs = Preferences.shared
+    private static let checkTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .medium
+        return formatter
+    }()
+
     @Binding var selected: Capability
     var onClose: () -> Void
 
@@ -26,7 +33,13 @@ struct PermissionsAssistantView: View {
         .background(PanelBackground())
         .preferredColorScheme(.dark)
         .onAppear {
-            PermissionChecker.shared.check(pollIfMissing: true)
+            PermissionChecker.shared.check()
+        }
+        .task {
+            while !Task.isCancelled {
+                PermissionChecker.shared.check()
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
         }
     }
 
@@ -58,7 +71,7 @@ struct PermissionsAssistantView: View {
 
     private func sidebarRow(_ cap: Capability) -> some View {
         let active = selected == cap
-        let granted = cap.isGranted
+        let granted = isGranted(cap)
 
         return Button {
             selected = cap
@@ -101,6 +114,10 @@ struct PermissionsAssistantView: View {
             .frame(width: 6, height: 6)
     }
 
+    private func isGranted(_ cap: Capability) -> Bool {
+        permChecker.isGranted(cap)
+    }
+
     // MARK: - Detail
 
     private var detail: some View {
@@ -114,6 +131,7 @@ struct PermissionsAssistantView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
+                    permissionRepairCard(selected)
                     valueCard(selected)
                     statusCard(selected)
                     actionsCard(selected)
@@ -167,8 +185,8 @@ struct PermissionsAssistantView: View {
     }
 
     private func statusBadge(_ cap: Capability) -> some View {
-        let granted = cap.isGranted
-        let label = granted ? "ON" : (prefs.isCapabilityDismissed(cap.rawValue) ? "SNOOZED" : "OFF")
+        let granted = isGranted(cap)
+        let label = granted ? "ON" : (permChecker.refreshInFlight ? "CHECKING" : (prefs.isCapabilityDismissed(cap.rawValue) ? "SNOOZED" : "OFF"))
         let color: Color = granted ? Palette.running : Palette.detach
 
         return Text(label)
@@ -217,14 +235,44 @@ struct PermissionsAssistantView: View {
     private func statusCard(_ cap: Capability) -> some View {
         sectionCard(title: "STATUS") {
             HStack(spacing: 8) {
-                Image(systemName: cap.isGranted ? "checkmark.circle.fill" : "exclamationmark.circle")
+                Image(systemName: isGranted(cap) ? "checkmark.circle.fill" : "exclamationmark.circle")
                     .font(.system(size: 12))
-                    .foregroundColor(cap.isGranted ? Palette.running : Palette.detach)
-                Text(cap.isGranted ? cap.whenGrantedDetail : "Not enabled. Lattices works without it; the rest of the app stays usable.")
+                    .foregroundColor(isGranted(cap) ? Palette.running : Palette.detach)
+                Text(statusMessage(cap))
                     .font(Typo.mono(11))
                     .foregroundColor(Palette.text)
                 Spacer(minLength: 0)
             }
+        }
+    }
+
+    private func statusMessage(_ cap: Capability) -> String {
+        if isGranted(cap) { return cap.whenGrantedDetail }
+        if permChecker.refreshInFlight { return "Checking macOS permission state..." }
+        if let lastCheckedAt = permChecker.lastCheckedAt {
+            return "Last checked \(Self.checkTimeFormatter.string(from: lastCheckedAt)); macOS still reports not enabled."
+        }
+        return "Not enabled. Lattices works without it; the rest of the app stays usable."
+    }
+
+    @ViewBuilder
+    private func permissionRepairCard(_ cap: Capability) -> some View {
+        if !isGranted(cap) {
+            PermissionAppDragCard(
+                title: "Refresh the \(cap.requirementLabel) entry",
+                permissionName: cap.requirementLabel,
+                detail: repairDetail(cap),
+                onOpenSettings: { showDragAssistant(cap, openSettings: true) }
+            )
+        }
+    }
+
+    private func repairDetail(_ cap: Capability) -> String {
+        switch cap {
+        case .windowControl:
+            return "If macOS shows an older Lattices entry, remove it first. Then drag this current app into Accessibility and toggle it on."
+        case .screenSearch:
+            return "If macOS shows an older Lattices entry, remove it first. Then drag this current app into Screen Recording and toggle it on."
         }
     }
 
@@ -234,7 +282,7 @@ struct PermissionsAssistantView: View {
                 primaryAction(cap)
 
                 HStack(spacing: 10) {
-                    if !cap.isGranted {
+                    if !isGranted(cap) {
                         Button {
                             prefs.dismissCapability(cap.rawValue)
                         } label: {
@@ -278,6 +326,103 @@ struct PermissionsAssistantView: View {
                         )
                     }
                     .buttonStyle(.plain)
+
+                    Button {
+                        recheckPermissions()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: permChecker.refreshInFlight ? "arrow.clockwise" : "checkmark.shield")
+                                .font(.system(size: 9))
+                            Text(permChecker.refreshInFlight ? "Checking" : "Recheck")
+                                .font(Typo.monoBold(10))
+                        }
+                        .foregroundColor(Palette.textMuted)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Palette.surface)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .strokeBorder(Palette.border, lineWidth: 0.5)
+                                )
+                        )
+                    }
+                    .buttonStyle(.plain)
+
+                    if !isGranted(cap) {
+                        Button {
+                            PermissionChecker.shared.resetSavedApproval(for: cap)
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 9))
+                                Text("Clear Row")
+                                    .font(Typo.monoBold(10))
+                            }
+                            .foregroundColor(Palette.textMuted)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(Palette.surface)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .strokeBorder(Palette.border, lineWidth: 0.5)
+                                    )
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .help("Clears Lattices' saved macOS permission row, then reopens this privacy pane.")
+
+                        Button {
+                            showDragAssistant(cap, openSettings: true)
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "hand.draw")
+                                    .font(.system(size: 9))
+                                Text("Drag Helper")
+                                    .font(Typo.monoBold(10))
+                            }
+                            .foregroundColor(Palette.detach)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(Palette.detach.opacity(0.10))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .strokeBorder(Palette.detach.opacity(0.30), lineWidth: 0.5)
+                                    )
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    if cap == .screenSearch && !isGranted(cap) {
+                        Button {
+                            permChecker.quitAndRelaunch()
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.clockwise.circle")
+                                    .font(.system(size: 9))
+                                Text("Relaunch")
+                                    .font(Typo.monoBold(10))
+                            }
+                            .foregroundColor(Palette.textMuted)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(Palette.surface)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .strokeBorder(Palette.border, lineWidth: 0.5)
+                                    )
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
 
                 Text(actionFootnote(cap))
@@ -289,7 +434,7 @@ struct PermissionsAssistantView: View {
 
     @ViewBuilder
     private func primaryAction(_ cap: Capability) -> some View {
-        if cap.isGranted {
+        if isGranted(cap) {
             HStack(spacing: 6) {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundColor(Palette.running)
@@ -321,7 +466,7 @@ struct PermissionsAssistantView: View {
         case .windowControl:
             return "macOS will add Lattices to its Accessibility list. You finish the toggle in System Settings."
         case .screenSearch:
-            return "Enabling this turns on OCR and asks macOS for Screen Recording on this Mac."
+            return "Enabling this turns on OCR and asks macOS for Screen Recording on this Mac. If permission looks stuck, remove stale Lattices entries and drag the current app in again."
         }
     }
 
@@ -336,13 +481,21 @@ struct PermissionsAssistantView: View {
             // Turning on OCR is the moment we ask for Screen Recording.
             OcrModel.shared.setEnabled(true)
         }
+
+        showDragAssistant(cap, openSettings: false)
     }
 
     private func openSystemSettings(_ cap: Capability) {
-        switch cap {
-        case .windowControl: permChecker.openAccessibilitySettings()
-        case .screenSearch:  permChecker.openScreenRecordingSettings()
-        }
+        showDragAssistant(cap, openSettings: true)
+    }
+
+    private func showDragAssistant(_ cap: Capability, openSettings: Bool) {
+        PermissionChecker.shared.passiveRecheck(reason: "show drag assistant")
+        PermissionDragAssistantWindowController.shared.show(focus: cap, openSettings: openSettings)
+    }
+
+    private func recheckPermissions() {
+        PermissionChecker.shared.recheckNow(reason: "permissions assistant")
     }
 
     // MARK: - Section card

@@ -8,9 +8,16 @@ final class PermissionChecker: ObservableObject {
 
     @Published var accessibility: Bool = false
     @Published var screenRecording: Bool = false
+    @Published private(set) var refreshInFlight: Bool = false
+    @Published private(set) var lastCheckedAt: Date?
 
     private var pollTimer: Timer?
+    private var burstRefreshTask: Task<Void, Never>?
     private var hasLoggedInitial = false
+    private var screenProbeInFlight = false
+    private var screenRecordingProbeGranted = false
+    private var screenProbeCooldownUntil: Date?
+    private static let deniedScreenProbeCooldown: TimeInterval = 20
 
     var allGranted: Bool { accessibility && screenRecording }
 
@@ -20,14 +27,19 @@ final class PermissionChecker: ObservableObject {
     }
 
     /// Check current permission state without prompting.
-    func check(pollIfMissing: Bool = false) {
+    func check(pollIfMissing: Bool = false, probeScreenRecordingIfMissing: Bool = false) {
         let diag = DiagnosticLog.shared
+        lastCheckedAt = Date()
 
         let realAX = AXIsProcessTrusted()
         let realSR = CGPreflightScreenCaptureAccess()
         let simulating = isSimulatingMissingPermissions
         let ax = simulating ? false : realAX
-        let sr = simulating ? false : realSR
+        if realSR {
+            screenRecordingProbeGranted = true
+            screenProbeCooldownUntil = nil
+        }
+        let sr = simulating ? false : (realSR || screenRecordingProbeGranted)
 
         // First check: log identity info only
         if !hasLoggedInitial {
@@ -59,6 +71,19 @@ final class PermissionChecker: ObservableObject {
         } else if pollIfMissing {
             startPolling()
         }
+
+        if probeScreenRecordingIfMissing && !sr {
+            probeScreenRecordingPermissionIfNeeded()
+        }
+    }
+
+    func isGranted(_ capability: Capability) -> Bool {
+        switch capability {
+        case .windowControl:
+            return accessibility
+        case .screenSearch:
+            return screenRecording
+        }
     }
 
     /// Request Accessibility permission — shows the system dialog if not yet granted,
@@ -80,6 +105,7 @@ final class PermissionChecker: ObservableObject {
             diag.warn("Accessibility not granted — opening System Settings. Toggle ON in Privacy → Accessibility.")
             openAccessibilitySettings()
             startPolling()
+            schedulePermissionRefresh()
         }
     }
 
@@ -94,6 +120,13 @@ final class PermissionChecker: ObservableObject {
         }
         let beforeCheck = CGPreflightScreenCaptureAccess()
         diag.info("requestScreenRecording: before=\(beforeCheck), probing…")
+        let requestResult = CGRequestScreenCaptureAccess()
+        diag.info("CGRequestScreenCaptureAccess() → \(requestResult)")
+        if requestResult {
+            screenRecording = true
+            stopPolling()
+            return
+        }
 
         // On newer macOS releases TCC no longer reliably prompts for screen capture
         // through the legacy CoreGraphics request API. Warm up ScreenCaptureKit first,
@@ -122,6 +155,7 @@ final class PermissionChecker: ObservableObject {
                     diag.warn("Screen capture not granted — opening System Settings. On newer macOS versions this may require enabling Lattices in Privacy → Screen & System Audio Recording.")
                     self.openScreenRecordingSettings()
                     self.startPolling()
+                    self.schedulePermissionRefresh(probeScreenRecording: true)
                 }
             }
             return
@@ -135,7 +169,18 @@ final class PermissionChecker: ObservableObject {
             diag.warn("Screen capture not granted — opening System Settings. Toggle ON in Privacy → Screen Recording.")
             openScreenRecordingSettings()
             startPolling()
+            schedulePermissionRefresh(probeScreenRecording: true)
         }
+    }
+
+    func openSettings(for capability: Capability) {
+        switch capability {
+        case .windowControl:
+            openAccessibilitySettings()
+        case .screenSearch:
+            openScreenRecordingSettings()
+        }
+        passiveRecheck(reason: "open \(capability.requirementLabel)")
     }
 
     /// Opens System Settings → Privacy & Security → Accessibility
@@ -207,18 +252,221 @@ final class PermissionChecker: ObservableObject {
 
     // MARK: - Polling
 
-    /// Poll every 2 seconds to detect permission changes made in System Settings.
+    /// Poll every second to detect permission changes made in System Settings.
     private func startPolling() {
         guard pollTimer == nil else { return }
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             DispatchQueue.main.async {
                 self?.check()
             }
         }
     }
 
+    /// Short, eager recheck burst used while the macOS privacy panes are open.
+    /// TCC often updates a fraction of a second after the user toggles or drops
+    /// an app, so this makes the assistant turn green without a manual reopen.
+    func passiveRecheck(reason: String) {
+        DiagnosticLog.shared.info("PermissionChecker: passive recheck requested (\(reason))")
+        check()
+    }
+
+    func recheckNow(reason: String = "manual", probeIfMissing: Bool = true) {
+        let diag = DiagnosticLog.shared
+        diag.info("PermissionChecker: recheck requested (\(reason))")
+
+        burstRefreshTask?.cancel()
+        refreshInFlight = true
+        check(pollIfMissing: true, probeScreenRecordingIfMissing: probeIfMissing)
+        schedulePermissionRefresh(probeScreenRecording: probeIfMissing)
+    }
+
+    func resetSavedApproval(for capability: Capability) {
+        let bundleId = Bundle.main.bundleIdentifier ?? LatticesRuntime.releaseBundleIdentifier
+        let services = tccServices(for: capability)
+        let diag = DiagnosticLog.shared
+
+        diag.info("PermissionChecker: clearing saved \(capability.requirementLabel) row for \(bundleId)")
+        burstRefreshTask?.cancel()
+        refreshInFlight = true
+
+        switch capability {
+        case .windowControl:
+            accessibility = false
+        case .screenSearch:
+            screenRecording = false
+            screenRecordingProbeGranted = false
+        }
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let results = services.map { service in
+                (service, Self.runTccutilReset(service: service, bundleId: bundleId))
+            }
+
+            DispatchQueue.main.async {
+                guard let self else { return }
+
+                for (service, result) in results {
+                    if result.status == 0 {
+                        diag.success("tccutil reset \(service) \(bundleId)")
+                    } else {
+                        let detail = result.output.isEmpty ? "exit \(result.status)" : result.output
+                        diag.warn("tccutil reset \(service) failed: \(detail)")
+                    }
+                }
+
+                switch capability {
+                case .windowControl:
+                    self.promptForCurrentAppRegistration(capability)
+                case .screenSearch:
+                    self.promptForCurrentAppRegistration(capability)
+                }
+
+                self.check(
+                    pollIfMissing: true,
+                    probeScreenRecordingIfMissing: capability == .screenSearch
+                )
+                self.schedulePermissionRefresh(probeScreenRecording: capability == .screenSearch)
+            }
+        }
+    }
+
+    func schedulePermissionRefresh(probeScreenRecording: Bool = false) {
+        burstRefreshTask?.cancel()
+        refreshInFlight = true
+        let checker = self
+        burstRefreshTask = Task { @MainActor in
+            defer { checker.refreshInFlight = false }
+
+            let delays: [UInt64] = [
+                250_000_000,
+                750_000_000,
+                1_500_000_000,
+                3_000_000_000,
+                6_000_000_000,
+                10_000_000_000
+            ]
+
+            for delay in delays {
+                try? await Task.sleep(nanoseconds: delay)
+                guard !Task.isCancelled else { return }
+                checker.check(
+                    pollIfMissing: true,
+                    probeScreenRecordingIfMissing: probeScreenRecording
+                )
+            }
+        }
+    }
+
+    func quitAndRelaunch() {
+        let appURL = Bundle.main.bundleURL
+        let task = Process()
+        task.launchPath = "/bin/sh"
+        task.arguments = [
+            "-c",
+            "/bin/sleep 1; /usr/bin/open -n \"\(appURL.path)\""
+        ]
+        try? task.run()
+        NSApp.terminate(nil)
+    }
+
     private func stopPolling() {
         pollTimer?.invalidate()
         pollTimer = nil
+        burstRefreshTask?.cancel()
+        burstRefreshTask = nil
+        refreshInFlight = false
+    }
+
+    private func tccServices(for capability: Capability) -> [String] {
+        switch capability {
+        case .windowControl:
+            return ["Accessibility"]
+        case .screenSearch:
+            return ["ScreenCapture"]
+        }
+    }
+
+    private func promptForCurrentAppRegistration(_ capability: Capability) {
+        let diag = DiagnosticLog.shared
+
+        switch capability {
+        case .windowControl:
+            let options = [
+                kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true
+            ] as CFDictionary
+            let result = AXIsProcessTrustedWithOptions(options)
+            diag.info("AXIsProcessTrustedWithOptions(prompt after reset) → \(result)")
+            accessibility = result
+            if !result {
+                openAccessibilitySettings()
+            }
+
+        case .screenSearch:
+            let result = CGRequestScreenCaptureAccess()
+            diag.info("CGRequestScreenCaptureAccess(after reset) → \(result)")
+            screenRecordingProbeGranted = result
+            screenRecording = result
+            if !result {
+                openScreenRecordingSettings()
+            }
+        }
+    }
+
+    private func probeScreenRecordingPermissionIfNeeded() {
+        guard !screenProbeInFlight else { return }
+        guard #available(macOS 15.0, *) else { return }
+        guard !isSimulatingMissingPermissions else { return }
+        if let cooldownUntil = screenProbeCooldownUntil, cooldownUntil > Date() {
+            return
+        }
+
+        screenProbeInFlight = true
+        screenProbeCooldownUntil = Date().addingTimeInterval(2)
+        let diag = DiagnosticLog.shared
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let result = await self.probeScreenCaptureShareableContent()
+            self.screenProbeInFlight = false
+            diag.info("ScreenCaptureKit permission recheck probe → \(result)")
+
+            guard result.hasPrefix("ok ") else {
+                self.screenRecordingProbeGranted = false
+                self.screenProbeCooldownUntil = Date().addingTimeInterval(Self.deniedScreenProbeCooldown)
+                self.screenRecording = CGPreflightScreenCaptureAccess()
+                return
+            }
+
+            self.screenProbeCooldownUntil = nil
+            self.screenRecordingProbeGranted = true
+            if !self.screenRecording {
+                diag.info("Permissions: Accessibility \(self.accessibility ? "✓" : "✗"), Screen Recording ✓")
+            }
+            self.screenRecording = true
+            if self.allGranted {
+                self.stopPolling()
+            }
+        }
+    }
+
+    private static func runTccutilReset(service: String, bundleId: String) -> (status: Int32, output: String) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+        process.arguments = ["reset", service, bundleId]
+
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return (process.terminationStatus, output)
+        } catch {
+            return (1, error.localizedDescription)
+        }
     }
 }

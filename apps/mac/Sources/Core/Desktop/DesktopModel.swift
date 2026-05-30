@@ -238,6 +238,13 @@ final class DesktopModel: ObservableObject {
 
         DispatchQueue.main.async {
             var interactions = self.interactionDates.filter { fresh[$0.key] != nil }
+            // Seed newly-discovered windows so the inventory's LAST SEEN column
+            // is populated from first paint. interactionDates is in-memory only
+            // and resets on app restart; on the very first poll every visible
+            // wid lands in `added`, which gives the user a baseline.
+            for wid in added where interactions[wid] == nil {
+                interactions[wid] = interactionTime
+            }
             if markFrontmost, let frontmostWid {
                 interactions[frontmostWid] = interactionTime
             }

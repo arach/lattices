@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+# lattices-build - explicit dev/package/dist build entry points
+
+set -euo pipefail
+
+SCRIPT_PATH="$(readlink -f "$0" 2>/dev/null || python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$0")"
+ROOT="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
+
+DEV_APPS_DIR="${LATTICES_DEV_APPS_DIR:-$HOME/Applications/dev/Lattices}"
+DEV_BUNDLE="${LATTICES_DEV_APP:-$DEV_APPS_DIR/Lattices.app}"
+DEV_BUNDLE_ID="${LATTICES_DEV_BUNDLE_ID:-dev.lattices.app.dev}"
+RELEASE_BUNDLE="$ROOT/apps/mac/Lattices.app"
+RELEASE_BUNDLE_ID="dev.lattices.app"
+DIST_BUNDLE="$ROOT/dist/Lattices.app"
+DIST_DMG="$ROOT/dist/Lattices.dmg"
+PROD_INSTALL_BUNDLE="/Applications/Lattices.app"
+
+green() { printf "\033[32m%s\033[0m\n" "$*"; }
+dim()   { printf "\033[2m%s\033[0m\n" "$*"; }
+red()   { printf "\033[31m%s\033[0m\n" "$*"; }
+
+usage() {
+    cat <<EOF
+lattices-build - build Lattices without mixing dev and release identities
+
+Usage:
+  bin/lattices-build dev           Build/install dev app
+  bin/lattices-build dev:restart   Build/install/relaunch dev app
+  bin/lattices-build package       Build repo app bundle for npm packaging
+  bin/lattices-build dist          Build signed/notarized release DMG
+  bin/lattices-build dist:local    Build local release DMG without notarizing
+  bin/lattices-build where         Show canonical paths and bundle ids
+
+Channels:
+  dev      $DEV_BUNDLE_ID -> $DEV_BUNDLE
+  release  $RELEASE_BUNDLE_ID -> $PROD_INSTALL_BUNDLE via $DIST_DMG
+EOF
+}
+
+plist_value() {
+    local app="$1"
+    local key="$2"
+    [ -d "$app" ] || return 0
+    /usr/bin/defaults read "$app/Contents/Info.plist" "$key" 2>/dev/null || true
+}
+
+show_app() {
+    local label="$1"
+    local app="$2"
+
+    echo "$label"
+    echo "  path: $app"
+    if [ -d "$app" ]; then
+        echo "  bundle id: $(plist_value "$app" CFBundleIdentifier)"
+        echo "  channel:   $(plist_value "$app" LatticesBuildChannel)"
+        echo "  built at:  $(plist_value "$app" LatticesBuildTimestamp)"
+    else
+        echo "  status:    not built"
+    fi
+}
+
+cmd_dev() {
+    "$ROOT/bin/lattices-dev" build
+    show_app "Dev app" "$DEV_BUNDLE"
+    green "Dev permission target: $DEV_BUNDLE"
+}
+
+cmd_dev_restart() {
+    "$ROOT/bin/lattices-dev" restart
+    show_app "Running dev app" "$DEV_BUNDLE"
+}
+
+cmd_package() {
+    if ! command -v bun >/dev/null 2>&1; then
+        red "bun is required for package builds."
+        exit 1
+    fi
+
+    bun "$ROOT/bin/lattices-app.ts" build
+    show_app "Package app bundle" "$RELEASE_BUNDLE"
+    green "Package bundle ready: $RELEASE_BUNDLE"
+}
+
+cmd_dist() {
+    "$ROOT/tools/release/build-dmg.sh" "$@"
+    show_app "Release app artifact" "$DIST_BUNDLE"
+    [ -f "$DIST_DMG" ] && ls -lh "$DIST_DMG"
+}
+
+cmd_dist_local() {
+    LATTICES_SKIP_NOTARIZE=1 "$ROOT/tools/release/build-dmg.sh" "$@"
+    show_app "Local release app artifact" "$DIST_BUNDLE"
+    [ -f "$DIST_DMG" ] && ls -lh "$DIST_DMG"
+}
+
+cmd_where() {
+    show_app "Dev app" "$DEV_BUNDLE"
+    echo "  expected bundle id: $DEV_BUNDLE_ID"
+    echo
+    show_app "Package app bundle" "$RELEASE_BUNDLE"
+    echo "  expected bundle id: $RELEASE_BUNDLE_ID"
+    echo
+    show_app "Release app artifact" "$DIST_BUNDLE"
+    echo "  expected install target: $PROD_INSTALL_BUNDLE"
+    [ -f "$DIST_DMG" ] && echo "  dmg: $DIST_DMG"
+}
+
+cmd="${1:-help}"
+shift || true
+
+case "$cmd" in
+    dev)         cmd_dev ;;
+    dev:restart|restart) cmd_dev_restart ;;
+    package)     cmd_package ;;
+    dist)        cmd_dist "$@" ;;
+    dist:local)  cmd_dist_local "$@" ;;
+    where)       cmd_where ;;
+    help|-h|--help) usage ;;
+    *)
+        red "Unknown command: $cmd"
+        echo
+        usage
+        exit 1
+        ;;
+esac

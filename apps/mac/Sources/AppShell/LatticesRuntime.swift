@@ -1,6 +1,9 @@
 import Foundation
 
 enum LatticesRuntime {
+    static let releaseBundleIdentifier = "dev.lattices.app"
+    static let devBundleIdentifier = "dev.lattices.app.dev"
+
     static var cliRoot: String? {
         if let idx = CommandLine.arguments.firstIndex(of: "--lattices-cli-root"),
            CommandLine.arguments.indices.contains(idx + 1) {
@@ -90,6 +93,10 @@ enum LatticesRuntime {
 
     static var buildChannelLabel: String {
         isDevBuild ? "DEV" : "RELEASE"
+    }
+
+    static func isLatticesBundleIdentifier(_ bundleIdentifier: String?) -> Bool {
+        bundleIdentifier == releaseBundleIdentifier || bundleIdentifier == devBundleIdentifier
     }
 
     private static func hasAppHelper(in root: String) -> Bool {

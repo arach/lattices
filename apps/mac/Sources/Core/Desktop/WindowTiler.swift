@@ -1726,7 +1726,13 @@ enum WindowTiler {
 
     /// Compute grid slot rects in AX coordinates (top-left origin) for N windows.
     /// If `region` is provided (fractional x, y, w, h), slots are constrained to that sub-area of the screen.
-    static func computeGridSlots(count: Int, screen: NSScreen, region: (CGFloat, CGFloat, CGFloat, CGFloat)? = nil) -> [CGRect] {
+    /// If `shape` is provided, it overrides the default smart grid (must sum to `count`).
+    static func computeGridSlots(
+        count: Int,
+        screen: NSScreen,
+        region: (CGFloat, CGFloat, CGFloat, CGFloat)? = nil,
+        shape: [Int]? = nil
+    ) -> [CGRect] {
         guard count > 0 else { return [] }
         let visible = screen.visibleFrame
         guard let primaryScreen = NSScreen.screens.first else { return [] }
@@ -1747,12 +1753,17 @@ enum WindowTiler {
 
         // AX Y of target area's top edge
         let axTop = primaryHeight - targetArea.maxY
-        let shape = gridShape(for: count)
-        let rowCount = shape.count
+        let resolvedShape: [Int]
+        if let shape, shape.reduce(0, +) == count, !shape.contains(where: { $0 <= 0 }) {
+            resolvedShape = shape
+        } else {
+            resolvedShape = gridShape(for: count)
+        }
+        let rowCount = resolvedShape.count
         let rowH = targetArea.height / CGFloat(rowCount)
 
         var slots: [CGRect] = []
-        for (row, cols) in shape.enumerated() {
+        for (row, cols) in resolvedShape.enumerated() {
             let colW = targetArea.width / CGFloat(cols)
             let axY = axTop + CGFloat(row) * rowH
             for col in 0..<cols {
@@ -1768,7 +1779,8 @@ enum WindowTiler {
     static func batchRaiseAndDistribute(
         windows: [(wid: UInt32, pid: Int32)],
         region: (CGFloat, CGFloat, CGFloat, CGFloat)? = nil,
-        reactivateLattices: Bool = true
+        reactivateLattices: Bool = true,
+        shape shapeOverride: [Int]? = nil
     ) {
         guard !windows.isEmpty else { return }
         let diag = DiagnosticLog.shared
@@ -1785,8 +1797,13 @@ enum WindowTiler {
         let visible = screen.visibleFrame
         let screenFrame = screen.frame
         let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
-        let shape = gridShape(for: windows.count)
-        let desc = shape.map(String.init).joined(separator: "+")
+        let effectiveShape: [Int]
+        if let shapeOverride, shapeOverride.reduce(0, +) == windows.count, !shapeOverride.contains(where: { $0 <= 0 }) {
+            effectiveShape = shapeOverride
+        } else {
+            effectiveShape = gridShape(for: windows.count)
+        }
+        let desc = effectiveShape.map(String.init).joined(separator: "+")
 
         diag.info("Grid layout: \(windows.count) windows → [\(desc)]")
         diag.info("  Screen: \(screen.localizedName) \(Int(screenFrame.width))x\(Int(screenFrame.height))")
@@ -1795,7 +1812,7 @@ enum WindowTiler {
         diag.info("  Primary height: \(Int(primaryHeight))")
 
         // Pre-compute all target slots
-        let slots = computeGridSlots(count: windows.count, screen: screen, region: region)
+        let slots = computeGridSlots(count: windows.count, screen: screen, region: region, shape: effectiveShape)
         guard slots.count == windows.count else {
             diag.warn("  Slot count mismatch: \(slots.count) slots for \(windows.count) windows")
             return
@@ -2012,7 +2029,7 @@ enum WindowTiler {
 
     static func tileFrontmostViaAX(to placement: PlacementSpec) {
         guard let frontApp = NSWorkspace.shared.frontmostApplication,
-              frontApp.bundleIdentifier != "dev.lattices.app" else { return }
+              !LatticesRuntime.isLatticesBundleIdentifier(frontApp.bundleIdentifier) else { return }
 
         let appRef = AXUIElementCreateApplication(frontApp.processIdentifier)
         var focusedRef: CFTypeRef?
