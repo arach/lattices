@@ -20,7 +20,7 @@ These are the preferred action identifiers:
 
 | Action | Purpose | Preferred surface |
 |--------|---------|-------------------|
-| `window.place` | Place a window or session using a typed placement spec | Daemon API |
+| `window.place` | Place a window or session using a typed placement spec | `actions.execute` |
 | `layer.activate` | Bring up a workspace layer with explicit activation mode | Daemon API |
 | `space.optimize` | Rebalance a set of windows using an explicit scope and strategy | Daemon API |
 
@@ -28,6 +28,7 @@ Compatibility wrappers still exist:
 
 | Legacy method | Canonical equivalent |
 |---------------|----------------------|
+| `window.place` | `actions.execute` with `type=window.place` |
 | `window.tile` | `window.place` |
 | `layer.switch` | `layer.activate` with `mode=launch` |
 | `layout.distribute` | `space.optimize` with `scope=visible`, `strategy=balanced` |
@@ -49,6 +50,31 @@ lattices help
 lattices call api.schema
 lattices voice intents
 ```
+
+For window actions, resolve before mutating when target identity matters:
+
+```bash
+lattices call window.resolve '{"target":{"kind":"session","session":"frontend-a1b2c3"},"placement":"left"}'
+lattices call actions.execute '{"type":"window.place","target":{"kind":"session","session":"frontend-a1b2c3"},"args":{"placement":"left"},"dryRun":true}'
+```
+
+`window.resolve` and `dryRun` return the resolved `wid`, app/title,
+target resolution path, display, and planned frame without moving the
+window.
+
+Verified `window.place` receipts include `undoable: true` when Lattices
+captured a concrete window id and previous frame. Agents can restore the
+latest undoable placement, or an entire request batch, through:
+
+```bash
+lattices call actions.undo '{}'
+lattices call actions.undo '{"requestId":"req_..."}'
+lattices call actions.undo '{"receiptId":"exec_...","dryRun":true}'
+```
+
+Undo checks that the window is still where the original receipt left it
+before restoring the previous frame. Pass `force:true` only when the
+caller intentionally wants to override a later manual move.
 
 ## Agent documentation artifacts
 
@@ -142,9 +168,14 @@ Node.js:
 import { daemonCall } from '@lattices/cli'
 
 await daemonCall('session.launch', { path: '/Users/you/dev/frontend' })
-await daemonCall('window.place', {
-  session: 'frontend-a1b2c3',
-  placement: { kind: 'tile', value: 'left' }
+await daemonCall('window.resolve', {
+  target: { kind: 'session', session: 'frontend-a1b2c3' },
+  placement: 'left'
+})
+await daemonCall('actions.execute', {
+  type: 'window.place',
+  target: { kind: 'session', session: 'frontend-a1b2c3' },
+  args: { placement: { kind: 'tile', value: 'left' } }
 })
 await daemonCall('layer.activate', { name: 'review', mode: 'launch' })
 await daemonCall('space.optimize', { scope: 'visible', strategy: 'balanced' })
@@ -154,6 +185,8 @@ CLI:
 
 ```bash
 lattices call api.schema
+lattices call window.resolve '{"target":{"kind":"session","session":"frontend-a1b2c3"},"placement":"left"}'
+lattices call actions.execute '{"type":"window.place","target":{"kind":"frontmost"},"args":{"placement":"left"}}'
 lattices call window.place '{"session":"frontend-a1b2c3","placement":"left"}'
 lattices call layer.activate '{"name":"review","mode":"launch"}'
 lattices call space.optimize '{"scope":"visible","strategy":"balanced"}'
@@ -167,6 +200,8 @@ The important fields for agents are:
 - resolved target
 - resolved placement / scope / mode
 - affected window IDs
+- computed plan and applied mutations
+- verification status
 - trace entries explaining why the daemon chose that path
 
 This is what keeps voice, hands-off, and scripted execution scrutable.

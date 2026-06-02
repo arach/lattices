@@ -100,6 +100,21 @@ clear_lattices_drag_cache() {
     done
 }
 
+is_install_bundle_running() {
+    local target="$INSTALL_BUNDLE/Contents/MacOS/Lattices"
+    local pid args
+
+    while IFS= read -r pid; do
+        [ -n "$pid" ] || continue
+        args="$(ps -p "$pid" -o args= 2>/dev/null || true)"
+        case "$args" in
+            "$target"|"${target} "*) return 0 ;;
+        esac
+    done < <(pgrep -x Lattices 2>/dev/null || true)
+
+    return 1
+}
+
 write_info_plist() {
     mkdir -p "$BUNDLE/Contents"
     cat > "$BUNDLE/Contents/Info.plist" <<PLIST
@@ -185,7 +200,7 @@ cmd_restart() {
     /usr/bin/osascript -e 'tell application id "dev.lattices.app" to quit' >/dev/null 2>&1 || true
     pkill -x Lattices 2>/dev/null && sleep 1 || true
     cmd_build
-    open "$INSTALL_BUNDLE" --args --lattices-cli-root "$ROOT"
+    open "$INSTALL_BUNDLE" --args --lattices-cli-root "$ROOT" "$@"
     green "Lattices restarted."
 }
 
@@ -200,11 +215,15 @@ cmd_quit() {
 }
 
 cmd_launch() {
-    if pgrep -x Lattices >/dev/null 2>&1; then
-        dim "Lattices is already running."
+    if is_install_bundle_running; then
+        dim "Lattices dev app is already running."
     else
+        if pgrep -x Lattices >/dev/null 2>&1; then
+            dim "A different Lattices bundle is running. Switching to the dev permission target."
+            cmd_quit
+        fi
         ensure_install_bundle
-        open "$INSTALL_BUNDLE" --args --lattices-cli-root "$ROOT"
+        open "$INSTALL_BUNDLE" --args --lattices-cli-root "$ROOT" "$@"
         green "Lattices launched."
     fi
 }
@@ -298,10 +317,10 @@ cmd_help() {
 case "${1:-help}" in
     link)       cmd_link ;;
     unlink)     cmd_unlink ;;
-    restart)    cmd_restart ;;
+    restart)    cmd_restart "${@:2}" ;;
     build)      cmd_build ;;
     quit|stop)  cmd_quit ;;
-    launch|start) cmd_launch ;;
+    launch|start) cmd_launch "${@:2}" ;;
     logs)       cmd_logs ;;
     log)        cmd_log "${2:-30}" ;;
     clear-logs) cmd_clear_logs ;;

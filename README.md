@@ -42,15 +42,11 @@ The CLI and app work independently — use either or both.
 git clone https://github.com/arach/lattices.git
 cd lattices
 
-# Build the menu bar app (requires Swift 6.2 / Xcode 26+)
-cd apps/mac && swift build -c release && cd ../..
-
 # Install CLI dependencies
 npm install
 
-# Launch
-bun bin/lattices-app.ts build    # bundle the .app
-bun bin/lattices-app.ts          # launch it
+# Build/install/relaunch the dev app at the stable permission target
+./run.sh
 ```
 
 To build a signed, notarized DMG for distribution:

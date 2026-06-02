@@ -8,6 +8,9 @@
 
     <meta name="description" content="Turn your Mac workspace into a coherent, agent-accessible API, plus an assistant for windows, tmux sessions, screen text, and layout recovery." />
 
+    <link rel="canonical" href="https://lattices.dev/" />
+    <link rel="alternate" type="application/rss+xml" title="lattices blog" href="/rss.xml" />
+
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://lattices.dev/" />
     <meta property="og:title" content="lattices — the agentic workspace manager" />
@@ -27,6 +30,19 @@
       function gtag(){dataLayer.push(arguments);}
       gtag('js', new Date());
       gtag('config', 'G-GSHDZPFRZG');
+    </script>
+
+    <script>
+      // Apply theme synchronously to avoid a flash of wrong-theme content.
+      (function () {
+        try {
+          var stored = localStorage.getItem('theme');
+          var theme = stored || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+          document.documentElement.setAttribute('data-theme', theme);
+        } catch (_) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      })();
     </script>
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />

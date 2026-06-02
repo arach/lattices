@@ -127,6 +127,7 @@ function nonFlagArgs(args: string[]): string[] {
     "hud-url", "hudUrl", "hud-html", "hudHTML", "hudHtml", "hud-title", "hudTitle",
     "hud-width", "hudWidth", "hud-height", "hudHeight", "width", "height",
     "manifest", "root", "max-depth", "maxDepth", "read-access", "readAccess",
+    "pause",
   ]);
   const out: string[] = [];
   for (let i = 0; i < args.length; i++) {
@@ -605,18 +606,20 @@ function detectProjectType(dir: string): string | null {
   return null;
 }
 
+async function forwardToLatticesDevHelper(dir: string, cmd: string, extraFlags: string[] = []): Promise<void> {
+  const localDevScript = resolve(dir, "bin/lattices-dev");
+  const devScript = existsSync(localDevScript) ? localDevScript : resolve(import.meta.dir, "lattices-dev");
+  const { execFileSync } = await import("node:child_process");
+  try {
+    execFileSync(devScript, [cmd, ...extraFlags], { stdio: "inherit" });
+  } catch {
+    /* exit code forwarded */
+  }
+}
+
 async function devCommand(sub?: string, ...flags: string[]): Promise<void> {
   const dir = process.cwd();
   const type = detectProjectType(dir);
-
-  // Helper to forward to lattices-app.ts
-  async function forwardToAppScript(cmd: string, extraFlags: string[] = []): Promise<void> {
-    const appScript = resolve(import.meta.dir, "lattices-app.ts");
-    const { execFileSync } = await import("node:child_process");
-    try {
-      execFileSync("bun", [appScript, cmd, ...extraFlags], { stdio: "inherit" });
-    } catch { /* exit code forwarded */ }
-  }
 
   if (!sub) {
     // bare `lattices dev` — run dev server
@@ -626,7 +629,7 @@ async function devCommand(sub?: string, ...flags: string[]): Promise<void> {
     }
     console.log(`Detected: ${type} project`);
     if (type === "lattices-app") {
-      await forwardToAppScript("restart", flags);
+      await forwardToLatticesDevHelper(dir, "restart", flags);
     } else if (type === "node") {
       const cmd = detectDevCommand(dir);
       if (cmd) {
@@ -650,13 +653,18 @@ async function devCommand(sub?: string, ...flags: string[]): Promise<void> {
     return;
   }
 
+  if (sub === "placement-smoke") {
+    await placementSmokeCommand(flags);
+    return;
+  }
+
   if (sub === "build") {
     if (!type) {
       console.log("No recognized project in current directory.");
       return;
     }
     if (type === "lattices-app") {
-      await forwardToAppScript("build");
+      await forwardToLatticesDevHelper(dir, "build");
     } else if (type === "swift") {
       console.log("Building: swift build -c release");
       execSync("swift build -c release", { cwd: dir, stdio: "inherit" });
@@ -684,7 +692,7 @@ async function devCommand(sub?: string, ...flags: string[]): Promise<void> {
 
   if (sub === "restart") {
     if (type === "lattices-app") {
-      await forwardToAppScript("restart", flags);
+      await forwardToLatticesDevHelper(dir, "restart", flags);
     } else {
       // For other project types, just rebuild
       await devCommand("build");
@@ -1139,6 +1147,102 @@ async function placeCommand(query?: string, tilePosition?: string): Promise<void
   } catch (e: unknown) {
     console.log(`Error: ${(e as Error).message}`);
   }
+}
+
+function pause(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function receiptLine(receipt: any): string {
+  const id = receipt?.action?.id || "action";
+  const session = receipt?.session || receipt?.target?.session || "?";
+  const wid = receipt?.wid ?? receipt?.target?.wid ?? "?";
+  const status = receipt?.status || "?";
+  const verified = receipt?.verified === true ? "true" : "false";
+  const resolution = receipt?.targetResolution || "?";
+  return `  ${id}  session=${session}  wid=${wid}  status=${status}  verified=${verified}  resolution=${resolution}`;
+}
+
+async function placementSmokeCommand(rawArgs: string[] = []): Promise<void> {
+  const { daemonCall } = await getDaemonClient();
+  const pauseMs = Number(parseFlagValue(rawArgs, "pause") || 1200);
+  const positional = nonFlagArgs(rawArgs);
+
+  let sessions = positional.slice(0, 2);
+  if (sessions.length < 2) {
+    const tmuxSessions = await daemonCall("tmux.sessions") as any[];
+    sessions = tmuxSessions
+      .map(s => s?.name)
+      .filter((name: unknown): name is string => typeof name === "string" && name.startsWith("lattices-place-"))
+      .slice(0, 2);
+  }
+
+  if (sessions.length < 2) {
+    console.log("Need two named sessions. Usage: lattices dev placement-smoke <session-a> <session-b>");
+    console.log("Tip: launch two small lattices fixture projects first, then rerun this command.");
+    return;
+  }
+
+  const [a, b] = sessions;
+  console.log(`Placement smoke: ${a} + ${b}`);
+
+  for (const session of sessions) {
+    const resolved = await daemonCall("window.resolve", {
+      target: { kind: "session", session },
+      placement: "left",
+    }) as any;
+    console.log(`  resolve ${session}: wid=${resolved.wid ?? "?"} app=${resolved.app ?? "?"} resolution=${resolved.targetResolution ?? "?"}`);
+  }
+
+  const beats = [
+    {
+      label: "beat 1: halves",
+      actions: [
+        { id: "a-left-half", type: "window.place", target: { kind: "session", session: a }, args: { placement: "left" } },
+        { id: "b-right-half", type: "window.place", target: { kind: "session", session: b }, args: { placement: "right" } },
+      ],
+    },
+    {
+      label: "beat 2: 4x4 corners",
+      actions: [
+        { id: "a-top-left-4x4", type: "window.place", target: { kind: "session", session: a }, args: { placement: "grid:4x4:0,0" } },
+        { id: "b-bottom-right-4x4", type: "window.place", target: { kind: "session", session: b }, args: { placement: "grid:4x4:3,3" } },
+      ],
+    },
+    {
+      label: "beat 3: workbench",
+      actions: [
+        {
+          id: "a-workbench-left",
+          type: "window.place",
+          target: { kind: "session", session: a },
+          args: { placement: { kind: "fractions", x: 0.02, y: 0.05, w: 0.62, h: 0.9 } },
+        },
+        {
+          id: "b-console-right",
+          type: "window.place",
+          target: { kind: "session", session: b },
+          args: { placement: { kind: "fractions", x: 0.67, y: 0.12, w: 0.3, h: 0.76 } },
+        },
+      ],
+    },
+  ];
+
+  for (const beat of beats) {
+    console.log(`\n${beat.label}`);
+    const result = await daemonCall("actions.execute", {
+      source: "placement-smoke",
+      actions: beat.actions,
+    }, 15000) as any;
+    console.log(`  batch=${result.status || "?"} request=${result.requestId || "?"}`);
+    for (const receipt of result.receipts || []) {
+      console.log(receiptLine(receipt));
+    }
+    await pause(pauseMs);
+  }
+
+  const focused = await daemonCall("window.focus", { session: a }, 5000) as any;
+  console.log(`\nfocus ${a}: ok=${focused.ok === true} wid=${focused.wid ?? "?"} raised=${focused.raised === true}`);
 }
 
 async function sessionsCommand(jsonFlag: boolean): Promise<void> {
@@ -2593,6 +2697,7 @@ Usage:
   lattices dev                Run dev server (auto-detected)
   lattices dev build          Build the project (swift/node/rust/go/make)
   lattices dev restart        Build + restart (swift app) or just build
+  lattices dev placement-smoke [a] [b]  Move two named sessions through verified placements
   lattices dev type           Print detected project type
   lattices mouse              Find mouse — sonar pulse at cursor position
   lattices mouse summon       Summon mouse to screen center
@@ -3161,8 +3266,20 @@ switch (command) {
     await devCommand(args[1], ...args.slice(2));
     break;
   case "app": {
-    // Forward to lattices-app script
     const { execFileSync } = await import("node:child_process");
+    const dir = process.cwd();
+    const first = args[1];
+    const appSubcommand = first && !first.startsWith("-") ? first : "launch";
+    const appFlags = first && !first.startsWith("-") ? args.slice(2) : args.slice(1);
+    const devAppCommands = new Set(["launch", "start", "build", "restart", "quit", "stop"]);
+
+    if (detectProjectType(dir) === "lattices-app" && devAppCommands.has(appSubcommand)) {
+      console.log("Using local dev app bundle so macOS permissions stay attached across rebuilds.");
+      await forwardToLatticesDevHelper(dir, appSubcommand, appFlags);
+      break;
+    }
+
+    // Forward release/package app commands to lattices-app script.
     const appScript = resolve(import.meta.dir, "lattices-app.ts");
     try {
       execFileSync("bun", [appScript, ...args.slice(1)], { stdio: "inherit" });

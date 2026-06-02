@@ -50,9 +50,34 @@ export default function SiteApp() {
   if (route.kind === 'blog-post') return <BlogPostPage slug={route.slug} />
 
   return (
-    <main className="not-found">
-      <h1>Page not found</h1>
-      <a href="/">Back home</a>
+    <main className="not-found-shell" data-pagefind-ignore>
+      <div className="not-found-card">
+        <p className="not-found-kicker">404</p>
+        <h1 className="not-found-title">We couldn't find that page</h1>
+        <p className="not-found-desc">
+          The link may be outdated, or we may have moved the page. Try one of these instead:
+        </p>
+        <ul className="not-found-suggestions">
+          <li>
+            <a href="/docs/overview">Documentation overview</a> — what lattices is and how to install it
+          </li>
+          <li>
+            <a href="/docs/quickstart">Quickstart</a> — running workspaces in 2 minutes
+          </li>
+          <li>
+            <a href="/docs/api">Agent API</a> — WebSocket reference for agents and scripts
+          </li>
+          <li>
+            <a href="/blog">Blog</a> — release notes and engineering write-ups
+          </li>
+          <li>
+            <a href="https://github.com/arach/lattices" target="_blank" rel="noopener noreferrer">
+              GitHub
+            </a>{' '}
+            — open an issue if the link should work
+          </li>
+        </ul>
+      </div>
     </main>
   )
 }

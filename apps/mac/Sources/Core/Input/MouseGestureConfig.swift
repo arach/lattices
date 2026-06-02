@@ -458,6 +458,17 @@ struct MouseShortcutConfig: Codable, Equatable {
                 trigger: MouseShortcutTrigger(button: .middle, kind: .drag, direction: .up, shape: nil),
                 action: MouseShortcutActionDefinition(type: .dictationStart)
             ),
+            MouseShortcutRule(
+                id: "back-circle-screenshot-area",
+                enabled: true,
+                device: .any,
+                trigger: MouseShortcutTrigger(button: .button4, kind: .shape, direction: nil, shape: .circle),
+                action: MouseShortcutActionDefinition(
+                    type: .shortcutSend,
+                    shortcut: MouseShortcutKeyStroke(key: "4", keyCode: 21, modifiers: [.command, .shift])
+                ),
+                visual: MouseShortcutVisualDefinition(renderer: "matrix", theme: "lattices")
+            ),
         ]
     )
 }

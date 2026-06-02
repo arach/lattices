@@ -69,6 +69,9 @@ enum GestureShapeLabel: String, Codable, CaseIterable {
     case nShape = "n-shape"
     case mShape = "m-shape"
 
+    // Freeform shapes
+    case circle = "circle"
+
     var displayName: String {
         switch self {
         case .up: return "Up"
@@ -90,6 +93,7 @@ enum GestureShapeLabel: String, Codable, CaseIterable {
         case .uShapeFlipped: return "U Flipped (↑ then → then ↓)"
         case .nShape: return "N (↓ then ← then ↑)"
         case .mShape: return "M (↑ then ← then ↓)"
+        case .circle: return "Circle"
         }
     }
 
@@ -104,6 +108,8 @@ enum GestureShapeLabel: String, Codable, CaseIterable {
             return 3
         case .uShape, .uShapeFlipped, .nShape, .mShape:
             return 3
+        case .circle:
+            return 4
         }
     }
 
@@ -249,6 +255,15 @@ final class ShapeRecognizer {
         let totalLength = calculatePathLength(points)
         guard totalLength >= minTotalPathLength else {
             return ShapeRecognitionResult(shape: nil, segments: [], confidence: 0, pathLength: totalLength)
+        }
+
+        if let circleConfidence = calculateCircleConfidence(points: points, totalLength: totalLength) {
+            return ShapeRecognitionResult(
+                shape: .circle,
+                segments: [],
+                confidence: circleConfidence,
+                pathLength: totalLength
+            )
         }
 
         // Direction runs work better for mouse gestures than strict corner
@@ -566,6 +581,60 @@ final class ShapeRecognizer {
             length += sqrt(dx * dx + dy * dy)
         }
         return length
+    }
+
+    private func calculateCircleConfidence(points: [GesturePathPoint], totalLength: CGFloat) -> CGFloat? {
+        guard points.count >= 12,
+              let first = points.first,
+              let last = points.last else { return nil }
+
+        let xs = points.map(\.x)
+        let ys = points.map(\.y)
+        guard let minX = xs.min(),
+              let maxX = xs.max(),
+              let minY = ys.min(),
+              let maxY = ys.max() else { return nil }
+
+        let width = maxX - minX
+        let height = maxY - minY
+        let maxSide = max(width, height)
+        let minSide = min(width, height)
+        guard minSide >= 35 else { return nil }
+
+        let aspect = minSide / maxSide
+        guard aspect >= 0.45 else { return nil }
+
+        let closure = vectorLength(CGPoint(x: last.x - first.x, y: last.y - first.y))
+        guard closure <= max(48, maxSide * 0.65) else { return nil }
+
+        let lengthRatio = totalLength / maxSide
+        guard lengthRatio >= 2.2, lengthRatio <= 5.6 else { return nil }
+
+        let center = CGPoint(x: minX + width / 2, y: minY + height / 2)
+        var totalTurn: CGFloat = 0
+        var previousAngle: CGFloat?
+
+        for point in points {
+            let vector = CGPoint(x: point.x - center.x, y: point.y - center.y)
+            guard vectorLength(vector) >= maxSide * 0.12 else { continue }
+            let angle = atan2(vector.y, vector.x)
+            if let previousAngle {
+                var delta = angle - previousAngle
+                while delta > .pi { delta -= 2 * .pi }
+                while delta < -.pi { delta += 2 * .pi }
+                totalTurn += delta
+            }
+            previousAngle = angle
+        }
+
+        let turnCoverage = abs(totalTurn) / (2 * .pi)
+        guard turnCoverage >= 0.72 else { return nil }
+
+        let closureScore = 1 - min(1, closure / max(1, maxSide * 0.65))
+        let aspectScore = min(1, max(0, (aspect - 0.45) / 0.4))
+        let turnScore = min(1, max(0, (turnCoverage - 0.72) / 0.28))
+        let lengthScore = min(1, max(0, (lengthRatio - 2.2) / 1.1))
+        return max(0.55, min(1, 0.35 * turnScore + 0.25 * closureScore + 0.2 * aspectScore + 0.2 * lengthScore))
     }
 
     // MARK: - Confidence Calculation

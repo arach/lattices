@@ -551,16 +551,17 @@ class WorkspaceManager: ObservableObject {
     /// Launch a group by opening each tab as a separate iTerm/Terminal tab
     func launchGroup(_ group: TabGroup) {
         let terminal = Preferences.shared.terminal
+        let latticesCommand = LatticesRuntime.cliShellCommand
         for (i, tab) in group.tabs.enumerated() {
             let label = tab.label ?? (tab.path as NSString).lastPathComponent
             DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.4) {
                 if i == 0 {
-                    terminal.launch(command: "/opt/homebrew/bin/lattices start", in: tab.path)
+                    terminal.launch(command: "\(latticesCommand) start", in: tab.path)
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         terminal.nameTab(label)
                     }
                 } else {
-                    terminal.launchTab(command: "/opt/homebrew/bin/lattices start", in: tab.path, tabName: label)
+                    terminal.launchTab(command: "\(latticesCommand) start", in: tab.path, tabName: label)
                 }
             }
         }
@@ -851,7 +852,7 @@ class WorkspaceManager: ObservableObject {
                     diag.finish(t)
                 } else {
                     diag.info("  launch (direct): \(sessionName)")
-                    terminal.launch(command: "/opt/homebrew/bin/lattices start", in: path)
+                    terminal.launch(command: "\(LatticesRuntime.cliShellCommand) start", in: path)
                 }
                 launchQueue.append((sessionName, position, lpScreen, {}))
             } else {

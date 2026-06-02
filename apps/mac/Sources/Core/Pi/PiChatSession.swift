@@ -216,7 +216,9 @@ final class PiChatSession: ObservableObject {
         You are the Workspace Assistant, the in-app assistant for Lattices.
         Use structured context from the host as ground truth. Answer naturally and concretely.
         For informational questions, explain what is configured and what the available choices mean.
-        For setting changes, describe what should change; the host app applies supported changes.
+        For setting changes, inspect or update the relevant local config with tools when available and safe.
+        If you cannot apply a requested change, say so plainly and give the exact next step.
+        Never claim a setting or file changed unless it actually changed.
         """
     private static let voiceAppendSystemPrompt = """
         You are the Workspace Assistant for Lattices voice surfaces.
@@ -366,6 +368,15 @@ final class PiChatSession: ObservableObject {
         return currentProvider.name
     }
 
+    /// Active tool name when the runtime is mid-tool-call, else nil. Drives
+    /// the in-message tool chip on the streaming assistant row.
+    var activeToolName: String? {
+        let prefix = "tool: "
+        guard statusText.hasPrefix(prefix) else { return nil }
+        let raw = String(statusText.dropFirst(prefix.count))
+        return raw.isEmpty ? nil : raw
+    }
+
     var canSubmitAuthPrompt: Bool {
         guard let prompt = pendingAuthPrompt else { return false }
         let value = authPromptInput.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -470,13 +481,18 @@ final class PiChatSession: ObservableObject {
 
         messages.append(PiChatMessage(role: .user, text: trimmed, timestamp: Date()))
 
-        if let localResponse = handleLocalSettingsCommand(trimmed) {
-            messages.append(PiChatMessage(role: .assistant, text: localResponse, timestamp: Date()))
-            statusText = hasPiBinary ? (needsProviderSetup ? "setup ai" : "idle") : "missing pi"
+        if let localResponse = handleImmediateLocalCommand(trimmed) {
+            appendLocalAssistantResponse(localResponse)
             return
         }
 
         refreshBinaryAvailability()
+
+        if !isProviderInferenceReady,
+           let localResponse = handleLocalSettingsCommand(trimmed) {
+            appendLocalAssistantResponse(localResponse)
+            return
+        }
 
         guard let piPath = piBinaryPath else {
             prepareForDisplay()
@@ -1169,6 +1185,12 @@ final class PiChatSession: ObservableObject {
         messages.append(PiChatMessage(role: .system, text: text, timestamp: Date()))
     }
 
+    private func appendLocalAssistantResponse(_ text: String) {
+        messages.append(PiChatMessage(role: .assistant, text: text, timestamp: Date()))
+        refreshBinaryAvailability()
+        statusText = hasPiBinary ? (needsProviderSetup ? "setup ai" : "idle") : "missing pi"
+    }
+
     private func syncStructuredWelcomeMessage() {
         guard !hasConversationHistory else { return }
         messages = [
@@ -1185,7 +1207,7 @@ final class PiChatSession: ObservableObject {
             return """
             Welcome to the Workspace Assistant.
 
-            I can manage app settings here. Install the provider runtime to unlock provider-backed chat for longer planning and coding prompts.
+            Install the provider runtime to use regular assistant turns. Until then, only a few deterministic app commands work here.
 
             Install command:
             \(piInstallCommand)
@@ -1215,7 +1237,7 @@ final class PiChatSession: ObservableObject {
         return """
         Welcome to the Workspace Assistant.
 
-        You're connected with \(currentProvider.name). I can manage Lattices settings locally, or use the provider for code help, planning, debugging, and second opinions.
+        You're connected with \(currentProvider.name). Regular turns go through the provider for code help, planning, debugging, settings changes, and second opinions.
         """
     }
 
@@ -1223,9 +1245,24 @@ final class PiChatSession: ObservableObject {
         let lower = text.lowercased()
         let prefs = Preferences.shared
 
-        if lower.contains("open settings") || lower.contains("show settings") {
-            SettingsWindowController.shared.show()
-            return "Opened Settings."
+        if let immediate = handleImmediateLocalCommand(text) {
+            return immediate
+        }
+
+        if lower.contains("help") && lower.contains("settings") {
+            return settingsHelpText()
+        }
+
+        if lower.contains("settings") && isInformationalSettingsQuery(lower) {
+            return settingsSummary()
+        }
+
+        if lower.contains("status") || lower.contains("current settings") {
+            return settingsSummary()
+        }
+
+        if lower.contains("advisor") || lower.contains("voice advisor") {
+            return nil
         }
 
         if lower.contains("scan root") || lower.contains("project root") || lower.contains("project scan") {
@@ -1271,6 +1308,9 @@ final class PiChatSession: ObservableObject {
         }
 
         if lower.contains("mouse") && (lower.contains("gesture") || lower.contains("shortcut")), isSettingsMutationIntent(lower) {
+            if isMouseShortcutRuleRequest(lower) {
+                return nil
+            }
             if let enabled = parseBooleanMutation(from: lower) {
                 prefs.mouseGesturesEnabled = enabled
                 return "\(enabled ? "Enabled" : "Disabled") mouse gestures."
@@ -1314,13 +1354,20 @@ final class PiChatSession: ObservableObject {
             return nil
         }
 
-        if lower.contains("advisor") || lower.contains("voice advisor") {
-            return nil
-        }
+        return nil
+    }
+
+    private func handleImmediateLocalCommand(_ text: String) -> String? {
+        let lower = text.lowercased()
 
         if lower.contains("open assistant settings") || lower.contains("show assistant settings") {
             SettingsWindowController.shared.showAssistant()
             return "Opened Assistant settings."
+        }
+
+        if lower.contains("open settings") || lower.contains("show settings") {
+            SettingsWindowController.shared.show()
+            return "Opened Settings."
         }
 
         return nil
@@ -1330,7 +1377,9 @@ final class PiChatSession: ObservableObject {
         """
         You are the Workspace Assistant, the in-app assistant for Lattices.
 
-        Use the structured context as ground truth. Answer naturally and concretely. For informational questions, explain what is currently configured and what the available choices mean. For setting changes, describe what should change; the host app is responsible for applying supported changes.
+        Use the structured context as ground truth. Answer naturally and concretely. For informational questions, explain what is currently configured and what the available choices mean.
+
+        For setting changes, inspect or update the relevant local config with tools when available and safe. If you cannot apply the change, say so plainly and give the exact next step. Never claim a setting or file changed unless it actually changed.
 
         Structured context:
         \(assistantKnowledgeBrief())
@@ -1682,6 +1731,8 @@ final class PiChatSession: ObservableObject {
         !isInformationalSettingsQuery(lower)
             && (
                 lower.contains("set ")
+                || lower.contains("update ")
+                || lower.contains("configure ")
                 || lower.contains("switch to ")
                 || lower.contains("change ")
                 || lower.contains("use ")
@@ -1697,17 +1748,44 @@ final class PiChatSession: ObservableObject {
     private func parseBooleanMutation(from lower: String) -> Bool? {
         guard isSettingsMutationIntent(lower) else { return nil }
 
-        let offTokens = ["turn off", "disable", "switch off", "stop "]
+        let offTokens = ["turn off", "disable", "switch off"]
         if offTokens.contains(where: lower.contains) {
             return false
         }
 
-        let onTokens = ["turn on", "enable", "switch on", "start "]
+        let onTokens = ["turn on", "enable", "switch on"]
         if onTokens.contains(where: lower.contains) {
             return true
         }
 
         return nil
+    }
+
+    private func isMouseShortcutRuleRequest(_ lower: String) -> Bool {
+        let ruleMarkers = [
+            " back button",
+            " forward button",
+            " middle button",
+            "button.",
+            "button ",
+            "swipe",
+            "slide",
+            "drag up",
+            "drag down",
+            "drag left",
+            "drag right",
+            "map ",
+            "mapping",
+            "bind ",
+            "assign ",
+            "rule",
+            "dictation",
+            "transcription",
+            "enter",
+            "shortcut.send",
+            "dictation.start",
+        ]
+        return ruleMarkers.contains { lower.contains($0) }
     }
 
     private func extractPathValue(from text: String) -> String? {
