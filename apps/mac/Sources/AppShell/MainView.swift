@@ -384,6 +384,15 @@ struct MainView: View {
                 ScreenMapWindowController.shared.showPage(.desktopInventory)
             }
             ActionRow(
+                label: "Assistant",
+                detail: "Open the workspace assistant",
+                hotkeyTokens: [],
+                icon: "bubble.left.and.bubble.right",
+                accentColor: Palette.textDim
+            ) {
+                ScreenMapWindowController.shared.showPage(.pi)
+            }
+            ActionRow(
                 label: "Command Palette",
                 detail: "Launch, attach, and control projects",
                 hotkeyTokens: hotkeyTokens(.palette),

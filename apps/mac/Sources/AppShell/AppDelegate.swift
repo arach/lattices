@@ -203,11 +203,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .first { $0 != "/" }?
             .lowercased()
 
-        guard host == "companion" else {
+        switch host {
+        case "companion":
+            handleCompanionDeepLink(action: action)
+        case "daemon":
+            handleDaemonDeepLink(action: action)
+        default:
             SettingsWindowController.shared.show()
-            return
         }
+    }
 
+    private func handleCompanionDeepLink(action: String?) {
         switch action {
         case "enable", "start":
             Preferences.shared.companionBridgeEnabled = true
@@ -218,6 +224,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         default:
             SettingsWindowController.shared.showCompanion()
         }
+    }
+
+    private func handleDaemonDeepLink(action: String?) {
+        // The daemon runs in-process with the app. If this handler fires, the
+        // app is up — which means the daemon is up. No UI pop required.
+        DiagnosticLog.shared.info(
+            "DeepLink: lattices://daemon/\(action ?? "") — daemon already running"
+        )
     }
 
 }
