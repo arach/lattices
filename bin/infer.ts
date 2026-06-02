@@ -16,6 +16,7 @@ import { createXai } from "@ai-sdk/xai";
 import { readFileSync, existsSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
+import { getKeychainSecret } from "./keychain";
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -49,20 +50,23 @@ export interface InferResult {
 // ── Default models per provider ────────────────────────────────────
 
 const PROVIDER_NAMES: ProviderName[] = ["groq", "openai", "anthropic", "google", "xai", "minimax"];
-const VOICE_PROVIDER_PRIORITY: ProviderName[] = ["groq", "xai", "openai", "google", "anthropic", "minimax"];
+const VOICE_PROVIDER_PRIORITY: ProviderName[] = ["xai", "groq", "openai", "google", "anthropic", "minimax"];
 
 const DEFAULT_MODELS: Record<ProviderName, string> = {
   groq: "llama-3.3-70b-versatile",
   openai: "gpt-4o-mini",
   anthropic: "claude-sonnet-4-6",
   google: "gemini-2.0-flash",
-  xai: "grok-4-1-fast-non-reasoning",
+  xai: "grok-4.20-reasoning",
   minimax: "MiniMax-M2.5-highspeed",
 };
 
+// Voice paths use the same models as default — earlier we forced groq to
+// llama-3.1-8b-instant for latency, but its 6k TPM cap couldn't fit a real
+// desktop snapshot (saw 7174-token requests rejected). 70B versatile fits
+// 128k context and Groq still serves it fast.
 const VOICE_DEFAULT_MODELS: Record<ProviderName, string> = {
   ...DEFAULT_MODELS,
-  groq: "llama-3.1-8b-instant",
 };
 
 // ── Credential loading ─────────────────────────────────────────────
@@ -163,7 +167,10 @@ function loadCredentials(): CredentialStore {
   const openaiKey = getInferenceEnv("OPENAI_API_KEY");
   const anthropicKey = getInferenceEnv("ANTHROPIC_API_KEY");
   const googleKey = getInferenceEnv("GOOGLE_GENERATIVE_AI_API_KEY");
-  const xaiKey = getInferenceEnv("XAI_API_KEY");
+  // SUPERGROK_API_KEY (SuperGrok Heavy tier) takes precedence over the
+  // standard XAI_API_KEY when both are present.
+  const xaiKey =
+    getInferenceEnv("SUPERGROK_API_KEY") || getInferenceEnv("XAI_API_KEY");
   const minimaxKey = getInferenceEnv("MINIMAX_API_KEY");
   if (groqKey) creds.groq = groqKey;
   if (openaiKey) creds.openai = openaiKey;
@@ -203,6 +210,17 @@ function loadCredentials(): CredentialStore {
       if (!creds.minimax && p.minimax?.apiKey) creds.minimax = p.minimax.apiKey;
     } catch {}
   }
+
+  // Layer 4 — macOS keychain via built-in `/usr/bin/security` under the
+  // `lattices.inference` service. One read per missing provider, cached
+  // in `_cachedCreds` for the process lifetime. Keys never touch disk.
+  // Portable across machines (no external CLI dep).
+  if (!creds.xai) creds.xai = getKeychainSecret("xai");
+  if (!creds.groq) creds.groq = getKeychainSecret("groq");
+  if (!creds.openai) creds.openai = getKeychainSecret("openai");
+  if (!creds.anthropic) creds.anthropic = getKeychainSecret("anthropic");
+  if (!creds.google) creds.google = getKeychainSecret("google");
+  if (!creds.minimax) creds.minimax = getKeychainSecret("minimax");
 
   _cachedCreds = creds;
   return creds;
