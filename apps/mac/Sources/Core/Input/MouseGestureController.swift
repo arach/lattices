@@ -348,6 +348,9 @@ final class MouseGestureController: ObservableObject {
 
     private func desiredEventMask() -> CGEventMask {
         var mask = CGEventMask(0)
+        mask |= CGEventMask(1) << CGEventType.rightMouseDown.rawValue
+        mask |= CGEventMask(1) << CGEventType.rightMouseDragged.rawValue
+        mask |= CGEventMask(1) << CGEventType.rightMouseUp.rawValue
         mask |= CGEventMask(1) << CGEventType.otherMouseDown.rawValue
         mask |= CGEventMask(1) << CGEventType.otherMouseDragged.rawValue
         mask |= CGEventMask(1) << CGEventType.otherMouseUp.rawValue
@@ -443,16 +446,16 @@ final class MouseGestureController: ObservableObject {
         }
 
         let buttonNumber = event.getIntegerValueField(.mouseEventButtonNumber)
-        if buttonNumber < 2 {
+        if buttonNumber < 1 {
             return Unmanaged.passUnretained(event)
         }
 
         switch type {
-        case .otherMouseDown:
+        case .rightMouseDown, .otherMouseDown:
             return handleMouseDown(event, buttonNumber: buttonNumber)
-        case .otherMouseDragged:
+        case .rightMouseDragged, .otherMouseDragged:
             return handleMouseDragged(event, buttonNumber: buttonNumber)
-        case .otherMouseUp:
+        case .rightMouseUp, .otherMouseUp:
             return handleMouseUp(event, buttonNumber: buttonNumber)
         default:
             return Unmanaged.passUnretained(event)
@@ -494,13 +497,6 @@ final class MouseGestureController: ObservableObject {
             flags: event.flags,
             buttonNumber: buttonNumber
         )
-        if frontmostAppShouldBypassGestures() {
-            DispatchQueue.main.async { [weak self] in
-                self?.processMouseDownPassthrough(snapshot: snapshot, reason: .ignoredApp)
-            }
-            return Unmanaged.passUnretained(event)
-        }
-
         // NSScreen.screens reads are safe off-main; Preferences/Store snapshot
         // reads are lock-protected (see MouseShortcutStore).
         let tuning = MouseShortcutStore.shared.tuning
@@ -521,12 +517,15 @@ final class MouseGestureController: ObservableObject {
             return Unmanaged.passUnretained(event)
         }
 
-        // Once Lattices owns a gesture-capable button, keep the full
-        // down/drag/up sequence. Letting the native down pass through and
-        // balancing it later can swallow the physical mouse-up, leaving the
-        // gesture stuck until stale cleanup. Browser apps are bypassed before
-        // this point, so their native middle/back/forward behavior survives.
-        let nativeClickPassthrough = false
+        // Browser apps own side-button navigation and middle-click tab
+        // behavior. Do not pass a native down and later synthesize an up:
+        // that can still trigger Back/Forward while a gesture is being drawn.
+        guard !frontmostAppShouldBypassGestures() else {
+            DispatchQueue.main.async { [weak self] in
+                self?.processMouseDownPassthrough(snapshot: snapshot, reason: .ignoredApp)
+            }
+            return Unmanaged.passUnretained(event)
+        }
 
         // Mark this button as actively tracked before the OS sees a follow-up
         // drag/up — the tap thread reads this on subsequent events to decide
@@ -534,22 +533,22 @@ final class MouseGestureController: ObservableObject {
         setTrackingButton(
             buttonNumber,
             startPoint: snapshot.location,
-            nativeClickPassthrough: nativeClickPassthrough,
+            nativeClickPassthrough: false,
             tuning: tuning
         )
         DispatchQueue.main.async { [weak self] in
             self?.processMouseDownConsume(
                 snapshot: snapshot,
-                nativeClickPassthrough: nativeClickPassthrough
+                nativeClickPassthrough: false
             )
         }
-        return nativeClickPassthrough ? Unmanaged.passUnretained(event) : nil
+        return nil
     }
 
     private enum MouseDownPassthroughReason {
         case offScreen
-        case ignoredApp
         case notMapped
+        case ignoredApp
     }
 
     private func processMouseDownPassthrough(snapshot: MouseEventSnapshot, reason: MouseDownPassthroughReason) {
@@ -571,20 +570,6 @@ final class MouseGestureController: ObservableObject {
                 appInfo: appInfo
             )
             clearSession()
-        case .ignoredApp:
-            DiagnosticLog.shared.info("MouseGesture: ignored click in \(appInfo.name ?? appInfo.bundleId ?? "browser")")
-            recordObservedEvent(
-                phase: "down",
-                button: button,
-                location: snapshot.location,
-                delta: .zero,
-                modifiers: snapshot.flags,
-                candidate: nil,
-                match: nil,
-                note: "ignored app",
-                appInfo: appInfo
-            )
-            clearSession()
         case .notMapped:
             recordObservedEvent(
                 phase: "down",
@@ -597,6 +582,19 @@ final class MouseGestureController: ObservableObject {
                 note: "button not mapped",
                 appInfo: appInfo
             )
+        case .ignoredApp:
+            recordObservedEvent(
+                phase: "down",
+                button: button,
+                location: snapshot.location,
+                delta: .zero,
+                modifiers: snapshot.flags,
+                candidate: nil,
+                match: nil,
+                note: "frontmost app ignored",
+                appInfo: appInfo
+            )
+            DiagnosticLog.shared.info("MouseGesture: bypassed \(button.triggerToken) for \(appInfo.bundleId ?? "unknown app")")
         }
     }
 
@@ -684,7 +682,9 @@ final class MouseGestureController: ObservableObject {
         DispatchQueue.main.async { [weak self] in
             self?.processMouseDragged(snapshot: snapshot)
         }
-        if trackingState.nativeClickPassthrough, direction == nil {
+        if trackingState.nativeClickPassthrough,
+           direction == nil,
+           !trackingState.nativeClickBalanced {
             return Unmanaged.passUnretained(event)
         }
         return nil
@@ -786,7 +786,7 @@ final class MouseGestureController: ObservableObject {
                 threshold: trackingState.dragThreshold,
                 axisBias: trackingState.axisBias
             )
-            if direction == nil {
+            if direction == nil, !trackingState.nativeClickBalanced {
                 setTrackingButton(nil)
                 DispatchQueue.main.async { [weak self] in
                     self?.processMouseUpNativeClickPassthrough(snapshot: snapshot)

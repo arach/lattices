@@ -63,6 +63,11 @@
           "description": "Vision-powered screen reading with full-text search"
         },
         {
+          "id": "mouse-gestures",
+          "title": "Mouse Gestures",
+          "description": "Hold a mouse button, draw a shape, release — run matched actions"
+        },
+        {
           "id": "app",
           "title": "Menu Bar App",
           "description": "Command palette, window tiling, and session management"

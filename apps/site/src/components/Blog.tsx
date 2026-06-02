@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react'
 import { blogPosts, getBlogPost, type BlogPost } from '../lib/content'
+import { formatBuildDate, getBuildMeta, type PostMeta } from '../lib/build-meta'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { LatticesMark } from './SiteChrome'
 
@@ -25,18 +27,43 @@ export function BlogIndex() {
 
 export function BlogPostPage({ slug }: { slug: string }) {
   const post = getBlogPost(slug)
+  const [meta, setMeta] = useState<PostMeta | null>(null)
+
+  useEffect(() => {
+    if (!post) return
+    let cancelled = false
+    getBuildMeta().then((m) => {
+      if (cancelled) return
+      setMeta(m?.posts?.[post.slug] ?? null)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [post])
 
   if (!post) {
     return (
       <>
         <PostNav />
-        <main className="not-found">
-          <h1>Post not found</h1>
-          <a href="/blog">Back to blog</a>
+        <main className="not-found-shell" data-pagefind-ignore>
+          <div className="not-found-card">
+            <p className="not-found-kicker">404</p>
+            <h1 className="not-found-title">Post not found</h1>
+            <p className="not-found-desc">
+              The post may have been moved or unpublished.{' '}
+              <a href="/blog">Browse the blog →</a>
+            </p>
+          </div>
         </main>
       </>
     )
   }
+
+  const index = blogPosts.findIndex((p) => p.slug === post.slug)
+  const newer = index > 0 ? blogPosts[index - 1] : null // blogPosts sorted newest first
+  const older = index >= 0 && index < blogPosts.length - 1 ? blogPosts[index + 1] : null
+  const updatedLabel = formatBuildDate(meta?.updatedAt)
+  const showUpdated = updatedLabel && updatedLabel !== formatDate(post.date)
 
   return (
     <>
@@ -47,9 +74,38 @@ export function BlogPostPage({ slug }: { slug: string }) {
         <div className="post-meta">
           {post.author && <span>{post.author} · </span>}
           {formatDate(post.date)}
+          {showUpdated && <span> · updated {updatedLabel}</span>}
+          {meta?.editUrl && (
+            <a
+              href={meta.editUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="post-edit-link"
+            >
+              Edit on GitHub →
+            </a>
+          )}
           <TagList tags={post.tags} />
         </div>
         <MarkdownRenderer content={post.content} className="prose" />
+        <nav className="post-nav-pager" aria-label="More posts">
+          {older ? (
+            <a className="post-pager post-pager-prev" href={`/blog/${older.slug}`}>
+              <span className="post-pager-label">Newer</span>
+              <strong>{older.title}</strong>
+            </a>
+          ) : (
+            <span />
+          )}
+          {newer ? (
+            <a className="post-pager post-pager-next" href={`/blog/${newer.slug}`}>
+              <span className="post-pager-label">Older</span>
+              <strong>{newer.title}</strong>
+            </a>
+          ) : (
+            <span />
+          )}
+        </nav>
       </article>
     </>
   )

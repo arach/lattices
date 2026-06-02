@@ -15,12 +15,13 @@ final class PermissionsAssistantWindowController: ObservableObject {
     /// Open the assistant focused on the given capability. If `cap` is nil,
     /// the first missing capability is selected, falling back to `windowControl`.
     func show(focus cap: Capability? = nil) {
-        let target = cap ?? Capability.missing.first ?? .windowControl
+        let target = cap ?? defaultCapability
         focusedCapability = target
 
         if let existing = window {
             existing.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
+            AppDelegate.updateActivationPolicy()
             return
         }
 
@@ -37,8 +38,15 @@ final class PermissionsAssistantWindowController: ObservableObject {
             rootView: host
         )
         AppWindowShell.positionCentered(w)
-        AppWindowShell.present(w)
         self.window = w
+        AppWindowShell.present(w)
+    }
+
+    private var defaultCapability: Capability {
+        if Preferences.shared.ocrEnabled && !Capability.screenSearch.isGranted {
+            return .screenSearch
+        }
+        return Capability.missing.first ?? .windowControl
     }
 
     func close() {

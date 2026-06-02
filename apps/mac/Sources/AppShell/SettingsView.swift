@@ -825,60 +825,104 @@ struct SettingsContentView: View {
                             mouseGestureController.reArmAfterBreakerTrip()
                         }
 
-                        HStack(spacing: 8) {
-                            Button {
-                                mouseShortcutStore.openConfiguration()
-                            } label: {
-                                Text("Configure...")
-                                    .font(Typo.monoBold(10))
-                                    .foregroundColor(Palette.text)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 4)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .fill(Palette.surfaceHov)
-                                            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
-                                    )
-                            }
-                            .buttonStyle(.plain)
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 8) {
+                                Button {
+                                    mouseShortcutStore.openConfiguration()
+                                } label: {
+                                    Text("Configure...")
+                                        .font(Typo.monoBold(10))
+                                        .foregroundColor(Palette.text)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 4)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 4)
+                                                .fill(Palette.surfaceHov)
+                                                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
+                                        )
+                                }
+                                .buttonStyle(.plain)
 
-                            Button {
-                                MouseInputEventViewer.shared.show()
-                            } label: {
-                                Text("Event Viewer")
-                                    .font(Typo.monoBold(10))
-                                    .foregroundColor(Palette.text)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 4)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .fill(Palette.surfaceHov)
-                                            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
-                                    )
-                            }
-                            .buttonStyle(.plain)
+                                Button {
+                                    MouseInputEventViewer.shared.show()
+                                } label: {
+                                    Text("Event Viewer")
+                                        .font(Typo.monoBold(10))
+                                        .foregroundColor(Palette.text)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 4)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 4)
+                                                .fill(Palette.surfaceHov)
+                                                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
+                                        )
+                                }
+                                .buttonStyle(.plain)
 
-                            Button {
-                                mouseShortcutStore.restoreDefaults()
-                            } label: {
-                                Text("Restore Defaults")
-                                    .font(Typo.monoBold(10))
-                                    .foregroundColor(Palette.text)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 4)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .fill(Palette.surfaceHov)
-                                            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
-                                    )
+                                Button {
+                                    mouseShortcutStore.openHistory()
+                                } label: {
+                                    Text("History")
+                                        .font(Typo.monoBold(10))
+                                        .foregroundColor(Palette.text)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 4)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 4)
+                                                .fill(Palette.surfaceHov)
+                                                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
+                                        )
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
+
+                            HStack(spacing: 8) {
+                                Button {
+                                    mouseShortcutStore.restoreLatestHistory()
+                                } label: {
+                                    Text("Undo Last")
+                                        .font(Typo.monoBold(10))
+                                        .foregroundColor(mouseShortcutStore.hasHistory ? Palette.text : Palette.textMuted.opacity(0.55))
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 4)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 4)
+                                                .fill(Palette.surfaceHov.opacity(mouseShortcutStore.hasHistory ? 1 : 0.45))
+                                                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit.opacity(mouseShortcutStore.hasHistory ? 1 : 0.45), lineWidth: 0.5))
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(!mouseShortcutStore.hasHistory)
+
+                                Button {
+                                    mouseShortcutStore.restoreDefaults()
+                                } label: {
+                                    Text("Restore Defaults")
+                                        .font(Typo.monoBold(10))
+                                        .foregroundColor(Palette.text)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 4)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 4)
+                                                .fill(Palette.surfaceHov)
+                                                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
 
                         Text("Rules live in ~/.lattices/mouse-shortcuts.json. Use Event Viewer to discover what buttons your mouse emits.")
                             .font(Typo.caption(9))
                             .foregroundColor(Palette.textMuted.opacity(0.7))
                             .fixedSize(horizontal: false, vertical: true)
+
+                        if !mouseShortcutStore.historySummaryLines.isEmpty {
+                            Text("Recent snapshots: \(mouseShortcutStore.historySummaryLines.prefix(3).joined(separator: ", "))")
+                                .font(Typo.caption(9))
+                                .foregroundColor(Palette.textMuted.opacity(0.62))
+                                .lineLimit(2)
+                        }
                     }
                 }
             }
@@ -1351,54 +1395,91 @@ struct SettingsContentView: View {
                             mouseGestureController.reArmAfterBreakerTrip()
                         }
 
-                        HStack(spacing: 8) {
-                            Button {
-                                mouseShortcutStore.openConfiguration()
-                            } label: {
-                                Text("Configure...")
-                                    .font(Typo.monoBold(10))
-                                    .foregroundColor(Palette.text)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 4)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .fill(Palette.surfaceHov)
-                                            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
-                                    )
-                            }
-                            .buttonStyle(.plain)
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 8) {
+                                Button {
+                                    mouseShortcutStore.openConfiguration()
+                                } label: {
+                                    Text("Configure...")
+                                        .font(Typo.monoBold(10))
+                                        .foregroundColor(Palette.text)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 4)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 4)
+                                                .fill(Palette.surfaceHov)
+                                                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
+                                        )
+                                }
+                                .buttonStyle(.plain)
 
-                            Button {
-                                MouseInputEventViewer.shared.show()
-                            } label: {
-                                Text("Open Event Viewer")
-                                    .font(Typo.monoBold(10))
-                                    .foregroundColor(Palette.text)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 4)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .fill(Palette.surfaceHov)
-                                            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
-                                    )
-                            }
-                            .buttonStyle(.plain)
+                                Button {
+                                    MouseInputEventViewer.shared.show()
+                                } label: {
+                                    Text("Event Viewer")
+                                        .font(Typo.monoBold(10))
+                                        .foregroundColor(Palette.text)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 4)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 4)
+                                                .fill(Palette.surfaceHov)
+                                                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
+                                        )
+                                }
+                                .buttonStyle(.plain)
 
-                            Button {
-                                mouseShortcutStore.restoreDefaults()
-                            } label: {
-                                Text("Restore Defaults")
-                                    .font(Typo.monoBold(10))
-                                    .foregroundColor(Palette.text)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 4)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .fill(Palette.surfaceHov)
-                                            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
-                                    )
+                                Button {
+                                    mouseShortcutStore.openHistory()
+                                } label: {
+                                    Text("History")
+                                        .font(Typo.monoBold(10))
+                                        .foregroundColor(Palette.text)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 4)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 4)
+                                                .fill(Palette.surfaceHov)
+                                                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
+                                        )
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
+
+                            HStack(spacing: 8) {
+                                Button {
+                                    mouseShortcutStore.restoreLatestHistory()
+                                } label: {
+                                    Text("Undo Last")
+                                        .font(Typo.monoBold(10))
+                                        .foregroundColor(mouseShortcutStore.hasHistory ? Palette.text : Palette.textMuted.opacity(0.55))
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 4)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 4)
+                                                .fill(Palette.surfaceHov.opacity(mouseShortcutStore.hasHistory ? 1 : 0.45))
+                                                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit.opacity(mouseShortcutStore.hasHistory ? 1 : 0.45), lineWidth: 0.5))
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(!mouseShortcutStore.hasHistory)
+
+                                Button {
+                                    mouseShortcutStore.restoreDefaults()
+                                } label: {
+                                    Text("Restore Defaults")
+                                        .font(Typo.monoBold(10))
+                                        .foregroundColor(Palette.text)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 4)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 4)
+                                                .fill(Palette.surfaceHov)
+                                                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
 
                         Text("Use Event Viewer to discover what your mouse emits on this machine. The config schema already accepts device selectors, but live gesture matching currently falls back to global rules when macOS doesn't expose the source device.")
@@ -2237,6 +2318,19 @@ struct SettingsContentView: View {
                             Spacer()
                         }
                         .padding(.leading, 32)
+
+                        if !permChecker.screenRecording {
+                            cardDivider
+
+                            PermissionAppDragCard(
+                                title: "OCR needs the current Lattices app in Screen Recording",
+                                permissionName: "Screen Recording",
+                                detail: "If an older Lattices entry is already listed, remove it and drag this app into the list from scratch.",
+                                onOpenSettings: {
+                                    PermissionDragAssistantWindowController.shared.show(focus: .screenSearch, openSettings: true)
+                                }
+                            )
+                        }
                     }
                 }
 

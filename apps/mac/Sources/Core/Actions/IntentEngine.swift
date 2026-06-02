@@ -720,7 +720,7 @@ final class IntentEngine {
                 } else {
                     // Frontmost window
                     guard let frontApp = NSWorkspace.shared.frontmostApplication,
-                          frontApp.bundleIdentifier != "dev.lattices.app" else {
+                          !LatticesRuntime.isLatticesBundleIdentifier(frontApp.bundleIdentifier) else {
                         throw IntentError.targetNotFound("No frontmost window")
                     }
                     let appRef = AXUIElementCreateApplication(frontApp.processIdentifier)

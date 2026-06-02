@@ -8,10 +8,14 @@ APP_DIR="$(cd "$(dirname "$SCRIPT_PATH")/../apps/mac" && pwd)"
 ROOT="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
 LOG_FILE="$HOME/.lattices/lattices.log"
 BINARY="$APP_DIR/.build/release/Lattices"
-BUNDLE="$APP_DIR/Lattices.app"
+BUILD_BASE="$ROOT/build/macos/Lattices"
+BUNDLE="$BUILD_BASE/Build/Products/Debug/Lattices.app"
+DEV_APPS_DIR="${LATTICES_DEV_APPS_DIR:-$HOME/Applications/dev/Lattices}"
+INSTALL_BUNDLE="${LATTICES_DEV_APP:-$DEV_APPS_DIR/Lattices.app}"
 BUNDLE_BIN="$BUNDLE/Contents/MacOS/Lattices"
 RESOURCES_DIR="$BUNDLE/Contents/Resources"
 ENTITLEMENTS="$APP_DIR/Lattices.entitlements"
+BUNDLE_ID="${LATTICES_DEV_BUNDLE_ID:-dev.lattices.app.dev}"
 ICON="$ROOT/assets/AppIcon.icns"
 TAP_SOUND="$APP_DIR/Resources/tap.wav"
 VERSION="$(node -p "require('$ROOT/package.json').version" 2>/dev/null || echo '0.1.0')"
@@ -25,9 +29,9 @@ dim()   { printf "\033[2m%s\033[0m\n" "$*"; }
 select_sign_identity() {
     local identities identity=""
     identities="$(security find-identity -v -p codesigning 2>/dev/null || true)"
-    identity="$(printf '%s\n' "$identities" | sed -n 's/.*"\(Developer ID Application:[^"]*\)".*/\1/p' | head -n 1)"
+    identity="$(printf '%s\n' "$identities" | sed -n 's/^[[:space:]]*[0-9]*)[[:space:]]*\([A-F0-9]\{40\}\)[[:space:]]*"Apple Development:[^"]*".*/\1/p' | head -n 1)"
     if [ -z "$identity" ]; then
-        identity="$(printf '%s\n' "$identities" | sed -n 's/.*"\(Apple Development:[^"]*\)".*/\1/p' | head -n 1)"
+        identity="$(printf '%s\n' "$identities" | sed -n 's/^[[:space:]]*[0-9]*)[[:space:]]*\([A-F0-9]\{40\}\)[[:space:]]*"Developer ID Application:[^"]*".*/\1/p' | head -n 1)"
     fi
     printf '%s' "$identity"
 }
@@ -45,7 +49,7 @@ sign_bundle() {
     identity="$(select_sign_identity)"
     if [ -n "$identity" ]; then
         dim "Signing with: $identity"
-        if ! codesign --force --sign "$identity" "${ent_flags[@]}" --identifier com.arach.lattices "$BUNDLE"; then
+        if ! codesign --force --options runtime --deep --sign "$identity" "${ent_flags[@]}" --identifier "$BUNDLE_ID" "$BUNDLE"; then
             red "Signing with '$identity' failed. Falling back to ad-hoc."
             sign_status=1
         fi
@@ -55,10 +59,60 @@ sign_bundle() {
 
     if [ "$sign_status" -ne 0 ]; then
         dim "No usable signing identity found. Using ad-hoc signature."
-        codesign --force --sign - "${ent_flags[@]}" --identifier com.arach.lattices "$BUNDLE"
+        codesign --force --options runtime --deep --sign - "${ent_flags[@]}" --identifier "$BUNDLE_ID" "$BUNDLE"
     fi
 
     rm -f "$BUNDLE_BIN".cstemp
+}
+
+sync_bundle_copy() {
+    local destination="$1"
+
+    mkdir -p "$(dirname "$destination")"
+    rm -rf "$destination"
+    ditto "$BUNDLE" "$destination"
+    xattr -dr com.apple.quarantine "$destination" 2>/dev/null || true
+    touch "$destination" "$destination/Contents"
+}
+
+ensure_install_bundle() {
+    if [ -d "$INSTALL_BUNDLE" ]; then
+        return
+    fi
+
+    if [ -d "$BUNDLE" ]; then
+        sync_bundle_copy "$INSTALL_BUNDLE"
+        return
+    fi
+
+    cmd_build
+}
+
+clear_lattices_drag_cache() {
+    local cache_dir
+
+    for cache_dir in "$HOME"/Library/Caches/com.apple.SwiftUI.Drag-*; do
+        [ -d "$cache_dir" ] || continue
+        if [ -d "$cache_dir/Lattices.app" ]; then
+            rm -rf "$cache_dir/Lattices.app"
+            rmdir "$cache_dir" 2>/dev/null || true
+        fi
+    done
+}
+
+is_install_bundle_running() {
+    local target="$INSTALL_BUNDLE/Contents/MacOS/Lattices"
+    local pid args
+
+    while IFS= read -r pid; do
+        [ -n "$pid" ] || continue
+        args="$(ps -p "$pid" -o args= 2>/dev/null || true)"
+        case "$args" in
+            "$target"|"${target} "*) return 0 ;;
+        esac
+    done < <(pgrep -x Lattices 2>/dev/null || true)
+
+    return 1
 }
 
 write_info_plist() {
@@ -69,7 +123,7 @@ write_info_plist() {
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key>
-    <string>com.arach.lattices</string>
+    <string>$BUNDLE_ID</string>
     <key>CFBundleName</key>
     <string>Lattices</string>
     <key>CFBundleDisplayName</key>
@@ -84,7 +138,7 @@ write_info_plist() {
     <array>
         <dict>
             <key>CFBundleURLName</key>
-            <string>com.arach.lattices</string>
+            <string>$BUNDLE_ID</string>
             <key>CFBundleURLSchemes</key>
             <array>
                 <string>lattices</string>
@@ -117,10 +171,11 @@ PLIST
 }
 
 cmd_build() {
-    echo "Building release..."
+    echo "Building dev app..."
     cd "$APP_DIR" && swift build -c release
-    # Refresh the bundle so dev builds and published bundles are complete.
-    rm -rf "$BUNDLE/Contents/MacOS" "$RESOURCES_DIR"
+    # Build into a repo-local dev artifact, then install to a stable app path
+    # that macOS permissions can trust across rebuilds.
+    rm -rf "$BUNDLE"
     mkdir -p "$(dirname "$BUNDLE_BIN")" "$RESOURCES_DIR"
     cp "$BINARY" "$BUNDLE_BIN"
     if [ -f "$ICON" ]; then
@@ -132,18 +187,26 @@ cmd_build() {
     write_info_plist
     # Re-sign so TCC permissions persist across rebuilds
     sign_bundle
+    touch "$BUNDLE" "$BUNDLE/Contents"
+    sync_bundle_copy "$INSTALL_BUNDLE"
+    clear_lattices_drag_cache
     green "Build complete."
+    dim "Installed: $INSTALL_BUNDLE"
 }
 
 cmd_restart() {
     echo "Restarting Lattices..."
+    /usr/bin/osascript -e 'tell application id "dev.lattices.app.dev" to quit' >/dev/null 2>&1 || true
+    /usr/bin/osascript -e 'tell application id "dev.lattices.app" to quit' >/dev/null 2>&1 || true
     pkill -x Lattices 2>/dev/null && sleep 1 || true
     cmd_build
-    open "$BUNDLE"
+    open "$INSTALL_BUNDLE" --args --lattices-cli-root "$ROOT" "$@"
     green "Lattices restarted."
 }
 
 cmd_quit() {
+    /usr/bin/osascript -e 'tell application id "dev.lattices.app.dev" to quit' >/dev/null 2>&1 || true
+    /usr/bin/osascript -e 'tell application id "dev.lattices.app" to quit' >/dev/null 2>&1 || true
     if pkill -x Lattices 2>/dev/null; then
         green "Lattices stopped."
     else
@@ -152,10 +215,15 @@ cmd_quit() {
 }
 
 cmd_launch() {
-    if pgrep -x Lattices >/dev/null 2>&1; then
-        dim "Lattices is already running."
+    if is_install_bundle_running; then
+        dim "Lattices dev app is already running."
     else
-        open "$BUNDLE"
+        if pgrep -x Lattices >/dev/null 2>&1; then
+            dim "A different Lattices bundle is running. Switching to the dev permission target."
+            cmd_quit
+        fi
+        ensure_install_bundle
+        open "$INSTALL_BUNDLE" --args --lattices-cli-root "$ROOT" "$@"
         green "Lattices launched."
     fi
 }
@@ -249,10 +317,10 @@ cmd_help() {
 case "${1:-help}" in
     link)       cmd_link ;;
     unlink)     cmd_unlink ;;
-    restart)    cmd_restart ;;
+    restart)    cmd_restart "${@:2}" ;;
     build)      cmd_build ;;
     quit|stop)  cmd_quit ;;
-    launch|start) cmd_launch ;;
+    launch|start) cmd_launch "${@:2}" ;;
     logs)       cmd_logs ;;
     log)        cmd_log "${2:-30}" ;;
     clear-logs) cmd_clear_logs ;;

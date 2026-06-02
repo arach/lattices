@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { defaultDoc, getDoc, navGroups, type DocPage } from '../lib/content'
+import { formatBuildDate, getBuildMeta, type DocMeta } from '../lib/build-meta'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { SiteHeader } from './SiteChrome'
 
@@ -9,18 +10,39 @@ interface DocsPageProps {
 
 export function DocsPage({ slug }: DocsPageProps) {
   const doc = slug ? getDoc(slug) : defaultDoc()
+  const [meta, setMeta] = useState<DocMeta | null>(null)
+
+  useEffect(() => {
+    if (!doc) return
+    let cancelled = false
+    getBuildMeta().then((m) => {
+      if (cancelled) return
+      setMeta(m?.docs?.[doc.slug] ?? null)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [doc])
 
   if (!doc) {
     return (
       <>
         <SiteHeader />
-        <main className="not-found">
-          <h1>Page not found</h1>
-          <a href="/docs/overview">Back to docs</a>
+        <main className="not-found-shell" data-pagefind-ignore>
+          <div className="not-found-card">
+            <p className="not-found-kicker">404</p>
+            <h1 className="not-found-title">Page not found</h1>
+            <p className="not-found-desc">
+              The docs page may have been moved.{' '}
+              <a href="/docs/overview">Back to the docs overview →</a>
+            </p>
+          </div>
         </main>
       </>
     )
   }
+
+  const updatedLabel = formatBuildDate(meta?.updatedAt)
 
   return (
     <>
@@ -33,6 +55,18 @@ export function DocsPage({ slug }: DocsPageProps) {
           <header className="docs-article-header">
             <h1>{doc.title}</h1>
             {doc.description && <p>{doc.description}</p>}
+            <div className="docs-meta">
+              {updatedLabel && <span>Updated {updatedLabel}</span>}
+              {meta?.editUrl && (
+                <a
+                  href={meta.editUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Edit on GitHub →
+                </a>
+              )}
+            </div>
           </header>
           <MarkdownRenderer content={doc.content} />
         </article>

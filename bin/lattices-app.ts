@@ -349,7 +349,7 @@ function buildFromSource(): boolean {
 
   mkdirSync(binaryDir, { recursive: true });
   execSync(`cp '${builtPath}' '${binaryPath}'`);
-  writeInfoPlist({ channel: "dev", track: "latest" });
+  writeInfoPlist();
   syncBundleResources();
 
   // Re-sign the bundle so macOS TCC recognizes a stable identity across rebuilds.

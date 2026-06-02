@@ -164,9 +164,15 @@ enum TerminalSynthesizer {
         for w in windows.values {
             result[w.app, default: []].append(w)
         }
-        // Sort each app's windows for consistent positional matching
+        // Terminal window indices are presented in front-to-back app order.
+        // CGWindowIDs are allocation IDs, not a spatial or z-order signal, so
+        // sorting by wid makes positional terminal matching drift to unrelated
+        // windows as soon as older windows are still open.
         for key in result.keys {
-            result[key]?.sort { $0.wid < $1.wid }
+            result[key]?.sort {
+                if $0.zIndex != $1.zIndex { return $0.zIndex < $1.zIndex }
+                return $0.wid < $1.wid
+            }
         }
         return result
     }

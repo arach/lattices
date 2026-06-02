@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && node scripts/export-static.mjs && pagefind --site dist",
+    "clean": "rm -rf dist .astro",
+    "build": "bun run clean && vite build && bun scripts/export-static.mjs && pagefind --site dist",
     "agent-docs": "node scripts/agent-docs.mjs",
     "preview": "vite preview",
     "lint": "eslint .",

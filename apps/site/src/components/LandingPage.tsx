@@ -41,6 +41,21 @@ function LatticesLogo({ size = 20 }: { size?: number }) {
   );
 }
 
+declare global {
+  interface Window {
+    gtag?: (...args: unknown[]) => void
+  }
+}
+
+function trackCta(action: string, destination: string) {
+  if (typeof window !== 'undefined' && typeof window.gtag === 'function') {
+    window.gtag('event', 'cta_click', {
+      cta_action: action,
+      cta_destination: destination,
+    })
+  }
+}
+
 function GitHubIcon() {
   return (
     <svg viewBox="0 0 16 16" fill="currentColor">
@@ -190,7 +205,7 @@ export default function App() {
             Open source · 100% free
           </div>
           <h1>
-            The agentic
+            the agentic
             <br />
             <span className="accent">workspace manager</span>
           </h1>
@@ -236,11 +251,16 @@ export default function App() {
                 target="_blank"
                 rel="noopener noreferrer"
                 className="star-link"
+                onClick={() => trackCta('star_github', 'https://github.com/arach/lattices')}
               >
                 <StarIcon />
                 Star us on GitHub
               </a>
-              <a href="/docs/overview" className="docs-link">
+              <a
+                href="/docs/overview"
+                className="docs-link"
+                onClick={() => trackCta('read_docs', '/docs/overview')}
+              >
                 Read the docs
               </a>
             </div>
@@ -309,6 +329,7 @@ export default function App() {
               <a
                 href="https://github.com/arach/lattices/releases/latest/download/Lattices.dmg"
                 className="app-download"
+                onClick={() => trackCta('download_dmg', 'https://github.com/arach/lattices/releases/latest/download/Lattices.dmg')}
               >
                 <AppleIcon />
                 Download for macOS
@@ -484,6 +505,7 @@ export default function App() {
               target="_blank"
               rel="noopener noreferrer"
               className="btn btn-primary"
+              onClick={() => trackCta('view_github', 'https://github.com/arach/lattices')}
             >
               View on GitHub
             </a>
@@ -492,18 +514,21 @@ export default function App() {
               target="_blank"
               rel="noopener noreferrer"
               className="btn btn-secondary"
+              onClick={() => trackCta('view_npm', 'https://www.npmjs.com/package/lattices')}
             >
               npm package
             </a>
             <a
               href="https://github.com/arach/lattices/releases/latest/download/Lattices.dmg"
               className="btn btn-secondary"
+              onClick={() => trackCta('download_dmg', 'https://github.com/arach/lattices/releases/latest/download/Lattices.dmg')}
             >
               <AppleIcon /> Download .dmg
             </a>
             <a
               href="/docs/api"
               className="btn btn-secondary"
+              onClick={() => trackCta('view_api', '/docs/api')}
             >
               API Reference
             </a>
@@ -512,20 +537,39 @@ export default function App() {
 
         {/* Footer */}
         <footer className="footer">
-          <span>
-            Built by{" "}
+          <div className="footer-group">
+            <span>
+              Built by{" "}
+              <a
+                href="https://github.com/arach"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                @arach
+              </a>
+            </span>
+            <span className="footer-dot" aria-hidden="true">·</span>
+            <span>macOS only. tmux optional.</span>
+          </div>
+          <nav className="footer-links" aria-label="Footer">
+            <a href="/docs/overview">Docs</a>
+            <a href="/blog">Blog</a>
+            <a href="/rss.xml">RSS</a>
             <a
-              href="https://github.com/arach"
+              href="https://github.com/arach/lattices"
               target="_blank"
               rel="noopener noreferrer"
             >
-              @arach
+              GitHub
             </a>
-          </span>
-          <a href="/docs/overview" className="footer-link">
-            Documentation
-          </a>
-          <span>macOS only. tmux optional.</span>
+            <a
+              href="https://www.npmjs.com/package/lattices"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              npm
+            </a>
+          </nav>
         </footer>
       </div>
     </>

@@ -40,8 +40,11 @@
     "test:e2e": "node --experimental-strip-types --test tests/e2e-daemon.test.mjs",
     "test:e2e:voice": "node --experimental-strip-types tests/eval-voice.js",
     "typecheck": "bun run check:types",
-    "build:app-bundle": "bash ./bin/lattices-dev build",
-    "prepack": "bash ./bin/lattices-dev build"
+    "build:app-bundle": "bash ./bin/lattices-build package",
+    "build:dev-app": "bash ./bin/lattices-build dev",
+    "build:dist": "bash ./bin/lattices-build dist",
+    "build:dist:local": "bash ./bin/lattices-build dist:local",
+    "prepack": "bash ./bin/lattices-build package"
   },
   "type": "module",
   "os": ["darwin"],

@@ -12,8 +12,15 @@ VERSION="${1:-$(node -p "require(process.argv[1]).version" "$ROOT/package.json" 
 
 SKIP_SIGN="${LATTICES_SKIP_SIGN:-0}"
 SKIP_NOTARIZE="${LATTICES_SKIP_NOTARIZE:-0}"
-SIGN_IDENTITY="${LATTICES_SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | grep -o '"Developer ID Application:[^"]*"' | head -1 | tr -d '"' || echo "")}"
 NOTARY_PROFILE="${LATTICES_NOTARY_PROFILE:-notarytool-art}"
+
+default_sign_identity() {
+    security find-identity -v -p codesigning 2>/dev/null \
+        | sed -n 's/^[[:space:]]*[0-9]*)[[:space:]]*\([A-F0-9]\{40\}\)[[:space:]]*"Developer ID Application:[^"]*".*/\1/p' \
+        | head -n 1
+}
+
+SIGN_IDENTITY="${LATTICES_SIGN_IDENTITY:-$(default_sign_identity || true)}"
 
 if [ "$SKIP_SIGN" != "1" ]; then
     if [ -z "$SIGN_IDENTITY" ]; then

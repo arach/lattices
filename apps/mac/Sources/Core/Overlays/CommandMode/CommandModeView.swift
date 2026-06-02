@@ -47,6 +47,7 @@ struct CommandModeView: View {
     }
 
     // Column widths for inventory table
+    private static let lastSeenColW: CGFloat = 60
     private static let sizeColW: CGFloat = 80
     private static let tileColW: CGFloat = 60
 
@@ -99,9 +100,17 @@ struct CommandModeView: View {
     }
 
     private func inventoryCard(contentWidth: CGFloat) -> some View {
-        VStack(spacing: 0) {
-            header
-            divider
+        // The tab bar already labels this view as "Desktop Inventory" in embedded mode,
+        // so suppress the redundant in-card header there. Keep it in panel mode (where
+        // the header doubles as the drag handle) and during the organize flow (where
+        // it carries badges).
+        let suppressHeader = isEmbedded && isDesktopInventory && !state.isOrganizeFlow
+
+        return VStack(spacing: 0) {
+            if !suppressHeader {
+                header
+                divider
+            }
             if isDesktopInventory && state.desktopMode == .gridPreview {
                 gridPreviewContent
             } else if isDesktopInventory {
@@ -124,76 +133,11 @@ struct CommandModeView: View {
     }
 
     private func embeddedInventoryPage(contentWidth: CGFloat) -> some View {
-        VStack(spacing: 12) {
-            embeddedInventorySummary
-                .frame(width: contentWidth, alignment: .leading)
-            inventoryCard(contentWidth: contentWidth)
-                .frame(maxHeight: .infinity)
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    }
-
-    private var embeddedInventorySummary: some View {
-        let snapshot = state.filteredSnapshot ?? state.desktopSnapshot
-        let displayCount = snapshot?.displays.count ?? 0
-        let spaceCount = snapshot?.displays.reduce(0) { total, display in
-            total + display.spaces.count
-        } ?? 0
-        let windowCount = snapshot?.allWindows.count ?? 0
-
-        return HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Grouped by display, Space, and app")
-                    .font(Typo.heading(13))
-                    .foregroundColor(Palette.text)
-                Text(state.isSearching
-                    ? "Search results stay in place so the desktop reads like a map instead of a flat list."
-                    : "Live window sizes, tiling hints, and OCR search in one balanced pass across the desktop.")
-                    .font(Typo.mono(10))
-                    .foregroundColor(Palette.textDim)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer(minLength: 12)
-
-            HStack(spacing: 8) {
-                inventoryStatPill(value: displayCount, label: "Displays")
-                inventoryStatPill(value: spaceCount, label: "Spaces")
-                inventoryStatPill(value: windowCount, label: "Windows")
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Palette.surface.opacity(0.65))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(Palette.border, lineWidth: 0.5)
-                )
-        )
-    }
-
-    private func inventoryStatPill(value: Int, label: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("\(value)")
-                .font(Typo.monoBold(12))
-                .foregroundColor(Palette.text)
-            Text(label.uppercased())
-                .font(Typo.mono(8))
-                .foregroundColor(Palette.textMuted)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Palette.bg.opacity(0.75))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .strokeBorder(Palette.border, lineWidth: 0.5)
-                )
-        )
+        inventoryCard(contentWidth: contentWidth)
+            .frame(maxHeight: .infinity)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     // MARK: - Header
@@ -354,7 +298,7 @@ struct CommandModeView: View {
         display: DesktopInventorySnapshot.DisplayInfo,
         contentWidth: CGFloat
     ) -> some View {
-        let sidebarWidth = min(max(contentWidth * 0.28, 250), 330)
+        let sidebarWidth = min(max(contentWidth * 0.20, 200), 260)
         let mainWidth = max(contentWidth - sidebarWidth - 0.5, 620)
 
         return HStack(alignment: .top, spacing: 0) {
@@ -433,9 +377,61 @@ struct CommandModeView: View {
                 .buttonStyle(.plain)
             }
             Spacer()
+            inventoryStatsInline
+            if isEmbedded {
+                copyInventoryButton
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
+    }
+
+    private var inventoryStatsInline: some View {
+        let snapshot = state.filteredSnapshot ?? state.desktopSnapshot
+        let displayCount = snapshot?.displays.count ?? 0
+        let spaceCount = snapshot?.displays.reduce(0) { $0 + $1.spaces.count } ?? 0
+        let windowCount = snapshot?.allWindows.count ?? 0
+
+        return HStack(spacing: 10) {
+            statInline(value: displayCount, label: "displays")
+            statInline(value: spaceCount, label: "spaces")
+            statInline(value: windowCount, label: "windows")
+        }
+    }
+
+    private func statInline(value: Int, label: String) -> some View {
+        HStack(spacing: 3) {
+            Text("\(value)")
+                .font(Typo.monoBold(10))
+                .foregroundColor(Palette.text)
+            Text(label)
+                .font(Typo.mono(9))
+                .foregroundColor(Palette.textMuted)
+        }
+    }
+
+    private var copyInventoryButton: some View {
+        Button(action: { state.copyInventoryToClipboard() }) {
+            HStack(spacing: 3) {
+                Image(systemName: "doc.on.doc")
+                    .font(.system(size: 9))
+                Text("Copy")
+                    .font(Typo.mono(9))
+            }
+            .foregroundColor(Palette.textDim)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Palette.surface)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .strokeBorder(Palette.border, lineWidth: 0.5)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .help("Copy desktop inventory to clipboard")
     }
 
     private var searchBar: some View {
@@ -479,11 +475,22 @@ struct CommandModeView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(display.spaces) { space in
-                            spaceHeader(space, display: display)
+                        if state.isFlatSorted {
                             columnHeaders
-                            ForEach(space.apps) { appGroup in
-                                appGroupRows(appGroup, dimmed: !space.isCurrent)
+                            ForEach(state.sortedWindows(in: display)) { win in
+                                inventoryRow(window: win, appLabel: win.appName)
+                                ocrSnippetRow(for: win.id)
+                                if state.isSelected(win.id), let path = win.inventoryPath {
+                                    inventoryPathLabel(path)
+                                }
+                            }
+                        } else {
+                            ForEach(display.spaces) { space in
+                                spaceHeader(space, display: display)
+                                columnHeaders
+                                ForEach(space.apps) { appGroup in
+                                    appGroupRows(appGroup, dimmed: !space.isCurrent)
+                                }
                             }
                         }
                     }
@@ -792,17 +799,75 @@ struct CommandModeView: View {
 
     private var columnHeaders: some View {
         HStack(spacing: 0) {
-            Text("APP / WINDOW")
+            sortableHeader(.app, title: "APP / WINDOW")
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Text("SIZE")
-                .frame(width: Self.sizeColW, alignment: .leading)
-            Text("TILE")
+            sortableHeader(.lastSeen, title: "LAST SEEN", alignTrailing: true)
+                .frame(width: Self.lastSeenColW, alignment: .trailing)
+            sortableHeader(.size, title: "SIZE", alignTrailing: true)
+                .frame(width: Self.sizeColW, alignment: .trailing)
+                .padding(.leading, 8)
+            sortableHeader(.tile, title: "TILE", alignTrailing: true)
                 .frame(width: Self.tileColW, alignment: .trailing)
         }
         .font(Typo.mono(9))
         .foregroundColor(Palette.textMuted)
         .padding(.horizontal, 14)
         .padding(.vertical, 3)
+    }
+
+    /// Clickable column header that sorts the table by `field`. Active column shows
+    /// a direction indicator and brighter text; click again to flip direction; click
+    /// a third time on the same column to return to grouped view.
+    private func sortableHeader(
+        _ field: InventorySortField,
+        title: String,
+        alignTrailing: Bool = false
+    ) -> some View {
+        let isActive = state.sortField == field
+        let directionIcon = state.sortDirection == .asc ? "arrow.up" : "arrow.down"
+        return Button {
+            state.toggleSort(field)
+        } label: {
+            HStack(spacing: 3) {
+                if alignTrailing { Spacer(minLength: 0) }
+                Text(title)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                if isActive {
+                    Image(systemName: directionIcon)
+                        .font(.system(size: 8))
+                }
+                if !alignTrailing { Spacer(minLength: 0) }
+            }
+            .foregroundColor(isActive ? Palette.text : Palette.textMuted)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Sort by \(title.lowercased())")
+    }
+
+    /// Compact relative-time label for a window's last interaction.
+    /// "now", "12s", "3m", "1h", "2d", or a dash if never tracked this session.
+    private func lastSeenText(for windowId: UInt32) -> String {
+        guard let date = DesktopModel.shared.lastInteractionDate(for: windowId) else { return "\u{2014}" }
+        let ago = Date().timeIntervalSince(date)
+        if ago < 5 { return "now" }
+        if ago < 60 { return "\(Int(ago))s" }
+        if ago < 3_600 { return "\(Int(ago / 60))m" }
+        if ago < 86_400 { return "\(Int(ago / 3_600))h" }
+        return "\(Int(ago / 86_400))d"
+    }
+
+    /// Color emphasis for recency: brighter for fresh activity, dim for old.
+    private func lastSeenColor(for windowId: UInt32, isSelected: Bool) -> Color {
+        guard let date = DesktopModel.shared.lastInteractionDate(for: windowId) else {
+            return Palette.textMuted
+        }
+        let ago = Date().timeIntervalSince(date)
+        if ago < 300 { return Palette.running }   // < 5m: green
+        if ago < 3_600 { return Palette.text }    // < 1h: bright
+        if isSelected { return Palette.text }
+        return Palette.textDim
     }
 
     private func appGroupRows(_ appGroup: DesktopInventorySnapshot.AppGroup, dimmed: Bool = false) -> some View {
@@ -906,10 +971,16 @@ struct CommandModeView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
+            Text(lastSeenText(for: window.id))
+                .font(Typo.mono(10))
+                .foregroundColor(lastSeenColor(for: window.id, isSelected: isSelected))
+                .frame(width: Self.lastSeenColW, alignment: .trailing)
+
             Text(sizeText(window.frame))
                 .font(Typo.mono(10))
                 .foregroundColor(isSelected ? Palette.text : Palette.textDim)
-                .frame(width: Self.sizeColW, alignment: .leading)
+                .frame(width: Self.sizeColW, alignment: .trailing)
+                .padding(.leading, 8)
 
             Text(window.tilePosition?.label ?? "\u{2014}")
                 .font(Typo.mono(10))
@@ -996,6 +1067,17 @@ struct CommandModeView: View {
                 state.highlightAllSelected()
             } label: {
                 Label("Highlight All (\(selCount))", systemImage: "sparkle")
+            }
+
+            Divider()
+
+            ForEach(ArrangeLayout.allCases) { layout in
+                Button {
+                    state.arrangeSelected(as: layout)
+                } label: {
+                    Label("Arrange as \(layout.label) (\(selCount))", systemImage: layout.icon)
+                }
+                .disabled(!layout.supports(count: selCount))
             }
 
             Divider()

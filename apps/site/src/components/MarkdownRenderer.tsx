@@ -3,6 +3,7 @@ import ReactMarkdown, { type Components } from 'react-markdown'
 import rehypeRaw from 'rehype-raw'
 import rehypeSlug from 'rehype-slug'
 import remarkGfm from 'remark-gfm'
+import { highlightCode } from '../lib/highlight'
 import ArchDiagram from './blog/ArchDiagram'
 import ContextExplorer from './blog/ContextExplorer'
 import LatencyJourney from './blog/LatencyJourney'
@@ -81,8 +82,7 @@ function CodeBlock({ children, ...props }: { children?: ReactNode }) {
   useEffect(() => {
     let cancelled = false
 
-    import('../lib/highlight')
-      .then(({ highlightCode }) => highlightCode(code, language))
+    highlightCode(code, language)
       .then((html) => {
         if (!cancelled) setHighlighted({ key: highlightKey, html })
       })

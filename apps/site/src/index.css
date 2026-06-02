@@ -26,6 +26,25 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+:root[data-theme='light'] {
+  --bg: #fafaf9;
+  --surface: #ffffff;
+  --surface-hover: #f0efed;
+  --border: rgba(16, 21, 24, 0.08);
+  --border-lit: rgba(16, 21, 24, 0.14);
+  --text: #101518;
+  --text-dim: rgba(16, 21, 24, 0.6);
+  --text-muted: rgba(16, 21, 24, 0.35);
+  --green: #1a9d52;
+  --green-glow: rgba(26, 157, 82, 0.12);
+  --amber: #c47b00;
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+}
+
 body {
   background: var(--bg);
   color: var(--text);
@@ -56,7 +75,7 @@ code {
   top: 0;
   z-index: 10;
   backdrop-filter: blur(16px);
-  background: rgba(17, 17, 19, 0.85);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
   border-bottom: 1px solid var(--border);
 }
 
@@ -102,7 +121,7 @@ code {
 
 .nav-link:hover {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.05);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
 }
 
 .nav-github {
@@ -121,7 +140,7 @@ code {
 .nav-github:hover {
   color: var(--text);
   border-color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.05);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
 }
 
 .nav-github svg {
@@ -242,7 +261,7 @@ code {
 }
 
 .install-tab.active {
-  background: rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--text) 10%, transparent);
   color: var(--green);
 }
 
@@ -281,7 +300,7 @@ code {
 
 .install-copy:hover {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
 }
 
 .install-copy svg {
@@ -373,7 +392,7 @@ code {
   gap: 6px;
   padding: 10px 14px;
   border-bottom: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.02);
+  background: color-mix(in srgb, var(--text) 3%, transparent);
 }
 
 .code-dot {
@@ -466,7 +485,7 @@ code {
 }
 
 .layout-pane {
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
   border: 1px solid var(--border-lit);
   border-radius: 4px;
   display: flex;
@@ -581,7 +600,7 @@ code {
   font-size: 12px;
   padding: 1px 5px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
   color: var(--green);
 }
 
@@ -714,8 +733,139 @@ code {
   width: 100%;
   border-radius: 10px;
   box-shadow:
-    0 24px 48px rgba(0, 0, 0, 0.4),
-    0 0 0 1px rgba(255, 255, 255, 0.06);
+    0 24px 48px color-mix(in srgb, #000 40%, transparent),
+    0 0 0 1px var(--border);
+}
+
+/* ── Lats.dev teaser (gated by PUBLIC_SHOW_LATS_DEV_TEASER) ─────── */
+
+.next-section {
+  padding: 12px 0 48px;
+}
+
+.next-card {
+  display: grid;
+  grid-template-columns: 0.95fr 1.05fr;
+  gap: 28px;
+  align-items: center;
+  padding: 24px;
+  border-radius: 14px;
+  border: 1px solid rgba(51, 199, 115, 0.22);
+  background:
+    linear-gradient(135deg, rgba(51, 199, 115, 0.10), rgba(245, 166, 35, 0.05)),
+    var(--surface);
+  box-shadow: 0 20px 50px color-mix(in srgb, #000 22%, transparent);
+}
+
+.next-kicker {
+  display: inline-flex;
+  align-items: center;
+  margin-bottom: 10px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: var(--green);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.next-copy h2 {
+  font-size: 1.45rem;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  margin-bottom: 10px;
+}
+
+.next-copy p {
+  max-width: 430px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+
+.next-preview {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.deck-shell {
+  width: min(100%, 360px);
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid var(--border-lit);
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 3%, transparent);
+}
+
+.deck-top {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.deck-trackpad {
+  position: relative;
+  height: 128px;
+  border-radius: 12px;
+  border: 1px solid rgba(51, 199, 115, 0.26);
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    rgba(255, 255, 255, 0.035);
+  background-size: 22px 22px;
+  overflow: hidden;
+}
+
+.deck-crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 1px solid rgba(51, 199, 115, 0.55);
+  transform: translate(-50%, -50%);
+}
+
+.deck-crosshair::before,
+.deck-crosshair::after {
+  content: "";
+  position: absolute;
+  background: rgba(51, 199, 115, 0.45);
+}
+
+.deck-crosshair::before {
+  left: 50%;
+  top: -20px;
+  width: 1px;
+  height: 82px;
+}
+
+.deck-crosshair::after {
+  left: -20px;
+  top: 50%;
+  width: 82px;
+  height: 1px;
+}
+
+.deck-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.deck-action {
+  padding: 8px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  color: var(--text-dim);
+  text-align: center;
 }
 
 /* ── CTA ───────────────────────────────────────────── */
@@ -776,7 +926,7 @@ code {
 
 .btn-secondary:hover {
   border-color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
 }
 
 /* ── Footer ────────────────────────────────────────── */
@@ -800,6 +950,24 @@ code {
 
 .footer a:hover {
   color: var(--text);
+}
+
+.footer-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.footer-dot {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
 }
 
 /* ── Animations ────────────────────────────────────── */
@@ -954,6 +1122,18 @@ code {
 
   .btn {
     justify-content: center;
+  }
+
+  .next-card {
+    grid-template-columns: 1fr;
+  }
+
+  .next-preview {
+    justify-content: stretch;
+  }
+
+  .deck-shell {
+    width: 100%;
   }
 
   .footer {

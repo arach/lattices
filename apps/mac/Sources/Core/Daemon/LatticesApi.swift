@@ -294,6 +294,26 @@ final class LatticesApi {
             Field(name: "expiresAt", type: "double", required: false, description: "Expiration timestamp (Unix seconds)"),
         ]))
 
+        api.model(ApiModel(name: "ActionReceipt", fields: [
+            Field(name: "ok", type: "bool", required: true, description: "Whether the action completed successfully"),
+            Field(name: "status", type: "string", required: true, description: "ok, planned, partial, failed, or blocked"),
+            Field(name: "receiptId", type: "string", required: true, description: "Execution receipt identifier"),
+            Field(name: "requestId", type: "string", required: true, description: "Caller request identifier"),
+            Field(name: "source", type: "string", required: true, description: "Calling surface, such as daemon, voice, CLI, or companion"),
+            Field(name: "action", type: "object", required: true, description: "Canonical action descriptor"),
+            Field(name: "target", type: "object", required: true, description: "Resolved target with confidence and identifiers"),
+            Field(name: "targetKind", type: "string", required: true, description: "Compatibility target kind such as wid, session, app, or frontmost"),
+            Field(name: "targetResolution", type: "string", required: true, description: "Resolution strategy used for the target"),
+            Field(name: "placement", type: "object", required: false, description: "Resolved placement spec for window.place"),
+            Field(name: "plan", type: "object", required: false, description: "Dry-run plan used before mutation"),
+            Field(name: "mutations", type: "[object]", required: true, description: "Applied mutations and frame changes"),
+            Field(name: "verified", type: "bool", required: true, description: "Whether the final state was verified"),
+            Field(name: "undoable", type: "bool", required: false, description: "Whether the receipt can be restored through actions.undo"),
+            Field(name: "undoOf", type: "[string]", required: false, description: "Receipt ids restored by an actions.undo receipt"),
+            Field(name: "trace", type: "[string]", required: true, description: "Human-readable execution trace"),
+            Field(name: "events", type: "[object]", required: true, description: "Structured execution events"),
+        ]))
+
         // ── Endpoints: Read ─────────────────────────────────────
 
         api.register(Endpoint(
@@ -1200,6 +1220,84 @@ final class LatticesApi {
         // ── Endpoints: Mutations ────────────────────────────────
 
         api.register(Endpoint(
+            method: "window.resolve",
+            description: "Resolve a window target and optional placement plan without moving anything",
+            access: .read,
+            params: [
+                Param(name: "target", type: "object", required: false, description: "Target descriptor with kind wid, session, app, or frontmost"),
+                Param(name: "wid", type: "uint32", required: false, description: "Window ID target"),
+                Param(name: "session", type: "string", required: false, description: "Tmux session target"),
+                Param(name: "app", type: "string", required: false, description: "App name target"),
+                Param(name: "title", type: "string", required: false, description: "Optional title substring for app target"),
+                Param(name: "placement", type: "object|string", required: false, description: "Optional placement to plan"),
+                Param(name: "display", type: "int", required: false, description: "Optional display index"),
+            ],
+            returns: .custom("Resolved target plus optional placement plan"),
+            handler: { params in
+                try ActionRuntime.shared.resolveWindowPlace(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "actions.execute",
+            description: "Execute a canonical action and return a structured receipt. Initially supports window.place.",
+            access: .mutate,
+            params: [
+                Param(name: "type", type: "string", required: false, description: "Action type, e.g. window.place"),
+                Param(name: "action", type: "object", required: false, description: "Single action object"),
+                Param(name: "actions", type: "array<object>", required: false, description: "Batch of action objects"),
+                Param(name: "target", type: "object", required: false, description: "Target descriptor for window.place"),
+                Param(name: "args", type: "object", required: false, description: "Action args, including placement"),
+                Param(name: "source", type: "string", required: false, description: "Calling surface label"),
+                Param(name: "requestId", type: "string", required: false, description: "Caller-supplied request id"),
+                Param(name: "dryRun", type: "bool", required: false, description: "Plan and resolve without moving windows"),
+            ],
+            returns: .custom("ActionReceipt for one action; batch receipt with receipts for actions[]"),
+            handler: { params in
+                try ActionRuntime.shared.execute(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "actions.history",
+            description: "Return recent action execution receipts.",
+            access: .read,
+            params: [
+                Param(name: "limit", type: "int", required: false, description: "Max receipts to return (default 20)"),
+                Param(name: "type", type: "string", required: false, description: "Filter by action type"),
+                Param(name: "source", type: "string", required: false, description: "Filter by source"),
+                Param(name: "wid", type: "uint32", required: false, description: "Filter by window id"),
+                Param(name: "requestId", type: "string", required: false, description: "Filter by request id"),
+                Param(name: "session", type: "string", required: false, description: "Filter by tmux session"),
+                Param(name: "status", type: "string", required: false, description: "Filter by receipt status"),
+                Param(name: "undoable", type: "bool", required: false, description: "Filter to receipts that can or cannot be undone"),
+            ],
+            returns: .array(model: "ActionReceipt"),
+            handler: { params in
+                ActionRuntime.shared.history(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "actions.undo",
+            description: "Restore the latest undoable window placement receipt, or a specific receipt/request group.",
+            access: .mutate,
+            params: [
+                Param(name: "receiptId", type: "string", required: false, description: "Specific receipt to undo"),
+                Param(name: "requestId", type: "string", required: false, description: "Specific request group to undo"),
+                Param(name: "wid", type: "uint32", required: false, description: "Limit undo selection to one window id"),
+                Param(name: "steps", type: "int", required: false, description: "Number of recent undoable groups to restore (default 1)"),
+                Param(name: "force", type: "bool", required: false, description: "Restore even when the current frame no longer matches the receipt"),
+                Param(name: "dryRun", type: "bool", required: false, description: "Plan the restore without moving windows"),
+                Param(name: "source", type: "string", required: false, description: "Calling surface label"),
+            ],
+            returns: .custom("ActionReceipt for the undo operation"),
+            handler: { params in
+                try ActionRuntime.shared.undo(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
             method: "window.tile",
             description: "Tile a session's terminal window to a position",
             access: .mutate,
@@ -1249,11 +1347,48 @@ final class LatticesApi {
                 guard let session = params?["session"]?.stringValue else {
                     throw RouterError.missingParam("session or wid")
                 }
-                let terminal = Preferences.shared.terminal
-                DispatchQueue.main.async {
-                    WindowTiler.navigateToWindow(session: session, terminal: terminal)
+
+                if let entry = Self.windowEntry(forSession: session) {
+                    var raised = false
+                    if Thread.isMainThread {
+                        raised = WindowTiler.focusWindow(wid: entry.wid, pid: entry.pid)
+                    } else {
+                        DispatchQueue.main.sync {
+                            raised = WindowTiler.focusWindow(wid: entry.wid, pid: entry.pid)
+                        }
+                    }
+                    return .object([
+                        "ok": .bool(raised),
+                        "wid": .int(Int(entry.wid)),
+                        "app": .string(entry.app),
+                        "title": .string(entry.title),
+                        "session": .string(session),
+                        "raised": .bool(raised),
+                        "targetResolution": .string("session"),
+                    ])
                 }
-                return .object(["ok": .bool(true)])
+
+                let terminal = Preferences.shared.terminal
+                if let located = SessionWindowLocator.findWindow(session: session, terminal: terminal) {
+                    var raised = false
+                    if Thread.isMainThread {
+                        raised = WindowTiler.focusWindow(wid: located.wid, pid: Int32(located.pid))
+                    } else {
+                        DispatchQueue.main.sync {
+                            raised = WindowTiler.focusWindow(wid: located.wid, pid: Int32(located.pid))
+                        }
+                    }
+                    return .object([
+                        "ok": .bool(raised),
+                        "wid": .int(Int(located.wid)),
+                        "pid": .int(Int(located.pid)),
+                        "session": .string(session),
+                        "raised": .bool(raised),
+                        "targetResolution": .string("session-locator"),
+                    ])
+                }
+
+                throw RouterError.notFound("window for session \(session)")
             }
         ))
 
@@ -2481,7 +2616,7 @@ private extension LatticesApi {
 
     static func frontmostWindowTarget() -> (wid: UInt32, pid: Int32)? {
         guard let app = NSWorkspace.shared.frontmostApplication,
-              app.bundleIdentifier != "dev.lattices.app" else {
+              !LatticesRuntime.isLatticesBundleIdentifier(app.bundleIdentifier) else {
             return nil
         }
 
@@ -2499,115 +2634,20 @@ private extension LatticesApi {
         return (UInt32(wid), app.processIdentifier)
     }
 
+    static func windowEntry(forSession session: String) -> WindowEntry? {
+        if let entry = DesktopModel.shared.windowForSession(session) {
+            return entry
+        }
+
+        return ProcessModel.shared.synthesizeTerminals()
+            .first { $0.tmuxSession == session }
+            .flatMap { instance in
+                instance.windowId.flatMap { DesktopModel.shared.windows[$0] }
+            }
+    }
+
     static func executeWindowPlacement(params: JSON?) throws -> JSON {
-        guard let placement = parsePlacement(from: params?["placement"] ?? params?["position"]) else {
-            throw RouterError.missingParam("placement")
-        }
-
-        let displayIndex = params?["display"]?.intValue
-        var trace: [JSON] = []
-
-        if let wid = params?["wid"]?.uint32Value {
-            guard let entry = DesktopModel.shared.windows[wid] else {
-                throw RouterError.notFound("window \(wid)")
-            }
-            let screen = resolveTargetScreen(for: entry, displayIndex: displayIndex)
-            trace.append(.string("resolved target by wid"))
-            trace.append(.string("placement \(placement.wireValue)"))
-            DispatchQueue.main.async {
-                WindowTiler.tileWindowById(wid: wid, pid: entry.pid, to: placement, on: screen)
-            }
-            return .object([
-                "ok": .bool(true),
-                "target": .string("wid"),
-                "wid": .int(Int(wid)),
-                "app": .string(entry.app),
-                "placement": placement.jsonValue,
-                "trace": .array(trace),
-            ])
-        }
-
-        if let session = params?["session"]?.stringValue {
-            let screen = resolveTargetScreen(
-                for: DesktopModel.shared.windowForSession(session),
-                displayIndex: displayIndex
-            )
-            trace.append(.string("resolved target by session"))
-            trace.append(.string("placement \(placement.wireValue)"))
-
-            if let entry = DesktopModel.shared.windowForSession(session) {
-                DispatchQueue.main.async {
-                    WindowTiler.tileWindowById(wid: entry.wid, pid: entry.pid, to: placement, on: screen)
-                }
-                return .object([
-                    "ok": .bool(true),
-                    "target": .string("session"),
-                    "session": .string(session),
-                    "wid": .int(Int(entry.wid)),
-                    "placement": placement.jsonValue,
-                    "trace": .array(trace),
-                ])
-            }
-
-            let terminal = Preferences.shared.terminal
-            trace.append(.string("session window not in DesktopModel; using terminal fallback"))
-            DispatchQueue.main.async {
-                WindowTiler.tile(session: session, terminal: terminal, to: placement, on: screen)
-            }
-            return .object([
-                "ok": .bool(true),
-                "target": .string("session"),
-                "session": .string(session),
-                "placement": placement.jsonValue,
-                "trace": .array(trace),
-            ])
-        }
-
-        if let app = params?["app"]?.stringValue {
-            let title = params?["title"]?.stringValue
-            guard let entry = DesktopModel.shared.windowForApp(app: app, title: title) else {
-                throw RouterError.notFound("window for app \(app)")
-            }
-            let screen = resolveTargetScreen(for: entry, displayIndex: displayIndex)
-            trace.append(.string("resolved target by app/title match"))
-            trace.append(.string("placement \(placement.wireValue)"))
-            DispatchQueue.main.async {
-                WindowTiler.tileWindowById(wid: entry.wid, pid: entry.pid, to: placement, on: screen)
-            }
-            return .object([
-                "ok": .bool(true),
-                "target": .string("app"),
-                "app": .string(entry.app),
-                "wid": .int(Int(entry.wid)),
-                "placement": placement.jsonValue,
-                "trace": .array(trace),
-            ])
-        }
-
-        if let target = frontmostWindowTarget() {
-            let wid = target.wid
-            let entry = DesktopModel.shared.windows[wid]
-            let screen = resolveTargetScreen(for: entry, displayIndex: displayIndex)
-            trace.append(.string("resolved target by frontmost window"))
-            trace.append(.string("placement \(placement.wireValue)"))
-            DispatchQueue.main.async {
-                WindowTiler.tileWindowById(wid: wid, pid: target.pid, to: placement, on: screen)
-            }
-
-            var response: [String: JSON] = [
-                "ok": .bool(true),
-                "target": .string("frontmost"),
-                "wid": .int(Int(wid)),
-                "placement": placement.jsonValue,
-                "trace": .array(trace),
-            ]
-            if let entry {
-                response["app"] = .string(entry.app)
-            }
-            return .object(response)
-        }
-
-        throw RouterError.custom("Could not resolve a window target for placement")
+        try ActionRuntime.shared.executeWindowPlace(params: params, source: "daemon")
     }
 
     static func executeLayerActivation(params: JSON?) throws -> JSON {

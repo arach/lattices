@@ -1,3 +1,9 @@
+---
+title: Mouse Gestures
+description: Hold a mouse button, draw a shape or direction, release — runs matched actions like a window manager power-user shortcut system.
+order: 4.2
+---
+
 # Mouse Gestures
 
 ## Concept
@@ -30,6 +36,20 @@ Do not add personal shortcuts by changing `MouseGestureConfig.swift`. Add them
 to the user JSON file instead. The Settings UI can open that file from
 **Settings -> Shortcuts -> Mouse Gestures -> Configure...**.
 
+## Lightweight History
+
+Lattices keeps local snapshots of your mouse shortcut config before risky
+changes:
+
+```bash
+~/.lattices/mouse-shortcuts.history/
+```
+
+Snapshots are written before external edits are reloaded and before Settings
+restores defaults or restores a previous snapshot. The newest 40 snapshots are
+kept. Use **History** in Settings to open the folder, or **Undo Last** to
+restore the latest snapshot.
+
 ## Button Names
 
 The config accepts these common button names:
@@ -46,6 +66,10 @@ Normal clicks pass through when a configured button is only being watched for
 drag or shape gestures. Once movement crosses the gesture threshold and matches
 a real gesture, Lattices claims the interaction.
 
+Browser frontmost apps are bypassed so native middle-click, Back, and Forward
+button behavior stays intact. This avoids half-claimed side-button gestures
+accidentally navigating while you are drawing a shape.
+
 ## Trigger Kinds
 
 Rules match one of three trigger kinds:
@@ -58,7 +82,7 @@ Rules match one of three trigger kinds:
 
 Directions are `up`, `down`, `left`, and `right`.
 
-Useful two-movement shapes include:
+Useful shapes include:
 
 | Shape | Motion |
 |---|---|
@@ -70,6 +94,41 @@ Useful two-movement shapes include:
 | `reverse-l-left-down` | Left, then down |
 | `v-shape` | Down, then up |
 | `reverse-v` | Up, then down |
+| `circle` | A loose closed loop |
+
+The circle recognizer is intentionally generous: it looks for broad circular
+motion, a reasonably closed path, and enough turn coverage rather than a
+geometrically perfect circle.
+
+## Default: Screenshot Area Gesture
+
+New default configs include a back-button circle gesture for the macOS
+screenshot area picker (`Command` + `Shift` + `4`):
+
+```json
+{
+  "id": "back-circle-screenshot-area",
+  "enabled": true,
+  "device": "any",
+  "trigger": {
+    "button": "back",
+    "kind": "shape",
+    "shape": "circle"
+  },
+  "action": {
+    "type": "shortcut.send",
+    "shortcut": {
+      "key": "4",
+      "keyCode": 21,
+      "modifiers": ["command", "shift"]
+    }
+  },
+  "visual": {
+    "renderer": "matrix",
+    "theme": "lattices"
+  }
+}
+```
 
 ## Actions
 

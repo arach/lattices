@@ -1,6 +1,9 @@
 import Foundation
 
 enum LatticesRuntime {
+    static let releaseBundleIdentifier = "dev.lattices.app"
+    static let devBundleIdentifier = "dev.lattices.app.dev"
+
     static var cliRoot: String? {
         if let idx = CommandLine.arguments.firstIndex(of: "--lattices-cli-root"),
            CommandLine.arguments.indices.contains(idx + 1) {
@@ -28,6 +31,40 @@ enum LatticesRuntime {
         guard let cliRoot else { return nil }
         let path = cliRoot + "/bin/lattices-app.ts"
         return FileManager.default.fileExists(atPath: path) ? path : nil
+    }
+
+    static var cliExecutablePath: String? {
+        if let cliRoot {
+            let path = cliRoot + "/bin/lattices.ts"
+            if FileManager.default.isExecutableFile(atPath: path) {
+                return path
+            }
+        }
+
+        let candidates = [
+            NSHomeDirectory() + "/.bun/bin/lattices",
+            "/opt/homebrew/bin/lattices",
+            "/usr/local/bin/lattices",
+        ]
+        if let path = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) {
+            return path
+        }
+
+        let resolved = ProcessQuery.shell(["/bin/zsh", "-lc", "command -v lattices 2>/dev/null"])
+        if !resolved.isEmpty, FileManager.default.isExecutableFile(atPath: resolved) {
+            return resolved
+        }
+
+        return nil
+    }
+
+    static var cliExecutableURL: URL? {
+        cliExecutablePath.map { URL(fileURLWithPath: $0) }
+    }
+
+    static var cliShellCommand: String {
+        guard let path = cliExecutablePath else { return "lattices" }
+        return terminalShellEscape(path)
     }
 
     static var bunPath: String? {
@@ -92,8 +129,23 @@ enum LatticesRuntime {
         isDevBuild ? "DEV" : "RELEASE"
     }
 
+    static func isLatticesBundleIdentifier(_ bundleIdentifier: String?) -> Bool {
+        bundleIdentifier == releaseBundleIdentifier || bundleIdentifier == devBundleIdentifier
+    }
+
     private static func hasAppHelper(in root: String) -> Bool {
         FileManager.default.fileExists(atPath: root + "/bin/lattices-app.ts")
+    }
+
+    private static func terminalShellEscape(_ value: String) -> String {
+        var escaped = ""
+        for character in value {
+            if " \\\"$`!&;()[]{}<>|*?".contains(character) {
+                escaped.append("\\")
+            }
+            escaped.append(character)
+        }
+        return escaped
     }
 
     private static func normalizedInfoValue(_ key: String) -> String? {

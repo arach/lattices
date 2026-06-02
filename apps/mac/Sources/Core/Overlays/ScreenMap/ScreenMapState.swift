@@ -3077,7 +3077,7 @@ final class WindowBezel {
         }
 
         guard let frontApp = NSWorkspace.shared.frontmostApplication,
-              frontApp.bundleIdentifier != "dev.lattices.app" else { return }
+              !LatticesRuntime.isLatticesBundleIdentifier(frontApp.bundleIdentifier) else { return }
 
         let pid = frontApp.processIdentifier
 
