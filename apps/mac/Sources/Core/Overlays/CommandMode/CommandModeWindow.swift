@@ -108,6 +108,7 @@ final class CommandModeWindow {
         panel.becomesKeyOnlyIfNeeded = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isReleasedWhenClosed = false
+        panel.sharingType = .readOnly
 
         let cornerRadius: CGFloat = 14
 

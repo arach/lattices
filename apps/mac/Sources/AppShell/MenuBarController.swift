@@ -43,6 +43,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         guard let button = statusItem?.button else { return }
         let popover = makePopover()
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        popover.contentViewController?.view.window?.sharingType = .readOnly
         popover.contentViewController?.view.window?.makeKey()
     }
 
