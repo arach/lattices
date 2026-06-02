@@ -2207,6 +2207,61 @@ final class LatticesApi {
             }
         ))
 
+        api.register(Endpoint(
+            method: "handsoff.run",
+            description: "Run a transcript through the real hands-off LLM pipeline, silently and dry-run by default. Same code path voice uses. Optional `snapshot` override feeds the model a synthetic desktop. No actions are executed; no chat log or handsoff.jsonl pollution. Dev builds also write a rich trace to ~/.lattices/handsoff-debug.jsonl.",
+            access: .read,
+            params: [
+                Param(name: "text", type: "string", required: true, description: "Transcript to process"),
+                Param(name: "snapshot", type: "object", required: false, description: "Override snapshot. If omitted, the live buildSnapshot() is used."),
+            ],
+            returns: .custom("Worker response: { data: { actions, spoken, _meta }, ... }"),
+            handler: { params in
+                guard let text = params?["text"]?.stringValue, !text.isEmpty else {
+                    throw RouterError.missingParam("text")
+                }
+
+                // Decode optional snapshot override (JSON.object → [String: Any])
+                var snapshotOverride: [String: Any]? = nil
+                if let snapshotJson = params?["snapshot"],
+                   case .object = snapshotJson {
+                    let data = try JSONEncoder().encode(snapshotJson)
+                    if let any = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                        snapshotOverride = any
+                    }
+                }
+
+                let semaphore = DispatchSemaphore(value: 0)
+                var workerResponse: [String: Any]?
+                var rpcError: Error?
+
+                HandsOffSession.shared.runRpc(
+                    transcript: text,
+                    snapshotOverride: snapshotOverride
+                ) { result in
+                    switch result {
+                    case .success(let response): workerResponse = response
+                    case .failure(let err): rpcError = err
+                    }
+                    semaphore.signal()
+                }
+
+                // Generous timeout — LLM turns can be several seconds.
+                let timeout = DispatchTime.now() + .seconds(60)
+                if semaphore.wait(timeout: timeout) == .timedOut {
+                    throw RouterError.custom("handsoff.run: timed out waiting for worker")
+                }
+
+                if let rpcError { throw rpcError }
+                guard let workerResponse else {
+                    throw RouterError.custom("handsoff.run: empty response")
+                }
+
+                let data = try JSONSerialization.data(withJSONObject: workerResponse)
+                return try JSONDecoder().decode(JSON.self, from: data)
+            }
+        ))
+
         // ── Meta endpoint ───────────────────────────────────────
 
         // ── Mouse Finder ────────────────────────────────────────
