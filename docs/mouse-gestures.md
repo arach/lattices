@@ -36,6 +36,20 @@ Do not add personal shortcuts by changing `MouseGestureConfig.swift`. Add them
 to the user JSON file instead. The Settings UI can open that file from
 **Settings -> Shortcuts -> Mouse Gestures -> Configure...**.
 
+## Lightweight History
+
+Lattices keeps local snapshots of your mouse shortcut config before risky
+changes:
+
+```bash
+~/.lattices/mouse-shortcuts.history/
+```
+
+Snapshots are written before external edits are reloaded and before Settings
+restores defaults or restores a previous snapshot. The newest 40 snapshots are
+kept. Use **History** in Settings to open the folder, or **Undo Last** to
+restore the latest snapshot.
+
 ## Button Names
 
 The config accepts these common button names:
@@ -51,6 +65,10 @@ The config accepts these common button names:
 Normal clicks pass through when a configured button is only being watched for
 drag or shape gestures. Once movement crosses the gesture threshold and matches
 a real gesture, Lattices claims the interaction.
+
+Browser frontmost apps are bypassed so native middle-click, Back, and Forward
+button behavior stays intact. This avoids half-claimed side-button gestures
+accidentally navigating while you are drawing a shape.
 
 ## Trigger Kinds
 

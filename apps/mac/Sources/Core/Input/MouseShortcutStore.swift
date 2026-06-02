@@ -9,6 +9,7 @@ final class MouseShortcutStore: ObservableObject {
     @Published private(set) var config: MouseShortcutConfig
 
     let configURL: URL
+    let historyDirectoryURL: URL
 
     /// Lock-protected mirror of `config` for tap-thread reads. The mouse event
     /// tap fires on a non-main thread (EventTapThread) and reads
@@ -19,14 +20,17 @@ final class MouseShortcutStore: ObservableObject {
     private let stateLock = NSLock()
     private var snapshot: MouseShortcutConfig
     private var lastLoadedModifiedDate: Date?
+    private let maxHistoryEntries = 40
 
     private init() {
         let dir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".lattices")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         self.configURL = dir.appendingPathComponent("mouse-shortcuts.json")
+        self.historyDirectoryURL = dir.appendingPathComponent("mouse-shortcuts.history", isDirectory: true)
         self.config = .defaults
         self.snapshot = .defaults
+        try? FileManager.default.createDirectory(at: historyDirectoryURL, withIntermediateDirectories: true)
         ensureConfigFile()
         reload()
     }
@@ -58,6 +62,14 @@ final class MouseShortcutStore: ObservableObject {
     var summaryLines: [String] {
         stateLock.lock(); defer { stateLock.unlock() }
         return snapshot.rules.filter(\.enabled).map { "\($0.trigger.triggerName) -> \($0.action.type.rawValue)" }
+    }
+
+    var historySummaryLines: [String] {
+        historyFiles().prefix(5).map { $0.deletingPathExtension().lastPathComponent }
+    }
+
+    var hasHistory: Bool {
+        !historyFiles().isEmpty
     }
 
     func visualHint(for button: MouseShortcutButton) -> MouseShortcutVisualDefinition? {
@@ -111,11 +123,12 @@ final class MouseShortcutStore: ObservableObject {
         }
         stateLock.unlock()
         guard needsReload else { return }
+        checkpointSnapshot(reason: "external-edit")
         reload()
     }
 
     func restoreDefaults() {
-        write(config: .defaults)
+        write(config: .defaults, checkpointReason: "restore-defaults")
         reload()
         DiagnosticLog.shared.info("Mouse shortcuts restored to defaults")
     }
@@ -123,6 +136,28 @@ final class MouseShortcutStore: ObservableObject {
     func openConfiguration() {
         ensureConfigFile()
         NSWorkspace.shared.open(configURL)
+    }
+
+    func openHistory() {
+        try? FileManager.default.createDirectory(at: historyDirectoryURL, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(historyDirectoryURL)
+    }
+
+    func restoreLatestHistory() {
+        guard let latest = historyFiles().first,
+              let data = FileManager.default.contents(atPath: latest.path) else {
+            DiagnosticLog.shared.warn("MouseShortcutStore: no mouse shortcut history to restore")
+            return
+        }
+
+        do {
+            let restored = try JSONDecoder().decode(MouseShortcutConfig.self, from: data)
+            write(config: restored, checkpointReason: "restore-history")
+            reload()
+            DiagnosticLog.shared.info("Mouse shortcuts restored from \(latest.lastPathComponent)")
+        } catch {
+            DiagnosticLog.shared.error("MouseShortcutStore: failed to restore \(latest.lastPathComponent) - \(error.localizedDescription)")
+        }
     }
 
     func match(for event: MouseShortcutTriggerEvent) -> MouseShortcutMatchResult? {
@@ -154,17 +189,86 @@ final class MouseShortcutStore: ObservableObject {
         return nil
     }
 
-    private func write(config: MouseShortcutConfig) {
+    private func write(config: MouseShortcutConfig, checkpointReason: String? = nil) {
+        if let checkpointReason {
+            checkpointSnapshot(reason: checkpointReason)
+        }
+
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         guard let data = try? encoder.encode(config) else { return }
         try? data.write(to: configURL, options: .atomic)
         let newDate = modifiedDate()
-        stateLock.lock(); lastLoadedModifiedDate = newDate; stateLock.unlock()
+        stateLock.lock()
+        snapshot = config
+        lastLoadedModifiedDate = newDate
+        stateLock.unlock()
+    }
+
+    private func checkpointSnapshot(reason: String) {
+        stateLock.lock()
+        let configToSave = snapshot
+        stateLock.unlock()
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        guard let data = try? encoder.encode(configToSave) else { return }
+
+        try? FileManager.default.createDirectory(at: historyDirectoryURL, withIntermediateDirectories: true)
+        let timestamp = Self.historyTimestampString(from: Date())
+        let safeReason = reason
+            .lowercased()
+            .replacingOccurrences(of: "[^a-z0-9_-]+", with: "-", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        let filename = "\(timestamp)-\(safeReason.isEmpty ? "snapshot" : safeReason).json"
+        let destination = historyDirectoryURL.appendingPathComponent(filename)
+
+        do {
+            try data.write(to: destination, options: .atomic)
+            pruneHistory()
+        } catch {
+            DiagnosticLog.shared.warn("MouseShortcutStore: failed to checkpoint mouse shortcuts - \(error.localizedDescription)")
+        }
+    }
+
+    private func historyFiles() -> [URL] {
+        guard let urls = try? FileManager.default.contentsOfDirectory(
+            at: historyDirectoryURL,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return []
+        }
+
+        return urls
+            .filter { $0.pathExtension.lowercased() == "json" }
+            .sorted { lhs, rhs in
+                let lhsDate = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                let rhsDate = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                if lhsDate == rhsDate {
+                    return lhs.lastPathComponent > rhs.lastPathComponent
+                }
+                return lhsDate > rhsDate
+            }
+    }
+
+    private func pruneHistory() {
+        let stale = historyFiles().dropFirst(maxHistoryEntries)
+        for url in stale {
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 
     private func modifiedDate() -> Date? {
         let attrs = try? FileManager.default.attributesOfItem(atPath: configURL.path)
         return attrs?[.modificationDate] as? Date
+    }
+
+    private static func historyTimestampString(from date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyyMMdd-HHmmss-SSS"
+        return formatter.string(from: date)
     }
 }

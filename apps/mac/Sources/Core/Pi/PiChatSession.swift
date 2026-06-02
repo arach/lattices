@@ -1569,6 +1569,7 @@ final class PiChatSession: ObservableObject {
             "settingsFiles": [
                 "workspace": "\(NSHomeDirectory())/.lattices/workspace.json",
                 "mouseShortcuts": MouseShortcutStore.shared.configURL.path,
+                "mouseShortcutsHistory": MouseShortcutStore.shared.historyDirectoryURL.path,
                 "snapZones": "\(NSHomeDirectory())/.lattices/snap-zones.json",
                 "ocrDatabase": "\(NSHomeDirectory())/.lattices/ocr.db",
                 "diagnostics": "\(NSHomeDirectory())/.lattices/lattices.log",
@@ -1600,6 +1601,8 @@ final class PiChatSession: ObservableObject {
         return [
             "enabled": prefs.mouseGesturesEnabled,
             "configFile": store.configURL.path,
+            "historyDirectory": store.historyDirectoryURL.path,
+            "recentHistory": store.historySummaryLines,
             "tuning": [
                 "dragThresholdPx": Double(store.tuning.dragThreshold),
                 "holdTolerancePx": Double(store.tuning.holdTolerance),
@@ -1647,6 +1650,7 @@ final class PiChatSession: ObservableObject {
         Mouse shortcuts:
         - Middle-click shortcuts are \(prefs.mouseGesturesEnabled ? "enabled" : "disabled").
         - Config file: \(store.configURL.path)
+        - History: \(store.historyDirectoryURL.path)
         - Drag threshold: \(Int(store.tuning.dragThreshold)) px; hold tolerance: \(Int(store.tuning.holdTolerance)) px; axis bias: \(String(format: "%.1f", Double(store.tuning.axisBias))).
         Active mappings:
         \(mappingText)
