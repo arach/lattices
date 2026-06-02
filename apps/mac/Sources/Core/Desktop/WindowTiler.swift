@@ -243,6 +243,49 @@ enum TilePosition: String, CaseIterable, Identifiable {
         }
     }
 
+    var shortCode: String {
+        switch self {
+        case .maximize:    return "MAX"
+        case .center:      return "C"
+        case .left:        return "L"
+        case .right:       return "R"
+        case .top:         return "T"
+        case .bottom:      return "B"
+        case .topLeft:     return "TL"
+        case .topRight:    return "TR"
+        case .bottomLeft:  return "BL"
+        case .bottomRight: return "BR"
+        case .leftThird:   return "L3"
+        case .centerThird: return "C3"
+        case .rightThird:  return "R3"
+        case .topLeftThird:      return "TL3"
+        case .topCenterThird:    return "TC3"
+        case .topRightThird:     return "TR3"
+        case .bottomLeftThird:   return "BL3"
+        case .bottomCenterThird: return "BC3"
+        case .bottomRightThird:  return "BR3"
+        case .firstFourth:  return "Q1"
+        case .secondFourth: return "Q2"
+        case .thirdFourth:  return "Q3"
+        case .lastFourth:   return "Q4"
+        case .topFirstFourth:    return "TQ1"
+        case .topSecondFourth:   return "TQ2"
+        case .topThirdFourth:    return "TQ3"
+        case .topLastFourth:     return "TQ4"
+        case .bottomFirstFourth:  return "BQ1"
+        case .bottomSecondFourth: return "BQ2"
+        case .bottomThirdFourth:  return "BQ3"
+        case .bottomLastFourth:   return "BQ4"
+        case .topThird:    return "T3"
+        case .middleThird: return "M3"
+        case .bottomThird: return "B3"
+        case .leftQuarter:   return "LQ"
+        case .rightQuarter:  return "RQ"
+        case .topQuarter:    return "TQ"
+        case .bottomQuarter: return "BQ"
+        }
+    }
+
     var icon: String {
         switch self {
         case .left:        return "rectangle.lefthalf.filled"
@@ -1025,6 +1068,15 @@ enum WindowTiler {
         let wid: UInt32
     }
 
+    struct TileInference {
+        let position: TilePosition
+        let isExact: Bool
+
+        var displayCode: String {
+            isExact ? position.shortCode : position.shortCode.lowercased()
+        }
+    }
+
     /// Get spatial info for a session's terminal window (space, display, tile position)
     static func getWindowInfo(session: String, terminal: Terminal) -> WindowInfo? {
         let tag = Terminal.windowTag(for: session)
@@ -1064,8 +1116,9 @@ enum WindowTiler {
         )
     }
 
-    /// Infer tile position from a window frame + screen without re-querying CGWindowList
-    static func inferTilePosition(frame: WindowFrame, screen: NSScreen) -> TilePosition? {
+    /// Infer the nearest tile position from a window frame + screen without re-querying CGWindowList.
+    /// Uppercase display codes are exact; lowercase codes mean the window is close to that slot.
+    static func inferTilePlacement(frame: WindowFrame, screen: NSScreen) -> TileInference? {
         let visible = screen.visibleFrame
         let full = screen.frame
 
@@ -1077,16 +1130,80 @@ enum WindowTiler {
         let fw = frame.w / visible.width
         let fh = frame.h / visible.height
 
-        let tolerance: CGFloat = 0.05
+        return inferTilePlacement(fx: fx, fy: fy, fw: fw, fh: fh)
+    }
+
+    /// Infer tile position from a window frame + screen without re-querying CGWindowList
+    static func inferTilePosition(frame: WindowFrame, screen: NSScreen) -> TilePosition? {
+        guard let inference = inferTilePlacement(frame: frame, screen: screen),
+              inference.isExact else { return nil }
+        return inference.position
+    }
+
+    private static func inferTilePlacement(
+        fx: CGFloat,
+        fy: CGFloat,
+        fw: CGFloat,
+        fh: CGFloat
+    ) -> TileInference? {
+        let exactTolerance: CGFloat = 0.05
+        let approximateTolerance: CGFloat = 0.12
+        var nearest: (position: TilePosition, score: CGFloat)?
 
         for position in TilePosition.allCases {
             let (px, py, pw, ph) = position.rect
-            if abs(fx - CGFloat(px)) < tolerance && abs(fy - CGFloat(py)) < tolerance &&
-               abs(fw - CGFloat(pw)) < tolerance && abs(fh - CGFloat(ph)) < tolerance {
-                return position
+            let score = max(
+                abs(fx - CGFloat(px)),
+                abs(fy - CGFloat(py)),
+                abs(fw - CGFloat(pw)),
+                abs(fh - CGFloat(ph))
+            )
+            if score < exactTolerance {
+                return TileInference(position: position, isExact: true)
+            }
+            if nearest == nil || score < nearest!.score {
+                nearest = (position, score)
             }
         }
-        return nil
+
+        if let nearest,
+           nearest.score < approximateTolerance,
+           nearest.position != .center {
+            return TileInference(position: nearest.position, isExact: false)
+        }
+
+        return inferBiasedPlacement(fx: fx, fy: fy, fw: fw, fh: fh)
+    }
+
+    private static func inferBiasedPlacement(
+        fx: CGFloat,
+        fy: CGFloat,
+        fw: CGFloat,
+        fh: CGFloat
+    ) -> TileInference? {
+        let centerX = fx + fw / 2
+        let centerY = fy + fh / 2
+
+        let left = centerX < 0.42
+        let right = centerX > 0.58
+        let top = centerY < 0.42
+        let bottom = centerY > 0.58
+
+        let position: TilePosition?
+        switch (left, right, top, bottom) {
+        case (true, false, true, false): position = .topLeft
+        case (false, true, true, false): position = .topRight
+        case (true, false, false, true): position = .bottomLeft
+        case (false, true, false, true): position = .bottomRight
+        case (true, false, false, false): position = .left
+        case (false, true, false, false): position = .right
+        case (false, false, true, false): position = .top
+        case (false, false, false, true): position = .bottom
+        default: position = nil
+        }
+
+        guard let position else { return nil }
+        return TileInference(position: position, isExact: false)
     }
 
     /// Infer tile position from a window's current bounds relative to its screen
