@@ -98,6 +98,7 @@ struct OverlayPanelShell {
         panel.hasShadow = config.hasShadow
         panel.hidesOnDeactivate = config.hidesOnDeactivate
         panel.isReleasedWhenClosed = config.isReleasedWhenClosed
+        panel.sharingType = .readOnly
         panel.isMovableByWindowBackground = config.isMovableByWindowBackground
         panel.collectionBehavior = config.collectionBehavior
         panel.activatesOnMouseDown = config.activatesOnMouseDown
