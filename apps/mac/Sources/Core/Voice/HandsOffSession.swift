@@ -120,6 +120,11 @@ final class HandsOffSession: ObservableObject {
     /// JSONL log for full turn data — ~/.lattices/handsoff.jsonl
     private let turnLogPath = NSHomeDirectory() + "/.lattices/handsoff.jsonl"
 
+    /// Dev-only rich trace log written on every `runRpc` call.
+    /// Captures snapshot source, request cmd, raw worker response, and timings
+    /// so the studio's MethodInspector can unpack the whole loop.
+    private let rpcDebugLogPath = NSHomeDirectory() + "/.lattices/handsoff-debug.jsonl"
+
     private init() {}
 
     // MARK: - Chat Log
@@ -281,6 +286,11 @@ final class HandsOffSession: ObservableObject {
     // MARK: - Worker communication
 
     private var pendingCallback: (([String: Any]) -> Void)?
+    /// When true, the worker response should be returned to the callback
+    /// WITHOUT touching live state — no chatLog append, no executeActions,
+    /// no @Published mutations, no state-machine reset. Set by RPC paths
+    /// (e.g. `runRpc`); the audio-driven voice path leaves this false.
+    private var pendingCallbackDryRun = false
     private var turnTimeoutWork: DispatchWorkItem?
     private static let turnTimeoutSeconds: TimeInterval = 30
 
@@ -293,8 +303,13 @@ final class HandsOffSession: ObservableObject {
         }
     }
 
-    private func sendToWorkerWithCallback(_ dict: [String: Any], callback: @escaping ([String: Any]) -> Void) {
+    private func sendToWorkerWithCallback(
+        _ dict: [String: Any],
+        dryRun: Bool = false,
+        callback: @escaping ([String: Any]) -> Void
+    ) {
         pendingCallback = callback
+        pendingCallbackDryRun = dryRun
         sendToWorker(dict)
     }
 
@@ -319,7 +334,9 @@ final class HandsOffSession: ObservableObject {
             let spoken = dataObj?["spoken"] as? String
             let actions = dataObj?["actions"] as? [[String: Any]]
             let cb = pendingCallback
+            let isDryRun = pendingCallbackDryRun
             pendingCallback = nil
+            pendingCallbackDryRun = false
 
             // Build chat entries off-main
             var chatEntries: [(VoiceChatEntry.Role, String)] = []
@@ -338,22 +355,24 @@ final class HandsOffSession: ObservableObject {
             }
 
             // Single dispatch — all @Published mutations in one block.
-            // The pending callback also mutates @Published state, so it must
-            // run on main with the rest of the turn completion.
+            // For dry-run RPC turns (studio etc.), skip every side effect
+            // and just fire the callback. The voice path runs the full body.
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
-                if let spoken { self.lastResponse = spoken }
-                for (role, text) in chatEntries {
-                    self.chatLog.append(VoiceChatEntry(timestamp: Date(), role: role, text: text, detail: nil))
+                if !isDryRun {
+                    if let spoken { self.lastResponse = spoken }
+                    for (role, text) in chatEntries {
+                        self.chatLog.append(VoiceChatEntry(timestamp: Date(), role: role, text: text, detail: nil))
+                    }
+                    if self.chatLog.count > self.maxChatEntries {
+                        self.chatLog.removeFirst(self.chatLog.count - self.maxChatEntries)
+                    }
+                    if let actions, !actions.isEmpty {
+                        self.recentActions = actions
+                        self.executeActions(actions)
+                    }
+                    self.state = .idle
                 }
-                if self.chatLog.count > self.maxChatEntries {
-                    self.chatLog.removeFirst(self.chatLog.count - self.maxChatEntries)
-                }
-                if let actions, !actions.isEmpty {
-                    self.recentActions = actions
-                    self.executeActions(actions)
-                }
-                self.state = .idle
                 cb?(json)
             }
         }
@@ -496,6 +515,115 @@ final class HandsOffSession: ObservableObject {
                 }
             }
         )
+    }
+
+    // MARK: - RPC entry (silent, dry-run)
+
+    enum RpcError: Error, LocalizedError {
+        case busy
+        case workerUnavailable
+        var errorDescription: String? {
+            switch self {
+            case .busy:
+                return "Hands-off session is busy — try again once the current turn finishes."
+            case .workerUnavailable:
+                return "Hands-off worker is unavailable (bun missing or script not found)."
+            }
+        }
+    }
+
+    /// Run a transcript through the same worker pipeline voice uses, but
+    /// silently — no state-machine change, no TTS, no chat-log append, no
+    /// row in `handsoff.jsonl`, no action execution. Optional snapshot
+    /// override feeds the LLM a synthetic desktop (for studio mocks).
+    ///
+    /// In dev builds, every call writes a rich trace to
+    /// `~/.lattices/handsoff-debug.jsonl` that the studio can unpack.
+    func runRpc(
+        transcript: String,
+        snapshotOverride: [String: Any]? = nil,
+        completion: @escaping (Result<[String: Any], Error>) -> Void
+    ) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else {
+                completion(.failure(RpcError.workerUnavailable))
+                return
+            }
+
+            // Refuse to step on a live voice turn.
+            if self.state != .idle || self.pendingCallback != nil {
+                completion(.failure(RpcError.busy))
+                return
+            }
+
+            guard self.startWorker() else {
+                completion(.failure(RpcError.workerUnavailable))
+                return
+            }
+
+            let snapshot = snapshotOverride ?? self.buildSnapshot()
+            let snapshotSource = snapshotOverride == nil ? "live" : "override"
+
+            let turnCmd: [String: Any] = [
+                "cmd": "turn",
+                "transcript": transcript,
+                "snapshot": snapshot,
+                "history": [],
+            ]
+
+            let startedAt = Date()
+            DiagnosticLog.shared.info(
+                "HandsOff.RPC: ⏱ '\(transcript)' (snapshot: \(snapshotSource))"
+            )
+
+            self.sendToWorkerWithCallback(turnCmd, dryRun: true) { [weak self] response in
+                let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
+                if LatticesRuntime.isDevBuild {
+                    self?.writeRpcDebugArtifact(
+                        transcript: transcript,
+                        snapshotSource: snapshotSource,
+                        snapshot: snapshot,
+                        request: turnCmd,
+                        response: response,
+                        durationMs: durationMs
+                    )
+                }
+                completion(.success(response))
+            }
+        }
+    }
+
+    private func writeRpcDebugArtifact(
+        transcript: String,
+        snapshotSource: String,
+        snapshot: [String: Any],
+        request: [String: Any],
+        response: [String: Any],
+        durationMs: Int
+    ) {
+        let record: [String: Any] = [
+            "kind": "handsoff.run",
+            "ts": ISO8601DateFormatter().string(from: Date()),
+            "transcript": transcript,
+            "snapshotSource": snapshotSource,
+            "snapshot": snapshot,
+            "request": request,
+            "response": response,
+            "durationMs": durationMs,
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: record),
+              var line = String(data: data, encoding: .utf8) else { return }
+        line += "\n"
+        if let handle = FileHandle(forWritingAtPath: rpcDebugLogPath) {
+            handle.seekToEndOfFile()
+            handle.write(line.data(using: .utf8)!)
+            handle.closeFile()
+        } else {
+            FileManager.default.createFile(
+                atPath: rpcDebugLogPath,
+                contents: line.data(using: .utf8)
+            )
+        }
     }
 
     /// Deliver transcript exactly once — called from both session.final and completion.
