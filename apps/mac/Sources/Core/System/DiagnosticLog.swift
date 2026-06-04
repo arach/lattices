@@ -216,7 +216,7 @@ final class DiagnosticWindow {
             defer: false
         )
         w.contentViewController = hosting
-        w.title = "Lattices Diagnostics"
+        w.title = "Lattices Activity Log"
         w.titlebarAppearsTransparent = true
         w.isMovableByWindowBackground = true
         w.level = .floating
@@ -245,7 +245,7 @@ final class DiagnosticWindow {
 
         // Startup log
         let diag = DiagnosticLog.shared
-        diag.info("Diagnostics opened")
+        diag.info("Activity Log opened")
         diag.info("Terminal: \(Preferences.shared.terminal.rawValue) (\(Preferences.shared.terminal.bundleId))")
         diag.info("Installed: \(Terminal.installed.map(\.rawValue).joined(separator: ", "))")
 
@@ -283,7 +283,7 @@ struct DiagnosticOverlayView: View {
         VStack(spacing: 0) {
             // Header
             HStack {
-                Text("DIAGNOSTICS")
+                Text("ACTIVITY LOG")
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .foregroundColor(.green.opacity(0.8))
                 Spacer()

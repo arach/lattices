@@ -2828,7 +2828,7 @@ struct SettingsContentView: View {
                         ScreenMapWindowController.shared.showPage(.docs)
                     }
 
-                    footerActionButton(icon: "stethoscope", label: "Diagnostics") {
+                    footerActionButton(icon: "list.bullet.rectangle", label: "Activity Log") {
                         DiagnosticWindow.shared.show()
                     }
                 }
@@ -3463,7 +3463,7 @@ struct SettingsContentView: View {
                     HStack(spacing: 8) {
                         docsLinkButton(icon: "doc.text", label: "Config format", file: "config.md")
                         docsLinkButton(icon: "book", label: "Full concepts", file: "concepts.md")
-                        footerActionButton(icon: "stethoscope", label: "Diagnostics") {
+                        footerActionButton(icon: "list.bullet.rectangle", label: "Activity Log") {
                             DiagnosticWindow.shared.show()
                         }
                     }

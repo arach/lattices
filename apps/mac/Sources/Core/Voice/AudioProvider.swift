@@ -39,6 +39,7 @@ final class AudioLayer: ObservableObject {
     @Published var matchConfidence: Double = 0
     @Published var executionResult: String?   // "ok" or error message
     @Published var executionData: JSON?       // Full result data from intent execution
+    @Published var executionError: String?    // Set when an intent failed to run, so the UI can flag it
     @Published var provider: (any AudioProvider)?
     @Published var providerName: String = "none"
     @Published var agentResponse: AgentResponse?
@@ -205,8 +206,9 @@ final class AudioLayer: ObservableObject {
         didExecuteIntent = true
         let matcher = PhraseMatcher.shared
 
-        // Clear previous agent response
+        // Clear previous agent response + any stale failure flag
         agentResponse = nil
+        executionError = nil
 
         if shouldAnswerWithAssistant(transcription.text) {
             DiagnosticLog.shared.info("AudioLayer: question-like voice request, asking Assistant provider")
@@ -291,29 +293,81 @@ final class AudioLayer: ObservableObject {
             }
 
             DiagnosticLog.shared.info("AudioLayer: Assistant resolved → \(resolved.intent) \(resolved.slots)")
-            self.matchedIntent = resolved.intent
-            self.matchedSlots = resolved.slots.reduce(into: [:]) { dict, pair in
+            self.runResolved(resolved, transcript: transcription.text, allowRepair: true)
+        }
+    }
+
+    /// Normalize + validate + execute an AI-resolved intent. On failure, fires one
+    /// best-effort repair pass (a second model call constrained to the catalog) before
+    /// surfacing the error. `allowRepair` guards against looping on the repaired output.
+    private func runResolved(_ resolved: ResolvedIntent, transcript: String, allowRepair: Bool) {
+        do {
+            // Normalize + validate the AI's output against the catalog before running.
+            // Maps shorthand (tl→top-left, grid-2x2→distribute) and rejects values the
+            // executor would silently fail on, surfacing a precise message instead.
+            let normalized = try PhraseMatcher.shared.normalizeResolved(
+                intentName: resolved.intent,
+                slots: resolved.slots
+            )
+            if normalized.intent != resolved.intent {
+                DiagnosticLog.shared.info("AudioLayer: Assistant intent normalized \(resolved.intent) → \(normalized.intent)")
+            }
+
+            self.matchedIntent = normalized.intent
+            self.matchedSlots = normalized.slots.reduce(into: [:]) { dict, pair in
                 dict[pair.key] = pair.value.stringValue ?? "\(pair.value)"
             }
 
             let intentMatch = IntentMatch(
-                intentName: resolved.intent,
-                slots: resolved.slots,
+                intentName: normalized.intent,
+                slots: normalized.slots,
                 confidence: 0.8,
                 matchedPhrase: "assistant-provider"
             )
 
-            do {
-                let execResult = try PhraseMatcher.shared.execute(intentMatch)
-                self.executionResult = self.voiceResultSummary(for: intentMatch, result: execResult)
-                self.executionData = execResult
-                DiagnosticLog.shared.info("AudioLayer: Assistant-resolved executed → \(self.executionResult ?? "\(execResult)")")
-            } catch {
-                self.executionResult = error.localizedDescription
-                self.executionData = nil
-                DiagnosticLog.shared.info("AudioLayer: Assistant-resolved execution error — \(error.localizedDescription)")
+            let execResult = try PhraseMatcher.shared.execute(intentMatch)
+            self.executionError = nil
+            self.executionResult = self.voiceResultSummary(for: intentMatch, result: execResult)
+            self.executionData = execResult
+            DiagnosticLog.shared.info("AudioLayer: Assistant-resolved executed → \(self.executionResult ?? "\(execResult)")")
+        } catch {
+            let message = error.localizedDescription
+
+            // Second-chance repair: hand the model the exact failure + valid vocabulary
+            // and let it correct itself once before we give up and surface the error.
+            if allowRepair {
+                DiagnosticLog.shared.info("AudioLayer: Assistant-resolved failed (\(message)) — attempting repair pass")
+                self.executionResult = "fixing..."
+                PiChatSession.shared.repairVoiceIntent(
+                    transcript: transcript,
+                    failedIntent: resolved.intent,
+                    failedSlots: resolved.slots,
+                    error: message
+                ) { [weak self] repaired in
+                    guard let self else { return }
+                    guard let repaired else {
+                        self.reportExecutionFailure(resolved, message: message)
+                        return
+                    }
+                    DiagnosticLog.shared.info("AudioLayer: repair pass → \(repaired.intent) \(repaired.slots)")
+                    self.runResolved(repaired, transcript: transcript, allowRepair: false)
+                }
+                return
             }
+
+            self.reportExecutionFailure(resolved, message: message)
         }
+    }
+
+    private func reportExecutionFailure(_ resolved: ResolvedIntent, message: String) {
+        matchedIntent = resolved.intent
+        matchedSlots = resolved.slots.reduce(into: [:]) { dict, pair in
+            dict[pair.key] = pair.value.stringValue ?? "\(pair.value)"
+        }
+        executionError = message
+        executionResult = "Couldn't run: \(message)"
+        executionData = nil
+        DiagnosticLog.shared.info("AudioLayer: Assistant-resolved execution error — \(message)")
     }
 
     private func assistantQuestion(transcription: Transcription) {

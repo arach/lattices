@@ -406,9 +406,9 @@ enum CommandBuilder {
 
         commands.append(PaletteCommand(
             id: "app-diagnostics",
-            title: "Diagnostics",
-            subtitle: "View logs and debug info",
-            icon: "stethoscope",
+            title: "Activity Log",
+            subtitle: "View logs, events, and diagnostics",
+            icon: "list.bullet.rectangle",
             category: .app,
             badge: nil,
             action: { DiagnosticWindow.shared.show() }

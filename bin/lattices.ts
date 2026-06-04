@@ -2702,7 +2702,7 @@ Usage:
   lattices mouse              Find mouse — sonar pulse at cursor position
   lattices mouse summon       Summon mouse to screen center
   lattices daemon status      Show daemon status
-  lattices diag [limit]       Show diagnostic log entries
+  lattices logs [limit]       Show activity log entries (aliases: log, activity, diag)
   lattices app                Launch the menu bar companion app
   lattices app update         Download the latest menu bar app and relaunch
   lattices app build          Rebuild the menu bar app
@@ -3246,6 +3246,9 @@ switch (command) {
     break;
   case "diag":
   case "diagnostics":
+  case "log":
+  case "logs":
+  case "activity":
     await diagCommand(args[1]);
     break;
   case "scan":

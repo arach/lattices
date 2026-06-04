@@ -215,6 +215,7 @@ final class VoiceCommandState: ObservableObject {
     @Published var intentName: String?
     @Published var intentSlots: [String: String] = [:]
     @Published var executionResult: String?
+    @Published var executionError: String?   // Non-nil when the last intent failed to run
     @Published var resultItems: [ResultItem] = []
     @Published var resultSummary: String = ""
 
@@ -269,6 +270,7 @@ final class VoiceCommandState: ObservableObject {
         intentName = nil
         intentSlots = [:]
         executionResult = nil
+        executionError = nil
         resultItems = []
         resultSummary = ""
         agentResponse = nil
@@ -281,7 +283,13 @@ final class VoiceCommandState: ObservableObject {
                 guard let self else { return }
                 let start = min(self.logSnapshot, entries.count)
                 let newLines = entries.suffix(from: start).map { $0.message }
-                if !newLines.isEmpty {
+                guard !newLines.isEmpty, newLines != self.logLines else { return }
+                // Defer the @Published mutation to a fresh run-loop turn. Writing it
+                // synchronously here re-enters VoiceCommandState.objectWillChange while
+                // DiagnosticLog's publish is still holding its os_unfair_lock, which
+                // deadlocks the main thread (the lock is non-recursive).
+                DispatchQueue.main.async {
+                    guard newLines != self.logLines else { return }
                     self.logLines = newLines
                 }
             }
@@ -412,6 +420,9 @@ final class VoiceCommandState: ObservableObject {
             if let resp = audio.agentResponse {
                 self.agentResponse = resp
             }
+
+            // Mirror any execution failure so the UI can flag it
+            self.executionError = audio.executionError
         }
 
         func poll() {
@@ -445,6 +456,7 @@ final class VoiceCommandState: ObservableObject {
                 || result == "Transcribing..."
                 || result == "thinking..."
                 || result == "searching..."
+                || result == "fixing..."
 
             if stillWorking {
                 if let result { self.executionResult = result }
@@ -654,7 +666,7 @@ struct VoiceCommandView: View {
             case .listening:
                 ListeningTimer(startTime: state.listenStartTime)
             case .transcribing:
-                if let r = state.executionResult, r == "thinking..." || r == "searching..." {
+                if let r = state.executionResult, r == "thinking..." || r == "searching..." || r == "fixing..." {
                     Text(r)
                         .foregroundColor(Palette.detach)
                 } else {
@@ -912,6 +924,21 @@ struct VoiceCommandView: View {
                         }
                     }
 
+                    // Execution failure — surfaced instead of silently swallowed
+                    if let failure = state.executionError {
+                        commandSection("couldn't run") {
+                            HStack(alignment: .top, spacing: 6) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(Palette.kill)
+                                Text(failure)
+                                    .font(Typo.geistMono(11))
+                                    .foregroundColor(Palette.text)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+
                     // Results
                     if !state.resultItems.isEmpty {
                         commandSection("\(state.resultItems.count) match\(state.resultItems.count == 1 ? "" : "es")") {
@@ -1006,16 +1033,23 @@ struct VoiceCommandView: View {
         let slots: [String: JSON] = slotsDict.reduce(into: [:]) { dict, pair in
             dict[pair.key] = .string(pair.value)
         }
-        let match = IntentMatch(
-            intentName: suggestion.intent,
-            slots: slots,
-            confidence: 0.9,
-            matchedPhrase: "advisor-suggestion"
-        )
         do {
+            // Normalize + validate the advisor's suggestion against the catalog before
+            // running, same as the resolver path — maps shorthand and rejects bad values.
+            let normalized = try PhraseMatcher.shared.normalizeResolved(
+                intentName: suggestion.intent,
+                slots: slots
+            )
+            let match = IntentMatch(
+                intentName: normalized.intent,
+                slots: normalized.slots,
+                confidence: 0.9,
+                matchedPhrase: "advisor-suggestion"
+            )
             let result = try PhraseMatcher.shared.execute(match)
-            state.appendLog("Advisor: executed \(suggestion.intent) → ok")
-            DiagnosticLog.shared.info("Advisor suggestion executed: \(suggestion.intent) → \(result)")
+            state.executionError = nil
+            state.appendLog("Advisor: executed \(normalized.intent) → ok")
+            DiagnosticLog.shared.info("Advisor suggestion executed: \(normalized.intent) → \(result)")
 
             // Capture the learning signal: advisor saved us, user engaged
             AdvisorLearningStore.shared.record(
@@ -1028,7 +1062,9 @@ struct VoiceCommandView: View {
                 advisorLabel: suggestion.label
             )
         } catch {
+            state.executionError = error.localizedDescription
             state.appendLog("Advisor: \(suggestion.intent) failed — \(error.localizedDescription)")
+            DiagnosticLog.shared.info("Advisor suggestion failed: \(suggestion.intent) — \(error.localizedDescription)")
         }
     }
 

@@ -116,6 +116,10 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 
         menu.addItem(.separator())
 
+        let activityLog = NSMenuItem(title: "Activity Log…", action: #selector(menuActivityLog), keyEquivalent: "")
+        activityLog.target = self
+        menu.addItem(activityLog)
+
         let update = NSMenuItem(title: "Update Lattices…", action: #selector(menuUpdate), keyEquivalent: "")
         update.target = self
         menu.addItem(update)
@@ -143,6 +147,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     @objc private func menuProjects() { DispatchQueue.main.async { self.showProjectsPopover() } }
     @objc private func menuInitializeProject() { CliActionLauncher.initializeProjectInTerminal() }
     @objc private func menuLaunchProject() { CliActionLauncher.launchProjectInTerminal() }
+    @objc private func menuActivityLog() { DiagnosticWindow.shared.toggle() }
     @MainActor @objc private func menuUpdate() { AppUpdater.shared.promptForUpdate() }
     @objc private func menuSettings() { SettingsWindowController.shared.show() }
     @objc private func menuQuit() { NSApp.terminate(nil) }

@@ -1,0 +1,15 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "@lattices/agent-runtime",
+      "dependencies": {
+        "@openscout/agent-sessions": "0.2.64",
+      },
+    },
+  },
+  "packages": {
+    "@openscout/agent-sessions": ["@openscout/agent-sessions@0.2.64", "", {}, "sha512-ZnrGDvyT+yMMcgd8Y+JEA1psrFA2yGTor4YaVnZ0lLCT9bkpTafFesd5sm41iZcN/1uhUVc6x1yyGt2ND5NKog=="],
+  }
+}

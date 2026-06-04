@@ -33,6 +33,10 @@ enum HotkeyBootstrap {
         store.register(action: .mouseFinder) { MouseFinder.shared.find() }
         store.register(action: .overlayActors) { ScreenOverlayCanvasController.shared.toggleAgentActorsVisibility() }
         store.register(action: .omniSearch) { OmniSearchWindow.shared.toggle() }
+        store.register(action: .activityLog) {
+            DiagnosticLog.shared.info("Hotkey: activityLog triggered")
+            DiagnosticWindow.shared.toggle()
+        }
 
         registerLayerHotkeys(store: store)
         registerTilingHotkeys(store: store)

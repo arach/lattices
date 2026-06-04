@@ -50,4 +50,10 @@ final class PhraseMatcher {
     func catalog() -> JSON {
         VoiceIntentResolver.shared.catalog()
     }
+
+    /// Normalize + validate an AI-resolved intent (alias mapping, enum validation)
+    /// before execution. See `IntentEngine.normalizeResolved`.
+    func normalizeResolved(intentName: String, slots: [String: JSON]) throws -> (intent: String, slots: [String: JSON]) {
+        try IntentEngine.shared.normalizeResolved(intentName: intentName, slots: slots)
+    }
 }

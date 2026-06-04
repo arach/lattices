@@ -29,9 +29,14 @@ dim()   { printf "\033[2m%s\033[0m\n" "$*"; }
 select_sign_identity() {
     local identities identity=""
     identities="$(security find-identity -v -p codesigning 2>/dev/null || true)"
-    identity="$(printf '%s\n' "$identities" | sed -n 's/^[[:space:]]*[0-9]*)[[:space:]]*\([A-F0-9]\{40\}\)[[:space:]]*"Apple Development:[^"]*".*/\1/p' | head -n 1)"
+    # Prefer Developer ID Application: its designated requirement pins to the stable
+    # team OU, so TCC permissions survive rebuilds and Apple Development cert rotations.
+    # Apple Development is only a fallback (its DR pins a specific cert that Xcode rotates,
+    # which silently resets every granted permission). Keep this order in sync with
+    # resolveSigningIdentity() in bin/lattices-app.ts.
+    identity="$(printf '%s\n' "$identities" | sed -n 's/^[[:space:]]*[0-9]*)[[:space:]]*\([A-F0-9]\{40\}\)[[:space:]]*"Developer ID Application:[^"]*".*/\1/p' | head -n 1)"
     if [ -z "$identity" ]; then
-        identity="$(printf '%s\n' "$identities" | sed -n 's/^[[:space:]]*[0-9]*)[[:space:]]*\([A-F0-9]\{40\}\)[[:space:]]*"Developer ID Application:[^"]*".*/\1/p' | head -n 1)"
+        identity="$(printf '%s\n' "$identities" | sed -n 's/^[[:space:]]*[0-9]*)[[:space:]]*\([A-F0-9]\{40\}\)[[:space:]]*"Apple Development:[^"]*".*/\1/p' | head -n 1)"
     fi
     printf '%s' "$identity"
 }

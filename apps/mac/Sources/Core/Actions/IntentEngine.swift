@@ -67,6 +67,86 @@ final class IntentEngine {
         })
     }
 
+    // MARK: - AI-output Normalization
+
+    /// Tokens that mean "arrange several windows into a grid" rather than tiling one
+    /// window. When the model returns these as a tile_window position we remap to distribute.
+    private static let gridPositionTokens: Set<String> = [
+        "grid", "grid-2x2", "2x2", "grid-2x3", "2x3", "grid-3x3", "3x3",
+        "two-by-two", "two by two", "twobytwo", "quad", "quadrant"
+    ]
+
+    /// Shorthand the model commonly emits for position-style slots, mapped to the
+    /// canonical TilePosition raw values the executor accepts.
+    private static let slotValueAliases: [String: String] = [
+        "tl": "top-left", "tr": "top-right", "bl": "bottom-left", "br": "bottom-right",
+        "top left": "top-left", "top right": "top-right",
+        "bottom left": "bottom-left", "bottom right": "bottom-right",
+        "topleft": "top-left", "topright": "top-right",
+        "bottomleft": "bottom-left", "bottomright": "bottom-right",
+        "upper-left": "top-left", "upper-right": "top-right",
+        "lower-left": "bottom-left", "lower-right": "bottom-right",
+        "max": "maximize", "full": "maximize", "fullscreen": "maximize", "full-screen": "maximize",
+        "centre": "center", "centered": "center", "middle": "center"
+    ]
+
+    /// Normalize and validate an AI-resolved intent before execution. AI passes produce
+    /// free-form text; this maps common shorthand onto the catalog vocabulary and rejects
+    /// values the executor would silently fail on, with a message that names the valid set.
+    /// - Returns: the corrected intent name and slots, ready to execute.
+    /// - Throws: `IntentError.unknownIntent` / `.invalidSlot` (descriptive) on unrecoverable mismatch.
+    func normalizeResolved(intentName rawIntent: String, slots rawSlots: [String: JSON]) throws -> (intent: String, slots: [String: JSON]) {
+        var intent = canonicalIntentName(rawIntent)
+        var slots = rawSlots
+
+        // "tile my four iTerms two-by-two" frequently resolves to
+        // tile_window(position: grid-2x2). A grid of N windows is a distribute.
+        if intent == "tile_window",
+           let pos = slots["position"]?.stringValue,
+           Self.gridPositionTokens.contains(pos.lowercased()) {
+            intent = "distribute"
+            slots["position"] = nil
+        }
+
+        guard let def = intents[intent] else {
+            throw IntentError.unknownIntent(rawIntent, available: intentOrder)
+        }
+
+        for slot in def.slots {
+            guard let raw = slots[slot.name]?.stringValue,
+                  let allowed = slot.enumValues, !allowed.isEmpty else { continue }
+            if allowed.contains(raw) { continue }
+            if let mapped = Self.slotValueAliases[raw.lowercased()], allowed.contains(mapped) {
+                slots[slot.name] = .string(mapped)
+                continue
+            }
+            throw IntentError.invalidSlot("Invalid \(slot.name) '\(raw)'. Valid: \(allowed.joined(separator: ", "))")
+        }
+
+        return (intent, slots)
+    }
+
+    /// Resolve an AI-supplied intent name to a registered one, tolerating casing,
+    /// spaces, and hyphens. Returns the raw string unchanged when nothing matches so
+    /// the caller can surface a precise unknown-intent error.
+    private func canonicalIntentName(_ raw: String) -> String {
+        if intents[raw] != nil { return raw }
+        let normalized = raw.lowercased()
+            .replacingOccurrences(of: " ", with: "_")
+            .replacingOccurrences(of: "-", with: "_")
+        if intents[normalized] != nil { return normalized }
+        if let alias = Self.intentAliases[raw.lowercased()] ?? Self.intentAliases[normalized] {
+            return alias
+        }
+        return raw
+    }
+
+    /// Intent-name shorthand the model emits that maps to a real intent.
+    private static let intentAliases: [String: String] = [
+        "grid": "distribute", "arrange": "distribute", "tile_all": "distribute",
+        "spread": "distribute", "organize": "distribute"
+    ]
+
     // MARK: - Built-in Intents
 
     /// Track recently tiled wids so batch operations (e.g. "tile iTerm left, iTerm right")

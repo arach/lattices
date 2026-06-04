@@ -1,0 +1,39 @@
+{
+  "name": "@lattices/agent-runtime",
+  "version": "0.1.0",
+  "description": "Lattices wrapper for background agent session runtime adapters",
+  "type": "module",
+  "exports": {
+    ".": "./index.mjs"
+  },
+  "bin": {
+    "lattices-agent-runtime": "./bin/lattices-agent-runtime.mjs"
+  },
+  "files": [
+    "index.mjs",
+    "bin",
+    "README.md"
+  ],
+  "scripts": {
+    "doctor": "node ./bin/lattices-agent-runtime.mjs doctor"
+  },
+  "keywords": [
+    "lattices",
+    "agent",
+    "runtime",
+    "sessions"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/arach/lattices",
+    "directory": "packages/npm/agent-runtime"
+  },
+  "homepage": "https://github.com/arach/lattices",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@openscout/agent-sessions": "0.2.64"
+  }
+}

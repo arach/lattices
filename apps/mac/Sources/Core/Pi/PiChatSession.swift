@@ -495,12 +495,14 @@ final class PiChatSession: ObservableObject {
         }
 
         guard let piPath = piBinaryPath else {
+            DiagnosticLog.shared.info("Chat: provider runtime not installed — cannot send")
             prepareForDisplay()
             statusText = "missing pi"
             return
         }
 
         guard !needsProviderSetup else {
+            DiagnosticLog.shared.info("Chat: \(currentProvider.name) needs credentials — showing auth panel instead of sending")
             prepareForDisplay()
             isAuthPanelVisible = true
             dockHeight = max(dockHeight, 300)
@@ -512,6 +514,7 @@ final class PiChatSession: ObservableObject {
         statusText = "thinking..."
         let prompt = providerPrompt(for: trimmed)
         let runtime = chatRuntime(piPath: piPath, provider: provider)
+        let inferenceTimer = DiagnosticLog.shared.startTimed("Chat inference via \(provider.name) RPC")
         let messageID = UUID()
         messages.append(PiChatMessage(
             id: messageID,
@@ -555,9 +558,11 @@ final class PiChatSession: ObservableObject {
 
                 switch result {
                 case .success(let text):
+                    DiagnosticLog.shared.finish(inferenceTimer)
                     self.statusText = "idle"
                     self.finalizeStreaming(finalText: text)
                 case .failure(let error):
+                    DiagnosticLog.shared.error("Chat inference failed: \(error.localizedDescription)")
                     self.cancelPendingStreamingFlush()
                     self.removeMessageIfEmpty(id: messageID)
                     self.streamingMessageID = nil
@@ -601,30 +606,55 @@ final class PiChatSession: ObservableObject {
             sessionDir: voiceResolverSessionDirURL,
             label: "voice resolver"
         ) { output in
-            guard let output,
-                  let jsonStr = Self.extractJSON(from: output),
-                  let data = jsonStr.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let intent = json["intent"] as? String,
-                  intent != "unknown" else {
-                callback(nil)
-                return
-            }
+            callback(Self.parseResolvedIntent(from: output))
+        }
+    }
 
-            var slots: [String: JSON] = [:]
-            if let rawSlots = json["slots"] as? [String: Any] {
-                for (key, value) in rawSlots {
-                    if let value = value as? String {
-                        slots[key] = .string(value)
-                    } else if let value = value as? Int {
-                        slots[key] = .int(value)
-                    } else if let value = value as? Bool {
-                        slots[key] = .bool(value)
-                    }
+    /// Second-chance AI pass: an intent the model produced failed validation/execution.
+    /// Hand the model the exact failure plus the full catalog vocabulary and ask it to
+    /// return a corrected intent constrained to valid values. Best-effort — calls back nil
+    /// if the model can't fix it, so the caller can surface the original error.
+    func repairVoiceIntent(
+        transcript: String,
+        failedIntent: String,
+        failedSlots: [String: JSON],
+        error: String,
+        callback: @escaping (ResolvedIntent?) -> Void
+    ) {
+        runVoiceInference(
+            prompt: voiceRepairPrompt(transcript: transcript, failedIntent: failedIntent, failedSlots: failedSlots, error: error),
+            sessionDir: voiceResolverSessionDirURL,
+            label: "voice repair"
+        ) { output in
+            callback(Self.parseResolvedIntent(from: output))
+        }
+    }
+
+    /// Parse a resolver/repair model response into a ResolvedIntent. Returns nil for
+    /// missing/`unknown` intents so the caller treats it as "couldn't resolve".
+    private static func parseResolvedIntent(from output: String?) -> ResolvedIntent? {
+        guard let output,
+              let jsonStr = Self.extractJSON(from: output),
+              let data = jsonStr.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let intent = json["intent"] as? String,
+              intent != "unknown" else {
+            return nil
+        }
+
+        var slots: [String: JSON] = [:]
+        if let rawSlots = json["slots"] as? [String: Any] {
+            for (key, value) in rawSlots {
+                if let value = value as? String {
+                    slots[key] = .string(value)
+                } else if let value = value as? Int {
+                    slots[key] = .int(value)
+                } else if let value = value as? Bool {
+                    slots[key] = .bool(value)
                 }
             }
-            callback(ResolvedIntent(intent: intent, slots: slots))
         }
+        return ResolvedIntent(intent: intent, slots: slots)
     }
 
     private func runVoiceInference(
@@ -1404,14 +1434,19 @@ final class PiChatSession: ObservableObject {
         Local match already handled:
         \(matched)
 
+        Available intents (use ONLY these names and slot values):
+        \(voiceIntentCatalogText())
+
         Respond with ONLY a JSON object:
         {"commentary": "short observation or null", "suggestion": {"label": "button text", "intent": "intent_name", "slots": {"key": "value"}} or null}
 
         Rules:
         - commentary: 1 sentence max. null if the matched command fully covers the request.
         - suggestion: a follow-up action. null if none needed.
+        - suggestion.intent MUST be one of the intent names listed above. Never invent an intent.
+        - For slots marked with {a|b|c}, the value MUST be exactly one of those tokens.
         - Never suggest what was already executed.
-        - Suggestions MUST include all required slots.
+        - Suggestions MUST include all required slots (marked with *).
         - Be terse and useful.
         """
     }
@@ -1430,23 +1465,43 @@ final class PiChatSession: ObservableObject {
         """
     }
 
+    /// Renders the full intent catalog as a vocabulary block for the voice prompts.
+    /// Each line lists the intent name, description, and its slots with required
+    /// markers (`*`) and the exact set of allowed enum values (`{a|b|c}`). The model
+    /// only ever sees valid intent names and valid slot values from here, which keeps
+    /// it from inventing things the executor rejects (e.g. position "tl", "grid-2x2").
+    private func voiceIntentCatalogText() -> String {
+        guard case .array(let intents) = PhraseMatcher.shared.catalog() else { return "" }
+        return intents.compactMap { intent -> String? in
+            guard let name = intent["intent"]?.stringValue else { return nil }
+            let desc = intent["description"]?.stringValue ?? ""
+            var line = desc.isEmpty ? "- \(name)" : "- \(name) — \(desc)"
+            if case .array(let slots) = intent["slots"], !slots.isEmpty {
+                let slotDescs = slots.compactMap { slot -> String? in
+                    guard let slotName = slot["name"]?.stringValue else { return nil }
+                    var s = slotName
+                    if slot["required"]?.boolValue == true { s += "*" }
+                    if case .array(let vals) = slot["values"] {
+                        let values = vals.compactMap { $0.stringValue }
+                        if !values.isEmpty { s += " {\(values.joined(separator: "|"))}" }
+                    }
+                    return s
+                }
+                if !slotDescs.isEmpty {
+                    line += "\n    slots: \(slotDescs.joined(separator: ", "))"
+                }
+            }
+            return line
+        }.joined(separator: "\n")
+    }
+
     private func voiceResolverPrompt(transcript: String) -> String {
         let windowList = DesktopModel.shared.windows.values
             .prefix(20)
             .map { "\($0.app): \($0.title)" }
             .joined(separator: "\n")
 
-        var intentList = ""
-        if case .array(let intents) = PhraseMatcher.shared.catalog() {
-            intentList = intents.compactMap { intent -> String? in
-                guard let name = intent["intent"]?.stringValue else { return nil }
-                var slotNames: [String] = []
-                if case .array(let slots) = intent["slots"] {
-                    slotNames = slots.compactMap { $0["name"]?.stringValue }
-                }
-                return slotNames.isEmpty ? name : "\(name)(\(slotNames.joined(separator: ",")))"
-            }.joined(separator: ", ")
-        }
+        let intentList = voiceIntentCatalogText()
 
         return """
         You are the same Workspace Assistant used by Lattices chat, resolving a spoken command into one executable Lattices intent.
@@ -1467,10 +1522,47 @@ final class PiChatSession: ObservableObject {
         {"intent":"search","slots":{"query":"dewey"},"reasoning":"user wants to find dewey windows"}
 
         Rules:
+        - Use ONLY intent names and slot values listed above. Never invent a slot value.
+        - For slots marked with {a|b|c}, the value MUST be exactly one of those tokens.
         - Use intent "unknown" if the request cannot be mapped confidently.
-        - Include all required slots.
+        - Include all required slots (marked with *).
         - For search, extract the key term.
         - Use app/window names from the current windows list when targeting windows.
+        - tile_window moves ONE window to a position. To arrange MULTIPLE windows into a grid (e.g. "tile my four iTerms two by two"), use distribute, not tile_window.
+        """
+    }
+
+    private func voiceRepairPrompt(transcript: String, failedIntent: String, failedSlots: [String: JSON], error: String) -> String {
+        let slotsDesc = failedSlots
+            .map { "\($0.key)=\($0.value.stringValue ?? "\($0.value)")" }
+            .sorted()
+            .joined(separator: ", ")
+        let attempt = slotsDesc.isEmpty ? failedIntent : "\(failedIntent)(\(slotsDesc))"
+
+        return """
+        You are correcting a Lattices voice command that failed to execute. A previous pass
+        produced an intent the executor rejected. Fix it using ONLY the vocabulary below.
+
+        Original voice transcript:
+        "\(transcript)"
+
+        Previous attempt that FAILED:
+        \(attempt)
+
+        Executor error:
+        \(error)
+
+        Available intents (use ONLY these names and slot values):
+        \(voiceIntentCatalogText())
+
+        Return ONLY a corrected JSON object like:
+        {"intent":"distribute","slots":{"app":"iTerm2"},"reasoning":"four terminals into a grid"}
+
+        Rules:
+        - Use ONLY intent names and slot values listed above. Never repeat the rejected value.
+        - For slots marked with {a|b|c}, the value MUST be exactly one of those tokens.
+        - Include all required slots (marked with *).
+        - If the request truly cannot be mapped, return {"intent":"unknown"}.
         """
     }
 
