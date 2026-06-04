@@ -2133,6 +2133,61 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
+            method: "assistant.preview",
+            description: "Preview the hands-off assistant planner against a live or supplied desktop snapshot. This is a dry run: it returns the plan and never speaks, mutates chat state, or executes actions.",
+            access: .read,
+            params: [
+                Param(name: "text", type: "string", required: true, description: "Transcript or instruction to preview"),
+                Param(name: "snapshot", type: "object", required: false, description: "Synthetic desktop snapshot. If omitted, the current live desktop snapshot is used."),
+                Param(name: "history", type: "array", required: false, description: "Optional [{ role, content }] assistant conversation history"),
+                Param(name: "trace", type: "bool", required: false, description: "Write an opt-in JSONL trace to ~/.lattices/assistant-preview-debug.jsonl"),
+            ],
+            returns: .custom("{ ok, dryRun, transcript, snapshotSource, data: { actions, spoken, _meta }, preview }"),
+            handler: { params in
+                guard let text = params?["text"]?.stringValue, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    throw RouterError.missingParam("text")
+                }
+
+                var snapshotOverride: [String: Any]?
+                if let snapshotJson = params?["snapshot"] {
+                    guard case .object = snapshotJson else {
+                        throw RouterError.custom("snapshot must be an object")
+                    }
+                    guard let snapshot = try AssistantPreviewPlanner.foundationObject(from: snapshotJson) as? [String: Any] else {
+                        throw RouterError.custom("snapshot must be an object")
+                    }
+                    snapshotOverride = snapshot
+                }
+
+                var history: [[String: String]] = []
+                if let historyJson = params?["history"] {
+                    guard case .array(let rows) = historyJson else {
+                        throw RouterError.custom("history must be an array")
+                    }
+                    history = try rows.compactMap { row in
+                        guard case .object(let obj) = row else {
+                            throw RouterError.custom("history entries must be objects")
+                        }
+                        guard let role = obj["role"]?.stringValue,
+                              ["user", "assistant"].contains(role),
+                              let content = obj["content"]?.stringValue,
+                              !content.isEmpty else {
+                            return nil
+                        }
+                        return ["role": role, "content": content]
+                    }
+                }
+
+                return try AssistantPreviewPlanner.shared.preview(
+                    transcript: text,
+                    snapshotOverride: snapshotOverride,
+                    history: history,
+                    trace: params?["trace"]?.boolValue ?? false
+                )
+            }
+        ))
+
+        api.register(Endpoint(
             method: "voice.reconnect",
             description: "Force disconnect and reconnect the Vox WebSocket connection",
             access: .mutate,

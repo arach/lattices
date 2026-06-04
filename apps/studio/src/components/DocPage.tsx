@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { EngMarkdown } from "studio/doc";
 import { loadDoc } from "../lib/content";
 import {
   ENG_DOC_GROUPS,
@@ -7,6 +6,7 @@ import {
   findEntryBySourcePath,
   type EngDocEntry,
 } from "../lib/eng-docs";
+import { EngMarkdown } from "./EngMarkdown";
 import { StatusPill, statusToColor } from "./StatusPill";
 
 const REPO_GITHUB_BASE = "https://github.com/arach/lattices/blob/main";
