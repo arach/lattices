@@ -76,12 +76,12 @@ jobs:
           APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
           APP_STORE_CONNECT_KEY_ID: ${{ vars.APP_STORE_CONNECT_KEY_ID || secrets.APP_STORE_CONNECT_KEY_ID }}
           APP_STORE_CONNECT_ISSUER_ID: ${{ vars.APP_STORE_CONNECT_ISSUER_ID || secrets.APP_STORE_CONNECT_ISSUER_ID }}
-          MANUAL_PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish && '1' || '0' }}
         shell: bash
         run: |
           set -euo pipefail
 
           if [[ "$REQUESTED_PUBLISH" != "1" ]]; then
+            echo "::notice::Publish was not requested. Building an unsigned DMG artifact without creating a GitHub release."
             echo "SHOULD_PUBLISH=0" >> "$GITHUB_ENV"
             exit 0
           fi
@@ -96,13 +96,8 @@ jobs:
 
           if (( ${#missing[@]} > 0 )); then
             printf 'Missing release signing/notary configuration: %s\n' "${missing[*]}" >&2
-            if [[ "$MANUAL_PUBLISH" == "1" ]]; then
-              exit 1
-            fi
-
-            echo "::notice::Release signing/notary secrets are not configured. Building an unsigned DMG artifact without publishing a GitHub release."
-            echo "SHOULD_PUBLISH=0" >> "$GITHUB_ENV"
-            exit 0
+            echo "::error::Publish was requested, but release signing/notary configuration is incomplete."
+            exit 1
           fi
 
           echo "SHOULD_PUBLISH=1" >> "$GITHUB_ENV"

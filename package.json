@@ -53,13 +53,7 @@
     "apps/mac/Info.plist",
     "apps/mac/Lattices.app",
     "apps/mac/Lattices.entitlements",
-    "apps/mac/Package.swift",
     "apps/mac/Resources",
-    "apps/mac/Sources",
-    "apps/mac/Tests",
-    "swift/Package.swift",
-    "swift/Sources",
-    "swift/Tests",
     "assets/AppIcon.icns",
     "docs"
   ],
