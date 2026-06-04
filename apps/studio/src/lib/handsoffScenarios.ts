@@ -2,7 +2,7 @@
  * Mocked desktop scenarios for HandsoffStudio.
  *
  * Each scenario describes a realistic desktop state — windows, terminals, displays —
- * that can be sent to `handsoff.run` as a snapshot override. Lets us exercise the
+ * that can be sent to `assistant.preview` as a snapshot override. Lets us exercise the
  * agent without touching the live desktop.
  *
  * The canonical shape lives in this file. `toWorkerSnapshot()` adapts to the

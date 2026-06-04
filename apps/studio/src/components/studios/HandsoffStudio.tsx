@@ -158,15 +158,15 @@ export function HandsoffStudio({ entry }: HandsoffStudioProps) {
       terminals = rows.terminals;
       displays = rows.displays;
       response = await daemonCall<WorkerResponse>(
-        "handsoff.run",
-        { text: trimmed, snapshot: toWorkerSnapshot(world) },
+        "assistant.preview",
+        { text: trimmed, snapshot: toWorkerSnapshot(world), trace: true },
         60_000,
       ).catch((err: Error) => ({ __error: err.message }) as WorkerResponse & { __error?: string });
     } else {
       const winP = daemonCall<WindowRow[]>("windows.list").catch(() => undefined);
       const termP = daemonCall<TerminalRow[]>("terminals.list").catch(() => undefined);
       const spacesP = daemonCall<DisplayRow[]>("spaces.list").catch(() => undefined);
-      const responseP = daemonCall<WorkerResponse>("handsoff.run", { text: trimmed }, 60_000).catch(
+      const responseP = daemonCall<WorkerResponse>("assistant.preview", { text: trimmed, trace: true }, 60_000).catch(
         (err: Error) => ({ __error: err.message }) as WorkerResponse & { __error?: string },
       );
       [windows, terminals, displays, response] = await Promise.all([winP, termP, spacesP, responseP]);
@@ -243,7 +243,7 @@ export function HandsoffStudio({ entry }: HandsoffStudioProps) {
         <p className="mt-4 max-w-2xl text-[15px] leading-relaxed text-studio-ink-faint">
           The open-ended path. Pick a scenario (or your live desktop), say
           something messy, and watch the hands-off worker reason against the
-          snapshot. Execution is mocked:{" "}
+          snapshot. The daemon returns a dry-run plan:{" "}
           <span style={{ color: "var(--scout-accent)" }}>no real windows move</span>.
         </p>
       </header>
@@ -284,15 +284,15 @@ export function HandsoffStudio({ entry }: HandsoffStudioProps) {
       ) : (
         <p className="mt-12 font-mono text-[11.5px] text-studio-ink-faint">
           Pick a suggestion above or type your own. Every turn calls{" "}
-          <code className="text-studio-ink">handsoff.run</code> against the
-          local daemon. In dev builds, the daemon also writes a rich trace to{" "}
-          <code className="text-studio-ink">~/.lattices/handsoff-debug.jsonl</code>.
+          <code className="text-studio-ink">assistant.preview</code> against the
+          local daemon with trace enabled, so the daemon also writes a rich trace to{" "}
+          <code className="text-studio-ink">~/.lattices/assistant-preview-debug.jsonl</code>.
         </p>
       )}
 
       <footer className="mt-20 border-t border-studio-edge pt-5">
         <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-studio-ink-faint">
-          source · HandsOffSession.swift · LatticesApi.swift (handsoff.run) · handsoff-worker.ts · assistant-intelligence.ts · handsoffScenarios.ts · handsoffMockExecutor.ts
+          source · AssistantPreviewPlanner.swift · LatticesApi.swift (assistant.preview) · handsoff-infer.ts · assistant-intelligence.ts · handsoffScenarios.ts · handsoffMockExecutor.ts
         </p>
       </footer>
     </main>
@@ -646,8 +646,8 @@ function SnapshotPane({ turn, world }: { turn: Turn; world: Scenario | null }) {
 
       <p className="mt-3 font-mono text-[10px] text-studio-ink-faint">
         {isScenario
-          ? "rendered from the scenario · passed to handsoff.run as a snapshot override"
-          : "rendered from windows.list / terminals.list / spaces.list · daemon builds its own snapshot inside handsoff.run"}
+          ? "rendered from the scenario · passed to assistant.preview as a snapshot override"
+          : "rendered from windows.list / terminals.list / spaces.list · daemon builds its own snapshot inside assistant.preview"}
       </p>
     </section>
   );
@@ -657,7 +657,7 @@ function SnapshotPane({ turn, world }: { turn: Turn; world: Scenario | null }) {
 
 function ReasoningPane({ turn }: { turn: Turn }) {
   const meta = turn.response?.data?._meta;
-  const headerMeta = turn.totalMs ? `${turn.totalMs}ms · handsoff.run` : undefined;
+  const headerMeta = turn.totalMs ? `${turn.totalMs}ms · assistant.preview` : undefined;
   return (
     <section className="mt-12">
       <PaneHeading step="03 · reasoning" title="Model in the loop" meta={headerMeta} />
@@ -693,7 +693,7 @@ function MethodInspector({ turn, meta }: { turn: Turn; meta?: WorkerMeta }) {
           <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-studio-ink-faint">
             method
           </span>
-          <span className="font-mono text-[12px] text-studio-ink">handsoff.run</span>
+          <span className="font-mono text-[12px] text-studio-ink">assistant.preview</span>
           <ImplBadge label={meta?.model ?? "llm"} />
           <span className="font-mono text-[10px] text-studio-ink-faint">
             {meta?.provider ?? "—"}
@@ -707,8 +707,8 @@ function MethodInspector({ turn, meta }: { turn: Turn; meta?: WorkerMeta }) {
         <div className="border-t border-studio-edge p-4">
           <div className="grid gap-4 sm:grid-cols-[1fr_1fr]">
             <div className="flex flex-col gap-1.5">
-              <Row label="endpoint">handsoff.run</Row>
-              <Row label="impl">HandsOffSession.runRpc → worker</Row>
+              <Row label="endpoint">assistant.preview</Row>
+              <Row label="impl">AssistantPreviewPlanner → handsoff-infer</Row>
               <Row label="snapshot">{turn.source.kind === "scenario" ? "override · scenario" : "live · daemon-built"}</Row>
               <Row label="dry-run">true (mock executor only)</Row>
               <Row label="provider">{meta?.provider ?? "—"}</Row>
@@ -725,11 +725,11 @@ function MethodInspector({ turn, meta }: { turn: Turn; meta?: WorkerMeta }) {
                 <pre className="mt-2 overflow-x-auto rounded-sm border border-studio-edge bg-[color:var(--code-bg)] p-3 font-mono text-[11px] leading-[1.55] text-studio-ink">
                   {JSON.stringify(
                     {
-                      method: "handsoff.run",
+                      method: "assistant.preview",
                       params:
                         turn.source.kind === "scenario"
-                          ? { text: turn.prompt, snapshot: `{ scenario:${turn.source.id} }` }
-                          : { text: turn.prompt },
+                          ? { text: turn.prompt, snapshot: `{ scenario:${turn.source.id} }`, trace: true }
+                          : { text: turn.prompt, trace: true },
                     },
                     null,
                     2,
@@ -742,19 +742,18 @@ function MethodInspector({ turn, meta }: { turn: Turn; meta?: WorkerMeta }) {
                 </p>
                 <ul className="mt-2 space-y-0.5 font-mono text-[10.5px] text-studio-ink-faint">
                   <li>· {turn.source.kind === "scenario" ? "uses the snapshot override" : "builds live snapshot (windows · terminals · screens)"}</li>
-                  <li>· assembles system prompt (handsoff-worker.ts internal)</li>
+                  <li>· assembles system prompt via handsoff-infer.ts</li>
                   <li>· sends to {meta?.provider ?? "provider"} · {meta?.model ?? "model"}</li>
                   <li>· returns actions + spoken to caller</li>
-                  <li>· writes ~/.lattices/handsoff-debug.jsonl in dev builds</li>
+                  <li>· writes ~/.lattices/assistant-preview-debug.jsonl when trace is true</li>
                 </ul>
               </div>
             </div>
           </div>
           <p className="mt-4 max-w-2xl text-[11.5px] leading-relaxed text-studio-ink-faint">
-            The full system prompt is assembled inside the worker process and
-            isn't currently exposed via RPC. The debug artifact on disk
-            captures the snapshot, request cmd, and raw worker response — read
-            it directly if you need the exact bytes for a turn.
+            The full system prompt is assembled inside the preview planner
+            process and isn't currently exposed via RPC. The trace artifact on
+            disk captures the snapshot, request, and raw planner response.
           </p>
         </div>
       ) : null}
