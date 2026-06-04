@@ -121,3 +121,51 @@ LATTICES_SKIP_SIGN=1 LATTICES_SKIP_NOTARIZE=1 ./tools/release/build-dmg.sh
 For CI smoke checks, run **Release App macOS** manually with `publish=false`.
 That path uploads an unsigned workflow artifact and intentionally skips the
 GitHub release step.
+
+## npm releases
+
+The CLI package is published as `@lattices/cli`.
+
+There are two valid npm paths:
+
+1. CI release: push an `npm-v<version>` tag or run the
+   **Release Package npm** workflow with `publish=true`.
+2. Smoke check: run **Release Package npm** manually with `publish=false`.
+
+The npm workflow reads credentials from the GitHub `release` environment.
+
+Required environment secret:
+
+```text
+NPM_TOKEN
+```
+
+`NPM_TOKEN` must be an npm automation or granular access token that can
+publish `@lattices/cli`. It currently should authenticate as the npm user
+`arach`; if a different maintainer publishes, set environment variable
+`NPM_EXPECTED_USER` to that npm username.
+
+Setup shape:
+
+```sh
+gh secret set NPM_TOKEN --repo arach/lattices --env release
+gh variable set NPM_EXPECTED_USER --repo arach/lattices --env release --body arach
+```
+
+Release:
+
+```sh
+git tag -a npm-v0.5.0 -m "@lattices/cli 0.5.0"
+git push origin npm-v0.5.0
+```
+
+To publish the current `main` without moving a stale tag, run:
+
+```sh
+gh workflow run release-package-npm.yml --repo arach/lattices --ref main -f publish=true
+```
+
+Before publishing, CI now runs `npm whoami` and fails immediately if the token
+is missing, revoked, or belongs to the wrong npm user. This catches the common
+bad-token case before the macOS app prepack build and before npm's less useful
+package-scoped `E404` publish failure.

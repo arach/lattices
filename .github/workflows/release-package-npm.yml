@@ -15,6 +15,7 @@ on:
 jobs:
   publish:
     runs-on: macos-latest
+    environment: release
     permissions:
       contents: read
       id-token: write
@@ -34,6 +35,21 @@ jobs:
       - name: Package dry run
         if: ${{ github.event_name == 'workflow_dispatch' && !inputs.publish }}
         run: npm publish --dry-run --access public
+
+      - name: Verify npm credentials
+        if: ${{ github.event_name == 'push' || inputs.publish }}
+        run: |
+          set -euo pipefail
+          user="$(npm whoami)"
+          expected="${NPM_EXPECTED_USER:-arach}"
+          if [ "$user" != "$expected" ]; then
+            echo "::error::NPM_TOKEN authenticates as '$user', expected '$expected'. Set NPM_EXPECTED_USER if a different npm maintainer should publish."
+            exit 1
+          fi
+          echo "NPM_TOKEN authenticates as $user."
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_EXPECTED_USER: ${{ vars.NPM_EXPECTED_USER }}
 
       - name: Publish to npm
         if: ${{ github.event_name == 'push' || inputs.publish }}
