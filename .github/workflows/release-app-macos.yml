@@ -23,6 +23,7 @@ jobs:
   dmg:
     name: Build DMG
     runs-on: macos-latest
+    environment: release
     timeout-minutes: 60
 
     env:
@@ -92,7 +93,6 @@ jobs:
           [[ -n "$KEYCHAIN_PASSWORD" ]] || missing+=("KEYCHAIN_PASSWORD")
           [[ -n "$APP_STORE_CONNECT_API_KEY_P8" ]] || missing+=("APP_STORE_CONNECT_API_KEY_P8")
           [[ -n "$APP_STORE_CONNECT_KEY_ID" ]] || missing+=("APP_STORE_CONNECT_KEY_ID")
-          [[ -n "$APP_STORE_CONNECT_ISSUER_ID" ]] || missing+=("APP_STORE_CONNECT_ISSUER_ID")
 
           if (( ${#missing[@]} > 0 )); then
             printf 'Missing release signing/notary configuration: %s\n' "${missing[*]}" >&2
@@ -159,9 +159,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [[ -z "$APP_STORE_CONNECT_API_KEY_P8" || -z "$APP_STORE_CONNECT_KEY_ID" || -z "$APP_STORE_CONNECT_ISSUER_ID" ]]; then
+          if [[ -z "$APP_STORE_CONNECT_API_KEY_P8" || -z "$APP_STORE_CONNECT_KEY_ID" ]]; then
             echo "Missing App Store Connect notarization secrets/vars." >&2
-            echo "Required: APP_STORE_CONNECT_API_KEY_P8, APP_STORE_CONNECT_KEY_ID, APP_STORE_CONNECT_ISSUER_ID" >&2
+            echo "Required: APP_STORE_CONNECT_API_KEY_P8, APP_STORE_CONNECT_KEY_ID" >&2
             exit 1
           fi
 
@@ -169,10 +169,15 @@ jobs:
           printf '%s' "$APP_STORE_CONNECT_API_KEY_P8" > "$key_path"
           chmod 600 "$key_path"
 
-          xcrun notarytool store-credentials lattices-notarytool \
-            --key-id "$APP_STORE_CONNECT_KEY_ID" \
-            --issuer "$APP_STORE_CONNECT_ISSUER_ID" \
+          notary_args=(
+            --key-id "$APP_STORE_CONNECT_KEY_ID"
             --key "$key_path"
+          )
+          if [[ -n "$APP_STORE_CONNECT_ISSUER_ID" ]]; then
+            notary_args+=(--issuer "$APP_STORE_CONNECT_ISSUER_ID")
+          fi
+
+          xcrun notarytool store-credentials lattices-notarytool "${notary_args[@]}"
 
           echo "LATTICES_NOTARY_PROFILE=lattices-notarytool" >> "$GITHUB_ENV"
 

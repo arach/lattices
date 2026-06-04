@@ -21,7 +21,9 @@ a public GitHub release.
 
 ### CI release
 
-Required repository secrets:
+The workflow reads credentials from the GitHub `release` environment.
+
+Required environment secrets:
 
 ```text
 DEVELOPER_ID_APPLICATION_CERT_BASE64
@@ -30,26 +32,34 @@ KEYCHAIN_PASSWORD
 APP_STORE_CONNECT_API_KEY_P8
 ```
 
-Required repository variables or secrets:
+Required environment variable or secret:
 
 ```text
 APP_STORE_CONNECT_KEY_ID
+```
+
+Optional environment variable or secret:
+
+```text
 APP_STORE_CONNECT_ISSUER_ID
 ```
+
+Set `APP_STORE_CONNECT_ISSUER_ID` for Team API keys. Leave it unset for
+Individual API keys.
 
 Setup shape:
 
 ```sh
 # Export the Developer ID Application certificate as a .p12, then:
 base64 < DeveloperIDApplication.p12 | tr -d '\n' \
-  | gh secret set DEVELOPER_ID_APPLICATION_CERT_BASE64 --repo arach/lattices --body-file -
+  | gh secret set DEVELOPER_ID_APPLICATION_CERT_BASE64 --repo arach/lattices --env release
 
-gh secret set DEVELOPER_ID_APPLICATION_CERT_PASSWORD --repo arach/lattices
-gh secret set KEYCHAIN_PASSWORD --repo arach/lattices
-gh secret set APP_STORE_CONNECT_API_KEY_P8 --repo arach/lattices < AuthKey_KEYID.p8
+gh secret set DEVELOPER_ID_APPLICATION_CERT_PASSWORD --repo arach/lattices --env release
+gh secret set KEYCHAIN_PASSWORD --repo arach/lattices --env release
+gh secret set APP_STORE_CONNECT_API_KEY_P8 --repo arach/lattices --env release < AuthKey_KEYID.p8
 
-gh variable set APP_STORE_CONNECT_KEY_ID --repo arach/lattices --body KEYID
-gh variable set APP_STORE_CONNECT_ISSUER_ID --repo arach/lattices --body ISSUER_UUID
+gh variable set APP_STORE_CONNECT_KEY_ID --repo arach/lattices --env release --body KEYID
+gh variable set APP_STORE_CONNECT_ISSUER_ID --repo arach/lattices --env release --body ISSUER_UUID
 ```
 
 Release:
@@ -111,4 +121,3 @@ LATTICES_SKIP_SIGN=1 LATTICES_SKIP_NOTARIZE=1 ./tools/release/build-dmg.sh
 For CI smoke checks, run **Release App macOS** manually with `publish=false`.
 That path uploads an unsigned workflow artifact and intentionally skips the
 GitHub release step.
-
