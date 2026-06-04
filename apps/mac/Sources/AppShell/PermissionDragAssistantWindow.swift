@@ -492,22 +492,36 @@ final class NativePermissionAppDragTileView: NSView, NSDraggingSource {
             symbol.draw(in: symbolRect)
         }
 
-        let label = (isDragEnabled ? "DRAG ME" : "GRANTED") as NSString
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedSystemFont(ofSize: 8.5, weight: .semibold),
-            .foregroundColor: amber
-        ]
-        let labelSize = label.size(withAttributes: attributes)
-        label.draw(
-            at: NSPoint(x: (bounds.width - labelSize.width) / 2, y: bounds.height - labelSize.height - 9),
-            withAttributes: attributes
-        )
+        drawStatusLabel(isDragEnabled ? "DRAG ME" : "GRANTED", color: amber)
 
         var dash: [CGFloat] = [5, 4]
         cardPath.setLineDash(&dash, count: dash.count, phase: 0)
         cardPath.lineWidth = isDragEnabled ? 1.2 : 1.0
         amber.withAlphaComponent(isDragEnabled ? 0.72 : 0.35).setStroke()
         cardPath.stroke()
+    }
+
+    private func drawStatusLabel(_ label: String, color: NSColor) {
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .center
+        let labelFont = NSFont(name: "Menlo-Bold", size: 8.5)
+            ?? NSFont.systemFont(ofSize: 8.5, weight: .semibold)
+        let attributed = NSAttributedString(
+            string: label,
+            attributes: [
+                .font: labelFont,
+                .foregroundColor: color,
+                .paragraphStyle: paragraphStyle,
+            ]
+        )
+        attributed.draw(
+            in: NSRect(
+                x: 0,
+                y: bounds.height - 20,
+                width: bounds.width,
+                height: 12
+            )
+        )
     }
 
     override func mouseDown(with event: NSEvent) {

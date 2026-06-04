@@ -47,7 +47,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // --diagnostics flag: auto-open diagnostics panel on launch
         if CommandLine.arguments.contains("--diagnostics") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                DiagnosticWindow.shared.show()
+                ScreenMapWindowController.shared.showPage(.activity)
             }
         }
 

@@ -6,6 +6,7 @@ enum AppPage: String, CaseIterable {
     case home
     case screenMap
     case desktopInventory
+    case activity
     case pi
     case settings
     case companionSettings
@@ -16,6 +17,7 @@ enum AppPage: String, CaseIterable {
         case .home:             return "Home"
         case .screenMap:        return "Layout"
         case .desktopInventory: return "Desktop Inventory"
+        case .activity:         return "Activity"
         case .pi:               return "Assistant"
         case .settings:         return "Settings"
         case .companionSettings:return "Settings"
@@ -28,6 +30,7 @@ enum AppPage: String, CaseIterable {
         case .home:             return "house"
         case .screenMap:        return "rectangle.3.group"
         case .desktopInventory: return "macwindow.on.rectangle"
+        case .activity:         return "list.bullet.rectangle"
         case .pi:               return "bubble.left.and.bubble.right"
         case .settings:         return "gearshape"
         case .companionSettings:return "ipad.and.iphone"
@@ -36,7 +39,7 @@ enum AppPage: String, CaseIterable {
     }
 
     /// Pages shown as primary tabs in the unified window
-    static var primaryTabs: [AppPage] { [.home, .pi, .screenMap, .desktopInventory] }
+    static var primaryTabs: [AppPage] { [.home, .pi, .screenMap, .desktopInventory, .activity] }
 }
 
 // MARK: - App Shell View
@@ -65,7 +68,6 @@ struct AppShellView: View {
         }
         .onChange(of: windowController.activePage) { page in
             syncPageState(page)
-            windowController.applyPreferredSizing(for: page)
             clearRelevantDismissals(for: page)
         }
     }
@@ -142,6 +144,8 @@ struct AppShellView: View {
             })
         case .desktopInventory:
             CommandModeView(state: commandState, presentation: .embedded)
+        case .activity:
+            ActivityPageView()
         case .pi:
             PiWorkspaceView()
         case .settings:

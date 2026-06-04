@@ -13,7 +13,6 @@ struct MainView: View {
     @ObservedObject private var workspace = WorkspaceManager.shared
     @StateObject private var inventory = InventoryManager.shared
     @State private var searchText = ""
-    @State private var hasCheckedSetup = false
     @State private var tmuxBannerDismissed = false
     @ObservedObject private var tmuxModel = TmuxModel.shared
     @State private var orphanSectionCollapsed = true
@@ -21,10 +20,9 @@ struct MainView: View {
         repeating: GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 10, alignment: .top),
         count: 3
     )
-    private let embeddedProjectCardHeight: CGFloat = 94
+    private let embeddedProjectCardHeight: CGFloat = 118
     private let embeddedProjectGridSpacing: CGFloat = 10
     private let embeddedEmptyStateHeight: CGFloat = 150
-    private let embeddedProjectAreaMaxHeight: CGFloat = 360
     private var filtered: [Project] {
         if searchText.isEmpty { return scanner.projects }
         return scanner.projects.filter {
@@ -45,13 +43,6 @@ struct MainView: View {
         guard let groups = workspace.config?.groups else { return false }
         return !groups.isEmpty && searchText.isEmpty
     }
-    private var embeddedProjectGridHeight: CGFloat {
-        guard !filtered.isEmpty else { return 0 }
-        let rowCount = min(Int(ceil(Double(filtered.count) / 3.0)), 3)
-        return CGFloat(rowCount) * embeddedProjectCardHeight
-            + CGFloat(max(0, rowCount - 1)) * embeddedProjectGridSpacing
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             mainContent
@@ -66,10 +57,6 @@ struct MainView: View {
         .background(PanelBackground())
         .preferredColorScheme(.dark)
         .onAppear {
-            if needsSetup && !hasCheckedSetup {
-                hasCheckedSetup = true
-                SettingsWindowController.shared.show()
-            }
             runRefresh()
         }
         .onReceive(NotificationCenter.default.publisher(for: .latticesPopoverWillShow)) { _ in
@@ -82,9 +69,14 @@ struct MainView: View {
         let tTotal = DiagnosticLog.shared.startTimed("MainView.refresh (total)")
         scanner.updateRoot(prefs.scanRoot)
 
-        let tScan = DiagnosticLog.shared.startTimed("ProjectScanner.scan")
-        scanner.scan()
-        DiagnosticLog.shared.finish(tScan)
+        if !prefs.scanRoot.isEmpty {
+            let tScan = DiagnosticLog.shared.startTimed("ProjectScanner.scan")
+            scanner.scan()
+            DiagnosticLog.shared.finish(tScan)
+        } else {
+            DiagnosticLog.shared.info("ProjectScanner.scan skipped: scan root not set")
+            scanner.projects = []
+        }
 
         let tInv = DiagnosticLog.shared.startTimed("InventoryManager.refresh")
         inventory.refresh()
@@ -126,6 +118,10 @@ struct MainView: View {
                     headerButton(icon: "magnifyingglass") {
                         MenuBarController.shared.dismissPopover()
                         ScreenMapWindowController.shared.showPage(.desktopInventory)
+                    }
+                    headerButton(icon: "list.bullet.rectangle") {
+                        MenuBarController.shared.dismissPopover()
+                        ScreenMapWindowController.shared.showPage(.activity)
                     }
                     headerButton(icon: "command") {
                         MenuBarController.shared.dismissPopover()
@@ -171,6 +167,10 @@ struct MainView: View {
             }
 
             // tmux not-found banner
+            if layout == .embedded && needsSetup {
+                scanRootSetupBanner
+            }
+
             if !tmuxModel.isAvailable && !tmuxBannerDismissed {
                 tmuxBanner
             }
@@ -193,6 +193,7 @@ struct MainView: View {
                     .frame(height: 0.5)
 
                 embeddedProjectArea
+                    .layoutPriority(1)
 
                 Rectangle()
                     .fill(Palette.border)
@@ -222,10 +223,10 @@ struct MainView: View {
                     embeddedProjectsSection
                         .frame(maxWidth: .infinity, alignment: .top)
                 }
-                .frame(maxHeight: embeddedProjectAreaMaxHeight, alignment: .top)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity, minHeight: 154, maxHeight: .infinity, alignment: .top)
+        .clipped()
     }
 
     private var embeddedProjectsSection: some View {
@@ -264,24 +265,21 @@ struct MainView: View {
                     .padding(.top, 10)
                     .padding(.bottom, 8)
 
-                    ScrollView(.vertical, showsIndicators: filtered.count > 9) {
-                        LazyVGrid(columns: embeddedProjectColumns, spacing: embeddedProjectGridSpacing) {
-                            ForEach(filtered) { project in
-                                HomeProjectCard(
-                                    project: project,
-                                    onLaunch: { launchProject(project) },
-                                    onDetach: { detachProject(project) },
-                                    onKill: { killProject(project) },
-                                    onSync: { syncProject(project) },
-                                    onRestart: { paneName in restartProject(project, paneName: paneName) }
-                                )
-                                .frame(height: embeddedProjectCardHeight)
-                            }
+                    LazyVGrid(columns: embeddedProjectColumns, spacing: embeddedProjectGridSpacing) {
+                        ForEach(filtered) { project in
+                            HomeProjectCard(
+                                project: project,
+                                onLaunch: { launchProject(project) },
+                                onDetach: { detachProject(project) },
+                                onKill: { killProject(project) },
+                                onSync: { syncProject(project) },
+                                onRestart: { paneName in restartProject(project, paneName: paneName) }
+                            )
+                            .frame(height: embeddedProjectCardHeight)
                         }
-                        .padding(.horizontal, 14)
-                        .padding(.bottom, 10)
                     }
-                    .frame(maxHeight: embeddedProjectGridHeight)
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 12)
                 }
             }
 
@@ -538,6 +536,72 @@ struct MainView: View {
 
     // MARK: - Permission banner
 
+    private var scanRootSetupBanner: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "folder.badge.gearshape")
+                    .font(.system(size: 10))
+                    .foregroundColor(Palette.running)
+                Text("PROJECT DISCOVERY")
+                    .font(Typo.monoBold(10))
+                    .foregroundColor(Palette.running)
+                Spacer()
+            }
+
+            Text("Set a scan root so Home can show your Lattices projects automatically.")
+                .font(Typo.mono(10))
+                .foregroundColor(Palette.text)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 8) {
+                Button {
+                    chooseScanRoot()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "folder")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text("Choose Folder")
+                            .font(Typo.monoBold(10))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Palette.running.opacity(0.18))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .strokeBorder(Palette.running.opacity(0.45), lineWidth: 0.5)
+                            )
+                    )
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    SettingsWindowController.shared.show()
+                } label: {
+                    Text("Open Settings")
+                        .font(Typo.mono(10))
+                        .foregroundColor(Palette.textMuted)
+                }
+                .buttonStyle(.plain)
+
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 5)
+                .fill(Palette.running.opacity(0.08))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5)
+                        .strokeBorder(Palette.running.opacity(0.20), lineWidth: 0.5)
+                )
+        )
+        .padding(.horizontal, 14)
+        .padding(.bottom, 10)
+    }
+
     private var permissionBanner: some View {
         let missing = visiblyMissingCapabilities
 
@@ -732,6 +796,22 @@ struct MainView: View {
                 .frame(width: 28, height: 28)
         }
         .buttonStyle(.plain)
+    }
+
+    private func chooseScanRoot() {
+        let panel = NSOpenPanel()
+        panel.message = "Choose the folder Lattices should scan for projects."
+        panel.prompt = "Use Folder"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = URL(fileURLWithPath: prefs.scanRoot.isEmpty ? NSHomeDirectory() : prefs.scanRoot)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        prefs.scanRoot = url.path
+        scanner.updateRoot(url.path)
+        scanner.scan()
+        inventory.refresh()
     }
 
     private func launchProject(_ project: Project) {

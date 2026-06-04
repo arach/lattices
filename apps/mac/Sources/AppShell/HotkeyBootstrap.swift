@@ -35,7 +35,7 @@ enum HotkeyBootstrap {
         store.register(action: .omniSearch) { OmniSearchWindow.shared.toggle() }
         store.register(action: .activityLog) {
             DiagnosticLog.shared.info("Hotkey: activityLog triggered")
-            DiagnosticWindow.shared.toggle()
+            ScreenMapWindowController.shared.showPage(.activity)
         }
 
         registerLayerHotkeys(store: store)

@@ -411,7 +411,7 @@ enum CommandBuilder {
             icon: "list.bullet.rectangle",
             category: .app,
             badge: nil,
-            action: { DiagnosticWindow.shared.show() }
+            action: { ScreenMapWindowController.shared.showPage(.activity) }
         ))
 
         commands.append(PaletteCommand(

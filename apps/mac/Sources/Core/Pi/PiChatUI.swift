@@ -198,28 +198,18 @@ struct PiChatTranscript: View {
         ZStack {
             Palette.bg
 
-            PiChatDotGrid(spacing: 26, dotSize: 1, opacity: 0.05)
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .opacity(0.14)
+
+            Rectangle()
+                .fill(Color.white.opacity(0.010))
+
+            Rectangle()
+                .fill(Color.black.opacity(0.18))
+
+            PiChatDotGrid(spacing: 26, dotSize: 1, opacity: 0.035, tint: Palette.textMuted)
                 .blendMode(.plusLighter)
-
-            LinearGradient(
-                colors: [
-                    Palette.running.opacity(0.05),
-                    Color.clear,
-                    Color.black.opacity(0.28),
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-
-            RadialGradient(
-                colors: [
-                    Palette.running.opacity(0.07),
-                    Color.clear,
-                ],
-                center: .bottomLeading,
-                startRadius: 0,
-                endRadius: 480
-            )
         }
     }
 
@@ -358,10 +348,15 @@ private struct PiChatEmptyState: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.white.opacity(0.04))
+                .fill(.ultraThinMaterial)
+                .opacity(0.34)
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(Palette.border, lineWidth: 0.5)
+                        .fill(Color.white.opacity(0.025))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
                 )
         )
     }
@@ -1328,16 +1323,15 @@ struct PiChatComposer: View {
 
     private var composerFieldBackground: some View {
         RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .fill(Color.black.opacity(0.30))
+            .fill(.ultraThinMaterial)
+            .opacity(0.34)
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.white.opacity(0.05), Color.clear],
-                            startPoint: .top,
-                            endPoint: .center
-                        )
-                    )
+                    .fill(Color.black.opacity(0.22))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.white.opacity(0.028))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -1350,7 +1344,12 @@ struct PiChatComposer: View {
     }
 
     private var composerChrome: some View {
-        Palette.surface.opacity(0.22)
+        ZStack {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .opacity(0.12)
+            Palette.surface.opacity(0.18)
+        }
             .overlay(Rectangle().fill(Palette.border).frame(height: 0.5), alignment: .top)
     }
 

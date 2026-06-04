@@ -1094,7 +1094,7 @@ struct VoiceCommandView: View {
                 .buttonStyle(.plain)
             }
             Button(action: {
-                DiagnosticWindow.shared.toggle()
+                ScreenMapWindowController.shared.showPage(.activity)
             }) {
                 Image(systemName: "arrow.up.right.square")
                     .font(.system(size: 9))

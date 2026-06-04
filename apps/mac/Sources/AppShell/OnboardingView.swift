@@ -8,16 +8,12 @@ import AppKit
 /// and requested later from the feature that needs them.
 struct OnboardingView: View {
     @ObservedObject private var permChecker = PermissionChecker.shared
-    @ObservedObject private var prefs = Preferences.shared
-    @ObservedObject private var tmux = TmuxModel.shared
     @State private var step: Step = .welcome
     var onComplete: () -> Void
 
     enum Step: Int, CaseIterable {
         case welcome
         case capabilities
-        case projectRoot
-        case tmux
         case done
     }
 
@@ -40,8 +36,6 @@ struct OnboardingView: View {
                 switch step {
                 case .welcome:      welcomeStep
                 case .capabilities:  capabilitiesStep
-                case .projectRoot:  projectRootStep
-                case .tmux:         tmuxStep
                 case .done:         doneStep
                 }
             }
@@ -97,7 +91,7 @@ struct OnboardingView: View {
             Text("Welcome to Lattices")
                 .font(Typo.title(18))
                 .foregroundColor(Palette.text)
-            Text("Workspace control plane for macOS.\nLet's get you set up in under a minute.")
+            Text("A control surface for your Mac workspace.\nArrange windows, search context, and give agents a local view.")
                 .font(Typo.body(12))
                 .foregroundColor(Palette.textDim)
                 .multilineTextAlignment(.center)
@@ -115,7 +109,7 @@ struct OnboardingView: View {
                 .font(Typo.title(16))
                 .foregroundColor(Palette.text)
 
-            Text("Lattices launches projects without any extra permissions. Click a capability to set it up now in the Permissions Assistant — or skip and turn it on later.")
+            Text("Lattices keeps setup optional. Click a capability to enable deeper control now, or skip and turn it on from Settings later.")
                 .font(Typo.body(12))
                 .foregroundColor(Palette.textDim)
                 .multilineTextAlignment(.center)
@@ -138,144 +132,22 @@ struct OnboardingView: View {
         }
     }
 
-    private var projectRootStep: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "folder.fill")
-                .font(.system(size: 28))
-                .foregroundColor(.white.opacity(0.7))
-
-            Text("Project directory")
-                .font(Typo.title(16))
-                .foregroundColor(Palette.text)
-
-            Text("Where do your projects live? Lattices scans this folder to find workspaces.")
-                .font(Typo.body(12))
-                .foregroundColor(Palette.textDim)
-                .multilineTextAlignment(.center)
-                .lineSpacing(3)
-
-            HStack(spacing: 8) {
-                Text(prefs.scanRoot.isEmpty ? "Not set" : abbreviatePath(prefs.scanRoot))
-                    .font(Typo.mono(11))
-                    .foregroundColor(prefs.scanRoot.isEmpty ? Palette.textMuted : Palette.text)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: 5)
-                            .fill(Palette.surface)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 5)
-                                    .strokeBorder(Palette.border, lineWidth: 0.5)
-                            )
-                    )
-
-                Button("Browse") {
-                    let panel = NSOpenPanel()
-                    panel.canChooseFiles = false
-                    panel.canChooseDirectories = true
-                    panel.allowsMultipleSelection = false
-                    panel.directoryURL = URL(fileURLWithPath: prefs.scanRoot.isEmpty ? NSHomeDirectory() : prefs.scanRoot)
-                    if panel.runModal() == .OK, let url = panel.url {
-                        prefs.scanRoot = url.path
-                    }
-                }
-                .buttonStyle(.plain)
-                .font(Typo.monoBold(10))
-                .foregroundColor(.white)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: 5)
-                        .fill(Palette.surface)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 5)
-                                .strokeBorder(Palette.borderLit, lineWidth: 0.5)
-                        )
-                )
-            }
-
-            if !prefs.scanRoot.isEmpty {
-                HStack(spacing: 4) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 10))
-                        .foregroundColor(Palette.running)
-                    Text(abbreviatePath(prefs.scanRoot))
-                        .font(Typo.mono(10))
-                        .foregroundColor(Palette.running)
-                }
-            }
-        }
-    }
-
-    private var tmuxStep: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "terminal.fill")
-                .font(.system(size: 28))
-                .foregroundColor(.white.opacity(0.7))
-
-            Text("Terminal sessions")
-                .font(Typo.title(16))
-                .foregroundColor(Palette.text)
-
-            if tmux.isAvailable {
-                HStack(spacing: 6) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(Palette.running)
-                    Text("tmux is installed")
-                        .font(Typo.mono(12))
-                        .foregroundColor(Palette.running)
-                }
-                Text("Lattices can manage tmux sessions, pane layouts, and terminal workspaces for you.")
-                    .font(Typo.body(12))
-                    .foregroundColor(Palette.textDim)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(3)
-            } else {
-                Text("tmux is optional but recommended. It enables managed terminal sessions with persistent pane layouts.")
-                    .font(Typo.body(12))
-                    .foregroundColor(Palette.textDim)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(3)
-
-                Button(action: CliActionLauncher.installTmuxInTerminal) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "arrow.down.circle")
-                            .font(.system(size: 11))
-                        Text("Install tmux in Terminal")
-                            .font(Typo.monoBold(11))
-                    }
-                    .angularButton(.white, filled: false)
-                }
-                .buttonStyle(.plain)
-
-                Text("You can always install it later. Window tiling, search, and OCR work without tmux.")
-                    .font(Typo.mono(10))
-                    .foregroundColor(Palette.textMuted)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(2)
-            }
-        }
-    }
-
     private var doneStep: some View {
         VStack(spacing: 16) {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 36))
                 .foregroundColor(Palette.running)
 
-            Text("You're all set")
+            Text("Your workspace is ready")
                 .font(Typo.title(18))
                 .foregroundColor(Palette.text)
 
             VStack(alignment: .leading, spacing: 8) {
-                statusRow("Permission prompts", granted: true, detail: "shown when needed")
-                statusRow("Project root", granted: !prefs.scanRoot.isEmpty,
-                          detail: prefs.scanRoot.isEmpty ? "not set" : abbreviatePath(prefs.scanRoot))
-                statusRow("tmux", granted: tmux.isAvailable,
-                          detail: tmux.isAvailable ? "installed" : "skipped")
+                statusRow("Window management", granted: permChecker.isGranted(.windowControl),
+                          detail: permChecker.isGranted(.windowControl) ? "enabled" : "available later")
+                statusRow("Screen context", granted: permChecker.isGranted(.screenSearch),
+                          detail: permChecker.isGranted(.screenSearch) ? "enabled" : "available later")
+                statusRow("Agent access", granted: true, detail: "local API ready")
             }
             .padding(16)
             .background(
@@ -287,33 +159,17 @@ struct OnboardingView: View {
                     )
             )
 
-            VStack(spacing: 10) {
-                Text("Pick a repo and let the CLI do the setup in your terminal.")
-                    .font(Typo.mono(10))
-                    .foregroundColor(Palette.textMuted)
-                    .multilineTextAlignment(.center)
-
-                HStack(spacing: 10) {
-                    Button(action: CliActionLauncher.initializeProjectInTerminal) {
-                        Text("Initialize Project")
-                            .angularButton(Palette.running)
-                    }
-                    .buttonStyle(.plain)
-
-                    Button(action: CliActionLauncher.launchProjectInTerminal) {
-                        Text("Launch Project")
-                            .angularButton(.white, filled: false)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
+            Text("Open the app to see your desktop, inspect context, and choose what to enable next.")
+                .font(Typo.mono(10))
+                .foregroundColor(Palette.textMuted)
+                .multilineTextAlignment(.center)
         }
     }
 
     // MARK: - Shared helpers
 
     private func capabilityRow(_ cap: Capability) -> some View {
-        let granted = cap.isGranted
+        let granted = permChecker.isGranted(cap)
         return Button {
             PermissionsAssistantWindowController.shared.show(focus: cap)
         } label: {
@@ -404,11 +260,7 @@ struct OnboardingView: View {
     // MARK: - Navigation
 
     private var nextLabel: String {
-        switch step {
-        case .projectRoot where prefs.scanRoot.isEmpty: return "Skip for now"
-        case .tmux where !tmux.isAvailable: return "Skip"
-        default: return "Continue"
-        }
+        "Continue"
     }
 
     private func advance() {
@@ -421,13 +273,6 @@ struct OnboardingView: View {
         step = prev
     }
 
-    private func abbreviatePath(_ path: String) -> String {
-        let home = NSHomeDirectory()
-        if path.hasPrefix(home) {
-            return "~" + path.dropFirst(home.count)
-        }
-        return path
-    }
 }
 
 // MARK: - Window Controller
@@ -483,6 +328,7 @@ final class OnboardingWindowController {
         UserDefaults.standard.set(true, forKey: Self.completedKey)
         window?.orderOut(nil)
         window = nil
+        ScreenMapWindowController.shared.showPage(.home)
         AppDelegate.updateActivationPolicy()
     }
 

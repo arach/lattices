@@ -2829,7 +2829,7 @@ struct SettingsContentView: View {
                     }
 
                     footerActionButton(icon: "list.bullet.rectangle", label: "Activity Log") {
-                        DiagnosticWindow.shared.show()
+                        ScreenMapWindowController.shared.showPage(.activity)
                     }
                 }
 
@@ -3464,7 +3464,7 @@ struct SettingsContentView: View {
                         docsLinkButton(icon: "doc.text", label: "Config format", file: "config.md")
                         docsLinkButton(icon: "book", label: "Full concepts", file: "concepts.md")
                         footerActionButton(icon: "list.bullet.rectangle", label: "Activity Log") {
-                            DiagnosticWindow.shared.show()
+                            ScreenMapWindowController.shared.showPage(.activity)
                         }
                     }
                     .padding(.horizontal, 20)

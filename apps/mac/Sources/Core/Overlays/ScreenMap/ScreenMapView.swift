@@ -1289,7 +1289,7 @@ struct ScreenMapView: View {
                     .buttonStyle(.plain)
                 }
                 Button("open") {
-                    DiagnosticWindow.shared.toggle()
+                    ScreenMapWindowController.shared.showPage(.activity)
                 }
                 .font(Typo.mono(7))
                 .foregroundColor(Palette.textMuted)
@@ -2638,7 +2638,7 @@ struct ScreenMapView: View {
                         onNavigate?(.docs)
                     }
                     statusBarButton(icon: "text.alignleft", label: "Logs") {
-                        DiagnosticWindow.shared.toggle()
+                        ScreenMapWindowController.shared.showPage(.activity)
                     }
                 }
             }

@@ -34,7 +34,7 @@ final class ScreenMapWindowController: ObservableObject {
         switch page {
         case .home:
             return NSSize(width: 980, height: 720)
-        case .settings, .companionSettings, .docs:
+        case .settings, .companionSettings, .docs, .activity:
             return NSSize(width: 900, height: 640)
         case .screenMap, .desktopInventory, .pi:
             return workspaceWindowSize
@@ -55,7 +55,6 @@ final class ScreenMapWindowController: ObservableObject {
             if activePage == .screenMap {
                 controller?.enter()
             }
-            applyPreferredSizing(for: activePage, animate: false)
             existing.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
@@ -86,49 +85,17 @@ final class ScreenMapWindowController: ObservableObject {
 
         self.window = w
         self.controller = ctrl
-        settlePreferredSizing(for: activePage)
     }
 
     /// Navigate to a specific page, opening the window if needed.
     func showPage(_ page: AppPage) {
         activePage = page
         show()
-        applyPreferredSizing(for: page, animate: true)
-        settlePreferredSizing(for: page)
     }
 
     func showAssistant() {
         PiChatSession.shared.prepareForDisplay()
         showPage(.pi)
-    }
-
-    private func settlePreferredSizing(for page: AppPage) {
-        for delay in [0.0, 0.12, 0.35] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                guard let self, self.activePage == page else { return }
-                self.applyPreferredSizing(for: page, animate: false)
-            }
-        }
-    }
-
-    func applyPreferredSizing(for page: AppPage, animate: Bool = true) {
-        guard let window else { return }
-        if window.isZoomed {
-            window.zoom(nil)
-        }
-
-        guard let screen = window.screen ?? NSScreen.main else { return }
-        let desired = preferredWindowSize(for: page)
-        let visible = screen.visibleFrame
-        let width = min(desired.width, visible.width * 0.92)
-        let height = min(desired.height, visible.height * 0.85)
-        let frame = NSRect(
-            x: visible.midX - width / 2,
-            y: visible.midY - height / 2 + (visible.height * 0.04),
-            width: width,
-            height: height
-        )
-        window.setFrame(frame, display: true, animate: animate)
     }
 
     func showScreenMapOverview() {

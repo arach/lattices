@@ -147,7 +147,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     @objc private func menuProjects() { DispatchQueue.main.async { self.showProjectsPopover() } }
     @objc private func menuInitializeProject() { CliActionLauncher.initializeProjectInTerminal() }
     @objc private func menuLaunchProject() { CliActionLauncher.launchProjectInTerminal() }
-    @objc private func menuActivityLog() { DiagnosticWindow.shared.toggle() }
+    @objc private func menuActivityLog() { ScreenMapWindowController.shared.showPage(.activity) }
     @MainActor @objc private func menuUpdate() { AppUpdater.shared.promptForUpdate() }
     @objc private func menuSettings() { SettingsWindowController.shared.show() }
     @objc private func menuQuit() { NSApp.terminate(nil) }
