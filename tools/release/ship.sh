@@ -11,6 +11,14 @@ VERSION="${LATTICES_VERSION:-$(node -p "require(process.argv[1]).version" "$ROOT
 TAG="v${VERSION}"
 MODE="dmg"
 DRY_RUN=0
+UPLOAD_TMP=""
+
+cleanup() {
+    if [ -n "$UPLOAD_TMP" ] && [ -d "$UPLOAD_TMP" ]; then
+        rm -rf "$UPLOAD_TMP"
+    fi
+}
+trap cleanup EXIT
 
 usage() {
     cat <<'EOF'
@@ -39,6 +47,16 @@ run() {
         return 0
     fi
     "$@"
+}
+
+release_notes_file() {
+    local notes_path="$1"
+
+    cat > "$notes_path" <<EOF
+Release $VERSION
+
+Download and install Lattices for Mac.
+EOF
 }
 
 build_binary() {
@@ -105,18 +123,42 @@ if [ "$DRY_RUN" -eq 0 ] && [ ! -f "$ASSET_PATH" ]; then
     exit 1
 fi
 
+NOTES_PATH=""
+if [ "$DRY_RUN" -eq 0 ]; then
+    UPLOAD_TMP="$(mktemp -d)"
+    NOTES_PATH="$UPLOAD_TMP/release-notes.md"
+    release_notes_file "$NOTES_PATH"
+else
+    NOTES_PATH="\$RUNNER_TEMP/release-notes.md"
+fi
+
+UPLOAD_PATHS=("$ASSET_PATH")
+if [ "$MODE" = "dmg" ]; then
+    VERSIONED_DMG_PATH="${UPLOAD_TMP:-$DIST_DIR}/Lattices-$VERSION.dmg"
+    if [ "$DRY_RUN" -eq 0 ]; then
+        cp "$ASSET_PATH" "$VERSIONED_DMG_PATH"
+    else
+        run cp "$ASSET_PATH" "$VERSIONED_DMG_PATH"
+    fi
+    UPLOAD_PATHS+=("$VERSIONED_DMG_PATH")
+fi
+
 if [ "$DRY_RUN" -eq 1 ]; then
     echo "==> DRY RUN: would create or update GitHub release $TAG in $RELEASE_REPO"
 elif gh release view "$TAG" --repo "$RELEASE_REPO" >/dev/null 2>&1; then
     echo "==> Updating GitHub release $TAG in $RELEASE_REPO..."
-    run gh release edit "$TAG" --repo "$RELEASE_REPO" --title "$TAG"
+    run gh release edit "$TAG" --repo "$RELEASE_REPO" --title "Lattices $VERSION" --notes-file "$NOTES_PATH"
 else
     echo "==> Creating GitHub release $TAG in $RELEASE_REPO..."
-    run gh release create "$TAG" --repo "$RELEASE_REPO" --target "$RELEASE_TARGET" --title "$TAG" --notes ""
+    run gh release create "$TAG" --repo "$RELEASE_REPO" --target "$RELEASE_TARGET" --title "Lattices $VERSION" --notes-file "$NOTES_PATH"
 fi
 
-echo "==> Uploading $(basename "$ASSET_PATH")..."
-run gh release upload "$TAG" "$ASSET_PATH" --repo "$RELEASE_REPO" --clobber
+echo "==> Uploading release asset(s)..."
+run gh release upload "$TAG" "${UPLOAD_PATHS[@]}" --repo "$RELEASE_REPO" --clobber
 
 echo ""
-echo "==> Shipped $TAG with $(basename "$ASSET_PATH") to $RELEASE_REPO"
+if [ "$DRY_RUN" -eq 1 ]; then
+    echo "==> Dry run complete for $TAG in $RELEASE_REPO"
+else
+    echo "==> Shipped $TAG to $RELEASE_REPO"
+fi

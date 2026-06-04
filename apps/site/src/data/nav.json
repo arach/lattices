@@ -73,6 +73,17 @@
           "description": "Command palette, window tiling, and session management"
         }
       ]
+    },
+    {
+      "id": "maintainers",
+      "title": "Maintainers",
+      "items": [
+        {
+          "id": "release",
+          "title": "Release",
+          "description": "Maintainer workflow for macOS DMG and npm releases"
+        }
+      ]
     }
   ]
 }
