@@ -47,16 +47,10 @@ struct PiWorkspaceView: View {
 
     private var header: some View {
         HStack(alignment: .center, spacing: 12) {
-            LatticesMarkAvatar(size: 30, tint: Palette.running, isActive: session.isSending)
-
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text("Workspace Assistant")
-                        .font(Typo.title(14))
-                        .foregroundColor(Palette.text)
-
-                    statusPill
-                }
+                Text("Workspace Assistant")
+                    .font(Typo.title(14))
+                    .foregroundColor(Palette.text)
 
                 Text(headerSubtitle)
                     .font(Typo.caption(11))

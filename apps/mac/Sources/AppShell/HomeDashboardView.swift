@@ -4,14 +4,8 @@ import SwiftUI
 struct HomeDashboardView: View {
     var onNavigate: ((AppPage) -> Void)? = nil
 
-    @ObservedObject private var scanner = ProjectScanner.shared
     @ObservedObject private var piSession = PiChatSession.shared
-    @ObservedObject private var prefs = Preferences.shared
-    @ObservedObject private var permChecker = PermissionChecker.shared
-
-    private var discoveredCount: Int { scanner.projects.count }
-    private var runningCount: Int { scanner.projects.filter(\.isRunning).count }
-    private var isStartingOut: Bool { discoveredCount == 0 && runningCount == 0 }
+    @ObservedObject private var desktop = DesktopModel.shared
 
     var body: some View {
         VStack(spacing: 0) {
@@ -21,38 +15,30 @@ struct HomeDashboardView: View {
                 .fill(Palette.border)
                 .frame(height: 0.5)
 
-            MainView(scanner: scanner, layout: .embedded)
+            activeWindowsSection
         }
         .background(Palette.bg)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onAppear {
             piSession.refreshBinaryAvailability()
+            desktop.start()        // guarded — no-op if already polling
+            desktop.forcePoll()    // fresh snapshot on open
         }
     }
 
+    // MARK: - Hero (title + quick actions)
+
     private var hero: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(isStartingOut ? "Start with your desktop" : "Lattices Home")
-                        .font(Typo.heading(18))
-                        .foregroundColor(Palette.text)
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Lattices Home")
+                    .font(Typo.heading(18))
+                    .foregroundColor(Palette.text)
 
-                    Text(isStartingOut
-                         ? "See what is open, arrange it quickly, and give local agents useful workspace context."
-                         : "Workspace status, layout, search, chat, and project launch in one place.")
-                        .font(Typo.mono(11))
-                        .foregroundColor(Palette.textDim)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer()
-            }
-
-            if isStartingOut {
-                firstRunPanel
-            } else {
-                workspaceSummary
+                Text("Layout, search, chat, and screen context in one place.")
+                    .font(Typo.mono(11))
+                    .foregroundColor(Palette.textDim)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             HStack(spacing: 10) {
@@ -61,44 +47,34 @@ struct HomeDashboardView: View {
                     subtitle: piSession.hasPiBinary
                         ? (piSession.needsProviderSetup || piSession.isAuthenticating
                             ? piSession.setupStatusSummary
-                            : "Standalone conversation surface")
+                            : "Workspace assistant")
                         : "Install Pi to enable the assistant",
                     icon: "bubble.left.and.bubble.right",
-                    tint: piSession.hasPiBinary ? Palette.text : Palette.kill
+                    tint: piSession.hasPiBinary ? Palette.textDim : Palette.kill
                 ) {
-                    if let onNavigate {
-                        onNavigate(.pi)
-                    } else {
-                        AssistantAccess.show()
-                    }
+                    if let onNavigate { onNavigate(.pi) } else { AssistantAccess.show() }
                 }
 
                 homeActionCard(
                     title: "Layout",
                     subtitle: "Arrange windows",
                     icon: "rectangle.3.group",
-                    tint: Palette.running
-                ) {
-                    onNavigate?(.screenMap)
-                }
+                    tint: Palette.textDim
+                ) { onNavigate?(.screenMap) }
 
                 homeActionCard(
                     title: "Search",
                     subtitle: "Find workspace context",
                     icon: "magnifyingglass",
-                    tint: Palette.detach
-                ) {
-                    onNavigate?(.desktopInventory)
-                }
+                    tint: Palette.textDim
+                ) { onNavigate?(.desktopInventory) }
 
                 homeActionCard(
                     title: "Activity",
                     subtitle: "Logs and diagnostics",
                     icon: "list.bullet.rectangle",
                     tint: Palette.textDim
-                ) {
-                    onNavigate?(.activity)
-                }
+                ) { onNavigate?(.activity) }
             }
         }
         .padding(.horizontal, 16)
@@ -106,144 +82,10 @@ struct HomeDashboardView: View {
         .padding(.bottom, 16)
         .background(
             LinearGradient(
-                colors: [
-                    Palette.running.opacity(0.08),
-                    Color.black.opacity(0.18),
-                ],
+                colors: [Palette.running.opacity(0.08), Color.black.opacity(0.18)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-        )
-    }
-
-    private var firstRunPanel: some View {
-        HStack(alignment: .top, spacing: 10) {
-            startStep(
-                index: "1",
-                title: "Map your windows",
-                detail: "Open the visual layout surface for everything on screen.",
-                status: permChecker.isGranted(.windowControl) ? "Ready" : "Optional",
-                statusColor: permChecker.isGranted(.windowControl) ? Palette.running : Palette.textMuted,
-                actionTitle: "Open Layout",
-                action: { onNavigate?(.screenMap) }
-            )
-
-            startStep(
-                index: "2",
-                title: "Search context",
-                detail: "Inspect visible apps, titles, and screen text when OCR is enabled.",
-                status: permChecker.isGranted(.screenSearch) ? "Enabled" : "Optional",
-                statusColor: permChecker.isGranted(.screenSearch) ? Palette.running : Palette.textMuted,
-                actionTitle: "Open Search",
-                action: { onNavigate?(.desktopInventory) }
-            )
-
-            startStep(
-                index: "3",
-                title: "Use the assistant",
-                detail: "Chat with a local workspace-aware surface and route into app actions.",
-                status: piSession.hasPiBinary ? "Ready" : "Setup",
-                statusColor: piSession.hasPiBinary ? Palette.running : Palette.detach,
-                actionTitle: "Open Chat",
-                action: { onNavigate?(.pi) }
-            )
-        }
-    }
-
-    private var workspaceSummary: some View {
-        HStack(spacing: 8) {
-            summaryPill(icon: "folder", label: "\(discoveredCount) projects", color: Palette.textDim)
-            summaryPill(icon: "play.circle", label: "\(runningCount) running", color: runningCount > 0 ? Palette.running : Palette.textMuted)
-            if !prefs.scanRoot.isEmpty {
-                summaryPill(icon: "location", label: abbreviatePath(prefs.scanRoot), color: Palette.textMuted)
-            }
-            Spacer(minLength: 0)
-        }
-    }
-
-    private func summaryPill(icon: String, label: String, color: Color) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: icon)
-                .font(.system(size: 9, weight: .semibold))
-            Text(label)
-                .font(Typo.mono(10))
-                .lineLimit(1)
-                .truncationMode(.middle)
-        }
-        .foregroundColor(color)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(
-            Capsule()
-                .fill(Palette.surface.opacity(0.65))
-                .overlay(
-                    Capsule().strokeBorder(Palette.border, lineWidth: 0.5)
-                )
-        )
-    }
-
-    private func startStep(
-        index: String,
-        title: String,
-        detail: String,
-        status: String,
-        statusColor: Color,
-        actionTitle: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 7) {
-                Text(index)
-                    .font(Typo.monoBold(10))
-                    .foregroundColor(Palette.bg)
-                    .frame(width: 18, height: 18)
-                    .background(Circle().fill(Palette.textDim))
-
-                Text(status)
-                    .font(Typo.monoBold(9))
-                    .foregroundColor(statusColor)
-
-                Spacer(minLength: 0)
-            }
-
-            Text(title)
-                .font(Typo.monoBold(11))
-                .foregroundColor(Palette.text)
-
-            Text(detail)
-                .font(Typo.mono(10))
-                .foregroundColor(Palette.textMuted)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Spacer(minLength: 0)
-
-            Button(action: action) {
-                Text(actionTitle)
-                    .font(Typo.monoBold(10))
-                    .foregroundColor(Palette.text)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(
-                        RoundedRectangle(cornerRadius: 5)
-                            .fill(Palette.surfaceHov)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 5)
-                                    .strokeBorder(Palette.borderLit, lineWidth: 0.5)
-                            )
-                    )
-            }
-            .buttonStyle(.plain)
-        }
-        .frame(maxWidth: .infinity, minHeight: 122, alignment: .topLeading)
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Palette.surface.opacity(0.68))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
-                )
         )
     }
 
@@ -260,18 +102,12 @@ struct HomeDashboardView: View {
                     Image(systemName: icon)
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(tint)
-
                     Spacer()
-
-                    Circle()
-                        .fill(tint.opacity(0.85))
-                        .frame(width: 6, height: 6)
+                    Circle().fill(tint.opacity(0.85)).frame(width: 6, height: 6)
                 }
-
                 Text(title)
                     .font(Typo.monoBold(12))
                     .foregroundColor(Palette.text)
-
                 Text(subtitle)
                     .font(Typo.mono(10))
                     .foregroundColor(Palette.textMuted)
@@ -292,11 +128,222 @@ struct HomeDashboardView: View {
         .buttonStyle(.plain)
     }
 
-    private func abbreviatePath(_ path: String) -> String {
-        let home = NSHomeDirectory()
-        if path.hasPrefix(home) {
-            return "~" + path.dropFirst(home.count)
+    // MARK: - Active windows snapshot
+
+    /// On-screen windows, most-recently-interacted first, then frontmost order.
+    private var activeWindows: [WindowEntry] {
+        desktop.allWindows()
+            .filter { $0.isOnScreen && !$0.title.isEmpty }
+            .sorted { a, b in
+                let da = desktop.lastInteractionDate(for: a.wid)
+                let db = desktop.lastInteractionDate(for: b.wid)
+                switch (da, db) {
+                case let (.some(x), .some(y)): return x > y
+                case (.some, .none):           return true
+                case (.none, .some):           return false
+                case (.none, .none):           return a.zIndex < b.zIndex
+                }
+            }
+    }
+
+    private var activeWindowsSection: some View {
+        let windows = activeWindows
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Text("Active windows")
+                    .font(Typo.monoBold(11))
+                    .foregroundColor(Palette.textDim)
+                Text("\(windows.count)")
+                    .font(Typo.mono(10))
+                    .foregroundColor(Palette.textMuted)
+                Spacer()
+                Button { onNavigate?(.desktopInventory) } label: {
+                    Text("Search all")
+                        .font(Typo.mono(10))
+                        .foregroundColor(Palette.textMuted)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 14)
+            .padding(.bottom, 8)
+
+            if windows.isEmpty {
+                emptyWindows
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 2) {
+                        ForEach(windows.prefix(14), id: \.wid) { window in
+                            WindowSnapshotRow(
+                                window: window,
+                                lastActive: desktop.lastInteractionDate(for: window.wid)
+                            )
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 12)
+                }
+            }
         }
-        return path
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private var emptyWindows: some View {
+        VStack(spacing: 6) {
+            Image(systemName: "macwindow")
+                .font(.system(size: 20, weight: .light))
+                .foregroundColor(Palette.textMuted)
+            Text("No active windows on screen")
+                .font(Typo.mono(11))
+                .foregroundColor(Palette.textDim)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        .padding(.vertical, 40)
+    }
+
+    private func appIcon(pid: Int32) -> NSImage? {
+        NSRunningApplication(processIdentifier: pid)?.icon
+    }
+}
+
+// MARK: - Window snapshot row
+
+/// One window in the Home "Active windows" snapshot. Left side is identity
+/// (icon + app + title); the trailing area shows region · size · last-active,
+/// and crossfades to quick actions (focus / tile left / tile right) on hover.
+/// The trailing area is a fixed-width ZStack so the swap never shifts the row.
+private struct WindowSnapshotRow: View {
+    let window: WindowEntry
+    let lastActive: Date?
+
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: focus) {
+            HStack(spacing: 10) {
+                icon
+
+                Text(window.app)
+                    .font(Typo.monoBold(11))
+                    .foregroundColor(Palette.text)
+                    .lineLimit(1)
+                    .layoutPriority(1)
+
+                if window.zIndex == 0 {
+                    Text("FRONT")
+                        .font(Typo.geistMonoBold(8))
+                        .tracking(0.5)
+                        .foregroundColor(Palette.running)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(Palette.running.opacity(0.12)))
+                }
+
+                if !window.title.isEmpty, window.title != window.app {
+                    Text(window.title)
+                        .font(Typo.mono(10))
+                        .foregroundColor(Palette.textMuted)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+
+                Spacer(minLength: 8)
+
+                actions
+                    .opacity(hovering ? 1 : 0)
+                    .allowsHitTesting(hovering)
+                    .animation(.easeOut(duration: 0.12), value: hovering)
+
+                metadata
+                    .frame(width: 72, alignment: .trailing)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(Color.white.opacity(hovering ? 0.05 : 0.02))
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+    }
+
+    @ViewBuilder private var icon: some View {
+        if let img = NSRunningApplication(processIdentifier: window.pid)?.icon {
+            Image(nsImage: img).resizable().frame(width: 18, height: 18)
+        } else {
+            RoundedRectangle(cornerRadius: 4).fill(Palette.surface).frame(width: 18, height: 18)
+        }
+    }
+
+    private var metadata: some View {
+        HStack(spacing: 5) {
+            Text(regionLabel)
+                .foregroundColor(Palette.textMuted)
+            if let t = timeAgo {
+                Text("·").foregroundColor(Palette.textMuted)
+                Text(t).foregroundColor(Palette.textDim)
+            }
+        }
+        .font(Typo.mono(9))
+    }
+
+    private var actions: some View {
+        HStack(spacing: 6) {
+            actionButton("arrow.up.left.and.arrow.down.right", "Focus", action: focus)
+            actionButton("rectangle.lefthalf.filled", "Tile left") { tile("left") }
+            actionButton("rectangle.righthalf.filled", "Tile right") { tile("right") }
+        }
+    }
+
+    private func actionButton(_ symbol: String, _ help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(Palette.textMuted)
+                .frame(width: 24, height: 24)
+                .background(
+                    Circle()
+                        .fill(Color.white.opacity(0.05))
+                        .overlay(Circle().strokeBorder(Palette.border, lineWidth: 0.5))
+                )
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
+
+    private func focus() {
+        _ = WindowTiler.focusWindow(wid: window.wid, pid: window.pid)
+        WindowTiler.highlightWindowById(wid: window.wid)
+    }
+
+    private func tile(_ position: String) {
+        guard let placement = PlacementSpec(string: position) else { return }
+        _ = WindowTiler.focusWindow(wid: window.wid, pid: window.pid)
+        WindowTiler.tileWindowById(wid: window.wid, pid: window.pid, to: placement)
+        WindowTiler.highlightWindowById(wid: window.wid)
+    }
+
+    private var sizeLabel: String { "\(Int(window.frame.w))×\(Int(window.frame.h))" }
+
+    /// Coarse horizontal region from the window's centre across the full desktop.
+    private var regionLabel: String {
+        let centerX = window.frame.x + window.frame.w / 2
+        let totalWidth = NSScreen.screens.map(\.frame.maxX).max()
+            ?? NSScreen.main?.frame.width ?? 1
+        let frac = totalWidth > 0 ? centerX / totalWidth : 0.5
+        if frac < 0.34 { return "Left" }
+        if frac < 0.66 { return "Center" }
+        return "Right"
+    }
+
+    private var timeAgo: String? {
+        guard let lastActive else { return nil }
+        let s = Date().timeIntervalSince(lastActive)
+        if s < 45 { return "now" }
+        if s < 3600 { return "\(Int(s / 60))m" }
+        if s < 86400 { return "\(Int(s / 3600))h" }
+        return "\(Int(s / 86400))d"
     }
 }
