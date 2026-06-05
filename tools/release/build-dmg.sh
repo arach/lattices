@@ -33,7 +33,17 @@ fi
 
 echo "==> Building Lattices v$VERSION (release)..."
 cd "$APP_DIR"
-swift build -c release 2>&1 | tail -3
+# Stream the full build (tee) so CI surfaces real compiler errors; on failure,
+# re-print just the error: lines for a quick scan. (Previously `| tail -3`
+# swallowed the actual diagnostics, leaving only doc-link footers.)
+build_log="$(mktemp)"
+if ! swift build -c release 2>&1 | tee "$build_log"; then
+    echo "==> Swift build FAILED. Compiler errors:" >&2
+    grep -E "error:" "$build_log" >&2 || true
+    rm -f "$build_log"
+    exit 1
+fi
+rm -f "$build_log"
 
 echo "==> Creating app bundle..."
 rm -rf "$BUILD_DIR"
