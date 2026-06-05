@@ -34,6 +34,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Select Xcode 26
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Package.swift requires swift-tools 6.2 (Xcode 26); the runner
+          # defaults to 16.4 (Swift 6.1). Pick the newest Xcode 26 present.
+          xcode="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -n 1)"
+          if [[ -z "$xcode" ]]; then
+            echo "No Xcode 26 found on this runner:" >&2
+            ls -d /Applications/Xcode_*.app >&2
+            exit 1
+          fi
+          echo "Using $xcode"
+          sudo xcode-select -s "$xcode/Contents/Developer"
+
       - name: Show toolchain
         shell: bash
         run: |
