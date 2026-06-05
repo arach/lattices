@@ -1,4 +1,6 @@
 import SwiftUI
+import HudsonShell
+import HudsonUI
 
 // MARK: - Navigation Pages
 
@@ -47,21 +49,48 @@ enum AppPage: String, CaseIterable {
 struct AppShellView: View {
     @ObservedObject var controller: ScreenMapController
     @ObservedObject var windowController = ScreenMapWindowController.shared
+    @ObservedObject private var scanner = ProjectScanner.shared
     @StateObject private var commandState = CommandModeState()
 
-    var body: some View {
-        VStack(spacing: 0) {
-            // Tab bar (only on primary pages)
-            if AppPage.primaryTabs.contains(windowController.activePage) {
-                tabBar
-                Rectangle().fill(Palette.border).frame(height: 0.5)
-            }
+    /// Sidebar starts expanded (labels visible); the rail header toggles compact.
+    @State private var sidebarCompact = false
 
+    private var manifest: HudAppManifest {
+        HudAppManifest(name: "Lattices", accent: Palette.running, targetLabel: "Machine")
+    }
+
+    /// Hudson rail ↔ our `activePage`. Selecting a rail item routes through the
+    /// same `showPage` path the old tabs used; non-primary pages (Settings, Docs)
+    /// leave the rail with no selection.
+    private var selection: Binding<AppPage?> {
+        Binding(
+            get: { AppPage.primaryTabs.contains(windowController.activePage) ? windowController.activePage : nil },
+            set: { if let page = $0 { windowController.showPage(page) } }
+        )
+    }
+
+    private var entries: [HudSidebarEntry<AppPage>] {
+        AppPage.primaryTabs.map { page in
+            .item(HudSidebarItem(id: page, title: page.label, icon: page.icon))
+        }
+    }
+
+    var body: some View {
+        HudAppShell {
+            navigationSidebar
+        } trailing: {
+            EmptyView()
+        } content: {
             contentArea
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        } statusBar: {
+            statusBar
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Palette.bg)
+        // Full Hudson window chrome: transparent full-size title bar, no separator.
+        // Keep the window non-draggable-by-background so content clicks aren't
+        // swallowed (Lattices manages its own window placement).
+        .background(HudWindowChrome(colorScheme: .dark, isMovableByWindowBackground: false))
+        .hudsonAppManifest(manifest)
         .onAppear {
             commandState.onDismiss = { windowController.activePage = .home }
             syncPageState(windowController.activePage)
@@ -69,6 +98,55 @@ struct AppShellView: View {
         .onChange(of: windowController.activePage) { page in
             syncPageState(page)
             clearRelevantDismissals(for: page)
+        }
+    }
+
+    // MARK: - Navigation Rail
+
+    private var navigationSidebar: some View {
+        HudNavigationSidebar(
+            selection: selection,
+            entries: entries,
+            isCompact: sidebarCompact,
+            accent: Palette.running,
+            onHeaderTap: {
+                withAnimation(HudMotion.chromeSpring) { sidebarCompact.toggle() }
+            }
+        ) {
+            // railHeader — kept clear so the traffic lights float over empty space.
+            Color.clear
+        } labelHeader: {
+            Text("Lattices")
+                .font(Typo.title(15))
+                .foregroundColor(Palette.text)
+        }
+    }
+
+    // MARK: - Status Bar
+
+    private var statusBar: some View {
+        let running = scanner.projects.filter(\.isRunning).count
+        return HStack(spacing: 14) {
+            statusItem(icon: "circle.fill", text: "\(running) running", tint: Palette.running)
+            statusItem(icon: "folder", text: "\(scanner.projects.count) projects", tint: Palette.textMuted)
+            Spacer()
+            Text(windowController.activePage.label)
+                .font(Typo.geistMonoBold(9))
+                .foregroundColor(Palette.textDim)
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 26)
+        .background(Palette.bg)
+    }
+
+    private func statusItem(icon: String, text: String, tint: Color) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 7))
+                .foregroundColor(tint)
+            Text(text)
+                .font(Typo.mono(10))
+                .foregroundColor(Palette.textMuted)
         }
     }
 
@@ -84,47 +162,6 @@ struct AppShellView: View {
         default:
             break
         }
-    }
-
-    // MARK: - Tab Bar
-
-    private var tabBar: some View {
-        HStack(spacing: 0) {
-            ForEach(AppPage.primaryTabs, id: \.rawValue) { tab in
-                tabButton(tab)
-            }
-
-            Spacer()
-        }
-        .padding(.horizontal, 12)
-        .padding(.top, 30)
-        .padding(.bottom, 4)
-    }
-
-    private func tabButton(_ tab: AppPage) -> some View {
-        let isActive = windowController.activePage == tab
-
-        return Button {
-            windowController.showPage(tab)
-            if tab == .screenMap { controller.enter() }
-            if tab == .desktopInventory { commandState.enter() }
-        } label: {
-            HStack(spacing: 5) {
-                Image(systemName: tab.icon)
-                    .font(.system(size: 10))
-                Text(tab.label)
-                    .font(Typo.monoBold(11))
-            }
-            .foregroundColor(isActive ? Palette.text : Palette.textMuted)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .contentShape(Rectangle())
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(isActive ? Palette.surfaceHov : Color.clear)
-            )
-        }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Content Area

@@ -132,34 +132,9 @@ struct MainView: View {
                 .padding(.horizontal, 18)
                 .padding(.top, 18)
                 .padding(.bottom, 12)
-            } else {
-                // Search
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundColor(Palette.textMuted)
-                        .font(.system(size: 11))
-                    TextField("Search projects...", text: $searchText)
-                        .textFieldStyle(.plain)
-                        .font(Typo.body(13))
-                        .foregroundColor(Palette.text)
-                    if !searchText.isEmpty {
-                        Button { searchText = "" } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(Palette.textMuted)
-                                .font(.system(size: 11))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Palette.surface)
-                )
-                .padding(.horizontal, 14)
-                .padding(.bottom, 10)
             }
+            // Projects spotlight removed for now — embedded layout goes straight
+            // from the hero into the project area.
 
             // Permission banner — only when something is missing AND not snoozed
             if !visiblyMissingCapabilities.isEmpty {
