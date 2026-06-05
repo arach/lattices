@@ -52,8 +52,8 @@ struct AppShellView: View {
     @ObservedObject private var scanner = ProjectScanner.shared
     @StateObject private var commandState = CommandModeState()
 
-    /// Sidebar starts expanded (labels visible); the rail header toggles compact.
-    @State private var sidebarCompact = false
+    /// Sidebar starts minimized (icon-only rail); tapping the logo expands it.
+    @State private var sidebarCompact = true
 
     private var manifest: HudAppManifest {
         HudAppManifest(name: "Lattices", accent: Palette.running, targetLabel: "Machine")
@@ -113,8 +113,10 @@ struct AppShellView: View {
                 withAnimation(HudMotion.chromeSpring) { sidebarCompact.toggle() }
             }
         ) {
-            // railHeader — kept clear so the traffic lights float over empty space.
-            Color.clear
+            // railHeader — the brand mark is the top slot. The rail honors the
+            // title-bar safe area, so it sits just below the traffic lights.
+            // Tapping it (onHeaderTap) toggles the rail open/closed.
+            LatticesMarkAvatar(size: 24, tint: Palette.running)
         } labelHeader: {
             Text("Lattices")
                 .font(Typo.title(15))
