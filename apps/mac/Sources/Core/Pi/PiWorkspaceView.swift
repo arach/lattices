@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct PiWorkspaceView: View {
@@ -31,13 +32,16 @@ struct PiWorkspaceView: View {
             }
         }
         .background(Palette.bg)
+        .background(WorkspaceFocusActivator())
+        .onReceive(NotificationCenter.default.publisher(for: .workspaceComposerFocus)) { _ in
+            // Fired exactly when the hosting window becomes key, so setting the
+            // caret here actually renders it — no timed guessing.
+            if session.hasPiBinary && !session.needsProviderSetup {
+                composerFocused = true
+            }
+        }
         .onAppear {
             session.prepareForDisplay()
-            if session.hasPiBinary && !session.needsProviderSetup {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    composerFocused = true
-                }
-            }
         }
     }
 
@@ -62,7 +66,9 @@ struct PiWorkspaceView: View {
 
             Spacer()
 
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
+                PiChatModelChip(session: session)
+
                 headerIconButton(symbol: "gearshape") {
                     SettingsWindowController.shared.showAssistant()
                 }
@@ -75,7 +81,8 @@ struct PiWorkspaceView: View {
             }
         }
         .padding(.horizontal, 24)
-        .padding(.vertical, 16)
+        .padding(.top, 10)
+        .padding(.bottom, 14)
     }
 
     private var headerSubtitle: String {
@@ -191,5 +198,48 @@ struct PiWorkspaceView: View {
                     .fill(Color.white.opacity(0.04))
                     .overlay(Capsule().strokeBorder(Palette.border, lineWidth: 0.5))
             )
+    }
+}
+
+extension Notification.Name {
+    /// Posted when the assistant's hosting window becomes key, so the composer
+    /// can take the caret at the exact moment it can actually render one.
+    static let workspaceComposerFocus = Notification.Name("dev.lattices.workspaceComposerFocus")
+}
+
+/// Zero-size bridge that activates the app + makes the hosting window key on
+/// attach, and re-signals focus every time the window becomes key.
+private struct WorkspaceFocusActivator: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView { FocusTrackerView() }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    final class FocusTrackerView: NSView {
+        private var observer: Any?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard let window else { return }
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            if observer == nil {
+                observer = NotificationCenter.default.addObserver(
+                    forName: NSWindow.didBecomeKeyNotification,
+                    object: window,
+                    queue: .main
+                ) { _ in
+                    NotificationCenter.default.post(name: .workspaceComposerFocus, object: nil)
+                }
+            }
+            // If it's already key (tab switch within a focused window), signal now.
+            if window.isKeyWindow {
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: .workspaceComposerFocus, object: nil)
+                }
+            }
+        }
+
+        deinit {
+            if let observer { NotificationCenter.default.removeObserver(observer) }
+        }
     }
 }
