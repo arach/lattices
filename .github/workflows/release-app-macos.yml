@@ -215,6 +215,9 @@ jobs:
         env:
           LATTICES_HUDSON_SOURCE: git
           HUDSONKIT_WITH_VOICE: "1"
+          # Resolve hudson's own vox/swift dependency over git too (no local path
+          # in CI). Requires hudson@main >= a8fc83d and vox@main >= 960a1df.
+          HUDSON_VOX_SOURCE: git
         run: |
           set -euo pipefail
 
