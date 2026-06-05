@@ -2758,20 +2758,26 @@ final class ScreenMapController: ObservableObject {
         let visible = ed.focusedVisibleWindows
         guard !visible.isEmpty else { flash("No windows to preview"); return }
 
-        var captures: [UInt32: NSImage] = [:]
-        for win in visible {
-            if let cgImage = WindowCapture.image(
-                listOption: .optionIncludingWindow,
-                windowID: CGWindowID(win.id),
-                imageOption: [.boundsIgnoreFraming, .bestResolution]
-            ) {
-                captures[win.id] = NSImage(cgImage: cgImage,
-                    size: NSSize(width: win.virtualFrame.width, height: win.virtualFrame.height))
+        Task { [weak self, weak ed] in
+            var captures: [UInt32: NSImage] = [:]
+            for win in visible {
+                if let cgImage = await WindowCapture.image(
+                    listOption: .optionIncludingWindow,
+                    windowID: CGWindowID(win.id),
+                    imageOption: [.boundsIgnoreFraming, .bestResolution]
+                ) {
+                    captures[win.id] = NSImage(cgImage: cgImage,
+                        size: NSSize(width: win.virtualFrame.width, height: win.virtualFrame.height))
+                }
+            }
+
+            await MainActor.run {
+                guard let self, let ed, self.editor === ed, !ed.isPreviewing else { return }
+                self.previewCaptures = captures
+                ed.isPreviewing = true
+                self.objectWillChange.send()
             }
         }
-        previewCaptures = captures
-        ed.isPreviewing = true
-        objectWillChange.send()
     }
 
     func showPreviewWindow(contentView: NSView, frame: NSRect) {
@@ -2891,7 +2897,8 @@ final class WindowBezel {
     var isVisible: Bool { panel?.isVisible ?? false }
 
     /// Show or update bezel for a known ScreenMapWindowEntry.
-    func show(for win: ScreenMapWindowEntry, editor: ScreenMapEditorState) {
+    @MainActor
+    func show(for win: ScreenMapWindowEntry, editor: ScreenMapEditorState) async {
         let screens = NSScreen.screens
         guard !screens.isEmpty else { return }
         let primaryHeight = screens.first!.frame.height
@@ -2985,14 +2992,14 @@ final class WindowBezel {
         let tightSize = CGSize(width: tightFrame.width, height: tightFrame.height)
 
         // Capture window content for screenshot tool compositing
-        let windowSnapshot: NSImage? = {
-            guard let cgImage = WindowCapture.image(
-                listOption: .optionIncludingWindow,
-                windowID: win.id,
-                imageOption: [.bestResolution, .boundsIgnoreFraming]
-            ) else { return nil }
-            return NSImage(cgImage: cgImage, size: NSSize(width: cgFrame.width, height: cgFrame.height))
-        }()
+        let snapshotCGImage = await WindowCapture.image(
+            listOption: .optionIncludingWindow,
+            windowID: win.id,
+            imageOption: [.bestResolution, .boundsIgnoreFraming]
+        )
+        let windowSnapshot = snapshotCGImage.map {
+            NSImage(cgImage: $0, size: NSSize(width: cgFrame.width, height: cgFrame.height))
+        }
 
         let bezelView = ShowOnScreenBezelView(
             appName: win.app,
@@ -3050,7 +3057,7 @@ final class WindowBezel {
                 p.orderFrontRegardless()
             }
 
-            NSAnimationContext.runAnimationGroup { ctx in
+            await NSAnimationContext.runAnimationGroup { ctx in
                 ctx.duration = 0.15
                 p.animator().alphaValue = 1.0
             }
@@ -3060,7 +3067,7 @@ final class WindowBezel {
                 p.order(.below, relativeTo: targetWinNum)
             }
 
-            NSAnimationContext.runAnimationGroup { ctx in
+            await NSAnimationContext.runAnimationGroup { ctx in
                 ctx.duration = 0.2
                 ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                 p.animator().setFrame(tightFrame, display: true)
@@ -3106,7 +3113,9 @@ final class WindowBezel {
         guard let ed = ctrl.editor,
               let win = ed.windows.first(where: { $0.id == wid }) else { return }
 
-        shared.show(for: win, editor: ed)
+        Task { @MainActor in
+            await shared.show(for: win, editor: ed)
+        }
     }
 
     func dismiss() {

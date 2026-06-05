@@ -42,6 +42,13 @@ enum Typo {
         .system(size: size, weight: .regular, design: .rounded)
     }
 
+    /// Reading font for message *content* (assistant/user prose) — JetBrains
+    /// Mono, deliberately distinct from the rounded SF used for UI chrome so
+    /// conversation text reads as monospaced terminal-grade copy, not interface.
+    static func reading(_ size: CGFloat = 13, weight: Font.Weight = .regular) -> Font {
+        Font.custom(jetbrains, size: size).weight(weight)
+    }
+
     static func caption(_ size: CGFloat = 10) -> Font {
         .system(size: size, weight: .medium, design: .rounded)
     }

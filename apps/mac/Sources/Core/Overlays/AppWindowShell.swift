@@ -13,6 +13,10 @@ struct AppWindowShell {
         var minSize: NSSize
         var maxSize: NSSize
         var miniaturizable: Bool = true
+        /// Let content fill the whole window, including under the title bar, so
+        /// chrome (e.g. a tab strip) can sit in the traffic-light row instead of
+        /// below a reserved title band.
+        var fullSizeContent: Bool = false
     }
 
     /// Create a styled NSWindow hosting a SwiftUI root view.
@@ -27,6 +31,7 @@ struct AppWindowShell {
 
         var styleMask: NSWindow.StyleMask = [.titled, .closable, .resizable]
         if config.miniaturizable { styleMask.insert(.miniaturizable) }
+        if config.fullSizeContent { styleMask.insert(.fullSizeContentView) }
 
         let w = NSWindow(
             contentRect: NSRect(origin: .zero, size: config.initialSize),

@@ -1,5 +1,9 @@
 import AppKit
+import Combine
 import Foundation
+#if canImport(HudsonAI)
+import HudsonAI
+#endif
 
 struct PiChatMessage: Identifiable, Equatable {
     enum Role {
@@ -206,9 +210,18 @@ final class PiChatSession: ObservableObject {
     private var voiceRuntimeProviderID: String?
 
     private var streamingMessageID: UUID?
-    private var streamingPendingText: String?
-    private var streamingFlushScheduled: Bool = false
-    private static let streamingFlushInterval: TimeInterval = 1.0 / 30.0
+    // Display drain — decouples on-screen reveal from network arrival cadence so
+    // chunky provider bursts flow in smoothly (and a wait-then-dump final still
+    // animates in). `targetText` is everything received so far; `displayedCount`
+    // is how many characters have been revealed; a 60Hz timer eases the gap shut.
+    private var streamingTargetText: String = ""
+    private var streamingDisplayedCount: Int = 0
+    private var streamingClosing: Bool = false
+    private var streamingDrainTimer: Timer?
+    // Ticks to idle before revealing more — used to add a natural reading beat
+    // after sentence/clause punctuation so the stream doesn't read robotically.
+    private var streamingHoldTicks: Int = 0
+    private static let streamingDrainInterval: TimeInterval = 1.0 / 60.0
 
     private static let selectedProviderDefaultsKey = "PiChatSelectedProvider"
     private static let voiceInferenceTimeout: TimeInterval = 45
@@ -225,6 +238,11 @@ final class PiChatSession: ObservableObject {
         Respond concisely. Follow the response format requested in each prompt exactly.
         """
     private static let dockHeightDefaultsKey = "PiChatDockHeight"
+
+    #if canImport(HudsonVoice)
+    /// Drains finalized voice transcripts from the Hudson-powered mic into the composer draft.
+    private var voiceInputCancellable: AnyCancellable?
+    #endif
 
     private init() {
         let fm = FileManager.default
@@ -252,6 +270,20 @@ final class PiChatSession: ObservableObject {
         reloadAuthState()
         refreshBinaryAvailability()
         cleanupLingeringAuthHelpers()
+
+        #if canImport(HudsonVoice)
+        // Splice finalized voice transcripts into the draft (one-shot, then drain),
+        // mirroring OpenScout's HUDDockState lastFinalText subscription.
+        voiceInputCancellable = WorkspaceVoiceInput.shared.$lastFinalText
+            .receive(on: RunLoop.main)
+            .sink { [weak self] text in
+                guard let self else { return }
+                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { return }
+                self.draft = WorkspaceDictationBuffer.appending(trimmed, to: self.draft)
+                WorkspaceVoiceInput.shared.consumeFinalText()
+            }
+        #endif
     }
 
     var hasPiBinary: Bool {
@@ -524,8 +556,21 @@ final class PiChatSession: ObservableObject {
         ))
 
         streamingMessageID = messageID
-        streamingPendingText = nil
-        streamingFlushScheduled = false
+        resetStreamingDrain()
+
+        #if canImport(HudsonAI)
+        if HudsonKitSwitch.useHudAIChat {
+            sendViaHudAIClient(
+                prompt: prompt,
+                runtime: runtime,
+                providerName: provider.name,
+                modelID: provider.id,
+                messageID: messageID,
+                inferenceTimer: inferenceTimer
+            )
+            return
+        }
+        #endif
 
         var streamedText = ""
         runtime.promptAndFetchAssistantText(
@@ -571,6 +616,81 @@ final class PiChatSession: ObservableObject {
             }
         }
     }
+
+    #if canImport(HudsonAI)
+    /// Drive a chat turn through HudsonKit's `HudAIClient` with pi as the
+    /// provider adapter, instead of calling `PiRpcRuntime` directly. Gated on
+    /// `HudsonKitSwitch.useHudAIChat`. Feeds the same 30fps-coalesced streaming
+    /// commit path as the native pi route, so the rendered result is identical —
+    /// this is the seam where pi becomes "one of the providers HudAIClient
+    /// supports", alongside the HTTP adapters.
+    private func sendViaHudAIClient(
+        prompt: String,
+        runtime: PiRpcRuntime,
+        providerName: String,
+        modelID: String,
+        messageID: UUID,
+        inferenceTimer: DiagnosticLog.TimedAction
+    ) {
+        let adapter = PiHudAIAdapter(
+            displayName: providerName,
+            defaultModel: modelID,
+            runtimeProvider: { runtime }
+        )
+        let client = HudAIClient(
+            provider: adapter,
+            vault: NullHudAICredentialSource(),
+            defaults: HudAIDefaults(timeout: 120),
+            routeDefault: .local
+        )
+        let request = HudAIRequest(messages: [.user(prompt)])
+
+        Task {
+            var streamed = ""
+            do {
+                for try await event in client.stream(request) {
+                    switch event {
+                    case .textDelta(_, let text):
+                        streamed += text
+                        let snapshot = streamed
+                        DispatchQueue.main.async { [weak self] in
+                            guard let self else { return }
+                            if self.statusText == "thinking..." { self.statusText = "streaming..." }
+                            self.commitStreamingText(snapshot)
+                        }
+                    case .toolCallStarted(_, let name):
+                        DispatchQueue.main.async { [weak self] in self?.statusText = "tool: \(name)" }
+                    case .completed(let response):
+                        let final = response.text.isEmpty ? streamed : response.text
+                        DispatchQueue.main.async { [weak self] in
+                            guard let self else { return }
+                            self.isSending = false
+                            self.statusText = "idle"
+                            DiagnosticLog.shared.finish(inferenceTimer)
+                            self.finalizeStreaming(finalText: final)
+                        }
+                    case .failed:
+                        // HudAIClient always finishes(throwing:) right after .failed,
+                        // so the catch below owns failure handling (avoids double-fire).
+                        break
+                    default:
+                        break
+                    }
+                }
+            } catch {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.isSending = false
+                    DiagnosticLog.shared.error("Chat inference (HudAIClient) failed: \(error.localizedDescription)")
+                    self.cancelPendingStreamingFlush()
+                    self.removeMessageIfEmpty(id: messageID)
+                    self.streamingMessageID = nil
+                    self.handleInferenceFailure(error.localizedDescription)
+                }
+            }
+        }
+    }
+    #endif
 
     func askVoiceAdvisor(transcript: String, matched: String, callback: @escaping (AgentResponse?) -> Void) {
         runVoiceInference(
@@ -697,34 +817,124 @@ final class PiChatSession: ObservableObject {
         messages[index].text = text
     }
 
+    /// Record the latest accumulated snapshot as the drain target. The reveal
+    /// itself happens on the drain timer, not here — so a chunky burst doesn't
+    /// snap onto the screen all at once.
     private func commitStreamingText(_ text: String) {
-        streamingPendingText = text
-        if streamingFlushScheduled { return }
-        streamingFlushScheduled = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.streamingFlushInterval) { [weak self] in
-            self?.flushPendingStreamingText()
+        streamingTargetText = text
+        startStreamingDrainIfNeeded()
+    }
+
+    private func resetStreamingDrain() {
+        streamingDrainTimer?.invalidate()
+        streamingDrainTimer = nil
+        streamingTargetText = ""
+        streamingDisplayedCount = 0
+        streamingClosing = false
+        streamingHoldTicks = 0
+    }
+
+    private func startStreamingDrainIfNeeded() {
+        guard streamingDrainTimer == nil else { return }
+        let timer = Timer.scheduledTimer(withTimeInterval: Self.streamingDrainInterval, repeats: true) { [weak self] _ in
+            self?.tickStreamingDrain()
+        }
+        // .common so the drain keeps ticking during scroll/tracking runloops.
+        RunLoop.main.add(timer, forMode: .common)
+        streamingDrainTimer = timer
+    }
+
+    /// One reveal step: ease the displayed length toward the target, snapping to
+    /// a word boundary so words land whole. Faster while closing so the message
+    /// settles promptly once the network is done.
+    private func tickStreamingDrain() {
+        guard let id = streamingMessageID else {
+            streamingDrainTimer?.invalidate()
+            streamingDrainTimer = nil
+            return
+        }
+
+        // Honor a pending reading beat (skip this tick) before revealing more.
+        if streamingHoldTicks > 0 {
+            streamingHoldTicks -= 1
+            return
+        }
+
+        let target = streamingTargetText
+        let targetCount = target.count
+
+        if streamingDisplayedCount >= targetCount {
+            if streamingClosing {
+                updateAssistantMessage(id: id, text: target)
+                streamingDrainTimer?.invalidate()
+                streamingDrainTimer = nil
+                streamingMessageID = nil
+            }
+            return
+        }
+
+        let gap = targetCount - streamingDisplayedCount
+        let fraction = streamingClosing ? 0.45 : 0.22
+        let minStep = streamingClosing ? 6 : 2
+        var step = max(minStep, Int((Double(gap) * fraction).rounded()))
+        step = min(step, gap)
+        let proposed = streamingDisplayedCount + step
+        streamingDisplayedCount = snapToWordBoundary(in: target, proposed: proposed)
+        updateAssistantMessage(id: id, text: String(target.prefix(streamingDisplayedCount)))
+
+        // After landing on a word boundary, add a reading beat if we just
+        // finished a sentence or clause — but never while racing to settle, and
+        // never if there's a huge backlog to catch up on.
+        if !streamingClosing, gap < 240 {
+            streamingHoldTicks = readingBeat(in: target, revealedCount: streamingDisplayedCount)
         }
     }
 
-    private func flushPendingStreamingText() {
-        streamingFlushScheduled = false
-        guard let id = streamingMessageID,
-              let text = streamingPendingText else { return }
-        streamingPendingText = nil
-        updateAssistantMessage(id: id, text: text)
+    /// Pause length (in 60Hz ticks) after the most recently revealed token:
+    /// a longer beat after sentence enders, a shorter one after clause marks.
+    private func readingBeat(in text: String, revealedCount: Int) -> Int {
+        let chars = Array(text)
+        // The boundary lands just past a space, so the sentence punctuation is a
+        // couple of characters back. Scan the last few non-space chars.
+        var idx = revealedCount - 1
+        var skippedSpace = false
+        while idx >= 0, idx >= revealedCount - 3 {
+            let c = chars[idx]
+            if c == " " || c == "\n" { skippedSpace = true; idx -= 1; continue }
+            guard skippedSpace || idx == revealedCount - 1 else { break }
+            switch c {
+            case ".", "!", "?":  return 10   // ~165ms — end of sentence
+            case ",", ";", ":":  return 5    // ~80ms  — clause break
+            default:             return 0
+            }
+        }
+        return 0
+    }
+
+    /// Extend `proposed` forward to just past the next space/newline (within a
+    /// small window) so the reveal doesn't stop mid-token.
+    private func snapToWordBoundary(in text: String, proposed: Int) -> Int {
+        let chars = Array(text)
+        guard proposed < chars.count else { return chars.count }
+        var i = proposed
+        let limit = min(chars.count, proposed + 16)
+        while i < limit {
+            if chars[i] == " " || chars[i] == "\n" { return i + 1 }
+            i += 1
+        }
+        return proposed
     }
 
     private func cancelPendingStreamingFlush() {
-        streamingPendingText = nil
-        streamingFlushScheduled = false
+        resetStreamingDrain()
     }
 
+    /// Hand the drain the final text and let it finish revealing. The drain
+    /// settles the message exactly and clears `streamingMessageID` once caught up.
     private func finalizeStreaming(finalText: String) {
-        cancelPendingStreamingFlush()
-        if let id = streamingMessageID {
-            updateAssistantMessage(id: id, text: finalText)
-        }
-        streamingMessageID = nil
+        streamingTargetText = finalText
+        streamingClosing = true
+        startStreamingDrainIfNeeded()
     }
 
     private func removeMessageIfEmpty(id: UUID) {

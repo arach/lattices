@@ -1,4 +1,8 @@
 import SwiftUI
+import HudsonUI
+#if canImport(HudsonVoice)
+import HudsonVoice
+#endif
 
 // MARK: - Lattices mark
 
@@ -116,9 +120,20 @@ struct PiChatDotGrid: View {
 
 // MARK: - Transcript
 
+/// Scroll sample used to tell a user's upward scroll apart from content growth.
+private struct ScrollProbe: Equatable {
+    var offsetY: CGFloat
+    var atBottom: Bool
+}
+
 struct PiChatTranscript: View {
     @ObservedObject var session: PiChatSession
     var style: PiChatStyle = .workspace
+
+    /// True while the viewport is at (or near) the bottom. Auto-follow only
+    /// happens while pinned; scrolling up detaches and stops the chase until
+    /// the user returns to the bottom.
+    @State private var isPinnedToBottom = true
 
     var body: some View {
         if showsEmptyState {
@@ -177,17 +192,33 @@ struct PiChatTranscript: View {
             .scrollIndicators(.visible)
             .background(transcriptBackground)
             .animation(.spring(response: 0.34, dampingFraction: 0.86), value: session.messages.count)
-            .onAppear { scrollToEnd(proxy: proxy, animated: false) }
-            .onChange(of: session.messages.count) { _ in
-                scrollToEnd(proxy: proxy, animated: true)
-            }
-            .onChange(of: session.messages.last?.text) { _ in
-                if session.isSending {
-                    scrollToEnd(proxy: proxy, animated: false)
+            // Detach only on a genuine *upward* scroll — never because content
+            // grew underneath us (that would un-pin us mid-stream and stop the
+            // follow). Re-pin when the user lands back near the bottom.
+            .onScrollGeometryChange(for: ScrollProbe.self) { geo in
+                let maxOffset = geo.contentSize.height - geo.containerSize.height + geo.contentInsets.bottom
+                return ScrollProbe(offsetY: geo.contentOffset.y, atBottom: geo.contentOffset.y >= maxOffset - 48)
+            } action: { old, new in
+                if new.offsetY < old.offsetY - 2 {
+                    isPinnedToBottom = false          // user scrolled up
+                } else if new.atBottom {
+                    isPinnedToBottom = true            // user returned to the end
                 }
             }
+            .onAppear { scrollToEnd(proxy: proxy, animated: false) }
+            .onChange(of: session.messages.count) { _ in
+                // New message: follow only if the user is still pinned to the end.
+                if isPinnedToBottom { scrollToEnd(proxy: proxy, animated: true) }
+            }
+            .onChange(of: session.messages.last?.text) { _ in
+                // Chase the live edge while pinned. Not gated on isSending: the
+                // closing drain reveals the tail *after* isSending flips false.
+                if isPinnedToBottom { scrollToEnd(proxy: proxy, animated: false) }
+            }
             .onChange(of: session.isSending) { sending in
+                // Sending re-pins: a fresh turn always snaps you back to the end.
                 if sending {
+                    isPinnedToBottom = true
                     scrollToEnd(proxy: proxy, animated: true)
                 }
             }
@@ -270,8 +301,6 @@ private struct PiChatEmptyState: View {
 
     var body: some View {
         VStack(spacing: 28) {
-            Spacer(minLength: 8)
-
             VStack(spacing: 14) {
                 LatticesMarkAvatar(size: 56, tint: Palette.running)
                     .shadow(color: Palette.running.opacity(0.30), radius: 18, y: 4)
@@ -281,7 +310,7 @@ private struct PiChatEmptyState: View {
                         .font(Typo.title(20))
                         .foregroundColor(Palette.text)
                     Text(headerSubtitle)
-                        .font(Typo.body(12.5))
+                        .font(Typo.body(12))
                         .foregroundColor(Palette.textDim)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
@@ -313,7 +342,9 @@ private struct PiChatEmptyState: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 32)
-        .padding(.vertical, 24)
+        .padding(.top, 40)
+        .padding(.bottom, 24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     private var headerSubtitle: String {
@@ -333,10 +364,10 @@ private struct PiChatEmptyState: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(starter.title)
-                    .font(.system(size: 12.5, weight: .semibold, design: .rounded))
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundColor(Palette.text)
                 Text(starter.subtitle)
-                    .font(Typo.caption(10.5))
+                    .font(Typo.caption(10))
                     .foregroundColor(Palette.textDim)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
@@ -402,186 +433,39 @@ struct PiChatMessageRow: View, Equatable {
     }
 
     var body: some View {
+        AgentTurnView(turn: turn, style: style)
+    }
+
+    /// Map this transport-specific message onto the transport-agnostic turn
+    /// model the renderer consumes.
+    private var turn: AgentTurn {
+        AgentTurn(
+            id: message.id,
+            role: agentRole,
+            author: agentAuthor,
+            timestamp: message.timestamp,
+            text: message.text,
+            isStreaming: isStreaming,
+            toolActivity: activeToolName
+        )
+    }
+
+    private var agentRole: AgentTurnRole {
         switch message.role {
-        case .system:
-            systemRow
-        case .user:
-            userRow
-        case .assistant:
-            assistantRow
+        case .system:    return .system
+        case .user:      return .user
+        case .assistant: return .assistant
         }
     }
 
-    private var systemRow: some View {
-        HStack {
-            Spacer(minLength: 0)
-            Text(message.text)
-                .font(Typo.caption(11))
-                .foregroundColor(Palette.textDim)
-                .multilineTextAlignment(.center)
-                .textSelection(.enabled)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(
-                    Capsule(style: .continuous)
-                        .fill(Color.white.opacity(0.03))
-                        .overlay(
-                            Capsule(style: .continuous)
-                                .strokeBorder(Palette.border, lineWidth: 0.5)
-                        )
-                )
-            Spacer(minLength: 0)
-        }
-        .padding(.vertical, 2)
-    }
-
-    private var userRow: some View {
-        HStack(alignment: .bottom, spacing: 10) {
-            Spacer(minLength: style == .workspace ? 96 : 48)
-
-            VStack(alignment: .trailing, spacing: 5) {
-                Text(message.text)
-                    .font(Typo.body(style.bodySize))
-                    .foregroundColor(Palette.text)
-                    .multilineTextAlignment(.trailing)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: 540, alignment: .trailing)
-
-                Text(PiChatFormat.time(message.timestamp))
-                    .font(Typo.caption(9))
-                    .foregroundColor(Palette.textMuted.opacity(0.85))
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 11)
-            .background(userBubbleBackground)
-
-            LatticesMarkAvatar(size: 28, tint: Color.white.opacity(0.55), isActive: false)
+    private var agentAuthor: String {
+        switch message.role {
+        case .system:    return ""
+        case .user:      return "You"
+        case .assistant: return "Assistant"
         }
     }
 
-    private var userBubbleBackground: some View {
-        RoundedRectangle(cornerRadius: 16, style: .continuous)
-            .fill(
-                LinearGradient(
-                    colors: [
-                        Color.white.opacity(0.11),
-                        Color.white.opacity(0.06),
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5)
-            )
-    }
-
-    private var assistantRow: some View {
-        HStack(alignment: .top, spacing: 10) {
-            LatticesMarkAvatar(size: 32, tint: Palette.running, isActive: isStreaming)
-
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    Text("Assistant")
-                        .font(Typo.geistMonoBold(10))
-                        .tracking(0.4)
-                        .foregroundColor(isStreaming ? Palette.running.opacity(0.95) : Palette.textDim)
-
-                    if isStreaming {
-                        PiChatStreamingBadge()
-                    } else if let activeToolName {
-                        PiChatToolChip(name: activeToolName)
-                    }
-
-                    Spacer(minLength: 0)
-
-                    Text(PiChatFormat.time(message.timestamp))
-                        .font(Typo.caption(9))
-                        .foregroundColor(Palette.textMuted.opacity(0.75))
-                }
-
-                if isStreaming, let activeToolName {
-                    PiChatToolChip(name: activeToolName, compact: true)
-                }
-
-                Group {
-                    if message.text.isEmpty, isStreaming {
-                        PiChatWorkingIndicator(label: workingLabel)
-                    } else {
-                        PiChatFormattedText(
-                            message.text,
-                            style: style,
-                            isStreaming: isStreaming
-                        )
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(assistantBubbleBackground)
-
-            Spacer(minLength: style == .workspace ? 60 : 24)
-        }
-    }
-
-    private var workingLabel: String {
-        isStreaming ? "Composing" : "Working"
-    }
-
-    private var assistantBubbleBackground: some View {
-        RoundedRectangle(cornerRadius: 16, style: .continuous)
-            .fill(
-                LinearGradient(
-                    colors: isStreaming
-                        ? [Color.white.opacity(0.06), Color.white.opacity(0.025)]
-                        : [Color.white.opacity(0.04), Color.white.opacity(0.018)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: isStreaming
-                                ? [Palette.running.opacity(0.12), Color.white.opacity(0.02), Color.clear]
-                                : [Color.white.opacity(0.03), Color.clear],
-                            startPoint: .top,
-                            endPoint: .center
-                        )
-                    )
-            )
-            .overlay(alignment: .leading) {
-                if isStreaming {
-                    Rectangle()
-                        .fill(
-                            LinearGradient(
-                                colors: [Palette.running.opacity(0.65), Palette.running.opacity(0.10)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                        .frame(width: 2)
-                        .padding(.vertical, 6)
-                        .clipShape(Capsule())
-                }
-            }
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(
-                        isStreaming ? Palette.running.opacity(0.32) : Palette.border,
-                        lineWidth: 0.5
-                    )
-            )
-            .shadow(
-                color: isStreaming ? Palette.running.opacity(0.18) : .clear,
-                radius: 18,
-                y: 4
-            )
-            .animation(.easeInOut(duration: 0.28), value: isStreaming)
-    }
 }
 
 // MARK: - Tool chip
@@ -647,6 +531,8 @@ struct PiChatFormattedText: View, Equatable {
     var style: PiChatStyle = .workspace
     var isStreaming: Bool = false
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     init(_ text: String, style: PiChatStyle = .workspace, isStreaming: Bool = false) {
         self.text = text
         self.style = style
@@ -660,32 +546,56 @@ struct PiChatFormattedText: View, Equatable {
     var body: some View {
         if isStreaming {
             streamingText
-        } else if let rendered = renderBlocks() {
-            rendered
         } else {
-            fallbackText
+            PiChatMarkdownView(text: text, style: style)
         }
     }
 
     private var fallbackText: some View {
         Text(text)
-            .font(Typo.body(style.bodySize))
+            .font(Typo.reading(style.bodySize))
             .foregroundColor(Palette.text)
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var streamingText: some View {
-        HStack(alignment: .lastTextBaseline, spacing: 0) {
-            Text(text)
-                .font(Typo.body(style.bodySize))
-                .foregroundColor(Palette.text)
-                .textSelection(.enabled)
+        // Split the (drained) text into stanzas. Word-level growth happens within
+        // the trailing stanza — that just updates its Text, no transition. A new
+        // stanza appearing is an insertion, so it fades + slides up as a unit:
+        // the "settle" motion. The cursor rides the last stanza.
+        let stanzas = text.components(separatedBy: "\n\n")
+        return VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(stanzas.enumerated()), id: \.offset) { index, stanza in
+                HStack(alignment: .lastTextBaseline, spacing: 0) {
+                    Text(stanza)
+                        .font(Typo.reading(style.bodySize))
+                        .foregroundColor(Palette.text)
+                        .textSelection(.enabled)
 
-            PiChatStreamCursor()
-                .padding(.leading, 1)
+                    if index == stanzas.count - 1 {
+                        PiChatStreamCursor()
+                            .padding(.leading, 1)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .transition(reduceMotion
+                    ? .opacity
+                    : .asymmetric(
+                        insertion: .opacity
+                            .combined(with: .move(edge: .bottom))
+                            .combined(with: .scale(scale: 0.97, anchor: .leading)),
+                        removal: .opacity
+                    ))
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        // Animate only on stanza-count changes, so per-word growth stays smooth
+        // (no layout jitter) while a landing stanza settles with a soft spring.
+        .animation(
+            reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.82),
+            value: stanzas.count
+        )
     }
 
     /// Render the text as a vertical stack of either paragraph or code-block
@@ -812,422 +722,13 @@ struct PiChatCodeBlock: View {
     let language: String?
     let source: String
 
-    private var tokens: [PiChatCodeToken] {
-        PiChatSyntax.tokenize(source, language: language)
-    }
-
+    // Renders through HudsonUI's shared `HudCodeBlock` — the tokenizer that
+    // lived here was donated upstream (as `HudCodeSyntax`) so highlighting is
+    // maintained once, in the kit. Thin adapter; call sites stay stable.
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
-                HStack(spacing: 5) {
-                    Circle().fill(Color(red: 0.93, green: 0.36, blue: 0.36)).frame(width: 6, height: 6)
-                    Circle().fill(Color(red: 0.96, green: 0.74, blue: 0.18)).frame(width: 6, height: 6)
-                    Circle().fill(Color(red: 0.30, green: 0.78, blue: 0.45)).frame(width: 6, height: 6)
-                }
-                Text((language ?? "code").uppercased())
-                    .font(Typo.geistMonoBold(8))
-                    .tracking(0.6)
-                    .foregroundColor(Palette.textMuted)
-                Spacer()
-                Button {
-                    let pb = NSPasteboard.general
-                    pb.clearContents()
-                    pb.setString(source, forType: .string)
-                } label: {
-                    Image(systemName: "doc.on.doc")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundColor(Palette.textMuted)
-                        .padding(4)
-                        .background(
-                            Circle()
-                                .fill(Color.white.opacity(0.04))
-                                .overlay(Circle().strokeBorder(Palette.border, lineWidth: 0.5))
-                        )
-                }
-                .buttonStyle(.plain)
-                .help("Copy code")
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(Color.white.opacity(0.025))
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: 0) {
-                    formattedBody
-                        .font(Typo.mono(12))
-                        .lineSpacing(2)
-                        .textSelection(.enabled)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                }
-            }
-            .background(Color.black.opacity(0.32))
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(Palette.border, lineWidth: 0.5)
-        )
-    }
-
-    private var formattedBody: Text {
-        var combined = Text("")
-        for token in tokens {
-            combined = combined + Text(token.text)
-                .foregroundColor(token.color)
-                .font(Typo.mono(12))
-        }
-        return combined
+        HudCodeBlock(language: language, source: source)
     }
 }
-
-struct PiChatCodeToken {
-    let text: String
-    let color: Color
-}
-
-/// Minimal hand-rolled syntax highlighter for the chat code blocks. Color
-/// choices match the lattices-green theme used elsewhere.
-enum PiChatSyntax {
-    private static let keyword = Palette.running
-    private static let string = Color(red: 0.85, green: 0.78, blue: 0.55)
-    private static let number = Color(red: 0.96, green: 0.65, blue: 0.14)
-    private static let comment = Palette.textMuted
-    private static let identifier = Color(red: 0.72, green: 0.83, blue: 0.92)
-    private static let punctuation = Palette.textDim
-
-    private static let jsLikeKeywords: Set<String> = [
-        "const", "let", "var", "function", "return", "if", "else", "for", "while",
-        "do", "switch", "case", "break", "continue", "import", "export", "from",
-        "as", "default", "class", "extends", "new", "this", "await", "async",
-        "yield", "try", "catch", "finally", "throw", "typeof", "instanceof",
-        "true", "false", "null", "undefined", "in", "of",
-    ]
-
-    private static let swiftKeywords: Set<String> = [
-        "func", "let", "var", "if", "else", "guard", "return", "for", "in",
-        "while", "do", "switch", "case", "break", "continue", "import", "struct",
-        "class", "enum", "protocol", "extension", "private", "public", "internal",
-        "fileprivate", "open", "static", "final", "lazy", "weak", "unowned",
-        "self", "Self", "init", "deinit", "throws", "throw", "try", "catch",
-        "rethrows", "async", "await", "true", "false", "nil", "some", "any",
-    ]
-
-    private static let shellKeywords: Set<String> = [
-        "if", "then", "else", "elif", "fi", "for", "do", "done", "while",
-        "case", "esac", "function", "return", "in", "export", "local",
-    ]
-
-    private static let jsonKeywords: Set<String> = [
-        "true", "false", "null",
-    ]
-
-    static func tokenize(_ source: String, language: String?) -> [PiChatCodeToken] {
-        let lang = (language ?? "").lowercased()
-        if lang == "json" {
-            return tokenizeJSON(source)
-        }
-        if lang == "bash" || lang == "sh" || lang == "shell" || lang == "zsh" {
-            return tokenizeShell(source)
-        }
-        if lang == "swift" {
-            return tokenizeSwift(source)
-        }
-        return tokenizeGeneric(source)
-    }
-
-    private static func tokenizeGeneric(_ source: String) -> [PiChatCodeToken] {
-        var tokens: [PiChatCodeToken] = []
-        var buffer = ""
-        var inString = false
-        var stringDelimiter: Character = "\""
-        var inLineComment = false
-
-        func pushBufferAsWord() {
-            guard !buffer.isEmpty else { return }
-            if jsLikeKeywords.contains(buffer) {
-                tokens.append(PiChatCodeToken(text: buffer, color: keyword))
-            } else {
-                tokens.append(PiChatCodeToken(text: buffer, color: Palette.text))
-            }
-            buffer.removeAll(keepingCapacity: true)
-        }
-
-        func pushBufferAsNumber() {
-            guard !buffer.isEmpty else { return }
-            tokens.append(PiChatCodeToken(text: buffer, color: number))
-            buffer.removeAll(keepingCapacity: true)
-        }
-
-        func pushBufferAsString() {
-            guard !buffer.isEmpty else { return }
-            tokens.append(PiChatCodeToken(text: buffer, color: string))
-            buffer.removeAll(keepingCapacity: true)
-        }
-
-        func pushBufferAsPunct() {
-            guard !buffer.isEmpty else { return }
-            tokens.append(PiChatCodeToken(text: buffer, color: punctuation))
-            buffer.removeAll(keepingCapacity: true)
-        }
-
-        func pushBufferAsPlain() {
-            guard !buffer.isEmpty else { return }
-            tokens.append(PiChatCodeToken(text: buffer, color: Palette.text))
-            buffer.removeAll(keepingCapacity: true)
-        }
-
-        let chars = Array(source)
-        var i = 0
-        while i < chars.count {
-            let ch = chars[i]
-
-            if inLineComment {
-                buffer.append(ch)
-                if ch == "\n" {
-                    tokens.append(PiChatCodeToken(text: buffer, color: comment))
-                    buffer.removeAll(keepingCapacity: true)
-                    inLineComment = false
-                }
-                i += 1
-                continue
-            }
-
-            if inString {
-                buffer.append(ch)
-                if ch == stringDelimiter {
-                    pushBufferAsString()
-                    inString = false
-                }
-                i += 1
-                continue
-            }
-
-            if ch == "/" && i + 1 < chars.count && chars[i + 1] == "/" {
-                inLineComment = true
-                buffer = "//"
-                i += 2
-                continue
-            }
-
-            if ch == "\"" || ch == "'" || ch == "`" {
-                inString = true
-                stringDelimiter = ch
-                buffer = String(ch)
-                i += 1
-                continue
-            }
-
-            if ch.isNumber {
-                buffer.append(ch)
-                var j = i + 1
-                while j < chars.count, chars[j].isNumber || chars[j] == "." || chars[j] == "_" {
-                    buffer.append(chars[j])
-                    j += 1
-                }
-                pushBufferAsNumber()
-                i = j
-                continue
-            }
-
-            if ch.isLetter || ch == "_" || ch == "$" {
-                buffer.append(ch)
-                var j = i + 1
-                while j < chars.count, chars[j].isLetter || chars[j].isNumber || chars[j] == "_" || chars[j] == "$" {
-                    buffer.append(chars[j])
-                    j += 1
-                }
-                pushBufferAsWord()
-                i = j
-                continue
-            }
-
-            if ch.isWhitespace {
-                pushBufferAsPlain()
-                tokens.append(PiChatCodeToken(text: String(ch), color: Palette.text))
-                i += 1
-                continue
-            }
-
-            buffer.append(ch)
-            pushBufferAsPunct()
-            i += 1
-        }
-
-        if !buffer.isEmpty {
-            if inString {
-                pushBufferAsString()
-            } else if inLineComment {
-                tokens.append(PiChatCodeToken(text: buffer, color: comment))
-            } else {
-                pushBufferAsPlain()
-            }
-        }
-
-        return tokens
-    }
-
-    private static func tokenizeJSON(_ source: String) -> [PiChatCodeToken] {
-        var tokens: [PiChatCodeToken] = []
-        var current = ""
-        var inString = false
-        var escape = false
-        var pendingKey = false
-
-        func flushString() {
-            tokens.append(PiChatCodeToken(text: current, color: pendingKey ? identifier : string))
-            current.removeAll(keepingCapacity: true)
-            pendingKey = false
-        }
-
-        for ch in source {
-            if inString {
-                current.append(ch)
-                if escape {
-                    escape = false
-                } else if ch == "\\" {
-                    escape = true
-                } else if ch == "\"" {
-                    flushString()
-                    inString = false
-                }
-                continue
-            }
-
-            if ch == "\"" {
-                inString = true
-                current = "\""
-                pendingKey = lastNonSpace() == "{"
-                continue
-            }
-
-            if ch.isNumber || (ch == "-" && (current.isEmpty || current == ":")) {
-                current.append(ch)
-                continue
-            }
-            if ch.isNumber == false && !current.isEmpty && current.allSatisfy({ $0.isNumber || $0 == "-" || $0 == "." }) {
-                tokens.append(PiChatCodeToken(text: current, color: number))
-                current.removeAll(keepingCapacity: true)
-            }
-
-            if ch == "{" || ch == "}" || ch == "[" || ch == "]" || ch == "," || ch == ":" {
-                if !current.isEmpty {
-                    if jsonKeywords.contains(current) {
-                        tokens.append(PiChatCodeToken(text: current, color: keyword))
-                    } else {
-                        tokens.append(PiChatCodeToken(text: current, color: Palette.text))
-                    }
-                    current.removeAll(keepingCapacity: true)
-                }
-                tokens.append(PiChatCodeToken(text: String(ch), color: punctuation))
-                continue
-            }
-
-            current.append(ch)
-        }
-
-        if !current.isEmpty {
-            if jsonKeywords.contains(current) {
-                tokens.append(PiChatCodeToken(text: current, color: keyword))
-            } else {
-                tokens.append(PiChatCodeToken(text: current, color: Palette.text))
-            }
-        }
-
-        return tokens
-    }
-
-    private static func lastNonSpace() -> Character? {
-        return nil
-    }
-
-    private static func tokenizeShell(_ source: String) -> [PiChatCodeToken] {
-        var tokens: [PiChatCodeToken] = []
-        var current = ""
-        var inSingle = false
-        var inDouble = false
-        var inComment = false
-
-        for ch in source {
-            if inComment {
-                current.append(ch)
-                continue
-            }
-            if inSingle {
-                current.append(ch)
-                if ch == "'" { inSingle = false }
-                continue
-            }
-            if inDouble {
-                current.append(ch)
-                if ch == "\"" { inDouble = false }
-                continue
-            }
-            if ch == "#" {
-                if !current.isEmpty {
-                    tokens.append(PiChatCodeToken(text: current, color: Palette.text))
-                    current.removeAll()
-                }
-                inComment = true
-                current = "#"
-                continue
-            }
-            if ch == "'" {
-                inSingle = true
-                current.append(ch)
-                continue
-            }
-            if ch == "\"" {
-                inDouble = true
-                current.append(ch)
-                continue
-            }
-            if ch == "$" || ch.isWhitespace || ch == "|" || ch == "&" || ch == ";" {
-                if !current.isEmpty {
-                    if shellKeywords.contains(current) {
-                        tokens.append(PiChatCodeToken(text: current, color: keyword))
-                    } else if current.hasPrefix("$") {
-                        tokens.append(PiChatCodeToken(text: current, color: number))
-                    } else {
-                        tokens.append(PiChatCodeToken(text: current, color: Palette.text))
-                    }
-                    current.removeAll()
-                }
-                if ch == "$" {
-                    tokens.append(PiChatCodeToken(text: "$", color: number))
-                } else if ch.isWhitespace {
-                    tokens.append(PiChatCodeToken(text: String(ch), color: Palette.text))
-                } else {
-                    tokens.append(PiChatCodeToken(text: String(ch), color: punctuation))
-                }
-                continue
-            }
-            current.append(ch)
-        }
-        if !current.isEmpty {
-            if inComment {
-                tokens.append(PiChatCodeToken(text: current, color: comment))
-            } else {
-                tokens.append(PiChatCodeToken(text: current, color: Palette.text))
-            }
-        }
-        return tokens
-    }
-
-    private static func tokenizeSwift(_ source: String) -> [PiChatCodeToken] {
-        // Swift and JS share most tokenization rules; route through generic
-        // and remap the keyword set lazily by post-processing colors.
-        var tokens = tokenizeGeneric(source)
-        for index in tokens.indices where tokens[index].color == keyword {
-            let raw = tokens[index].text
-            if swiftKeywords.contains(raw) {
-                tokens[index] = PiChatCodeToken(text: raw, color: keyword)
-            }
-        }
-        return tokens
-    }
-}
-
 // MARK: - Composer
 
 struct PiChatComposer: View {
@@ -1235,9 +736,23 @@ struct PiChatComposer: View {
     var style: PiChatStyle = .workspace
     var focus: FocusState<Bool>.Binding
 
+    #if canImport(HudsonVoice)
+    @ObservedObject private var voice = WorkspaceVoiceInput.shared
+    #endif
+
     var body: some View {
         VStack(spacing: 8) {
-            HStack(alignment: .bottom, spacing: 10) {
+            #if canImport(HudsonVoice)
+            if voice.state.isCaptureActive || voice.state.isProcessing, !voice.partial.isEmpty {
+                dictationLivePreview
+            }
+            #endif
+
+            HStack(alignment: .center, spacing: 10) {
+                #if canImport(HudsonVoice)
+                micButton
+                #endif
+
                 TextField(
                     style.placeholder,
                     text: $session.draft,
@@ -1254,93 +769,125 @@ struct PiChatComposer: View {
                     }
                 }
 
-                Button {
-                    session.sendDraft()
-                } label: {
-                    Group {
-                        if session.isSending {
-                            PiChatSendSpinner()
-                        } else {
-                            Image(systemName: "arrow.up")
-                                .font(.system(size: 12, weight: .bold))
-                        }
-                    }
-                    .frame(width: 30, height: 30)
-                    .background(
-                        Circle()
-                            .fill(
-                                canSend
-                                    ? AnyShapeStyle(
-                                        LinearGradient(
-                                            colors: [Palette.running, Palette.running.opacity(0.85)],
-                                            startPoint: .top,
-                                            endPoint: .bottom
-                                        )
-                                    )
-                                    : AnyShapeStyle(Palette.surfaceHov)
-                            )
-                            .shadow(color: canSend ? Palette.running.opacity(0.35) : .clear, radius: 10, y: 2)
-                    )
-                    .foregroundColor(canSend ? Palette.bg : Palette.textMuted)
-                }
-                .buttonStyle(.plain)
-                .disabled(!canSend)
+                sendChip
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 12)
+            .padding(.vertical, 10)
             .background(composerFieldBackground)
-            .animation(.easeInOut(duration: 0.18), value: focus.wrappedValue)
-
-            HStack(spacing: 8) {
-                modelChip
-                Spacer()
-                if !focus.wrappedValue {
-                    Text("↩ send")
-                        .font(Typo.caption(9))
-                        .foregroundColor(Palette.textMuted.opacity(0.7))
-                }
-            }
         }
         .padding(.horizontal, style.horizontalPadding)
         .padding(.vertical, style.verticalPadding)
         .background(composerChrome)
     }
 
-    private var modelChip: some View {
-        HStack(spacing: 5) {
-            if session.isSending {
-                PiChatStatusPulse(color: statusColor)
-            } else {
-                Circle()
-                    .fill(statusColor)
-                    .frame(width: 6, height: 6)
-            }
-            Text(statusLabel)
-                .font(Typo.caption(10))
+    #if canImport(HudsonVoice)
+    /// HudsonVoice-powered mic. Tap to dictate into the draft; tap again to commit.
+    private var micButton: some View {
+        Button {
+            voice.toggle()
+        } label: {
+            Image(systemName: micSymbol)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(micTint)
+                .frame(width: 30, height: 30)
+                .background(
+                    Circle()
+                        .fill(voice.state.isCaptureActive ? Palette.kill.opacity(0.14) : Color.white.opacity(0.04))
+                        .overlay(
+                            Circle().strokeBorder(
+                                voice.state.isCaptureActive ? Palette.kill.opacity(0.45) : Palette.border,
+                                lineWidth: voice.state.isCaptureActive ? 1 : 0.5
+                            )
+                        )
+                )
+        }
+        .buttonStyle(.plain)
+        .help(micTooltip)
+        .disabled(session.isSending)
+        .animation(.easeInOut(duration: 0.18), value: voice.state)
+    }
+
+    private var dictationLivePreview: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "waveform")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(Palette.kill.opacity(0.8))
+            Text(voice.partial)
+                .font(Typo.body(style.composerSize))
                 .foregroundColor(Palette.textMuted)
+                .italic()
+                .lineLimit(2)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .transition(.opacity)
+    }
+
+    private var micSymbol: String {
+        switch voice.state {
+        case .recording, .starting: return "mic.fill"
+        case .processing: return "waveform"
+        case .unavailable: return "mic.slash"
+        case .idle: return "mic"
         }
     }
 
+    private var micTint: Color {
+        switch voice.state {
+        case .recording, .starting: return Palette.kill
+        case .processing: return Palette.detach
+        case .unavailable: return Palette.textMuted.opacity(0.6)
+        case .idle: return Palette.textMuted
+        }
+    }
+
+    private var micTooltip: String {
+        switch voice.state {
+        case .idle: return "Tap to dictate"
+        case .starting: return "Starting…"
+        case .recording: return "Recording — tap to commit"
+        case .processing: return "Transcribing…"
+        case .unavailable(let reason): return reason
+        }
+    }
+    #endif
+
+    /// `↵ SEND` text chip (ported from OpenScout's MessageSendChip) — replaces
+    /// the old up-arrow circle. Mono, no fill, just a keycap + label.
+    private var sendChip: some View {
+        Button {
+            session.sendDraft()
+        } label: {
+            HStack(spacing: 4) {
+                Text(session.isSending ? "…" : "↵")
+                    .font(Typo.monoBold(11))
+                Text(session.isSending ? "SENDING" : "SEND")
+                    .font(Typo.monoBold(9))
+                    .tracking(1.4)
+            }
+            .foregroundColor(canSend ? Palette.running : Palette.textMuted.opacity(0.6))
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!canSend)
+        .help(canSend ? "Send (↵)" : "")
+    }
+
+    // Flat composer field — hairline border, no focus glow, no running-tinted
+    // halo. The "glowy" look the operator flagged is gone; affordance comes
+    // from a single 0.5pt border that brightens slightly on focus.
     private var composerFieldBackground: some View {
-        RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .fill(.ultraThinMaterial)
-            .opacity(0.34)
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(Color.white.opacity(0.025))
             .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color.black.opacity(0.22))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color.white.opacity(0.028))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .strokeBorder(
-                        focus.wrappedValue ? Palette.running.opacity(0.45) : Palette.border,
-                        lineWidth: focus.wrappedValue ? 1 : 0.5
+                        focus.wrappedValue ? Palette.borderLit : Palette.border,
+                        lineWidth: 0.5
                     )
             )
-            .shadow(color: focus.wrappedValue ? Palette.running.opacity(0.18) : .clear, radius: 18, y: 2)
     }
 
     private var composerChrome: some View {
@@ -1356,6 +903,42 @@ struct PiChatComposer: View {
     private var canSend: Bool {
         !session.isSending && !session.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
+}
+
+// MARK: - Model chip (header)
+
+/// Compact provider/status indicator, now living in the header next to the
+/// gear instead of under the composer. A live status dot + provider name;
+/// shows the streaming/tool phase while a turn is in flight.
+struct PiChatModelChip: View {
+    @ObservedObject var session: PiChatSession
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if session.isSending {
+                PiChatStatusPulse(color: statusColor)
+            } else {
+                Circle()
+                    .fill(statusColor)
+                    .frame(width: 5, height: 5)
+            }
+            Text(session.currentProvider.name)
+                .font(Typo.mono(10))
+                .foregroundColor(Palette.textDim)
+            if let detail = providerStatusDetail {
+                Text("· " + detail)
+                    .font(Typo.mono(9))
+                    .foregroundColor(Palette.textMuted)
+            }
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .overlay(
+            Capsule(style: .continuous)
+                .strokeBorder(Palette.border, lineWidth: 0.5)
+        )
+        .help("Provider: \(session.currentProvider.name)")
+    }
 
     private var statusColor: Color {
         if session.isSending { return Palette.detach }
@@ -1363,19 +946,13 @@ struct PiChatComposer: View {
         return Palette.running
     }
 
-    private var statusLabel: String {
-        if session.isSending {
-            switch session.statusText {
-            case "streaming...": return "Streaming · \(session.currentProvider.name)"
-            case "tool:": return session.statusText + " · \(session.currentProvider.name)"
-            default:
-                if session.statusText.hasPrefix("tool:") {
-                    return "\(session.statusText) · \(session.currentProvider.name)"
-                }
-                return "Working · \(session.currentProvider.name)"
-            }
+    private var providerStatusDetail: String? {
+        guard session.isSending else { return nil }
+        if session.statusText == "streaming..." { return "streaming" }
+        if session.statusText.hasPrefix("tool:") {
+            return session.statusText.replacingOccurrences(of: "tool: ", with: "tool · ")
         }
-        return session.currentProvider.name
+        return "working"
     }
 }
 
@@ -1406,14 +983,15 @@ struct PiChatWaveDots: View {
             let time = timeline.date.timeIntervalSinceReferenceDate
             HStack(spacing: spacing) {
                 ForEach(0..<3, id: \.self) { index in
-                    let wave = sin(time * 3.6 + Double(index) * 0.85)
-                    let phase = (wave + 1) / 2
-                    let scale = 0.68 + 0.34 * phase
-                    let opacity = 0.32 + 0.68 * phase
+                    // Opacity-only: dots never change size or position, so the
+                    // label beside them can't be shoved around. A soft highlight
+                    // travels across the three dots — calm, no motion artifacts.
+                    let wave = sin(time * 2.6 - Double(index) * 0.9)
+                    let opacity = 0.30 + 0.45 * (wave + 1) / 2
 
                     Circle()
                         .fill(Palette.running.opacity(opacity))
-                        .frame(width: dotSize * scale, height: dotSize * scale)
+                        .frame(width: dotSize, height: dotSize)
                 }
             }
             .frame(height: dotSize, alignment: .center)
@@ -1509,7 +1087,7 @@ enum PiChatStyle: Equatable {
 
     var maxContentWidth: CGFloat {
         switch self {
-        case .workspace: return 720
+        case .workspace: return .infinity
         case .dock: return .infinity
         }
     }
@@ -1537,8 +1115,8 @@ enum PiChatStyle: Equatable {
 
     var bodySize: CGFloat {
         switch self {
-        case .workspace: return 13.5
-        case .dock: return 12
+        case .workspace: return 12
+        case .dock: return 11
         }
     }
 
@@ -1575,7 +1153,12 @@ enum PiChatFormat {
     static func markdownText(_ source: String, size: CGFloat) -> Text? {
         let normalized = normalizeMarkdownTables(source)
         var options = AttributedString.MarkdownParsingOptions()
-        options.interpretedSyntax = .full
+        // .full flattens block structure — SwiftUI's Text(AttributedString)
+        // ignores paragraph/list presentation intents, so multi-line and
+        // bulleted replies collapse into one run-on blob. Preserving the
+        // source whitespace keeps newlines/lists intact while still rendering
+        // inline bold/italic/code.
+        options.interpretedSyntax = .inlineOnlyPreservingWhitespace
         guard let attributed = try? AttributedString(markdown: normalized, options: options) else {
             return nil
         }

@@ -1258,9 +1258,9 @@ final class HUDController {
 
     private func captureDesktop() {
         guard let screen = positionedScreen ?? NSScreen.main ?? NSScreen.screens.first else { return }
-        DispatchQueue.global(qos: .userInitiated).async {
-            let image = DesktopCapture.shared.captureScreen(screen)
-            DispatchQueue.main.async {
+        Task {
+            let image = await DesktopCapture.shared.captureScreen(screen)
+            await MainActor.run {
                 HUDExperienceStore.shared.capturedBackground = image
             }
         }
