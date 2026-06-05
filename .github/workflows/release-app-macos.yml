@@ -29,10 +29,24 @@ jobs:
     env:
       SHOULD_PUBLISH: ${{ (github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.publish)) && '1' || '0' }}
       REQUESTED_PUBLISH: ${{ (github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.publish)) && '1' || '0' }}
+      HUDSON_READ_TOKEN: ${{ secrets.HUDSON_READ_TOKEN }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Configure private HudsonKit access
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Lattices depends on the private arch/hudson repo. In CI we resolve it
+          # as a git dependency (LATTICES_HUDSON_SOURCE=git), so rewrite the SSH
+          # URL to token HTTPS for SwiftPM. Mirrors arach/vox's release workflow.
+          if [[ -z "${HUDSON_READ_TOKEN:-}" ]]; then
+            echo "::error::HUDSON_READ_TOKEN secret is not set. Add a read-only PAT for arach/hudson." >&2
+            exit 1
+          fi
+          git config --global url."https://x-access-token:${HUDSON_READ_TOKEN}@github.com/".insteadOf "git@github.com:"
 
       - name: Select Xcode 26
         shell: bash
@@ -198,6 +212,9 @@ jobs:
 
       - name: Build DMG
         shell: bash
+        env:
+          LATTICES_HUDSON_SOURCE: git
+          HUDSONKIT_WITH_VOICE: "1"
         run: |
           set -euo pipefail
 
