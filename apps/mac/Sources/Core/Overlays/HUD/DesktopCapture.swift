@@ -1,6 +1,7 @@
 import AppKit
 import CoreImage
 import Foundation
+import ScreenCaptureKit
 
 // Grabs a snapshot of the screen region under the HUD panels (before they become visible)
 // and runs a CIFilter pipeline to produce a blurred, desaturated "desktop impression".
@@ -10,14 +11,17 @@ final class DesktopCapture {
 
     private let ciContext = CIContext(options: [.useSoftwareRenderer: false])
 
-    func captureScreen(_ screen: NSScreen) -> NSImage? {
+    // ScreenCaptureKit replaces the macOS-26-removed CGWindowListCreateImage.
+    // Capture is async; the only caller (HUDController.captureDesktop) already
+    // runs it off the main thread and assigns the result asynchronously.
+    func captureScreen(_ screen: NSScreen) async -> NSImage? {
         // Panels are at alpha=0 when this fires, so the capture naturally excludes them.
-        guard let cgImage = CGWindowListCreateImage(
-            screen.frame,
-            .optionOnScreenOnly,
-            kCGNullWindowID,
-            .bestResolution
-        ) else { return nil }
+        let cgImage: CGImage? = await withCheckedContinuation { continuation in
+            SCScreenshotManager.captureImage(in: screen.frame) { image, _ in
+                continuation.resume(returning: image)
+            }
+        }
+        guard let cgImage else { return nil }
         return filtered(cgImage)
     }
 

@@ -22,6 +22,13 @@ final class VoiceCommandWindow {
     }
 
     func show() {
+        #if canImport(HudsonVoice)
+        if HudsonKitSwitch.isEnabled {
+            showHudsonVoice()
+            return
+        }
+        #endif
+
         // If panel exists but is hidden, just re-show it
         if let p = panel, state != nil {
             p.alphaValue = 0
@@ -82,6 +89,62 @@ final class VoiceCommandWindow {
         // Auto-start listening immediately
         voiceState.startListening()
     }
+
+    #if canImport(HudsonVoice)
+    /// HudsonKit voice surface (spike). Hosts `HudVoicePanel`, which runs its
+    /// own live session against the same voxd daemon Lattices uses. Escape
+    /// dismisses directly (no `VoiceCommandState` is involved in this path).
+    private func showHudsonVoice() {
+        if let p = panel {
+            p.alphaValue = 0
+            p.orderFrontRegardless()
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.15
+                p.animator().alphaValue = 1.0
+            }
+            return
+        }
+
+        let view = HudsonVoiceSurface { [weak self] in self?.dismiss() }
+            .preferredColorScheme(.dark)
+
+        let mouseLocation = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) })
+            ?? NSScreen.main
+            ?? NSScreen.screens.first!
+        let visible = screen.visibleFrame
+        let panelWidth: CGFloat = min(900, visible.width - 80)
+        let panelHeight: CGFloat = min(560, visible.height - 80)
+
+        let p = OverlayPanelShell.makePanel(
+            config: .init(
+                size: NSSize(width: panelWidth, height: panelHeight),
+                styleMask: [.titled, .nonactivatingPanel],
+                titleVisible: .hidden,
+                titlebarAppearsTransparent: true,
+                background: .clear,
+                hidesOnDeactivate: false,
+                isMovableByWindowBackground: true,
+                activatesOnMouseDown: true,
+                onKeyDown: { [weak self] event in
+                    if event.keyCode == 53 { self?.dismiss() }  // Escape
+                },
+                onFlagsChanged: { _ in }
+            ),
+            rootView: view
+        )
+        OverlayPanelShell.position(p, placement: .topCenter(margin: 40))
+
+        p.alphaValue = 0
+        OverlayPanelShell.present(p, activate: true, makeKey: true, orderFrontRegardless: true)
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.15
+            p.animator().alphaValue = 1.0
+        }
+
+        self.panel = p
+    }
+    #endif
 
     func dismiss() {
         guard let p = panel else { return }

@@ -53,31 +53,35 @@ final class WindowPreviewStore: ObservableObject {
         queue.async { [weak self] in
             guard let self else { return }
 
-            let cgImage = WindowCapture.image(
-                listOption: .optionIncludingWindow,
-                windowID: CGWindowID(wid),
-                imageOption: [.boundsIgnoreFraming, .nominalResolution]
-            )
+            Task { [weak self] in
+                guard let self else { return }
 
-            let image = cgImage.map {
-                NSImage(
-                    cgImage: $0,
-                    size: self.previewSize(for: frame)
+                let cgImage = await WindowCapture.image(
+                    listOption: .optionIncludingWindow,
+                    windowID: CGWindowID(wid),
+                    imageOption: [.boundsIgnoreFraming, .nominalResolution]
                 )
-            }
 
-            DispatchQueue.main.async {
-                self.loading.remove(wid)
-                let elapsedMs = Int(Date().timeIntervalSince(startedAt) * 1000)
-                if let image {
-                    self.images[wid] = image
-                    self.touchLRU(wid)
-                    self.evictIfNeeded()
-                    if elapsedMs >= 80 {
-                        DiagnosticLog.shared.info("HUDPreview: captured wid=\(wid) in \(elapsedMs)ms")
+                let image = cgImage.map {
+                    NSImage(
+                        cgImage: $0,
+                        size: self.previewSize(for: frame)
+                    )
+                }
+
+                DispatchQueue.main.async {
+                    self.loading.remove(wid)
+                    let elapsedMs = Int(Date().timeIntervalSince(startedAt) * 1000)
+                    if let image {
+                        self.images[wid] = image
+                        self.touchLRU(wid)
+                        self.evictIfNeeded()
+                        if elapsedMs >= 80 {
+                            DiagnosticLog.shared.info("HUDPreview: captured wid=\(wid) in \(elapsedMs)ms")
+                        }
+                    } else {
+                        DiagnosticLog.shared.info("HUDPreview: capture unavailable wid=\(wid) after \(elapsedMs)ms")
                     }
-                } else {
-                    DiagnosticLog.shared.info("HUDPreview: capture unavailable wid=\(wid) after \(elapsedMs)ms")
                 }
             }
         }

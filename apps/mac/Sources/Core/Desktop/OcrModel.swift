@@ -198,7 +198,7 @@ final class OcrModel: ObservableObject {
         scanGeneration += 1
         let generation = scanGeneration
 
-        queue.async { [weak self] in
+        Task.detached(priority: .background) { [weak self] in
             guard let self else { return }
             var windows = self.enumerateWindows()
             let limit = self.prefs.ocrDeepLimit
@@ -213,7 +213,7 @@ final class OcrModel: ObservableObject {
 
             // Phase 1: capture + hash all windows (cheap)
             for win in windows {
-                if let cgImage = WindowCapture.image(
+                if let cgImage = await WindowCapture.image(
                     listOption: .optionIncludingWindow,
                     windowID: CGWindowID(win.wid),
                     imageOption: [.boundsIgnoreFraming, .bestResolution]
@@ -259,7 +259,7 @@ final class OcrModel: ObservableObject {
             DiagnosticLog.shared.info("OcrModel: deep scan budget=\(budget), changed=\(changedWindows.count), scanning=\(toScan.count)/\(windows.count)")
 
             // Phase 3: OCR only the budgeted windows
-            self.processNextWindow(
+            await self.processNextWindow(
                 windows: toScan,
                 index: 0,
                 generation: generation,
@@ -273,8 +273,8 @@ final class OcrModel: ObservableObject {
         }
     }
 
-    /// Process one window at a time, yielding back to the queue between each.
-    /// This lets GCD schedule higher-priority work between windows.
+    /// Process one window at a time, yielding between each capture/OCR pass.
+    /// This keeps higher-priority work responsive between windows.
     private func processNextWindow(
         windows: [WindowEntry],
         index: Int,
@@ -285,7 +285,7 @@ final class OcrModel: ObservableObject {
         totalBlocks: Int,
         changedResults: [OcrWindowResult],
         updateLastScanned: Bool = false
-    ) {
+    ) async {
         // Stale scan — a newer one started, abandon this one
         guard generation == scanGeneration else {
             DispatchQueue.main.async { self.isScanning = false }
@@ -319,11 +319,16 @@ final class OcrModel: ObservableObject {
 
         let win = windows[index]
 
-        if let cgImage = WindowCapture.image(
+        if let cgImage = await WindowCapture.image(
             listOption: .optionIncludingWindow,
             windowID: CGWindowID(win.wid),
             imageOption: [.boundsIgnoreFraming, .bestResolution]
         ) {
+            guard generation == scanGeneration else {
+                DispatchQueue.main.async { self.isScanning = false }
+                return
+            }
+
             let hash = imageHash(cgImage)
             newHashes[win.wid] = hash
 
@@ -363,19 +368,18 @@ final class OcrModel: ObservableObject {
         }
 
         // Throttle: 100ms delay between windows to reduce CPU bursts
-        queue.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-            self?.processNextWindow(
-                windows: windows,
-                index: index + 1,
-                generation: generation,
-                previousResults: previousResults,
-                fresh: fresh,
-                newHashes: newHashes,
-                totalBlocks: totalBlocks,
-                changedResults: changedResults,
-                updateLastScanned: updateLastScanned
-            )
-        }
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        await processNextWindow(
+            windows: windows,
+            index: index + 1,
+            generation: generation,
+            previousResults: previousResults,
+            fresh: fresh,
+            newHashes: newHashes,
+            totalBlocks: totalBlocks,
+            changedResults: changedResults,
+            updateLastScanned: updateLastScanned
+        )
     }
 
     // MARK: - Window Enumeration
