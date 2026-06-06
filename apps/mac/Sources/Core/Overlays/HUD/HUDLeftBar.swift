@@ -558,123 +558,15 @@ struct HUDLeftBar: View {
     // MARK: - Docked minimap
 
     private var minimapDocked: some View {
-        let screens = NSScreen.screens
-        let screen: NSScreen? = screens.isEmpty ? nil : screens.first
+        let screen: NSScreen? = NSScreen.screens.first
         let mapWidth: CGFloat = 300 // full sidebar width minus padding
         let mapHeight: CGFloat = 140
 
         return VStack(alignment: .leading, spacing: 0) {
-            // Header
-            HStack(spacing: 0) {
-                Image(systemName: "map")
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundColor(Palette.textMuted)
-                Text("Map")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(Palette.textMuted.opacity(0.9))
-                    .padding(.leading, 4)
+            minimapHeader
 
-                Spacer()
-
-                // Expand out to canvas
-                Button {
-                    state.minimapMode = .expanded
-                } label: {
-                    Image(systemName: "arrow.up.left.and.arrow.down.right")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundColor(Palette.textMuted)
-                        .frame(width: 18, height: 18)
-                        .background(
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(Palette.surface)
-                        )
-                }
-                .buttonStyle(.plain)
-                .help("Expand map (M)")
-
-                // Hide
-                Button {
-                    state.minimapMode = .hidden
-                } label: {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundColor(Palette.textMuted)
-                        .frame(width: 18, height: 18)
-                        .background(
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(Palette.surface)
-                        )
-                }
-                .buttonStyle(.plain)
-                .help("Hide map (M)")
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-
-            // Map canvas
             if let screen {
-                let sw = screen.frame.width
-                let sh = screen.frame.height
-                let scaleX = mapWidth / sw
-                let scaleY = mapHeight / sh
-                let scale = min(scaleX, scaleY)
-                let drawW = sw * scale
-                let drawH = sh * scale
-                let offsetX = (mapWidth - drawW) / 2
-                let offsetY = (mapHeight - drawH) / 2
-                let origin = screenCGOrigin(screen)
-                let wins = windowsOnScreen(0)
-
-                ZStack(alignment: .topLeading) {
-                    // Screen background
-                    RoundedRectangle(cornerRadius: 7)
-                        .fill(Color.white.opacity(0.045))
-                        .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5))
-                        .frame(width: drawW, height: drawH)
-                        .offset(x: offsetX, y: offsetY)
-
-                    // Windows (back-to-front)
-                    ForEach(wins.reversed()) { win in
-                        let rx = (CGFloat(win.frame.x) - origin.x) * scale + offsetX
-                        let ry = (CGFloat(win.frame.y) - origin.y) * scale + offsetY
-                        let rw = CGFloat(win.frame.w) * scale
-                        let rh = CGFloat(win.frame.h) * scale
-                        let isSelected = state.selectedItem == .window(win)
-
-                        RoundedRectangle(cornerRadius: 1.5)
-                            .fill(appColor(win.app).opacity(isSelected ? 0.5 : 0.15))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 1.5)
-                                    .strokeBorder(
-                                        isSelected ? Palette.running : appColor(win.app).opacity(0.35),
-                                        lineWidth: isSelected ? 1.5 : 0.5
-                                    )
-                            )
-                            .overlay(
-                                Group {
-                                    if rw > 24 && rh > 14 {
-                                        Text(String(win.app.prefix(1)))
-                                            .font(.system(size: max(6, min(9, rh * 0.35)), weight: .semibold, design: .monospaced))
-                                            .foregroundColor(appColor(win.app).opacity(isSelected ? 1.0 : 0.5))
-                                    }
-                                }
-                            )
-                            .frame(width: max(rw, 3), height: max(rh, 2))
-                            .offset(x: rx, y: ry)
-                            .onTapGesture {
-                                state.focus = .list
-                                if let flatIdx = visibleItems.firstIndex(of: .window(win)) {
-                                    state.selectSingle(.window(win), index: flatIdx)
-                                    state.pinnedItem = .window(win)
-                                    state.hoveredPreviewItem = nil
-                                }
-                            }
-                    }
-                }
-                .frame(width: mapWidth, height: mapHeight)
-                .clipShape(RoundedRectangle(cornerRadius: 7))
-                .padding(.horizontal, 10)
-                .padding(.bottom, 8)
+                minimapCanvas(screen: screen, mapWidth: mapWidth, mapHeight: mapHeight)
             }
         }
         .background(
@@ -684,6 +576,129 @@ struct HUDLeftBar: View {
         )
         .padding(.horizontal, 9)
         .padding(.vertical, 8)
+    }
+
+    private var minimapHeader: some View {
+        HStack(spacing: 0) {
+            Image(systemName: "map")
+                .font(.system(size: 9, weight: .medium))
+                .foregroundColor(Palette.textMuted)
+            Text("Map")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(Palette.textMuted.opacity(0.9))
+                .padding(.leading, 4)
+
+            Spacer()
+
+            // Expand out to canvas
+            Button {
+                state.minimapMode = .expanded
+            } label: {
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(Palette.textMuted)
+                    .frame(width: 18, height: 18)
+                    .background(
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Palette.surface)
+                    )
+            }
+            .buttonStyle(.plain)
+            .help("Expand map (M)")
+
+            // Hide
+            Button {
+                state.minimapMode = .hidden
+            } label: {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(Palette.textMuted)
+                    .frame(width: 18, height: 18)
+                    .background(
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Palette.surface)
+                    )
+            }
+            .buttonStyle(.plain)
+            .help("Hide map (M)")
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+    }
+
+    private func minimapCanvas(screen: NSScreen, mapWidth: CGFloat, mapHeight: CGFloat) -> some View {
+        let sw = screen.frame.width
+        let sh = screen.frame.height
+        let scale = min(mapWidth / sw, mapHeight / sh)
+        let drawW = sw * scale
+        let drawH = sh * scale
+        let offsetX = (mapWidth - drawW) / 2
+        let offsetY = (mapHeight - drawH) / 2
+        let origin = screenCGOrigin(screen)
+        let wins = windowsOnScreen(0)
+
+        return ZStack(alignment: .topLeading) {
+            // Screen background
+            RoundedRectangle(cornerRadius: 7)
+                .fill(Color.white.opacity(0.045))
+                .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5))
+                .frame(width: drawW, height: drawH)
+                .offset(x: offsetX, y: offsetY)
+
+            // Windows (back-to-front)
+            ForEach(wins.reversed()) { win in
+                minimapWindowCell(win: win, scale: scale, origin: origin, offsetX: offsetX, offsetY: offsetY)
+            }
+        }
+        .frame(width: mapWidth, height: mapHeight)
+        .clipShape(RoundedRectangle(cornerRadius: 7))
+        .padding(.horizontal, 10)
+        .padding(.bottom, 8)
+    }
+
+    private func minimapWindowCell(
+        win: WindowEntry,
+        scale: CGFloat,
+        origin: (x: CGFloat, y: CGFloat),
+        offsetX: CGFloat,
+        offsetY: CGFloat
+    ) -> some View {
+        let rx = (CGFloat(win.frame.x) - origin.x) * scale + offsetX
+        let ry = (CGFloat(win.frame.y) - origin.y) * scale + offsetY
+        let rw = CGFloat(win.frame.w) * scale
+        let rh = CGFloat(win.frame.h) * scale
+        let isSelected = state.selectedItem == .window(win)
+        let appTint = appColor(win.app)
+        let labelSize = max(6, min(9, rh * 0.35))
+
+        return RoundedRectangle(cornerRadius: 1.5)
+            .fill(appTint.opacity(isSelected ? 0.5 : 0.15))
+            .overlay(
+                RoundedRectangle(cornerRadius: 1.5)
+                    .strokeBorder(
+                        isSelected ? Palette.running : appTint.opacity(0.35),
+                        lineWidth: isSelected ? 1.5 : 0.5
+                    )
+            )
+            .overlay(
+                Group {
+                    if rw > 24 && rh > 14 {
+                        Text(String(win.app.prefix(1)))
+                            .font(.system(size: labelSize, weight: .semibold, design: .monospaced))
+                            .foregroundColor(appTint.opacity(isSelected ? 1.0 : 0.5))
+                    }
+                }
+            )
+            .frame(width: max(rw, 3), height: max(rh, 2))
+            .offset(x: rx, y: ry)
+            .onTapGesture {
+                state.focus = .list
+                if let flatIdx = visibleItems.firstIndex(of: .window(win)) {
+                    state.selectSingle(.window(win), index: flatIdx)
+                    state.pinnedItem = .window(win)
+                    state.hoveredPreviewItem = nil
+                }
+            }
     }
 
     // MARK: - Minimap helpers
