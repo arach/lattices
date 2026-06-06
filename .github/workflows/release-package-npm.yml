@@ -19,8 +19,40 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    env:
+      # `npm publish` runs prepack (bin/lattices-build package), which builds
+      # the Swift app — so this job needs the same HudsonKit git setup as the
+      # macOS release: resolve hudson + its vox/swift dep over git, with voice.
+      HUDSON_READ_TOKEN: ${{ secrets.HUDSON_READ_TOKEN }}
+      LATTICES_HUDSON_SOURCE: git
+      HUDSON_VOX_SOURCE: git
+      HUDSONKIT_WITH_VOICE: "1"
     steps:
       - uses: actions/checkout@v4
+
+      - name: Select Xcode 26
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Package.swift requires swift-tools 6.2 (Xcode 26); runner defaults to 16.4.
+          xcode="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -n 1)"
+          if [[ -z "$xcode" ]]; then
+            echo "No Xcode 26 found on this runner:" >&2
+            ls -d /Applications/Xcode_*.app >&2
+            exit 1
+          fi
+          echo "Using $xcode"
+          sudo xcode-select -s "$xcode/Contents/Developer"
+
+      - name: Configure private HudsonKit access
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${HUDSON_READ_TOKEN:-}" ]]; then
+            echo "::error::HUDSON_READ_TOKEN secret is not set. Add a read-only PAT for arach/hudson (+arach/vox)." >&2
+            exit 1
+          fi
+          git config --global url."https://x-access-token:${HUDSON_READ_TOKEN}@github.com/".insteadOf "git@github.com:"
 
       - uses: actions/setup-node@v4
         with:
