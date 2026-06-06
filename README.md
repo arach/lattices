@@ -46,7 +46,7 @@ cd lattices
 npm install
 
 # Build/install/relaunch the dev app at the stable permission target
-./run.sh
+./scripts/run.sh
 ```
 
 To build a signed, notarized DMG for distribution:

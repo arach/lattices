@@ -19,6 +19,7 @@ for keeping file structure as architecture.
 | `docs/` | Markdown docs and engineering proposals. |
 | `tools/agents/skills/` | Agent skill pack for driving Lattices. |
 | `assets/` | Shared release/app assets. |
+| `scripts/` | User/dev entry-point scripts: `install.sh`, `uninstall.sh`, `build.sh`, `run.sh` (root `install.sh` is a shim forwarding here). |
 | `tools/release/` | Maintainer scripts for building and shipping. |
 | `tests/` | CLI, daemon, and evaluation tests. |
 
