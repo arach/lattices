@@ -2,7 +2,7 @@ import Foundation
 
 struct ListSessionsIntent: LatticeIntent {
     static let name = "list_sessions"
-    static let title = "List running tmux sessions"
+    static let title = "List running sessions"
 
     static let phrases = [
         "list sessions",

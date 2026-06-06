@@ -7,7 +7,7 @@
 The agentic workspace manager for macOS.
 
 Lattices turns your Mac workspace into a coherent API, so agents can see and
-control windows, tmux sessions, screen text, and layouts. It also gives you
+control windows, terminal sessions, screen text, and layouts. It also gives you
 an assistant to control that workspace in plain language.
 
 **[lattices.dev](https://lattices.dev)** · [Docs](https://lattices.dev/docs/overview) · [Download](https://github.com/arach/lattices/releases/latest)

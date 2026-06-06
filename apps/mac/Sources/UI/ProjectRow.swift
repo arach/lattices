@@ -294,7 +294,7 @@ struct CoachView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("TMUX SHORTCUTS")
+                Text("PANE SHORTCUTS")
                     .font(Typo.pixel(12))
                     .foregroundColor(Palette.running)
                 Spacer()

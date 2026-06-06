@@ -907,7 +907,7 @@ async function daemonStatusCommand(): Promise<void> {
     console.log(`  uptime:    ${uptimeStr}`);
     console.log(`  clients:   ${status.clientCount}`);
     console.log(`  windows:   ${status.windowCount}`);
-    console.log(`  tmux:      ${status.tmuxSessionCount} sessions`);
+    console.log(`  sessions:  ${status.tmuxSessionCount}`);
     console.log(`  version:   ${status.version}`);
   } catch {
     console.log("\x1b[90m○\x1b[0m Daemon not running (start with: lattices app)");
@@ -2373,7 +2373,7 @@ async function daemonLsCommand(): Promise<boolean> {
     if (!(await isDaemonRunning())) return false;
     const sessions = await daemonCall("tmux.sessions") as any[];
     if (!sessions.length) {
-      console.log("No active tmux sessions.");
+      console.log("No active sessions.");
       return true;
     }
 
@@ -2645,14 +2645,13 @@ Usage:
 }
 
 function printUsage(): void {
-  console.log(`lattices — workspace launcher for tmux, windows, layers, and the menu bar app
+  console.log(`lattices — workspace launcher for sessions, windows, layers, and the menu bar app
 
 Usage:
   lattices                    Show workspace status and common commands
-  lattices start              Start or reattach the current directory's tmux workspace
-  lattices tmux               Alias for lattices start
+  lattices start              Start or reattach the current directory's workspace
   lattices init               Generate .lattices.json config for this project
-  lattices ls                 List active tmux sessions
+  lattices ls                 List active sessions
   lattices status             Show managed vs unmanaged session inventory
   lattices kill [name]        Kill a session (defaults to current project)
   lattices sync               Reconcile session to match declared config
@@ -2667,7 +2666,7 @@ Usage:
   lattices place <query> [pos]  Deep search + focus + tile (default: bottom-right)
   lattices focus <session>    Raise a session's window
   lattices windows [--json]   List all desktop windows (daemon required)
-  lattices sessions [--json]  List active tmux sessions via daemon
+  lattices sessions [--json]  List active sessions via daemon
   lattices tile <position>    Tile the frontmost window (left, right, top, etc.)
   lattices tile family [app] [region]  Smart-grid the frontmost app family, or a named app
   lattices distribute [app] [region]   Smart-grid visible windows or just one app (daemon required)
@@ -2770,11 +2769,11 @@ Workspace:
   session   ${sessionName}
   config    ${config ? ".lattices.json" : "none yet"}
   panes     ${panes.map((p) => p.name || "pane").join(", ")}
-  tmux      ${tmuxReady ? (sessionRunning ? "running" : "ready") : "missing"}
+  sessions  ${tmuxReady ? (sessionRunning ? "running" : "ready") : "missing"}
   app       ${appRunning ? "running" : "not running"}
 
 Common commands:
-  lattices start        Start or reattach this directory's tmux workspace
+  lattices start        Start or reattach this directory's workspace
   lattices init         Create a .lattices.json for this project
   lattices app          Launch the menu bar app
   lattices ls           List active sessions
@@ -2811,7 +2810,7 @@ function listSessions(): void {
     "tmux list-sessions -F '#{session_name}  (#{session_windows} windows, created #{session_created_string})'"
   );
   if (!out) {
-    console.log("No active tmux sessions.");
+    console.log("No active sessions.");
     return;
   }
 
@@ -3023,7 +3022,7 @@ function statusInventory(): void {
     'tmux list-sessions -F "#{session_name}\t#{session_windows}\t#{session_attached}"'
   );
   if (!sessionsRaw) {
-    console.log("No active tmux sessions.");
+    console.log("No active sessions.");
     return;
   }
 

@@ -951,7 +951,7 @@ struct SettingsContentView: View {
                         .pickerStyle(.segmented)
                         .labelsHidden()
 
-                        Text("Used for attaching to tmux sessions")
+                        Text("Used for attaching to sessions")
                             .font(Typo.caption(10))
                             .foregroundColor(Palette.textMuted)
                     }
@@ -1273,7 +1273,7 @@ struct SettingsContentView: View {
             VStack(alignment: .leading, spacing: 12) {
                 settingsCard {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("tmux")
+                        Text("Sessions")
                             .font(Typo.mono(11))
                             .foregroundColor(Palette.text)
 
@@ -3007,7 +3007,7 @@ struct SettingsContentView: View {
                 )
                 shortcutFactCard(
                     icon: "terminal",
-                    title: "tmux Muscle Memory",
+                    title: "Pane Muscle Memory",
                     detail: "Keep the core pane controls visible here while you tune the app-level shortcuts."
                 )
             }
@@ -3141,9 +3141,9 @@ struct SettingsContentView: View {
 
     private var shortcutsTmuxCard: some View {
         shortcutSectionCard(
-            title: "Inside tmux",
+            title: "Pane Controls",
             eyebrow: "Reference",
-            summary: "These are tmux-native controls. They are shown here for fast recall and are not edited by the app."
+            summary: "Terminal pane controls, shown here for fast recall. They are not edited by the app."
         ) {
             VStack(alignment: .leading, spacing: 10) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -3402,7 +3402,7 @@ struct SettingsContentView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0, pinnedViews: .sectionHeaders) {
                 Section(header: stickyHeader("What is lattices?")) {
-                    Text("A developer workspace launcher. It creates pre-configured terminal layouts for your projects using tmux \u{2014} go from \u{201C}I want to work on X\u{201D} to a full environment in one click.")
+                    Text("A developer workspace launcher. It creates pre-configured terminal layouts for your projects \u{2014} go from \u{201C}I want to work on X\u{201D} to a full environment in one click.")
                         .font(Typo.caption(11))
                         .foregroundColor(Palette.textDim)
                         .lineSpacing(3)

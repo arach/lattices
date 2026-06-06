@@ -1,6 +1,6 @@
 # lattices
 
-> macOS developer workspace manager — tmux sessions with a native menu bar app for tiling, navigation, and project management
+> macOS developer workspace manager — terminal sessions with a native menu bar app for tiling, navigation, and project management
 
 ## Documentation
 
@@ -31,7 +31,7 @@ Get from zero to a running workspace in five steps.
 ## Concepts
 
 lattices is a developer workspace launcher. It creates pre-configured
-terminal layouts for your projects using tmux, so you can go from
+terminal layouts for your projects, so you can go from
 "I want to work on X" to a full development environment in one click.
 
 ## Configuration
@@ -56,6 +56,6 @@ can do, agents and scripts can do too.
 
 ## Overview
 
-lattices is a macOS developer workspace manager. It pairs tmux sessions
+lattices is a macOS developer workspace manager. It pairs terminal sessions
 with a native menu bar app to give you — and your AI coding agents —
 full control over terminal layouts, window tiling, and project navigation.

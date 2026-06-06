@@ -378,7 +378,7 @@ struct CheatSheetView: View {
 
     private var tmuxColumn: some View {
         VStack(alignment: .leading, spacing: 6) {
-            columnHeader("Inside tmux")
+            columnHeader("Pane controls")
 
             tmuxRow("Detach", keys: ["Ctrl+B", "D"])
             tmuxRow("Kill pane", keys: ["Ctrl+B", "X"])

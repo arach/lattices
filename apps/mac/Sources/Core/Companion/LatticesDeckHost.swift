@@ -978,7 +978,7 @@ private extension LatticesDeckHost {
             items.append(DeckSwitcherItem(
                 id: "session:\(session.name)",
                 title: session.name,
-                subtitle: paneSummary.isEmpty ? "tmux session" : paneSummary,
+                subtitle: paneSummary.isEmpty ? "session" : paneSummary,
                 iconToken: "terminal",
                 kind: .session,
                 isFrontmost: false

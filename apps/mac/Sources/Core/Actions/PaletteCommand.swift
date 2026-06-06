@@ -145,7 +145,7 @@ enum CommandBuilder {
                 windowCmds.append(PaletteCommand(
                     id: "kill-\(project.id)",
                     title: "Kill \(project.name)",
-                    subtitle: "Terminate the tmux session",
+                    subtitle: "Terminate the session",
                     icon: "xmark.circle.fill",
                     category: .window,
                     badge: nil,
@@ -338,7 +338,7 @@ enum CommandBuilder {
             commands.append(PaletteCommand(
                 id: "orphan-kill-\(orphan.name)",
                 title: "Kill \(orphan.name)",
-                subtitle: "Terminate unmanaged tmux session",
+                subtitle: "Terminate unmanaged session",
                 icon: "xmark.circle.fill",
                 category: .window,
                 badge: "orphan",
