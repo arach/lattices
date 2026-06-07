@@ -130,7 +130,7 @@ struct PiWorkspaceView: View {
     private var setupPlaceholder: some View {
         VStack {
             Spacer()
-            PiInstallCallout(session: session, compact: false)
+            PiProviderSetupCallout(session: session, compact: false)
                 .padding(.horizontal, 28)
             Spacer()
         }
