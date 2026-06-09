@@ -2189,20 +2189,18 @@ final class LatticesApi {
 
         api.register(Endpoint(
             method: "voice.reconnect",
-            description: "Force disconnect and reconnect the Vox WebSocket connection",
+            description: "Re-probe the Vox daemon. HudsonVoice opens a fresh session per capture, so there is no persistent socket to reconnect — this reports daemon reachability from ~/.vox/runtime.json.",
             access: .mutate,
             params: [],
-            returns: .custom("Reconnection initiated with previous and new connection state"),
+            returns: .custom("Daemon reachability: { ok, daemonRunning, port, pid }"),
             handler: { _ in
-                let client = VoxClient.shared
-                let previousState = "\(client.connectionState)"
-                DispatchQueue.main.async {
-                    client.reconnect()
-                }
+                let info = VoxDaemon.info()
                 return .object([
                     "ok": .bool(true),
-                    "previousState": .string(previousState),
-                    "action": .string("reconnecting"),
+                    "daemonRunning": .bool(info != nil),
+                    "port": info.map { .int(Int($0.port)) } ?? .null,
+                    "pid": info.map { .int($0.pid) } ?? .null,
+                    "note": .string("HudsonVoice connects per-session; no persistent socket to reconnect."),
                 ])
             }
         ))

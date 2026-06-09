@@ -1,4 +1,7 @@
 import AppKit
+#if canImport(HudsonVoice)
+import HudsonVoice
+#endif
 
 /// Hands-off voice mode: hotkey → listen → worker handles everything.
 ///
@@ -410,46 +413,65 @@ final class HandsOffSession: ObservableObject {
 
     /// Cancel any active Vox recording session without transcribing.
     private func cancelVoxSession() {
-        guard VoxClient.shared.activeSessionId != nil else { return }
+        #if canImport(HudsonVoice)
+        guard let session = voxSession else { return }
         DiagnosticLog.shared.info("HandsOff: cancelling Vox session")
-        VoxClient.shared.cancelSession()
+        voxSession = nil
+        voxPump?.cancel()
+        voxPump = nil
+        Task { try? await session.cancel() }
+        #endif
     }
 
     // MARK: - Voice capture
 
+    #if canImport(HudsonVoice)
+    /// Live HudsonVoice session for the current dictation turn, plus its event pump.
+    private var voxSession: HudVoxLiveSession?
+    private var voxPump: Task<Void, Never>?
+    #endif
+
     private func beginListening() {
-        let client = VoxClient.shared
-
-        if client.connectionState != .connected {
+        #if canImport(HudsonVoice)
+        // HudsonVoice dials voxd on capture start — there's no socket to pre-connect,
+        // so we just confirm the daemon is discoverable (retrying briefly if it's
+        // still spinning up) and then open the live session.
+        if VoxDaemon.isRunning {
+            startDictation()
+        } else {
             state = .connecting
-            client.connect()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                self?.retryListenIfConnected(attempts: 5)
+                self?.retryListenIfReady(attempts: 5)
             }
-            return
         }
-
-        startDictation()
+        #else
+        DiagnosticLog.shared.warn("HandsOff: built without HudsonVoice — voice unavailable")
+        state = .idle
+        playSound("Basso")
+        #endif
     }
 
-    private func retryListenIfConnected(attempts: Int) {
-        if VoxClient.shared.connectionState == .connected {
+    private func retryListenIfReady(attempts: Int) {
+        #if canImport(HudsonVoice)
+        if VoxDaemon.isRunning {
             startDictation()
         } else if attempts > 0 {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                self?.retryListenIfConnected(attempts: attempts - 1)
+                self?.retryListenIfReady(attempts: attempts - 1)
             }
         } else {
             state = .idle
             DiagnosticLog.shared.warn("HandsOff: Vox not available")
             playSound("Basso")
         }
+        #endif
     }
 
-    /// Guard against double-processing the transcript (session.final + completion can both deliver it).
+    /// Guard against double-processing the transcript (a final followed by a late stream end).
     private var turnProcessed = false
 
     private func startDictation() {
+        #if canImport(HudsonVoice)
         state = .listening
         lastTranscript = nil
         turnProcessed = false
@@ -457,64 +479,26 @@ final class HandsOffSession: ObservableObject {
 
         DiagnosticLog.shared.info("HandsOff: listening...")
 
-        // Vox live session: startSession opens the mic, events flow on the start call ID.
-        // session.final arrives via onProgress, then the same data arrives via completion.
-        // We process the transcript from whichever arrives first to be resilient against
-        // connection drops between the two.
-        VoxClient.shared.startSession(
-            onProgress: { [weak self] event, data in
-                DispatchQueue.main.async {
-                    guard let self else { return }
-                    switch event {
-                    case "session.state":
-                        let sessionState = data["state"] as? String ?? ""
-                        DiagnosticLog.shared.info("HandsOff: session → \(sessionState)")
-                        // Vox cancelled the session (e.g. recording timeout)
-                        if sessionState == "cancelled" {
-                            let reason = data["reason"] as? String ?? "unknown"
-                            DiagnosticLog.shared.warn("HandsOff: Vox cancelled session — \(reason)")
-                            if self.state == .listening {
-                                self.state = .idle
-                                self.playSound("Basso")
-                            }
-                        }
-                    case "session.final":
-                        // Primary transcript delivery — process immediately
-                        if let text = data["text"] as? String, !text.isEmpty {
-                            self.lastTranscript = text
-                            self.deliverTranscript(text)
-                        }
-                    default:
-                        break
-                    }
-                }
-            },
-            completion: { [weak self] result in
-                DispatchQueue.main.async {
-                    guard let self else { return }
-                    switch result {
-                    case .success(let data):
-                        let text = data["text"] as? String ?? ""
-                        if text.isEmpty {
-                            if !self.turnProcessed {
-                                self.state = .idle
-                                DiagnosticLog.shared.info("HandsOff: no speech detected")
-                            }
-                        } else {
-                            // Fallback — deliver if session.final didn't already
-                            self.lastTranscript = text
-                            self.deliverTranscript(text)
-                        }
-                    case .failure(let error):
-                        if !self.turnProcessed {
-                            self.state = .idle
-                            DiagnosticLog.shared.warn("HandsOff: session error — \(error.localizedDescription)")
-                            self.playSound("Basso")
-                        }
-                    }
-                }
-            }
+        // HudVoxLiveSession opens the mic in voxd; events stream back on start().
+        // `.partial` updates the live transcript, `.final` delivers the turn.
+        let endpoint = VoxEndpointResolver.resolve()
+        let session = HudVoxLiveSession(
+            endpoint: endpoint,
+            options: HudVoxLiveSessionOptions(clientId: "lattices", mode: .pushToTalk)
         )
+        voxSession = session
+        voxPump = Task { [weak self] in
+            do {
+                let stream = try await session.start()
+                for try await event in stream {
+                    await MainActor.run { [weak self] in self?.handleVoxEvent(event) }
+                }
+                await MainActor.run { [weak self] in self?.voxStreamEnded(error: nil) }
+            } catch {
+                await MainActor.run { [weak self] in self?.voxStreamEnded(error: error) }
+            }
+        }
+        #endif
     }
 
     // MARK: - RPC entry (silent, dry-run)
@@ -626,7 +610,46 @@ final class HandsOffSession: ObservableObject {
         }
     }
 
-    /// Deliver transcript exactly once — called from both session.final and completion.
+    #if canImport(HudsonVoice)
+    @MainActor
+    private func handleVoxEvent(_ event: HudVoiceEvent) {
+        switch event {
+        case .state(let s):
+            DiagnosticLog.shared.info("HandsOff: session → \(s.state)")
+            // voxd cancelled the session (e.g. recording timeout)
+            if case .cancelled = s.state, state == .listening {
+                state = .idle
+                playSound("Basso")
+            }
+        case .partial(let p):
+            lastTranscript = p.text
+        case .final(let f):
+            if !f.text.isEmpty {
+                lastTranscript = f.text
+                deliverTranscript(f.text)
+            }
+        case .raw:
+            break
+        }
+    }
+
+    @MainActor
+    private func voxStreamEnded(error: Error?) {
+        if !turnProcessed, state == .listening {
+            state = .idle
+            if let error {
+                DiagnosticLog.shared.warn("HandsOff: session error — \(error.localizedDescription)")
+                playSound("Basso")
+            } else {
+                DiagnosticLog.shared.info("HandsOff: no speech detected")
+            }
+        }
+        voxSession = nil
+        voxPump = nil
+    }
+    #endif
+
+    /// Deliver transcript exactly once — called from the final event.
     private func deliverTranscript(_ text: String) {
         guard !turnProcessed else { return }
         turnProcessed = true
@@ -638,7 +661,10 @@ final class HandsOffSession: ObservableObject {
     func finishListening() {
         guard state == .listening else { return }
         playSound("Tink")
-        VoxClient.shared.stopSession()
+        #if canImport(HudsonVoice)
+        let session = voxSession
+        Task { try? await session?.stop() }
+        #endif
     }
 
     // MARK: - Turn processing (delegates to worker)

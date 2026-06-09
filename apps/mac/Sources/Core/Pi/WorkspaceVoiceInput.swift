@@ -84,7 +84,10 @@ final class WorkspaceVoiceInput: ObservableObject {
         finalDelivered = false
         state = .starting
 
+        let endpoint = VoxEndpointResolver.resolve()
+        DiagnosticLog.shared.info("WorkspaceVoiceInput: starting Vox session at \(endpoint.url.absoluteString)")
         let session = HudVoxLiveSession(
+            endpoint: endpoint,
             options: HudVoxLiveSessionOptions(clientId: "lattices", mode: .pushToTalk)
         )
         self.session = session
@@ -93,11 +96,11 @@ final class WorkspaceVoiceInput: ObservableObject {
             do {
                 let stream = try await session.start()
                 for try await event in stream {
-                    await MainActor.run { self?.handle(event) }
+                    await MainActor.run { [weak self] in self?.handle(event) }
                 }
-                await MainActor.run { self?.streamEnded(error: nil) }
+                await MainActor.run { [weak self] in self?.streamEnded(error: nil) }
             } catch {
-                await MainActor.run { self?.streamEnded(error: error) }
+                await MainActor.run { [weak self] in self?.streamEnded(error: error) }
             }
         }
     }
@@ -137,6 +140,7 @@ final class WorkspaceVoiceInput: ObservableObject {
             case .processing:
                 state = .processing
             case .error:
+                DiagnosticLog.shared.warn("WorkspaceVoiceInput: Vox reported a session error state")
                 state = .unavailable(reason: "Vox reported a session error.")
             case .cancelled:
                 if !state.isUnavailable { state = .idle }
@@ -168,6 +172,7 @@ final class WorkspaceVoiceInput: ObservableObject {
     @MainActor
     private func streamEnded(error: Error?) {
         if let error, !finalDelivered {
+            DiagnosticLog.shared.warn("WorkspaceVoiceInput: session stream ended with error — \(error.localizedDescription)")
             state = .unavailable(reason: error.localizedDescription)
         } else if !finalDelivered, !state.isUnavailable {
             state = .idle

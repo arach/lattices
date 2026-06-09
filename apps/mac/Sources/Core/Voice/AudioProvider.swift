@@ -1,4 +1,7 @@
 import AppKit
+#if canImport(HudsonVoice)
+import HudsonVoice
+#endif
 
 // MARK: - Audio Provider Protocol
 
@@ -48,11 +51,15 @@ final class AudioLayer: ObservableObject {
     private var voiceConnectionRetry: DispatchWorkItem?
 
     private init() {
-        let vox = VoxAudioProvider()
-        provider = vox
+        #if canImport(HudsonVoice)
+        provider = HudVoxAudioProvider()
         providerName = "vox"
+        #else
+        provider = nil
+        providerName = "none"
+        #endif
         // Voice entry points can arrive from the desktop UI, daemon, or iOS
-        // bridge, so connection setup is handled lazily when capture starts.
+        // bridge, so the live session is opened lazily when capture starts.
     }
 
     /// Start a voice command capture. Transcription is piped to the intent engine.
@@ -80,27 +87,24 @@ final class AudioLayer: ObservableObject {
     private func startVoiceCommandWhenReady(provider: any AudioProvider, attempt: Int) {
         guard pendingVoiceStart, !isListening else { return }
 
+        // `isAvailable` reflects whether voxd is discoverable. HudsonVoice opens its
+        // own socket on capture start, so there's nothing to pre-connect — we just
+        // wait (and nudge Vox.app open once) until the daemon shows up.
         if provider.isAvailable {
             pendingVoiceStart = false
             beginVoiceCommand(provider: provider)
             return
         }
 
-        let client = VoxClient.shared
         if attempt == 0 {
             let launched = launchVoxIfNeeded()
             executionResult = launched ? "Starting Vox..." : "Connecting to Vox..."
-            client.connect()
-        } else if case .disconnected = client.connectionState {
-            client.connect()
-        } else if case .unavailable = client.connectionState {
-            client.connect()
         }
 
         guard attempt < 40 else {
             pendingVoiceStart = false
             executionResult = "Vox unavailable — open Vox and try again"
-            DiagnosticLog.shared.warn("AudioLayer: Vox connection failed before voice start")
+            DiagnosticLog.shared.warn("AudioLayer: Vox daemon not reachable before voice start")
             return
         }
 
@@ -143,7 +147,7 @@ final class AudioLayer: ObservableObject {
     }
 
     private func launchVoxIfNeeded() -> Bool {
-        guard VoxClient.shared.discoverDaemon() == nil else { return false }
+        guard !VoxDaemon.isRunning else { return false }
 
         let candidates = [
             "/Applications/Vox.app",
@@ -459,151 +463,123 @@ final class AudioLayer: ObservableObject {
 // See apps/mac/Sources/Intents/LatticeIntent.swift
 
 
-// MARK: - Vox Audio Provider (WebSocket JSON-RPC via VoxClient)
+// MARK: - HudVox Audio Provider (HudsonVoice live session)
 //
-// Delegates recording and transcription entirely to the Vox daemon (voxd).
-// Lattices never touches the mic — Vox owns the mic, recording, and
-// transcription. We call transcribe.startSession to begin recording
-// and transcribe.stopSession to stop and get the transcript.
+// Delegates recording and transcription entirely to the Vox daemon (voxd) via
+// HudsonKit's `HudVoxLiveSession`. Lattices never touches the mic — Vox owns the
+// mic, recording, and transcription. We open a live session (which dials the port
+// discovered from ~/.vox/runtime.json), stream `.partial` previews into the draft,
+// and deliver the final transcript on `.final`.
 //
-// Session events flow on the startSession call ID:
-//   session.state: {state, sessionId, previous}
-//   session.final: {sessionId, text, words[], elapsedMs, metrics}
+// This replaces the legacy `VoxAudioProvider` (which drove the now-retired
+// `VoxClient` WebSocket). Availability is "is voxd discoverable" (`VoxDaemon`),
+// since HudsonVoice opens its own socket per capture rather than holding one open.
 
-final class VoxAudioProvider: AudioProvider {
+#if canImport(HudsonVoice)
+final class HudVoxAudioProvider: AudioProvider {
+    private var session: HudVoxLiveSession?
+    private var pumpTask: Task<Void, Never>?
     private var onTranscript: ((Transcription) -> Void)?
     private var stopCompletion: ((Transcription?) -> Void)?
     private var _isListening = false
-    private var startTime: Date?
+    private var finalDelivered = false
 
-    var isAvailable: Bool {
-        VoxClient.shared.connectionState == .connected
-    }
-
+    var isAvailable: Bool { VoxDaemon.isRunning }
     var isListening: Bool { _isListening }
 
     func checkHealth(completion: @escaping (Bool) -> Void) {
-        let client = VoxClient.shared
-        if client.connectionState == .connected {
-            client.call(method: "health") { result in
-                switch result {
-                case .success: DispatchQueue.main.async { completion(true) }
-                case .failure: DispatchQueue.main.async { completion(false) }
-                }
-            }
-        } else {
-            completion(false)
+        let endpoint = VoxEndpointResolver.resolve()
+        Task {
+            let ok = (try? await HudVoxProbe.health(endpoint: endpoint, clientId: "lattices")) != nil
+            await MainActor.run { completion(ok) }
         }
     }
 
     func startListening(onTranscript: @escaping (Transcription) -> Void) {
-        let client = VoxClient.shared
-        guard client.connectionState == .connected else {
-            DiagnosticLog.shared.warn("VoxAudioProvider: not connected to Vox")
-            onTranscript(Transcription(text: "", confidence: 0, source: "vox", isPartial: false, durationMs: nil))
-            return
-        }
-
+        guard session == nil else { return }
         self.onTranscript = onTranscript
         _isListening = true
-        startTime = Date()
+        finalDelivered = false
 
-        DiagnosticLog.shared.info("VoxAudioProvider: starting session via Vox")
-
-        // transcribe.startSession — Vox records from mic, emits session events on this call ID
-        client.startSession(
-            onProgress: { [weak self] event, data in
-                guard let self else { return }
-                DispatchQueue.main.async {
-                    switch event {
-                    case "session.state":
-                        let state = data["state"] as? String ?? ""
-                        DiagnosticLog.shared.info("VoxAudioProvider: session → \(state)")
-
-                    case "session.final":
-                        // Final transcript arrived — deliver it
-                        if let text = data["text"] as? String, !text.isEmpty {
-                            let elapsed = data["elapsedMs"] as? Int
-                            let t = Transcription(
-                                text: text, confidence: 0.95, source: "vox",
-                                isPartial: false, durationMs: elapsed
-                            )
-                            DiagnosticLog.shared.info("VoxAudioProvider: transcribed → '\(text)' (\(elapsed ?? 0)ms)")
-                            self.onTranscript?(t)
-                            self.stopCompletion?(t)
-                            self.stopCompletion = nil
-                        }
-
-                    default:
-                        break
-                    }
-                }
-            },
-            completion: { [weak self] result in
-                guard let self else { return }
-                DispatchQueue.main.async {
-                    self._isListening = false
-
-                    switch result {
-                    case .success(let data):
-                        // Final result also comes here (same data as session.final)
-                        if let text = data["text"] as? String, !text.isEmpty,
-                           self.stopCompletion != nil {
-                            // Only deliver if session.final didn't already
-                            let elapsed = data["elapsedMs"] as? Int
-                            let t = Transcription(
-                                text: text, confidence: 0.95, source: "vox",
-                                isPartial: false, durationMs: elapsed
-                            )
-                            self.onTranscript?(t)
-                            self.stopCompletion?(t)
-                            self.stopCompletion = nil
-                        } else if self.stopCompletion != nil {
-                            self.stopCompletion?(nil)
-                            self.stopCompletion = nil
-                        }
-
-                    case .failure(let error):
-                        DiagnosticLog.shared.warn("VoxAudioProvider: session error — \(error.localizedDescription)")
-                        if case .sessionBusy = error {
-                            AudioLayer.shared.executionResult = "Session already active"
-                        } else {
-                            AudioLayer.shared.executionResult = "Transcription failed"
-                        }
-                        self.onTranscript?(Transcription(
-                            text: "", confidence: 0, source: "vox",
-                            isPartial: false, durationMs: nil
-                        ))
-                        self.stopCompletion?(nil)
-                        self.stopCompletion = nil
-                    }
-                }
-            }
+        let endpoint = VoxEndpointResolver.resolve()
+        DiagnosticLog.shared.info("HudVoxAudioProvider: starting session at \(endpoint.url.absoluteString)")
+        let session = HudVoxLiveSession(
+            endpoint: endpoint,
+            options: HudVoxLiveSessionOptions(clientId: "lattices", mode: .pushToTalk)
         )
+        self.session = session
+
+        pumpTask = Task { [weak self] in
+            do {
+                let stream = try await session.start()
+                for try await event in stream {
+                    await MainActor.run { [weak self] in self?.handle(event) }
+                }
+                await MainActor.run { [weak self] in self?.streamEnded(error: nil) }
+            } catch {
+                await MainActor.run { [weak self] in self?.streamEnded(error: error) }
+            }
+        }
     }
 
     func stopListening(completion: @escaping (Transcription?) -> Void) {
-        _isListening = false
-
-        let client = VoxClient.shared
-        guard client.connectionState == .connected else {
+        guard _isListening, let session else {
             completion(nil)
             return
         }
-
-        DiagnosticLog.shared.info("VoxAudioProvider: stopping session")
-
-        // Store completion — the startSession's session.final event delivers the transcript
+        DiagnosticLog.shared.info("HudVoxAudioProvider: stopping session")
         self.stopCompletion = completion
+        Task { try? await session.stop() }
+    }
 
-        client.stopSession { result in
-            if case .failure(let error) = result {
-                DiagnosticLog.shared.warn("VoxAudioProvider: stopSession error — \(error.localizedDescription)")
-                DispatchQueue.main.async {
-                    self.stopCompletion?(nil)
-                    self.stopCompletion = nil
-                }
-            }
+    // MARK: - Event handling (main actor)
+
+    @MainActor
+    private func handle(_ event: HudVoiceEvent) {
+        switch event {
+        case .state(let s):
+            DiagnosticLog.shared.info("HudVoxAudioProvider: session → \(s.state)")
+        case .partial(let p):
+            // Live preview — non-final, just updates the draft echo.
+            onTranscript?(Transcription(text: p.text, confidence: 0.5, source: "vox", isPartial: true, durationMs: nil))
+        case .final(let f):
+            deliverFinal(text: f.text, elapsedMs: f.elapsedMs)
+        case .raw:
+            break
         }
     }
+
+    @MainActor
+    private func deliverFinal(text: String, elapsedMs: Int) {
+        guard !finalDelivered else { return }
+        finalDelivered = true
+        _isListening = false
+        let t = Transcription(text: text, confidence: 0.95, source: "vox", isPartial: false, durationMs: elapsedMs)
+        DiagnosticLog.shared.info("HudVoxAudioProvider: transcribed → '\(text)' (\(elapsedMs)ms)")
+        // onTranscript drives the streaming-execute path; stopCompletion the stop path.
+        // AudioLayer guards against double-execution, so firing both is safe.
+        onTranscript?(t)
+        stopCompletion?(t)
+        stopCompletion = nil
+        session?.close()
+        session = nil
+    }
+
+    @MainActor
+    private func streamEnded(error: Error?) {
+        _isListening = false
+        if !finalDelivered {
+            if let error {
+                DiagnosticLog.shared.warn("HudVoxAudioProvider: session error — \(error.localizedDescription)")
+                AudioLayer.shared.executionResult = "Transcription failed"
+                onTranscript?(Transcription(text: "", confidence: 0, source: "vox", isPartial: false, durationMs: nil))
+            }
+            stopCompletion?(nil)
+            stopCompletion = nil
+            finalDelivered = true
+        }
+        session = nil
+        pumpTask = nil
+    }
 }
+#endif

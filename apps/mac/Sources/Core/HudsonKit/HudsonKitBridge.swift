@@ -42,14 +42,14 @@ enum HudsonKitSwitch {
 
 #if canImport(HudsonVoice)
 /// The HudsonKit-backed voice surface. `HudVoicePanel` manages its own live
-/// session against the local voxd daemon — by default `127.0.0.1:42137`, the
-/// exact endpoint Lattices' own `VoxClient` discovers via `~/.vox/runtime.json`,
-/// so it lights up against the same daemon with no extra wiring.
+/// session against the local voxd daemon. We hand it the endpoint discovered from
+/// `~/.vox/runtime.json` (via `VoxEndpointResolver`) rather than letting it trust
+/// the SDK default port (42138), which doesn't match the running voxd (42137).
 struct HudsonVoiceSurface: View {
     var onClose: () -> Void
 
     var body: some View {
-        HudVoicePanel()
+        HudVoicePanel(endpoint: VoxEndpointResolver.resolve())
     }
 }
 #endif
