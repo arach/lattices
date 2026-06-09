@@ -643,6 +643,32 @@ struct VoiceCommandView: View {
             .buttonStyle(.plain)
 
             Spacer()
+
+            // Quick CTA into the main Lattices app (Home)
+            Button {
+                ScreenMapWindowController.shared.showPage(.home)
+                onDismiss()
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "house.fill")
+                        .font(.system(size: 10, weight: .semibold))
+                    Text("Open Lattices")
+                        .font(Typo.geistMonoBold(9))
+                        .tracking(0.5)
+                }
+                .foregroundColor(Palette.textDim)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(
+                    Capsule()
+                        .fill(Color.white.opacity(0.05))
+                        .overlay(Capsule().strokeBorder(Palette.border, lineWidth: 0.5))
+                )
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .help("Open the main Lattices app")
+            .padding(.trailing, 12)
         }
         .frame(height: 36)
         .background(Color.black)
