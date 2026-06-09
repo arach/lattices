@@ -7,6 +7,9 @@ app/.swiftpm/
 apps/mac/.build/
 apps/mac/.build-codex/
 apps/mac/.swiftpm/
+# Pins resolved git deps (e.g. vox); deps are switched git↔path via env at
+# build time, so a checked-in resolved file just forces stale git-mode resolution.
+apps/mac/Package.resolved
 build/
 
 # Built .app bundle artifacts (generated for dev/publish, not tracked)

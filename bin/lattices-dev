@@ -177,6 +177,9 @@ PLIST
 
 cmd_build() {
     echo "Building dev app..."
+    # Build features are declared in apps/mac/build.json and resolved to the
+    # HUDSONKIT_WITH_* env HudsonKit gates on (see bin/lattices-build-env.ts).
+    eval "$(bun "$ROOT/bin/lattices-build-env.ts" shell)"
     cd "$APP_DIR" && swift build -c release
     # Build into a repo-local dev artifact, then install to a stable app path
     # that macOS permissions can trust across rebuilds.

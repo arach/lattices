@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { get } from "node:https";
 import type { IncomingMessage } from "node:http";
+import { resolveBuildEnv } from "./lattices-build-env";
 
 const __dirname = import.meta.dir;
 const appDir = resolve(__dirname, "../apps/mac");
@@ -339,6 +340,10 @@ function buildFromSource(): boolean {
     execSync("swift build -c release", {
       cwd: appDir,
       stdio: "inherit",
+      // Build features are declared in apps/mac/build.json and resolved to the
+      // HUDSONKIT_WITH_* env HudsonKit gates on — one source of truth across
+      // every build entrypoint (see bin/lattices-build-env.ts).
+      env: { ...process.env, ...resolveBuildEnv() },
     });
   } catch {
     return false;
