@@ -1,4 +1,4 @@
-// Harness catalog + binary resolution for the metaharness.
+// Harness catalog + binary resolution for the agent runner.
 //
 // Each entry describes one harnessable agent: its adapter type (matching an
 // @openscout/agent-sessions factory), the executable to look for, env-var

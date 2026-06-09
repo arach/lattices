@@ -1,4 +1,4 @@
-// @openscout/agent-metaharness — SDK surface.
+// @openscout/agent-runner — SDK surface.
 //
 // One uniform interface to instantiate and operate *any* harnessable agent
 // (pi, codex, claude-code, opencode, echo) via @openscout/agent-sessions
@@ -14,7 +14,7 @@ import { HARNESS_CATALOG, harnessById, resolveAgentExecutable } from "./catalog.
 export * from "@openscout/agent-sessions";
 export { HARNESS_CATALOG, harnessById, resolveAgentExecutable };
 
-export const METAHARNESS_VERSION = "0.0.0";
+export const AGENT_RUNNER_VERSION = "0.0.0";
 
 // Map catalog adapter types → agent-sessions factories.
 export function adapterFactories(pkg = agentSessions) {
@@ -43,7 +43,7 @@ export function describeCatalog(env = process.env) {
   });
 }
 
-export class Metaharness {
+export class AgentRunner {
   constructor({ env = process.env } = {}) {
     this.env = env;
     this.registry = new agentSessions.SessionRegistry({ adapters: adapterFactories() });
@@ -98,6 +98,6 @@ export class Metaharness {
   }
 }
 
-export function createMetaharness(options) {
-  return new Metaharness(options);
+export function createAgentRunner(options) {
+  return new AgentRunner(options);
 }

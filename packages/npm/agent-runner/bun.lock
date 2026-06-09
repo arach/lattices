@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "@openscout/agent-metaharness",
+      "name": "@openscout/agent-runner",
       "dependencies": {
         "@openscout/agent-sessions": "0.2.64",
       },

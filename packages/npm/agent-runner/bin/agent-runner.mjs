@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Generic stdio dispatcher for the metaharness.
+// Generic stdio dispatcher for the agent runner.
 //
 // Reads one JSON op per line on stdin; writes JSON lines on stdout. Native
 // hosts (e.g. the Lattices Swift app) drive this instead of spawning a harness
@@ -18,12 +18,12 @@
 //
 // Requires the Bun runtime (adapters use Bun.spawn).
 
-import { createMetaharness, describeCatalog, METAHARNESS_VERSION } from "../src/index.mjs";
+import { createAgentRunner, describeCatalog, AGENT_RUNNER_VERSION } from "../src/index.mjs";
 
-const meta = createMetaharness();
+const runner = createAgentRunner();
 
 // Stream every adapter event straight to stdout.
-meta.onEvent((sequenced) => {
+runner.onEvent((sequenced) => {
   write({ type: "event", event: sequenced.event ?? sequenced });
 });
 
@@ -50,7 +50,7 @@ async function handleLine(line) {
   try {
     switch (request.op) {
       case "ping":
-        reply(request, { ok: true, version: METAHARNESS_VERSION });
+        reply(request, { ok: true, version: AGENT_RUNNER_VERSION });
         break;
 
       case "catalog":
@@ -58,7 +58,7 @@ async function handleLine(line) {
         break;
 
       case "start": {
-        const session = await meta.start(request.harness, {
+        const session = await runner.start(request.harness, {
           sessionId: request.sessionId,
           name: request.name,
           cwd: request.cwd,
@@ -72,17 +72,17 @@ async function handleLine(line) {
       }
 
       case "prompt":
-        meta.prompt({ sessionId: request.sessionId, text: request.text, images: request.images });
+        runner.prompt({ sessionId: request.sessionId, text: request.text, images: request.images });
         reply(request, { ok: true, sessionId: request.sessionId });
         break;
 
       case "interrupt":
-        meta.interrupt(request.sessionId);
+        runner.interrupt(request.sessionId);
         reply(request, { ok: true, sessionId: request.sessionId });
         break;
 
       case "shutdown":
-        await meta.shutdown();
+        await runner.shutdown();
         reply(request, { ok: true });
         process.exit(0);
         break;
@@ -108,8 +108,8 @@ process.stdin.on("data", (chunk) => {
   }
 });
 process.stdin.on("end", () => {
-  void meta.shutdown().finally(() => process.exit(0));
+  void runner.shutdown().finally(() => process.exit(0));
 });
 process.stdin.on("error", () => {
-  void meta.shutdown().finally(() => process.exit(1));
+  void runner.shutdown().finally(() => process.exit(1));
 });

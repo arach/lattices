@@ -1,5 +1,5 @@
 {
-  "name": "@openscout/agent-metaharness",
+  "name": "@openscout/agent-runner",
   "version": "0.0.0",
   "private": true,
   "description": "Run any harnessable agent (pi, codex, claude-code, opencode) via one CLI/SDK over @openscout/agent-sessions adapters. Prototyped in lattices; destined for the openscout repo.",
@@ -9,7 +9,7 @@
     "./catalog": "./src/catalog.mjs"
   },
   "bin": {
-    "agent-metaharness": "./bin/agent-metaharness.mjs"
+    "agent-runner": "./bin/agent-runner.mjs"
   },
   "files": [
     "src",
@@ -17,15 +17,15 @@
     "README.md"
   ],
   "scripts": {
-    "smoke:ping": "printf '{\"op\":\"ping\"}\\n' | bun ./bin/agent-metaharness.mjs",
-    "smoke:catalog": "printf '{\"op\":\"catalog\"}\\n' | bun ./bin/agent-metaharness.mjs",
-    "smoke:pi": "printf '{\"op\":\"start\",\"id\":1,\"sessionId\":\"smoke\",\"harness\":\"pi\",\"provider\":\"openai-codex\"}\\n{\"op\":\"prompt\",\"id\":2,\"sessionId\":\"smoke\",\"text\":\"Reply with exactly: hello\"}\\n' | bun ./bin/agent-metaharness.mjs"
+    "smoke:ping": "printf '{\"op\":\"ping\"}\\n' | bun ./bin/agent-runner.mjs",
+    "smoke:catalog": "printf '{\"op\":\"catalog\"}\\n' | bun ./bin/agent-runner.mjs",
+    "smoke:pi": "printf '{\"op\":\"start\",\"id\":1,\"sessionId\":\"smoke\",\"harness\":\"pi\",\"provider\":\"openai-codex\"}\\n{\"op\":\"prompt\",\"id\":2,\"sessionId\":\"smoke\",\"text\":\"Reply with exactly: hello\"}\\n' | bun ./bin/agent-runner.mjs"
   },
   "keywords": [
     "openscout",
     "agent",
     "harness",
-    "metaharness",
+    "runner",
     "runtime",
     "sessions"
   ],
