@@ -106,6 +106,7 @@ private final class MotionPanel: NSPanel {
 
     private var legendHost: NSHostingView<MotionLegend>?
     private var stackHost: NSHostingView<MotionStack>?
+    private var chromeHost: NSView?                       // bottom layer-host for window borders/previews
     private var thumbs: [UInt32: NSImage] = [:]          // cached window snapshots
     private var captureFrame: [UInt32: CGRect] = [:]     // the frame each capture was taken at
     private var thumbInFlight: Set<UInt32> = []          // de-dupe in-flight captures
@@ -125,6 +126,8 @@ private final class MotionPanel: NSPanel {
     private var exposeAim = 0                             // highlighted tile (Tab/Space fallback)
     private var hintFor: [UInt32: String] = [:]          // wid → home-row hint letter
     private var hintMap: [String: UInt32] = [:]          // hint letter → wid
+    private var clusterHintFor: [Int: String] = [:]      // cluster id → ⇧-letter (display, uppercase)
+    private var clusterHintMap: [String: Int] = [:]      // letter → cluster id (⇧+letter plucks the group)
     private var exposeTileW: CGFloat = 240
     private var clusterRules: [ClusterRule] = []
 
@@ -149,6 +152,16 @@ private final class MotionPanel: NSPanel {
         host.wantsLayer = true
         host.layer?.masksToBounds = false
         contentView = host
+
+        // Window borders/previews draw into this dedicated bottom container so they
+        // can never stack above the chrome (instruction strip + minimap), which are
+        // added as subviews on top of it.
+        let chrome = NSView(frame: NSRect(origin: .zero, size: union.size))
+        chrome.wantsLayer = true
+        chrome.layer?.masksToBounds = false
+        chrome.autoresizingMask = [.width, .height]
+        host.addSubview(chrome)
+        chromeHost = chrome
 
         clusterRules = MotionPanel.loadClusterRules()
         seedActiveFromFocus()
@@ -278,7 +291,10 @@ private final class MotionPanel: NSPanel {
             case 14: collapseExpose(); return                               // E — collapse survey
             case 5:  gatherInPlace(); return                                // G — gather, stay in mode
             default:
-                if let ch = event.charactersIgnoringModifiers?.lowercased(), let wid = hintMap[ch] {
+                let ch = event.charactersIgnoringModifiers?.lowercased()
+                if mods.contains(.shift), let ch, let cid = clusterHintMap[ch] {
+                    exposeToggleCluster(cid)                                 // ⇧a–z — pluck a whole group
+                } else if let ch, let wid = hintMap[ch] {
                     exposeToggle(wid)                                        // a–z — pluck by hint
                 } else {
                     NSSound.beep()
@@ -662,6 +678,21 @@ private final class MotionPanel: NSPanel {
             }
         }
         exposeAim = 0
+
+        // Per-cluster shortcut: ⇧+letter plucks the whole group at once (e.g. ⇧I →
+        // every iTerm). Prefer a letter from the cluster's name so it's guessable,
+        // falling back to the next free letter. Lives in its own (shifted) key space,
+        // so it never collides with the lowercase per-window hints above.
+        clusterHintFor.removeAll(); clusterHintMap.removeAll()
+        var used = Set<String>()
+        let alphabet = "abcdefghijklmnopqrstuvwxyz".map(String.init)
+        for box in exposeClusters {
+            let fromName = box.name.lowercased().filter { $0.isLetter }.map(String.init)
+            guard let letter = (fromName + alphabet).first(where: { !used.contains($0) }) else { continue }
+            used.insert(letter)
+            clusterHintFor[box.id] = letter.uppercased()
+            clusterHintMap[letter] = box.id
+        }
     }
 
     /// Tile width scales down as the survey gets busier so the lattice keeps fitting.
@@ -709,6 +740,7 @@ private final class MotionPanel: NSPanel {
         let vm = exposeClusters.map { box in
             ExposeView.Cluster(
                 id: box.id, name: box.name, rule: box.rule, userDefined: box.userDefined,
+                hint: clusterHintFor[box.id] ?? "",
                 tiles: box.members.map { tileVM($0) }
             )
         }
@@ -730,6 +762,25 @@ private final class MotionPanel: NSPanel {
     /// Pluck a tile by wid (hint key or click) and refresh the survey + minimap.
     private func exposeToggle(_ wid: UInt32) {
         togglePicked(wid)
+        rebuildExposeView()
+        updateLegend()
+        updateStack()
+    }
+
+    /// ⇧+letter — pluck a whole cluster at once (e.g. all iTerms). If the group is
+    /// already fully picked it unplucks the group; otherwise it adds the members
+    /// that aren't picked yet. Toggling on the "all-picked" state makes the same key
+    /// select then clear the group.
+    private func exposeToggleCluster(_ id: Int) {
+        guard let box = exposeClusters.first(where: { $0.id == id }) else { NSSound.beep(); return }
+        let wids = box.members.map { $0.wid }
+        guard !wids.isEmpty else { return }
+        let allPicked = wids.allSatisfy { group.contains($0) }
+        for wid in wids {
+            let picked = group.contains(wid)
+            if allPicked && picked { togglePicked(wid) }          // clear the whole group
+            else if !allPicked && !picked { togglePicked(wid) }   // fill in the missing members
+        }
         rebuildExposeView()
         updateLegend()
         updateStack()
@@ -789,7 +840,7 @@ private final class MotionPanel: NSPanel {
     // MARK: - Borders (drawn in the always-on-top overlay)
 
     private func refreshBorders() {
-        guard let root = contentView?.layer else { return }
+        guard let root = chromeHost?.layer else { return }
         borderLayers.forEach { $0.removeFromSuperlayer() }
         borderLayers.removeAll()
 
@@ -927,6 +978,15 @@ private final class MotionPanel: NSPanel {
                                    y: screenFrame.minY + 70 - frame.origin.y,
                                    width: size.width, height: size.height)
         }
+        raiseLegend()
+    }
+
+    /// Keep the instruction strip at the highest z-index at all times — above the
+    /// minimap and the Exposé spread — so it stays readable and clickable no matter
+    /// what else gets added to the overlay.
+    private func raiseLegend() {
+        guard let legendHost, let superview = legendHost.superview else { return }
+        superview.addSubview(legendHost, positioned: .above, relativeTo: nil)
     }
 
     private func legendModel() -> MotionLegend {
@@ -945,7 +1005,12 @@ private final class MotionPanel: NSPanel {
 
     private func installStack(on host: NSView) {
         let hosting = NSHostingView(rootView: MotionStack(cells: []))
-        host.addSubview(hosting)
+        // Keep the minimap beneath the instruction strip so the strip is never hidden.
+        if let legendHost {
+            host.addSubview(hosting, positioned: .below, relativeTo: legendHost)
+        } else {
+            host.addSubview(hosting)
+        }
         stackHost = hosting
         positionStack()
     }
@@ -1046,6 +1111,7 @@ private struct MotionLegend: View {
 
             if exposed {
                 keyHint("a–z", "pluck")
+                keyHint("⇧a–z", "group")
                 keyHint("Tab", "aim")
                 keyHint("⏎", "gather")
                 keyHint("E", "collapse")
@@ -1312,6 +1378,7 @@ struct ExposeView: View {
         let name: String
         let rule: String
         let userDefined: Bool
+        let hint: String          // ⇧-letter that plucks the whole cluster
         let tiles: [Tile]
     }
 
@@ -1356,6 +1423,17 @@ struct ExposeView: View {
         let innerW = tileWidth * CGFloat(cols) + 8 * CGFloat(cols - 1)
         return VStack(alignment: .leading, spacing: 9) {
             HStack(spacing: 6) {
+                if !c.hint.isEmpty {
+                    Text("⇧\(c.hint)")
+                        .font(Typo.monoBold(9)).foregroundColor(.white).tracking(0.3)
+                        .padding(.horizontal, 5).padding(.vertical, 2)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(c.userDefined ? Palette.running.opacity(0.8) : Color.white.opacity(0.16))
+                                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color.white.opacity(0.28), lineWidth: 0.5))
+                        )
+                        .help("Pluck the whole \(c.name) group")
+                }
                 Text(c.name)
                     .font(Typo.monoBold(11)).foregroundColor(.white).tracking(0.3)
                 Text(c.rule)
