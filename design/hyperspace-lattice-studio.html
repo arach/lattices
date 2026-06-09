@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lattices · Hyperspace — Lattice Studio</title>
+<style>
+  :root{
+    --bg:#0a0b0e; --panel:#0f1115; --ink:#e8eaf0; --muted:#8b909c; --line:#23262e;
+    --mono:'SF Mono',ui-monospace,'JetBrains Mono',Menlo,monospace;
+    --sans:-apple-system,'Inter',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1320px;margin:0 auto;padding:40px 28px 80px}
+  header.top{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:6px}
+  header.top h1{font-size:20px;font-weight:650;letter-spacing:.2px;margin:0}
+  header.top .tag{font-family:var(--mono);font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:3px 8px}
+  .lede{color:var(--muted);font-size:14px;line-height:1.55;max-width:760px;margin:10px 0 34px}
+  .lede b{color:var(--ink);font-weight:600}
+  .key{font-family:var(--mono);font-size:12px;color:var(--ink);background:#191c22;border:1px solid var(--line);border-radius:5px;padding:1px 6px}
+
+  .study{margin:0 0 46px}
+  .study h2{font-size:15px;font-weight:600;margin:0 0 3px;display:flex;align-items:center;gap:10px}
+  .study h2 .n{font-family:var(--mono);font-size:11px;color:#0a0b0e;background:var(--muted);border-radius:5px;padding:2px 7px;font-weight:700}
+  .study p.desc{color:var(--muted);font-size:13px;line-height:1.5;margin:4px 0 14px;max-width:820px}
+
+  /* ---- the desktop frame each study renders into ---- */
+  .desktop{position:relative;width:100%;aspect-ratio:21/9;border-radius:14px;overflow:hidden;
+           border:1px solid var(--line);background:#05060a;box-shadow:0 24px 60px rgba(0,0,0,.5)}
+  .scrim{position:absolute;inset:0}
+  .lattice{position:absolute;inset:7% 4% 6%;display:flex;flex-direction:column;justify-content:center;gap:1.4%}
+  .lrow{display:flex;justify-content:center;gap:1.1%;flex:1;min-height:0}
+  .tile{position:relative;flex:1 1 0;min-width:0;border-radius:9px;overflow:hidden;display:flex;flex-direction:column;
+        background:#11131a;transition:transform .2s}
+  /* faux window content */
+  .tbar{height:16%;min-height:9px;display:flex;align-items:center;gap:4px;padding:0 7px;font-family:var(--mono);font-size:8px;color:#cfd3dd}
+  .tbar .dots{display:flex;gap:3px}
+  .tbar .dots i{width:5px;height:5px;border-radius:50%;background:#3a3f4a;display:block}
+  .tbar .ttl{opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .body{flex:1;position:relative;overflow:hidden}
+  .body .ln{position:absolute;height:5%;border-radius:3px;opacity:.5}
+  .hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+  .hint b{font-family:var(--mono);font-weight:700;color:#fff}
+  .applabel{position:absolute;left:6px;bottom:6px;font-family:var(--mono);font-size:9px;color:#fff;
+            background:rgba(0,0,0,.5);border-radius:5px;padding:2px 6px;backdrop-filter:blur(4px)}
+  .badge{position:absolute;top:6px;right:6px;font-family:var(--mono);font-weight:700;font-size:11px;color:#06070a;
+         width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+
+  /* legend + minimap shared */
+  .legend{position:absolute;top:14px;left:50%;transform:translateX(-50%);display:flex;gap:9px;align-items:center;
+          background:rgba(8,9,12,.74);border:1px solid var(--line);border-radius:10px;padding:6px 11px;font-family:var(--mono);font-size:9px;color:var(--muted)}
+  .legend .dot{width:7px;height:7px;border-radius:50%}
+  .legend b{color:var(--ink)}
+  .legend .k{color:var(--ink);background:rgba(255,255,255,.07);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+  .minimap{position:absolute;left:18px;bottom:18px;width:210px;background:rgba(6,7,11,.78);border:1px solid var(--line);
+           border-radius:15px;padding:12px;box-shadow:0 14px 36px rgba(0,0,0,.5)}
+  .minimap .mh{display:flex;align-items:center;gap:7px;margin-bottom:9px}
+  .minimap .mh .glyph{color:#34d399}
+  .minimap .mh .brand{font-family:var(--mono);font-weight:700;font-size:11px;letter-spacing:.5px}
+  .minimap .mh .sub{font-family:var(--mono);font-size:9px;color:var(--muted)}
+  .minimap .mh .ct{margin-left:auto;font-family:var(--mono);font-size:9px;color:var(--muted)}
+  .minimap .mh .ct b{color:#34d399;font-size:11px}
+  .minimap .mgrid{position:relative;width:100%;aspect-ratio:21/9;background:rgba(255,255,255,.04);
+                  border:1px solid var(--line);border-radius:9px;padding:4px}
+  .minimap .mrow{display:flex;gap:4px;height:100%;justify-content:center}
+  .minimap .mrows{display:flex;flex-direction:column;gap:4px;height:100%}
+  .minimap .mcell{flex:1;border-radius:5px;position:relative;display:flex;align-items:center;justify-content:center;
+                  font-family:var(--mono);font-weight:700;font-size:11px;color:#06070a}
+  .minimap .mfoot{display:flex;gap:6px;margin-top:9px;font-family:var(--mono);font-size:9px;color:var(--muted);align-items:center}
+  .minimap .mfoot .k{color:var(--ink);background:rgba(255,255,255,.07);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+
+  /* ============ THEME: blueprint ============ */
+  .blueprint .scrim{background:
+     linear-gradient(rgba(5,7,12,.86),rgba(5,7,12,.92)),
+     repeating-linear-gradient(0deg,transparent 0 28px,rgba(120,140,200,.05) 28px 29px),
+     repeating-linear-gradient(90deg,transparent 0 28px,rgba(120,140,200,.05) 28px 29px)}
+  .blueprint .tile{border-radius:4px;border:1px solid rgba(160,180,230,.14);background:#0c0e14}
+  .blueprint .tile::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--tint)}
+  .blueprint .hint{align-items:flex-start;justify-content:flex-start;padding:5px}
+  .blueprint .hint b{font-size:11px;color:#06070a;background:var(--tint);border-radius:3px;padding:1px 5px;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+  .blueprint .tile.picked{border-color:var(--tint);box-shadow:inset 0 0 0 1px var(--tint)}
+  .blueprint .badge{border-radius:3px;background:var(--tint)}
+
+  /* ============ THEME: neon ============ */
+  .neon .scrim{background:radial-gradient(120% 90% at 50% 40%,rgba(20,14,40,.5),rgba(3,3,7,.94))}
+  .neon .tile{border-radius:11px;border:1px solid rgba(255,255,255,.06);background:#0c0d14;
+              box-shadow:0 0 0 1px rgba(0,0,0,.4), 0 10px 26px rgba(0,0,0,.45)}
+  .neon .hint b{font-size:min(3vw,30px);color:#fff;text-shadow:0 0 10px var(--tint),0 0 22px var(--tint);opacity:.92}
+  .neon .tile.picked{border-color:transparent;box-shadow:0 0 0 1.5px var(--tint),0 0 22px -2px var(--tint),0 0 40px -10px var(--tint)}
+  .neon .badge{background:var(--tint);box-shadow:0 0 14px var(--tint)}
+  .neon .tile.picked .hint b{opacity:0}
+
+  /* ============ THEME: frost ============ */
+  .frost .scrim{background:linear-gradient(rgba(10,12,18,.6),rgba(6,7,11,.78))}
+  .frost .tile{border-radius:13px;border:1px solid rgba(255,255,255,.1);background:rgba(28,31,40,.55);
+               backdrop-filter:blur(6px);box-shadow:0 10px 30px rgba(0,0,0,.4)}
+  .frost .hint b{font-size:min(2.4vw,24px);color:#fff;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);
+                 border-radius:9px;width:1.7em;height:1.7em;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px)}
+  .frost .tile.picked{border-color:rgba(255,255,255,.85);box-shadow:0 0 0 1.5px rgba(255,255,255,.6),0 12px 34px rgba(0,0,0,.5)}
+  .frost .badge{background:#fff;color:#06070a}
+
+  /* ============ THEME: clusters ============ */
+  .clusters .scrim{background:linear-gradient(rgba(6,8,12,.82),rgba(6,8,12,.9))}
+  .clusters .lattice{flex-direction:row;flex-wrap:wrap;align-content:center;justify-content:center;gap:14px;inset:8% 4% 7%}
+  .clusters .group{border:1px dashed rgba(255,255,255,.14);border-radius:12px;padding:20px 8px 8px;position:relative;
+                   display:flex;gap:7px;background:rgba(255,255,255,.015)}
+  .clusters .group .ghead{position:absolute;top:5px;left:9px;font-family:var(--mono);font-size:9px;color:#fff;opacity:.85;display:flex;align-items:center;gap:5px}
+  .clusters .group .ghead i{width:7px;height:7px;border-radius:2px;display:block}
+  .clusters .tile{width:128px;height:80px;flex:none;border-radius:8px;border:1px solid rgba(255,255,255,.08);background:#0e1017}
+  .clusters .hint b{font-size:14px;color:#06070a;background:var(--tint);border-radius:4px;padding:1px 6px}
+  .clusters .hint{align-items:flex-start;justify-content:flex-end;padding:5px}
+  .clusters .tile.picked{border-color:var(--tint);box-shadow:0 0 0 1px var(--tint),0 6px 18px rgba(0,0,0,.4)}
+  .clusters .badge{background:var(--tint)}
+  .clusters .applabel{display:none}
+
+  /* ============ THEME: converged (letters + user-definable clusters) ============ */
+  .converged .scrim{background:
+     linear-gradient(rgba(6,8,13,.88),rgba(6,8,13,.93)),
+     repeating-linear-gradient(0deg,transparent 0 30px,rgba(120,140,200,.045) 30px 31px),
+     repeating-linear-gradient(90deg,transparent 0 30px,rgba(120,140,200,.045) 30px 31px)}
+  .converged .lattice{flex-direction:row;flex-wrap:wrap;align-content:center;justify-content:center;gap:13px;inset:7% 4% 7%}
+  .converged .group{border:1px solid rgba(160,180,230,.13);border-radius:11px;padding:23px 9px 9px;position:relative;
+                    display:flex;gap:7px;background:rgba(140,160,220,.022)}
+  .converged .group.you{border-color:rgba(52,211,153,.30);background:rgba(52,211,153,.035)}
+  .converged .group .ghead{position:absolute;top:6px;left:10px;right:10px;display:flex;align-items:center;gap:6px;
+                           font-family:var(--mono);font-size:9px;color:#cfd3dd}
+  .converged .group .ghead .gname{font-weight:700;color:#fff;letter-spacing:.3px}
+  .converged .group .ghead .grule{color:var(--muted);background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+  .converged .group .ghead .gsrc{margin-left:auto;font-size:8px;letter-spacing:.6px;text-transform:uppercase}
+  .converged .group .ghead .gsrc.you{color:#34d399}
+  .converged .group .ghead .gsrc.auto{color:var(--muted)}
+  .converged .group .ghead .edit{color:#4a4f5a}
+  .converged .tile{width:118px;height:74px;flex:none;border-radius:7px;border:1px solid rgba(255,255,255,.08);background:#0c0e14}
+  .converged .tile::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--tint)}
+  .converged .hint{align-items:flex-start;justify-content:flex-end;padding:5px}
+  .converged .hint b{font-size:11px;color:#06070a;background:var(--tint);border-radius:3px;padding:1px 5px}
+  .converged .tile.picked{border-color:var(--tint);box-shadow:inset 0 0 0 1px var(--tint),0 5px 16px rgba(0,0,0,.4)}
+  .converged .badge{background:var(--tint);border-radius:3px}
+  .converged .applabel{display:none}
+  .converged .addrule{align-self:center;border:1px dashed rgba(255,255,255,.16);border-radius:11px;color:var(--muted);
+                      font-family:var(--mono);font-size:10px;padding:0 14px;height:96px;display:flex;align-items:center;gap:5px}
+
+  .note{color:var(--muted);font-size:12px;font-family:var(--mono);margin-top:10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>Lattices · Hyperspace</h1>
+    <span class="tag">lattice studio</span>
+    <span class="tag">5 explorations</span>
+  </header>
+  <p class="lede">
+    Press <span class="key">E</span> → the desktop dims and every window on the display lifts into a uniform
+    <b>lattice</b>, <b>clustered by app</b> (same-app tiles adjacent, sharing a tint). Each tile wears a home-row
+    <b>hint letter</b>; press it to pluck that window (toggle). Picks get a <b>slot number</b> — the order they'll
+    sit in the gathered grid. <span class="key">⏎</span> snaps the real windows into that lattice; <span class="key">esc</span> bails (nothing moved).
+    Below: the same ten windows, four visual directions. Same bones — different soul.
+  </p>
+
+  <section class="study">
+    <h2><span class="n">01</span> Blueprint <span style="color:var(--muted);font-weight:400;font-size:12px">— structural, technical, CAD-like</span></h2>
+    <p class="desc">Hairline tinted frames on a faint engineering grid; the tint is a precise top-edge accent; hint letters are crisp mono chips. Leans hard into the “lattice” identity — feels like a layout tool, not a flashy launcher.</p>
+    <div class="desktop blueprint" data-study></div>
+  </section>
+
+  <section class="study">
+    <h2><span class="n">02</span> Hyperspace <span style="color:var(--muted);font-weight:400;font-size:12px">— glowing, energetic, “warp”</span></h2>
+    <p class="desc">Dark vignette, tiles glow in their app tint, hint letters bloom in the center like nodes. Plucked tiles light up and a glowing numbered node marks the slot. Most “mode”-feeling — it reads as a place you warp into.</p>
+    <div class="desktop neon" data-study></div>
+  </section>
+
+  <section class="study">
+    <h2><span class="n">03</span> Frost <span style="color:var(--muted);font-weight:400;font-size:12px">— calm, premium, soft</span></h2>
+    <p class="desc">Frosted translucent tiles, soft shadows, gentle pills for the hint letters, white rings for picks. The quietest of the four — calm and legible, closest to the “just chill” feel you asked for.</p>
+    <div class="desktop frost" data-study></div>
+  </section>
+
+  <section class="study">
+    <h2><span class="n">04</span> Clusters <span style="color:var(--muted);font-weight:400;font-size:12px">— grouping made explicit</span></h2>
+    <p class="desc">Instead of relying on adjacency + tint, each app becomes a labeled container. Makes the “cluster by app / size / whatever” idea literal and scannable — you see the groups, not just a grid. (Swap the grouping key to size, space, or recency without touching the visuals.)</p>
+    <div class="desktop clusters" data-study></div>
+  </section>
+
+  <section class="study">
+    <h2><span class="n">05</span> Converged <span style="color:var(--muted);font-weight:400;font-size:12px">— letters + clusters you define</span></h2>
+    <p class="desc">The one you described: <b>hint letters always on</b>, <b>clusters as the spatial frame</b> — and clusters are
+      <b>yours</b>. A cluster is just a named rule. Some are <b style="color:#34d399">smart/auto</b> (by app, by path), and you can
+      define your own — here <b>lattices</b> is a custom cluster (<span class="key">path ~/dev/lattices</span>) that pulls Code,
+      Terminal <i>and</i> Figma together, mixing apps. Tint still encodes the <i>app</i>; the container encodes the <i>cluster</i> —
+      two independent axes. Over time you grow your cluster vocabulary, and agents can draft the rules for you. Pluck a whole
+      cluster at once, or letter-by-letter; <span class="key">⏎</span> gathers.</p>
+    <div class="desktop converged" data-study></div>
+  </section>
+
+  <p class="note">// mock thumbnails (CSS), real app-tint hues · study 05 = the letters+clusters direction you called. Splice anything — say the word and I build it in Swift.</p>
+</div>
+
+<script>
+const WINDOWS = [
+  {app:'Code',     title:'WindowMotionMode.swift'},
+  {app:'Code',     title:'ExposeView.swift'},
+  {app:'Terminal', title:'~/dev/lattices — zsh'},
+  {app:'Terminal', title:'~/dev/hudson — bun'},
+  {app:'Terminal', title:'lattices-app · restart'},
+  {app:'Safari',   title:'Anthropic — Claude'},
+  {app:'Safari',   title:'Hacker News'},
+  {app:'Slack',    title:'#design'},
+  {app:'Notes',    title:'Hyperspace ideas'},
+  {app:'Figma',    title:'Lattice studio'},
+];
+const HINTS = 'asdfghjklqwertyuiopzxcvbnm'.split('');
+// pick the three Terminals to show an app-cluster gather (slots 1,2,3)
+const PICK_APPS_COUNT = {Terminal:3};
+
+// match the Swift tint: djb2-ish over UInt64, hue = v % 360
+function tintHue(app){
+  let v = 5381n, M = (1n<<64n)-1n;
+  for(const ch of app) v = ((v*33n) + BigInt(ch.charCodeAt(0))) & M;
+  return Number(v % 360n);
+}
+const tint = (app)=>`hsl(${tintHue(app)} 62% 60%)`;
+const tintSoft = (app)=>`hsl(${tintHue(app)} 55% 60% / .5)`;
+
+function el(t,c){const e=document.createElement(t); if(c) e.className=c; return e;}
+
+function fauxBody(w){
+  const b = el('div','body'); const t = tintHue(w.app);
+  const rows = 5;
+  for(let i=0;i<rows;i++){
+    const ln = el('div','ln');
+    ln.style.left='8%'; ln.style.top=(20+i*15)+'%';
+    ln.style.width=(20+Math.random()*60)+'%';
+    ln.style.background=`hsl(${t} 40% 55%)`;
+    b.appendChild(ln);
+  }
+  return b;
+}
+
+function tile(w){
+  const e = el('div','tile'); e.style.setProperty('--tint', tint(w.app));
+  if(w.pick){ e.classList.add('picked'); }
+  const bar = el('div','tbar');
+  const dots = el('div','dots'); dots.innerHTML='<i></i><i></i><i></i>';
+  const ttl = el('div','ttl'); ttl.textContent = w.title;
+  bar.appendChild(dots); bar.appendChild(ttl);
+  e.appendChild(bar);
+  e.appendChild(fauxBody(w));
+  const hint = el('div','hint'); const hb=el('b'); hb.textContent=w.hint; hint.appendChild(hb); e.appendChild(hint);
+  const al = el('div','applabel'); al.textContent=w.app; e.appendChild(al);
+  if(w.pick){ const bd=el('div','badge'); bd.textContent=w.pick; bd.style.background=tint(w.app); e.appendChild(bd); }
+  return e;
+}
+
+function legend(){
+  const l = el('div','legend');
+  l.innerHTML = `<span class="dot" style="background:#34d399"></span><b>Lattice</b>
+    <span style="opacity:.5">·</span>
+    <span class="k">a–z</span> pluck <span class="k">⏎</span> gather <span class="k">esc</span> exit`;
+  return l;
+}
+
+function minimap(picks){
+  const m = el('div','minimap');
+  const head = el('div','mh');
+  head.innerHTML = `<span class="glyph">▦</span><span class="brand">Lattices</span>
+    <span class="sub">hyperspace</span><span class="ct"><b>${picks.length}</b> picks</span>`;
+  m.appendChild(head);
+  // mini balanced grid of the picks
+  const grid = el('div','mgrid');
+  const n = picks.length, cols = Math.max(1,Math.ceil(Math.sqrt(n)));
+  const rowsWrap = el('div','mrows');
+  for(let r=0; r*cols<n; r++){
+    const row = el('div','mrow');
+    for(let c=0;c<cols && r*cols+c<n;c++){
+      const p = picks[r*cols+c];
+      const cell = el('div','mcell');
+      cell.style.background = tint(p.app);
+      cell.textContent = p.pick;
+      row.appendChild(cell);
+    }
+    rowsWrap.appendChild(row);
+  }
+  grid.appendChild(rowsWrap); m.appendChild(grid);
+  const foot = el('div','mfoot');
+  foot.innerHTML = `<span class="k">⏎</span> gather <span style="margin-left:auto"></span><span class="k">esc</span> cancel`;
+  m.appendChild(foot);
+  return m;
+}
+
+// ---- converged: user-definable clusters (a cluster = a named rule) ----
+// `src:'you'` = a cluster the user defined (optionally agent-drafted); 'auto' = smart default.
+const CLUSTER_DEFS = [
+  {name:'lattices', rule:'path ~/dev/lattices', src:'you',  pick:true,
+   titles:['WindowMotionMode.swift','ExposeView.swift','~/dev/lattices — zsh','Lattice studio']},
+  {name:'shells',   rule:'app Terminal',        src:'auto', pick:false,
+   titles:['~/dev/hudson — bun','lattices-app · restart']},
+  {name:'web',      rule:'app Safari',          src:'auto', pick:false,
+   titles:['Anthropic — Claude','Hacker News']},
+  {name:'comms',    rule:'app Slack, Notes',    src:'auto', pick:false,
+   titles:['#design','Hyperspace ideas']},
+];
+
+function renderConverged(desktop){
+  const scrim = el('div','scrim'); desktop.appendChild(scrim);
+  const lat = el('div','lattice');
+  const byTitle = t => ({...WINDOWS.find(w=>w.title===t)});
+  let hintIdx = 0, slot = 1;
+  const picks = [];
+
+  CLUSTER_DEFS.forEach(def=>{
+    const g = el('div','group'); if(def.src==='you') g.classList.add('you');
+    const gh = el('div','ghead');
+    gh.innerHTML = `<span class="gname">${def.name}</span><span class="grule">${def.rule}</span>`
+      + `<span class="gsrc ${def.src}">${def.src==='you'?'you · agent':'smart'}</span>`
+      + `<span class="edit">✎</span>`;
+    g.appendChild(gh);
+    def.titles.forEach(t=>{
+      const w = byTitle(t);
+      w.hint = HINTS[hintIdx++];
+      if(def.pick){ w.pick = slot++; picks.push(w); }
+      g.appendChild(tile(w));
+    });
+    lat.appendChild(g);
+  });
+
+  // affordance: clusters are a growing, user-owned vocabulary
+  const add = el('div','addrule'); add.innerHTML = '＋ define cluster';
+  lat.appendChild(add);
+
+  desktop.appendChild(lat);
+  desktop.appendChild(legend());
+  desktop.appendChild(minimap(picks.sort((a,b)=>a.pick-b.pick)));
+}
+
+function render(desktop){
+  if(desktop.classList.contains('converged')) return renderConverged(desktop);
+  // cluster by app
+  const sorted = [...WINDOWS].sort((a,b)=> a.app.localeCompare(b.app) || a.title.localeCompare(b.title));
+  sorted.forEach((w,i)=> w.hint = HINTS[i]);
+  // assign pick slot numbers
+  const counters = {...PICK_APPS_COUNT}; let slot=1;
+  for(const w of sorted){ if(counters[w.app]>0){ w.pick = slot++; counters[w.app]--; } else { w.pick=0; } }
+
+  const scrim = el('div','scrim'); desktop.appendChild(scrim);
+
+  if(desktop.classList.contains('clusters')){
+    const lat = el('div','lattice');
+    // group by app
+    const groups = {};
+    sorted.forEach(w=> (groups[w.app] ||= []).push(w));
+    Object.entries(groups).forEach(([app,ws])=>{
+      const g = el('div','group');
+      const gh = el('div','ghead'); gh.innerHTML = `<i style="background:${tint(app)}"></i>${app}`;
+      g.appendChild(gh);
+      ws.forEach(w=> g.appendChild(tile(w)));
+      lat.appendChild(g);
+    });
+    desktop.appendChild(lat);
+  } else {
+    const cols = Math.max(1,Math.ceil(Math.sqrt(sorted.length)));
+    const lat = el('div','lattice');
+    for(let r=0; r*cols<sorted.length; r++){
+      const row = el('div','lrow');
+      for(let c=0;c<cols && r*cols+c<sorted.length;c++) row.appendChild(tile(sorted[r*cols+c]));
+      lat.appendChild(row);
+    }
+    desktop.appendChild(lat);
+  }
+
+  desktop.appendChild(legend());
+  desktop.appendChild(minimap(sorted.filter(w=>w.pick).sort((a,b)=>a.pick-b.pick)));
+}
+
+document.querySelectorAll('[data-study]').forEach(render);
+</script>
+</body>
+</html>

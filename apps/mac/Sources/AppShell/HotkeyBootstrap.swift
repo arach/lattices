@@ -89,5 +89,8 @@ enum HotkeyBootstrap {
                 ?? NSWorkspace.shared.frontmostApplication?.localizedName
             CommandModeWindow.shared.show(launchMode: .organize(appName: appName))
         }
+        store.register(action: .motionMode) {
+            WindowMotionMode.shared.toggle()
+        }
     }
 }

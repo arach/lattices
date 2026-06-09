@@ -36,6 +36,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
     case tileTopLeft, tileTopRight, tileBottomLeft, tileBottomRight
     case tileTop, tileBottom, tileDistribute, tileTypeGrid, tileOrganize
     case tileLeftThird, tileCenterThird, tileRightThird
+    case motionMode
 
     var label: String {
         switch self {
@@ -81,6 +82,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .tileLeftThird:   return "Left Third"
         case .tileCenterThird: return "Center Third"
         case .tileRightThird:  return "Right Third"
+        case .motionMode:      return "Motion Mode"
         }
     }
 
@@ -138,6 +140,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .tileCenterThird: return 312
         case .tileRightThird:  return 313
         case .tileOrganize:    return 315
+        case .motionMode:      return 316
         }
     }
 
@@ -291,6 +294,7 @@ class HotkeyStore: ObservableObject {
         bind(.tileCenterThird,  19, ctrlOpt)  // Ctrl+Opt+2
         bind(.tileRightThird,   20, ctrlOpt)  // Ctrl+Opt+3
         bind(.tileOrganize,     31, ctrlOpt)  // Ctrl+Opt+O
+        bind(.motionMode,       49, hyper)    // Hyper+Space (keyboard window motion)
 
         return d
     }()
