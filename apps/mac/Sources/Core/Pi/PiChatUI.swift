@@ -567,15 +567,16 @@ struct PiChatFormattedText: View, Equatable {
         let stanzas = text.components(separatedBy: "\n\n")
         return VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(stanzas.enumerated()), id: \.offset) { index, stanza in
-                HStack(alignment: .lastTextBaseline, spacing: 0) {
-                    Text(stanza)
-                        .font(Typo.reading(style.bodySize))
-                        .foregroundColor(Palette.text)
-                        .textSelection(.enabled)
-
+                Group {
                     if index == stanzas.count - 1 {
-                        PiChatStreamCursor()
-                            .padding(.leading, 1)
+                        // The live, growing paragraph: words materialize in + caret.
+                        PiChatRevealParagraph(text: stanza, size: style.bodySize)
+                    } else {
+                        // Settled paragraphs read as plain copy.
+                        Text(stanza)
+                            .font(Typo.reading(style.bodySize))
+                            .foregroundColor(Palette.text)
+                            .textSelection(.enabled)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -738,13 +739,14 @@ struct PiChatComposer: View {
 
     #if canImport(HudsonVoice)
     @ObservedObject private var voice = WorkspaceVoiceInput.shared
+    @State private var micPulse = false
     #endif
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 7) {
             #if canImport(HudsonVoice)
-            if voice.state.isCaptureActive || voice.state.isProcessing, !voice.partial.isEmpty {
-                dictationLivePreview
+            if voice.state.isCaptureActive || voice.state.isProcessing {
+                dictationStrip
             }
             #endif
 
@@ -769,11 +771,15 @@ struct PiChatComposer: View {
                     }
                 }
 
-                sendChip
+                sendButton
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .background(composerFieldBackground)
+
+            #if canImport(HudsonVoice)
+            statusLine
+            #endif
         }
         .padding(.horizontal, style.horizontalPadding)
         .padding(.vertical, style.verticalPadding)
@@ -782,45 +788,76 @@ struct PiChatComposer: View {
 
     #if canImport(HudsonVoice)
     /// HudsonVoice-powered mic. Tap to dictate into the draft; tap again to commit.
+    /// Filled-circle states (after OpenScout's ScoutMicButton): a soft halo breathes
+    /// while recording; the glyph, fill, and ring track idle/recording/processing.
     private var micButton: some View {
         Button {
             voice.toggle()
         } label: {
-            Image(systemName: micSymbol)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(micTint)
-                .frame(width: 30, height: 30)
-                .background(
+            ZStack {
+                if voice.state.isCaptureActive {
                     Circle()
-                        .fill(voice.state.isCaptureActive ? Palette.kill.opacity(0.14) : Color.white.opacity(0.04))
-                        .overlay(
-                            Circle().strokeBorder(
-                                voice.state.isCaptureActive ? Palette.kill.opacity(0.45) : Palette.border,
-                                lineWidth: voice.state.isCaptureActive ? 1 : 0.5
-                            )
-                        )
-                )
+                        .fill(micAccent.opacity(micPulse ? 0.24 : 0.10))
+                        .frame(width: 34, height: 34)
+                }
+                Circle()
+                    .fill(micFill)
+                    .frame(width: 30, height: 30)
+                    .overlay(
+                        Circle().strokeBorder(micStroke, lineWidth: voice.state.isCaptureActive ? 1.2 : 0.5)
+                    )
+                Image(systemName: micSymbol)
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundColor(micTint)
+            }
+            .frame(width: 34, height: 34)
         }
         .buttonStyle(.plain)
         .help(micTooltip)
         .disabled(session.isSending)
         .animation(.easeInOut(duration: 0.18), value: voice.state)
+        .onChange(of: voice.state.isCaptureActive) {
+            if voice.state.isCaptureActive {
+                withAnimation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true)) {
+                    micPulse = true
+                }
+            } else {
+                withAnimation(.easeOut(duration: 0.2)) { micPulse = false }
+            }
+        }
     }
 
-    private var dictationLivePreview: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "waveform")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(Palette.kill.opacity(0.8))
-            Text(voice.partial)
-                .font(Typo.body(style.composerSize))
-                .foregroundColor(Palette.textMuted)
-                .italic()
-                .lineLimit(2)
+    /// Live dictation strip above the field: a 5-bar waveform with the running
+    /// partial transcript beside it. Shown only while the mic is hot.
+    private var dictationStrip: some View {
+        HStack(spacing: 9) {
+            PiChatWaveform(tint: micAccent)
+            if !voice.partial.isEmpty {
+                Text(voice.partial)
+                    .font(Typo.body(style.composerSize))
+                    .foregroundColor(Palette.textDim)
+                    .lineLimit(2)
+            }
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 14)
         .transition(.opacity)
+    }
+
+    /// One quiet mono line under the field: dictation state while the mic is hot,
+    /// a faint affordance hint when idle.
+    private var statusLine: some View {
+        HStack(spacing: 0) {
+            Text(statusText)
+                .font(Typo.mono(9.5))
+                .tracking(0.3)
+                .foregroundColor(statusTint)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16)
+        .animation(.easeInOut(duration: 0.18), value: voice.state)
     }
 
     private var micSymbol: String {
@@ -829,6 +866,33 @@ struct PiChatComposer: View {
         case .processing: return "waveform"
         case .unavailable: return "mic.slash"
         case .idle: return "mic"
+        }
+    }
+
+    /// Accent for the hot mic — red while recording (matches the "mic goes red"
+    /// affordance), amber while transcribing.
+    private var micAccent: Color {
+        switch voice.state {
+        case .processing: return Palette.detach
+        default: return Palette.kill
+        }
+    }
+
+    private var micFill: Color {
+        switch voice.state {
+        case .recording, .starting: return Palette.kill.opacity(0.16)
+        case .processing: return Palette.detach.opacity(0.14)
+        case .unavailable: return Color.white.opacity(0.02)
+        case .idle: return Color.white.opacity(0.04)
+        }
+    }
+
+    private var micStroke: Color {
+        switch voice.state {
+        case .recording, .starting: return Palette.kill.opacity(0.5)
+        case .processing: return Palette.detach.opacity(0.45)
+        case .unavailable: return Palette.border.opacity(0.6)
+        case .idle: return Palette.border
         }
     }
 
@@ -850,29 +914,50 @@ struct PiChatComposer: View {
         case .unavailable(let reason): return reason
         }
     }
+
+    private var statusText: String {
+        switch voice.state {
+        case .idle: return "Tap mic to dictate · ↵ to send"
+        case .starting: return "Starting…"
+        case .recording: return "Listening — tap mic to commit"
+        case .processing: return "Transcribing…"
+        case .unavailable(let reason): return reason
+        }
+    }
+
+    private var statusTint: Color {
+        switch voice.state {
+        case .recording, .starting: return Palette.kill.opacity(0.85)
+        case .processing, .unavailable: return Palette.detach.opacity(0.85)
+        case .idle: return Palette.textMuted.opacity(0.7)
+        }
+    }
     #endif
 
-    /// `↵ SEND` text chip (ported from OpenScout's MessageSendChip) — replaces
-    /// the old up-arrow circle. Mono, no fill, just a keycap + label.
-    private var sendChip: some View {
+    /// Calm filled-circle send (after OpenScout's ScoutSendButton): a solid accent
+    /// disc with an up-arrow when there's something to send, a quiet hollow ring
+    /// otherwise. No glow, no keycap clutter.
+    private var sendButton: some View {
         Button {
             session.sendDraft()
         } label: {
-            HStack(spacing: 4) {
-                Text(session.isSending ? "…" : "↵")
-                    .font(Typo.monoBold(11))
-                Text(session.isSending ? "SENDING" : "SEND")
-                    .font(Typo.monoBold(9))
-                    .tracking(1.4)
-            }
-            .foregroundColor(canSend ? Palette.running : Palette.textMuted.opacity(0.6))
-            .padding(.horizontal, 9)
-            .padding(.vertical, 6)
-            .contentShape(Rectangle())
+            Image(systemName: session.isSending ? "ellipsis" : "arrow.up")
+                .font(.system(size: 12.5, weight: .bold))
+                .foregroundColor(canSend ? Palette.bg : Palette.textMuted.opacity(0.7))
+                .frame(width: 30, height: 30)
+                .background(
+                    Circle()
+                        .fill(canSend ? Palette.running : Color.white.opacity(0.05))
+                        .overlay(
+                            Circle().strokeBorder(canSend ? Color.clear : Palette.border, lineWidth: 0.5)
+                        )
+                )
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .disabled(!canSend)
         .help(canSend ? "Send (↵)" : "")
+        .animation(.easeInOut(duration: 0.15), value: canSend)
     }
 
     // Flat composer field — hairline border, no focus glow, no running-tinted
@@ -902,6 +987,34 @@ struct PiChatComposer: View {
 
     private var canSend: Bool {
         !session.isSending && !session.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+}
+
+/// A small synthetic 5-bar equalizer shown while dictating. Decorative, not
+/// amplitude-driven — each bar breathes on its own cadence so the cluster never
+/// reads as a flat loop. Ported from OpenScout's ScoutWaveform.
+private struct PiChatWaveform: View {
+    var tint: Color
+    @State private var animate = false
+
+    private let lows: [CGFloat]  = [4, 6, 5, 7, 4]
+    private let highs: [CGFloat] = [11, 16, 13, 17, 10]
+    private let durations: [Double] = [0.50, 0.62, 0.44, 0.70, 0.54]
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 2.5) {
+            ForEach(lows.indices, id: \.self) { i in
+                Capsule(style: .continuous)
+                    .fill(tint.opacity(0.85))
+                    .frame(width: 2.5, height: animate ? highs[i] : lows[i])
+                    .animation(
+                        .easeInOut(duration: durations[i]).repeatForever(autoreverses: true),
+                        value: animate
+                    )
+            }
+        }
+        .frame(height: 18)
+        .onAppear { animate = true }
     }
 }
 
@@ -999,13 +1112,92 @@ struct PiChatWaveDots: View {
     }
 }
 
+/// A glowing bar caret that occupies a full text line-box with the bar seated
+/// near the baseline — so it sits right when flow-laid after words (which pack
+/// from the row top), instead of floating above the line.
 struct PiChatStreamCursor: View {
+    var size: CGFloat = 13
+
     var body: some View {
-        RoundedRectangle(cornerRadius: 1, style: .continuous)
-            .fill(Palette.running.opacity(0.95))
-            .frame(width: 2, height: 14)
-            .shadow(color: Palette.running.opacity(0.45), radius: 4, y: 0)
-            .modifier(PiChatPulseModifier(minOpacity: 0.45, maxOpacity: 1.0, duration: 0.85))
+        let lineH = (size * 1.34).rounded()
+        let barH  = (size * 1.04).rounded()
+        let seat  = (size * 0.20).rounded()
+        return ZStack(alignment: .bottom) {
+            Color.clear.frame(width: 3, height: lineH)
+            RoundedRectangle(cornerRadius: 1, style: .continuous)
+                .fill(Palette.running.opacity(0.95))
+                .frame(width: 2, height: barH)
+                .shadow(color: Palette.running.opacity(0.55), radius: 5)
+                .padding(.bottom, seat)
+                .modifier(PiChatPulseModifier(minOpacity: 0.45, maxOpacity: 1.0, duration: 0.85))
+        }
+    }
+}
+
+/// The actively-streaming paragraph, revealed word-by-word: each new word
+/// materializes out of a soft blur with a small upward drift and a brief emerald
+/// glow, and a glowing caret rides the end. Multi-line in-progress text and
+/// reduce-motion fall back to a plain reveal; settled paragraphs + the finished
+/// message render as normal selectable copy.
+struct PiChatRevealParagraph: View {
+    let text: String
+    let size: CGFloat
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private struct Token: Identifiable { let id: Int; let text: String }
+
+    private var tokens: [Token] {
+        let words = text.components(separatedBy: " ")
+        return words.enumerated().map { i, w in
+            Token(id: i, text: i < words.count - 1 ? w + " " : w)
+        }
+    }
+
+    var body: some View {
+        if reduceMotion || text.contains("\n") {
+            HStack(alignment: .bottom, spacing: 0) {
+                Text(text).font(Typo.reading(size)).foregroundColor(Palette.text)
+                PiChatStreamCursor(size: size)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            FlowLayout(spacing: 0, lineSpacing: (size * 0.42).rounded(), alignment: .leading) {
+                ForEach(tokens) { tok in
+                    Text(tok.text)
+                        .font(Typo.reading(size))
+                        .foregroundColor(Palette.text)
+                        .transition(.materialize)
+                }
+                PiChatStreamCursor(size: size)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .animation(.easeOut(duration: 0.3), value: tokens.count)
+        }
+    }
+}
+
+private struct RevealModifier: ViewModifier {
+    var blur: CGFloat
+    var opacity: Double
+    var dy: CGFloat
+    var glow: CGFloat
+    func body(content: Content) -> some View {
+        content
+            .blur(radius: blur)
+            .opacity(opacity)
+            .offset(y: dy)
+            .shadow(color: Palette.running.opacity(glow > 0.1 ? 0.55 : 0), radius: glow)
+    }
+}
+
+private extension AnyTransition {
+    /// Words condense into being: blur→sharp, fade in, drift up, with a brief glow.
+    static var materialize: AnyTransition {
+        .modifier(
+            active: RevealModifier(blur: 5, opacity: 0, dy: 3, glow: 7),
+            identity: RevealModifier(blur: 0, opacity: 1, dy: 0, glow: 0)
+        )
     }
 }
 

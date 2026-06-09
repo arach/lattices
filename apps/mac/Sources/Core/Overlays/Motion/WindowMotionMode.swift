@@ -1462,6 +1462,7 @@ struct ExposeView: View {
 struct FlowLayout: Layout {
     var spacing: CGFloat = 12
     var lineSpacing: CGFloat = 12
+    var alignment: HorizontalAlignment = .center   // row packing: centered (default) or left/right
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let maxWidth = proposal.width ?? .infinity
@@ -1476,7 +1477,14 @@ struct FlowLayout: Layout {
         let totalH = rows.map(\.height).reduce(0, +) + lineSpacing * CGFloat(max(0, rows.count - 1))
         var y = bounds.minY + max(0, (bounds.height - totalH) / 2)
         for row in rows {
-            var x = bounds.minX + max(0, (bounds.width - row.width) / 2)
+            var x: CGFloat
+            if alignment == .leading {
+                x = bounds.minX
+            } else if alignment == .trailing {
+                x = bounds.maxX - row.width
+            } else {
+                x = bounds.minX + max(0, (bounds.width - row.width) / 2)
+            }
             for idx in row.indices {
                 let size = subviews[idx].sizeThatFits(.unspecified)
                 subviews[idx].place(at: CGPoint(x: x, y: y), anchor: .topLeading, proposal: ProposedViewSize(size))
