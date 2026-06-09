@@ -37,6 +37,16 @@ final class OverlayPanel: NSPanel {
             super.flagsChanged(with: event)
         }
     }
+
+    /// Strip the focus ring the shared field editor draws around a focused text
+    /// field. `.textFieldStyle(.plain)` removes the field's own ring but not the
+    /// editor's, which otherwise shows as a stray blue rectangle in our search
+    /// fields (Command Palette, OmniSearch, the voice overlay, …).
+    override func fieldEditor(_ createFlag: Bool, for object: Any?) -> NSText? {
+        let editor = super.fieldEditor(createFlag, for: object)
+        (editor as? NSTextView)?.focusRingType = .none
+        return editor
+    }
 }
 
 private final class OverlayHostingView<Content: View>: NSHostingView<Content> {

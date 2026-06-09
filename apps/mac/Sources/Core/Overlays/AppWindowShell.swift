@@ -1,6 +1,19 @@
 import AppKit
 import SwiftUI
 
+/// NSWindow that strips the blue focus ring AppKit's shared field editor draws
+/// around a focused text field. Lattices' windows are chromeless and dark, so
+/// that ring reads as a stray little blue rectangle. `.textFieldStyle(.plain)`
+/// removes the field's *own* bezel/ring but not the field editor's, so we kill it
+/// here, once, for every text field hosted in the window.
+private final class NoFocusRingWindow: NSWindow {
+    override func fieldEditor(_ createFlag: Bool, for object: Any?) -> NSText? {
+        let editor = super.fieldEditor(createFlag, for: object)
+        (editor as? NSTextView)?.focusRingType = .none
+        return editor
+    }
+}
+
 /// Shared factory for standalone NSWindow chrome.
 /// Every managed window (Screen Map, Settings, Diagnostics, etc.) uses this
 /// to get consistent title bar styling, dark appearance, and positioning.
@@ -33,7 +46,7 @@ struct AppWindowShell {
         if config.miniaturizable { styleMask.insert(.miniaturizable) }
         if config.fullSizeContent { styleMask.insert(.fullSizeContentView) }
 
-        let w = NSWindow(
+        let w = NoFocusRingWindow(
             contentRect: NSRect(origin: .zero, size: config.initialSize),
             styleMask: styleMask,
             backing: .buffered,
