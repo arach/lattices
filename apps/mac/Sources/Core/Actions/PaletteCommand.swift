@@ -396,8 +396,8 @@ enum CommandBuilder {
 
         commands.append(PaletteCommand(
             id: "app-screen-map",
-            title: "Layout",
-            subtitle: "Visual window editor",
+            title: "Studio",
+            subtitle: "Arrange windows & layers",
             icon: "rectangle.3.group",
             category: .app,
             badge: nil,

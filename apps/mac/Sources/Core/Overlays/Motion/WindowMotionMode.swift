@@ -21,7 +21,9 @@ final class WindowMotionMode {
 
     func activate() {
         guard panel == nil else { return }
+        let t0 = CACurrentMediaTime()
         DesktopModel.shared.forcePoll()
+        let tPoll = CACurrentMediaTime()
         // Eligible = real app windows (never our own), frontmost first.
         let myPid = ProcessInfo.processInfo.processIdentifier
         let eligible = DesktopModel.shared.allWindows()
@@ -32,10 +34,20 @@ final class WindowMotionMode {
             NSSound.beep()
             return
         }
+        let tEligible = CACurrentMediaTime()
         let p = MotionPanel(eligible: eligible)
+        p.loadStart = t0
+        let tInit = CACurrentMediaTime()
         p.onExit = { [weak self] in self?.deactivate() }
         panel = p
         p.present()
+        let tUp = CACurrentMediaTime()
+        // Time-to-load profile (the async capture + first-paint marks land later,
+        // logged from the panel). Read it back from ~/.lattices/lattices.log.
+        DiagnosticLog.shared.info(String(
+            format: "Hyperspace load — poll %.1f · build %.1f · init %.1f · present+expose %.1f · on-screen %.1fms (from trigger)",
+            (tPoll - t0) * 1000, (tEligible - tPoll) * 1000, (tInit - tEligible) * 1000,
+            (tUp - tInit) * 1000, (tUp - t0) * 1000))
     }
 
     func deactivate() {
@@ -86,6 +98,11 @@ private enum MotionKeys {
 
 private final class MotionPanel: NSPanel {
     var onExit: (() -> Void)?
+    var loadStart: CFTimeInterval = 0          // set by activate(); base for load-profile marks
+
+    private var firstPaintAt: CFTimeInterval = 0
+    private var capturesAt: CFTimeInterval = 0
+    private var captureCount = 0
 
     private let eligible: [WindowEntry]
     private var reticle = 0                          // index of the active window
@@ -216,6 +233,9 @@ private final class MotionPanel: NSPanel {
             guard let self, !self.ignoreResign else { return }
             self.onExit?()
         }
+        // Hyperspace lands you straight in the survey. E collapses back to plain
+        // motion; expose() no-ops to plain mode if there's <2 windows to lay out.
+        expose()
     }
 
     func dismiss() {
@@ -327,6 +347,19 @@ private final class MotionPanel: NSPanel {
         NSSound.beep()
     }
 
+    /// Command-modified keys arrive here, not in `keyDown`. ⌘L remembers the
+    /// current plucked set as a rule-backed Studio layer — the one ⌘-combo we
+    /// claim while the survey is up (every letter is a pluck hint in Exposé, so
+    /// a bare key won't do).
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+           event.keyCode == 37 {                                // ⌘L — save the pluck as a layer
+            saveGroupAsLayer()
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+
     // MARK: - Selection
 
     private func moveReticle(_ delta: Int) {
@@ -366,6 +399,18 @@ private final class MotionPanel: NSPanel {
     /// order they fill the balanced gather grid (so slot N lands in cell N).
     private func orderedGroup() -> [WindowEntry] {
         pickOrder.compactMap { wid in eligible.first { $0.wid == wid } }
+    }
+
+    /// ⌘L — remember the current plucked set as a rule-backed Studio layer. The
+    /// rule is inferred from the plucked windows' apps, so it survives restarts
+    /// and auto-includes future matching windows. Nothing moves — this only
+    /// records the selection — and we stay in the mode so you can keep arranging.
+    private func saveGroupAsLayer() {
+        let picked = orderedGroup()
+        guard !picked.isEmpty else { NSSound.beep(); return }
+        let layer = StudioLayerStore.shared.saveFromPluck(picked)
+        DiagnosticLog.shared.info("Motion — saved \(picked.count) plucked windows as layer '\(layer.name)' [\(layer.summary)]")
+        LayerBezel.shared.show(label: "Saved · \(layer.name)", index: 0, total: 1, allLabels: ["Saved · \(layer.name)"])
     }
 
     // MARK: - Single-window operations (on the active window)
@@ -589,8 +634,20 @@ private final class MotionPanel: NSPanel {
         assignHints()
         exposeTileW = tileWidth(for: members.count)
         installExposeHost(on: screen)
-        members.forEach { captureThumb(for: $0) }                 // fill the tiles as captures land
+        captureCount = members.count
+        members.forEach { captureThumb(for: $0) }                 // seed from the shared cache; capture only misses
         rebuildExposeView()
+        checkCapturesSettled()                                     // every tile a cache hit → already done
+
+        // First-paint mark: the next main-loop turn after we install and lay out
+        // the spread is a good proxy for "the survey is on screen."
+        if firstPaintAt == 0, loadStart > 0 {
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.firstPaintAt == 0 else { return }
+                self.firstPaintAt = CACurrentMediaTime()
+                DiagnosticLog.shared.info(String(format: "Hyperspace load — first paint %.1fms (from trigger)", (self.firstPaintAt - self.loadStart) * 1000))
+            }
+        }
 
         DiagnosticLog.shared.info("Motion expose — survey \(members.count) windows in \(exposeClusters.count) clusters")
         updateLegend()
@@ -745,7 +802,16 @@ private final class MotionPanel: NSPanel {
             )
         }
         exposeHost.rootView = ExposeView(clusters: vm, tileWidth: exposeTileW,
-                                         onPick: { [weak self] wid in self?.exposeToggle(wid) })
+                                         onPick: { [weak self] wid in self?.exposeToggle(wid) },
+                                         loadSummary: loadSummaryText())
+    }
+
+    /// Compact load readout for the survey: time-to-first-paint and time-to-all-
+    /// captures, both measured from the Hyper+Space trigger. "…" until the mark lands.
+    private func loadSummaryText() -> String {
+        guard loadStart > 0 else { return "" }
+        func ms(_ t: CFTimeInterval) -> String { t > 0 ? "\(Int(((t - loadStart) * 1000).rounded()))" : "…" }
+        return "up \(ms(firstPaintAt))ms · caps \(ms(capturesAt))ms·\(captureCount)"
     }
 
     private func tileVM(_ w: WindowEntry) -> ExposeView.Tile {
@@ -1063,6 +1129,15 @@ private final class MotionPanel: NSPanel {
     private func captureThumb(for entry: WindowEntry) {
         let wid = entry.wid
         guard thumbs[wid] == nil, !thumbInFlight.contains(wid) else { return }
+
+        // Reuse the HUD's warm cache: if the shared store already has this window,
+        // use it instantly — no capture. (The store's warmer keeps it stocked.)
+        if let cached = WindowPreviewStore.shared.image(for: wid) {
+            thumbs[wid] = cached
+            captureFrame[wid] = liveFrame(for: entry)
+            return
+        }
+
         thumbInFlight.insert(wid)
         let cgWid = CGWindowID(wid)
         Task { @MainActor [weak self] in
@@ -1073,14 +1148,24 @@ private final class MotionPanel: NSPanel {
             )
             guard let self else { return }
             self.thumbInFlight.remove(wid)
-            guard let cg else { return }
+            guard let cg else { self.checkCapturesSettled(); return }
             self.thumbs[wid] = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
             self.captureFrame[wid] = self.liveFrame(for: entry)   // remember the size this shot represents
+            WindowPreviewStore.shared.ingest(cgImage: cg, for: wid, frame: entry.frame)  // write back to the shared cache
             self.updateStack()
             if self.exposed { self.rebuildExposeView() }          // a survey tile's capture just landed
+            self.checkCapturesSettled()
             // A fresh capture for the aimed window is its fake bring-to-front image.
             if wid == self.activeEntry.wid { self.refreshBorders() }
         }
+    }
+
+    /// Mark (once) the moment every survey tile has its image — captures done,
+    /// whether they came from the shared cache or a fresh grab.
+    private func checkCapturesSettled() {
+        guard exposed, thumbInFlight.isEmpty, capturesAt == 0, loadStart > 0 else { return }
+        capturesAt = CACurrentMediaTime()
+        DiagnosticLog.shared.info(String(format: "Hyperspace load — captures complete %.1fms · %d windows (from trigger)", (capturesAt - loadStart) * 1000, captureCount))
     }
 }
 
@@ -1114,6 +1199,7 @@ private struct MotionLegend: View {
                 keyHint("⇧a–z", "group")
                 keyHint("Tab", "aim")
                 keyHint("⏎", "gather")
+                if groupCount > 0 { keyHint("⌘L", "save layer") }
                 keyHint("E", "collapse")
                 keyHint("esc", "cancel")
             } else {
@@ -1121,6 +1207,7 @@ private struct MotionLegend: View {
                 keyHint("Space", "pluck")
                 keyHint("E", "expose")
                 keyHint("G", "grid")
+                if groupCount > 0 { keyHint("⌘L", "save layer") }
                 keyHint("←↑→↓", "half · gap")
                 keyHint("⇧/⌥", "nudge/size")
                 keyHint("⏎", "confirm")
@@ -1361,6 +1448,53 @@ struct ExposeCluster {
 // order they'll fill the gather grid). Tint = app identity; the box = cluster.
 // Renders study 05 ("Converged") from design/hyperspace-lattice-studio.html.
 
+/// A behind-window blur of the live desktop — the frosted-glass backdrop the
+/// survey floats on. Forced dark so it reads as a HUD regardless of system theme.
+private struct VisualEffectBackdrop: NSViewRepresentable {
+    var material: NSVisualEffectView.Material = .hudWindow
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let v = NSVisualEffectView()
+        v.material = material
+        v.blendingMode = .behindWindow
+        v.state = .active
+        v.isEmphasized = true
+        v.appearance = NSAppearance(named: .vibrantDark)
+        return v
+    }
+
+    func updateNSView(_ v: NSVisualEffectView, context: Context) {
+        v.material = material
+    }
+}
+
+/// Live frame-cadence stats for the survey perf harness. `record` is fed each
+/// animation tick; the EMA keeps the readout steady, worst-frame surfaces
+/// hitches. Reset between A/B runs for a clean comparison.
+private final class PerfStats: ObservableObject {
+    @Published var fps: Double = 0
+    @Published var ms: Double = 0
+    @Published var worstMs: Double = 0
+
+    private var last: Double = 0
+    private var ema: Double = 0
+
+    func record(_ now: Double) {
+        defer { last = now }
+        guard last != 0 else { return }
+        let dt = (now - last) * 1000
+        guard dt > 0.1, dt < 250 else { return }   // ignore tab-away gaps
+        ema = ema == 0 ? dt : ema * 0.88 + dt * 0.12
+        ms = ema
+        fps = 1000 / ema
+        if dt > worstMs { worstMs = dt }
+    }
+
+    func reset() {
+        last = 0; ema = 0; ms = 0; fps = 0; worstMs = 0
+    }
+}
+
 struct ExposeView: View {
     struct Tile: Identifiable {
         let id: UInt32
@@ -1385,37 +1519,211 @@ struct ExposeView: View {
     let clusters: [Cluster]
     let tileWidth: CGFloat
     var onPick: (UInt32) -> Void = { _ in }
+    var loadSummary: String = ""
 
     private let ink = Color(red: 0.02, green: 0.03, blue: 0.05)
 
+    // Look dials for the survey backdrop — all persisted, all live. `scrimOpacity`
+    // is a dark↔bright *tone* axis (0 = light frost, 1 = deep dark), not a flat alpha.
+    @AppStorage("hyperspace.scrimTint") private var scrimOpacity: Double = 0.45
+    @AppStorage("hyperspace.gridLevel") private var gridIntensity: Double = 0.4
+    @AppStorage("hyperspace.glowLevel") private var glowIntensity: Double = 0.4
+
+    // Perf A/B harness (diagnostic, not persisted): A = a plain dark-gray fill,
+    // B = the full frosted stack. The HUD reads live frame cadence.
+    @State private var perfMode = false
+    @State private var perfFlat = false                  // A = true, B = false
+    @StateObject private var perf = PerfStats()
+
     var body: some View {
         ZStack {
-            scrim
+            if perfMode {
+                // Continuous repaint so the cadence reflects sustained paint cost,
+                // and a gently drifting grid gives the renderer real work to do.
+                TimelineView(.animation) { ctx in
+                    surveyContent(phase: ctx.date.timeIntervalSinceReferenceDate)
+                        .onChange(of: ctx.date) { _, d in perf.record(d.timeIntervalSinceReferenceDate) }
+                }
+            } else {
+                surveyContent(phase: 0)
+            }
+        }
+        .overlay(alignment: .topTrailing) { dials.padding(20) }
+        .overlay(alignment: .top) { if perfMode { perfHUD.padding(.top, 22) } }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func surveyContent(phase: Double) -> some View {
+        ZStack {
+            scrim(phase: phase)
             FlowLayout(spacing: 18, lineSpacing: 18) {
                 ForEach(clusters) { clusterBox($0) }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(36)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // Near-opaque so the real (unmoved) windows fade out and the captures read as
-    // the survey — plus a faint engineering grid, the "lattice" texture.
-    private var scrim: some View {
-        ZStack {
-            Color.black.opacity(0.93)
-            GeometryReader { geo in
-                Path { p in
-                    let step: CGFloat = 30
-                    var x: CGFloat = 0
-                    while x < geo.size.width { p.move(to: CGPoint(x: x, y: 0)); p.addLine(to: CGPoint(x: x, y: geo.size.height)); x += step }
-                    var y: CGFloat = 0
-                    while y < geo.size.height { p.move(to: CGPoint(x: 0, y: y)); p.addLine(to: CGPoint(x: geo.size.width, y: y)); y += step }
-                }
-                .stroke(Color(red: 0.47, green: 0.55, blue: 0.78).opacity(0.05), lineWidth: 0.5)
+    // The look dials — a compact stack top-right, clear of the legend (bottom)
+    // and minimap (bottom-left). Drag to find a vibe; every value persists.
+    private var dials: some View {
+        VStack(spacing: 7) {
+            dial("circle.lefthalf.filled", "tone", $scrimOpacity)
+            dial("grid",    "grid", $gridIntensity)
+            dial("sun.max", "glow", $glowIntensity)
+            Rectangle().fill(Palette.border).frame(height: 0.5).padding(.vertical, 1)
+            HStack(spacing: 8) {
+                perfToggle
+                Spacer(minLength: 0)
+                if perfMode { abToggle }
+            }
+            if !loadSummary.isEmpty {
+                Text(loadSummary)
+                    .font(Typo.mono(8))
+                    .foregroundColor(.white.opacity(0.4))
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.black.opacity(0.5))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.5))
+        )
+    }
+
+    private func dial(_ icon: String, _ label: String, _ value: Binding<Double>) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 10))
+                .foregroundColor(.white.opacity(0.6))
+                .frame(width: 14)
+            Text(label)
+                .font(Typo.mono(9))
+                .foregroundColor(.white.opacity(0.45))
+                .frame(width: 28, alignment: .leading)
+            Slider(value: value, in: 0...1)
+                .frame(width: 104)
+                .controlSize(.mini)
+                .tint(Palette.running)
+            Text("\(Int((value.wrappedValue * 100).rounded()))")
+                .font(Typo.mono(9))
+                .foregroundColor(.white.opacity(0.5))
+                .frame(width: 22, alignment: .trailing)
+        }
+    }
+
+    // Treatment A vs B. A is a plain opaque dark-gray fill — the cheapest
+    // possible backdrop, the baseline. B is the full frosted stack: behind-window
+    // blur + tone tint + glow + vignette + the adapting lattice grid.
+    @ViewBuilder
+    private func scrim(phase: Double) -> some View {
+        if perfFlat {
+            Color(red: 0.11, green: 0.11, blue: 0.12)   // A — flat fill, no treatments
+        } else {
+            ZStack {
+                // Frosted glass: blur the real desktop into a soft wash.
+                VisualEffectBackdrop(material: .hudWindow)
+                    .ignoresSafeArea()
+
+                // Tone dial: dark↔bright. Low = a light frost (airy), high = deep
+                // dark; a constant alpha keeps the blur faintly alive at either end.
+                Color(white: 0.80 - scrimOpacity * 0.74)
+                    .opacity(0.6)
+
+                // Overhead glow (glow dial).
+                EllipticalGradient(
+                    colors: [Color(red: 0.72, green: 0.76, blue: 0.88).opacity(glowIntensity * 0.22), .clear],
+                    center: .top,
+                    startRadiusFraction: 0,
+                    endRadiusFraction: 0.9
+                )
+                // Vignette scales with the tone, so bright vibes stay airy.
+                EllipticalGradient(
+                    colors: [.clear, Color.black.opacity(0.26 * scrimOpacity)],
+                    center: .center,
+                    startRadiusFraction: 0.55,
+                    endRadiusFraction: 1.0
+                )
+
+                grid(phase: phase)
+            }
+        }
+    }
+
+    // The engineering lattice. `phase` drifts it (only non-zero under the perf
+    // harness, to keep the renderer busy). Lines adapt to the tone — lighter as the
+    // backdrop darkens, darker as it brightens — so they never wash out.
+    private func grid(phase: Double) -> some View {
+        GeometryReader { geo in
+            let step: CGFloat = 30
+            let off = CGFloat((phase * 18).truncatingRemainder(dividingBy: Double(step)))
+            Path { p in
+                var x: CGFloat = off - step
+                while x < geo.size.width { p.move(to: CGPoint(x: x, y: 0)); p.addLine(to: CGPoint(x: x, y: geo.size.height)); x += step }
+                var y: CGFloat = off - step
+                while y < geo.size.height { p.move(to: CGPoint(x: 0, y: y)); p.addLine(to: CGPoint(x: geo.size.width, y: y)); y += step }
+            }
+            .stroke(Color(white: 0.12 + scrimOpacity * 0.78).opacity(gridIntensity * 0.22), lineWidth: 0.5)
+        }
+    }
+
+    // MARK: Perf harness UI
+
+    private var perfHUD: some View {
+        HStack(spacing: 16) {
+            perfStat(perfFlat ? "A · flat fill" : "B · full stack", Palette.running)
+            perfStat(String(format: "%.0f fps", perf.fps), .white)
+            perfStat(String(format: "%.1f ms", perf.ms), .white)
+            perfStat(String(format: "worst %.1f", perf.worstMs), perf.worstMs > 18 ? Palette.detach : .white.opacity(0.7))
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 9)
+        .background(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .fill(Color.black.opacity(0.62))
+                .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.5))
+        )
+    }
+
+    private func perfStat(_ text: String, _ color: Color) -> some View {
+        Text(text).font(Typo.monoBold(11)).foregroundColor(color)
+    }
+
+    private var perfToggle: some View {
+        Button {
+            perfMode.toggle(); perf.reset()
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "speedometer").font(.system(size: 10))
+                Text("perf").font(Typo.mono(9))
+            }
+            .foregroundColor(perfMode ? Palette.bg : .white.opacity(0.6))
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .background(Capsule().fill(perfMode ? Palette.running : Color.white.opacity(0.08)))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var abToggle: some View {
+        HStack(spacing: 2) {
+            abSeg("A", perfFlat)  { perfFlat = true;  perf.reset() }
+            abSeg("B", !perfFlat) { perfFlat = false; perf.reset() }
+        }
+        .padding(2)
+        .background(Capsule().fill(Color.white.opacity(0.06)))
+        .overlay(Capsule().strokeBorder(Palette.border, lineWidth: 0.5))
+    }
+
+    private func abSeg(_ t: String, _ on: Bool, _ act: @escaping () -> Void) -> some View {
+        Button(action: act) {
+            Text(t).font(Typo.monoBold(9))
+                .foregroundColor(on ? Palette.bg : .white.opacity(0.55))
+                .frame(width: 20, height: 16)
+                .background(Capsule().fill(on ? Palette.running : Color.clear))
+        }
+        .buttonStyle(.plain)
     }
 
     private func clusterBox(_ c: Cluster) -> some View {

@@ -17,7 +17,7 @@ enum AppPage: String, CaseIterable {
     var label: String {
         switch self {
         case .home:             return "Home"
-        case .screenMap:        return "Layout"
+        case .screenMap:        return "Studio"
         case .desktopInventory: return "Desktop Inventory"
         case .activity:         return "Activity"
         case .pi:               return "Assistant"
@@ -121,6 +121,19 @@ struct AppShellView: View {
             Text("Lattices")
                 .font(Typo.title(15))
                 .foregroundColor(Palette.text)
+        } footer: {
+            // Settings anchors the bottom-left of the rail — below the primary
+            // tabs, separated by the footer divider. Non-primary page, so it
+            // routes through showPage directly rather than the selection binding.
+            SidebarFooterButton(
+                icon: "gearshape",
+                label: "Settings",
+                isActive: windowController.activePage == .settings,
+                isCompact: sidebarCompact,
+                accent: Palette.running
+            ) {
+                windowController.showPage(.settings)
+            }
         }
     }
 
@@ -178,9 +191,13 @@ struct AppShellView: View {
                 if page == .desktopInventory { commandState.enter() }
             })
         case .screenMap:
-            ScreenMapView(controller: controller, onNavigate: { page in
-                windowController.activePage = page
-            })
+            HStack(spacing: 0) {
+                ScreenMapView(controller: controller, onNavigate: { page in
+                    windowController.activePage = page
+                })
+                StudioLayersView()
+                    .frame(width: 260)
+            }
         case .desktopInventory:
             CommandModeView(state: commandState, presentation: .embedded)
         case .activity:
@@ -213,5 +230,53 @@ struct AppShellView: View {
     private func syncPageState(_ page: AppPage) {
         if page == .screenMap { controller.enter() }
         if page == .desktopInventory { commandState.enter() }
+    }
+}
+
+// MARK: - Sidebar Footer Button
+
+/// A rail-aligned button for `HudNavigationSidebar`'s footer slot. Matches the
+/// geometry and color states of the nav rail icons: the glyph centers in the
+/// fixed rail column, and the label rides a width-collapsing column so it
+/// animates in lockstep with the rail's compact toggle (and is clipped to the
+/// rail when compact, never spilling into content).
+private struct SidebarFooterButton: View {
+    let icon: String
+    let label: String
+    let isActive: Bool
+    let isCompact: Bool
+    let accent: Color
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    private var tint: Color {
+        if isActive   { return accent }
+        if isHovering { return HudPalette.ink }
+        return HudPalette.muted
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Image(systemName: icon)
+                .font(.system(size: HudSidebarLayout.iconSize))
+                .foregroundStyle(tint)
+                .frame(width: HudSidebarLayout.railWidth, height: HudSidebarLayout.rowHeight)
+
+            Text(label)
+                .font(HudFont.ui(HudTextSize.base, weight: isActive ? .semibold : .medium))
+                .foregroundStyle(tint)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(.leading, HudSidebarLayout.labelLeading)
+                .frame(width: isCompact ? 0 : HudSidebarLayout.labelWidth, alignment: .leading)
+                .clipped()
+                .opacity(isCompact ? 0 : 1)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture(perform: action)
+        .onHover { isHovering = $0 }
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(.isButton)
     }
 }

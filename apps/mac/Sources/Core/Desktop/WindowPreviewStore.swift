@@ -9,9 +9,21 @@ final class WindowPreviewStore: ObservableObject {
 
     private var lastAttemptAt: [UInt32: Date] = [:]
     private var accessOrder: [UInt32] = []
-    private let maxCached = 15
+    private var lastFront: UInt32?
+    private let maxCached = 28            // enough to cover a full Exposé survey
     private let queue = DispatchQueue(label: "dev.lattices.app.window-preview", qos: .userInitiated)
     private let previewMaxSize = NSSize(width: 360, height: 190)
+
+    private init() {
+        // Keep the cache warm off the desktop poll, frugally: the frontmost window
+        // (the dynamic layer) re-captures only when focus moves to it; the static
+        // back layer is captured once and kept. Steady state ≈ zero captures.
+        EventBus.shared.subscribe { [weak self] event in
+            if case .windowsChanged = event {
+                DispatchQueue.main.async { self?.warmTick() }
+            }
+        }
+    }
 
     func image(for wid: UInt32) -> NSImage? {
         if images[wid] != nil {
@@ -84,6 +96,50 @@ final class WindowPreviewStore: ObservableObject {
                     }
                 }
             }
+        }
+    }
+
+    // MARK: - Sharing & freshness
+
+    /// Drop a window's cached shot so it re-captures fresh next time. Used for the
+    /// frontmost/active window — the one that actually changed.
+    func invalidate(_ wid: UInt32) {
+        images.removeValue(forKey: wid)
+        loading.remove(wid)
+        lastAttemptAt.removeValue(forKey: wid)
+        accessOrder.removeAll { $0 == wid }
+    }
+
+    /// Write back a capture taken elsewhere (e.g. the Exposé survey) so the survey
+    /// and HUD share one warm pool. Downscaled to the standard preview size.
+    func ingest(cgImage: CGImage, for wid: UInt32, frame: WindowFrame) {
+        images[wid] = NSImage(cgImage: cgImage, size: previewSize(for: frame))
+        lastAttemptAt[wid] = Date()
+        touchLRU(wid)
+        evictIfNeeded()
+    }
+
+    /// One frugal warming pass, driven by the desktop poll. Reuses `load` — no new
+    /// capture path. The frontmost (dynamic) window refreshes only when focus moves
+    /// to it; the static back layer is captured once, a couple per tick.
+    private func warmTick() {
+        let windows = DesktopModel.shared.allWindows()
+            .filter { $0.app != "Lattices" && $0.isOnScreen && !$0.title.isEmpty }
+        guard !windows.isEmpty else { return }
+
+        if let front = windows.min(by: { $0.zIndex < $1.zIndex }) {
+            if lastFront != front.wid {
+                invalidate(front.wid)
+                lastFront = front.wid
+            }
+            load(window: front)
+        }
+
+        var filled = 0
+        for w in windows where images[w.wid] == nil && !loading.contains(w.wid) {
+            load(window: w)
+            filled += 1
+            if filled >= 2 { break }
         }
     }
 

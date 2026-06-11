@@ -366,7 +366,7 @@ struct MainView: View {
                 ScreenMapWindowController.shared.showPage(.home)
             }
             ActionRow(
-                label: "Layout",
+                label: "Studio",
                 detail: "Arrange windows and layers",
                 hotkeyTokens: hotkeyTokens(.screenMap),
                 icon: "rectangle.3.group",

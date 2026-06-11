@@ -89,7 +89,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         let actions: [(String, String, Selector)] = [
             ("Assistant", "⌘⇧A", #selector(menuAssistant)),
             ("Home", "", #selector(menuWorkspace)),
-            ("Layout", "", #selector(menuLayout)),
+            ("Studio", "", #selector(menuLayout)),
             ("Search", "", #selector(menuSearch)),
             ("Command Palette", "⌘⇧M", #selector(menuCommandPalette)),
         ]

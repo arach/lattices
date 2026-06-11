@@ -56,8 +56,8 @@ struct HomeDashboardView: View {
                 }
 
                 homeActionCard(
-                    title: "Layout",
-                    subtitle: "Arrange windows",
+                    title: "Studio",
+                    subtitle: "Arrange windows & layers",
                     icon: "rectangle.3.group",
                     tint: Palette.textDim
                 ) { onNavigate?(.screenMap) }
