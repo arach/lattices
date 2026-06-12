@@ -8,6 +8,7 @@ struct SettingsContentView: View {
         case general
         case shortcuts
         case mouse
+        case hyperspace
         case ai
         case search
         case companion
@@ -19,6 +20,7 @@ struct SettingsContentView: View {
             case .general: return "General"
             case .shortcuts: return "Shortcuts"
             case .mouse: return "Mouse"
+            case .hyperspace: return "Hyperspace"
             case .ai: return "AI"
             case .search: return "Search & OCR"
             case .companion: return "LATS iOS Companion"
@@ -30,6 +32,7 @@ struct SettingsContentView: View {
             case .general: return "slider.horizontal.3"
             case .shortcuts: return "command"
             case .mouse: return "computermouse"
+            case .hyperspace: return "square.grid.3x3.fill"
             case .ai: return "sparkles"
             case .search: return "text.viewfinder"
             case .companion: return "ipad.and.iphone"
@@ -41,6 +44,7 @@ struct SettingsContentView: View {
             case .general: return "Workspace"
             case .shortcuts: return "Controls"
             case .mouse: return "Input"
+            case .hyperspace: return "Survey"
             case .ai: return "Agents"
             case .search: return "Indexing"
             case .companion: return "Local Bridge"
@@ -55,6 +59,8 @@ struct SettingsContentView: View {
                 return "A full map of global hotkeys for workspace movement and tmux flow."
             case .mouse:
                 return "Middle-click gestures, HUD confirmation, and rule configuration."
+            case .hyperspace:
+                return "Lighting, zoom, and layout for the window survey."
             case .ai:
                 return "Provider auth, chat readiness, and voice advisor state."
             case .search:
@@ -81,6 +87,18 @@ struct SettingsContentView: View {
 
     @State private var selectedTab: SettingsSection = .general
     @FocusState private var assistantAuthFieldFocused: Bool
+
+    // Hyperspace survey dials — same UserDefaults keys (and defaults) the in-survey
+    // rig writes, so the two stay in lockstep. See ExposeView in WindowMotionMode.
+    @AppStorage("hyperspace.ambient")    private var hsAmbient: Double = 0.5
+    @AppStorage("hyperspace.keyLight")   private var hsKeyLight: Double = 0.4
+    @AppStorage("hyperspace.keyAngle")   private var hsKeyAngle: Int = 0
+    @AppStorage("hyperspace.spotlight")  private var hsSpotlight: Double = 0.3
+    @AppStorage("hyperspace.temp")       private var hsTemp: Double = 0.5
+    @AppStorage("hyperspace.sizeAuto")   private var hsSizeAuto: Bool = true
+    @AppStorage("hyperspace.tileScale")  private var hsTileScale: Double = 1.0
+    @AppStorage("hyperspace.layoutTall") private var hsLayoutTall: Bool = false
+    @AppStorage("hyperspace.handKeys")   private var hsHandKeys: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -287,6 +305,8 @@ struct SettingsContentView: View {
             shortcutsContent
         case .mouse:
             mouseGesturesContent
+        case .hyperspace:
+            hyperspaceContent
         case .ai:
             aiContent
         case .search:
@@ -1914,6 +1934,173 @@ struct SettingsContentView: View {
         alert.addButton(withTitle: "Cancel")
         return alert.runModal() == .alertFirstButtonReturn
     }
+
+    // MARK: - Hyperspace
+
+    private var hyperspaceContent: some View {
+        ScrollView {
+            VStack(spacing: 12) {
+                // ── Lighting ──
+                settingsCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        ocrSectionLabel("Lighting")
+                        Text("The survey is lit like a room. These mirror the dials inside Hyperspace and apply the next time it opens.")
+                            .font(Typo.caption(10))
+                            .foregroundColor(Palette.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        hsSlider("moon.stars", "Ambient", $hsAmbient) { hsPercent($0) }
+                        hsKeyLightRow
+                        hsSlider("flashlight.on.fill", "Spotlight", $hsSpotlight) { hsPercent($0) }
+                        hsSlider("thermometer.medium", "Temperature", $hsTemp) {
+                            $0 < 0.45 ? "Cool" : $0 > 0.55 ? "Warm" : "Neutral"
+                        }
+                    }
+                }
+
+                // ── Size & layout ──
+                settingsCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        ocrSectionLabel("Size & Layout")
+
+                        // Auto-fit: the panel sizes tiles from the window count, sat a
+                        // little inside the fill so the lattice has room to breathe.
+                        HStack(spacing: 10) {
+                            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(Palette.textMuted)
+                                .frame(width: 18)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("Auto-fit to window count")
+                                    .font(Typo.mono(11))
+                                    .foregroundColor(Palette.text)
+                                Text("Sizes tiles to fill the display, with room to breathe")
+                                    .font(Typo.caption(9.5))
+                                    .foregroundColor(Palette.textMuted)
+                            }
+                            Spacer()
+                            Toggle("", isOn: $hsSizeAuto)
+                                .toggleStyle(.switch)
+                                .controlSize(.small)
+                                .labelsHidden()
+                        }
+
+                        // Manual zoom — active when auto is off. Lower = more room.
+                        HStack(spacing: 10) {
+                            Image(systemName: "magnifyingglass")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(Palette.textMuted)
+                                .frame(width: 18)
+                            Text("Zoom")
+                                .font(Typo.mono(11))
+                                .foregroundColor(Palette.textDim)
+                                .frame(width: 96, alignment: .leading)
+                            Slider(value: $hsTileScale, in: 0.55...1.7)
+                                .controlSize(.small)
+                                .tint(Palette.running)
+                            Text(hsSizeAuto ? "auto" : String(format: "%.2f×", hsTileScale))
+                                .font(Typo.monoBold(10))
+                                .foregroundColor(Palette.text)
+                                .frame(width: 50, alignment: .trailing)
+                        }
+                        .opacity(hsSizeAuto ? 0.4 : 1)
+                        .disabled(hsSizeAuto)
+
+                        cardDivider
+
+                        // Lattice growth: scan wide vs. grow into the vertical.
+                        hsSegmentRow("rectangle.grid.2x2", "Lattice") {
+                            Picker("", selection: $hsLayoutTall) {
+                                Text("Scan").tag(false)
+                                Text("Tall").tag(true)
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+                            .frame(width: 150)
+                        }
+
+                        // Hint keys: full keyboard vs. hand-split assignment.
+                        hsSegmentRow("keyboard", "Hint keys") {
+                            Picker("", selection: $hsHandKeys) {
+                                Text("Standard").tag(false)
+                                Text("Hand split").tag(true)
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+                            .frame(width: 150)
+                        }
+                    }
+                }
+            }
+            .padding(16)
+        }
+    }
+
+    // A labeled lighting slider (0…1) with a right-aligned readout.
+    private func hsSlider(_ icon: String, _ title: String, _ value: Binding<Double>,
+                          readout: @escaping (Double) -> String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(Palette.textMuted)
+                .frame(width: 18)
+            Text(title)
+                .font(Typo.mono(11))
+                .foregroundColor(Palette.textDim)
+                .frame(width: 96, alignment: .leading)
+            Slider(value: value, in: 0...1)
+                .controlSize(.small)
+                .tint(Palette.running)
+            Text(readout(value.wrappedValue))
+                .font(Typo.monoBold(10))
+                .foregroundColor(Palette.text)
+                .frame(width: 50, alignment: .trailing)
+        }
+    }
+
+    // Key light: intensity slider plus a three-way origin picker (◤ ▲ ◥).
+    private var hsKeyLightRow: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "sun.max")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(Palette.textMuted)
+                .frame(width: 18)
+            Text("Key light")
+                .font(Typo.mono(11))
+                .foregroundColor(Palette.textDim)
+                .frame(width: 96, alignment: .leading)
+            Slider(value: $hsKeyLight, in: 0...1)
+                .controlSize(.small)
+                .tint(Palette.running)
+            Picker("", selection: $hsKeyAngle) {
+                Text("◤").tag(0)
+                Text("▲").tag(1)
+                Text("◥").tag(2)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 96)
+        }
+    }
+
+    // A labeled row hosting a trailing control (segmented picker, etc.).
+    private func hsSegmentRow<Trailing: View>(_ icon: String, _ title: String,
+                                              @ViewBuilder trailing: () -> Trailing) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(Palette.textMuted)
+                .frame(width: 18)
+            Text(title)
+                .font(Typo.mono(11))
+                .foregroundColor(Palette.textDim)
+                .frame(width: 96, alignment: .leading)
+            trailing()
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func hsPercent(_ v: Double) -> String { "\(Int((v * 100).rounded()))%" }
 
     // MARK: - AI
 

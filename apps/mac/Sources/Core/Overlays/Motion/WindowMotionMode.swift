@@ -147,6 +147,8 @@ private final class MotionPanel: NSPanel {
     private var clusterHintMap: [String: Int] = [:]      // letter → cluster id (⇧+letter plucks the group)
     private var exposeTileW: CGFloat = 240
     private var clusterRules: [ClusterRule] = []
+    private var exposeFrames: [UInt32: CGRect] = [:]   // tile wid → laid-out frame (survey space)
+    private lazy var handKeysMode = UserDefaults.standard.bool(forKey: "hyperspace.handKeys")
 
     private var activeEntry: WindowEntry { eligible[reticle] }
 
@@ -308,8 +310,8 @@ private final class MotionPanel: NSPanel {
             case 49:                                                         // Space — pluck highlighted
                 if let wid = exposeOrder[safe: exposeAim] { exposeToggle(wid) }
                 return
-            case 14: collapseExpose(); return                               // E — collapse survey
-            case 5:  gatherInPlace(); return                                // G — gather, stay in mode
+            case 14 where !mods.contains(.shift): collapseExpose(); return  // E — collapse survey
+            case 5  where !mods.contains(.shift): gatherInPlace(); return   // G — gather, stay in mode
             default:
                 let ch = event.charactersIgnoringModifiers?.lowercased()
                 if mods.contains(.shift), let ch, let cid = clusterHintMap[ch] {
@@ -630,9 +632,10 @@ private final class MotionPanel: NSPanel {
         guard members.count > 1 else { NSSound.beep(); return }   // nothing to survey
 
         exposed = true
+        exposeFrames.removeAll()                                  // stale positions from a prior survey
         exposeClusters = buildClusters(members)
         assignHints()
-        exposeTileW = tileWidth(for: members.count)
+        exposeTileW = autoTileWidth(count: members.count, screen: screen)
         installExposeHost(on: screen)
         captureCount = members.count
         members.forEach { captureThumb(for: $0) }                 // seed from the shared cache; capture only misses
@@ -716,50 +719,108 @@ private final class MotionPanel: NSPanel {
         return boxes
     }
 
-    /// Assign home-row hint letters and the spread's layout order, walking clusters
-    /// in display order. The first 26 tiles get a letter; any beyond that are still
-    /// pluckable by Tab/Space.
-    private func assignHints() {
-        let homerow = Array("asdfghjklqwertyuiopzxcvbnm")
-        hintFor.removeAll(); hintMap.removeAll(); exposeOrder.removeAll()
-        var i = 0
-        for box in exposeClusters {
-            for w in box.members {
-                if i < homerow.count {
-                    let h = String(homerow[i])
-                    hintFor[w.wid] = h
-                    hintMap[h] = w.wid
-                }
-                exposeOrder.append(w.wid)
-                i += 1
-            }
-        }
-        exposeAim = 0
+    /// Letters the survey reserves for commands, so no tile or cluster is ever dealt
+    /// one (E = collapse, G = gather — see keyDown, where their keycodes are matched
+    /// before the hint logic). Kept out of every hint pool below, so ⇧E/⇧G carry no
+    /// cluster meaning and the bare keys always mean their command.
+    private static let reservedKeys: Set<Character> = ["e", "g"]
 
-        // Per-cluster shortcut: ⇧+letter plucks the whole group at once (e.g. ⇧I →
-        // every iTerm). Prefer a letter from the cluster's name so it's guessable,
-        // falling back to the next free letter. Lives in its own (shifted) key space,
-        // so it never collides with the lowercase per-window hints above.
+    /// Assign the spread's layout order and per-window hint letters. Two schemes:
+    /// reading-order (clusters in display order) or — when hand-keys mode is on and
+    /// we know where the tiles landed — a spatial split where left-of-centre tiles
+    /// take left-hand keys and right-of-centre tiles take right-hand keys, each
+    /// dealt centre→edge so the strongest fingers land the most central windows.
+    /// ⇧-letter cluster plucks are assigned separately (own, shifted key space).
+    private func assignHints() {
+        exposeOrder = exposeClusters.flatMap { $0.members.map(\.wid) }
+        exposeAim = 0
+        (hintFor, hintMap) = (handKeysMode && exposeFrames.count >= exposeOrder.count)
+            ? computeHandHints(exposeFrames) : readingHints()
+        assignClusterHints()
+    }
+
+    /// Home-row letters dealt in display order — the original scheme.
+    private func readingHints() -> ([UInt32: String], [String: UInt32]) {
+        let homerow = Array("asdfghjklqwertyuiopzxcvbnm").filter { !MotionPanel.reservedKeys.contains($0) }
+        var hf: [UInt32: String] = [:], hm: [String: UInt32] = [:]
+        for (i, wid) in exposeOrder.enumerated() where i < homerow.count {
+            let h = String(homerow[i]); hf[wid] = h; hm[h] = wid
+        }
+        return (hf, hm)
+    }
+
+    /// Spatial hand-split letters. Tiles left of the spread's mid-line get left-hand
+    /// keys, the rest right-hand keys; within a hand they're dealt centre→edge so the
+    /// key location predicts the window's location. Needs the laid-out tile frames.
+    private func computeHandHints(_ frames: [UInt32: CGRect]) -> ([UInt32: String], [String: UInt32]) {
+        let rightKeys = Array("jkluiophynm;").filter  { !MotionPanel.reservedKeys.contains($0) }   // right hand, centre → edge
+        let leftKeys  = Array("fdsarewqgtvcxzb").filter { !MotionPanel.reservedKeys.contains($0) }  // left hand,  centre → edge (e/g reserved)
+        let placed = exposeOrder.compactMap { wid in frames[wid].map { (wid: wid, rect: $0) } }
+        guard !placed.isEmpty else { return readingHints() }
+        let mids = placed.map { $0.rect.midX }
+        let mid = (mids.min()! + mids.max()!) / 2
+        func sortKey(_ r: CGRect) -> (CGFloat, CGFloat) { (abs(r.midX - mid), r.minY) }
+        let left  = placed.filter { $0.rect.midX <= mid }.sorted { sortKey($0.rect) < sortKey($1.rect) }
+        let right = placed.filter { $0.rect.midX >  mid }.sorted { sortKey($0.rect) < sortKey($1.rect) }
+        var hf: [UInt32: String] = [:], hm: [String: UInt32] = [:]
+        for (i, t) in left.enumerated()  where i < leftKeys.count  { let h = String(leftKeys[i]);  hf[t.wid] = h; hm[h] = t.wid }
+        for (i, t) in right.enumerated() where i < rightKeys.count { let h = String(rightKeys[i]); hf[t.wid] = h; hm[h] = t.wid }
+        return (hf, hm)
+    }
+
+    /// Recompute per-window hints after the spread lays out, or when the mode flips.
+    /// Idempotent — only rebuilds the view if the letters actually changed.
+    private func reassignHandHints() {
+        guard exposed else { return }
+        let (hf, hm) = (handKeysMode && exposeFrames.count >= exposeOrder.count)
+            ? computeHandHints(exposeFrames) : readingHints()
+        guard hf != hintFor else { return }
+        hintFor = hf; hintMap = hm
+        rebuildExposeView()
+    }
+
+    /// Per-cluster shortcut: ⇧+letter plucks the whole group at once (e.g. ⇧I →
+    /// every iTerm). Prefer a letter from the cluster's name so it's guessable,
+    /// falling back to the next free letter. Lives in its own (shifted) key space,
+    /// so it never collides with the lowercase per-window hints above.
+    private func assignClusterHints() {
         clusterHintFor.removeAll(); clusterHintMap.removeAll()
         var used = Set<String>()
         let alphabet = "abcdefghijklmnopqrstuvwxyz".map(String.init)
         for box in exposeClusters {
             let fromName = box.name.lowercased().filter { $0.isLetter }.map(String.init)
-            guard let letter = (fromName + alphabet).first(where: { !used.contains($0) }) else { continue }
+            guard let letter = (fromName + alphabet).first(where: {
+                !used.contains($0) && !MotionPanel.reservedKeys.contains(Character($0))
+            }) else { continue }
             used.insert(letter)
             clusterHintFor[box.id] = letter.uppercased()
             clusterHintMap[letter] = box.id
         }
     }
 
-    /// Tile width scales down as the survey gets busier so the lattice keeps fitting.
-    private func tileWidth(for n: Int) -> CGFloat {
-        switch n {
-        case ...4:  return 340
-        case ...9:  return 250
-        case ...16: return 196
-        default:    return 156
+    /// Pick a tile width that fills the survey: few windows zoom in, many zoom out.
+    /// A free-grid fit over the display's working area — try every column count and
+    /// keep the width that best uses both axes — then a packing margin and clamps so
+    /// the clustered layout (a little less dense than a bare grid) still fits cleanly.
+    private func autoTileWidth(count n: Int, screen: NSScreen) -> CGFloat {
+        let area = screen.frame
+        let pad: CGFloat = 72            // 36pt survey padding each side
+        let availW = max(200, area.width - pad)
+        let availH = max(200, area.height - pad)
+        let aspect: CGFloat = 0.62       // tile height / width
+        let gap: CGFloat = 26            // tile gaps + cluster chrome, averaged
+        let count = max(1, n)
+        var best: CGFloat = 0
+        let maxCols = max(1, min(count, Int(availW / 150)))
+        for cols in 1...maxCols {
+            let rows = Int((Double(count) / Double(cols)).rounded(.up))
+            let w = (availW - gap * CGFloat(cols - 1)) / CGFloat(cols)
+            let h = (availH - gap * CGFloat(rows - 1)) / CGFloat(rows)
+            best = max(best, min(w, h / aspect))
         }
+        // Packing margin: sit the survey a little inside the fill so there's air
+        // around the lattice — the extra room reads as perspective, not a wall of tiles.
+        return min(max((best * 0.74).rounded(), 150), 520)
     }
 
     private static func loadClusterRules() -> [ClusterRule] {
@@ -801,9 +862,23 @@ private final class MotionPanel: NSPanel {
                 tiles: box.members.map { tileVM($0) }
             )
         }
-        exposeHost.rootView = ExposeView(clusters: vm, tileWidth: exposeTileW,
-                                         onPick: { [weak self] wid in self?.exposeToggle(wid) },
-                                         loadSummary: loadSummaryText())
+        exposeHost.rootView = ExposeView(
+            clusters: vm, tileWidth: exposeTileW,
+            onPick: { [weak self] wid in self?.exposeToggle(wid) },
+            onLayout: { [weak self] frames in
+                guard let self else { return }
+                DispatchQueue.main.async {
+                    guard self.exposed, frames != self.exposeFrames else { return }
+                    self.exposeFrames = frames
+                    if self.handKeysMode { self.reassignHandHints() }
+                }
+            },
+            onHandKeys: { [weak self] on in
+                guard let self else { return }
+                self.handKeysMode = on
+                self.reassignHandHints()
+            },
+            loadSummary: loadSummaryText())
     }
 
     /// Compact load readout for the survey: time-to-first-paint and time-to-all-
@@ -1468,6 +1543,15 @@ private struct VisualEffectBackdrop: NSViewRepresentable {
     }
 }
 
+/// Collects each survey tile's laid-out frame (in the survey coordinate space) so
+/// the panel can deal hand-split hint keys by real on-screen position.
+private struct TileFramesKey: PreferenceKey {
+    static let defaultValue: [UInt32: CGRect] = [:]
+    static func reduce(value: inout [UInt32: CGRect], nextValue: () -> [UInt32: CGRect]) {
+        value.merge(nextValue()) { _, new in new }
+    }
+}
+
 /// Live frame-cadence stats for the survey perf harness. `record` is fed each
 /// animation tick; the EMA keeps the readout steady, worst-frame surfaces
 /// hitches. Reset between A/B runs for a clean comparison.
@@ -1519,15 +1603,31 @@ struct ExposeView: View {
     let clusters: [Cluster]
     let tileWidth: CGFloat
     var onPick: (UInt32) -> Void = { _ in }
+    var onLayout: ([UInt32: CGRect]) -> Void = { _ in }
+    var onHandKeys: (Bool) -> Void = { _ in }
     var loadSummary: String = ""
 
     private let ink = Color(red: 0.02, green: 0.03, blue: 0.05)
+    static let surveySpace = "hyperspace.survey"
 
-    // Look dials for the survey backdrop — all persisted, all live. `scrimOpacity`
-    // is a dark↔bright *tone* axis (0 = light frost, 1 = deep dark), not a flat alpha.
-    @AppStorage("hyperspace.scrimTint") private var scrimOpacity: Double = 0.45
-    @AppStorage("hyperspace.gridLevel") private var gridIntensity: Double = 0.4
-    @AppStorage("hyperspace.glowLevel") private var glowIntensity: Double = 0.4
+    // The lighting rig — all persisted, all live. The survey is lit like a room:
+    // an ambient floor, one directional key light you can aim, a focus spotlight
+    // that follows the aimed tile, and a warm↔cool temperature gel on the light.
+    @AppStorage("hyperspace.ambient")   private var ambient: Double = 0.5
+    @AppStorage("hyperspace.keyLight")  private var keyLight: Double = 0.4
+    @AppStorage("hyperspace.keyAngle")  private var keyAngle: Int = 0       // 0 ◤ · 1 ▲ · 2 ◥
+    @AppStorage("hyperspace.spotlight") private var spotlight: Double = 0.3
+    @AppStorage("hyperspace.temp")      private var temp: Double = 0.5       // 0 cool · 1 warm
+
+    // Size & layout. `sizeAuto` fills the display from the window count (the panel
+    // does the fit); with it off, `tileScale` biases that base up or down. `layoutTall`
+    // drops the per-cluster column cap so the lattice grows downward into the vertical.
+    @AppStorage("hyperspace.sizeAuto")   private var sizeAuto: Bool = true
+    @AppStorage("hyperspace.tileScale")  private var tileScale: Double = 1.0
+    @AppStorage("hyperspace.layoutTall") private var layoutTall: Bool = false
+
+    // Hand-split hint keys (assignment lives in the panel; the toggle pings it).
+    @AppStorage("hyperspace.handKeys") private var handKeys: Bool = false
 
     // Perf A/B harness (diagnostic, not persisted): A = a plain dark-gray fill,
     // B = the full frosted stack. The HUD reads live frame cadence.
@@ -1561,17 +1661,24 @@ struct ExposeView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(36)
+            .coordinateSpace(name: ExposeView.surveySpace)
+            .onPreferenceChange(TileFramesKey.self) { onLayout($0) }
         }
     }
 
-    // The look dials — a compact stack top-right, clear of the legend (bottom)
-    // and minimap (bottom-left). Drag to find a vibe; every value persists.
+    // The control rig — a compact stack top-right, clear of the legend (bottom)
+    // and minimap (bottom-left). Lighting, then layout, then keys. Every value persists.
     private var dials: some View {
-        VStack(spacing: 7) {
-            dial("circle.lefthalf.filled", "tone", $scrimOpacity)
-            dial("grid",    "grid", $gridIntensity)
-            dial("sun.max", "glow", $glowIntensity)
-            Rectangle().fill(Palette.border).frame(height: 0.5).padding(.vertical, 1)
+        VStack(alignment: .leading, spacing: 7) {
+            dial("moon.stars",         "amb",  $ambient)
+            keyRow
+            dial("flashlight.on.fill", "spot", $spotlight)
+            dial("thermometer.medium", "temp", $temp) { _ in temp < 0.45 ? "cool" : temp > 0.55 ? "warm" : "·" }
+            divider
+            sizeRow
+            twoWay("rectangle.grid.2x2", "scan", "tall", isFirst: !layoutTall) { layoutTall = !$0 }
+            twoWay("keyboard", "read", "hands", isFirst: !handKeys) { handKeys = !$0; onHandKeys(handKeys) }
+            divider
             HStack(spacing: 8) {
                 perfToggle
                 Spacer(minLength: 0)
@@ -1593,7 +1700,49 @@ struct ExposeView: View {
         )
     }
 
-    private func dial(_ icon: String, _ label: String, _ value: Binding<Double>) -> some View {
+    private var divider: some View {
+        Rectangle().fill(Palette.border).frame(height: 0.5).padding(.vertical, 1)
+    }
+
+    // The key-light row: an intensity slider plus a three-way origin picker (◤ ▲ ◥).
+    private var keyRow: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "sun.max").font(.system(size: 10)).foregroundColor(.white.opacity(0.6)).frame(width: 14)
+            Text("key").font(Typo.mono(9)).foregroundColor(.white.opacity(0.45)).frame(width: 28, alignment: .leading)
+            Slider(value: $keyLight, in: 0...1).frame(width: 70).controlSize(.mini).tint(Palette.running)
+            HStack(spacing: 2) { angleSeg(0, "◤"); angleSeg(1, "▲"); angleSeg(2, "◥") }
+        }
+    }
+
+    private func angleSeg(_ a: Int, _ glyph: String) -> some View {
+        Button { keyAngle = a } label: {
+            Text(glyph).font(.system(size: 9))
+                .foregroundColor(keyAngle == a ? Palette.bg : .white.opacity(0.5))
+                .frame(width: 16, height: 16)
+                .background(RoundedRectangle(cornerRadius: 3).fill(keyAngle == a ? Palette.running : Color.white.opacity(0.06)))
+        }
+        .buttonStyle(.plain)
+    }
+
+    // Size row: an "auto" pill (default on — the panel fits tiles to the window count)
+    // plus a manual bias slider. Auto dims the slider; grabbing it takes manual over.
+    private var sizeRow: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                .font(.system(size: 10)).foregroundColor(.white.opacity(0.6)).frame(width: 14)
+            Text("size").font(Typo.mono(9)).foregroundColor(.white.opacity(0.45)).frame(width: 28, alignment: .leading)
+            Slider(value: $tileScale, in: 0.55...1.7, onEditingChanged: { editing in if editing { sizeAuto = false } })
+                .frame(width: 66).controlSize(.mini).tint(Palette.running)
+                .opacity(sizeAuto ? 0.35 : 1)
+            pill("auto", sizeAuto) { sizeAuto.toggle() }
+            Text(sizeAuto ? "auto" : String(format: "%.2f×", tileScale))
+                .font(Typo.mono(9)).foregroundColor(.white.opacity(0.5)).frame(width: 30, alignment: .trailing)
+        }
+    }
+
+    private func dial(_ icon: String, _ label: String, _ value: Binding<Double>,
+                      in range: ClosedRange<Double> = 0...1,
+                      readout: ((Double) -> String)? = nil) -> some View {
         HStack(spacing: 8) {
             Image(systemName: icon)
                 .font(.system(size: 10))
@@ -1603,71 +1752,106 @@ struct ExposeView: View {
                 .font(Typo.mono(9))
                 .foregroundColor(.white.opacity(0.45))
                 .frame(width: 28, alignment: .leading)
-            Slider(value: value, in: 0...1)
+            Slider(value: value, in: range)
                 .frame(width: 104)
                 .controlSize(.mini)
                 .tint(Palette.running)
-            Text("\(Int((value.wrappedValue * 100).rounded()))")
+            Text(readout?(value.wrappedValue) ?? "\(Int((value.wrappedValue * 100).rounded()))")
                 .font(Typo.mono(9))
                 .foregroundColor(.white.opacity(0.5))
-                .frame(width: 22, alignment: .trailing)
+                .frame(width: 30, alignment: .trailing)
         }
     }
 
-    // Treatment A vs B. A is a plain opaque dark-gray fill — the cheapest
-    // possible backdrop, the baseline. B is the full frosted stack: behind-window
-    // blur + tone tint + glow + vignette + the adapting lattice grid.
+    // A two-segment pill toggle (label-driven). `isFirst` selects the left segment;
+    // `set` is called with the new "is-first" state when either segment is tapped.
+    private func twoWay(_ icon: String, _ a: String, _ b: String, isFirst: Bool, _ set: @escaping (Bool) -> Void) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon).font(.system(size: 10)).foregroundColor(.white.opacity(0.6)).frame(width: 14)
+            HStack(spacing: 2) {
+                pill(a, isFirst)  { set(true) }
+                pill(b, !isFirst) { set(false) }
+            }
+            .padding(2)
+            .background(Capsule().fill(Color.white.opacity(0.06)))
+            .overlay(Capsule().strokeBorder(Palette.border, lineWidth: 0.5))
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func pill(_ t: String, _ on: Bool, _ act: @escaping () -> Void) -> some View {
+        Button(action: act) {
+            Text(t).font(Typo.monoBold(9))
+                .foregroundColor(on ? Palette.bg : .white.opacity(0.55))
+                .padding(.horizontal, 9).frame(height: 16)
+                .background(Capsule().fill(on ? Palette.running : Color.clear))
+        }
+        .buttonStyle(.plain)
+    }
+
+    // Treatment A vs B. A is a plain opaque dark-gray fill — the cheapest possible
+    // backdrop, the baseline. B is the lit room: behind-window blur + an ambient
+    // floor + a directional, temperature-gelled key light + a vignette that deepens
+    // as the room darkens. `phase` is non-zero only under the perf harness, where it
+    // gives the key light a faint breathing drift so the renderer has real work to do.
     @ViewBuilder
     private func scrim(phase: Double) -> some View {
         if perfFlat {
-            Color(red: 0.11, green: 0.11, blue: 0.12)   // A — flat fill, no treatments
+            Color(red: 0.11, green: 0.11, blue: 0.12)   // A — flat fill, no lighting
         } else {
             ZStack {
                 // Frosted glass: blur the real desktop into a soft wash.
                 VisualEffectBackdrop(material: .hudWindow)
                     .ignoresSafeArea()
 
-                // Tone dial: dark↔bright. Low = a light frost (airy), high = deep
-                // dark; a constant alpha keeps the blur faintly alive at either end.
-                Color(white: 0.80 - scrimOpacity * 0.74)
-                    .opacity(0.6)
+                // Ambient floor: how lit the room is. Low = near-black and dramatic,
+                // high = airy. A little blur always survives so it never goes flat.
+                Color.black.opacity(0.82 - ambient * 0.60)
 
-                // Overhead glow (glow dial).
+                // Directional key light, gelled warm↔cool by temperature.
                 EllipticalGradient(
-                    colors: [Color(red: 0.72, green: 0.76, blue: 0.88).opacity(glowIntensity * 0.22), .clear],
-                    center: .top,
+                    colors: [lightColor.opacity(keyLight * 0.5), .clear],
+                    center: keyCenter,
                     startRadiusFraction: 0,
-                    endRadiusFraction: 0.9
+                    endRadiusFraction: 1.0 + 0.06 * CGFloat(sin(phase * 2))
                 )
-                // Vignette scales with the tone, so bright vibes stay airy.
+
+                // Vignette — deepens as the room darkens, so bright vibes stay open.
                 EllipticalGradient(
-                    colors: [.clear, Color.black.opacity(0.26 * scrimOpacity)],
+                    colors: [.clear, Color.black.opacity(0.30 * (1 - ambient * 0.5))],
                     center: .center,
-                    startRadiusFraction: 0.55,
+                    startRadiusFraction: 0.5,
                     endRadiusFraction: 1.0
                 )
-
-                grid(phase: phase)
             }
         }
     }
 
-    // The engineering lattice. `phase` drifts it (only non-zero under the perf
-    // harness, to keep the renderer busy). Lines adapt to the tone — lighter as the
-    // backdrop darkens, darker as it brightens — so they never wash out.
-    private func grid(phase: Double) -> some View {
-        GeometryReader { geo in
-            let step: CGFloat = 30
-            let off = CGFloat((phase * 18).truncatingRemainder(dividingBy: Double(step)))
-            Path { p in
-                var x: CGFloat = off - step
-                while x < geo.size.width { p.move(to: CGPoint(x: x, y: 0)); p.addLine(to: CGPoint(x: x, y: geo.size.height)); x += step }
-                var y: CGFloat = off - step
-                while y < geo.size.height { p.move(to: CGPoint(x: 0, y: y)); p.addLine(to: CGPoint(x: geo.size.width, y: y)); y += step }
-            }
-            .stroke(Color(white: 0.12 + scrimOpacity * 0.78).opacity(gridIntensity * 0.22), lineWidth: 0.5)
+    // Where the key light originates: ◤ top-left, ▲ top, ◥ top-right.
+    private var keyCenter: UnitPoint {
+        switch keyAngle { case 0: return .topLeading; case 2: return .topTrailing; default: return .top }
+    }
+
+    // The light's colour along a cool→neutral→warm temperature axis.
+    private var lightColor: Color {
+        func lerp(_ a: Double, _ b: Double, _ f: Double) -> Double { a + (b - a) * f }
+        let cool = (0.60, 0.71, 0.96), neutral = (0.86, 0.88, 0.92), warm = (1.00, 0.83, 0.60)
+        if temp < 0.5 {
+            let f = temp / 0.5
+            return Color(red: lerp(cool.0, neutral.0, f), green: lerp(cool.1, neutral.1, f), blue: lerp(cool.2, neutral.2, f))
+        } else {
+            let f = (temp - 0.5) / 0.5
+            return Color(red: lerp(neutral.0, warm.0, f), green: lerp(neutral.1, warm.1, f), blue: lerp(neutral.2, warm.2, f))
         }
     }
+
+    // Effective tile width — the panel's fill-fit base, optionally biased by the size
+    // dial — and the per-cluster column cap (lower in "tall" so the lattice fills the
+    // vertical space).
+    private var tile: CGFloat {
+        sizeAuto ? tileWidth : (tileWidth * CGFloat(tileScale)).rounded()
+    }
+    private var colCap: Int { layoutTall ? 2 : 4 }
 
     // MARK: Perf harness UI
 
@@ -1727,8 +1911,8 @@ struct ExposeView: View {
     }
 
     private func clusterBox(_ c: Cluster) -> some View {
-        let cols = min(max(c.tiles.count, 1), 4)
-        let innerW = tileWidth * CGFloat(cols) + 8 * CGFloat(cols - 1)
+        let cols = min(max(c.tiles.count, 1), colCap)
+        let innerW = tile * CGFloat(cols) + 8 * CGFloat(cols - 1)
         return VStack(alignment: .leading, spacing: 9) {
             HStack(spacing: 6) {
                 if !c.hint.isEmpty {
@@ -1775,17 +1959,39 @@ struct ExposeView: View {
     }
 
     private func tileView(_ t: Tile) -> some View {
-        let h = (tileWidth * 0.62).rounded()
+        let w = tile
+        let h = (tile * 0.62).rounded()
         let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
         let picked = t.pickSlot != nil
-        return ZStack(alignment: .topLeading) {
+        let lit = t.isAimed || picked                          // on the spotlight's stage
+        let strokeColor: Color = picked ? t.tint : (t.isAimed ? Color.white.opacity(0.9) : Color.white.opacity(0.1))
+        let strokeW: CGFloat = picked ? 2 : (t.isAimed ? 1.5 : 0.75)
+        let veil: Double = lit ? 0 : spotlight * 0.5
+        let bloom: Color = t.isAimed ? lightColor.opacity(0.7 * spotlight) : .clear
+        let bloomR: CGFloat = t.isAimed ? 8 + spotlight * 22 : 0
+        return tileBody(t, w: w, h: h, shape: shape)
+            .overlay(shape.fill(Color.black.opacity(veil)))    // spotlight: off-stage tiles sink to shadow
+            .overlay(shape.strokeBorder(strokeColor, lineWidth: strokeW))
+            .overlay(alignment: .topTrailing) { hintChip(t) }
+            .overlay(alignment: .topLeading) { if let s = t.pickSlot { slotBadge(s, t.tint) } }
+            .overlay(alignment: .bottomLeading) { titleLabel(t) }
+            .background(frameReporter(t.id))
+            .shadow(color: .black.opacity(picked ? 0.5 : 0.35), radius: picked ? 14 : 8, x: 0, y: 5)
+            .shadow(color: bloom, radius: bloomR)              // aimed tile catches the key light
+            .contentShape(Rectangle())
+            .onTapGesture { onPick(t.id) }
+    }
+
+    // The tile's image + app-tint accent, clipped to the rounded card.
+    private func tileBody(_ t: Tile, w: CGFloat, h: CGFloat, shape: RoundedRectangle) -> some View {
+        ZStack(alignment: .topLeading) {
             ZStack {
                 t.tint.opacity(0.16)
                 if let img = t.image {
                     Image(nsImage: img).resizable().aspectRatio(contentMode: .fill)
                 }
             }
-            .frame(width: tileWidth, height: h)
+            .frame(width: w, height: h)
             .clipShape(shape)
 
             VStack(spacing: 0) {                                   // app-tint top accent
@@ -1793,20 +1999,16 @@ struct ExposeView: View {
                 Spacer(minLength: 0)
             }
         }
-        .frame(width: tileWidth, height: h)
+        .frame(width: w, height: h)
         .clipShape(shape)
-        .overlay(
-            shape.strokeBorder(
-                picked ? t.tint : (t.isAimed ? Color.white.opacity(0.9) : Color.white.opacity(0.1)),
-                lineWidth: picked ? 2 : (t.isAimed ? 1.5 : 0.75)
-            )
-        )
-        .overlay(alignment: .topTrailing) { hintChip(t) }
-        .overlay(alignment: .topLeading) { if let s = t.pickSlot { slotBadge(s, t.tint) } }
-        .overlay(alignment: .bottomLeading) { titleLabel(t) }
-        .shadow(color: .black.opacity(picked ? 0.5 : 0.35), radius: picked ? 14 : 8, x: 0, y: 5)
-        .contentShape(Rectangle())
-        .onTapGesture { onPick(t.id) }
+    }
+
+    // Reports this tile's laid-out frame up to the panel for hand-split key dealing.
+    private func frameReporter(_ id: UInt32) -> some View {
+        GeometryReader { g in
+            Color.clear.preference(key: TileFramesKey.self,
+                                   value: [id: g.frame(in: .named(ExposeView.surveySpace))])
+        }
     }
 
     private func hintChip(_ t: Tile) -> some View {
