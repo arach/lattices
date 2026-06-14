@@ -322,16 +322,35 @@ private extension LatticesCompanionSecurityCoordinator {
     }
 
     static func loadOrCreateBridgeKey() -> Curve25519.KeyAgreement.PrivateKey {
+        // Preferred store: a 0600 file under ~/.lattices. The key used to live in
+        // the login keychain, whose ACL is bound to the app's code signature — so
+        // every ad-hoc rebuild re-prompted for the keychain password ("enable the
+        // bridge") and, when that read failed, silently regenerated the key and
+        // forced the companion to re-pair. A plain file is signing-independent and
+        // never prompts.
         if
-            let stored = KeychainBridge.load(service: KeychainKey.service, account: KeychainKey.account),
+            let stored = BridgeKeyFileStore.load(),
             let key = try? Curve25519.KeyAgreement.PrivateKey(rawRepresentation: stored)
         {
             return key
         }
 
+        // One-time migration from the old keychain item. Reading it may prompt for
+        // the password one final time; once copied to disk we delete the keychain
+        // copy so it can never prompt again. Preserving the key keeps the device
+        // paired across the upgrade.
+        if
+            let migrated = KeychainBridge.load(service: KeychainKey.service, account: KeychainKey.account),
+            let key = try? Curve25519.KeyAgreement.PrivateKey(rawRepresentation: migrated)
+        {
+            if BridgeKeyFileStore.save(migrated) {
+                KeychainBridge.delete(service: KeychainKey.service, account: KeychainKey.account)
+            }
+            return key
+        }
+
         let key = Curve25519.KeyAgreement.PrivateKey()
-        let data = key.rawRepresentation
-        _ = KeychainBridge.save(data, service: KeychainKey.service, account: KeychainKey.account)
+        _ = BridgeKeyFileStore.save(key.rawRepresentation)
         return key
     }
 
@@ -567,6 +586,44 @@ private extension LatticesCompanionSecurityCoordinator {
     }
 }
 
+/// On-disk store for the bridge key agreement private key.
+///
+/// Lives at `~/.lattices/companion/bridge.key` as raw key bytes. The containing
+/// directory is `0700` and the file itself `0600`, so the key is readable only by
+/// the user — the same posture as the trusted-device list (UserDefaults plist on
+/// disk) and FileVault-encrypted at rest. Unlike the keychain, file access never
+/// depends on the app's code signature, so it never prompts for a password.
+private enum BridgeKeyFileStore {
+    static var fileURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".lattices/companion", isDirectory: true)
+            .appendingPathComponent("bridge.key")
+    }
+
+    static func load() -> Data? {
+        guard let data = try? Data(contentsOf: fileURL), data.isEmpty == false else { return nil }
+        return data
+    }
+
+    @discardableResult
+    static func save(_ data: Data) -> Bool {
+        let url = fileURL
+        let dir = url.deletingLastPathComponent()
+        do {
+            try FileManager.default.createDirectory(
+                at: dir,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+            try data.write(to: url, options: [.atomic])
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+            return true
+        } catch {
+            return false
+        }
+    }
+}
+
 private enum KeychainBridge {
     static func load(service: String, account: String) -> Data? {
         let query: [String: Any] = [
@@ -583,26 +640,13 @@ private enum KeychainBridge {
         return result as? Data
     }
 
-    static func save(_ data: Data, service: String, account: String) -> Bool {
+    static func delete(service: String, account: String) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
         ]
-
-        let attributes: [String: Any] = [
-            kSecValueData as String: data,
-        ]
-
-        let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
-        if updateStatus == errSecSuccess {
-            return true
-        }
-
-        var insert = query
-        insert[kSecValueData as String] = data
-        let addStatus = SecItemAdd(insert as CFDictionary, nil)
-        return addStatus == errSecSuccess
+        SecItemDelete(query as CFDictionary)
     }
 }
 
