@@ -330,6 +330,14 @@ function syncBundleResources(): void {
   if (existsSync(tapSoundPath)) {
     execSync(`cp '${tapSoundPath}' '${resolve(resourcesDir, "tap.wav")}'`);
   }
+  // Bundle the assistant knowledge base so the in-app chat assistant can load it
+  // in shipped builds (dev builds fall back to the repo docs/ path).
+  const assistantDoc = resolve(cliRoot, "docs/assistant-knowledge.md");
+  if (existsSync(assistantDoc)) {
+    const docsDir = resolve(resourcesDir, "docs");
+    mkdirSync(docsDir, { recursive: true });
+    execSync(`cp '${assistantDoc}' '${resolve(docsDir, "assistant-knowledge.md")}'`);
+  }
 }
 
 // ── Build from source (current arch only) ────────────────────────────

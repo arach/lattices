@@ -744,6 +744,10 @@ struct PiChatComposer: View {
 
     var body: some View {
         VStack(spacing: 7) {
+            if !session.queuedPrompts.isEmpty {
+                queuedChips
+            }
+
             #if canImport(HudsonVoice)
             if voice.state.isCaptureActive || voice.state.isProcessing {
                 dictationStrip
@@ -771,6 +775,9 @@ struct PiChatComposer: View {
                     }
                 }
 
+                if session.isSending {
+                    stopButton
+                }
                 sendButton
             }
             .padding(.horizontal, 14)
@@ -814,7 +821,7 @@ struct PiChatComposer: View {
         }
         .buttonStyle(.plain)
         .help(micTooltip)
-        .disabled(session.isSending)
+        // Mic stays live during a turn — dictate to queue or steer mid-stream.
         .animation(.easeInOut(duration: 0.18), value: voice.state)
         .onChange(of: voice.state.isCaptureActive) {
             if voice.state.isCaptureActive {
@@ -941,7 +948,7 @@ struct PiChatComposer: View {
         Button {
             session.sendDraft()
         } label: {
-            Image(systemName: session.isSending ? "ellipsis" : "arrow.up")
+            Image(systemName: sendIcon)
                 .font(.system(size: 12.5, weight: .bold))
                 .foregroundColor(canSend ? Palette.bg : Palette.textMuted.opacity(0.7))
                 .frame(width: 30, height: 30)
@@ -956,8 +963,64 @@ struct PiChatComposer: View {
         }
         .buttonStyle(.plain)
         .disabled(!canSend)
-        .help(canSend ? "Send (↵)" : "")
+        .help(sendHelp)
         .animation(.easeInOut(duration: 0.15), value: canSend)
+    }
+
+    /// While a turn streams, the send action queues; while idle it sends. The icon
+    /// falls back to a quiet ellipsis when streaming with nothing to queue.
+    private var sendIcon: String {
+        if session.isSending && !canSend { return "ellipsis" }
+        return "arrow.up"
+    }
+
+    private var sendHelp: String {
+        guard canSend else { return "" }
+        return session.isSending ? "Queue (↵)" : "Send (↵)"
+    }
+
+    /// Stop the in-flight turn. With text in the composer it halts and sends that
+    /// text immediately (steer); empty, it's a plain stop.
+    private var stopButton: some View {
+        Button {
+            session.interruptAndSteer()
+        } label: {
+            Image(systemName: "stop.fill")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(.white)
+                .frame(width: 30, height: 30)
+                .background(Circle().fill(Color.red.opacity(0.85)))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help(session.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Stop" : "Stop & send")
+    }
+
+    /// Pending messages submitted mid-turn. Each chip can be tapped to drop it
+    /// before it fires.
+    private var queuedChips: some View {
+        HStack(spacing: 6) {
+            ForEach(Array(session.queuedPrompts.enumerated()), id: \.offset) { index, text in
+                Button {
+                    session.removeQueuedPrompt(at: index)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "clock").font(.system(size: 8.5))
+                        Text(text).lineLimit(1).truncationMode(.tail)
+                        Image(systemName: "xmark").font(.system(size: 8, weight: .bold))
+                    }
+                    .font(Typo.caption(10))
+                    .foregroundColor(Palette.textDim)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(Color.white.opacity(0.06)))
+                }
+                .buttonStyle(.plain)
+                .help("Queued — tap to remove")
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
     }
 
     // Flat composer field — hairline border, no focus glow, no running-tinted
@@ -985,8 +1048,10 @@ struct PiChatComposer: View {
             .overlay(Rectangle().fill(Palette.border).frame(height: 0.5), alignment: .top)
     }
 
+    /// True whenever the composer has text. While a turn is in flight the action
+    /// queues instead of sending, so the button stays live (the "queue" primitive).
     private var canSend: Bool {
-        !session.isSending && !session.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !session.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 }
 

@@ -147,6 +147,9 @@ final class PiChatSession: ObservableObject {
     @Published var isVisible: Bool = false
     @Published private(set) var isSending: Bool = false
     @Published private(set) var statusText: String = "idle"
+    /// Prompts submitted while a turn was streaming. They render as pending chips
+    /// and fire FIFO once the current turn finishes (the "queue" primitive).
+    @Published private(set) var queuedPrompts: [String] = []
     @Published var dockHeight: CGFloat = 230 {
         didSet {
             dockHeight = Self.clampDockHeight(dockHeight)
@@ -210,6 +213,14 @@ final class PiChatSession: ObservableObject {
     private var voiceRuntimeProviderID: String?
 
     private var streamingMessageID: UUID?
+    /// The in-flight HudAIClient streaming task. Cancelling it (paired with
+    /// HudAIClient's onTermination wiring) actually halts generation — that's the
+    /// "stop" primitive. nil on the native PiRpcRuntime path.
+    private var streamingTask: Task<Void, Never>?
+    /// Monotonic turn id. Every provider callback captures the id it was started
+    /// under and bails if it no longer matches, so a stopped or superseded turn
+    /// can never write into a newer one (covers the non-cancellable native path).
+    private var turnGeneration = 0
     // Display drain — decouples on-screen reveal from network arrival cadence so
     // chunky provider bursts flow in smoothly (and a wait-then-dump final still
     // animates in). `targetText` is everything received so far; `displayedCount`
@@ -237,6 +248,33 @@ final class PiChatSession: ObservableObject {
         You are the Workspace Assistant for Lattices voice surfaces.
         Respond concisely. Follow the response format requested in each prompt exactly.
         """
+
+    /// Product-knowledge brief (how Lattices works, with doc references) injected
+    /// into chat/voice prompts so the assistant can explain features — not just the
+    /// current settings. Loaded once from `docs/assistant-knowledge.md`; empty if
+    /// the file can't be found (the prompt then omits the block).
+    static let capabilitiesGuide: String = loadCapabilitiesGuide()
+
+    private static func loadCapabilitiesGuide() -> String {
+        let file = "assistant-knowledge.md"
+        let appDir = (Bundle.main.bundlePath as NSString).deletingLastPathComponent
+        let candidates: [String] = [
+            // Bundled into the app (shipped builds).
+            Bundle.main.resourcePath.map { ($0 as NSString).appendingPathComponent("docs/\(file)") },
+            // Beside the .app.
+            ((appDir as NSString).appendingPathComponent("../docs/\(file)") as NSString).standardizingPath,
+            // Repo root (dev builds: apps/mac/Lattices.app -> repo/docs).
+            ((appDir as NSString).appendingPathComponent("../../docs/\(file)") as NSString).standardizingPath,
+        ].compactMap { $0 }
+        for path in candidates {
+            if let text = try? String(contentsOfFile: path, encoding: .utf8),
+               text.isEmpty == false {
+                return text
+            }
+        }
+        return ""
+    }
+
     private static let dockHeightDefaultsKey = "PiChatDockHeight"
 
     #if canImport(HudsonVoice)
@@ -503,6 +541,10 @@ final class PiChatSession: ObservableObject {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         draft = ""
+        if isSending {
+            queuedPrompts.append(text)   // queue while a turn is in flight
+            return
+        }
         send(text)
     }
 
@@ -544,6 +586,9 @@ final class PiChatSession: ObservableObject {
         let provider = currentProvider
         isSending = true
         statusText = "thinking..."
+        settleActiveStreamingMessage(interrupted: false)   // snap any prior reveal to full before a new turn
+        turnGeneration &+= 1
+        let turnGen = turnGeneration
         let prompt = providerPrompt(for: trimmed)
         let runtime = chatRuntime(piPath: piPath, provider: provider)
         let inferenceTimer = DiagnosticLog.shared.startTimed("Chat inference via \(provider.name) RPC")
@@ -566,6 +611,7 @@ final class PiChatSession: ObservableObject {
                 providerName: provider.name,
                 modelID: provider.id,
                 messageID: messageID,
+                generation: turnGen,
                 inferenceTimer: inferenceTimer
             )
             return
@@ -578,6 +624,7 @@ final class PiChatSession: ObservableObject {
             onEvent: { [weak self] event in
                 DispatchQueue.main.async {
                     guard let self else { return }
+                    guard self.turnGeneration == turnGen else { return }  // stale (stopped/superseded) turn
                     if let delta = PiRpcRuntime.streamingDelta(from: event) {
                         streamedText += delta
                         if self.statusText == "thinking..." {
@@ -599,6 +646,7 @@ final class PiChatSession: ObservableObject {
         ) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self else { return }
+                guard self.turnGeneration == turnGen else { return }  // stopped/superseded before completion
                 self.isSending = false
 
                 switch result {
@@ -613,6 +661,7 @@ final class PiChatSession: ObservableObject {
                     self.streamingMessageID = nil
                     self.handleInferenceFailure(error.localizedDescription)
                 }
+                self.drainQueuedPrompt()
             }
         }
     }
@@ -630,6 +679,7 @@ final class PiChatSession: ObservableObject {
         providerName: String,
         modelID: String,
         messageID: UUID,
+        generation: Int,
         inferenceTimer: DiagnosticLog.TimedAction
     ) {
         let adapter = PiHudAIAdapter(
@@ -645,7 +695,9 @@ final class PiChatSession: ObservableObject {
         )
         let request = HudAIRequest(messages: [.user(prompt)])
 
-        Task {
+        // Held so a Stop can cancel it. HudAIClient.stream() ties its producer to
+        // the stream's termination, so cancelling this task actually halts pi.
+        streamingTask = Task {
             var streamed = ""
             do {
                 for try await event in client.stream(request) {
@@ -654,20 +706,25 @@ final class PiChatSession: ObservableObject {
                         streamed += text
                         let snapshot = streamed
                         DispatchQueue.main.async { [weak self] in
-                            guard let self else { return }
+                            guard let self, self.turnGeneration == generation else { return }
                             if self.statusText == "thinking..." { self.statusText = "streaming..." }
                             self.commitStreamingText(snapshot)
                         }
                     case .toolCallStarted(_, let name):
-                        DispatchQueue.main.async { [weak self] in self?.statusText = "tool: \(name)" }
+                        DispatchQueue.main.async { [weak self] in
+                            guard let self, self.turnGeneration == generation else { return }
+                            self.statusText = "tool: \(name)"
+                        }
                     case .completed(let response):
                         let final = response.text.isEmpty ? streamed : response.text
                         DispatchQueue.main.async { [weak self] in
-                            guard let self else { return }
+                            guard let self, self.turnGeneration == generation else { return }
+                            self.streamingTask = nil
                             self.isSending = false
                             self.statusText = "idle"
                             DiagnosticLog.shared.finish(inferenceTimer)
                             self.finalizeStreaming(finalText: final)
+                            self.drainQueuedPrompt()
                         }
                     case .failed:
                         // HudAIClient always finishes(throwing:) right after .failed,
@@ -679,13 +736,15 @@ final class PiChatSession: ObservableObject {
                 }
             } catch {
                 DispatchQueue.main.async { [weak self] in
-                    guard let self else { return }
+                    guard let self, self.turnGeneration == generation else { return }  // cancelled/stopped
+                    self.streamingTask = nil
                     self.isSending = false
                     DiagnosticLog.shared.error("Chat inference (HudAIClient) failed: \(error.localizedDescription)")
                     self.cancelPendingStreamingFlush()
                     self.removeMessageIfEmpty(id: messageID)
                     self.streamingMessageID = nil
                     self.handleInferenceFailure(error.localizedDescription)
+                    self.drainQueuedPrompt()
                 }
             }
         }
@@ -935,6 +994,58 @@ final class PiChatSession: ObservableObject {
         streamingTargetText = finalText
         streamingClosing = true
         startStreamingDrainIfNeeded()
+    }
+
+    /// Snap the active streaming message to everything received so far and stop the
+    /// drain — used before a new turn starts and when a turn is stopped. When
+    /// `interrupted`, tag the partial so it reads as deliberately cut off.
+    private func settleActiveStreamingMessage(interrupted: Bool) {
+        guard let id = streamingMessageID else { return }
+        let full = streamingTargetText
+        resetStreamingDrain()
+        streamingMessageID = nil
+        if full.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            removeMessageIfEmpty(id: id)
+        } else if interrupted {
+            updateAssistantMessage(id: id, text: full + "\n\n— stopped —")
+        } else {
+            updateAssistantMessage(id: id, text: full)
+        }
+    }
+
+    /// Fire the next queued prompt once the turn is idle (FIFO drain).
+    private func drainQueuedPrompt() {
+        guard !isSending, !queuedPrompts.isEmpty else { return }
+        let next = queuedPrompts.removeFirst()
+        send(next)
+    }
+
+    /// Stop button. Halts the in-flight turn (cancelling generation on the
+    /// HudAIClient path; the generation guard neutralizes the native path's stale
+    /// callbacks), settles the partial answer, then — if the composer has text —
+    /// sends it immediately as a redirect (steer). Empty draft = plain stop, and
+    /// any queued prompts still continue.
+    func interruptAndSteer() {
+        guard isSending else { return }
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        turnGeneration &+= 1
+        streamingTask?.cancel()
+        streamingTask = nil
+        isSending = false
+        statusText = "idle"
+        settleActiveStreamingMessage(interrupted: true)
+        if text.isEmpty {
+            drainQueuedPrompt()
+        } else {
+            draft = ""
+            send(text)
+        }
+    }
+
+    /// Remove a still-pending queued prompt (tapping its chip before it fires).
+    func removeQueuedPrompt(at index: Int) {
+        guard queuedPrompts.indices.contains(index) else { return }
+        queuedPrompts.remove(at: index)
     }
 
     private func removeMessageIfEmpty(id: UUID) {
@@ -1614,12 +1725,19 @@ final class PiChatSession: ObservableObject {
     }
 
     private func providerPrompt(for userText: String) -> String {
-        """
+        let knowledge = Self.capabilitiesGuide
+        let knowledgeBlock = knowledge.isEmpty ? "" : """
+
+            Lattices product knowledge (how the app works; cite the linked docs when a question goes deeper):
+            \(knowledge)
+            """
+        return """
         You are the Workspace Assistant, the in-app assistant for Lattices.
 
-        Use the structured context as ground truth. Answer naturally and concretely. For informational questions, explain what is currently configured and what the available choices mean.
+        Use the structured context as ground truth for this user's current configuration, and the product knowledge to explain how Lattices works and point to the right feature or doc. Answer naturally and concretely. For informational questions, explain what is currently configured and what the available choices mean.
 
         For setting changes, inspect or update the relevant local config with tools when available and safe. If you cannot apply the change, say so plainly and give the exact next step. Never claim a setting or file changed unless it actually changed.
+        \(knowledgeBlock)
 
         Structured context:
         \(assistantKnowledgeBrief())
@@ -1662,10 +1780,17 @@ final class PiChatSession: ObservableObject {
     }
 
     private func voiceQuestionPrompt(transcript: String) -> String {
-        """
+        let knowledge = Self.capabilitiesGuide
+        let knowledgeBlock = knowledge.isEmpty ? "" : """
+
+            Lattices product knowledge (how the app works):
+            \(knowledge)
+            """
+        return """
         You are the same Workspace Assistant used by Lattices chat, responding through the voice surface.
 
-        This is an informational question, not necessarily a command. Use the shared structured context below, answer naturally, and include concrete current settings when relevant. Keep it short enough for voice, but do not give a clipped yes/no answer.
+        This is an informational question, not necessarily a command. Use the shared structured context and product knowledge below, answer naturally, and include concrete current settings when relevant. Keep it short enough for voice, but do not give a clipped yes/no answer.
+        \(knowledgeBlock)
 
         Structured context:
         \(assistantKnowledgeBrief())

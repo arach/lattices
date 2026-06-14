@@ -23,9 +23,11 @@ enum HudsonKitSwitch {
     /// directly. Independent of the voice switch so each surface can be cut over
     /// on its own.
     ///
-    /// Flip at runtime:  `defaults write dev.lattices.app useHudAIChat -bool YES`
+    /// Canonical path for the in-app chat: the HudAIClient route gives a truly
+    /// cancellable stream (stop/steer), so it's on by default. Opt out at runtime:
+    /// `defaults write dev.lattices.app useHudAIChat -bool NO`
     static var useHudAIChat: Bool {
-        UserDefaults.standard.bool(forKey: "useHudAIChat")
+        UserDefaults.standard.object(forKey: "useHudAIChat") as? Bool ?? true
     }
 
     /// Whether the HudsonKit voice surface is compiled in
