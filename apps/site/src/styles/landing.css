@@ -100,6 +100,14 @@ code {
   transition: all 0.15s;
 }
 
+/* Buttons styled as nav links (e.g. theme toggle) need the chrome reset that <a> gets for free. */
+button.nav-link {
+  background: none;
+  border: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
 .nav-link:hover {
   color: var(--text);
   background: rgba(255, 255, 255, 0.05);
