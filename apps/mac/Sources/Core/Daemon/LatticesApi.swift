@@ -314,6 +314,22 @@ final class LatticesApi {
             Field(name: "events", type: "[object]", required: true, description: "Structured execution events"),
         ]))
 
+        api.model(ApiModel(name: "MouseShortcutConfig", fields: [
+            Field(name: "version", type: "int", required: true, description: "Mouse shortcut config version"),
+            Field(name: "tuning", type: "object", required: true, description: "Gesture recognition tuning values"),
+            Field(name: "rules", type: "[MouseShortcutRule]", required: true, description: "Ordered gesture rules"),
+        ]))
+
+        api.model(ApiModel(name: "MouseShortcutRule", fields: [
+            Field(name: "id", type: "string", required: true, description: "Stable rule identifier"),
+            Field(name: "enabled", type: "bool", required: true, description: "Whether the rule is active"),
+            Field(name: "device", type: "string|object", required: true, description: "Device selector, usually 'any'"),
+            Field(name: "trigger", type: "object", required: true, description: "Gesture trigger: { button, kind, direction?, shape? }"),
+            Field(name: "action", type: "object", required: true, description: "Primary action, usually { type: 'shortcut.send', shortcut }"),
+            Field(name: "actions", type: "[object]", required: false, description: "Optional multi-action sequence"),
+            Field(name: "visual", type: "object", required: false, description: "Optional gesture visual renderer metadata"),
+        ]))
+
         // ── Endpoints: Read ─────────────────────────────────────
 
         api.register(Endpoint(
@@ -2303,6 +2319,109 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
+            method: "mouse.shortcuts.get",
+            description: "Return the live mouse shortcut config and backing file path",
+            access: .read,
+            params: [],
+            returns: .custom("Mouse shortcut response: { ok, path, ruleCount, config }"),
+            handler: { _ in
+                try Self.mouseShortcutResponse(config: MouseShortcutStore.shared.currentConfig)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "mouse.shortcuts.reload",
+            description: "Reload mouse shortcuts from ~/.lattices/mouse-shortcuts.json without restarting the app",
+            access: .mutate,
+            params: [],
+            returns: .custom("Mouse shortcut response: { ok, path, ruleCount, config, reloaded }"),
+            handler: { _ in
+                let config = MouseShortcutStore.shared.reloadNow()
+                return try Self.mouseShortcutResponse(config: config, extra: ["reloaded": .bool(true)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "mouse.shortcuts.set",
+            description: "Replace the mouse shortcut config, persist it, and activate it immediately",
+            access: .mutate,
+            params: [
+                Param(name: "config", type: "object", required: true, description: "Full MouseShortcutConfig object; top-level config fields are also accepted"),
+            ],
+            returns: .custom("Mouse shortcut response: { ok, path, ruleCount, config, replaced }"),
+            handler: { params in
+                let config = try Self.decodeMouseShortcutConfig(from: params)
+                try Self.validateMouseShortcutConfig(config)
+                MouseShortcutStore.shared.replaceConfig(config)
+                return try Self.mouseShortcutResponse(
+                    config: MouseShortcutStore.shared.currentConfig,
+                    extra: ["replaced": .bool(true)]
+                )
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "mouse.shortcuts.upsert",
+            description: "Create or replace a single mouse shortcut rule, persist it, and activate it immediately",
+            access: .mutate,
+            params: [
+                Param(name: "rule", type: "object", required: true, description: "MouseShortcutRule object; top-level rule fields are also accepted"),
+            ],
+            returns: .custom("MouseShortcutConfig plus { created, rule }"),
+            handler: { params in
+                let rule = try Self.decodeMouseShortcutRule(from: params)
+                try Self.validateMouseShortcutRule(rule)
+                let created = MouseShortcutStore.shared.upsertRule(rule)
+                return try Self.mouseShortcutResponse(
+                    config: MouseShortcutStore.shared.currentConfig,
+                    extra: [
+                        "created": .bool(created),
+                        "rule": try Self.encodeJSON(rule),
+                    ]
+                )
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "mouse.shortcuts.remove",
+            description: "Remove a mouse shortcut rule by id, persist the config, and activate it immediately",
+            access: .mutate,
+            params: [
+                Param(name: "id", type: "string", required: true, description: "MouseShortcutRule id"),
+            ],
+            returns: .custom("MouseShortcutConfig plus { removed, id }"),
+            handler: { params in
+                guard let params else {
+                    throw RouterError.missingParam("id")
+                }
+                let id = try Self.requiredString(params, "id")
+                let removed = MouseShortcutStore.shared.removeRule(id: id)
+                return try Self.mouseShortcutResponse(
+                    config: MouseShortcutStore.shared.currentConfig,
+                    extra: [
+                        "removed": .bool(removed),
+                        "id": .string(id),
+                    ]
+                )
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "mouse.shortcuts.restoreDefaults",
+            description: "Restore the default mouse shortcut config and activate it immediately",
+            access: .mutate,
+            params: [],
+            returns: .custom("Mouse shortcut response: { ok, path, ruleCount, config, restoredDefaults }"),
+            handler: { _ in
+                MouseShortcutStore.shared.restoreDefaults()
+                return try Self.mouseShortcutResponse(
+                    config: MouseShortcutStore.shared.currentConfig,
+                    extra: ["restoredDefaults": .bool(true)]
+                )
+            }
+        ))
+
+        api.register(Endpoint(
             method: "api.schema",
             description: "Get the full API schema including all methods and models",
             access: .read,
@@ -2706,6 +2825,88 @@ private extension LatticesApi {
     static func encodeDeckValue<T: Encodable>(_ value: T) throws -> JSON {
         let data = try JSONEncoder().encode(value)
         return try JSONDecoder().decode(JSON.self, from: data)
+    }
+
+    static func encodeJSON<T: Encodable>(_ value: T) throws -> JSON {
+        let data = try JSONEncoder().encode(value)
+        return try JSONDecoder().decode(JSON.self, from: data)
+    }
+
+    static func decodeJSON<T: Decodable>(_ type: T.Type, from json: JSON, label: String) throws -> T {
+        let data = try JSONEncoder().encode(json)
+        do {
+            return try JSONDecoder().decode(T.self, from: data)
+        } catch {
+            throw RouterError.custom("Invalid \(label): \(error.localizedDescription)")
+        }
+    }
+
+    static func decodeMouseShortcutConfig(from json: JSON?) throws -> MouseShortcutConfig {
+        guard let json else {
+            throw RouterError.missingParam("config")
+        }
+        let configJSON = json["config"] ?? json
+        return try decodeJSON(MouseShortcutConfig.self, from: configJSON, label: "mouse shortcut config")
+    }
+
+    static func decodeMouseShortcutRule(from json: JSON?) throws -> MouseShortcutRule {
+        guard let json else {
+            throw RouterError.missingParam("rule")
+        }
+        let ruleJSON = json["rule"] ?? json
+        return try decodeJSON(MouseShortcutRule.self, from: ruleJSON, label: "mouse shortcut rule")
+    }
+
+    static func validateMouseShortcutConfig(_ config: MouseShortcutConfig) throws {
+        guard config.version >= 1 else {
+            throw RouterError.custom("Mouse shortcut config version must be >= 1")
+        }
+        var seen = Set<String>()
+        for rule in config.rules {
+            try validateMouseShortcutRule(rule)
+            guard seen.insert(rule.id).inserted else {
+                throw RouterError.custom("Duplicate mouse shortcut rule id: \(rule.id)")
+            }
+        }
+    }
+
+    static func validateMouseShortcutRule(_ rule: MouseShortcutRule) throws {
+        let trimmedID = rule.id.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedID.isEmpty else {
+            throw RouterError.custom("Mouse shortcut rule id cannot be empty")
+        }
+        let actions = rule.effectiveActions
+        guard !actions.isEmpty else {
+            throw RouterError.custom("Mouse shortcut rule \(rule.id) must define at least one action")
+        }
+        for action in actions {
+            switch action.type {
+            case .shortcutSend:
+                guard let shortcut = action.shortcut,
+                      shortcut.key != nil || shortcut.keyCode != nil else {
+                    throw RouterError.custom("shortcut.send action in \(rule.id) requires shortcut.key or shortcut.keyCode")
+                }
+            case .appActivate:
+                guard let app = action.app?.trimmingCharacters(in: .whitespacesAndNewlines), !app.isEmpty else {
+                    throw RouterError.custom("app.activate action in \(rule.id) requires app")
+                }
+            default:
+                break
+            }
+        }
+    }
+
+    static func mouseShortcutResponse(config: MouseShortcutConfig, extra: [String: JSON] = [:]) throws -> JSON {
+        var object: [String: JSON] = [
+            "ok": .bool(true),
+            "path": .string(MouseShortcutStore.shared.configURL.path),
+            "ruleCount": .int(config.rules.count),
+            "config": try encodeJSON(config),
+        ]
+        for (key, value) in extra {
+            object[key] = value
+        }
+        return .object(object)
     }
 
     static func parsePlacement(from json: JSON?) -> PlacementSpec? {

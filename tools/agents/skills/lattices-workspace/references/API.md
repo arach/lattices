@@ -198,6 +198,50 @@ Return recent diagnostic log entries from the daemon.
 
 ---
 
+## Mouse & Input
+
+Agents can create or update mouse gestures as data through the daemon. Prefer
+`shortcut.send` when a gesture should press a hotkey; do not require a named
+action for ordinary key chords.
+
+| Method | Type | Description |
+|--------|------|-------------|
+| `mouse.shortcuts.get` | read | Return `{ ok, path, ruleCount, config }` |
+| `mouse.shortcuts.upsert` | write | Create or replace one rule and activate it |
+| `mouse.shortcuts.remove` | write | Remove one rule and activate the new config |
+| `mouse.shortcuts.set` | write | Replace the full config |
+| `mouse.shortcuts.reload` | write | Reload `~/.lattices/mouse-shortcuts.json` without app restart |
+| `mouse.shortcuts.restoreDefaults` | write | Restore default mouse shortcuts |
+
+Example:
+
+```js
+await daemonCall('mouse.shortcuts.upsert', {
+  rule: {
+    id: 'middle-up-voice',
+    enabled: true,
+    device: 'any',
+    trigger: { button: 'middle', kind: 'drag', direction: 'up' },
+    action: {
+      type: 'shortcut.send',
+      shortcut: {
+        key: 'd',
+        keyCode: 2,
+        modifiers: ['control', 'option', 'shift', 'command']
+      }
+    }
+  }
+})
+```
+
+If a tool edits `~/.lattices/mouse-shortcuts.json` directly, call:
+
+```js
+await daemonCall('mouse.shortcuts.reload')
+```
+
+---
+
 ## Windows & Spaces
 
 | Method | Type | Description |

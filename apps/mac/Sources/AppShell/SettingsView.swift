@@ -1431,7 +1431,7 @@ struct SettingsContentView: View {
                                 .labelsHidden()
                         }
 
-                        Text("Rules live in ~/.lattices/mouse-shortcuts.json. The current defaults preserve the working setup: middle-click drag left/right switches Spaces and drag down opens the Screen Map overview.")
+                        Text("Rules live in ~/.lattices/mouse-shortcuts.json. Defaults include middle-click drag left/right for Spaces, down for Screen Map, and up for the Voice Command hotkey.")
                             .font(Typo.caption(9))
                             .foregroundColor(Palette.textMuted.opacity(0.7))
 

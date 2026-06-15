@@ -12,8 +12,9 @@ Mouse gestures are a user-level shortcut system for the macOS app. Hold a
 configured mouse button, draw a direction or shape, then release to run the
 matched action.
 
-The app code owns the recognizer, action dispatcher, and JSON schema. Your
-actual gesture mappings live in:
+The app code owns the recognizer, action dispatcher, and JSON schema. The
+gesture mappings are data, so agents can define or change hotkeys without
+adding a named action in Swift. Your actual gesture mappings live in:
 
 ```bash
 ~/.lattices/mouse-shortcuts.json
@@ -35,6 +36,16 @@ There are two layers:
 Do not add personal shortcuts by changing `MouseGestureConfig.swift`. Add them
 to the user JSON file instead. The Settings UI can open that file from
 **Settings -> Shortcuts -> Mouse Gestures -> Configure...**.
+
+Agents should usually write these rules through the daemon:
+
+```js
+await daemonCall('mouse.shortcuts.upsert', { rule })
+```
+
+The daemon persists the rule, snapshots the old config, and refreshes the
+running app immediately. If a tool edits `~/.lattices/mouse-shortcuts.json`
+directly, call `mouse.shortcuts.reload` afterward; no app restart is required.
 
 ## Lightweight History
 
@@ -100,6 +111,32 @@ The circle recognizer is intentionally generous: it looks for broad circular
 motion, a reasonably closed path, and enough turn coverage rather than a
 geometrically perfect circle.
 
+## Default: Dictation Gesture
+
+New default configs use a plain shortcut action for dictation. The middle-button
+up gesture sends the Lattices voice command hotkey, currently Hyper+D:
+
+```json
+{
+  "id": "dictation",
+  "enabled": true,
+  "device": "any",
+  "trigger": {
+    "button": "middle",
+    "kind": "drag",
+    "direction": "up"
+  },
+  "action": {
+    "type": "shortcut.send",
+    "shortcut": {
+      "key": "d",
+      "keyCode": 2,
+      "modifiers": ["control", "option", "shift", "command"]
+    }
+  }
+}
+```
+
 ## Default: Screenshot Area Gesture
 
 New default configs include a back-button circle gesture for the macOS
@@ -139,7 +176,7 @@ Supported action types include:
 | `space.previous` | Switch to the previous macOS Space |
 | `space.next` | Switch to the next macOS Space |
 | `screenmap.toggle` | Open the Screen Map overview |
-| `dictation.start` | Start dictation |
+| `dictation.start` | Legacy compatibility alias that presses the configured Voice Command hotkey |
 | `shortcut.send` | Send a keyboard shortcut |
 | `app.activate` | Activate an app by name |
 

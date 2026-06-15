@@ -517,6 +517,68 @@ Return recent diagnostic log entries from the daemon.
 
 ---
 
+## Mouse & Input
+
+| Method | Type | Description |
+|--------|------|-------------|
+| `mouse.find` | read | Show a sonar pulse at the current cursor |
+| `mouse.summon` | write | Move the cursor to a point or screen center |
+| `mouse.shortcuts.get` | read | Return the live mouse shortcut config |
+| `mouse.shortcuts.reload` | write | Reload `~/.lattices/mouse-shortcuts.json` without restarting |
+| `mouse.shortcuts.set` | write | Replace the full mouse shortcut config and activate it |
+| `mouse.shortcuts.upsert` | write | Create or replace one mouse shortcut rule and activate it |
+| `mouse.shortcuts.remove` | write | Remove one mouse shortcut rule and activate the new config |
+| `mouse.shortcuts.restoreDefaults` | write | Restore default mouse shortcuts |
+
+Mouse shortcut rules are data. Prefer `shortcut.send` for hotkeys an agent can
+define or change directly; do not add a named action unless the behavior cannot
+be expressed as data.
+
+Create or replace a gesture that sends Hyper+D:
+
+```js
+await daemonCall('mouse.shortcuts.upsert', {
+  rule: {
+    id: 'middle-up-voice',
+    enabled: true,
+    device: 'any',
+    trigger: { button: 'middle', kind: 'drag', direction: 'up' },
+    action: {
+      type: 'shortcut.send',
+      shortcut: {
+        key: 'd',
+        keyCode: 2,
+        modifiers: ['control', 'option', 'shift', 'command']
+      }
+    }
+  }
+})
+```
+
+If an agent edits `~/.lattices/mouse-shortcuts.json` itself, refresh the running
+app explicitly:
+
+```js
+await daemonCall('mouse.shortcuts.reload')
+```
+
+All write methods persist the config, checkpoint the previous version in
+`~/.lattices/mouse-shortcuts.history/`, and update the active event-tap snapshot
+immediately. No app restart is required.
+
+Supported action types:
+
+| Type | Purpose |
+|------|---------|
+| `shortcut.send` | Send a data-defined key or keyCode with modifiers |
+| `app.activate` | Activate an app by name |
+| `space.previous` | Switch to the previous macOS Space |
+| `space.next` | Switch to the next macOS Space |
+| `screenmap.toggle` | Open the Screen Map overview |
+| `dictation.start` | Legacy alias that presses the configured Voice Command hotkey |
+
+---
+
 ## Windows & Spaces
 
 | Method | Type | Description |
