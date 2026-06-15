@@ -1,0 +1,39 @@
+@import "tailwindcss";
+@import "hudsonkit/styles";
+@import "studio/theme.css";
+@import "studio/doc.css";
+@import "studio/shell.css";
+
+@source "../app/**/*.{ts,tsx}";
+@source "../src/**/*.{ts,tsx}";
+@source "../node_modules/hudsonkit/src/**/*.{ts,tsx}";
+@source "../node_modules/studio/src/**/*.{ts,tsx}";
+
+@theme inline {
+  --color-studio-canvas: var(--studio-canvas);
+  --color-studio-canvas-alt: var(--studio-canvas-alt);
+  --color-studio-surface: var(--studio-surface);
+  --color-studio-ink: var(--studio-ink);
+  --color-studio-ink-strong: var(--studio-ink-strong);
+  --color-studio-ink-faint: var(--studio-ink-faint);
+  --color-studio-edge: var(--studio-edge);
+  --color-studio-rule: var(--studio-rule);
+  --color-studio-rule-strong: var(--studio-rule-strong);
+  --color-studio-chip-bg: var(--studio-chip-bg);
+  --color-studio-chip-border: var(--studio-chip-border);
+  --color-scout-accent: var(--scout-accent);
+  --color-scout-accent-soft: var(--scout-accent-soft);
+  --tracking-eyebrow: 0.18em;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--studio-canvas);
+  color: var(--studio-ink);
+  font-family: var(--studio-font-sans);
+}
