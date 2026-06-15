@@ -6,38 +6,68 @@ struct GridPlacement: Equatable {
     let rows: Int
     let column: Int
     let row: Int
+    /// How many cells this placement spans. 1×1 is a single cell; larger values
+    /// tile the window across a rectangular block of cells (e.g. a 2×2 quadrant
+    /// of a 4×4 grid). `column + columnSpan <= columns` always holds.
+    let columnSpan: Int
+    let rowSpan: Int
 
-    init?(columns: Int, rows: Int, column: Int, row: Int) {
+    init?(columns: Int, rows: Int, column: Int, row: Int, columnSpan: Int = 1, rowSpan: Int = 1) {
         guard columns > 0, rows > 0,
-              column >= 0, column < columns,
-              row >= 0, row < rows else { return nil }
+              column >= 0, row >= 0,
+              columnSpan >= 1, rowSpan >= 1,
+              column + columnSpan <= columns,
+              row + rowSpan <= rows else { return nil }
         self.columns = columns
         self.rows = rows
         self.column = column
         self.row = row
+        self.columnSpan = columnSpan
+        self.rowSpan = rowSpan
+    }
+
+    /// Build from two (possibly unordered) cell corners, both inclusive.
+    init?(columns: Int, rows: Int, from: (col: Int, row: Int), to: (col: Int, row: Int)) {
+        let c0 = min(from.col, to.col), c1 = max(from.col, to.col)
+        let r0 = min(from.row, to.row), r1 = max(from.row, to.row)
+        self.init(columns: columns, rows: rows, column: c0, row: r0,
+                  columnSpan: c1 - c0 + 1, rowSpan: r1 - r0 + 1)
     }
 
     static func parse(_ str: String) -> GridPlacement? {
         let parts = str.split(separator: ":")
         guard parts.count == 3, parts[0] == "grid" else { return nil }
         let dims = parts[1].split(separator: "x")
-        let coords = parts[2].split(separator: ",")
-        guard dims.count == 2, coords.count == 2,
-              let columns = Int(dims[0]), let rows = Int(dims[1]),
-              let column = Int(coords[0]), let row = Int(coords[1]) else {
-            return nil
+        guard dims.count == 2, let columns = Int(dims[0]), let rows = Int(dims[1]) else { return nil }
+
+        // Coordinates are either a single cell ("c,r") or an inclusive span
+        // between two corners ("c0,r0-c1,r1", e.g. "grid:4x4:0,0-1,1").
+        func cell(_ s: Substring) -> (col: Int, row: Int)? {
+            let xy = s.split(separator: ",")
+            guard xy.count == 2, let c = Int(xy[0]), let r = Int(xy[1]) else { return nil }
+            return (c, r)
         }
-        return GridPlacement(columns: columns, rows: rows, column: column, row: row)
+        let corners = parts[2].split(separator: "-", maxSplits: 1)
+        guard let start = cell(corners[0]) else { return nil }
+        if corners.count == 2 {
+            guard let end = cell(corners[1]) else { return nil }
+            return GridPlacement(columns: columns, rows: rows, from: start, to: end)
+        }
+        return GridPlacement(columns: columns, rows: rows, column: start.col, row: start.row)
     }
 
     var fractions: (CGFloat, CGFloat, CGFloat, CGFloat) {
         let w = 1.0 / CGFloat(columns)
         let h = 1.0 / CGFloat(rows)
-        return (CGFloat(column) * w, CGFloat(row) * h, w, h)
+        return (CGFloat(column) * w, CGFloat(row) * h, CGFloat(columnSpan) * w, CGFloat(rowSpan) * h)
     }
 
+    /// True when this placement covers exactly one cell.
+    var isSingleCell: Bool { columnSpan == 1 && rowSpan == 1 }
+
     var wireValue: String {
-        "grid:\(columns)x\(rows):\(column),\(row)"
+        if isSingleCell { return "grid:\(columns)x\(rows):\(column),\(row)" }
+        return "grid:\(columns)x\(rows):\(column),\(row)-\(column + columnSpan - 1),\(row + rowSpan - 1)"
     }
 }
 
@@ -101,11 +131,14 @@ enum PlacementSpec: Equatable {
             guard let value = obj["value"]?.stringValue else { return nil }
             self.init(string: value)
         case "grid":
+            let columnSpan = obj["columnSpan"]?.intValue ?? 1
+            let rowSpan = obj["rowSpan"]?.intValue ?? 1
             guard let columns = obj["columns"]?.intValue,
                   let rows = obj["rows"]?.intValue,
                   let column = obj["column"]?.intValue,
                   let row = obj["row"]?.intValue,
-                  let grid = GridPlacement(columns: columns, rows: rows, column: column, row: row) else {
+                  let grid = GridPlacement(columns: columns, rows: rows, column: column, row: row,
+                                           columnSpan: columnSpan, rowSpan: rowSpan) else {
                 return nil
             }
             self = .grid(grid)
@@ -164,6 +197,8 @@ enum PlacementSpec: Equatable {
                 "rows": .int(grid.rows),
                 "column": .int(grid.column),
                 "row": .int(grid.row),
+                "columnSpan": .int(grid.columnSpan),
+                "rowSpan": .int(grid.rowSpan),
             ])
         case .fractions(let placement):
             return .object([

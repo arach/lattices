@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import Carbon
 import CoreGraphics
 
 private enum MouseGestureAccessory {
@@ -1037,7 +1038,7 @@ final class MouseGestureController: ObservableObject {
             ScreenMapWindowController.shared.showScreenMapOverview()
             return GestureOutcome(label: "Screen Map Overview", success: true, accessory: nil)
         case .dictationStart:
-            let sent = sendDictationShortcut()
+            let sent = sendVoiceCommandShortcut()
             let shouldRenderHUD = Preferences.shared.mouseGestureHUDVisualEnabled
             if sent, Preferences.shared.mouseGestureHUDAudioEnabled {
                 AppFeedback.shared.playTapSound()
@@ -1253,14 +1254,24 @@ final class MouseGestureController: ObservableObject {
         return result == "ok"
     }
 
-    private func sendDictationShortcut() -> Bool {
-        sendShortcut(
+    private func sendVoiceCommandShortcut() -> Bool {
+        guard let binding = HotkeyStore.shared.bindings[.voiceCommand] else { return false }
+        return sendShortcut(
             MouseShortcutKeyStroke(
-                key: "a",
-                keyCode: 0,
-                modifiers: [.command, .shift]
+                key: KeyBinding.keyName(for: binding.keyCode),
+                keyCode: Int(binding.keyCode),
+                modifiers: mouseModifiers(from: binding.carbonModifiers)
             )
         )
+    }
+
+    private func mouseModifiers(from carbonModifiers: UInt32) -> [MouseShortcutModifier] {
+        var modifiers: [MouseShortcutModifier] = []
+        if carbonModifiers & UInt32(controlKey) != 0 { modifiers.append(.control) }
+        if carbonModifiers & UInt32(optionKey) != 0 { modifiers.append(.option) }
+        if carbonModifiers & UInt32(shiftKey) != 0 { modifiers.append(.shift) }
+        if carbonModifiers & UInt32(cmdKey) != 0 { modifiers.append(.command) }
+        return modifiers
     }
 
     private func sendShortcutWithCGEvent(_ shortcut: MouseShortcutKeyStroke) -> Bool {

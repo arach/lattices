@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type PkgManager = "npm" | "pnpm" | "bun";
 
@@ -152,6 +152,16 @@ export default function App() {
   const [pm, setPm] = useState<PkgManager>("npm");
   const [copied, setCopied] = useState(false);
   const [paneLayout, setPaneLayout] = useState<PaneLayout>(2);
+  // Initial theme is set synchronously by the inline script in index.html
+  // (saved choice → system preference → dark). This re-syncs on toggle.
+  const [theme, setTheme] = useState<"light" | "dark">(
+    () => (document.documentElement.getAttribute("data-theme") as "light" | "dark") || "dark",
+  );
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("theme", theme);
+  }, [theme]);
 
   const copy = async () => {
     await navigator.clipboard.writeText(commands[pm]);
@@ -184,6 +194,14 @@ export default function App() {
             <a href="#app" className="nav-link">
               App
             </a>
+            <button
+              type="button"
+              className="nav-link"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+            >
+              Theme
+            </button>
             <a
               href="https://github.com/arach/lattices"
               target="_blank"

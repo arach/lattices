@@ -65,6 +65,11 @@ final class OmniSearchState: ObservableObject {
     @Published var selectedIndex: Int = 0
     @Published var activitySummary: ActivitySummary?
 
+    /// Command mode: a leading "/" routes to the command engine (placement +
+    /// window actions) instead of search, reusing the standalone bar's logic.
+    let command = CommandBarState()
+    var commandMode: Bool { query.hasPrefix("/") }
+
     private var cancellables = Set<AnyCancellable>()
     private var debounceTimer: AnyCancellable?
 
@@ -76,11 +81,16 @@ final class OmniSearchState: ObservableObject {
             .sink { [weak self] q in
                 guard let self else { return }
                 self.fullSearchTask?.cancel()
+                if q.hasPrefix("/") {                       // command mode
+                    self.command.query = String(q.dropFirst())
+                    self.results = []
+                    return
+                }
                 if q.isEmpty {
                     self.results = []
                     self.refreshSummary()
                 } else if q.count == 1 {
-                    self.quickSearch(q)
+                    self.results = []          // require ≥2 chars — a single letter matches too much
                 } else {
                     self.fullSearchTask = DispatchWorkItem { [weak self] in
                         self?.search(q)
@@ -88,6 +98,11 @@ final class OmniSearchState: ObservableObject {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: self.fullSearchTask!)
                 }
             }
+
+        // Surface nested command-engine changes to views observing this state.
+        command.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
 
         refreshSummary()
     }
@@ -143,7 +158,13 @@ final class OmniSearchState: ObservableObject {
                 guard let wid = hit["wid"]?.uint32Value else { continue }
                 let app = hit["app"]?.stringValue ?? ""
                 let title = hit["title"]?.stringValue ?? ""
-                let score = hit["score"]?.intValue ?? 0
+                var score = hit["score"]?.intValue ?? 0
+                // Rank prefix / word-start matches above mid-word substring hits.
+                if app.lowercased().hasPrefix(q) || title.lowercased().hasPrefix(q) {
+                    score += 6
+                } else if title.lowercased().split(separator: " ").contains(where: { $0.hasPrefix(q) }) {
+                    score += 3
+                }
                 let pid = desktop.windows[wid]?.pid ?? 0
                 let sources = (hit["matchSources"]?.arrayValue ?? []).compactMap(\.stringValue)
 
@@ -217,6 +238,7 @@ final class OmniSearchState: ObservableObject {
     // MARK: - Navigation
 
     func moveSelection(_ delta: Int) {
+        if commandMode { command.moveSelection(delta); return }
         guard !results.isEmpty else { return }
         selectedIndex = max(0, min(results.count - 1, selectedIndex + delta))
     }

@@ -1,0 +1,9 @@
+# Next.js / build artifacts
+.next/
+.studio/
+out/
+node_modules/
+
+# misc
+*.tsbuildinfo
+.DS_Store

@@ -18,7 +18,7 @@ enum HotkeyBootstrap {
         }
         store.register(action: .voiceCommand) {
             DiagnosticLog.shared.info("Hotkey: voiceCommand triggered")
-            VoiceCommandWindow.shared.toggle()
+            UnifiedCommandBarWindow.shared.toggle(mode: .voice)
         }
         store.register(action: .handsOff) {
             DiagnosticLog.shared.info("Hotkey: handsOff triggered")
@@ -32,7 +32,9 @@ enum HotkeyBootstrap {
         store.register(action: .hud) { HUDController.shared.toggle() }
         store.register(action: .mouseFinder) { MouseFinder.shared.find() }
         store.register(action: .overlayActors) { ScreenOverlayCanvasController.shared.toggleAgentActorsVisibility() }
-        store.register(action: .omniSearch) { OmniSearchWindow.shared.toggle() }
+        store.register(action: .omniSearch) { UnifiedCommandBarWindow.shared.toggle(mode: .search) }
+        store.register(action: .gridPlacement) { GridPlacementWindow.shared.toggle() }
+        store.register(action: .commandBar) { UnifiedCommandBarWindow.shared.toggle(mode: .command) }
         store.register(action: .activityLog) {
             DiagnosticLog.shared.info("Hotkey: activityLog triggered")
             ScreenMapWindowController.shared.showPage(.activity)

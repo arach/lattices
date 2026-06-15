@@ -93,7 +93,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         coordinator.registerSurface(id: "permissionsAssistant") { PermissionsAssistantWindowController.shared.isVisible }
         coordinator.registerSurface(id: "permissionDragAssistant") { PermissionDragAssistantWindowController.shared.isVisible }
         coordinator.registerSurface(id: "screenMap") { ScreenMapWindowController.shared.isVisible }
-        coordinator.registerSurface(id: "omniSearch") { OmniSearchWindow.shared.isVisible }
+        coordinator.registerSurface(id: "unifiedCommandBar") { UnifiedCommandBarWindow.shared.isVisible }
+        coordinator.registerSurface(id: "gridPlacement") { GridPlacementWindow.shared.isVisible }
     }
 
     private func installSystemInputBoundaryObservers() {

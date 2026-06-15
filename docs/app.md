@@ -170,7 +170,7 @@ Settings > Privacy & Security for all three paths to work.
 
 > See [Voice Commands](/docs/voice) for the full guide.
 
-Press **Hyper+3** to open the voice command window. Hold **Option** to
+Press **Hyper+D** to open the voice command window. Hold **Option** to
 speak, release to stop. Lattices transcribes via Vox, matches to an
 intent, and executes. Built-in commands: find, show, open, tile, kill, scan.
 
@@ -246,8 +246,9 @@ Shows keyboard shortcut reference:
 | Cmd+Shift+M       | Open command palette |
 | Hyper+1            | Screen map           |
 | Hyper+2            | Window bezel         |
-| Hyper+3            | Voice commands       |
-| Hyper+4            | Desktop inventory    |
+| Hyper+3            | HUD                  |
+| Hyper+D            | Voice commands       |
+| Hyper+G            | Desktop inventory    |
 | Hyper+5            | Omni search          |
 | Hyper+6            | Cheat sheet          |
 | Hyper+B            | Hide/show persistent overlay actors |
@@ -298,7 +299,7 @@ Agents can use this to "see" what's on screen.
 
 ### Desktop Inventory integration
 
-The Desktop Inventory view (Hyper+4) uses OCR to make windows searchable
+The Desktop Inventory view (Hyper+G) uses OCR to make windows searchable
 by their content — not just by title or app name. When you type a search
 query, windows matching by OCR content show contextual snippets.
 

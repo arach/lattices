@@ -9,6 +9,7 @@ struct SettingsContentView: View {
         case shortcuts
         case mouse
         case hyperspace
+        case voice
         case ai
         case search
         case companion
@@ -21,6 +22,7 @@ struct SettingsContentView: View {
             case .shortcuts: return "Shortcuts"
             case .mouse: return "Mouse"
             case .hyperspace: return "Hyperspace"
+            case .voice: return "Voice"
             case .ai: return "AI"
             case .search: return "Search & OCR"
             case .companion: return "LATS iOS Companion"
@@ -33,6 +35,7 @@ struct SettingsContentView: View {
             case .shortcuts: return "command"
             case .mouse: return "computermouse"
             case .hyperspace: return "square.grid.3x3.fill"
+            case .voice: return "mic"
             case .ai: return "sparkles"
             case .search: return "text.viewfinder"
             case .companion: return "ipad.and.iphone"
@@ -45,6 +48,7 @@ struct SettingsContentView: View {
             case .shortcuts: return "Controls"
             case .mouse: return "Input"
             case .hyperspace: return "Survey"
+            case .voice: return "Capture"
             case .ai: return "Agents"
             case .search: return "Indexing"
             case .companion: return "Local Bridge"
@@ -60,13 +64,35 @@ struct SettingsContentView: View {
             case .mouse:
                 return "Middle-click gestures, HUD confirmation, and rule configuration."
             case .hyperspace:
-                return "Lighting, zoom, and layout for the window survey."
+                return "Per-display window surveys, lighting, zoom, and layout for Hyperspace."
+            case .voice:
+                return "Vox capture, mic ownership, command shortcuts, and the provider-backed voice model."
             case .ai:
-                return "Provider auth, chat readiness, and voice advisor state."
+                return "Provider auth, chat readiness, and assistant runtime state."
             case .search:
                 return "OCR cadence, quality, and recent capture visibility."
             case .companion:
                 return "Local-network pairing, trusted iPad devices, and bridge security."
+            }
+        }
+
+        var group: String {
+            switch self {
+            case .general, .shortcuts:
+                return "Workspace"
+            case .mouse, .hyperspace, .voice:
+                return "Control"
+            case .ai, .search:
+                return "Intelligence"
+            case .companion:
+                return "Devices"
+            }
+        }
+
+        static var groupedCases: [(String, [SettingsSection])] {
+            ["Workspace", "Control", "Intelligence", "Devices"].compactMap { group in
+                let sections = allCases.filter { $0.group == group }
+                return sections.isEmpty ? nil : (group, sections)
             }
         }
     }
@@ -83,9 +109,13 @@ struct SettingsContentView: View {
     @ObservedObject var mouseGestureController: MouseGestureController = .shared
     @ObservedObject var keyboardRemapController: KeyboardRemapController = .shared
     @ObservedObject var assistantSession: PiChatSession = .shared
+    @ObservedObject var audioLayer: AudioLayer = .shared
+    @ObservedObject var handsOffSession: HandsOffSession = .shared
+    @ObservedObject var desktopModel: DesktopModel = .shared
     var onBack: (() -> Void)? = nil
 
     @State private var selectedTab: SettingsSection = .general
+    @State private var voiceRefreshRevision = 0
     @FocusState private var assistantAuthFieldFocused: Bool
 
     // Hyperspace survey dials — same UserDefaults keys (and defaults) the in-survey
@@ -216,9 +246,21 @@ struct SettingsContentView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            VStack(spacing: 6) {
-                ForEach(SettingsSection.allCases) { section in
-                    settingsTab(section)
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(SettingsSection.groupedCases, id: \.0) { group, sections in
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(group.uppercased())
+                            .font(Typo.pixel(11))
+                            .foregroundColor(Palette.textDim.opacity(0.85))
+                            .tracking(1.2)
+                            .padding(.horizontal, 4)
+
+                        VStack(spacing: 4) {
+                            ForEach(sections) { section in
+                                settingsTab(section)
+                            }
+                        }
+                    }
                 }
             }
 
@@ -251,14 +293,14 @@ struct SettingsContentView: View {
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .contentShape(RoundedRectangle(cornerRadius: 8))
+            .frame(height: 38)
+            .contentShape(RoundedRectangle(cornerRadius: 7))
             .background(
                 ZStack {
                     if active {
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color.white.opacity(0.06))
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: 7)
+                            .fill(Color.white.opacity(0.055))
+                        RoundedRectangle(cornerRadius: 7)
                             .strokeBorder(
                                 LinearGradient(
                                     colors: [Color.white.opacity(0.12), Color.white.opacity(0.04)],
@@ -270,8 +312,15 @@ struct SettingsContentView: View {
                     }
                 }
             )
+            .overlay(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(active ? Palette.running : Color.clear)
+                    .frame(width: 2)
+                    .padding(.vertical, 8)
+            }
         }
         .buttonStyle(.plain)
+        .help(section.title)
     }
 
     private func settingsSectionHero(_ section: SettingsSection) -> some View {
@@ -307,6 +356,8 @@ struct SettingsContentView: View {
             mouseGesturesContent
         case .hyperspace:
             hyperspaceContent
+        case .voice:
+            voiceContent
         case .ai:
             aiContent
         case .search:
@@ -1380,7 +1431,7 @@ struct SettingsContentView: View {
                                 .labelsHidden()
                         }
 
-                        Text("Rules live in ~/.lattices/mouse-shortcuts.json. The current defaults preserve the working setup: middle-click drag left/right switches Spaces and drag down opens the Screen Map overview.")
+                        Text("Rules live in ~/.lattices/mouse-shortcuts.json. Defaults include middle-click drag left/right for Spaces, down for Screen Map, and up for the Voice Command hotkey.")
                             .font(Typo.caption(9))
                             .foregroundColor(Palette.textMuted.opacity(0.7))
 
@@ -1940,6 +1991,28 @@ struct SettingsContentView: View {
     private var hyperspaceContent: some View {
         ScrollView {
             VStack(spacing: 12) {
+                // ── Displays ──
+                settingsCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        ocrSectionLabel("Displays")
+
+                        Text("Hyperspace opens a separate survey on each display with windows. Nothing moves until you select and gather on that display.")
+                            .font(Typo.caption(10))
+                            .foregroundColor(Palette.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        LazyVGrid(
+                            columns: [GridItem(.adaptive(minimum: 150, maximum: 220), spacing: 8, alignment: .top)],
+                            alignment: .leading,
+                            spacing: 8
+                        ) {
+                            ForEach(Array(NSScreen.screens.enumerated()), id: \.offset) { index, screen in
+                                hyperspaceDisplayTile(index: index, screen: screen)
+                            }
+                        }
+                    }
+                }
+
                 // ── Lighting ──
                 settingsCard {
                     VStack(alignment: .leading, spacing: 12) {
@@ -2036,6 +2109,56 @@ struct SettingsContentView: View {
         }
     }
 
+    private func hyperspaceDisplayTile(index: Int, screen: NSScreen) -> some View {
+        let windows = hyperspaceWindowCount(on: screen)
+        let name = index == 0 ? "Main display" : "Display \(index + 1)"
+        let size = "\(Int(screen.frame.width))×\(Int(screen.frame.height))"
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 7) {
+                Image(systemName: index == 0 ? "display" : "rectangle.on.rectangle")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(windows > 0 ? Palette.running : Palette.textMuted)
+                    .frame(width: 16)
+
+                Text(name)
+                    .font(Typo.monoBold(10.5))
+                    .foregroundColor(Palette.text)
+                    .lineLimit(1)
+
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: 6) {
+                Text(size)
+                    .font(Typo.caption(9.5))
+                    .foregroundColor(Palette.textMuted)
+                Spacer(minLength: 0)
+                Text("\(windows)")
+                    .font(Typo.monoBold(11))
+                    .foregroundColor(windows > 0 ? Palette.running : Palette.textMuted)
+                Text(windows == 1 ? "window" : "windows")
+                    .font(Typo.caption(9.5))
+                    .foregroundColor(Palette.textMuted)
+            }
+        }
+        .padding(10)
+        .background(shortcutsInsetPanel)
+    }
+
+    private func hyperspaceWindowCount(on screen: NSScreen) -> Int {
+        desktopModel.allWindows().filter { entry in
+            entry.pid != ProcessInfo.processInfo.processIdentifier &&
+            entry.isOnScreen &&
+            !entry.title.isEmpty &&
+            hyperspaceEntry(entry, isOn: screen)
+        }.count
+    }
+
+    private func hyperspaceEntry(_ entry: WindowEntry, isOn screen: NSScreen) -> Bool {
+        ObjectIdentifier(WindowTiler.screenForWindowFrame(entry.frame)) == ObjectIdentifier(screen)
+    }
+
     // A labeled lighting slider (0…1) with a right-aligned readout.
     private func hsSlider(_ icon: String, _ title: String, _ value: Binding<Double>,
                           readout: @escaping (Double) -> String) -> some View {
@@ -2101,6 +2224,239 @@ struct SettingsContentView: View {
     }
 
     private func hsPercent(_ v: Double) -> String { "\(Int((v * 100).rounded()))%" }
+
+    // MARK: - Voice
+
+    private var voiceContent: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                voiceCaptureCard
+                voiceModelCard
+                voiceShortcutsCard
+            }
+            .padding(16)
+            .frame(maxWidth: 760, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .onAppear {
+            assistantSession.prepareForDisplay()
+        }
+    }
+
+    private var voiceCaptureCard: some View {
+        _ = voiceRefreshRevision
+        let info = VoxDaemon.info()
+        let isRunning = info != nil
+        let providerAvailable = audioLayer.provider?.isAvailable ?? false
+        let installed = voiceVoxAppURL() != nil || FileManager.default.fileExists(atPath: NSHomeDirectory() + "/.vox")
+
+        return settingsCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .center, spacing: 10) {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(voiceCaptureTint(isRunning: isRunning, installed: installed).opacity(0.13))
+                        .overlay(
+                            Image(systemName: isRunning ? "mic.fill" : (installed ? "mic.badge.plus" : "mic.slash"))
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(voiceCaptureTint(isRunning: isRunning, installed: installed))
+                        )
+                        .frame(width: 30, height: 30)
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Voice capture")
+                            .font(Typo.mono(12))
+                            .foregroundColor(Palette.text)
+                        Text(voiceCaptureSummary(isRunning: isRunning, installed: installed, providerAvailable: providerAvailable))
+                            .font(Typo.caption(9.5))
+                            .foregroundColor(Palette.textMuted)
+                    }
+
+                    Spacer()
+
+                    aiStatusPill(isRunning ? "VOX LIVE" : (installed ? "VOX OFF" : "NO VOX"), tint: voiceCaptureTint(isRunning: isRunning, installed: installed))
+                }
+
+                Text("Lattices borrows Vox for microphone capture and transcription. Choose the physical microphone in Vox; Lattices receives final text and routes it through workspace intents.")
+                    .font(Typo.caption(10))
+                    .foregroundColor(Palette.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    voiceFactRow("Mic selection", value: "Vox audio input", detail: "Open Vox to change the actual device.")
+                    voiceFactRow("Capture daemon", value: isRunning ? "127.0.0.1:\(info?.port ?? VoxDaemon.fallbackPort)" : "not running", detail: info.map { "pid \($0.pid) · v\($0.version)" } ?? "Starts on demand when possible.")
+                    voiceFactRow("Provider", value: audioLayer.providerName, detail: providerAvailable ? "Ready for Lattices voice capture." : "Waiting for Vox availability.")
+                }
+                .padding(10)
+                .background(shortcutsInsetPanel)
+
+                HStack(spacing: 8) {
+                    aiActionButton(installed ? "Open Vox" : "Find Vox", tint: installed ? Palette.running : Palette.detach) {
+                        openVoxApp()
+                    }
+
+                    aiActionButton("Refresh", tint: Palette.textMuted) {
+                        voiceRefreshRevision += 1
+                    }
+
+                    Spacer()
+                }
+            }
+        }
+    }
+
+    private var voiceModelCard: some View {
+        settingsCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .center, spacing: 10) {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(assistantTint.opacity(0.13))
+                        .overlay(
+                            Image(systemName: "brain.head.profile")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(assistantTint)
+                        )
+                        .frame(width: 30, height: 30)
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Voice model")
+                            .font(Typo.mono(12))
+                            .foregroundColor(Palette.text)
+                        Text("Local resolver first, Assistant provider when language needs interpretation.")
+                            .font(Typo.caption(9.5))
+                            .foregroundColor(Palette.textMuted)
+                    }
+
+                    Spacer()
+
+                    aiStatusPill(assistantStatusLabel, tint: assistantTint)
+                }
+
+                HStack(spacing: 8) {
+                    Text("Assistant provider")
+                        .font(Typo.mono(10))
+                        .foregroundColor(Palette.textDim)
+
+                    Picker("", selection: $assistantSession.authProviderID) {
+                        ForEach(assistantSession.providerOptions) { provider in
+                            Text(provider.name).tag(provider.id)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .frame(minWidth: 190)
+
+                    aiStatusPill(
+                        assistantSession.currentProvider.authMode == .oauth ? "OAUTH" : "API KEY",
+                        tint: assistantSession.currentProvider.authMode == .oauth ? Palette.detach : Palette.running
+                    )
+
+                    Spacer()
+                }
+
+                Text(assistantSession.currentProvider.helpText)
+                    .font(Typo.caption(9.5))
+                    .foregroundColor(Palette.textMuted.opacity(0.78))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                cardDivider
+
+                VStack(alignment: .leading, spacing: 8) {
+                    voiceFactRow("Command path", value: "Local intents", detail: "Fast phrase matching handles common tiling, focus, launch, and search commands.")
+                    voiceFactRow("Fallback path", value: assistantSession.currentProvider.name, detail: "Advisor, resolver, repair, and voice questions use the selected Assistant provider.")
+                    voiceFactRow("Runtime", value: assistantSession.hasPiBinary ? "Pi installed" : "Pi missing", detail: assistantSession.piBinaryPath ?? "Install Pi to enable provider-backed voice.")
+                }
+                .padding(10)
+                .background(shortcutsInsetPanel)
+
+                HStack(spacing: 8) {
+                    aiActionButton("Manage Auth", tint: Palette.running) {
+                        selectedTab = .ai
+                    }
+
+                    aiActionButton("Refresh Runtime", tint: Palette.textMuted) {
+                        assistantSession.refreshBinaryAvailability()
+                    }
+
+                    Spacer()
+                }
+            }
+        }
+    }
+
+    private var voiceShortcutsCard: some View {
+        shortcutSectionCard(
+            title: "Voice Entry Points",
+            eyebrow: "Controls",
+            summary: "Voice capture, hands-off turns, and the Workspace Assistant each keep their own binding."
+        ) {
+            VStack(alignment: .leading, spacing: 8) {
+                compactKeyRecorder(action: .voiceCommand)
+                compactKeyRecorder(action: .handsOff)
+                compactKeyRecorder(action: .workspaceAssistant)
+            }
+        }
+    }
+
+    private func voiceFactRow(_ label: String, value: String, detail: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(label)
+                .font(Typo.mono(10))
+                .foregroundColor(Palette.textDim)
+                .frame(width: 116, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(value)
+                    .font(Typo.monoBold(10.5))
+                    .foregroundColor(Palette.text)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                Text(detail)
+                    .font(Typo.caption(9.5))
+                    .foregroundColor(Palette.textMuted.opacity(0.75))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func voiceCaptureTint(isRunning: Bool, installed: Bool) -> Color {
+        if isRunning { return Palette.running }
+        if installed { return Palette.detach }
+        return Palette.kill
+    }
+
+    private func voiceCaptureSummary(isRunning: Bool, installed: Bool, providerAvailable: Bool) -> String {
+        if isRunning && providerAvailable { return "Vox is reachable and ready for capture." }
+        if isRunning { return "Vox daemon is running; waiting for provider readiness." }
+        if installed { return "Vox is installed but not running." }
+        return "Install Vox to enable microphone capture."
+    }
+
+    private func voiceVoxAppURL() -> URL? {
+        [
+            "/Applications/Vox.app",
+            NSHomeDirectory() + "/Applications/Vox.app",
+        ]
+        .first(where: { FileManager.default.fileExists(atPath: $0) })
+        .map { URL(fileURLWithPath: $0) }
+    }
+
+    private func openVoxApp() {
+        guard let url = voiceVoxAppURL() else {
+            NSWorkspace.shared.open(URL(fileURLWithPath: "/Applications"))
+            return
+        }
+
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        NSWorkspace.shared.openApplication(at: url, configuration: configuration) { _, error in
+            if let error {
+                DiagnosticLog.shared.warn("Settings: failed to open Vox — \(error.localizedDescription)")
+            }
+        }
+    }
 
     // MARK: - AI
 
@@ -3637,7 +3993,7 @@ struct SettingsContentView: View {
                             .foregroundColor(Palette.textMuted)
                             .padding(.top, 4)
 
-                        Text("When local matching fails, the selected Assistant provider can advise with follow-up suggestions. Configure provider auth in Settings → AI.")
+                        Text("When local matching fails, the selected Assistant provider can advise with follow-up suggestions. Configure capture in Settings → Voice and provider auth in Settings → AI.")
                             .font(Typo.caption(10.5))
                             .foregroundColor(Palette.textMuted)
                             .lineSpacing(2)

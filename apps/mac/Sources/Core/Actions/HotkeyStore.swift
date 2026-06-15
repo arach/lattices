@@ -28,6 +28,8 @@ enum HotkeyAction: String, CaseIterable, Codable {
     case overlayActors
     case workspaceAssistant
     case activityLog
+    case gridPlacement
+    case commandBar
     // Layers
     case layer1, layer2, layer3, layer4, layer5, layer6, layer7, layer8, layer9
     case layerNext, layerPrev, layerTag
@@ -54,6 +56,8 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .overlayActors:   return "Toggle Overlay Actors"
         case .workspaceAssistant: return "Workspace Assistant"
         case .activityLog:     return "Activity Log"
+        case .gridPlacement:   return "Grid Placement"
+        case .commandBar:      return "Command Bar"
         case .layer1:          return "Layer 1"
         case .layer2:          return "Layer 2"
         case .layer3:          return "Layer 3"
@@ -88,7 +92,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
 
     var group: HotkeyGroup {
         switch self {
-        case .palette, .screenMap, .bezel, .cheatSheet, .desktopInventory, .omniSearch, .voiceCommand, .handsOff, .unifiedWindow, .hud, .mouseFinder, .overlayActors, .workspaceAssistant, .activityLog: return .app
+        case .palette, .screenMap, .bezel, .cheatSheet, .desktopInventory, .omniSearch, .voiceCommand, .handsOff, .unifiedWindow, .hud, .mouseFinder, .overlayActors, .workspaceAssistant, .activityLog, .gridPlacement, .commandBar: return .app
         case .layer1, .layer2, .layer3, .layer4, .layer5,
              .layer6, .layer7, .layer8, .layer9,
              .layerNext, .layerPrev, .layerTag: return .layers
@@ -112,6 +116,8 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .overlayActors:   return 210
         case .workspaceAssistant: return 211
         case .activityLog:     return 212
+        case .gridPlacement:   return 213
+        case .commandBar:      return 214
         case .layer1:          return 101
         case .layer2:          return 102
         case .layer3:          return 103
@@ -257,7 +263,7 @@ class HotkeyStore: ObservableObject {
         bind(.bezel,     19, hyper)      // Hyper+2
         bind(.hud,       20, hyper)      // Hyper+3 (HUD overlay)
         bind(.desktopInventory, 5, hyper) // Hyper+G
-        bind(.voiceCommand, 21, hyper)   // Hyper+4 (moved from Hyper+3)
+        bind(.voiceCommand, 2, hyper)    // Hyper+D
         let cmdCtrl = UInt32(cmdKey | controlKey)
         bind(.handsOff, 46, cmdCtrl)          // Ctrl+Cmd+M
         bind(.omniSearch, 23, hyper)       // Hyper+5
@@ -265,6 +271,8 @@ class HotkeyStore: ObservableObject {
         bind(.cheatSheet, 22, hyper)       // Hyper+6
         bind(.mouseFinder, 26, hyper)      // Hyper+7
         bind(.overlayActors, 11, hyper)    // Hyper+B
+        bind(.gridPlacement, 5, ctrlOpt)   // Ctrl+Opt+G (4x4 placement target)
+        bind(.commandBar, 49, ctrlOpt)     // Ctrl+Opt+Space (precise placement command bar)
 
         // Layers: Cmd+Option+1-9
         let layerKeyCodes: [UInt32] = [18, 19, 20, 21, 23, 22, 26, 28, 25]

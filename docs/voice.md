@@ -4,7 +4,7 @@ description: Natural language voice control for window management
 order: 7
 ---
 
-Voice commands let you control Lattices by speaking. Press **Hyper+3**
+Voice commands let you control Lattices by speaking. Press **Hyper+D**
 to open the voice command window, hold **Option** to speak, release to
 stop. Lattices transcribes your speech via Vox,
 matches it to an intent, and executes it.
@@ -13,7 +13,7 @@ matches it to an intent, and executes it.
 
 1. Install Vox (provides mic + transcription)
 2. Connect an Assistant provider in **Settings > AI**
-3. Press **Hyper+3** to open the voice command window
+3. Press **Hyper+D** to open the voice command window
 4. Hold **Option** and speak a command
 5. Release **Option** — Lattices transcribes and executes
 
@@ -21,7 +21,7 @@ matches it to an intent, and executes it.
 
 | Key | Action |
 |-----|--------|
-| **Hyper+3** | Open/close voice command window |
+| **Hyper+D** | Open/close voice command window |
 | **⌥ (hold)** | Push-to-talk — hold to record, release to stop |
 | **Tab** | Arm/disarm the mic |
 | **Escape** | Cancel recording or dismiss window |

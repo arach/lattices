@@ -64,6 +64,11 @@ final class MouseShortcutStore: ObservableObject {
         return snapshot.rules.filter(\.enabled).map { "\($0.trigger.triggerName) -> \($0.action.type.rawValue)" }
     }
 
+    var currentConfig: MouseShortcutConfig {
+        stateLock.lock(); defer { stateLock.unlock() }
+        return snapshot
+    }
+
     var historySummaryLines: [String] {
         historyFiles().prefix(5).map { $0.deletingPathExtension().lastPathComponent }
     }
@@ -131,6 +136,48 @@ final class MouseShortcutStore: ObservableObject {
         write(config: .defaults, checkpointReason: "restore-defaults")
         reload()
         DiagnosticLog.shared.info("Mouse shortcuts restored to defaults")
+    }
+
+    @discardableResult
+    func reloadNow() -> MouseShortcutConfig {
+        reload()
+        return currentConfig
+    }
+
+    func replaceConfig(_ newConfig: MouseShortcutConfig, checkpointReason: String = "agent-replace") {
+        write(config: newConfig, checkpointReason: checkpointReason)
+        reload()
+        DiagnosticLog.shared.info("Mouse shortcuts replaced (\(newConfig.rules.count) rules)")
+    }
+
+    @discardableResult
+    func upsertRule(_ rule: MouseShortcutRule, checkpointReason: String = "agent-upsert") -> Bool {
+        var next = currentConfig
+        let created: Bool
+        if let index = next.rules.firstIndex(where: { $0.id == rule.id }) {
+            next.rules[index] = rule
+            created = false
+        } else {
+            next.rules.append(rule)
+            created = true
+        }
+        write(config: next, checkpointReason: checkpointReason)
+        reload()
+        DiagnosticLog.shared.info("Mouse shortcut \(created ? "created" : "updated"): \(rule.id)")
+        return created
+    }
+
+    @discardableResult
+    func removeRule(id: String, checkpointReason: String = "agent-remove") -> Bool {
+        var next = currentConfig
+        let initialCount = next.rules.count
+        next.rules.removeAll { $0.id == id }
+        let removed = next.rules.count != initialCount
+        guard removed else { return false }
+        write(config: next, checkpointReason: checkpointReason)
+        reload()
+        DiagnosticLog.shared.info("Mouse shortcut removed: \(id)")
+        return true
     }
 
     func openConfiguration() {

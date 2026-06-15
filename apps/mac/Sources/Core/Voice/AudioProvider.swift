@@ -72,10 +72,14 @@ final class AudioLayer: ObservableObject {
         matchedSlots = [:]
         matchConfidence = 0
         executionResult = nil
+        executionData = nil
+        executionError = nil
+        agentResponse = nil
         didExecuteIntent = false
+        DiagnosticLog.shared.info("AudioLayer: voice capture starting")
 
         guard let provider = provider else {
-            executionResult = "No voice provider — install Vox"
+            setFinalResult("No voice provider — install Vox", warning: true)
             return
         }
 
@@ -92,6 +96,7 @@ final class AudioLayer: ObservableObject {
         // wait (and nudge Vox.app open once) until the daemon shows up.
         if provider.isAvailable {
             pendingVoiceStart = false
+            DiagnosticLog.shared.info("AudioLayer: voice provider ready")
             beginVoiceCommand(provider: provider)
             return
         }
@@ -103,8 +108,8 @@ final class AudioLayer: ObservableObject {
 
         guard attempt < 40 else {
             pendingVoiceStart = false
-            executionResult = "Vox unavailable — open Vox and try again"
             DiagnosticLog.shared.warn("AudioLayer: Vox daemon not reachable before voice start")
+            setFinalResult("Vox unavailable — open Vox and try again", warning: true)
             return
         }
 
@@ -118,6 +123,7 @@ final class AudioLayer: ObservableObject {
 
     private func beginVoiceCommand(provider: any AudioProvider) {
         isListening = true
+        DiagnosticLog.shared.info("AudioLayer: listening for voice command")
 
         provider.startListening { [weak self] transcription in
             DispatchQueue.main.async {
@@ -135,11 +141,12 @@ final class AudioLayer: ObservableObject {
                 // Empty transcript = transcription failed, don't try to execute
                 guard !transcription.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     if self.executionResult == nil || self.executionResult == "Transcribing..." {
-                        self.executionResult = "No speech detected"
+                        self.setFinalResult("No speech detected", warning: true)
                     }
                     return
                 }
 
+                DiagnosticLog.shared.info("AudioLayer: heard final transcript — \(transcription.text)")
                 EventBus.shared.post(.voiceCommand(text: transcription.text, confidence: transcription.confidence))
                 self.executeVoiceIntent(transcription)
             }
@@ -179,7 +186,7 @@ final class AudioLayer: ObservableObject {
             pendingVoiceStart = false
             voiceConnectionRetry?.cancel()
             voiceConnectionRetry = nil
-            executionResult = "Voice cancelled"
+            setFinalResult("Voice cancelled")
             return
         }
 
@@ -188,6 +195,7 @@ final class AudioLayer: ObservableObject {
         pendingVoiceStart = false
         isListening = false
         executionResult = "Transcribing..."
+        DiagnosticLog.shared.info("AudioLayer: voice capture stopping; waiting for transcript")
 
         provider.stopListening { [weak self] transcription in
             DispatchQueue.main.async {
@@ -197,10 +205,11 @@ final class AudioLayer: ObservableObject {
                     self.lastTranscript = t.text
                     // Skip if the streaming callback already executed the intent
                     guard !self.didExecuteIntent else { return }
+                    DiagnosticLog.shared.info("AudioLayer: heard final transcript — \(t.text)")
                     EventBus.shared.post(.voiceCommand(text: t.text, confidence: t.confidence))
                     self.executeVoiceIntent(t)
                 } else if !self.didExecuteIntent {
-                    self.executionResult = "No speech detected"
+                    self.setFinalResult("No speech detected", warning: true)
                 }
             }
         }
@@ -213,18 +222,12 @@ final class AudioLayer: ObservableObject {
         // Clear previous agent response + any stale failure flag
         agentResponse = nil
         executionError = nil
+        executionData = nil
 
-        if shouldAnswerWithAssistant(transcription.text) {
-            DiagnosticLog.shared.info("AudioLayer: question-like voice request, asking Assistant provider")
-            matchedIntent = nil
-            matchedSlots = [:]
-            executionResult = "thinking..."
-            executionData = nil
-            assistantQuestion(transcription: transcription)
-            return
-        }
+        DiagnosticLog.shared.info("AudioLayer: resolving voice request")
 
         if let match = matcher.match(text: transcription.text) {
+            DiagnosticLog.shared.info("AudioLayer: route → local intent")
             matchedIntent = match.intentName
             matchConfidence = match.confidence
             matchedSlots = match.slots.reduce(into: [:]) { dict, pair in
@@ -234,9 +237,8 @@ final class AudioLayer: ObservableObject {
 
             do {
                 let result = try matcher.execute(match)
-                executionResult = voiceResultSummary(for: match, result: result)
-                executionData = result
-                DiagnosticLog.shared.info("AudioLayer: executed '\(match.intentName)' → \(executionResult ?? "ok")")
+                DiagnosticLog.shared.info("AudioLayer: executed '\(match.intentName)'")
+                setFinalResult(voiceResultSummary(for: match, result: result), data: result)
             } catch {
                 DiagnosticLog.shared.info("AudioLayer: intent error — \(error.localizedDescription), asking Assistant provider")
                 executionResult = "thinking..."
@@ -247,8 +249,18 @@ final class AudioLayer: ObservableObject {
             // Fire parallel provider-backed advisor for 5+ word utterances.
             fireAdvisor(transcript: transcription.text, matched: "\(match.intentName)(\(matchedSlots))")
 
+        } else if shouldAnswerWithAssistant(transcription.text) {
+            DiagnosticLog.shared.info("AudioLayer: route → Assistant question")
+            DiagnosticLog.shared.info("AudioLayer: question-like voice request, asking Assistant provider")
+            matchedIntent = nil
+            matchedSlots = [:]
+            executionResult = "thinking..."
+            executionData = nil
+            assistantQuestion(transcription: transcription)
+
         } else {
             // No local match — ask the selected Assistant provider.
+            DiagnosticLog.shared.info("AudioLayer: route → Assistant intent resolver")
             DiagnosticLog.shared.info("AudioLayer: no phrase match for '\(transcription.text)', asking Assistant provider")
             matchedIntent = nil
             matchedSlots = [:]
@@ -283,16 +295,16 @@ final class AudioLayer: ObservableObject {
     private func assistantFallback(transcription: Transcription) {
         let assistant = PiChatSession.shared
         guard assistant.isProviderInferenceReady else {
-            executionResult = "Connect an Assistant provider in Settings"
             DiagnosticLog.shared.info("AudioLayer: Assistant provider not ready")
+            setFinalResult("Connect an Assistant provider in Settings", warning: true)
             return
         }
 
         assistant.resolveVoiceIntent(transcript: transcription.text) { [weak self] resolved in
             guard let self else { return }
             guard let resolved else {
-                self.executionResult = "Assistant couldn't resolve intent"
                 DiagnosticLog.shared.info("AudioLayer: Assistant provider returned no intent")
+                self.setFinalResult("Assistant couldn't resolve an action for that request", warning: true)
                 return
             }
 
@@ -331,9 +343,8 @@ final class AudioLayer: ObservableObject {
 
             let execResult = try PhraseMatcher.shared.execute(intentMatch)
             self.executionError = nil
-            self.executionResult = self.voiceResultSummary(for: intentMatch, result: execResult)
-            self.executionData = execResult
-            DiagnosticLog.shared.info("AudioLayer: Assistant-resolved executed → \(self.executionResult ?? "\(execResult)")")
+            DiagnosticLog.shared.info("AudioLayer: Assistant-resolved executed")
+            self.setFinalResult(self.voiceResultSummary(for: intentMatch, result: execResult), data: execResult)
         } catch {
             let message = error.localizedDescription
 
@@ -369,51 +380,48 @@ final class AudioLayer: ObservableObject {
             dict[pair.key] = pair.value.stringValue ?? "\(pair.value)"
         }
         executionError = message
-        executionResult = "Couldn't run: \(message)"
-        executionData = nil
         DiagnosticLog.shared.info("AudioLayer: Assistant-resolved execution error — \(message)")
+        setFinalResult("Couldn't run: \(message)", error: message, warning: true)
     }
 
     private func assistantQuestion(transcription: Transcription) {
         let assistant = PiChatSession.shared
         guard assistant.isProviderInferenceReady else {
-            executionResult = "Connect an Assistant provider in Settings"
             DiagnosticLog.shared.info("AudioLayer: Assistant provider not ready for question")
+            setFinalResult("Connect an Assistant provider in Settings", warning: true)
             return
         }
 
         assistant.answerVoiceQuestion(transcription.text) { [weak self] response in
             guard let self else { return }
             guard let response else {
-                self.executionResult = "Assistant couldn't answer"
                 DiagnosticLog.shared.info("AudioLayer: Assistant provider returned no answer")
+                self.setFinalResult("Assistant couldn't answer that question", warning: true)
                 return
             }
             self.agentResponse = response
-            self.executionResult = "ok"
-            self.executionData = nil
             if let commentary = response.commentary {
                 DiagnosticLog.shared.info("AudioLayer: Assistant answered — \(commentary.prefix(160))")
             }
+            self.setFinalResult("Answered as a question; no workspace action ran.")
         }
     }
 
+    // Question-vs-command classification lives in `IntentHeuristics` so the typed
+    // command bar and this voice path stay in lock-step (one source of truth).
     private func shouldAnswerWithAssistant(_ text: String) -> Bool {
-        let lower = text.lowercased()
-        let questionStarters = [
-            "what", "how", "why", "where", "when", "who",
-            "can you tell", "tell me about", "explain", "summarize", "describe"
-        ]
-        let asksQuestion = text.contains("?") || questionStarters.contains(where: lower.hasPrefix)
-        guard asksQuestion else { return false }
+        IntentHeuristics.shouldAskAssistant(text)
+    }
 
-        let assistantTopics = [
-            "setting", "settings", "configured", "enabled", "disabled",
-            "mouse", "shortcut", "shortcuts", "gesture", "gestures",
-            "ocr", "terminal", "scan root", "assistant", "provider",
-            "lattices", "workspace"
-        ]
-        return assistantTopics.contains(where: lower.contains)
+    fileprivate func setFinalResult(_ message: String, data: JSON? = nil, error: String? = nil, warning: Bool = false) {
+        executionResult = message
+        executionData = data
+        executionError = error
+        if warning || error != nil {
+            DiagnosticLog.shared.warn("AudioLayer: final outcome — \(message)")
+        } else {
+            DiagnosticLog.shared.info("AudioLayer: final outcome — \(message)")
+        }
     }
 
     private func voiceResultSummary(for match: IntentMatch, result: JSON) -> String {
@@ -571,7 +579,7 @@ final class HudVoxAudioProvider: AudioProvider {
         if !finalDelivered {
             if let error {
                 DiagnosticLog.shared.warn("HudVoxAudioProvider: session error — \(error.localizedDescription)")
-                AudioLayer.shared.executionResult = "Transcription failed"
+                AudioLayer.shared.setFinalResult("Transcription failed", warning: true)
                 onTranscript?(Transcription(text: "", confidence: 0, source: "vox", isPartial: false, durationMs: nil))
             }
             stopCompletion?(nil)

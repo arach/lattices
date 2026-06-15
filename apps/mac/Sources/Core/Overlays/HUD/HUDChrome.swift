@@ -13,6 +13,8 @@ enum HUDChrome {
     static let cyan              = Color(red: 0.34, green: 0.78, blue: 0.96)
     static let rose              = Color(red: 1.0,  green: 0.42, blue: 0.58)
     static let amber             = Palette.detach
+    /// Near-black, faint cool cast — text/glyph colour to sit on a `cyan` fill.
+    static let onSignal          = Color(red: 0.04, green: 0.06, blue: 0.09)
 
     static var activeGradient: LinearGradient {
         LinearGradient(
