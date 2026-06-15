@@ -47,7 +47,7 @@ struct HUDTopBar: View {
                 quickAction(icon: "magnifyingglass", label: "Search", shortcut: "⌃⌥⇧⌘5") {
                     onDismiss()
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        OmniSearchWindow.shared.toggle()
+                        UnifiedCommandBarWindow.shared.toggle(mode: .search)
                     }
                 }
 

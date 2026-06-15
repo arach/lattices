@@ -113,8 +113,8 @@ final class ScreenMapWindowController: ObservableObject {
         activePage = .screenMap
         show()
 
-        // Avoid overlapping the voice panel — nudge screen map below it
-        if let w = window, let voicePanel = VoiceCommandWindow.shared.panel, voicePanel.isVisible {
+        // Avoid overlapping the command bar — nudge screen map below it
+        if let w = window, let voicePanel = UnifiedCommandBarWindow.shared.panel, voicePanel.isVisible {
             let voiceBottom = voicePanel.frame.minY
             let mapFrame = w.frame
             if mapFrame.maxY > voiceBottom - 10 {
