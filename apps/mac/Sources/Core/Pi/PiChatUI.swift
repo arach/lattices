@@ -744,53 +744,73 @@ struct PiChatComposer: View {
 
     var body: some View {
         VStack(spacing: 7) {
-            if !session.queuedPrompts.isEmpty {
-                queuedChips
-            }
-
             #if canImport(HudsonVoice)
             if voice.state.isCaptureActive || voice.state.isProcessing {
                 dictationStrip
             }
             #endif
 
-            HStack(alignment: .center, spacing: 10) {
-                #if canImport(HudsonVoice)
-                micButton
-                #endif
-
-                TextField(
-                    style.placeholder,
-                    text: $session.draft,
-                    axis: .vertical
-                )
-                .textFieldStyle(.plain)
-                .font(Typo.body(style.composerSize))
-                .foregroundColor(Palette.text)
-                .lineLimit(1...style.composerLineLimit)
-                .focused(focus)
-                .onSubmit {
-                    if canSend {
-                        session.sendDraft()
-                    }
-                }
-
-                if session.isSending {
-                    stopButton
-                }
-                sendButton
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(composerFieldBackground)
-
-            #if canImport(HudsonVoice)
-            statusLine
-            #endif
+            // Turn lifecycle + layout live in HudsonKit's HudComposer (.stacked):
+            // the field spans the top; a control row sits beneath with a `+`
+            // attach affordance on the left and model · effort + the bespoke mic
+            // grouped with the morphing send/stop on the right. Queued messages
+            // stack as full-width rows above the field.
+            HudComposer(
+                text: $session.draft,
+                phase: session.isSending ? .streaming : .idle,
+                queued: queuedItems,
+                style: hudStyle,
+                layout: .stacked,
+                focus: focus,
+                trailingAccessory: { micAccessory },
+                onAction: handle(_:),
+                onRemoveQueued: { session.removeQueuedPrompt(id: $0.id) },
+                onEditQueued: { session.editQueuedPrompt(id: $0.id) },
+                model: HudComposerModelInfo(model: session.currentProvider.name.lowercased(), effort: "auto"),
+                onAddAttachment: { /* attachments not wired in Lattices yet — placeholder affordance */ }
+            )
         }
         .padding(.horizontal, style.horizontalPadding)
         .padding(.vertical, style.verticalPadding)
         .background(composerChrome)
+        .environment(\.hudTheme, .lattices)
+    }
+
+    private var queuedItems: [HudComposerQueuedItem] {
+        session.queuedPrompts.map { HudComposerQueuedItem(id: $0.id, text: $0.text) }
+    }
+
+    private var hudStyle: HudComposerStyle {
+        HudComposerStyle(
+            placeholder: style.placeholder,
+            fontSize: style.composerSize,
+            lineLimit: 1...style.composerLineLimit
+        )
+    }
+
+    /// `sendDraft()` already submits-or-queues based on `isSending`, so both map to
+    /// it; steer/stop hit the dedicated session primitives.
+    private func handle(_ action: HudComposerAction) {
+        switch action {
+        case .submit, .queue: session.sendDraft()
+        case .steer:          session.interruptAndSteer()
+        case .stop:           session.stop()
+        }
+    }
+
+    // MARK: Control-row accessories
+
+    /// The `+` attach affordance and the model · effort label are now first-class
+    /// in HudComposer (passed via `onAddAttachment` / `model`), so Lattices only
+    /// supplies the bespoke mic here. Effort is a placeholder until a real setting
+    /// exists; attachments aren't wired on the chat path yet.
+    @ViewBuilder
+    private var micAccessory: some View {
+        #if canImport(HudsonVoice)
+        micButton
+        #else
+        EmptyView()
+        #endif
     }
 
     #if canImport(HudsonVoice)
@@ -851,21 +871,6 @@ struct PiChatComposer: View {
         .transition(.opacity)
     }
 
-    /// One quiet mono line under the field: dictation state while the mic is hot,
-    /// a faint affordance hint when idle.
-    private var statusLine: some View {
-        HStack(spacing: 0) {
-            Text(statusText)
-                .font(Typo.mono(9.5))
-                .tracking(0.3)
-                .foregroundColor(statusTint)
-                .lineLimit(1)
-                .truncationMode(.tail)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 16)
-        .animation(.easeInOut(duration: 0.18), value: voice.state)
-    }
 
     private var micSymbol: String {
         switch voice.state {
@@ -922,121 +927,7 @@ struct PiChatComposer: View {
         }
     }
 
-    private var statusText: String {
-        switch voice.state {
-        case .idle: return "Tap mic to dictate · ↵ to send"
-        case .starting: return "Starting…"
-        case .recording: return "Listening — tap mic to commit"
-        case .processing: return "Transcribing…"
-        case .unavailable(let reason): return reason
-        }
-    }
-
-    private var statusTint: Color {
-        switch voice.state {
-        case .recording, .starting: return Palette.kill.opacity(0.85)
-        case .processing, .unavailable: return Palette.detach.opacity(0.85)
-        case .idle: return Palette.textMuted.opacity(0.7)
-        }
-    }
     #endif
-
-    /// Calm filled-circle send (after OpenScout's ScoutSendButton): a solid accent
-    /// disc with an up-arrow when there's something to send, a quiet hollow ring
-    /// otherwise. No glow, no keycap clutter.
-    private var sendButton: some View {
-        Button {
-            session.sendDraft()
-        } label: {
-            Image(systemName: sendIcon)
-                .font(.system(size: 12.5, weight: .bold))
-                .foregroundColor(canSend ? Palette.bg : Palette.textMuted.opacity(0.7))
-                .frame(width: 30, height: 30)
-                .background(
-                    Circle()
-                        .fill(canSend ? Palette.running : Color.white.opacity(0.05))
-                        .overlay(
-                            Circle().strokeBorder(canSend ? Color.clear : Palette.border, lineWidth: 0.5)
-                        )
-                )
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .disabled(!canSend)
-        .help(sendHelp)
-        .animation(.easeInOut(duration: 0.15), value: canSend)
-    }
-
-    /// While a turn streams, the send action queues; while idle it sends. The icon
-    /// falls back to a quiet ellipsis when streaming with nothing to queue.
-    private var sendIcon: String {
-        if session.isSending && !canSend { return "ellipsis" }
-        return "arrow.up"
-    }
-
-    private var sendHelp: String {
-        guard canSend else { return "" }
-        return session.isSending ? "Queue (↵)" : "Send (↵)"
-    }
-
-    /// Stop the in-flight turn. With text in the composer it halts and sends that
-    /// text immediately (steer); empty, it's a plain stop.
-    private var stopButton: some View {
-        Button {
-            session.interruptAndSteer()
-        } label: {
-            Image(systemName: "stop.fill")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundColor(.white)
-                .frame(width: 30, height: 30)
-                .background(Circle().fill(Color.red.opacity(0.85)))
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .help(session.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Stop" : "Stop & send")
-    }
-
-    /// Pending messages submitted mid-turn. Each chip can be tapped to drop it
-    /// before it fires.
-    private var queuedChips: some View {
-        HStack(spacing: 6) {
-            ForEach(Array(session.queuedPrompts.enumerated()), id: \.offset) { index, text in
-                Button {
-                    session.removeQueuedPrompt(at: index)
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "clock").font(.system(size: 8.5))
-                        Text(text).lineLimit(1).truncationMode(.tail)
-                        Image(systemName: "xmark").font(.system(size: 8, weight: .bold))
-                    }
-                    .font(Typo.caption(10))
-                    .foregroundColor(Palette.textDim)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Capsule().fill(Color.white.opacity(0.06)))
-                }
-                .buttonStyle(.plain)
-                .help("Queued — tap to remove")
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 14)
-    }
-
-    // Flat composer field — hairline border, no focus glow, no running-tinted
-    // halo. The "glowy" look the operator flagged is gone; affordance comes
-    // from a single 0.5pt border that brightens slightly on focus.
-    private var composerFieldBackground: some View {
-        RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .fill(Color.white.opacity(0.025))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(
-                        focus.wrappedValue ? Palette.borderLit : Palette.border,
-                        lineWidth: 0.5
-                    )
-            )
-    }
 
     private var composerChrome: some View {
         ZStack {
@@ -1046,12 +937,6 @@ struct PiChatComposer: View {
             Palette.surface.opacity(0.18)
         }
             .overlay(Rectangle().fill(Palette.border).frame(height: 0.5), alignment: .top)
-    }
-
-    /// True whenever the composer has text. While a turn is in flight the action
-    /// queues instead of sending, so the button stays live (the "queue" primitive).
-    private var canSend: Bool {
-        !session.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 }
 
