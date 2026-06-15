@@ -96,6 +96,7 @@ export const intentDefinitions: IntentDefinition[] = [
       "tile chrome left",
       "snap this to the top right",
       "maximize the window",
+      "put chrome in the top-right cell of a 4x4 grid",
     ],
   },
   {

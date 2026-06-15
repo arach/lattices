@@ -167,6 +167,7 @@ const tests = [
   { text: "Please find dewey", expect: { intent: "search", slots: { query: "dewey" } } },
   { text: "Can you tile right", expect: { intent: "tile_window", slots: { position: "right" } } },
   { text: "Could you show chrome", expect: { intent: "focus", slots: { app: "Chrome" } } },
+  { text: "Can you open up lattices in iTerm? Um I think I have one of those running around.", expect: { intent: "launch", slots: { project: "lattices" } } },
   { text: "I want to find lattices", expect: { intent: "search", slots: { query: "lattices" } } },
   { text: "Just scan", expect: { intent: "scan" } },
   { text: "So distribute", expect: { intent: "distribute" } },

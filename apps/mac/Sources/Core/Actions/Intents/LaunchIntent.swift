@@ -52,6 +52,7 @@ struct LaunchIntent: LatticeIntent {
             $0.name.lowercased().contains(project.lowercased())
         }) {
             // Launch via session manager
+            DiagnosticLog.shared.info("LaunchIntent: matched scanned project '\(found.name)' at \(found.path)")
             let result = try LatticesApi.shared.dispatch(
                 method: "session.launch",
                 params: .object(["path": .string(found.path)])
@@ -61,7 +62,41 @@ struct LaunchIntent: LatticeIntent {
 
         // Fallback: try as an app name
         let app = project.prefix(1).uppercased() + project.dropFirst()
-        NSWorkspace.shared.launchApplication(app)
+        DiagnosticLog.shared.info("LaunchIntent: no scanned project for '\(project)'; trying app '\(app)'")
+        guard launchApp(named: String(app)) else {
+            DiagnosticLog.shared.warn("LaunchIntent: no scanned project or launchable app matched '\(project)'")
+            return .object([
+                "ok": .bool(false),
+                "reason": .string("No scanned project or launchable app matched '\(project)'. Try a project from the Lattices list or add a .lattices.json.")
+            ])
+        }
         return .object(["ok": .bool(true), "launched": .string(app)])
+    }
+
+    private func launchApp(named name: String) -> Bool {
+        if let runningApp = NSWorkspace.shared.runningApplications.first(where: {
+            $0.localizedName?.localizedCaseInsensitiveCompare(name) == .orderedSame
+        }) {
+            runningApp.activate(options: [.activateAllWindows])
+            return true
+        }
+
+        let home = NSHomeDirectory()
+        let candidates = [
+            "/Applications/\(name).app",
+            "/System/Applications/\(name).app",
+            "\(home)/Applications/\(name).app",
+            Bundle.main.bundleURL.path
+        ]
+
+        guard let path = candidates.first(where: { candidate in
+            let url = URL(fileURLWithPath: candidate)
+            return url.deletingPathExtension().lastPathComponent.localizedCaseInsensitiveCompare(name) == .orderedSame
+                && FileManager.default.fileExists(atPath: candidate)
+        }) else {
+            return false
+        }
+
+        return NSWorkspace.shared.open(URL(fileURLWithPath: path))
     }
 }

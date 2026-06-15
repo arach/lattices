@@ -518,6 +518,11 @@ final class VoiceIntentResolver {
     private func cleanEntity(_ raw: String) -> String {
         var value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         let leading = ["the ", "my ", "a ", "an ", "this ", "that ", "like ", "um ", "uh "]
+        let postscriptDelimiters = [
+            " in iterm", " in iterm2", " in terminal", " in the terminal",
+            " using iterm", " with iterm", " i think ", " i guess ",
+            " um ", " uh "
+        ]
         let trailing = [
             " please", " for me", " right now", " real quick", " quickly",
             " session", " project", " app", " windows", " window", " layer"
@@ -526,6 +531,13 @@ final class VoiceIntentResolver {
         var changed = true
         while changed {
             changed = false
+
+            for delimiter in postscriptDelimiters {
+                if let range = value.range(of: delimiter) {
+                    value = String(value[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
+                    changed = true
+                }
+            }
 
             for prefix in leading {
                 if value.hasPrefix(prefix) {

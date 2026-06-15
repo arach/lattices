@@ -62,6 +62,11 @@ User: "put my terminals in a grid on the right"
 {"actions": [{"intent": "distribute", "slots": {"app": "iTerm2", "region": "right"}}], "spoken": "Gridding your terminals on the right half."}
 ```
 
+User: "put chrome in the top-right cell of a 4x4 grid"
+```json
+{"actions": [{"intent": "tile_window", "slots": {"wid": 12345, "position": "grid:4x4:3,0"}}], "spoken": "Chrome to the top-right of a 4×4."}
+```
+
 User: "organize my chrome windows on the left"
 ```json
 {"actions": [{"intent": "distribute", "slots": {"app": "Google Chrome", "region": "left"}}], "spoken": "Arranging your Chrome windows on the left."}
@@ -174,8 +179,9 @@ Grid-based tiling. Every position is a cell in a cols×rows grid.
 **3x2 (sixths):** top-left-third, top-center-third, top-right-third, bottom-left-third, bottom-center-third, bottom-right-third
 **4x1 (fourths):** first-fourth, second-fourth, third-fourth, last-fourth
 **4x2 (eighths):** top-first-fourth, top-second-fourth, top-third-fourth, top-last-fourth, bottom-first-fourth, bottom-second-fourth, bottom-third-fourth, bottom-last-fourth
+**4x4 (sixteenths):** no named cells — address them directly with `grid:4x4:C,R` (top-left `grid:4x4:0,0`, top-right `grid:4x4:3,0`, bottom-left `grid:4x4:0,3`, bottom-right `grid:4x4:3,3`, near-center `grid:4x4:1,1`)
 
-For arbitrary grids, use the syntax `grid:CxR:C,R` where C=columns, R=rows, then col,row (0-indexed). Example: `grid:5x3:2,1` = center cell of a 5×3 grid.
+For arbitrary grids, use the syntax `grid:CxR:C,R` where C=columns, R=rows, then col,row (0-indexed). Example: `grid:5x3:2,1` = center cell of a 5×3 grid; `grid:4x4:3,0` = top-right of a 4×4 (each cell a sixteenth of the screen).
 
 When the user says "quarter" they mean a 2×2 cell (top-left, top-right, etc.), not a 4×1 fourth.
 When they say "third" they usually mean a 3×1 column, but "top third" means the 3×2 row.
