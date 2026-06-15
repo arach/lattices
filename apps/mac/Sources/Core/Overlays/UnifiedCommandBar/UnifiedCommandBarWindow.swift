@@ -18,7 +18,9 @@ final class UnifiedCommandBarWindow {
 
     enum Mode { case command, search, voice }
 
-    private var panel: OverlayPanel?
+    /// Readable so siblings (e.g. `ScreenMapWindowController`) can avoid
+    /// overlapping the bar — mirrors the old `VoiceCommandWindow.shared.panel`.
+    private(set) var panel: OverlayPanel?
     private var ghost: NSPanel?
     private var state: UnifiedCommandBarState?
     private var keyMonitor: Any?
@@ -215,6 +217,8 @@ final class UnifiedCommandBarWindow {
             }
         } else if IntentHeuristics.shouldAskAssistant(st.query) {
             handToAssistant(st.query)            // a Lattices question → the assistant
+        } else if let match = st.nlMatch {
+            runNLCommand(match)                   // typed natural-language command → run it
         } else {
             // The list renders results *grouped*; the selection indexes that same
             // grouped order. Activate the displayed row — NOT `results[selectedIndex]`
@@ -225,6 +229,36 @@ final class UnifiedCommandBarWindow {
             ordered[st.search.selectedIndex].action()
             dismiss()
         }
+    }
+
+    // MARK: - Natural-language command
+
+    /// Run a command the NL resolver inferred from typed free text. Placement
+    /// intents (`tile_window` / `move_to_display`) act on the captured frontmost
+    /// window — they otherwise carry no window id; everything else runs with its
+    /// own slots.
+    private func runNLCommand(_ m: IntentMatch) {
+        let windowActing = ["tile_window", "move_to_display"].contains(m.intentName)
+        let subject: CommandSubject = windowActing ? .currentWindow : .global
+        // Trace a placement move with the ghost before it happens.
+        if windowActing, let spec = state?.nlSpec, let t = capturedTarget,
+           let screen = capturedScreen ?? NSScreen.main {
+            flyIn(wid: t.wid, to: spec, on: screen)
+        }
+        let confirm = nlConfirm(m)
+        runIntent(m.intentName, slots: m.slots, subject: subject,
+                  confirmGlyph: confirm.glyph, confirmTitle: confirm.title)
+    }
+
+    /// Glyph + title for the post-run confirmation bezel of an NL command.
+    private func nlConfirm(_ m: IntentMatch) -> (glyph: String, title: String) {
+        if m.intentName == "tile_window",
+           let pos = m.slots["position"]?.stringValue,
+           let spec = PlacementSpec(string: pos) {
+            let app = capturedTarget.flatMap { DesktopModel.shared.windows[$0.wid]?.app } ?? "Window"
+            return (placementArrow(spec), app)
+        }
+        return ("checkmark", m.intentName.replacingOccurrences(of: "_", with: " ").capitalized)
     }
 
     // MARK: - Confirmation
@@ -363,9 +397,19 @@ final class UnifiedCommandBarWindow {
     }
 
     private func updateGhost() {
-        guard let st = state, st.commandMode,
-              let spec = st.search.command.previewSpec,
-              let screen = st.search.command.previewScreen ?? capturedScreen else {
+        guard let st = state else { ghost?.orderOut(nil); ghost = nil; return }
+        // Command mode previews the highlighted suggestion; plain-text NL commands
+        // preview the resolved placement.
+        let spec: PlacementSpec?
+        let screen: NSScreen?
+        if st.commandMode {
+            spec = st.search.command.previewSpec
+            screen = st.search.command.previewScreen ?? capturedScreen
+        } else {
+            spec = st.nlSpec
+            screen = capturedScreen
+        }
+        guard let spec, let screen else {
             ghost?.orderOut(nil); ghost = nil
             return
         }

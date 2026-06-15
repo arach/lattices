@@ -12,6 +12,9 @@ final class GridPlacementWindow {
     private var panel: OverlayPanel?
     private var capturedTarget: (wid: UInt32, pid: Int32)?
     private var capturedScreen: NSScreen?
+    /// Shared with the view so mouse drags and keyboard ⇧-anchors highlight the
+    /// same in-progress span.
+    private let selection = GridPlacementSelection()
 
     /// NSEvent keyCode → (column, row), 0-indexed from top-left. Mirrors the
     /// keyboard's bottom-left 4x4 block and `GridPlacementView.keyLabels`.
@@ -44,10 +47,12 @@ final class GridPlacementWindow {
         capturedTarget = (wid: entry.wid, pid: entry.pid)
         let screen = screenForWindowFrame(entry.frame)
         capturedScreen = screen
+        selection.reset()
 
         let view = GridPlacementView(
             appName: entry.app,
-            onSelect: { [weak self] col, row in self?.place(col: col, row: row) },
+            selection: selection,
+            onSelect: { [weak self] c0, r0, c1, r1 in self?.place(c0: c0, r0: r0, c1: c1, r1: r1) },
             onCancel: { [weak self] in self?.dismiss() }
         )
         .preferredColorScheme(.dark)
@@ -75,24 +80,37 @@ final class GridPlacementWindow {
         panel = nil
         capturedTarget = nil
         capturedScreen = nil
+        selection.reset()
         AppDelegate.updateActivationPolicy()
     }
 
     // MARK: - Selection
 
     private func handleKey(_ event: NSEvent) {
-        if event.keyCode == 53 { // Escape
-            dismiss()
+        if event.keyCode == 53 { // Escape: cancel an in-progress span first, else close.
+            if selection.hasAnchor { selection.reset() } else { dismiss() }
             return
         }
-        if let cell = Self.keyMap[event.keyCode] {
-            place(col: cell.col, row: cell.row)
+        guard let cell = Self.keyMap[event.keyCode] else { return }
+        let c = GridCell(col: cell.col, row: cell.row)
+
+        // A span started with ⇧ (or a held anchor) is completed by the next key.
+        if let a = selection.anchor {
+            place(c0: a.col, r0: a.row, c1: c.col, r1: c.row)
+            return
+        }
+        // ⇧ + first key begins a span; a plain key places a single cell now.
+        if event.modifierFlags.contains(.shift) {
+            selection.anchor = c
+            selection.focus = c
+        } else {
+            place(c0: c.col, r0: c.row, c1: c.col, r1: c.row)
         }
     }
 
-    private func place(col: Int, row: Int) {
+    private func place(c0: Int, r0: Int, c1: Int, r1: Int) {
         guard let target = capturedTarget,
-              let grid = GridPlacement(columns: 4, rows: 4, column: col, row: row) else {
+              let grid = GridPlacement(columns: 4, rows: 4, from: (c0, r0), to: (c1, r1)) else {
             dismiss()
             return
         }

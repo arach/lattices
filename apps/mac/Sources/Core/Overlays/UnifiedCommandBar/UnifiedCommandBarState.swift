@@ -15,7 +15,7 @@ final class UnifiedCommandBarState: ObservableObject {
 
     /// What the expansion panel under the bar should render. `.none` keeps the
     /// bar slim — detail is revealed only when there's something to show.
-    enum Detail: Equatable { case none, search, command, voice, welcome }
+    enum Detail: Equatable { case none, search, command, voice, welcome, nlCommand }
 
     /// The single text-field binding. Forwarded verbatim into the composed
     /// engine, which routes a leading "/" into command mode (the visible trigger)
@@ -56,6 +56,33 @@ final class UnifiedCommandBarState: ObservableObject {
         !voiceActive && !commandMode && IntentHeuristics.shouldAskAssistant(query)
     }
 
+    /// Natural-language *command* typed without a leading "/" (e.g. "tile chrome
+    /// left", "move this to display 2"). When the NL resolver confidently maps it
+    /// to an actionable intent, the bar previews it and Enter runs it — so you
+    /// don't have to know the slash syntax. Search stays the bar's plain-text job,
+    /// so a resolved "search" intent is intentionally *not* treated as a command.
+    ///
+    /// The resolve runs an embedding, so it's gated on a cheap string check and
+    /// cached per query — view re-renders never re-embed.
+    private var nlCache: (query: String, match: IntentMatch?)?
+    var nlMatch: IntentMatch? {
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        guard !voiceActive, !commandMode, !wantsAssistant, !trimmed.isEmpty,
+              IntentHeuristics.looksLikeCommand(trimmed.lowercased()) else { return nil }
+        if let c = nlCache, c.query == trimmed { return c.match }
+        let resolved = VoiceIntentResolver.shared.match(text: trimmed)
+        let actionable = resolved.flatMap { $0.intentName == "search" ? nil : $0 }
+        nlCache = (trimmed, actionable)
+        return actionable
+    }
+
+    /// Placement target for the resolved NL command, if it tiles a window — drives
+    /// the ghost preview.
+    var nlSpec: PlacementSpec? {
+        guard let m = nlMatch, let pos = m.slots["position"]?.stringValue else { return nil }
+        return PlacementSpec(string: pos)
+    }
+
     private var voiceHasContent: Bool {
         !voice.partialText.isEmpty || !voice.finalText.isEmpty
             || voice.intentName != nil || !voice.resultItems.isEmpty
@@ -71,8 +98,10 @@ final class UnifiedCommandBarState: ObservableObject {
             // (↑/↓ navigate, ⇥ complete, ↵ run).
             return search.command.suggestions.isEmpty ? .none : .command
         }
-        // Empty bar → a short welcome; plain text → search.
+        // Empty bar → a short welcome.
         if query.trimmingCharacters(in: .whitespaces).isEmpty { return .welcome }
+        // Plain text that reads as an actionable command → preview it; else search.
+        if nlMatch != nil { return .nlCommand }
         return search.results.isEmpty ? .none : .search
     }
 

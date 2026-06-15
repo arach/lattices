@@ -248,11 +248,79 @@ struct UnifiedCommandBarView: View {
 
     @ViewBuilder private var expansion: some View {
         switch state.detail {
-        case .command: commandList
-        case .search:  searchList
-        case .voice:   voiceList
-        case .welcome: welcome
-        case .none:    EmptyView()
+        case .command:   commandList
+        case .search:    searchList
+        case .voice:     voiceList
+        case .welcome:   welcome
+        case .nlCommand: nlCommandPanel
+        case .none:      EmptyView()
+        }
+    }
+
+    // MARK: - NL command (typed natural language → an interpreted, runnable intent)
+
+    /// A single row previewing the intent the NL resolver inferred from the typed
+    /// text. Acts as autocomplete for "full intents": you type "tile chrome left"
+    /// and see exactly what ↵ will run.
+    @ViewBuilder private var nlCommandPanel: some View {
+        if let m = state.nlMatch {
+            let s = nlSummary(m)
+            Button(action: onCommit) {
+                HStack(spacing: 11) {
+                    Image(systemName: s.glyph)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(HUDChrome.cyan)
+                        .frame(width: 16)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(s.label)
+                            .font(Typo.mono(12))
+                            .foregroundColor(Palette.text)
+                            .lineLimit(1)
+                        Text("interpreted as a command")
+                            .font(Typo.caption(9))
+                            .foregroundColor(Palette.textMuted)
+                    }
+                    Spacer()
+                    helpHint("↵", "run")
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 9)
+                .background(rowSelection(true))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.vertical, 4)
+        }
+    }
+
+    /// Humanize an inferred intent + slots into a glyph and a one-line label.
+    private func nlSummary(_ m: IntentMatch) -> (glyph: String, label: String) {
+        func slot(_ k: String) -> String? {
+            if let s = m.slots[k]?.stringValue, !s.isEmpty { return s }
+            if let i = m.slots[k]?.intValue { return String(i) }
+            return nil
+        }
+        switch m.intentName {
+        case "tile_window":
+            if let pos = slot("position"), let spec = PlacementSpec(string: pos) {
+                if case .tile(let p) = spec { return (p.arrowGlyph, "Tile · \(p.label)") }
+                return ("rectangle.split.2x2", "Tile · \(spec.wireValue)")
+            }
+            return ("rectangle.center.inset.filled", "Tile window")
+        case "move_to_display":
+            let d = slot("display").map { "display \((Int($0) ?? 0) + 1)" } ?? "another display"
+            return ("display", "Move to \(d)")
+        case "focus":
+            return ("scope", "Focus \(slot("app") ?? slot("session") ?? "window")")
+        case "launch":
+            return ("arrow.up.forward.app", "Open \(slot("project") ?? slot("app") ?? "app")")
+        case "distribute":
+            let what = slot("app").map { "\($0) windows" } ?? "windows"
+            return ("rectangle.split.3x3", "Arrange \(what)" + (slot("region").map { " · \($0)" } ?? ""))
+        case "scan":
+            return ("sparkle.magnifyingglass", "Scan workspace")
+        default:
+            return ("command", m.intentName.replacingOccurrences(of: "_", with: " ").capitalized)
         }
     }
 
@@ -304,6 +372,9 @@ struct UnifiedCommandBarView: View {
                 helpHint("⇥", "complete")
                 helpHint("↵", "run")
                 helpHint("⌥", "speak")
+            } else if state.detail == .nlCommand {
+                helpHint("↵", "run command")
+                helpHint("⌘↵", "ask instead")
             }
             Spacer(minLength: 0)
             settingsButton

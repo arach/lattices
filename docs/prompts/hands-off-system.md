@@ -183,6 +183,8 @@ Grid-based tiling. Every position is a cell in a cols×rows grid.
 
 For arbitrary grids, use the syntax `grid:CxR:C,R` where C=columns, R=rows, then col,row (0-indexed). Example: `grid:5x3:2,1` = center cell of a 5×3 grid; `grid:4x4:3,0` = top-right of a 4×4 (each cell a sixteenth of the screen).
 
+To span a window across a rectangular block of cells, address two inclusive corners: `grid:CxR:c0,r0-c1,r1`. Example: `grid:4x4:0,0-1,1` = the top-left 2×2 block (a quarter) of a 4×4 grid; `grid:4x4:0,0-3,1` = the top half. Order doesn't matter — the corners are normalized.
+
 When the user says "quarter" they mean a 2×2 cell (top-left, top-right, etc.), not a 4×1 fourth.
 When they say "third" they usually mean a 3×1 column, but "top third" means the 3×2 row.
 
