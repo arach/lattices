@@ -2,19 +2,26 @@
 import Foundation
 import HudsonVoice
 
-/// Builds the live voxd endpoint for HudsonVoice sessions.
+/// Resolves the voice runtime Lattices should use.
 ///
-/// HudsonVoice's built-in default (`HudVoxEndpoint.defaultPort`) can lag the
-/// installed daemon — e.g. the SDK defaults to 42138 while the running voxd is on
-/// 42137 — so a session that trusts the SDK default silently dials a dead port and
-/// the mic flashes red and fails. We always discover the real port from
-/// `~/.vox/runtime.json` via `VoxDaemon` instead.
-///
-/// This replaces `VoxClient.discoverDaemon()` for the HudsonVoice surfaces.
-enum VoxEndpointResolver {
-    /// The endpoint to hand `HudVoxLiveSession` / `HudVoicePanel`.
-    static func resolve(host: String = "127.0.0.1") -> HudVoxEndpoint {
-        HudVoxEndpoint(host: host, port: VoxDaemon.port)
+/// Lattices is the HudsonKit host app here: it starts the embedded Vox runtime
+/// and writes the private, tokened capability file during app boot.
+enum HudsonVoiceRuntimeResolver {
+    static func resolve(
+        clientId: String = "lattices",
+        mode: HudVoiceMode? = nil
+    ) -> (endpoint: HudVoxEndpoint, options: HudVoxLiveSessionOptions)? {
+        do {
+            let connection = try HudsonVoiceRuntime.resolveConnection(
+                clientId: clientId,
+                mode: mode,
+                metadata: ["hostApp": "lattices"]
+            )
+            return (connection.endpoint, connection.options)
+        } catch {
+            DiagnosticLog.shared.warn("HudsonVoice: embedded runtime unavailable - \(error.localizedDescription)")
+            return nil
+        }
     }
 }
 #endif

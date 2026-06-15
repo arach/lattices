@@ -2,6 +2,9 @@ import AppKit
 import ApplicationServices
 import DeckKit
 import Foundation
+#if canImport(HudsonVoice)
+import HudsonVoice
+#endif
 
 // MARK: - Registry Types
 
@@ -2024,7 +2027,7 @@ final class LatticesApi {
                 Param(name: "slots", type: "object", required: false, description: "Named parameters for the intent"),
                 Param(name: "rawText", type: "string", required: false, description: "Original transcription text"),
                 Param(name: "confidence", type: "double", required: false, description: "Transcription confidence (0-1)"),
-                Param(name: "source", type: "string", required: false, description: "Source of the intent (e.g. 'vox', 'siri', 'cli')"),
+                Param(name: "source", type: "string", required: false, description: "Source of the intent (e.g. 'hudson-voice', 'siri', 'cli')"),
             ],
             returns: .custom("Intent-specific result"),
             handler: { params in
@@ -2054,7 +2057,7 @@ final class LatticesApi {
 
         api.register(Endpoint(
             method: "voice.status",
-            description: "Check audio provider status (e.g. Vox availability)",
+            description: "Check voice runtime provider status",
             access: .read,
             params: [],
             returns: .custom("Provider status with name and listening state"),
@@ -2071,13 +2074,13 @@ final class LatticesApi {
 
         api.register(Endpoint(
             method: "voice.listen",
-            description: "Start voice capture via the audio provider (e.g. Vox)",
+            description: "Start voice capture via the audio provider",
             access: .mutate,
             params: [],
             returns: .ok,
             handler: { _ in
                 guard AudioLayer.shared.provider != nil else {
-                    throw RouterError.custom("No audio provider available. Is Vox running?")
+                    throw RouterError.custom("No audio provider available. Is the voice runtime available?")
                 }
                 DispatchQueue.main.async {
                     AudioLayer.shared.startVoiceCommand()
@@ -2205,19 +2208,58 @@ final class LatticesApi {
 
         api.register(Endpoint(
             method: "voice.reconnect",
-            description: "Re-probe the Vox daemon. HudsonVoice opens a fresh session per capture, so there is no persistent socket to reconnect — this reports daemon reachability from ~/.vox/runtime.json.",
+            description: "Re-probe the voice runtime. HudsonVoice opens a fresh session per capture, so there is no persistent socket to reconnect.",
             access: .mutate,
             params: [],
-            returns: .custom("Daemon reachability: { ok, daemonRunning, port, pid }"),
+            returns: .custom("Voice runtime reachability: { ok, runtimeAvailable, runtimeHost, service, transport, endpoint, port, pid, capabilityPath, standaloneVoxRunning }"),
             handler: { _ in
-                let info = VoxDaemon.info()
+                #if canImport(HudsonVoice)
+                let capability: HudsonVoiceRuntimeCapability?
+                let runtimeError: String?
+                do {
+                    capability = try HudsonVoiceRuntime.read()
+                    runtimeError = nil
+                } catch {
+                    capability = nil
+                    runtimeError = error.localizedDescription
+                }
+                let runtimePid = capability?.pid
+                let standaloneInfo = VoxDaemon.info()
                 return .object([
                     "ok": .bool(true),
-                    "daemonRunning": .bool(info != nil),
-                    "port": info.map { .int(Int($0.port)) } ?? .null,
-                    "pid": info.map { .int($0.pid) } ?? .null,
-                    "note": .string("HudsonVoice connects per-session; no persistent socket to reconnect."),
+                    "runtimeAvailable": .bool(capability != nil),
+                    "runtimeHost": .string("lattices"),
+                    "service": capability.map { .string($0.service) } ?? .null,
+                    "transport": capability.map { .string($0.transport) } ?? .null,
+                    "endpoint": capability.map { .string($0.endpoint.url.absoluteString) } ?? .null,
+                    "port": capability.map { .int(Int($0.port)) } ?? .null,
+                    "pid": runtimePid.map { .int(Int($0)) } ?? .null,
+                    "capabilityPath": .string(HudsonVoiceRuntime.runtimeURL().path),
+                    "runtimeError": runtimeError.map { .string($0) } ?? .null,
+                    "standaloneVoxRunning": .bool(standaloneInfo != nil),
+                    "standaloneVoxPort": standaloneInfo.map { .int(Int($0.port)) } ?? .null,
+                    "standaloneVoxPid": standaloneInfo.map { .int($0.pid) } ?? .null,
+                    "note": .string("Lattices hosts the embedded HudsonVoice runtime; standalone Vox is reported only as legacy diagnostic state."),
                 ])
+                #else
+                let standaloneInfo = VoxDaemon.info()
+                return .object([
+                    "ok": .bool(true),
+                    "runtimeAvailable": .bool(false),
+                    "runtimeHost": .string("none"),
+                    "service": .null,
+                    "transport": .null,
+                    "endpoint": .null,
+                    "port": .null,
+                    "pid": .null,
+                    "capabilityPath": .null,
+                    "runtimeError": .string("HudsonVoice is not compiled into this build."),
+                    "standaloneVoxRunning": .bool(standaloneInfo != nil),
+                    "standaloneVoxPort": standaloneInfo.map { .int(Int($0.port)) } ?? .null,
+                    "standaloneVoxPid": standaloneInfo.map { .int($0.pid) } ?? .null,
+                    "note": .string("HudsonVoice is not compiled into this build."),
+                ])
+                #endif
             }
         ))
 

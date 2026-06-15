@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import SwiftUI
 import Combine
 import ScreenCaptureKit
@@ -8,6 +9,7 @@ final class PermissionChecker: ObservableObject {
 
     @Published var accessibility: Bool = false
     @Published var screenRecording: Bool = false
+    @Published var microphone: AVAuthorizationStatus = AVCaptureDevice.authorizationStatus(for: .audio)
     @Published private(set) var refreshInFlight: Bool = false
     @Published private(set) var lastCheckedAt: Date?
 
@@ -20,7 +22,8 @@ final class PermissionChecker: ObservableObject {
     private static let deniedScreenProbeCooldown: TimeInterval = 20
     private static let successfulScreenProbeTTL: TimeInterval = 8
 
-    var allGranted: Bool { accessibility && screenRecording }
+    var allGranted: Bool { accessibility && screenRecording && microphoneGranted }
+    var microphoneGranted: Bool { microphone == .authorized }
 
     var isSimulatingMissingPermissions: Bool {
         CommandLine.arguments.contains("--simulate-missing-permissions")
@@ -35,8 +38,10 @@ final class PermissionChecker: ObservableObject {
 
         let realAX = AXIsProcessTrusted()
         let realSR = CGPreflightScreenCaptureAccess()
+        let realMic = AVCaptureDevice.authorizationStatus(for: .audio)
         let simulating = isSimulatingMissingPermissions
         let ax = simulating ? false : realAX
+        let mic: AVAuthorizationStatus = simulating ? .denied : realMic
         if realSR {
             screenRecordingProbeGrantedUntil = nil
             screenProbeCooldownUntil = nil
@@ -63,16 +68,17 @@ final class PermissionChecker: ObservableObject {
         }
 
         // Log on state changes
-        if ax != accessibility || sr != screenRecording {
-            diag.info("Permissions: Accessibility \(ax ? "✓" : "✗"), Screen Recording \(sr ? "✓" : "✗")")
+        if ax != accessibility || sr != screenRecording || mic != microphone {
+            diag.info("Permissions: Accessibility \(ax ? "✓" : "✗"), Screen Recording \(sr ? "✓" : "✗"), Microphone \(Self.describe(mic))")
         }
 
         accessibility = ax
         screenRecording = sr
+        microphone = mic
 
         // Only poll after an intentional permission request. A passive launch-time
         // check should not keep nudging macOS privacy state in the background.
-        if allGranted {
+        if ax && sr && mic == .authorized {
             stopPolling()
         } else if pollIfMissing {
             startPolling()
@@ -89,6 +95,48 @@ final class PermissionChecker: ObservableObject {
             return accessibility
         case .screenSearch:
             return screenRecording
+        case .voiceCapture:
+            return microphoneGranted
+        }
+    }
+
+    func requestMicrophone() {
+        let diag = DiagnosticLog.shared
+        if isSimulatingMissingPermissions {
+            diag.warn("requestMicrophone: skipped because missing-permission simulation is enabled")
+            microphone = .denied
+            return
+        }
+
+        let before = AVCaptureDevice.authorizationStatus(for: .audio)
+        diag.info("requestMicrophone: before=\(Self.describe(before))")
+
+        switch before {
+        case .authorized:
+            microphone = before
+            return
+        case .denied, .restricted:
+            microphone = before
+            openMicrophoneSettings()
+            startPolling()
+            schedulePermissionRefresh()
+            return
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    let after = AVCaptureDevice.authorizationStatus(for: .audio)
+                    diag.info("AVCaptureDevice.requestAccess(audio) → \(granted), after=\(Self.describe(after))")
+                    self.microphone = after
+                    if after != .authorized {
+                        self.openMicrophoneSettings()
+                        self.startPolling()
+                        self.schedulePermissionRefresh()
+                    }
+                }
+            }
+        @unknown default:
+            microphone = before
         }
     }
 
@@ -185,8 +233,18 @@ final class PermissionChecker: ObservableObject {
             openAccessibilitySettings()
         case .screenSearch:
             openScreenRecordingSettings()
+        case .voiceCapture:
+            openMicrophoneSettings()
         }
         passiveRecheck(reason: "open \(capability.requirementLabel)")
+    }
+
+    /// Opens System Settings → Privacy & Security → Microphone.
+    func openMicrophoneSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
+            NSWorkspace.shared.open(url)
+        }
+        passiveRecheck(reason: "open Microphone")
     }
 
     /// Opens System Settings → Privacy & Security → Accessibility
@@ -256,6 +314,16 @@ final class PermissionChecker: ObservableObject {
         return "\(nsError.domain)#\(nsError.code) \(nsError.localizedDescription)"
     }
 
+    private static func describe(_ status: AVAuthorizationStatus) -> String {
+        switch status {
+        case .notDetermined: return "notDetermined"
+        case .restricted: return "restricted"
+        case .denied: return "denied"
+        case .authorized: return "authorized"
+        @unknown default: return "unknown"
+        }
+    }
+
     // MARK: - Polling
 
     /// Poll every second to detect permission changes made in System Settings.
@@ -301,6 +369,8 @@ final class PermissionChecker: ObservableObject {
         case .screenSearch:
             screenRecording = false
             screenRecordingProbeGrantedUntil = nil
+        case .voiceCapture:
+            microphone = .notDetermined
         }
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -321,9 +391,7 @@ final class PermissionChecker: ObservableObject {
                 }
 
                 switch capability {
-                case .windowControl:
-                    self.promptForCurrentAppRegistration(capability)
-                case .screenSearch:
+                case .windowControl, .screenSearch, .voiceCapture:
                     self.promptForCurrentAppRegistration(capability)
                 }
 
@@ -389,6 +457,8 @@ final class PermissionChecker: ObservableObject {
             return ["Accessibility"]
         case .screenSearch:
             return ["ScreenCapture"]
+        case .voiceCapture:
+            return ["Microphone"]
         }
     }
 
@@ -417,6 +487,9 @@ final class PermissionChecker: ObservableObject {
             if !result {
                 openScreenRecordingSettings()
             }
+
+        case .voiceCapture:
+            requestMicrophone()
         }
     }
 

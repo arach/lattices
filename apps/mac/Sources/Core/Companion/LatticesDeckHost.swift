@@ -607,7 +607,7 @@ private extension LatticesDeckHost {
             transcript: handsOff.lastTranscript ?? audio.lastTranscript,
             transcriptLines: buildTranscriptLines(handsOff: handsOff, audio: audio),
             responseSummary: handsOff.lastResponse ?? audio.executionResult,
-            provider: audio.providerName == "none" ? "vox" : audio.providerName
+            provider: audio.providerName == "none" ? "voice-runtime" : audio.providerName
         )
         let desktop = DeckDesktopSummary(
             activeLayerName: activeLayerName(),
@@ -694,7 +694,7 @@ private extension LatticesDeckHost {
                 text: transcript,
                 isFinal: currentVoicePhase() == .idle,
                 confidence: audio.matchConfidence > 0 ? audio.matchConfidence : nil,
-                source: audio.providerName == "none" ? "vox" : audio.providerName
+                source: audio.providerName == "none" ? "voice-runtime" : audio.providerName
             ))
         }
 

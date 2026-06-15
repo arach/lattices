@@ -70,27 +70,26 @@ final class VoiceCommandState: ObservableObject {
     private var cancelled = false
 
     func startListening() {
-        // Capture runs through AudioLayer (HudsonVoice opens its own session). Here we
-        // only gate on the daemon being discoverable so the overlay can show a
-        // "connecting" phase while voxd spins up.
-        if VoxDaemon.isRunning {
+        // Capture runs through AudioLayer; this gate only lets the overlay show a
+        // "connecting" phase while the embedded voice runtime becomes discoverable.
+        if AudioLayer.shared.provider?.isAvailable == true {
             beginListening()
         } else {
             phase = .connecting
-            waitForDaemon(attempts: 0)
+            waitForVoiceRuntime(attempts: 0)
         }
     }
 
-    private func waitForDaemon(attempts: Int) {
-        if VoxDaemon.isRunning {
+    private func waitForVoiceRuntime(attempts: Int) {
+        if AudioLayer.shared.provider?.isAvailable == true {
             beginListening()
         } else if attempts < 20 {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-                self?.waitForDaemon(attempts: attempts + 1)
+                self?.waitForVoiceRuntime(attempts: attempts + 1)
             }
         } else {
-            appendLog("Vox daemon not running")
-            executionResult = "Vox daemon not running — open Vox and try again."
+            appendLog("Voice runtime not running")
+            executionResult = "Voice runtime not running — try again after it starts."
             resultSummary = executionResult ?? ""
             syncLogs()
             phase = .result

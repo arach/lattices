@@ -11,5 +11,11 @@
     <true/>
     <key>com.apple.security.network.client</key>
     <true/>
+
+    <!-- Microphone: required under Hardened Runtime for the embedded Hudson Voice
+         dictation/voice-command capture. Without it, AVCaptureDevice.requestAccess
+         is denied instantly with no prompt. -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
 </dict>
 </plist>

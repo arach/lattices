@@ -1,5 +1,10 @@
 import DeckKit
+import AVFoundation
 import SwiftUI
+import HudsonUI
+#if canImport(HudsonVoice)
+import HudsonVoice
+#endif
 
 /// Settings content with internal General / Shortcuts tabs.
 /// Can also render the Docs page when `page == .docs`.
@@ -35,7 +40,7 @@ struct SettingsContentView: View {
             case .shortcuts: return "command"
             case .mouse: return "computermouse"
             case .hyperspace: return "square.grid.3x3.fill"
-            case .voice: return "mic"
+            case .voice: return "waveform.badge.mic"
             case .ai: return "sparkles"
             case .search: return "text.viewfinder"
             case .companion: return "ipad.and.iphone"
@@ -66,7 +71,7 @@ struct SettingsContentView: View {
             case .hyperspace:
                 return "Per-display window surveys, lighting, zoom, and layout for Hyperspace."
             case .voice:
-                return "Vox capture, mic ownership, command shortcuts, and the provider-backed voice model."
+                return "Lattices hosts the embedded voice runtime, microphone access, command shortcuts, and the provider-backed voice model."
             case .ai:
                 return "Provider auth, chat readiness, and assistant runtime state."
             case .search:
@@ -115,7 +120,6 @@ struct SettingsContentView: View {
     var onBack: (() -> Void)? = nil
 
     @State private var selectedTab: SettingsSection = .general
-    @State private var voiceRefreshRevision = 0
     @FocusState private var assistantAuthFieldFocused: Bool
 
     // Hyperspace survey dials — same UserDefaults keys (and defaults) the in-survey
@@ -156,6 +160,12 @@ struct SettingsContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .latticesShowAssistantSettings)) { _ in
             selectedTab = .ai
         }
+        .onReceive(NotificationCenter.default.publisher(for: .latticesShowSettingsSection)) { note in
+            if let raw = note.userInfo?["section"] as? String,
+               let section = SettingsSection(rawValue: raw) {
+                selectedTab = section
+            }
+        }
     }
 
     // MARK: - Back Bar
@@ -191,7 +201,7 @@ struct SettingsContentView: View {
                         onBack()
                     } label: {
                         Image(systemName: "chevron.left")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.system(size: HudTextSize.xs, weight: .semibold))
                             .foregroundColor(Palette.textMuted)
                     }
                     .buttonStyle(.plain)
@@ -207,7 +217,7 @@ struct SettingsContentView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
 
-            Rectangle().fill(Palette.border).frame(height: 0.5)
+            HudDivider(color: HudHairline.standard)
         }
     }
 
@@ -216,127 +226,92 @@ struct SettingsContentView: View {
     private var settingsBody: some View {
         HStack(spacing: 0) {
             settingsSidebar
-                .frame(width: 190, alignment: .top)
+                .frame(width: 196, alignment: .top)
+                .background(Palette.bg)
 
-            Rectangle()
-                .fill(Palette.border)
-                .frame(width: 0.5)
+            HudDivider(color: HudHairline.standard, axis: .vertical)
                 .frame(maxHeight: .infinity)
 
             VStack(spacing: 0) {
                 settingsSectionHero(selectedTab)
 
-                Rectangle().fill(Palette.border).frame(height: 0.5)
+                HudDivider(color: HudHairline.standard)
 
                 selectedSectionContent
+                    .background(Palette.bg)
             }
         }
+        .background(Palette.bg)
     }
 
     private var settingsSidebar: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("SETTINGS")
-                    .font(Typo.pixel(14))
-                    .foregroundColor(Palette.textDim)
-                    .tracking(1)
-                Text("Tune how Lattices launches workspaces, listens for commands, and navigates the desktop.")
-                    .font(Typo.caption(11))
-                    .foregroundColor(Palette.textMuted)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+        // Scrollable so the section list never imposes a tall minimum height. The
+        // unified window is user-resizable; without this, the non-scrolling list
+        // (~480pt) overflows short windows and pushes the shell's status bar off
+        // the bottom — every section pane already scrolls, so the rail must too.
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Settings")
+                        .font(Typo.monoBold(12))
+                        .foregroundColor(Palette.text)
 
-            VStack(alignment: .leading, spacing: 12) {
-                ForEach(SettingsSection.groupedCases, id: \.0) { group, sections in
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(group.uppercased())
-                            .font(Typo.pixel(11))
-                            .foregroundColor(Palette.textDim.opacity(0.85))
-                            .tracking(1.2)
-                            .padding(.horizontal, 4)
+                    Text("Workspace, input, agents, capture.")
+                        .font(Typo.caption(10))
+                        .foregroundColor(Palette.textMuted)
+                        .lineLimit(2)
+                }
 
-                        VStack(spacing: 4) {
-                            ForEach(sections) { section in
-                                settingsTab(section)
+                HudDivider(color: HudHairline.subtle)
+
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(SettingsSection.groupedCases, id: \.0) { group, sections in
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(group.uppercased())
+                                .font(Typo.pixel(11))
+                                .foregroundColor(Palette.textDim.opacity(0.85))
+                                .tracking(1.2)
+                                .padding(.horizontal, 4)
+
+                            VStack(spacing: 4) {
+                                ForEach(sections) { section in
+                                    settingsTab(section)
+                                }
                             }
                         }
                     }
                 }
             }
-
-            Spacer(minLength: 0)
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(16)
     }
 
     private func settingsTab(_ section: SettingsSection) -> some View {
-        let active = selectedTab == section
-        return Button {
+        SettingsSidebarRow(
+            icon: section.icon,
+            title: section.title,
+            eyebrow: section.eyebrow,
+            isActive: selectedTab == section,
+            accent: Palette.running
+        ) {
             selectedTab = section
-        } label: {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: section.icon)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(active ? Palette.text : Palette.textMuted)
-                    .frame(width: 16, height: 18, alignment: .center)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(section.title)
-                        .font(Typo.mono(11))
-                        .foregroundColor(active ? Palette.text : Palette.textMuted)
-
-                    Text(section.eyebrow)
-                        .font(Typo.caption(9))
-                        .foregroundColor(Palette.textMuted.opacity(active ? 0.85 : 0.62))
-                }
-
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 10)
-            .frame(height: 38)
-            .contentShape(RoundedRectangle(cornerRadius: 7))
-            .background(
-                ZStack {
-                    if active {
-                        RoundedRectangle(cornerRadius: 7)
-                            .fill(Color.white.opacity(0.055))
-                        RoundedRectangle(cornerRadius: 7)
-                            .strokeBorder(
-                                LinearGradient(
-                                    colors: [Color.white.opacity(0.12), Color.white.opacity(0.04)],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                ),
-                                lineWidth: 0.5
-                            )
-                    }
-                }
-            )
-            .overlay(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(active ? Palette.running : Color.clear)
-                    .frame(width: 2)
-                    .padding(.vertical, 8)
-            }
         }
-        .buttonStyle(.plain)
-        .help(section.title)
     }
 
     private func settingsSectionHero(_ section: SettingsSection) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(section.eyebrow.uppercased())
-                .font(Typo.pixel(14))
-                .foregroundColor(Palette.textDim)
-                .tracking(1)
+        VStack(alignment: .leading, spacing: 6) {
+            Text(section.eyebrow)
+                .font(Typo.monoBold(10))
+                .foregroundColor(Palette.textMuted)
 
             Text(section.title)
-                .font(Typo.heading(16))
+                .font(Typo.heading(18))
                 .foregroundColor(Palette.text)
 
             Text(section.summary)
-                .font(Typo.caption(11))
-                .foregroundColor(Palette.textMuted)
+                .font(Typo.mono(10.5))
+                .foregroundColor(Palette.textDim)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -394,44 +369,26 @@ struct SettingsContentView: View {
         let missing = Capability.allCases.filter { !$0.isGranted }
         return settingsCard {
             VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .center, spacing: 8) {
-                    RoundedRectangle(cornerRadius: 5)
-                        .fill((missing.isEmpty ? Palette.running : Palette.detach).opacity(0.13))
-                        .overlay(
-                            Image(systemName: missing.isEmpty ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(missing.isEmpty ? Palette.running : Palette.detach)
-                        )
-                        .frame(width: 26, height: 26)
-
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Permissions")
-                            .font(Typo.mono(12))
+                            .font(Typo.monoBold(12))
                             .foregroundColor(Palette.text)
-                        Text(missing.isEmpty ? "Ready for window control, gestures, and OCR" : "\(missing.count) permission \(missing.count == 1 ? "needs" : "need") attention")
-                            .font(Typo.caption(9.5))
+                        Text(missing.isEmpty ? "Ready for window control, OCR, and voice" : "\(missing.count) permission \(missing.count == 1 ? "needs" : "need") attention")
+                            .font(Typo.mono(9.5))
                             .foregroundColor(Palette.textMuted)
                     }
 
                     Spacer()
 
-                    Text(missing.isEmpty ? "All on" : "\(missing.count) off")
-                        .font(Typo.monoBold(9.5))
-                        .foregroundColor(missing.isEmpty ? Palette.running : Palette.detach)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(
-                            Capsule()
-                                .fill((missing.isEmpty ? Palette.running : Palette.detach).opacity(0.10))
-                                .overlay(Capsule().strokeBorder((missing.isEmpty ? Palette.running : Palette.detach).opacity(0.18), lineWidth: 0.5))
-                        )
+                    statusToken(missing.isEmpty ? "All on" : "\(missing.count) off", color: missing.isEmpty ? Palette.running : Palette.detach)
                 }
 
-                Text("The assistant explains each macOS prompt before you grant it. Advanced privacy panes stay available for review when a synthetic shortcut or input capture needs macOS-level repair.")
+                Text("Lattices uses these macOS grants for window control, OCR, gestures, shortcuts, and local voice capture.")
                     .font(Typo.caption(10))
                     .foregroundColor(Palette.textMuted)
 
-                HStack(spacing: 8) {
+                HStack(spacing: 12) {
                     ForEach(Capability.allCases) { cap in
                         HStack(spacing: 4) {
                             Circle()
@@ -441,11 +398,6 @@ struct SettingsContentView: View {
                                 .font(Typo.mono(9))
                                 .foregroundColor(Palette.textMuted)
                         }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(
-                            Capsule().fill(Palette.surface)
-                        )
                     }
                     Spacer(minLength: 0)
                 }
@@ -503,12 +455,13 @@ struct SettingsContentView: View {
     }
 
     private var permissionsDetailCard: some View {
-        settingsCard {
+        let allCapabilitiesGranted = Capability.allCases.allSatisfy(\.isGranted)
+        return settingsCard {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .center, spacing: 8) {
-                    Image(systemName: permChecker.allGranted ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
+                    Image(systemName: allCapabilitiesGranted ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(permChecker.allGranted ? Palette.running : Palette.detach)
+                        .foregroundColor(allCapabilitiesGranted ? Palette.running : Palette.detach)
                     Text("macOS permissions")
                         .font(Typo.mono(12))
                         .foregroundColor(Palette.text)
@@ -525,7 +478,7 @@ struct SettingsContentView: View {
                     .help("Refresh permission status")
                 }
 
-                Text("Window discovery, gestures, remaps, OCR, and synthetic shortcuts all depend on these macOS grants.")
+                Text("Window discovery, gestures, remaps, OCR, voice capture, and synthetic shortcuts all depend on these macOS grants.")
                     .font(Typo.caption(10))
                     .foregroundColor(Palette.textMuted)
 
@@ -544,6 +497,14 @@ struct SettingsContentView: View {
                         detail: "Required for reliable window titles, OCR, and Space-aware window discovery."
                     ) {
                         permChecker.requestScreenRecording()
+                    }
+
+                    permissionSettingsRow(
+                        "Microphone",
+                        granted: permChecker.microphoneGranted,
+                        detail: "Required for local dictation and voice commands hosted by Lattices."
+                    ) {
+                        permChecker.requestMicrophone()
                     }
 
                     permissionReviewRow(
@@ -567,20 +528,11 @@ struct SettingsContentView: View {
     private var appUpdateCard: some View {
         settingsCard {
             VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .center, spacing: 10) {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill((LatticesRuntime.isDevBuild ? Palette.detach : Palette.running).opacity(0.13))
-                        .overlay(
-                            Image(systemName: LatticesRuntime.isDevBuild ? "hammer.fill" : "checkmark.seal.fill")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(LatticesRuntime.isDevBuild ? Palette.detach : Palette.running)
-                        )
-                        .frame(width: 30, height: 30)
-
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 8) {
                             Text("Lattices app")
-                                .font(Typo.mono(12))
+                                .font(Typo.monoBold(12))
                                 .foregroundColor(Palette.text)
                             buildChannelBadge
                         }
@@ -591,7 +543,7 @@ struct SettingsContentView: View {
                                 .foregroundColor(Palette.text)
                             Text(LatticesRuntime.buildStatusLabel)
                                 .font(Typo.monoBold(9.5))
-                                .foregroundColor(LatticesRuntime.isDevBuild ? Palette.detach : Palette.running)
+                                .foregroundColor(Palette.textMuted)
                         }
                     }
 
@@ -659,7 +611,7 @@ struct SettingsContentView: View {
         settingsCard {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Session behavior")
-                    .font(Typo.mono(12))
+                    .font(Typo.monoBold(12))
                     .foregroundColor(Palette.text)
 
                 HStack {
@@ -681,6 +633,104 @@ struct SettingsContentView: View {
                     : "Detaches sessions quietly once Lattices has done the workspace handoff.")
                     .font(Typo.caption(9.5))
                     .foregroundColor(Palette.textMuted.opacity(0.75))
+            }
+        }
+    }
+
+    private var terminalSettingsCard: some View {
+        settingsCard {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Terminal")
+                    .font(Typo.monoBold(12))
+                    .foregroundColor(Palette.text)
+
+                Picker("", selection: $prefs.terminal) {
+                    ForEach(Terminal.installed) { t in
+                        Text(t.rawValue).tag(t)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+
+                Text("Used when Lattices attaches to tmux sessions.")
+                    .font(Typo.caption(9.5))
+                    .foregroundColor(Palette.textMuted.opacity(0.75))
+            }
+        }
+    }
+
+    private var projectDiscoveryCard: some View {
+        settingsCard {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Project discovery")
+                    .font(Typo.monoBold(12))
+                    .foregroundColor(Palette.text)
+
+                Text("Project scan root")
+                    .font(Typo.mono(10))
+                    .foregroundColor(Palette.textDim)
+
+                HStack(spacing: 6) {
+                    TextField("~/dev", text: $prefs.scanRoot)
+                        .textFieldStyle(.plain)
+                        .font(Typo.mono(11))
+                        .foregroundColor(Palette.text)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5)
+                                .fill(HudSurface.control)
+                                .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(HudHairline.standard, lineWidth: 0.5))
+                        )
+
+                    Button {
+                        let panel = NSOpenPanel()
+                        panel.canChooseDirectories = true
+                        panel.canChooseFiles = false
+                        panel.allowsMultipleSelection = false
+                        if !prefs.scanRoot.isEmpty {
+                            panel.directoryURL = URL(fileURLWithPath: prefs.scanRoot)
+                        }
+                        if panel.runModal() == .OK, let url = panel.url {
+                            prefs.scanRoot = url.path
+                        }
+                    } label: {
+                        Image(systemName: "folder")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(Palette.textDim)
+                            .frame(width: 26, height: 24)
+                            .background(
+                                RoundedRectangle(cornerRadius: 5)
+                                    .fill(HudSurface.control)
+                                    .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(HudHairline.standard, lineWidth: 0.5))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .help("Choose scan root")
+                }
+
+                HStack {
+                    Text("Scans for .lattices.json project configs.")
+                        .font(Typo.caption(9))
+                        .foregroundColor(Palette.textMuted.opacity(0.7))
+                    Spacer()
+                    Button {
+                        scanner.updateRoot(prefs.scanRoot)
+                        scanner.scan()
+                    } label: {
+                        Text("Rescan")
+                            .font(Typo.monoBold(10))
+                            .foregroundColor(Palette.text)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 4)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(Palette.surfaceHov)
+                                    .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
     }
@@ -1008,100 +1058,19 @@ struct SettingsContentView: View {
 
                 permissionsAssistantCard
 
-                settingsCard {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Terminal")
-                            .font(Typo.mono(11))
-                            .foregroundColor(Palette.text)
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 12) {
+                        terminalSettingsCard
+                        interactionBehaviorCard
+                    }
 
-                        Picker("", selection: $prefs.terminal) {
-                            ForEach(Terminal.installed) { t in
-                                Text(t.rawValue).tag(t)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .labelsHidden()
-
-                        Text("Used for attaching to sessions")
-                            .font(Typo.caption(10))
-                            .foregroundColor(Palette.textMuted)
+                    VStack(alignment: .leading, spacing: 12) {
+                        terminalSettingsCard
+                        interactionBehaviorCard
                     }
                 }
 
-                settingsCard {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Project discovery")
-                            .font(Typo.mono(11))
-                            .foregroundColor(Palette.text)
-
-                        Text("Project scan root")
-                            .font(Typo.mono(10))
-                            .foregroundColor(Palette.textDim)
-
-                        HStack(spacing: 6) {
-                            TextField("~/dev", text: $prefs.scanRoot)
-                                .textFieldStyle(.plain)
-                                .font(Typo.mono(11))
-                                .foregroundColor(Palette.text)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 5)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 5)
-                                        .fill(Color.white.opacity(0.06))
-                                        .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
-                                )
-
-                            Button {
-                                let panel = NSOpenPanel()
-                                panel.canChooseDirectories = true
-                                panel.canChooseFiles = false
-                                panel.allowsMultipleSelection = false
-                                if !prefs.scanRoot.isEmpty {
-                                    panel.directoryURL = URL(fileURLWithPath: prefs.scanRoot)
-                                }
-                                if panel.runModal() == .OK, let url = panel.url {
-                                    prefs.scanRoot = url.path
-                                }
-                            } label: {
-                                Image(systemName: "folder")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(Palette.textDim)
-                                    .padding(6)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 5)
-                                            .fill(Color.white.opacity(0.06))
-                                            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
-                                    )
-                            }
-                            .buttonStyle(.plain)
-                        }
-
-                        HStack {
-                            Text("Scans for .lattices.json project configs")
-                                .font(Typo.caption(9))
-                                .foregroundColor(Palette.textMuted.opacity(0.7))
-                            Spacer()
-                            Button {
-                                scanner.updateRoot(prefs.scanRoot)
-                                scanner.scan()
-                            } label: {
-                                Text("Rescan")
-                                    .font(Typo.monoBold(10))
-                                    .foregroundColor(Palette.text)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 4)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .fill(Palette.surfaceHov)
-                                            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
-                                    )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-
-                interactionBehaviorCard
+                projectDiscoveryCard
             }
             .padding(16)
             .frame(maxWidth: 760, alignment: .leading)
@@ -1114,12 +1083,13 @@ struct SettingsContentView: View {
             VStack(alignment: .leading, spacing: 12) {
                 permissionsAssistantCard
 
+                let allCapabilitiesGranted = Capability.allCases.allSatisfy(\.isGranted)
                 settingsCard {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(alignment: .center, spacing: 8) {
-                            Image(systemName: permChecker.allGranted ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
+                            Image(systemName: allCapabilitiesGranted ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
                                 .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(permChecker.allGranted ? Palette.running : Palette.detach)
+                                .foregroundColor(allCapabilitiesGranted ? Palette.running : Palette.detach)
                             Text("Permissions")
                                 .font(Typo.mono(12))
                                 .foregroundColor(Palette.text)
@@ -1136,7 +1106,7 @@ struct SettingsContentView: View {
                             .help("Refresh permission status")
                         }
 
-                        Text("Lattices uses macOS privacy permissions for window discovery, tiling, gestures, remaps, and synthetic shortcuts.")
+                        Text("Lattices uses macOS privacy permissions for window discovery, tiling, gestures, remaps, voice capture, and synthetic shortcuts.")
                             .font(Typo.caption(10))
                             .foregroundColor(Palette.textMuted)
 
@@ -1155,6 +1125,14 @@ struct SettingsContentView: View {
                                 detail: "Required for reliable window titles, OCR, and Space-aware window discovery."
                             ) {
                                 permChecker.requestScreenRecording()
+                            }
+
+                            permissionSettingsRow(
+                                "Microphone",
+                                granted: permChecker.microphoneGranted,
+                                detail: "Required for local dictation and voice commands hosted by Lattices."
+                            ) {
+                                permChecker.requestMicrophone()
                             }
 
                             permissionReviewRow(
@@ -2230,7 +2208,45 @@ struct SettingsContentView: View {
     private var voiceContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                voiceCaptureCard
+                voiceMicrophoneAccessCard
+
+                #if canImport(HudsonVoice)
+                HudsonVoiceSettingsView(
+                    showsMicrophonePermission: false,
+                    managesMicrophonePermission: false,
+                    appName: "Lattices"
+                )
+                #else
+                settingsCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 10) {
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Palette.surfaceHov)
+                                .overlay(
+                                    Image(systemName: "waveform.slash")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundColor(Palette.textMuted)
+                                )
+                                .frame(width: 30, height: 30)
+
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Voice runtime")
+                                    .font(Typo.mono(12))
+                                    .foregroundColor(Palette.text)
+                                Text("Lattices' embedded voice runtime isn't compiled into this build.")
+                                    .font(Typo.caption(9.5))
+                                    .foregroundColor(Palette.textMuted)
+                            }
+                        }
+
+                        Text("Build with HUDSONKIT_WITH_VOICE=1 to host the voice runtime and reveal its settings.")
+                            .font(Typo.caption(10))
+                            .foregroundColor(Palette.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                #endif
+
                 voiceModelCard
                 voiceShortcutsCard
             }
@@ -2240,67 +2256,6 @@ struct SettingsContentView: View {
         }
         .onAppear {
             assistantSession.prepareForDisplay()
-        }
-    }
-
-    private var voiceCaptureCard: some View {
-        _ = voiceRefreshRevision
-        let info = VoxDaemon.info()
-        let isRunning = info != nil
-        let providerAvailable = audioLayer.provider?.isAvailable ?? false
-        let installed = voiceVoxAppURL() != nil || FileManager.default.fileExists(atPath: NSHomeDirectory() + "/.vox")
-
-        return settingsCard {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .center, spacing: 10) {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(voiceCaptureTint(isRunning: isRunning, installed: installed).opacity(0.13))
-                        .overlay(
-                            Image(systemName: isRunning ? "mic.fill" : (installed ? "mic.badge.plus" : "mic.slash"))
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(voiceCaptureTint(isRunning: isRunning, installed: installed))
-                        )
-                        .frame(width: 30, height: 30)
-
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Voice capture")
-                            .font(Typo.mono(12))
-                            .foregroundColor(Palette.text)
-                        Text(voiceCaptureSummary(isRunning: isRunning, installed: installed, providerAvailable: providerAvailable))
-                            .font(Typo.caption(9.5))
-                            .foregroundColor(Palette.textMuted)
-                    }
-
-                    Spacer()
-
-                    aiStatusPill(isRunning ? "VOX LIVE" : (installed ? "VOX OFF" : "NO VOX"), tint: voiceCaptureTint(isRunning: isRunning, installed: installed))
-                }
-
-                Text("Lattices borrows Vox for microphone capture and transcription. Choose the physical microphone in Vox; Lattices receives final text and routes it through workspace intents.")
-                    .font(Typo.caption(10))
-                    .foregroundColor(Palette.textMuted)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    voiceFactRow("Mic selection", value: "Vox audio input", detail: "Open Vox to change the actual device.")
-                    voiceFactRow("Capture daemon", value: isRunning ? "127.0.0.1:\(info?.port ?? VoxDaemon.fallbackPort)" : "not running", detail: info.map { "pid \($0.pid) · v\($0.version)" } ?? "Starts on demand when possible.")
-                    voiceFactRow("Provider", value: audioLayer.providerName, detail: providerAvailable ? "Ready for Lattices voice capture." : "Waiting for Vox availability.")
-                }
-                .padding(10)
-                .background(shortcutsInsetPanel)
-
-                HStack(spacing: 8) {
-                    aiActionButton(installed ? "Open Vox" : "Find Vox", tint: installed ? Palette.running : Palette.detach) {
-                        openVoxApp()
-                    }
-
-                    aiActionButton("Refresh", tint: Palette.textMuted) {
-                        voiceRefreshRevision += 1
-                    }
-
-                    Spacer()
-                }
-            }
         }
     }
 
@@ -2421,40 +2376,217 @@ struct SettingsContentView: View {
         }
     }
 
-    private func voiceCaptureTint(isRunning: Bool, installed: Bool) -> Color {
-        if isRunning { return Palette.running }
-        if installed { return Palette.detach }
-        return Palette.kill
-    }
+    private var voiceMicrophoneAccessCard: some View {
+        settingsCard {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Voice access")
+                            .font(Typo.monoBold(12))
+                            .foregroundColor(Palette.text)
+                        Text(voiceMicrophoneSummary)
+                            .font(Typo.mono(9.5))
+                            .foregroundColor(Palette.textMuted)
+                    }
 
-    private func voiceCaptureSummary(isRunning: Bool, installed: Bool, providerAvailable: Bool) -> String {
-        if isRunning && providerAvailable { return "Vox is reachable and ready for capture." }
-        if isRunning { return "Vox daemon is running; waiting for provider readiness." }
-        if installed { return "Vox is installed but not running." }
-        return "Install Vox to enable microphone capture."
-    }
+                    Spacer()
 
-    private func voiceVoxAppURL() -> URL? {
-        [
-            "/Applications/Vox.app",
-            NSHomeDirectory() + "/Applications/Vox.app",
-        ]
-        .first(where: { FileManager.default.fileExists(atPath: $0) })
-        .map { URL(fileURLWithPath: $0) }
-    }
+                    statusToken(voiceMicrophoneStatusLabel, color: voiceMicrophoneStatusColor)
+                }
 
-    private func openVoxApp() {
-        guard let url = voiceVoxAppURL() else {
-            NSWorkspace.shared.open(URL(fileURLWithPath: "/Applications"))
-            return
-        }
+                voiceMicrophonePermissionRow
 
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = true
-        NSWorkspace.shared.openApplication(at: url, configuration: configuration) { _, error in
-            if let error {
-                DiagnosticLog.shared.warn("Settings: failed to open Vox — \(error.localizedDescription)")
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("Lattices hosts the embedded voice engine, so macOS Microphone access belongs to Lattices.")
+                        .font(Typo.caption(9.5))
+                        .foregroundColor(Palette.textMuted.opacity(0.8))
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Spacer(minLength: 0)
+
+                    Button {
+                        PermissionsAssistantWindowController.shared.show(focus: .voiceCapture)
+                    } label: {
+                        settingsActionLabel("Permissions", icon: "slider.horizontal.3")
+                    }
+                    .buttonStyle(.plain)
+
+                    if voiceMicrophoneShowsSettings {
+                        Button {
+                            permChecker.openMicrophoneSettings()
+                        } label: {
+                            settingsActionLabel("System Settings", icon: "arrow.up.forward.app")
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Button {
+                        permChecker.check()
+                    } label: {
+                        settingsActionLabel("Recheck", icon: "checkmark.shield")
+                    }
+                    .buttonStyle(.plain)
+
+                    Spacer(minLength: 0)
+                }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var voiceMicrophonePermissionRow: some View {
+        HStack(alignment: .center, spacing: 10) {
+            RoundedRectangle(cornerRadius: 6)
+                .fill(voiceMicrophoneStatusColor.opacity(0.14))
+                .overlay(
+                    Image(systemName: voiceMicrophoneIcon)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(voiceMicrophoneStatusColor)
+                )
+                .frame(width: 30, height: 30)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Microphone")
+                    .font(Typo.monoBold(11))
+                    .foregroundColor(Palette.text)
+                Text(voiceMicrophoneDetail)
+                    .font(Typo.caption(9.5))
+                    .foregroundColor(Palette.textMuted.opacity(0.82))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 12)
+
+            voiceMicrophonePrimaryAction
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Palette.surfaceHov.opacity(0.32))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(voiceMicrophoneStatusColor.opacity(voiceMicrophoneNeedsAttention ? 0.24 : 0.12), lineWidth: 0.5)
+                )
+        )
+    }
+
+    @ViewBuilder
+    private var voiceMicrophonePrimaryAction: some View {
+        switch permChecker.microphone {
+        case .notDetermined:
+            Button {
+                permChecker.requestMicrophone()
+            } label: {
+                settingsActionLabel("Request Access", icon: "mic.badge.plus", emphasized: true)
+            }
+            .buttonStyle(.plain)
+        case .denied, .restricted:
+            Button {
+                permChecker.openMicrophoneSettings()
+            } label: {
+                settingsActionLabel("Open Settings", icon: "arrow.up.forward.app", emphasized: true)
+            }
+            .buttonStyle(.plain)
+        case .authorized:
+            HStack(spacing: 4) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                Text("Ready")
+                    .font(Typo.monoBold(10))
+            }
+            .foregroundColor(Palette.running)
+        @unknown default:
+            EmptyView()
+        }
+    }
+
+    private var voiceMicrophoneSummary: String {
+        switch permChecker.microphone {
+        case .authorized:
+            return "Ready for dictation and voice commands"
+        case .notDetermined:
+            return "Not requested yet"
+        case .denied:
+            return "Needs macOS approval"
+        case .restricted:
+            return "Blocked by device policy"
+        @unknown default:
+            return "Microphone status is unknown"
+        }
+    }
+
+    private var voiceMicrophoneStatusLabel: String {
+        switch permChecker.microphone {
+        case .authorized:
+            return "ready"
+        case .notDetermined:
+            return "not requested"
+        case .denied:
+            return "blocked"
+        case .restricted:
+            return "restricted"
+        @unknown default:
+            return "unknown"
+        }
+    }
+
+    private var voiceMicrophoneStatusColor: Color {
+        switch permChecker.microphone {
+        case .authorized:
+            return Palette.running
+        case .notDetermined:
+            return Palette.textMuted
+        case .denied, .restricted:
+            return Palette.detach
+        @unknown default:
+            return Palette.textDim
+        }
+    }
+
+    private var voiceMicrophoneIcon: String {
+        switch permChecker.microphone {
+        case .authorized:
+            return "checkmark.circle.fill"
+        case .notDetermined:
+            return "mic"
+        case .denied, .restricted:
+            return "exclamationmark.circle.fill"
+        @unknown default:
+            return "questionmark.circle.fill"
+        }
+    }
+
+    private var voiceMicrophoneDetail: String {
+        switch permChecker.microphone {
+        case .authorized:
+            return "Lattices can listen when you start dictation or a voice command."
+        case .notDetermined:
+            return "Ask macOS once before using local dictation or voice commands."
+        case .denied:
+            return "Open Privacy & Security > Microphone and enable Lattices, then recheck."
+        case .restricted:
+            return "This Mac or an administrator is blocking microphone access."
+        @unknown default:
+            return "Lattices could not read the current microphone permission state."
+        }
+    }
+
+    private var voiceMicrophoneNeedsAttention: Bool {
+        switch permChecker.microphone {
+        case .authorized:
+            return false
+        default:
+            return true
+        }
+    }
+
+    private var voiceMicrophoneShowsSettings: Bool {
+        switch permChecker.microphone {
+        case .denied, .restricted:
+            return true
+        default:
+            return false
         }
     }
 
@@ -2749,17 +2881,26 @@ struct SettingsContentView: View {
     }
 
     private var buildChannelBadge: some View {
-        let tint = LatticesRuntime.isDevBuild ? Palette.detach : Palette.running
-
-        return Text(LatticesRuntime.buildChannelLabel)
+        Text(LatticesRuntime.buildChannelLabel)
             .font(Typo.monoBold(9))
-            .foregroundColor(tint)
+            .foregroundColor(Palette.textMuted)
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
             .background(
                 Capsule()
-                    .fill(tint.opacity(0.12))
+                    .fill(Palette.surfaceHov.opacity(0.6))
             )
+    }
+
+    private func statusToken(_ label: String, color: Color) -> some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(color)
+                .frame(width: 5, height: 5)
+            Text(label)
+                .font(Typo.monoBold(9.5))
+                .foregroundColor(Palette.textDim)
+        }
     }
 
     // MARK: - Search & OCR
@@ -3151,25 +3292,41 @@ struct SettingsContentView: View {
 
     // MARK: - Settings Card
 
-    private func settingsCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        content()
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .liquidGlass()
+    private func settingsCard<Content: View>(@ViewBuilder content: @escaping () -> Content) -> some View {
+        HudCard(
+            padding: 12,
+            radius: HudRadius.card,
+            fill: Palette.surface,
+            stroke: Palette.border
+        ) {
+            content()
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 
     private var cardDivider: some View {
-        Rectangle()
-            .fill(
-                LinearGradient(
-                    colors: [Color.white.opacity(0.03), Color.white.opacity(0.08), Color.white.opacity(0.03)],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-            )
-            .frame(height: 0.5)
+        HudDivider(color: HudHairline.subtle)
             .padding(.vertical, 3)
+    }
+
+    private func settingsActionLabel(_ title: String, icon: String, emphasized: Bool = false) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 9, weight: .semibold))
+            Text(title)
+                .font(Typo.monoBold(10))
+        }
+        .foregroundColor(emphasized ? Palette.text : Palette.textMuted)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 4)
+                .fill(emphasized ? Palette.surfaceHov : Palette.surface)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .strokeBorder(emphasized ? Palette.borderLit : Palette.border, lineWidth: 0.5)
+                )
+        )
     }
 
     private func permissionSettingsRow(
@@ -3716,7 +3873,7 @@ struct SettingsContentView: View {
         title: String,
         eyebrow: String,
         summary: String,
-        @ViewBuilder content: () -> Content
+        @ViewBuilder content: @escaping () -> Content
     ) -> some View {
         settingsCard {
             VStack(alignment: .leading, spacing: 12) {
@@ -4126,5 +4283,68 @@ struct SettingsContentView: View {
                             .strokeBorder(Palette.border, lineWidth: 0.5)
                     )
             )
+    }
+}
+
+private struct SettingsSidebarRow: View {
+    let icon: String
+    let title: String
+    let eyebrow: String
+    let isActive: Bool
+    let accent: Color
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    private var iconTint: Color {
+        if isActive || isHovering { return Palette.textDim }
+        return Palette.textMuted
+    }
+
+    private var titleTint: Color {
+        if isActive || isHovering { return Palette.text }
+        return Palette.textDim
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Capsule()
+                    .fill(isActive ? accent : Color.clear)
+                    .frame(width: 2, height: 22)
+
+                HStack(alignment: .center, spacing: 9) {
+                    Image(systemName: icon)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(iconTint)
+                        .frame(width: 16, height: 20, alignment: .center)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(title)
+                            .font(isActive ? Typo.monoBold(11) : Typo.mono(11))
+                            .foregroundColor(titleTint)
+
+                        Text(eyebrow)
+                            .font(Typo.mono(8.5))
+                            .foregroundColor(Palette.textMuted.opacity(isActive ? 0.82 : 0.62))
+                    }
+
+                    Spacer(minLength: 0)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 7)
+            .contentShape(RoundedRectangle(cornerRadius: HudRadius.standard))
+            .background(
+                RoundedRectangle(cornerRadius: HudRadius.standard)
+                    .fill(isActive ? Palette.surface.opacity(0.95) : (isHovering ? Palette.surface.opacity(0.62) : Color.clear))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: HudRadius.standard)
+                    .stroke(isActive ? Palette.borderLit : Color.clear, lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
     }
 }

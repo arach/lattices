@@ -6,7 +6,7 @@ import HudsonVoice
 /// Hands-off voice mode: hotkey → listen → worker handles everything.
 ///
 /// Architecture:
-///   - Swift owns: hotkey, Vox dictation, action execution
+///   - Swift owns: hotkey, Hudson Voice dictation, action execution
 ///   - Worker owns: inference (Groq), TTS (streaming OpenAI), fast path matching, audio caching
 ///   - Worker is a long-running bun process, started once, communicates via JSON lines over stdio
 ///
@@ -411,11 +411,11 @@ final class HandsOffSession: ObservableObject {
         playSound("Funk")
     }
 
-    /// Cancel any active Vox recording session without transcribing.
+    /// Cancel any active voice recording session without transcribing.
     private func cancelVoxSession() {
         #if canImport(HudsonVoice)
         guard let session = voxSession else { return }
-        DiagnosticLog.shared.info("HandsOff: cancelling Vox session")
+        DiagnosticLog.shared.info("HandsOff: cancelling voice session")
         voxSession = nil
         voxPump?.cancel()
         voxPump = nil
@@ -433,10 +433,9 @@ final class HandsOffSession: ObservableObject {
 
     private func beginListening() {
         #if canImport(HudsonVoice)
-        // HudsonVoice dials voxd on capture start — there's no socket to pre-connect,
-        // so we just confirm the daemon is discoverable (retrying briefly if it's
-        // still spinning up) and then open the live session.
-        if VoxDaemon.isRunning {
+        // HudsonVoice opens a fresh capture on start. We only gate on whether the
+        // runtime is discoverable so the UI can show a brief connecting phase.
+        if HudsonVoiceRuntime.isAvailable() {
             startDictation()
         } else {
             state = .connecting
@@ -453,7 +452,7 @@ final class HandsOffSession: ObservableObject {
 
     private func retryListenIfReady(attempts: Int) {
         #if canImport(HudsonVoice)
-        if VoxDaemon.isRunning {
+        if HudsonVoiceRuntime.isAvailable() {
             startDictation()
         } else if attempts > 0 {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
@@ -461,7 +460,7 @@ final class HandsOffSession: ObservableObject {
             }
         } else {
             state = .idle
-            DiagnosticLog.shared.warn("HandsOff: Vox not available")
+            DiagnosticLog.shared.warn("HandsOff: voice runtime not available")
             playSound("Basso")
         }
         #endif
@@ -479,12 +478,18 @@ final class HandsOffSession: ObservableObject {
 
         DiagnosticLog.shared.info("HandsOff: listening...")
 
-        // HudVoxLiveSession opens the mic in voxd; events stream back on start().
+        // HudVoxLiveSession opens the mic through the resolved voice runtime.
         // `.partial` updates the live transcript, `.final` delivers the turn.
-        let endpoint = VoxEndpointResolver.resolve()
+        guard let runtime = HudsonVoiceRuntimeResolver.resolve(clientId: "lattices") else {
+            state = .idle
+            DiagnosticLog.shared.warn("HandsOff: HudsonVoice runtime unavailable")
+            playSound("Basso")
+            return
+        }
+        let endpoint = runtime.endpoint
         let session = HudVoxLiveSession(
             endpoint: endpoint,
-            options: HudVoxLiveSessionOptions(clientId: "lattices", mode: .pushToTalk)
+            options: runtime.options
         )
         voxSession = session
         voxPump = Task { [weak self] in
@@ -616,7 +621,7 @@ final class HandsOffSession: ObservableObject {
         switch event {
         case .state(let s):
             DiagnosticLog.shared.info("HandsOff: session → \(s.state)")
-            // voxd cancelled the session (e.g. recording timeout)
+            // The voice runtime cancelled the session, e.g. recording timeout.
             if case .cancelled = s.state, state == .listening {
                 state = .idle
                 playSound("Basso")

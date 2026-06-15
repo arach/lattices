@@ -314,6 +314,8 @@ ${buildMetadata}    <key>LSMinimumSystemVersion</key>
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Lattices uses the microphone for Hudson Voice dictation and voice commands.</string>
     <key>NSSupportsAutomaticTermination</key>
     <true/>
 </dict>

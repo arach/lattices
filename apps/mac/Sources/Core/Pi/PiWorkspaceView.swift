@@ -63,7 +63,13 @@ struct PiWorkspaceView: View {
             HStack(spacing: 8) {
                 PiChatModelChip(session: session)
 
-                headerIconButton(symbol: "gearshape") {
+                if session.hasConversationHistory {
+                    headerIconButton(symbol: "doc.on.doc", help: "Copy chat") {
+                        session.copyConversationToClipboard()
+                    }
+                }
+
+                headerIconButton(symbol: "gearshape", help: "Assistant settings") {
                     SettingsWindowController.shared.showAssistant()
                 }
 
@@ -165,7 +171,7 @@ struct PiWorkspaceView: View {
         .background(Palette.surface.opacity(0.22))
     }
 
-    private func headerIconButton(symbol: String, action: @escaping () -> Void) -> some View {
+    private func headerIconButton(symbol: String, help: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 12, weight: .semibold))
@@ -178,6 +184,7 @@ struct PiWorkspaceView: View {
                 )
         }
         .buttonStyle(.plain)
+        .help(help)
     }
 
     private func headerTextButton(_ title: String, tint: Color = Palette.textMuted, action: @escaping () -> Void) -> some View {

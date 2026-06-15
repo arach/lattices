@@ -39,6 +39,7 @@ struct PiProvider: Identifiable, Equatable {
 
     let id: String
     let name: String
+    let modelID: String
     let authMode: AuthMode
     let tokenLabel: String
     let tokenPlaceholder: String
@@ -48,6 +49,7 @@ struct PiProvider: Identifiable, Equatable {
         PiProvider(
             id: "github-copilot",
             name: "GitHub Copilot",
+            modelID: "gpt-5.4",
             authMode: .oauth,
             tokenLabel: "OAuth",
             tokenPlaceholder: "",
@@ -56,6 +58,7 @@ struct PiProvider: Identifiable, Equatable {
         PiProvider(
             id: "openai-codex",
             name: "OpenAI Codex",
+            modelID: "gpt-5.5",
             authMode: .oauth,
             tokenLabel: "OAuth",
             tokenPlaceholder: "",
@@ -64,6 +67,7 @@ struct PiProvider: Identifiable, Equatable {
         PiProvider(
             id: "openai",
             name: "OpenAI",
+            modelID: "gpt-5.4",
             authMode: .apiKey,
             tokenLabel: "API key",
             tokenPlaceholder: "sk-...",
@@ -72,6 +76,7 @@ struct PiProvider: Identifiable, Equatable {
         PiProvider(
             id: "anthropic",
             name: "Anthropic",
+            modelID: "claude-opus-4-7",
             authMode: .apiKey,
             tokenLabel: "API key",
             tokenPlaceholder: "sk-ant-...",
@@ -80,6 +85,7 @@ struct PiProvider: Identifiable, Equatable {
         PiProvider(
             id: "google",
             name: "Google Gemini",
+            modelID: "gemini-3.1-pro-preview",
             authMode: .apiKey,
             tokenLabel: "API key",
             tokenPlaceholder: "AIza...",
@@ -88,6 +94,7 @@ struct PiProvider: Identifiable, Equatable {
         PiProvider(
             id: "openrouter",
             name: "OpenRouter",
+            modelID: "moonshotai/kimi-k2.6",
             authMode: .apiKey,
             tokenLabel: "API key",
             tokenPlaceholder: "sk-or-...",
@@ -96,6 +103,7 @@ struct PiProvider: Identifiable, Equatable {
         PiProvider(
             id: "groq",
             name: "Groq",
+            modelID: "openai/gpt-oss-120b",
             authMode: .apiKey,
             tokenLabel: "API key",
             tokenPlaceholder: "gsk_...",
@@ -104,6 +112,7 @@ struct PiProvider: Identifiable, Equatable {
         PiProvider(
             id: "xai",
             name: "xAI",
+            modelID: "grok-4.20-0309-reasoning",
             authMode: .apiKey,
             tokenLabel: "API key",
             tokenPlaceholder: "xai-...",
@@ -112,6 +121,7 @@ struct PiProvider: Identifiable, Equatable {
         PiProvider(
             id: "mistral",
             name: "Mistral",
+            modelID: "devstral-medium-latest",
             authMode: .apiKey,
             tokenLabel: "API key",
             tokenPlaceholder: "",
@@ -120,6 +130,7 @@ struct PiProvider: Identifiable, Equatable {
         PiProvider(
             id: "minimax",
             name: "MiniMax",
+            modelID: "MiniMax-M2.7",
             authMode: .apiKey,
             tokenLabel: "API key",
             tokenPlaceholder: "",
@@ -319,7 +330,9 @@ final class PiChatSession: ObservableObject {
                 let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmed.isEmpty else { return }
                 self.draft = WorkspaceDictationBuffer.appending(trimmed, to: self.draft)
-                WorkspaceVoiceInput.shared.consumeFinalText()
+                Task { @MainActor in
+                    WorkspaceVoiceInput.shared.consumeFinalText()
+                }
             }
         #endif
     }
@@ -355,6 +368,17 @@ final class PiChatSession: ObservableObject {
 
     var hasConversationHistory: Bool {
         messages.contains { $0.role != .system }
+    }
+
+    var copyableConversationText: String {
+        messages
+            .filter { $0.role != .system }
+            .compactMap { message -> String? in
+                let text = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !text.isEmpty else { return nil }
+                return "\(Self.copyLabel(for: message.role)):\n\(text)"
+            }
+            .joined(separator: "\n\n")
     }
 
     var selectedCredentialSummary: String {
@@ -532,6 +556,14 @@ final class PiChatSession: ObservableObject {
         appendSystemMessage("Copied the provider runtime install command to the clipboard.")
     }
 
+    func copyConversationToClipboard() {
+        let text = copyableConversationText
+        guard !text.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        DiagnosticLog.shared.success("PiChat: copied conversation to clipboard (\(text.count) chars)")
+    }
+
     func installPiInTerminal() {
         Preferences.shared.terminal.launch(command: piInstallCommand, in: NSHomeDirectory())
         appendSystemMessage("Opened \(Preferences.shared.terminal.rawValue) and started the provider runtime install.")
@@ -609,7 +641,7 @@ final class PiChatSession: ObservableObject {
                 prompt: prompt,
                 runtime: runtime,
                 providerName: provider.name,
-                modelID: provider.id,
+                modelID: provider.modelID,
                 messageID: messageID,
                 generation: turnGen,
                 inferenceTimer: inferenceTimer
@@ -1129,6 +1161,7 @@ final class PiChatSession: ObservableObject {
             piPath: piPath,
             sessionDir: chatSessionDirURL,
             providerID: provider.id,
+            modelID: provider.modelID,
             environment: buildProcessEnvironment(for: provider),
             appendSystemPrompt: Self.chatAppendSystemPrompt
         )
@@ -1161,6 +1194,7 @@ final class PiChatSession: ObservableObject {
             piPath: piPath,
             sessionDir: sessionDir,
             providerID: provider.id,
+            modelID: provider.modelID,
             environment: buildProcessEnvironment(for: provider),
             appendSystemPrompt: Self.voiceAppendSystemPrompt,
             disableBuiltInTools: true,
@@ -1530,6 +1564,17 @@ final class PiChatSession: ObservableObject {
         authProcessIdentifier = nil
         authenticatingProviderID = nil
         clearRecordedAuthHelperProcess()
+    }
+
+    private static func copyLabel(for role: PiChatMessage.Role) -> String {
+        switch role {
+        case .system:
+            return "System"
+        case .user:
+            return "You"
+        case .assistant:
+            return "Assistant"
+        }
     }
 
     private func appendSystemMessage(_ text: String) {

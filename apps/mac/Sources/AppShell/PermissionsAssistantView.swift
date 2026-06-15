@@ -248,6 +248,20 @@ struct PermissionsAssistantView: View {
 
     private func statusMessage(_ cap: Capability) -> String {
         if isGranted(cap) { return cap.whenGrantedDetail }
+        if cap == .voiceCapture {
+            switch permChecker.microphone {
+            case .notDetermined:
+                return "Microphone has not been requested yet."
+            case .denied:
+                return "macOS reports Microphone access is off for Lattices."
+            case .restricted:
+                return "This Mac or an administrator is blocking Microphone access."
+            case .authorized:
+                return cap.whenGrantedDetail
+            @unknown default:
+                return "Lattices could not read the current Microphone permission state."
+            }
+        }
         if permChecker.refreshInFlight { return "Checking macOS permission state..." }
         if let lastCheckedAt = permChecker.lastCheckedAt {
             return "Last checked \(Self.checkTimeFormatter.string(from: lastCheckedAt)); macOS still reports not enabled."
@@ -257,7 +271,7 @@ struct PermissionsAssistantView: View {
 
     @ViewBuilder
     private func permissionRepairCard(_ cap: Capability) -> some View {
-        if !isGranted(cap) {
+        if !isGranted(cap) && cap.usesDragRepair {
             PermissionAppDragCard(
                 title: "Refresh the \(cap.requirementLabel) entry",
                 permissionName: cap.requirementLabel,
@@ -273,6 +287,8 @@ struct PermissionsAssistantView: View {
             return "If macOS shows an older Lattices entry, remove it first. Then drag this current app into Accessibility and toggle it on."
         case .screenSearch:
             return "If macOS shows an older Lattices entry, remove it first. Then drag this current app into Screen Recording and toggle it on."
+        case .voiceCapture:
+            return "Microphone access uses the macOS prompt and Privacy & Security list; no drag step is needed."
         }
     }
 
@@ -350,7 +366,7 @@ struct PermissionsAssistantView: View {
                     }
                     .buttonStyle(.plain)
 
-                    if !isGranted(cap) {
+                    if !isGranted(cap) && cap.usesDragRepair {
                         Button {
                             PermissionChecker.shared.resetSavedApproval(for: cap)
                         } label: {
@@ -458,6 +474,7 @@ struct PermissionsAssistantView: View {
         switch cap {
         case .windowControl: return "Request Accessibility"
         case .screenSearch:  return "Enable OCR"
+        case .voiceCapture:  return "Request Microphone"
         }
     }
 
@@ -467,6 +484,8 @@ struct PermissionsAssistantView: View {
             return "macOS will add Lattices to its Accessibility list. You finish the toggle in System Settings."
         case .screenSearch:
             return "Enabling this turns on OCR and asks macOS for Screen Recording on this Mac. If permission looks stuck, remove stale Lattices entries and drag the current app in again."
+        case .voiceCapture:
+            return "macOS will show the Microphone prompt the first time. After that, manage Lattices in Privacy & Security > Microphone."
         }
     }
 
@@ -480,13 +499,21 @@ struct PermissionsAssistantView: View {
         case .screenSearch:
             // Turning on OCR is the moment we ask for Screen Recording.
             OcrModel.shared.setEnabled(true)
+        case .voiceCapture:
+            permChecker.requestMicrophone()
+            return
         }
 
         showDragAssistant(cap, openSettings: false)
     }
 
     private func openSystemSettings(_ cap: Capability) {
-        showDragAssistant(cap, openSettings: true)
+        if cap.usesDragRepair {
+            showDragAssistant(cap, openSettings: true)
+        } else {
+            PermissionChecker.shared.openSettings(for: cap)
+            PermissionChecker.shared.recheckNow(reason: "permissions assistant open settings", probeIfMissing: false)
+        }
     }
 
     private func showDragAssistant(_ cap: Capability, openSettings: Bool) {

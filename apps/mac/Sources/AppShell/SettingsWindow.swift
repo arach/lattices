@@ -21,6 +21,19 @@ final class SettingsWindowController {
         ScreenMapWindowController.shared.showPage(.companionSettings)
     }
 
+    /// Open Settings and jump to a specific sidebar section by its raw value
+    /// (general, shortcuts, mouse, ai, voice, search, companion).
+    func show(section rawValue: String) {
+        ScreenMapWindowController.shared.showPage(.settings)
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: .latticesShowSettingsSection,
+                object: nil,
+                userInfo: ["section": rawValue]
+            )
+        }
+    }
+
     func showAssistant() {
         ScreenMapWindowController.shared.showPage(.settings)
         DispatchQueue.main.async {

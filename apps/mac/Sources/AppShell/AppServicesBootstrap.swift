@@ -7,6 +7,7 @@ enum AppServicesBootstrap {
         OcrModel.shared.start()
         TmuxModel.shared.start()
         ProcessModel.shared.start()
+        LatticesVoiceRuntime.start()
         LatticesApi.setup()
         DaemonServer.shared.start()
         if Preferences.shared.companionBridgeEnabled {
@@ -18,6 +19,7 @@ enum AppServicesBootstrap {
     }
 
     static func stop() {
+        LatticesVoiceRuntime.stop()
         PiChatSession.shared.shutdown()
         LatticesCompanionBridgeServer.shared.stop()
         DaemonServer.shared.stop()

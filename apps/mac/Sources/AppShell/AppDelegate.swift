@@ -5,6 +5,7 @@ extension Notification.Name {
     static let latticesPopoverWillShow = Notification.Name("latticesPopoverWillShow")
     static let latticesShowGeneralSettings = Notification.Name("latticesShowGeneralSettings")
     static let latticesShowAssistantSettings = Notification.Name("latticesShowAssistantSettings")
+    static let latticesShowSettingsSection = Notification.Name("latticesShowSettingsSection")
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -210,6 +211,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             handleCompanionDeepLink(action: action)
         case "daemon":
             handleDaemonDeepLink(action: action)
+        case "settings":
+            // lattices://settings/<section> jumps straight to a sidebar tab.
+            if let action, !action.isEmpty {
+                SettingsWindowController.shared.show(section: action)
+            } else {
+                SettingsWindowController.shared.show()
+            }
         default:
             SettingsWindowController.shared.show()
         }
