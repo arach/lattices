@@ -256,7 +256,10 @@ final class VoiceCommandState: ObservableObject {
             }
         } else {
             appendLog("Vox daemon not running")
-            phase = .idle
+            executionResult = "Vox daemon not running — open Vox and try again."
+            resultSummary = executionResult ?? ""
+            syncLogs()
+            phase = .result
         }
     }
 
@@ -436,17 +439,26 @@ final class VoiceCommandState: ObservableObject {
             // Terminal errors — log them, go to idle (not a separate error phase)
             if result == "No speech detected" {
                 appendLog("No speech detected")
-                self.phase = .idle
+                self.executionResult = result
+                self.resultSummary = "No speech detected — try again."
+                syncLogs()
+                self.phase = .result
                 return
             }
             if result == "Transcription failed" {
                 appendLog("Transcription failed")
-                self.phase = .idle
+                self.executionResult = result
+                self.resultSummary = "Transcription failed — try again."
+                syncLogs()
+                self.phase = .result
                 return
             }
             if let result, result.hasPrefix("Mic in use") {
                 appendLog(result)
-                self.phase = .idle
+                self.executionResult = result
+                self.resultSummary = result
+                syncLogs()
+                self.phase = .result
                 return
             }
 
@@ -463,8 +475,13 @@ final class VoiceCommandState: ObservableObject {
                 if checks < maxChecks {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { poll() }
                 } else {
-                    appendLog("Timed out waiting for result")
-                    self.phase = .idle
+                    let timeout = "Timed out waiting for a voice result — no action outcome was reported. Try again."
+                    appendLog(timeout)
+                    self.executionResult = timeout
+                    self.resultSummary = timeout
+                    syncLogs()
+                    commitToHistory()
+                    self.phase = .result
                 }
                 return
             }
@@ -497,7 +514,11 @@ final class VoiceCommandState: ObservableObject {
                 }
             } else {
                 self.resultItems = []
-                self.resultSummary = ""
+                if let result, result != "ok" {
+                    self.resultSummary = result
+                } else {
+                    self.resultSummary = ""
+                }
             }
 
             syncLogs()  // Final sync before committing

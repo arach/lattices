@@ -1,0 +1,426 @@
+import AppKit
+import Combine
+import QuartzCore
+import SwiftUI
+
+/// The unified command bar surface — one bar for search, slash-commands and
+/// (later) voice, opened in a mode-specific way:
+///   • `.command` (Ctrl+Opt+Space) prefills "/" → command mode
+///   • `.search`  (Hyper+5)        empty, focused → search
+///   • `.voice`   (Phase B)        auto-listen
+///
+/// Composes `UnifiedCommandBarState` (which reuses OmniSearch + the command
+/// engine). The window owns the panel, the ghost preview, the key monitor, and
+/// the captured frontmost target. Ghost + commit logic are lifted from
+/// `OmniSearchWindow`, which this replaces once the other phases land.
+final class UnifiedCommandBarWindow {
+    static let shared = UnifiedCommandBarWindow()
+
+    enum Mode { case command, search, voice }
+
+    private var panel: OverlayPanel?
+    private var ghost: NSPanel?
+    private var state: UnifiedCommandBarState?
+    private var keyMonitor: Any?
+    private var flagsMonitor: Any?
+    private var ghostObserver: AnyCancellable?
+    private var queryObserver: AnyCancellable?
+    private var voicePhaseObserver: AnyCancellable?
+
+    private var capturedTarget: (wid: UInt32, pid: Int32)?
+    private var capturedScreen: NSScreen?
+
+    private let panelWidth: CGFloat = 560
+
+    var isVisible: Bool { panel?.isVisible ?? false }
+
+    func toggle(mode: Mode = .search) {
+        if isVisible { dismiss() } else { show(mode: mode) }
+    }
+
+    func show(mode: Mode = .search) {
+        if let p = panel, p.isVisible {
+            p.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        // Capture the frontmost window before presenting (command mode acts on it).
+        if let entry = DesktopModel.shared.frontmostWindow() {
+            capturedTarget = (wid: entry.wid, pid: entry.pid)
+            capturedScreen = screenForWindowFrame(entry.frame)
+        }
+
+        // Open empty (a welcome shows) regardless of hotkey — "/" enters command
+        // mode, plain text searches. Voice auto-listens below.
+        let st = UnifiedCommandBarState()
+        state = st
+
+        let view = UnifiedCommandBarView(
+            state: st,
+            onCommit: { [weak self] in self?.commit() },
+            onMic: { [weak self] in self?.onMic() },
+            onSettings: { [weak self] in self?.dismiss(); SettingsWindowController.shared.show() }
+        )
+        .preferredColorScheme(.dark)
+
+        let screen = capturedScreen ?? NSScreen.main ?? NSScreen.screens.first!
+        let panelHeight = min(520, screen.visibleFrame.height - 200)
+
+        let p = OverlayPanelShell.makePanel(
+            config: .init(
+                // `.utilityWindow` at `.floating` mirrors OmniSearch's proven recipe:
+                // a plain titled panel at `.popUpMenu` level never reliably becomes
+                // key for a background (accessory) app, so typing fell through.
+                size: NSSize(width: panelWidth, height: panelHeight),
+                styleMask: [.titled, .utilityWindow, .nonactivatingPanel],
+                titleVisible: .hidden,
+                titlebarAppearsTransparent: true,
+                background: .clear,          // SwiftUI draws the opaque card + shadow
+                level: .floating,
+                hasShadow: false,            // the card draws its own shadow
+                hidesOnDeactivate: false,
+                isMovableByWindowBackground: true,   // drag the bar/panel chrome to reposition
+                activatesOnMouseDown: true
+            ),
+            rootView: view
+        )
+        p.becomesKeyOnlyIfNeeded = false   // keep the panel key so the field stays focused (no beep) and Esc works
+        OverlayPanelShell.position(p, placement: .topCenter(margin: 120))
+        // Restore the last dragged position if it's still on a screen.
+        if let o = savedOrigin() {
+            let frame = CGRect(origin: o, size: p.frame.size)
+            if NSScreen.screens.contains(where: { $0.visibleFrame.intersects(frame) }) {
+                p.setFrameOrigin(o)
+            }
+        }
+        OverlayPanelShell.present(p)
+        panel = p
+
+        // Re-assert key on the next runloop tick — present() can fire before the
+        // hosting view is mounted, leaving the field unfocused on first open.
+        DispatchQueue.main.async { [weak p] in p?.makeKeyAndOrderFront(nil) }
+
+        installKeyMonitor()
+        installVoiceMonitor()
+        installGhostObservers(st)
+
+        // The dedicated voice hotkey opens straight into listening.
+        if mode == .voice {
+            DispatchQueue.main.async { st.voice.startListening() }
+        }
+    }
+
+    func dismiss() {
+        savePosition()
+        if let m = keyMonitor { NSEvent.removeMonitor(m); keyMonitor = nil }
+        if let m = flagsMonitor { NSEvent.removeMonitor(m); flagsMonitor = nil }
+        ghostObserver?.cancel(); ghostObserver = nil
+        queryObserver?.cancel(); queryObserver = nil
+        voicePhaseObserver?.cancel(); voicePhaseObserver = nil
+        state?.voice.cancelProcessing()   // stop any in-flight capture/transcription
+        ghost?.orderOut(nil); ghost = nil
+        panel?.orderOut(nil); panel = nil
+        state = nil
+        capturedTarget = nil
+        capturedScreen = nil
+    }
+
+    // MARK: - Position persistence
+
+    private let originKey = "unifiedCommandBar.originV1"
+
+    private func savePosition() {
+        guard let p = panel else { return }
+        let o = p.frame.origin
+        UserDefaults.standard.set([Double(o.x), Double(o.y)], forKey: originKey)
+    }
+
+    private func savedOrigin() -> NSPoint? {
+        guard let a = UserDefaults.standard.array(forKey: originKey) as? [Double], a.count == 2 else { return nil }
+        return NSPoint(x: a[0], y: a[1])
+    }
+
+    // MARK: - Key handling
+
+    private func installKeyMonitor() {
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, self.panel?.isKeyWindow == true else { return event }
+            let cmd = self.state?.commandMode == true
+            switch event.keyCode {
+            case 53: // Escape — first stops listening, then dismisses
+                if self.state?.voice.phase == .listening {
+                    self.state?.voice.cancelListening(); return nil
+                }
+                self.dismiss(); return nil
+            case 125: // ↓
+                self.state?.moveSelection(1); return nil
+            case 126: // ↑
+                self.state?.moveSelection(-1); return nil
+            case 36, 76: // Return / Enter — ⌘↵ always hands off to the assistant
+                if event.modifierFlags.contains(.command) {
+                    self.handToAssistant(self.assistantPrompt()); return nil
+                }
+                self.commit(); return nil
+            case 48: // Tab — complete the highlighted command
+                if cmd { self.complete(); return nil }
+                return event
+            default:
+                return event
+            }
+        }
+    }
+
+    /// Push-to-talk: hold ⌥ to record, release to stop — only while the bar is key
+    /// and armed/idle. Mirrors the standalone voice window's gesture.
+    private func installVoiceMonitor() {
+        flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            guard let self, self.panel?.isKeyWindow == true, let voice = self.state?.voice else { return event }
+            if event.modifierFlags.contains(.option) {
+                if voice.armed, voice.phase == .idle || voice.phase == .result {
+                    voice.startListening()
+                }
+            } else if voice.phase == .listening {
+                voice.stopListening()
+            }
+            return event
+        }
+    }
+
+    // MARK: - Commit / drill-in
+
+    private func commit() {
+        guard let st = state else { return }
+        // Voice commits by releasing ⌥ / stopping; routing lands in Phase C.
+        if st.voiceActive { return }
+        if st.commandMode {
+            // Enter on an empty / unmatched command is a no-op, not a dismiss.
+            guard let s = st.search.command.selected else { return }
+            switch s.action {
+            case .fillCommand(let c):
+                st.query = "/" + (c.hint.aliases.first ?? c.name) + " "
+            case .setQuery(let q):
+                st.query = "/" + q
+            case .placeCurrent(let spec):
+                guard let t = capturedTarget else { dismiss(); return }
+                let screen = capturedScreen ?? NSScreen.main ?? NSScreen.screens.first!
+                let app = DesktopModel.shared.windows[t.wid]?.app ?? "Window"
+                let arrow = placementArrow(spec)
+                flyIn(wid: t.wid, to: spec, on: screen)   // trace the move before it happens
+                dismiss()
+                WindowTiler.tileWindowById(wid: t.wid, pid: t.pid, to: spec, on: screen)
+                showConfirmation(glyph: arrow, title: app, subtitle: s.label, on: screen)
+            case .runCommand(let intent, let slots, let subject):
+                runIntent(intent, slots: slots, subject: subject, confirmGlyph: s.glyph, confirmTitle: s.label)
+            }
+        } else if IntentHeuristics.shouldAskAssistant(st.query) {
+            handToAssistant(st.query)            // a Lattices question → the assistant
+        } else {
+            // The list renders results *grouped*; the selection indexes that same
+            // grouped order. Activate the displayed row — NOT `results[selectedIndex]`
+            // (raw score order), which would act on a different window than the one
+            // highlighted/clicked.
+            let ordered = st.search.groupedResults.flatMap { $0.1 }
+            guard st.search.selectedIndex >= 0, st.search.selectedIndex < ordered.count else { return }
+            ordered[st.search.selectedIndex].action()
+            dismiss()
+        }
+    }
+
+    // MARK: - Confirmation
+
+    /// A brief, self-expiring confirmation bezel announcing what just ran —
+    /// decoupled from the bar (which has already dismissed), à la Raycast's HUD,
+    /// but in the notch-pill bezel treatment with a stylized direction arrow.
+    private func showConfirmation(glyph: String, title: String, subtitle: String?, on screen: NSScreen?) {
+        PlacementBezel.shared.show(glyph: glyph, title: title, subtitle: subtitle, on: screen)
+    }
+
+    /// A stylized SF Symbol arrow for a placement (the bezel's hero glyph).
+    private func placementArrow(_ spec: PlacementSpec) -> String {
+        if case .tile(let pos) = spec { return pos.arrowGlyph }
+        return "checkmark"
+    }
+
+    // MARK: - Assistant handoff
+
+    /// The prompt to escalate: voice transcript if speaking, else the typed text
+    /// (slash stripped so a command-mode "/x" reads as plain "x").
+    private func assistantPrompt() -> String {
+        guard let st = state else { return "" }
+        if st.voiceActive { return st.voice.finalText }
+        var q = st.query
+        if q.hasPrefix("/") { q.removeFirst() }
+        return q
+    }
+
+    /// Open the `.pi` assistant and stream the prompt; the bar steps aside.
+    private func handToAssistant(_ prompt: String) {
+        let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        dismiss()
+        DispatchQueue.main.async {
+            ScreenMapWindowController.shared.showAssistant()
+            PiChatSession.shared.send(text)
+        }
+    }
+
+    /// A conversational voice utterance (a question with no workspace action ran)
+    /// is handed to the assistant rather than answered headlessly in the bar.
+    private func maybeEscalateVoiceQuestion() {
+        guard let st = state, st.voice.phase == .result,
+              st.voice.intentName == nil,
+              IntentHeuristics.shouldAskAssistant(st.voice.finalText) else { return }
+        handToAssistant(st.voice.finalText)
+    }
+
+    /// Tab-to-complete: fill the field with the highlighted suggestion fully
+    /// typed out (a following ↵ then runs it). The completion text is computed by
+    /// the command engine so it stays correct across stages.
+    private func complete() {
+        guard let st = state, let s = st.search.command.selected else { return }
+        st.query = "/" + st.search.command.completion(for: s)
+    }
+
+    private func runIntent(_ intent: String, slots: [String: JSON], subject: CommandSubject,
+                           confirmGlyph: String? = nil, confirmTitle: String? = nil) {
+        var slots = slots
+        if subject == .currentWindow, let t = capturedTarget {
+            slots["wid"] = .int(Int(t.wid))
+        }
+        let screen = capturedScreen
+        dismiss()
+        do {
+            let (name, normalized) = try IntentEngine.shared.normalizeResolved(intentName: intent, slots: slots)
+            _ = try IntentEngine.shared.execute(IntentRequest(
+                intent: name, slots: normalized, rawText: nil, confidence: 1.0, source: "unified-command-bar"
+            ))
+            if let confirmTitle {
+                showConfirmation(glyph: confirmGlyph ?? "checkmark", title: confirmTitle, subtitle: nil, on: screen)
+            }
+        } catch {
+            DiagnosticLog.shared.error("UnifiedCommandBar command \(intent) failed: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Mic
+
+    /// Tapping the mic toggles listening (start/stop); ⌥-hold is the power gesture.
+    private func onMic() {
+        state?.voice.toggleListening()
+    }
+
+    // MARK: - Glide (grab → accelerate → snap)
+
+    /// A translucent ghost accelerates from the window's current frame to its
+    /// destination and snaps — tracing the move. The real window relocates
+    /// instantly underneath (the reliable SkyLight path is untouched); this is
+    /// pure motion garnish that survives the bar dismissing.
+    private func flyIn(wid: UInt32, to spec: PlacementSpec, on screen: NSScreen) {
+        guard let entry = DesktopModel.shared.windows[wid] else { return }
+        let primaryH = NSScreen.screens.first?.frame.height ?? 1080
+        let f = entry.frame
+        let from = CGRect(x: CGFloat(f.x),
+                          y: primaryH - CGFloat(f.y) - CGFloat(f.h),
+                          width: CGFloat(f.w), height: CGFloat(f.h))
+        let to = ghostFrame(for: spec, on: screen)
+        guard from != to else { return }
+
+        let fly = makeGhost()
+        fly.setFrame(from, display: true)
+        fly.alphaValue = 0.85
+        fly.orderFront(nil)
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = 0.26
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)   // grab → accelerate
+            fly.animator().setFrame(to, display: true)
+        }, completionHandler: {
+            NSAnimationContext.runAnimationGroup({ c in
+                c.duration = 0.14
+                fly.animator().alphaValue = 0                            // snap → fade
+            }, completionHandler: { fly.orderOut(nil) })
+        })
+    }
+
+    // MARK: - Ghost preview (lifted from OmniSearchWindow)
+
+    private func installGhostObservers(_ st: UnifiedCommandBarState) {
+        ghostObserver = st.search.command.$selectedIndex
+            .combineLatest(st.search.command.$suggestions)
+            .sink { [weak self] _ in self?.updateGhost() }
+        queryObserver = st.$query
+            .sink { [weak self] _ in self?.updateGhost() }
+
+        // When a voice turn settles, escalate conversational questions to the
+        // assistant. Deferred to the main runloop so the @Published phase (which
+        // publishes in willSet) and the synced transcript/intent have settled.
+        voicePhaseObserver = st.voice.$phase
+            .receive(on: RunLoop.main)
+            .sink { [weak self] phase in
+                guard phase == .result else { return }
+                self?.maybeEscalateVoiceQuestion()
+            }
+    }
+
+    private func updateGhost() {
+        guard let st = state, st.commandMode,
+              let spec = st.search.command.previewSpec,
+              let screen = st.search.command.previewScreen ?? capturedScreen else {
+            ghost?.orderOut(nil); ghost = nil
+            return
+        }
+        let g = ghost ?? makeGhost()
+        g.setFrame(ghostFrame(for: spec, on: screen), display: true)
+        g.orderFront(nil)
+        panel?.orderFront(nil)   // bar + ghost share .floating → keep the bar on top
+        ghost = g
+    }
+
+    /// Destination frame in Cocoa (bottom-left origin) screen coordinates.
+    /// `PlacementSpec.fractions` measures y from the TOP, so flip it.
+    private func ghostFrame(for spec: PlacementSpec, on screen: NSScreen) -> CGRect {
+        let (fx, fy, fw, fh) = spec.fractions
+        let vf = screen.visibleFrame
+        return CGRect(
+            x: vf.origin.x + vf.width * fx,
+            y: vf.maxY - vf.height * (fy + fh),
+            width: vf.width * fw,
+            height: vf.height * fh
+        )
+    }
+
+    private func makeGhost() -> NSPanel {
+        let g = NSPanel(
+            contentRect: .zero,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        g.isOpaque = false
+        g.backgroundColor = .clear
+        g.level = .floating
+        g.hasShadow = false
+        g.ignoresMouseEvents = true
+        g.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        g.sharingType = .readOnly
+
+        let v = NSView()
+        v.wantsLayer = true
+        v.layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.18).cgColor
+        v.layer?.borderColor = NSColor.controlAccentColor.withAlphaComponent(0.9).cgColor
+        v.layer?.borderWidth = 2
+        v.layer?.cornerRadius = 6
+        g.contentView = v
+        return g
+    }
+
+    private func screenForWindowFrame(_ f: WindowFrame) -> NSScreen {
+        let primaryH = NSScreen.screens.first?.frame.height ?? 1080
+        let cx = CGFloat(f.x + f.w / 2)
+        let cyTop = CGFloat(f.y + f.h / 2)
+        let pt = NSPoint(x: cx, y: primaryH - cyTop)
+        return NSScreen.screens.first(where: { $0.frame.contains(pt) })
+            ?? NSScreen.main
+            ?? NSScreen.screens[0]
+    }
+}

@@ -3,6 +3,7 @@ import SwiftUI
 struct OmniSearchView: View {
     @ObservedObject var state: OmniSearchState
     var onDismiss: () -> Void
+    var onCommitCommand: () -> Void = {}
     var isEmbedded: Bool = false
 
     @ObservedObject private var ocrModel = OcrModel.shared
@@ -13,11 +14,11 @@ struct OmniSearchView: View {
         VStack(spacing: 0) {
             // Search field
             HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
+                Image(systemName: state.commandMode ? "command" : "magnifyingglass")
                     .foregroundColor(Palette.textMuted)
                     .font(.system(size: 13))
 
-                TextField("Search windows, projects, sessions...", text: $state.query)
+                TextField("Search…  or / for commands", text: $state.query)
                     .textFieldStyle(.plain)
                     .font(Typo.mono(14))
                     .foregroundColor(Palette.text)
@@ -41,7 +42,9 @@ struct OmniSearchView: View {
                 .frame(height: 0.5)
 
             // Content
-            if state.query.isEmpty {
+            if state.commandMode {
+                commandResultsView
+            } else if state.query.isEmpty {
                 summaryView
             } else if state.results.isEmpty {
                 emptyResults
@@ -151,6 +154,70 @@ struct OmniSearchView: View {
                 RoundedRectangle(cornerRadius: 5)
                     .fill(isSelected ? Palette.surfaceHov : Color.clear)
             )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Command mode
+
+    private var commandResultsView: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 2) {
+                    if let ctx = state.command.contextLabel {
+                        Text(ctx.uppercased())
+                            .font(Typo.caption(9))
+                            .foregroundColor(Palette.textMuted)
+                            .padding(.horizontal, 14)
+                            .padding(.top, 8)
+                            .padding(.bottom, 2)
+                    }
+                    ForEach(Array(state.command.suggestions.enumerated()), id: \.element.id) { idx, s in
+                        commandRow(s, index: idx).id(s.id)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+            .onChange(of: state.command.selectedIndex) { newVal in
+                guard newVal >= 0, newVal < state.command.suggestions.count else { return }
+                withAnimation(.easeOut(duration: 0.1)) {
+                    proxy.scrollTo(state.command.suggestions[newVal].id, anchor: .center)
+                }
+            }
+        }
+    }
+
+    private func commandRow(_ s: CommandSuggestion, index: Int) -> some View {
+        let selected = index == state.command.selectedIndex
+        return Button {
+            state.command.selectedIndex = index
+            onCommitCommand()
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: s.glyph)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(selected ? Palette.text : Palette.textDim)
+                    .frame(width: 16)
+                Text(s.label)
+                    .font(Typo.mono(12))
+                    .foregroundColor(selected ? Palette.text : Palette.textDim)
+                    .lineLimit(1)
+                Spacer()
+                if s.isFill {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(Palette.textMuted)
+                } else {
+                    Text(s.detail)
+                        .font(Typo.mono(10))
+                        .foregroundColor(Palette.textMuted)
+                        .lineLimit(1)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 5).fill(selected ? Palette.surfaceHov : Color.clear))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

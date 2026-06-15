@@ -243,6 +243,24 @@ enum TilePosition: String, CaseIterable, Identifiable {
         }
     }
 
+    /// A directional SF Symbol for this position — used as the row/bezel glyph
+    /// so placements read as arrows, not anonymous circles.
+    var arrowGlyph: String {
+        let r = rawValue
+        let top = r.contains("top"), bottom = r.contains("bottom")
+        let left = r.contains("left"), right = r.contains("right")
+        if r == "maximize" { return "arrow.up.left.and.arrow.down.right" }
+        if top && left     { return "arrow.up.left" }
+        if top && right    { return "arrow.up.right" }
+        if bottom && left  { return "arrow.down.left" }
+        if bottom && right { return "arrow.down.right" }
+        if top             { return "arrow.up" }
+        if bottom          { return "arrow.down" }
+        if left            { return "arrow.left" }
+        if right           { return "arrow.right" }
+        return "rectangle.center.inset.filled"   // center / center column
+    }
+
     var shortCode: String {
         switch self {
         case .maximize:    return "MAX"
