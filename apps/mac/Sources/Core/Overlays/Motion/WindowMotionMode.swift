@@ -410,13 +410,22 @@ private final class MotionPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 
     func present() {
-        NSApp.activate(ignoringOtherApps: true)
+        // Opening from the global Hyper+Space path churns focus: the keyboard
+        // transport layer goes up/down around the same time this LSUIElement app
+        // presents a key panel. A short startup resign can otherwise tear the
+        // survey down right after first paint, which reads as "didn't load."
+        ignoreResign = true
+        makeKeyAndOrderFront(nil)
         orderFrontRegardless()
-        makeKey()
         keyObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didResignKeyNotification, object: self, queue: .main
         ) { [weak self] _ in
-            guard let self, !self.ignoreResign else { return }
+            guard let self else { return }
+            if self.ignoreResign {
+                DiagnosticLog.shared.info("MotionPanel: ignored transient key resign")
+                return
+            }
+            DiagnosticLog.shared.info("MotionPanel: key resigned, exiting")
             self.onExit?()
         }
         // Survey zoom/pan: a local scroll monitor (gated to this panel) so ⌘-scroll /
@@ -458,6 +467,9 @@ private final class MotionPanel: NSPanel {
             case 36, 76:      self.keyDown(with: event); return nil   // Return / keypad Enter — confirm
             default:          return event
             }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            self?.ignoreResign = false
         }
         // Hyperspace lands you straight in the survey. E collapses back to plain
         // motion; expose() no-ops to plain mode if there's <2 windows to lay out.
