@@ -319,7 +319,13 @@ struct PiChatDock: View {
 
             Spacer()
 
-            footerIconButton(systemName: "gearshape") {
+            if session.hasConversationHistory {
+                footerIconButton(systemName: "doc.on.doc", help: "Copy chat") {
+                    session.copyConversationToClipboard()
+                }
+            }
+
+            footerIconButton(systemName: "gearshape", help: "Assistant settings") {
                 SettingsWindowController.shared.showAssistant()
             }
 
@@ -436,7 +442,7 @@ struct PiChatDock: View {
             .disabled(disabled)
     }
 
-    private func footerIconButton(systemName: String, tint: Color = Palette.textMuted, action: @escaping () -> Void) -> some View {
+    private func footerIconButton(systemName: String, tint: Color = Palette.textMuted, help: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.system(size: 10, weight: .semibold))
@@ -449,6 +455,7 @@ struct PiChatDock: View {
                 )
         }
         .buttonStyle(.plain)
+        .help(help)
     }
 
     private func authCardBackground(tint: Color) -> some View {

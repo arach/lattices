@@ -8,6 +8,7 @@ import Foundation
 enum Capability: String, CaseIterable, Identifiable {
     case windowControl   // macOS Accessibility — tiling, focus, snap
     case screenSearch    // macOS Screen Recording — OCR / on-screen text search
+    case voiceCapture    // macOS Microphone — dictation / voice commands
 
     var id: String { rawValue }
 
@@ -15,6 +16,7 @@ enum Capability: String, CaseIterable, Identifiable {
         switch self {
         case .windowControl: return "Tiling & focus"
         case .screenSearch:  return "Screen text search"
+        case .voiceCapture:  return "Voice capture"
         }
     }
 
@@ -22,6 +24,7 @@ enum Capability: String, CaseIterable, Identifiable {
         switch self {
         case .windowControl: return "rectangle.3.group"
         case .screenSearch:  return "text.viewfinder"
+        case .voiceCapture:  return "waveform"
         }
     }
 
@@ -29,6 +32,7 @@ enum Capability: String, CaseIterable, Identifiable {
         switch self {
         case .windowControl: return "Accessibility"
         case .screenSearch:  return "Screen & System Audio Recording"
+        case .voiceCapture:  return "Microphone"
         }
     }
 
@@ -38,6 +42,8 @@ enum Capability: String, CaseIterable, Identifiable {
             return "Move, resize, snap, and arrange windows from the menu bar, command palette, and gestures."
         case .screenSearch:
             return "Index on-screen text with OCR so the omni search can jump to any window by what it shows."
+        case .voiceCapture:
+            return "Use local dictation and voice commands through the embedded voice engine hosted by Lattices."
         }
     }
 
@@ -47,6 +53,8 @@ enum Capability: String, CaseIterable, Identifiable {
             return "macOS Accessibility lets Lattices read window titles and move or resize windows. No keystrokes are recorded."
         case .screenSearch:
             return "Screen Recording lets Lattices read pixels to OCR what is on-screen. Captures stay on this Mac."
+        case .voiceCapture:
+            return "macOS Microphone access lets Lattices capture audio only when you start dictation or a voice command."
         }
     }
 
@@ -55,6 +63,7 @@ enum Capability: String, CaseIterable, Identifiable {
         switch self {
         case .windowControl: return "Lattices can move and tile windows."
         case .screenSearch:  return "OCR can index visible windows for omni search."
+        case .voiceCapture:  return "Lattices can listen when you start dictation or a voice command."
         }
     }
 
@@ -63,6 +72,16 @@ enum Capability: String, CaseIterable, Identifiable {
         switch self {
         case .windowControl: return PermissionChecker.shared.accessibility
         case .screenSearch:  return PermissionChecker.shared.screenRecording
+        case .voiceCapture:  return PermissionChecker.shared.microphoneGranted
+        }
+    }
+
+    var usesDragRepair: Bool {
+        switch self {
+        case .windowControl, .screenSearch:
+            return true
+        case .voiceCapture:
+            return false
         }
     }
 

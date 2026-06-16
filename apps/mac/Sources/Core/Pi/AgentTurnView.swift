@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 // Agent-session turn rendering — a self-contained Swift component for drawing a
@@ -56,6 +57,7 @@ struct AgentTurn: Identifiable, Equatable {
 struct AgentTurnView: View, Equatable {
     let turn: AgentTurn
     var style: PiChatStyle = .workspace
+    @State private var copied = false
 
     static func == (lhs: AgentTurnView, rhs: AgentTurnView) -> Bool {
         lhs.turn == rhs.turn && lhs.style == rhs.style
@@ -72,7 +74,7 @@ struct AgentTurnView: View, Equatable {
     // MARK: System
 
     private var systemRow: some View {
-        HStack {
+        HStack(spacing: 6) {
             Spacer(minLength: 0)
             Text(turn.text)
                 .font(Typo.caption(11))
@@ -89,6 +91,7 @@ struct AgentTurnView: View, Equatable {
                                 .strokeBorder(Palette.border, lineWidth: 0.5)
                         )
                 )
+            copyButton(size: 22, iconSize: 9)
             Spacer(minLength: 0)
         }
         .padding(.vertical, 2)
@@ -154,6 +157,8 @@ struct AgentTurnView: View, Equatable {
             Text(PiChatFormat.time(turn.timestamp))
                 .font(Typo.mono(9))
                 .foregroundColor(Palette.textMuted.opacity(isAssistant ? 0.75 : 0.8))
+
+            copyButton(size: 23, iconSize: 10)
         }
     }
 
@@ -189,5 +194,55 @@ struct AgentTurnView: View, Equatable {
                 RoundedRectangle(cornerRadius: 11, style: .continuous)
                     .strokeBorder(streaming ? Palette.running.opacity(0.22) : Palette.border, lineWidth: 0.5)
             )
+    }
+
+    private var copyableText: String {
+        turn.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func copyButton(size: CGFloat, iconSize: CGFloat) -> some View {
+        Button {
+            copyTurnText()
+        } label: {
+            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                .font(.system(size: iconSize, weight: .semibold))
+                .foregroundColor(copied ? Palette.running : Palette.textMuted)
+                .frame(width: size, height: size)
+                .background(
+                    Circle()
+                        .fill(Color.white.opacity(copied ? 0.055 : 0.025))
+                        .overlay(
+                            Circle()
+                                .strokeBorder(copied ? Palette.running.opacity(0.32) : Palette.border, lineWidth: 0.5)
+                        )
+                )
+        }
+        .buttonStyle(.plain)
+        .help(copied ? "Copied" : "Copy message")
+        .disabled(copyableText.isEmpty)
+        .opacity(copyableText.isEmpty ? 0.4 : 1)
+    }
+
+    private func copyTurnText() {
+        let text = copyableText
+        guard !text.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        DiagnosticLog.shared.success("PiChat: copied \(copyLabel.lowercased()) message to clipboard (\(text.count) chars)")
+        withAnimation(.easeOut(duration: 0.12)) { copied = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) {
+            withAnimation(.easeOut(duration: 0.16)) { copied = false }
+        }
+    }
+
+    private var copyLabel: String {
+        switch turn.role {
+        case .system:
+            return "System"
+        case .user:
+            return "User"
+        case .assistant:
+            return "Assistant"
+        }
     }
 }

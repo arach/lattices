@@ -36,6 +36,7 @@ final class PiRpcRuntime {
     private let piPath: String
     private let sessionDir: URL
     private let providerID: String
+    private let modelID: String
     private let environment: [String: String]
     private let appendSystemPrompt: String
     private let disableBuiltInTools: Bool
@@ -56,6 +57,7 @@ final class PiRpcRuntime {
         piPath: String,
         sessionDir: URL,
         providerID: String,
+        modelID: String,
         environment: [String: String],
         appendSystemPrompt: String,
         disableBuiltInTools: Bool = false,
@@ -64,6 +66,7 @@ final class PiRpcRuntime {
         self.piPath = piPath
         self.sessionDir = sessionDir
         self.providerID = providerID
+        self.modelID = modelID
         self.environment = environment
         self.appendSystemPrompt = appendSystemPrompt
         self.disableBuiltInTools = disableBuiltInTools
@@ -249,6 +252,7 @@ final class PiRpcRuntime {
             "--mode", "rpc",
             "--session-dir", sessionDir.path,
             "--provider", providerID,
+            "--model", modelID,
             "--no-extensions",
             "--no-skills",
             "--no-prompt-templates",

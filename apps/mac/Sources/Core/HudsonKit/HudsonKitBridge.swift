@@ -44,14 +44,30 @@ enum HudsonKitSwitch {
 
 #if canImport(HudsonVoice)
 /// The HudsonKit-backed voice surface. `HudVoicePanel` manages its own live
-/// session against the local voxd daemon. We hand it the endpoint discovered from
-/// `~/.vox/runtime.json` (via `VoxEndpointResolver`) rather than letting it trust
-/// the SDK default port (42138), which doesn't match the running voxd (42137).
+/// session against the embedded runtime hosted by Lattices.
 struct HudsonVoiceSurface: View {
     var onClose: () -> Void
 
     var body: some View {
-        HudVoicePanel(endpoint: VoxEndpointResolver.resolve())
+        if let runtime = HudsonVoiceRuntimeResolver.resolve(clientId: "lattices") {
+            HudVoicePanel(
+                endpoint: runtime.endpoint,
+                options: runtime.options
+            )
+        } else {
+            VStack(spacing: 8) {
+                Image(systemName: "waveform.badge.exclamationmark")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundColor(.secondary)
+                Text("Voice runtime unavailable")
+                    .font(.headline)
+                Text("Restart Lattices and try again.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(24)
+        }
     }
 }
 #endif

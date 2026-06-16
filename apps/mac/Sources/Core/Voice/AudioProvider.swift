@@ -6,8 +6,8 @@ import HudsonVoice
 // MARK: - Audio Provider Protocol
 
 /// A provider that can capture audio and return transcriptions.
-/// Lattices doesn't do transcription itself — it delegates to an external
-/// service (Vox, Whisper, etc.) and maps the result to intents.
+/// Lattices doesn't do transcription itself. It delegates capture to Hudson
+/// Voice and maps the transcript to intents.
 protocol AudioProvider: AnyObject {
     var isAvailable: Bool { get }
     var isListening: Bool { get }
@@ -25,7 +25,7 @@ protocol AudioProvider: AnyObject {
 struct Transcription {
     let text: String
     let confidence: Double
-    let source: String           // "vox", "whisper", etc.
+    let source: String           // "hudson-voice", "voice-runtime", etc.
     let isPartial: Bool          // true for streaming partial results
     let durationMs: Int?
 }
@@ -53,7 +53,7 @@ final class AudioLayer: ObservableObject {
     private init() {
         #if canImport(HudsonVoice)
         provider = HudVoxAudioProvider()
-        providerName = "vox"
+        providerName = "hudson-voice"
         #else
         provider = nil
         providerName = "none"
@@ -79,7 +79,7 @@ final class AudioLayer: ObservableObject {
         DiagnosticLog.shared.info("AudioLayer: voice capture starting")
 
         guard let provider = provider else {
-            setFinalResult("No voice provider — install Vox", warning: true)
+            setFinalResult("No voice provider available", warning: true)
             return
         }
 
@@ -91,9 +91,8 @@ final class AudioLayer: ObservableObject {
     private func startVoiceCommandWhenReady(provider: any AudioProvider, attempt: Int) {
         guard pendingVoiceStart, !isListening else { return }
 
-        // `isAvailable` reflects whether voxd is discoverable. HudsonVoice opens its
-        // own socket on capture start, so there's nothing to pre-connect — we just
-        // wait (and nudge Vox.app open once) until the daemon shows up.
+        // `isAvailable` reflects whether Lattices' embedded HudsonVoice runtime
+        // is discoverable. Do not fall back to Vox.app here; Lattices is the host.
         if provider.isAvailable {
             pendingVoiceStart = false
             DiagnosticLog.shared.info("AudioLayer: voice provider ready")
@@ -102,14 +101,13 @@ final class AudioLayer: ObservableObject {
         }
 
         if attempt == 0 {
-            let launched = launchVoxIfNeeded()
-            executionResult = launched ? "Starting Vox..." : "Connecting to Vox..."
+            executionResult = "Connecting to voice runtime..."
         }
 
         guard attempt < 40 else {
             pendingVoiceStart = false
-            DiagnosticLog.shared.warn("AudioLayer: Vox daemon not reachable before voice start")
-            setFinalResult("Vox unavailable — open Vox and try again", warning: true)
+            DiagnosticLog.shared.warn("AudioLayer: voice runtime not reachable before voice start")
+            setFinalResult("Voice runtime unavailable", warning: true)
             return
         }
 
@@ -151,31 +149,6 @@ final class AudioLayer: ObservableObject {
                 self.executeVoiceIntent(transcription)
             }
         }
-    }
-
-    private func launchVoxIfNeeded() -> Bool {
-        guard !VoxDaemon.isRunning else { return false }
-
-        let candidates = [
-            "/Applications/Vox.app",
-            NSHomeDirectory() + "/Applications/Vox.app",
-        ]
-
-        guard let path = candidates.first(where: { FileManager.default.fileExists(atPath: $0) }) else {
-            DiagnosticLog.shared.warn("AudioLayer: Vox daemon unavailable and Vox.app was not found")
-            return false
-        }
-
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = false
-        NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: path), configuration: configuration) { _, error in
-            if let error {
-                DiagnosticLog.shared.warn("AudioLayer: failed to open Vox — \(error.localizedDescription)")
-            } else {
-                DiagnosticLog.shared.info("AudioLayer: opened Vox for voice command")
-            }
-        }
-        return true
     }
 
     /// Track whether we already executed for this recording session.
@@ -473,15 +446,13 @@ final class AudioLayer: ObservableObject {
 
 // MARK: - HudVox Audio Provider (HudsonVoice live session)
 //
-// Delegates recording and transcription entirely to the Vox daemon (voxd) via
-// HudsonKit's `HudVoxLiveSession`. Lattices never touches the mic — Vox owns the
-// mic, recording, and transcription. We open a live session (which dials the port
-// discovered from ~/.vox/runtime.json), stream `.partial` previews into the draft,
-// and deliver the final transcript on `.final`.
+// Delegates recording and transcription through HudsonKit's `HudVoxLiveSession`.
+// Lattices hosts the embedded HudsonVoice runtime in-process and exposes the
+// private tokened capability file HudsonKit uses to connect.
 //
 // This replaces the legacy `VoxAudioProvider` (which drove the now-retired
-// `VoxClient` WebSocket). Availability is "is voxd discoverable" (`VoxDaemon`),
-// since HudsonVoice opens its own socket per capture rather than holding one open.
+// `VoxClient` WebSocket). HudsonVoice opens its own socket per capture rather
+// than holding one open.
 
 #if canImport(HudsonVoice)
 final class HudVoxAudioProvider: AudioProvider {
@@ -492,13 +463,20 @@ final class HudVoxAudioProvider: AudioProvider {
     private var _isListening = false
     private var finalDelivered = false
 
-    var isAvailable: Bool { VoxDaemon.isRunning }
+    var isAvailable: Bool { HudsonVoiceRuntime.isAvailable() }
     var isListening: Bool { _isListening }
 
     func checkHealth(completion: @escaping (Bool) -> Void) {
-        let endpoint = VoxEndpointResolver.resolve()
+        guard let runtime = HudsonVoiceRuntimeResolver.resolve(clientId: "lattices") else {
+            completion(false)
+            return
+        }
         Task {
-            let ok = (try? await HudVoxProbe.health(endpoint: endpoint, clientId: "lattices")) != nil
+            let ok = (try? await HudVoxProbe.health(
+                endpoint: runtime.endpoint,
+                clientId: runtime.options.clientId,
+                authToken: runtime.options.authToken
+            )) != nil
             await MainActor.run { completion(ok) }
         }
     }
@@ -509,11 +487,17 @@ final class HudVoxAudioProvider: AudioProvider {
         _isListening = true
         finalDelivered = false
 
-        let endpoint = VoxEndpointResolver.resolve()
+        guard let runtime = HudsonVoiceRuntimeResolver.resolve(clientId: "lattices") else {
+            DiagnosticLog.shared.warn("HudVoxAudioProvider: cannot start because HudsonVoice runtime is unavailable")
+            _isListening = false
+            self.onTranscript = nil
+            return
+        }
+        let endpoint = runtime.endpoint
         DiagnosticLog.shared.info("HudVoxAudioProvider: starting session at \(endpoint.url.absoluteString)")
         let session = HudVoxLiveSession(
             endpoint: endpoint,
-            options: HudVoxLiveSessionOptions(clientId: "lattices", mode: .pushToTalk)
+            options: runtime.options
         )
         self.session = session
 
@@ -549,7 +533,7 @@ final class HudVoxAudioProvider: AudioProvider {
             DiagnosticLog.shared.info("HudVoxAudioProvider: session → \(s.state)")
         case .partial(let p):
             // Live preview — non-final, just updates the draft echo.
-            onTranscript?(Transcription(text: p.text, confidence: 0.5, source: "vox", isPartial: true, durationMs: nil))
+            onTranscript?(Transcription(text: p.text, confidence: 0.5, source: "hudson-voice", isPartial: true, durationMs: nil))
         case .final(let f):
             deliverFinal(text: f.text, elapsedMs: f.elapsedMs)
         case .raw:
@@ -562,7 +546,7 @@ final class HudVoxAudioProvider: AudioProvider {
         guard !finalDelivered else { return }
         finalDelivered = true
         _isListening = false
-        let t = Transcription(text: text, confidence: 0.95, source: "vox", isPartial: false, durationMs: elapsedMs)
+        let t = Transcription(text: text, confidence: 0.95, source: "hudson-voice", isPartial: false, durationMs: elapsedMs)
         DiagnosticLog.shared.info("HudVoxAudioProvider: transcribed → '\(text)' (\(elapsedMs)ms)")
         // onTranscript drives the streaming-execute path; stopCompletion the stop path.
         // AudioLayer guards against double-execution, so firing both is safe.
@@ -580,7 +564,7 @@ final class HudVoxAudioProvider: AudioProvider {
             if let error {
                 DiagnosticLog.shared.warn("HudVoxAudioProvider: session error — \(error.localizedDescription)")
                 AudioLayer.shared.setFinalResult("Transcription failed", warning: true)
-                onTranscript?(Transcription(text: "", confidence: 0, source: "vox", isPartial: false, durationMs: nil))
+                onTranscript?(Transcription(text: "", confidence: 0, source: "hudson-voice", isPartial: false, durationMs: nil))
             }
             stopCompletion?(nil)
             stopCompletion = nil
