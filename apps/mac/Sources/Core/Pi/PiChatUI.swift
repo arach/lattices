@@ -445,6 +445,14 @@ struct PiChatMessageRow: View, Equatable {
             author: agentAuthor,
             timestamp: message.timestamp,
             text: message.text,
+            attachments: message.attachments.map {
+                AgentTurnAttachment(
+                    id: $0.id,
+                    name: $0.name,
+                    mediaType: $0.mediaType,
+                    systemImage: $0.systemImage
+                )
+            },
             isStreaming: isStreaming,
             toolActivity: activeToolName
         )

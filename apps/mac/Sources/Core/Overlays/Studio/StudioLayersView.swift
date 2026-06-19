@@ -151,14 +151,25 @@ struct StudioLayersView: View {
 
     private func askAssistantAboutLayer(_ layer: StudioLayer, matches: [WindowEntry]) {
         let spec = store.layerContextJSON(layer, matches: matches)
-        let prompt = """
-        Help me reason about this Lattices Studio layer. Explain what the rules mean, what live windows currently match, and suggest a cleaner rule if the layer is too broad or too narrow.
-
-        \(spec)
-        """
+        let attachment = PiChatAttachment(
+            name: "\(safeAttachmentStem(layer.name))-layer.json",
+            mediaType: "application/json",
+            content: spec,
+            systemImage: "doc.text.magnifyingglass"
+        )
+        let prompt = "Help me reason about the attached Lattices Studio layer. Explain what the rules mean, what live windows currently match, and suggest a cleaner rule if the layer is too broad or too narrow."
         ScreenMapWindowController.shared.showAssistant()
-        PiChatSession.shared.draft = prompt
-        PiChatSession.shared.sendDraft()
+        PiChatSession.shared.send(prompt, attachments: [attachment])
+    }
+
+    private func safeAttachmentStem(_ value: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+        let scalars = value.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" }
+        let collapsed = String(scalars)
+            .split(separator: "-", omittingEmptySubsequences: true)
+            .joined(separator: "-")
+            .lowercased()
+        return collapsed.isEmpty ? "studio" : collapsed
     }
 }
 

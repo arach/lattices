@@ -192,46 +192,37 @@ final class DiagnosticWindow {
             NSEvent.removeMonitor(monitor)
             keyMonitor = nil
         }
+        AppDelegate.updateActivationPolicy()
     }
 
     func show() {
         if let w = window {
-            w.orderFrontRegardless()
+            AppWindowShell.present(w)
             return
         }
 
         let view = DiagnosticOverlayView()
 
-        let hosting = NSHostingController(rootView: view)
         let screen = NSScreen.main
         let screenFrame = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1920, height: 1080)
         let panelWidth: CGFloat = 480
         let panelHeight: CGFloat = max(600, floor(screenFrame.height * 0.55))
-        hosting.preferredContentSize = NSSize(width: panelWidth, height: panelHeight)
 
-        let w = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight),
-            styleMask: [.titled, .closable, .resizable, .utilityWindow, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
+        let w = AppWindowShell.makeWindow(
+            config: .init(
+                title: "Lattices Activity Log",
+                initialSize: NSSize(width: panelWidth, height: panelHeight),
+                minSize: NSSize(width: 420, height: 360)
+            ),
+            rootView: view
         )
-        w.contentViewController = hosting
-        w.title = "Lattices Activity Log"
-        w.titlebarAppearsTransparent = true
-        w.isMovableByWindowBackground = true
-        w.level = .floating
-        w.isOpaque = false
-        w.backgroundColor = NSColor(red: 0.1, green: 0.1, blue: 0.12, alpha: 1.0)
-        w.hasShadow = true
-        w.alphaValue = 1.0
-        w.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
         // Position: right edge, vertically centered
         let x = screenFrame.maxX - panelWidth - 12
         let y = screenFrame.minY + floor((screenFrame.height - panelHeight) / 2)
         w.setFrameOrigin(NSPoint(x: x, y: y))
 
-        w.orderFrontRegardless()
+        AppWindowShell.present(w)
         window = w
 
         // Escape key → dismiss

@@ -30,7 +30,7 @@ struct SettingsContentView: View {
             case .voice: return "Voice"
             case .ai: return "AI"
             case .search: return "Search & OCR"
-            case .companion: return "LATS iOS Companion"
+            case .companion: return "Companion"
             }
         }
 
@@ -56,7 +56,7 @@ struct SettingsContentView: View {
             case .voice: return "Capture"
             case .ai: return "Agents"
             case .search: return "Indexing"
-            case .companion: return "Local Bridge"
+            case .companion: return "LATS iOS Bridge"
             }
         }
 
@@ -249,31 +249,43 @@ struct SettingsContentView: View {
         // unified window is user-resizable; without this, the non-scrolling list
         // (~480pt) overflows short windows and pushes the shell's status bar off
         // the bottom — every section pane already scrolls, so the rail must too.
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Settings")
-                        .font(Typo.monoBold(12))
-                        .foregroundColor(Palette.text)
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .top, spacing: 10) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 7)
+                            .fill(Palette.running.opacity(0.12))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 7)
+                                    .strokeBorder(Palette.running.opacity(0.24), lineWidth: 0.5)
+                            )
+                        Image(systemName: "gearshape")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Palette.running)
+                    }
+                    .frame(width: 28, height: 28)
 
-                    Text("Workspace, input, agents, capture.")
-                        .font(Typo.caption(10))
-                        .foregroundColor(Palette.textMuted)
-                        .lineLimit(2)
+                    Text("Settings")
+                        .font(Typo.heading(14))
+                        .foregroundColor(Palette.text)
                 }
 
-                HudDivider(color: HudHairline.subtle)
-
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 14) {
                     ForEach(SettingsSection.groupedCases, id: \.0) { group, sections in
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(group.uppercased())
-                                .font(Typo.pixel(11))
-                                .foregroundColor(Palette.textDim.opacity(0.85))
-                                .tracking(1.2)
-                                .padding(.horizontal, 4)
+                        VStack(alignment: .leading, spacing: 7) {
+                            HStack(spacing: 8) {
+                                Text(group.uppercased())
+                                    .font(Typo.pixel(10))
+                                    .foregroundColor(Palette.textDim.opacity(0.82))
+                                    .tracking(1.15)
 
-                            VStack(spacing: 4) {
+                                Rectangle()
+                                    .fill(Palette.border.opacity(0.65))
+                                    .frame(height: 0.5)
+                            }
+                            .padding(.horizontal, 4)
+
+                            VStack(spacing: 5) {
                                 ForEach(sections) { section in
                                     settingsTab(section)
                                 }
@@ -282,9 +294,10 @@ struct SettingsContentView: View {
                     }
                 }
             }
-            .padding(16)
+            .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .background(Palette.bg.opacity(0.55))
     }
 
     private func settingsTab(_ section: SettingsSection) -> some View {
@@ -300,23 +313,20 @@ struct SettingsContentView: View {
     }
 
     private func settingsSectionHero(_ section: SettingsSection) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(section.eyebrow)
-                .font(Typo.monoBold(10))
-                .foregroundColor(Palette.textMuted)
+        HStack(spacing: 10) {
+            Image(systemName: section.icon)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(Palette.textMuted.opacity(0.82))
 
             Text(section.title)
-                .font(Typo.heading(18))
+                .font(Typo.heading(14))
                 .foregroundColor(Palette.text)
 
-            Text(section.summary)
-                .font(Typo.mono(10.5))
-                .foregroundColor(Palette.textDim)
-                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 20)
-        .padding(.vertical, 14)
+        .padding(.vertical, 10)
         .background(Palette.bg)
     }
 
@@ -838,15 +848,9 @@ struct SettingsContentView: View {
 
     private var mouseGestureHUDSettingsControls: some View {
         VStack(alignment: .leading, spacing: 10) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Gesture confirmation HUD")
-                    .font(Typo.monoBold(10.5))
-                    .foregroundColor(Palette.text)
-                Text("Controls the new post-gesture confirmation layer. Gesture tracking and rule matching stay independent.")
-                    .font(Typo.caption(9.5))
-                    .foregroundColor(Palette.textMuted)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            Text("Gesture confirmation HUD")
+                .font(Typo.monoBold(10.5))
+                .foregroundColor(Palette.text)
 
             HStack(spacing: 12) {
                 HStack {
@@ -896,16 +900,10 @@ struct SettingsContentView: View {
             VStack(alignment: .leading, spacing: 12) {
                 settingsCard {
                     VStack(alignment: .leading, spacing: 10) {
-                        HStack(alignment: .top, spacing: 12) {
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text("Middle-click gestures")
-                                    .font(Typo.monoBold(11))
-                                    .foregroundColor(Palette.text)
-                                Text("Directional gestures can switch Spaces, open the Screen Map, trigger dictation, or run custom shortcut sequences.")
-                                    .font(Typo.caption(10))
-                                    .foregroundColor(Palette.textMuted)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
+                        HStack(spacing: 12) {
+                            Text("Middle-click gestures")
+                                .font(Typo.monoBold(11))
+                                .foregroundColor(Palette.text)
                             Spacer()
                             Toggle("", isOn: $prefs.mouseGesturesEnabled)
                                 .toggleStyle(.switch)
@@ -919,23 +917,7 @@ struct SettingsContentView: View {
 
                         cardDivider
 
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Active mappings")
-                                .font(Typo.mono(10))
-                                .foregroundColor(Palette.textDim)
-
-                            ForEach(mouseShortcutStore.summaryLines.prefix(8), id: \.self) { line in
-                                Text(line)
-                                    .font(Typo.caption(9))
-                                    .foregroundColor(Palette.textMuted.opacity(0.78))
-                            }
-
-                            if mouseShortcutStore.summaryLines.isEmpty {
-                                Text("No active mappings")
-                                    .font(Typo.caption(9))
-                                    .foregroundColor(Palette.textMuted.opacity(0.6))
-                            }
-                        }
+                        mouseShortcutMappingMatrix(title: "Active mappings", limit: 8)
 
                         cardDivider
 
@@ -946,108 +928,293 @@ struct SettingsContentView: View {
                             mouseGestureController.reArmAfterBreakerTrip()
                         }
 
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack(spacing: 8) {
-                                Button {
-                                    mouseShortcutStore.openConfiguration()
-                                } label: {
-                                    Text("Configure...")
-                                        .font(Typo.monoBold(10))
-                                        .foregroundColor(Palette.text)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 4)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 4)
-                                                .fill(Palette.surfaceHov)
-                                                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
-                                        )
-                                }
-                                .buttonStyle(.plain)
-
-                                Button {
-                                    MouseInputEventViewer.shared.show()
-                                } label: {
-                                    Text("Event Viewer")
-                                        .font(Typo.monoBold(10))
-                                        .foregroundColor(Palette.text)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 4)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 4)
-                                                .fill(Palette.surfaceHov)
-                                                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
-                                        )
-                                }
-                                .buttonStyle(.plain)
-
-                                Button {
-                                    mouseShortcutStore.openHistory()
-                                } label: {
-                                    Text("History")
-                                        .font(Typo.monoBold(10))
-                                        .foregroundColor(Palette.text)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 4)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 4)
-                                                .fill(Palette.surfaceHov)
-                                                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
-                                        )
-                                }
-                                .buttonStyle(.plain)
-                            }
-
-                            HStack(spacing: 8) {
-                                Button {
-                                    mouseShortcutStore.restoreLatestHistory()
-                                } label: {
-                                    Text("Undo Last")
-                                        .font(Typo.monoBold(10))
-                                        .foregroundColor(mouseShortcutStore.hasHistory ? Palette.text : Palette.textMuted.opacity(0.55))
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 4)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 4)
-                                                .fill(Palette.surfaceHov.opacity(mouseShortcutStore.hasHistory ? 1 : 0.45))
-                                                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit.opacity(mouseShortcutStore.hasHistory ? 1 : 0.45), lineWidth: 0.5))
-                                        )
-                                }
-                                .buttonStyle(.plain)
-                                .disabled(!mouseShortcutStore.hasHistory)
-
-                                Button {
-                                    mouseShortcutStore.restoreDefaults()
-                                } label: {
-                                    Text("Restore Defaults")
-                                        .font(Typo.monoBold(10))
-                                        .foregroundColor(Palette.text)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 4)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 4)
-                                                .fill(Palette.surfaceHov)
-                                                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
-                                        )
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-
-                        Text("Rules live in ~/.lattices/mouse-shortcuts.json. Use Event Viewer to discover what buttons your mouse emits.")
-                            .font(Typo.caption(9))
-                            .foregroundColor(Palette.textMuted.opacity(0.7))
-                            .fixedSize(horizontal: false, vertical: true)
-
-                        if !mouseShortcutStore.historySummaryLines.isEmpty {
-                            Text("Recent snapshots: \(mouseShortcutStore.historySummaryLines.prefix(3).joined(separator: ", "))")
-                                .font(Typo.caption(9))
-                                .foregroundColor(Palette.textMuted.opacity(0.62))
-                                .lineLimit(2)
-                        }
+                        mouseShortcutManagementPanel(
+                            detail: "Rules live in ~/.lattices/mouse-shortcuts.json. Use Event Viewer to discover what buttons your mouse emits.",
+                            showHistorySummary: true
+                        )
                     }
                 }
             }
             .padding(16)
+        }
+    }
+
+    private func mouseShortcutMappingMatrix(title: String, limit: Int) -> some View {
+        let allRules = mouseShortcutStore.enabledRules
+        let rules = Array(allRules.prefix(limit))
+        let hiddenCount = max(allRules.count - rules.count, 0)
+        let grouped = Dictionary(grouping: rules, by: \.trigger.button)
+        let sortedButtons = grouped.keys.sorted { mouseShortcutButtonSortOrder($0) < mouseShortcutButtonSortOrder($1) }
+
+        return VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(Typo.monoBold(10))
+                .foregroundColor(Palette.text)
+
+            if rules.isEmpty {
+                mouseShortcutEmptyMappingRow
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(sortedButtons, id: \.self) { button in
+                        if let buttonRules = grouped[button] {
+                            mouseShortcutMappingButtonGroup(button: button, rules: buttonRules)
+                        }
+                    }
+                }
+
+                if hiddenCount > 0 {
+                    Text("+\(hiddenCount) more in config")
+                        .font(Typo.mono(8))
+                        .foregroundColor(Palette.textMuted.opacity(0.72))
+                }
+            }
+        }
+    }
+
+    private func mouseShortcutMappingButtonGroup(button: MouseShortcutButton, rules: [MouseShortcutRule]) -> some View {
+        let sortedRules = rules.sorted { lhs, rhs in
+            mouseShortcutTriggerSortOrder(lhs.trigger) < mouseShortcutTriggerSortOrder(rhs.trigger)
+        }
+
+        return VStack(alignment: .leading, spacing: 5) {
+            Text(button.displayLabel)
+                .font(Typo.monoBold(9))
+                .foregroundColor(Palette.textMuted.opacity(0.82))
+
+            VStack(spacing: 0) {
+                ForEach(Array(sortedRules.enumerated()), id: \.element.id) { index, rule in
+                    mouseShortcutMappingTableRow(rule)
+
+                    if index < sortedRules.count - 1 {
+                        Rectangle()
+                            .fill(Palette.border.opacity(0.45))
+                            .frame(height: 0.5)
+                            .padding(.leading, 10)
+                    }
+                }
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Palette.surface.opacity(0.48))
+                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Palette.border.opacity(0.65), lineWidth: 0.5))
+            )
+        }
+    }
+
+    private var mouseShortcutEmptyMappingRow: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "slash.circle")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(Palette.textMuted.opacity(0.75))
+            Text("No active mappings")
+                .font(Typo.caption(9))
+                .foregroundColor(Palette.textMuted.opacity(0.68))
+            Spacer()
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Palette.surface.opacity(0.48))
+                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Palette.border.opacity(0.65), lineWidth: 0.5))
+        )
+    }
+
+    private func mouseShortcutMappingTableRow(_ rule: MouseShortcutRule) -> some View {
+        HStack(spacing: 8) {
+            Text(mouseShortcutGestureLabel(for: rule.trigger))
+                .font(Typo.mono(9))
+                .foregroundColor(Palette.text)
+                .frame(width: 78, alignment: .leading)
+                .lineLimit(1)
+
+            Image(systemName: mouseShortcutTriggerIcon(for: rule.trigger))
+                .font(.system(size: 8, weight: .semibold))
+                .foregroundColor(Palette.textMuted.opacity(0.62))
+                .frame(width: 12)
+
+            Text(mouseShortcutActionSummary(for: rule))
+                .font(Typo.caption(9))
+                .foregroundColor(Palette.textMuted.opacity(0.82))
+                .lineLimit(1)
+
+            Spacer(minLength: 0)
+
+            if rule.effectiveActions.count > 1 {
+                Text("\(rule.effectiveActions.count)x")
+                    .font(Typo.monoBold(8))
+                    .foregroundColor(Palette.textMuted.opacity(0.72))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Palette.surfaceHov.opacity(0.55)))
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+    }
+
+    private func mouseShortcutManagementPanel(detail: String, showHistorySummary: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 132), spacing: 8, alignment: .leading)],
+                alignment: .leading,
+                spacing: 8
+            ) {
+                mouseShortcutControlButton(icon: "slider.horizontal.3", label: "Configure") {
+                    mouseShortcutStore.openConfiguration()
+                }
+
+                mouseShortcutControlButton(icon: "scope", label: "Event Viewer") {
+                    MouseInputEventViewer.shared.show()
+                }
+
+                mouseShortcutControlButton(icon: "clock.arrow.circlepath", label: "History") {
+                    mouseShortcutStore.openHistory()
+                }
+
+                mouseShortcutControlButton(
+                    icon: "arrow.uturn.backward",
+                    label: "Undo Last",
+                    isEnabled: mouseShortcutStore.hasHistory
+                ) {
+                    mouseShortcutStore.restoreLatestHistory()
+                }
+
+                mouseShortcutControlButton(icon: "arrow.counterclockwise", label: "Defaults") {
+                    mouseShortcutStore.restoreDefaults()
+                }
+            }
+
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "doc.text")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundColor(Palette.textMuted.opacity(0.66))
+                Text(detail)
+                    .font(Typo.caption(9))
+                    .foregroundColor(Palette.textMuted.opacity(0.72))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if showHistorySummary, !mouseShortcutStore.historySummaryLines.isEmpty {
+                HStack(spacing: 6) {
+                    Text("Recent")
+                        .font(Typo.monoBold(8))
+                        .foregroundColor(Palette.textMuted.opacity(0.68))
+
+                    ForEach(Array(mouseShortcutStore.historySummaryLines.prefix(3)), id: \.self) { snapshot in
+                        Text(snapshot)
+                            .font(Typo.mono(8))
+                            .foregroundColor(Palette.textMuted.opacity(0.7))
+                            .lineLimit(1)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(
+                                Capsule()
+                                    .fill(Palette.surface.opacity(0.55))
+                                    .overlay(Capsule().strokeBorder(Palette.border.opacity(0.55), lineWidth: 0.5))
+                            )
+                    }
+                }
+            }
+        }
+    }
+
+    private func mouseShortcutControlButton(
+        icon: String,
+        label: String,
+        isEnabled: Bool = true,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 10, weight: .semibold))
+                Text(label)
+                    .font(Typo.monoBold(9))
+                    .lineLimit(1)
+            }
+            .foregroundColor(isEnabled ? Palette.text : Palette.textMuted.opacity(0.52))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Palette.surfaceHov.opacity(isEnabled ? 0.88 : 0.38))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .strokeBorder(Palette.borderLit.opacity(isEnabled ? 0.75 : 0.32), lineWidth: 0.5)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+    }
+
+    private func mouseShortcutActionSummary(for rule: MouseShortcutRule) -> String {
+        rule.effectiveActions.map(\.label).joined(separator: " + ")
+    }
+
+    private func mouseShortcutGestureLabel(for trigger: MouseShortcutTrigger) -> String {
+        switch trigger.kind {
+        case .click:
+            return "click"
+        case .drag:
+            if let direction = trigger.direction {
+                return "drag \(direction.displayLabel.lowercased())"
+            }
+            return "drag"
+        case .shape:
+            if let shape = trigger.shape {
+                return shape.displayName.lowercased()
+            }
+            return "shape"
+        }
+    }
+
+    private func mouseShortcutButtonSortOrder(_ button: MouseShortcutButton) -> Int {
+        switch button {
+        case .middle: return 0
+        case .button4: return 1
+        case .button5: return 2
+        case .right: return 3
+        case .number: return 4
+        }
+    }
+
+    private func mouseShortcutTriggerSortOrder(_ trigger: MouseShortcutTrigger) -> Int {
+        let kindOrder: Int
+        switch trigger.kind {
+        case .drag: kindOrder = 0
+        case .shape: kindOrder = 1
+        case .click: kindOrder = 2
+        }
+
+        let directionOrder: Int
+        switch trigger.direction {
+        case .left: directionOrder = 0
+        case .right: directionOrder = 1
+        case .up: directionOrder = 2
+        case .down: directionOrder = 3
+        case nil: directionOrder = 4
+        }
+
+        return kindOrder * 10 + directionOrder
+    }
+
+    private func mouseShortcutTriggerIcon(for trigger: MouseShortcutTrigger) -> String {
+        switch trigger.kind {
+        case .click:
+            return "cursorarrow.click"
+        case .shape:
+            return "scribble.variable"
+        case .drag:
+            switch trigger.direction {
+            case .left: return "arrow.left"
+            case .right: return "arrow.right"
+            case .up: return "arrow.up"
+            case .down: return "arrow.down"
+            case nil: return "arrow.up.and.down.and.arrow.left.and.right"
+            }
         }
     }
 
@@ -1419,23 +1586,7 @@ struct SettingsContentView: View {
 
                         cardDivider
 
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Active drag mappings")
-                                .font(Typo.mono(10))
-                                .foregroundColor(Palette.textDim)
-
-                            ForEach(mouseShortcutStore.summaryLines.prefix(4), id: \.self) { line in
-                                Text(line)
-                                    .font(Typo.caption(9))
-                                    .foregroundColor(Palette.textMuted.opacity(0.78))
-                            }
-
-                            if mouseShortcutStore.summaryLines.isEmpty {
-                                Text("No active mappings")
-                                    .font(Typo.caption(9))
-                                    .foregroundColor(Palette.textMuted.opacity(0.6))
-                            }
-                        }
+                        mouseShortcutMappingMatrix(title: "Active drag mappings", limit: 4)
 
                         breakerStatusRow(
                             state: mouseGestureController.breakerState,
@@ -1444,96 +1595,10 @@ struct SettingsContentView: View {
                             mouseGestureController.reArmAfterBreakerTrip()
                         }
 
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack(spacing: 8) {
-                                Button {
-                                    mouseShortcutStore.openConfiguration()
-                                } label: {
-                                    Text("Configure...")
-                                        .font(Typo.monoBold(10))
-                                        .foregroundColor(Palette.text)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 4)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 4)
-                                                .fill(Palette.surfaceHov)
-                                                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
-                                        )
-                                }
-                                .buttonStyle(.plain)
-
-                                Button {
-                                    MouseInputEventViewer.shared.show()
-                                } label: {
-                                    Text("Event Viewer")
-                                        .font(Typo.monoBold(10))
-                                        .foregroundColor(Palette.text)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 4)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 4)
-                                                .fill(Palette.surfaceHov)
-                                                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
-                                        )
-                                }
-                                .buttonStyle(.plain)
-
-                                Button {
-                                    mouseShortcutStore.openHistory()
-                                } label: {
-                                    Text("History")
-                                        .font(Typo.monoBold(10))
-                                        .foregroundColor(Palette.text)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 4)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 4)
-                                                .fill(Palette.surfaceHov)
-                                                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
-                                        )
-                                }
-                                .buttonStyle(.plain)
-                            }
-
-                            HStack(spacing: 8) {
-                                Button {
-                                    mouseShortcutStore.restoreLatestHistory()
-                                } label: {
-                                    Text("Undo Last")
-                                        .font(Typo.monoBold(10))
-                                        .foregroundColor(mouseShortcutStore.hasHistory ? Palette.text : Palette.textMuted.opacity(0.55))
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 4)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 4)
-                                                .fill(Palette.surfaceHov.opacity(mouseShortcutStore.hasHistory ? 1 : 0.45))
-                                                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit.opacity(mouseShortcutStore.hasHistory ? 1 : 0.45), lineWidth: 0.5))
-                                        )
-                                }
-                                .buttonStyle(.plain)
-                                .disabled(!mouseShortcutStore.hasHistory)
-
-                                Button {
-                                    mouseShortcutStore.restoreDefaults()
-                                } label: {
-                                    Text("Restore Defaults")
-                                        .font(Typo.monoBold(10))
-                                        .foregroundColor(Palette.text)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 4)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 4)
-                                                .fill(Palette.surfaceHov)
-                                                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
-                                        )
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-
-                        Text("Use Event Viewer to discover what your mouse emits on this machine. The config schema already accepts device selectors, but live gesture matching currently falls back to global rules when macOS doesn't expose the source device.")
-                            .font(Typo.caption(9))
-                            .foregroundColor(Palette.textMuted.opacity(0.7))
+                        mouseShortcutManagementPanel(
+                            detail: "Use Event Viewer to discover what your mouse emits on this machine. The config schema accepts device selectors; live gesture matching falls back to global rules when macOS does not expose the source device.",
+                            showHistorySummary: false
+                        )
                     }
                 }
 

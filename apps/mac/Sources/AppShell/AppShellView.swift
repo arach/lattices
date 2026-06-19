@@ -89,10 +89,16 @@ struct AppShellView: View {
         } statusBar: {
             statusBar
         }
-        // Full Hudson window chrome: transparent full-size title bar, no separator.
-        // Keep the window non-draggable-by-background so content clicks aren't
-        // swallowed (Lattices manages its own window placement).
-        .background(HudWindowChrome(colorScheme: .dark, isMovableByWindowBackground: false))
+        .background(
+            HudWindowChrome(
+                colorScheme: .dark,
+                titleVisibility: .visible,
+                titlebarAppearsTransparent: false,
+                usesFullSizeContentView: false,
+                isMovableByWindowBackground: false,
+                hidesToolbar: false
+            )
+        )
         .hudsonAppManifest(manifest)
         .onAppear {
             commandState.onDismiss = { windowController.activePage = .home }

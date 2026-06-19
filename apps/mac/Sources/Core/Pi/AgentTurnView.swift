@@ -19,6 +19,13 @@ enum AgentTurnRole: Equatable {
     case system
 }
 
+struct AgentTurnAttachment: Identifiable, Equatable {
+    let id: UUID
+    var name: String
+    var mediaType: String
+    var systemImage: String
+}
+
 /// One turn in an agent conversation. A pure value — the rendering unit's only
 /// input. Adapters (e.g. `PiChatMessageRow`) map their own message types onto it.
 struct AgentTurn: Identifiable, Equatable {
@@ -28,6 +35,7 @@ struct AgentTurn: Identifiable, Equatable {
     var author: String
     var timestamp: Date
     var text: String
+    var attachments: [AgentTurnAttachment]
     /// True while this turn is still being produced (drives streaming visuals).
     var isStreaming: Bool
     /// Name of a tool the agent is currently running, if any.
@@ -39,6 +47,7 @@ struct AgentTurn: Identifiable, Equatable {
         author: String,
         timestamp: Date,
         text: String,
+        attachments: [AgentTurnAttachment] = [],
         isStreaming: Bool = false,
         toolActivity: String? = nil
     ) {
@@ -47,6 +56,7 @@ struct AgentTurn: Identifiable, Equatable {
         self.author = author
         self.timestamp = timestamp
         self.text = text
+        self.attachments = attachments
         self.isStreaming = isStreaming
         self.toolActivity = toolActivity
     }
@@ -119,6 +129,11 @@ struct AgentTurnView: View, Equatable {
             bodyContent(isAssistant: isAssistant)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.leading, 23)
+
+            if !turn.attachments.isEmpty {
+                attachmentChips
+                    .padding(.leading, 23)
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
@@ -159,6 +174,39 @@ struct AgentTurnView: View, Equatable {
                 .foregroundColor(Palette.textMuted.opacity(isAssistant ? 0.75 : 0.8))
 
             copyButton(size: 23, iconSize: 10)
+        }
+    }
+
+    private var attachmentChips: some View {
+        FlowLayout(spacing: 6, lineSpacing: 6, alignment: .leading) {
+            ForEach(turn.attachments) { attachment in
+                HStack(spacing: 5) {
+                    Image(systemName: attachment.systemImage)
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(Palette.running)
+
+                    Text(attachment.name)
+                        .font(Typo.mono(10))
+                        .foregroundColor(Palette.textDim)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+
+                    Text(attachment.mediaType)
+                        .font(Typo.mono(8))
+                        .foregroundColor(Palette.textMuted)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(Palette.running.opacity(0.09))
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .strokeBorder(Palette.running.opacity(0.24), lineWidth: 0.5)
+                        )
+                )
+            }
         }
     }
 

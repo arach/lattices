@@ -30,24 +30,14 @@ final class MainWindow {
         let view = MainView(scanner: ProjectScanner.shared)
             .preferredColorScheme(.dark)
 
-        let hostingView = NSHostingView(rootView: view)
-        hostingView.frame = NSRect(x: 0, y: 0, width: 380, height: 460)
-
-        let w = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 380, height: 460),
-            styleMask: [.titled, .closable, .resizable, .miniaturizable],
-            backing: .buffered,
-            defer: false
+        let w = AppWindowShell.makeWindow(
+            config: .init(
+                title: "Lattices",
+                initialSize: NSSize(width: 380, height: 460),
+                minSize: NSSize(width: 340, height: 380)
+            ),
+            rootView: view
         )
-        w.contentView = hostingView
-        w.title = "lattices"
-        w.titlebarAppearsTransparent = true
-        w.titleVisibility = .hidden
-        w.isReleasedWhenClosed = false
-        w.backgroundColor = NSColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1.0)
-        w.appearance = NSAppearance(named: .darkAqua)
-        w.minSize = NSSize(width: 340, height: 380)
-        w.maxSize = NSSize(width: 600, height: 800)
 
         // Position near top-right of screen (close to menu bar area)
         if let screen = NSScreen.main {
@@ -57,8 +47,7 @@ final class MainWindow {
             w.setFrameOrigin(NSPoint(x: x, y: y))
         }
 
-        w.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        AppWindowShell.present(w)
 
         window = w
         AppDelegate.updateActivationPolicy()

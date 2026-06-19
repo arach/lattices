@@ -30,10 +30,8 @@ final class PermissionsAssistantWindowController: ObservableObject {
         let w = AppWindowShell.makeWindow(
             config: .init(
                 title: "Lattices Permissions",
-                titleVisible: false,
                 initialSize: NSSize(width: 720, height: 520),
-                minSize: NSSize(width: 640, height: 460),
-                maxSize: NSSize(width: 1100, height: 800)
+                minSize: NSSize(width: 640, height: 460)
             ),
             rootView: host
         )
