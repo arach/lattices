@@ -34,6 +34,8 @@ final class HUDController {
     private var rightPanel: NSPanel?
     private var previewPanel: NSPanel?
     private var minimapPanels: [NSPanel] = []
+    private let hintBezels = HUDWindowHintBezels()
+    private var windowHintObserver: AnyCancellable?
     private var keyMonitor: Any?
     private var clickMonitor: Any?
     private var mouseMovedMonitor: Any?
@@ -194,6 +196,7 @@ final class HUDController {
 
         installMonitors()
         applyExperienceToAllPanels()
+        refreshHintBezels()
 
         let xp = HUDExperienceStore.shared
         if xp.has(.mouseSpecular) || xp.has(.meshLight) {
@@ -212,6 +215,7 @@ final class HUDController {
         guard isVisible else { return }
         removeMonitors()
         removeMouseMovedMonitor()
+        hintBezels.setRevealed(false)
 
         // Restore untiled windows only if user actually tiled something
         if !state.tiledWindows.isEmpty {
@@ -305,6 +309,7 @@ final class HUDController {
         }
         positionMinimapPanels()
         positionedScreen = screen
+        refreshHintBezels()
     }
 
     private func buildMinimapPanels(dismiss: @escaping () -> Void) {
@@ -454,6 +459,12 @@ final class HUDController {
                     self?.updatePreviewPanelVisibility(animated: true)
                 }
             }
+
+        // Rebuild on-window jump badges whenever the hint assignment changes
+        windowHintObserver = state.$windowHints
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.refreshHintBezels() }
 
         // Re-apply experience settings when preset changes
         experienceObserver = HUDExperienceStore.shared.$presetIndex
@@ -646,6 +657,18 @@ final class HUDController {
                 return nil
             }
             dismiss()
+            return nil
+        }
+
+        // ⌥+letter: jump straight to the window wearing that badge (any focus).
+        // `v`/`x` are reserved out of the hint alphabet, so ⌥V / ⌥X still fall
+        // through to voice / experience below.
+        if event.modifierFlags.contains(.option),
+           let ch = event.charactersIgnoringModifiers?.lowercased(),
+           ch.count == 1,
+           let wid = state.hintWid(for: ch),
+           let win = DesktopModel.shared.windows[wid] {
+            activateItem(.window(win))
             return nil
         }
 
@@ -1289,6 +1312,22 @@ final class HUDController {
     private func removeMonitors() {
         if let m = keyMonitor   { NSEvent.removeMonitor(m); keyMonitor = nil }
         if let m = clickMonitor { NSEvent.removeMonitor(m); clickMonitor = nil }
+    }
+
+    // MARK: - Window jump badges
+
+    /// Reposition + reveal the ⌥+letter badges over each on-screen window.
+    private func refreshHintBezels() {
+        guard isVisible else { hintBezels.setRevealed(false); return }
+        var obscured: [NSRect] = []
+        if let leftPanel { obscured.append(leftPanel.frame) }
+        if let rightPanel, rightPanel.alphaValue > 0.5 { obscured.append(rightPanel.frame) }
+        hintBezels.update(
+            hints: state.windowHints,
+            windows: DesktopModel.shared.windows,
+            obscuredBy: obscured
+        )
+        hintBezels.setRevealed(true)
     }
 
     private func mouseScreen() -> NSScreen {

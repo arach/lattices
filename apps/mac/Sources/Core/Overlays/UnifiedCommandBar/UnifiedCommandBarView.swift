@@ -18,6 +18,7 @@ struct UnifiedCommandBarView: View {
     var onCommit: () -> Void
     var onMic: () -> Void
     var onSettings: () -> Void
+    var onDismiss: () -> Void
 
     @FocusState private var focused: Bool
 
@@ -58,7 +59,7 @@ struct UnifiedCommandBarView: View {
                 .strokeBorder(borderGradient, lineWidth: 0.75)
         )
         .overlay(alignment: .top) { topRim }
-        .shadow(color: Color.black.opacity(0.5), radius: 22, y: 10)
+        .shadow(color: Color.black.opacity(0.38), radius: 14, y: 6)
         .animation(.easeOut(duration: 0.16), value: state.detail)
     }
 
@@ -128,6 +129,7 @@ struct UnifiedCommandBarView: View {
             // Right action cluster — mic flush against send.
             micButton
             sendButton
+            dismissButton
         }
         .frame(height: 46)
         // Bar reads as a raised surface over the darker expansion.
@@ -203,7 +205,13 @@ struct UnifiedCommandBarView: View {
     /// Send reflects routing: solid cyan when there's something to act on, a
     /// softer cyan "ask" tint (sparkle) when the text reads as a question.
     @ViewBuilder private var sendButton: some View {
-        if state.wantsAssistant {
+        if state.voice.phase == .listening || state.voice.phase == .connecting {
+            actionButton(system: "stop.fill", primary: true, action: onCommit)
+                .help("Stop recording · ↵")
+        } else if state.voice.phase == .transcribing {
+            actionButton(system: "hourglass", primary: false, action: {})
+                .help("Transcribing")
+        } else if state.wantsAssistant {
             Button(action: onCommit) {
                 Image(systemName: "sparkles")
                     .font(.system(size: 12, weight: .medium))
@@ -223,13 +231,27 @@ struct UnifiedCommandBarView: View {
     private var micButton: some View {
         let listening = state.voice.phase == .listening
         return Button(action: onMic) {
-            Image(systemName: listening ? "mic.fill" : "mic")
+            Image(systemName: listening ? "stop.circle.fill" : "mic")
                 .font(.system(size: 13, weight: .medium))
-                .foregroundColor(listening ? HUDChrome.cyan : Palette.textMuted)
+                .foregroundColor(listening ? HUDChrome.onSignal : Palette.textMuted)
                 .frame(width: 44, height: 46)
+                .background(listening ? HUDChrome.cyan.opacity(0.95) : Color.clear)
                 .overlay(HUDHairline(axis: .vertical), alignment: .leading)
         }
         .buttonStyle(.plain)
+        .help(listening ? "Stop recording" : "Start recording")
+    }
+
+    private var dismissButton: some View {
+        Button(action: onDismiss) {
+            Image(systemName: "xmark")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(Palette.textMuted)
+                .frame(width: 34, height: 46)
+                .overlay(HUDHairline(axis: .vertical), alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .help("Dismiss · Esc")
     }
 
     private func actionButton(system: String, primary: Bool, action: @escaping () -> Void) -> some View {

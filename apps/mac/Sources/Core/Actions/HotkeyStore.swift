@@ -224,6 +224,20 @@ struct KeyBinding: Codable, Equatable {
     }
 }
 
+private enum HotkeyFileOverride: Decodable {
+    case binding(KeyBinding)
+    case disabled
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() {
+            self = .disabled
+        } else {
+            self = .binding(try container.decode(KeyBinding.self))
+        }
+    }
+}
+
 // MARK: - HotkeyStore
 
 class HotkeyStore: ObservableObject {
@@ -263,14 +277,11 @@ class HotkeyStore: ObservableObject {
         bind(.bezel,     19, hyper)      // Hyper+2
         bind(.hud,       20, hyper)      // Hyper+3 (HUD overlay)
         bind(.desktopInventory, 5, hyper) // Hyper+G
-        bind(.voiceCommand, 2, hyper)    // Hyper+D
         let cmdCtrl = UInt32(cmdKey | controlKey)
         bind(.handsOff, 46, cmdCtrl)          // Ctrl+Cmd+M
-        bind(.omniSearch, 23, hyper)       // Hyper+5
         bind(.activityLog, 37, cmdShift)   // Cmd+Shift+L
         bind(.cheatSheet, 22, hyper)       // Hyper+6
         bind(.mouseFinder, 26, hyper)      // Hyper+7
-        bind(.overlayActors, 11, hyper)    // Hyper+B
         bind(.gridPlacement, 5, ctrlOpt)   // Ctrl+Opt+G (4x4 placement target)
         bind(.commandBar, 49, ctrlOpt)     // Ctrl+Opt+Space (precise placement command bar)
 
@@ -307,6 +318,14 @@ class HotkeyStore: ObservableObject {
         return d
     }()
 
+    private static func storageKey(for action: HotkeyAction) -> String {
+        "hotkey.\(action.rawValue)"
+    }
+
+    private static func disabledKey(for action: HotkeyAction) -> String {
+        "hotkey.\(action.rawValue).disabled"
+    }
+
     private init() {
         // Start with defaults
         var merged = Self.defaultBindings
@@ -314,7 +333,12 @@ class HotkeyStore: ObservableObject {
         // Layer 2: UserDefaults overrides
         let ud = UserDefaults.standard
         for action in HotkeyAction.allCases {
-            let key = "hotkey.\(action.rawValue)"
+            if ud.bool(forKey: Self.disabledKey(for: action)) {
+                merged.removeValue(forKey: action)
+                continue
+            }
+
+            let key = Self.storageKey(for: action)
             if let data = ud.data(forKey: key),
                let binding = try? JSONDecoder().decode(KeyBinding.self, from: data) {
                 merged[action] = binding
@@ -324,10 +348,15 @@ class HotkeyStore: ObservableObject {
         // Layer 3: ~/.lattices/hotkeys.json overrides
         let jsonPath = NSHomeDirectory() + "/.lattices/hotkeys.json"
         if let data = FileManager.default.contents(atPath: jsonPath),
-           let overrides = try? JSONDecoder().decode([String: KeyBinding].self, from: data) {
-            for (rawValue, binding) in overrides {
+           let overrides = try? JSONDecoder().decode([String: HotkeyFileOverride].self, from: data) {
+            for (rawValue, override) in overrides {
                 if let action = HotkeyAction(rawValue: rawValue) {
-                    merged[action] = binding
+                    switch override {
+                    case .binding(let binding):
+                        merged[action] = binding
+                    case .disabled:
+                        merged.removeValue(forKey: action)
+                    }
                 }
             }
         }
@@ -339,7 +368,10 @@ class HotkeyStore: ObservableObject {
 
     func register(action: HotkeyAction, callback: @escaping () -> Void) {
         callbacks[action] = callback
-        guard let binding = bindings[action] else { return }
+        guard let binding = bindings[action] else {
+            HotkeyManager.shared.unregisterSingle(id: action.carbonID)
+            return
+        }
         HotkeyManager.shared.registerSingle(
             id: action.carbonID,
             keyCode: binding.keyCode,
@@ -355,8 +387,9 @@ class HotkeyStore: ObservableObject {
 
         // Persist to UserDefaults
         if let data = try? JSONEncoder().encode(binding) {
-            UserDefaults.standard.set(data, forKey: "hotkey.\(action.rawValue)")
+            UserDefaults.standard.set(data, forKey: Self.storageKey(for: action))
         }
+        UserDefaults.standard.removeObject(forKey: Self.disabledKey(for: action))
 
         // Re-register if we have a callback
         if let callback = callbacks[action] {
@@ -369,13 +402,26 @@ class HotkeyStore: ObservableObject {
         }
     }
 
+    func clearBinding(for action: HotkeyAction) {
+        bindings.removeValue(forKey: action)
+        UserDefaults.standard.removeObject(forKey: Self.storageKey(for: action))
+        UserDefaults.standard.set(true, forKey: Self.disabledKey(for: action))
+        HotkeyManager.shared.unregisterSingle(id: action.carbonID)
+    }
+
     // MARK: - Reset
 
     func resetBinding(for action: HotkeyAction) {
-        guard let defaultBinding = Self.defaultBindings[action] else { return }
-        UserDefaults.standard.removeObject(forKey: "hotkey.\(action.rawValue)")
-        bindings[action] = defaultBinding
+        UserDefaults.standard.removeObject(forKey: Self.storageKey(for: action))
+        UserDefaults.standard.removeObject(forKey: Self.disabledKey(for: action))
 
+        guard let defaultBinding = Self.defaultBindings[action] else {
+            bindings.removeValue(forKey: action)
+            HotkeyManager.shared.unregisterSingle(id: action.carbonID)
+            return
+        }
+
+        bindings[action] = defaultBinding
         if let callback = callbacks[action] {
             HotkeyManager.shared.registerSingle(
                 id: action.carbonID,
@@ -388,13 +434,17 @@ class HotkeyStore: ObservableObject {
 
     func resetAll() {
         for action in HotkeyAction.allCases {
-            UserDefaults.standard.removeObject(forKey: "hotkey.\(action.rawValue)")
+            UserDefaults.standard.removeObject(forKey: Self.storageKey(for: action))
+            UserDefaults.standard.removeObject(forKey: Self.disabledKey(for: action))
         }
         bindings = Self.defaultBindings
 
         // Re-register all with stored callbacks
         for (action, callback) in callbacks {
-            guard let binding = bindings[action] else { continue }
+            guard let binding = bindings[action] else {
+                HotkeyManager.shared.unregisterSingle(id: action.carbonID)
+                continue
+            }
             HotkeyManager.shared.registerSingle(
                 id: action.carbonID,
                 keyCode: binding.keyCode,

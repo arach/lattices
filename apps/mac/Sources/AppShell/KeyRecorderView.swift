@@ -18,78 +18,69 @@ struct KeyRecorderView: View {
     }
 
     var body: some View {
-        HStack(spacing: 8) {
-            // Action label
-            Text(action.label)
-                .font(Typo.caption(11))
-                .foregroundColor(Palette.textDim)
-                .frame(minWidth: 60, idealWidth: 90, alignment: .trailing)
-                .lineLimit(1)
+        GeometryReader { geo in
+            let compact = geo.size.width < 360
+            let labelWidth: CGFloat = compact ? 110 : 136
+            let controlsWidth: CGFloat = binding == nil && !isModified ? 28 : 78
+            let shortcutWidth = max(84, geo.size.width - labelWidth - controlsWidth - 24)
 
-            // Key badges or capture prompt
-            if isCapturing {
-                Text("Press shortcut...")
-                    .font(Typo.mono(11))
-                    .foregroundColor(Palette.running)
-                    .frame(minWidth: 80, alignment: .leading)
-            } else if let binding = binding {
+            HStack(spacing: 8) {
+                Text(action.label)
+                    .font(Typo.caption(11))
+                    .foregroundColor(Palette.textDim)
+                    .frame(width: labelWidth, alignment: .leading)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                shortcutDisplay
+                    .frame(width: shortcutWidth, alignment: .leading)
+
+                Spacer(minLength: 0)
+
                 HStack(spacing: 4) {
-                    ForEach(binding.compactDisplayParts, id: \.self) { part in
-                        keyBadge(part)
+                    recorderControlButton(
+                        systemName: isCapturing ? "xmark" : "pencil",
+                        help: isCapturing ? "Cancel capture" : "Edit shortcut",
+                        color: isCapturing ? Palette.kill : Palette.textDim
+                    ) {
+                        isCapturing.toggle()
+                    }
+
+                    if binding != nil {
+                        recorderControlButton(
+                            systemName: "minus.circle",
+                            help: "Clear shortcut",
+                            color: Palette.textDim
+                        ) {
+                            store.clearBinding(for: action)
+                            isCapturing = false
+                        }
+                    }
+
+                    if isModified {
+                        recorderControlButton(
+                            systemName: "arrow.counterclockwise",
+                            help: "Reset to default",
+                            color: Palette.detach
+                        ) {
+                            store.resetBinding(for: action)
+                            isCapturing = false
+                        }
                     }
                 }
-                .frame(minWidth: 80, alignment: .leading)
-            }
-
-            Spacer()
-
-            // Edit button
-            Button {
-                if isCapturing {
-                    isCapturing = false
-                } else {
-                    isCapturing = true
-                }
-            } label: {
-                Text(isCapturing ? "Cancel" : "Edit")
-                    .font(Typo.caption(10))
-                    .foregroundColor(isCapturing ? Palette.kill : Palette.textDim)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(Palette.surface)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 3)
-                                    .strokeBorder(Palette.border, lineWidth: 0.5)
-                            )
-                    )
-            }
-            .buttonStyle(.plain)
-
-            // Reset link (only when modified)
-            if isModified {
-                Button {
-                    store.resetBinding(for: action)
-                } label: {
-                    Text("Reset")
-                        .font(Typo.caption(10))
-                        .foregroundColor(Palette.detach)
-                }
-                .buttonStyle(.plain)
+                .frame(width: controlsWidth, alignment: .trailing)
             }
         }
-        .padding(.vertical, 2)
-        .background(
-            isCapturing
-                ? KeyCaptureOverlay(onCapture: handleCapture, onCancel: { isCapturing = false })
-                : nil
-        )
+        .frame(height: 24)
+        .background {
+            if isCapturing {
+                KeyCaptureOverlay(onCapture: handleCapture, onCancel: { isCapturing = false })
+            }
+        }
         .alert("Shortcut Conflict", isPresented: $showConflict) {
             Button("Replace") {
                 if let pending = pendingBinding, let conflict = conflictAction {
-                    // Remove conflicting binding by resetting it
-                    store.resetBinding(for: conflict)
+                    store.clearBinding(for: conflict)
                     store.updateBinding(for: action, to: pending)
                 }
                 pendingBinding = nil
@@ -107,6 +98,30 @@ struct KeyRecorderView: View {
         }
     }
 
+    @ViewBuilder
+    private var shortcutDisplay: some View {
+        if isCapturing {
+            Text("Press shortcut...")
+                .font(Typo.mono(11))
+                .foregroundColor(Palette.running)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+        } else if let binding = binding {
+            HStack(spacing: 4) {
+                ForEach(binding.compactDisplayParts, id: \.self) { part in
+                    keyBadge(part)
+                }
+            }
+            .lineLimit(1)
+        } else {
+            Text("Not set")
+                .font(Typo.mono(10.5))
+                .foregroundColor(Palette.textMuted)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+        }
+    }
+
     private func handleCapture(_ binding: KeyBinding) {
         if let conflict = store.conflicts(for: action, with: binding) {
             pendingBinding = binding
@@ -118,10 +133,36 @@ struct KeyRecorderView: View {
         }
     }
 
+    private func recorderControlButton(
+        systemName: String,
+        help: String,
+        color: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(color)
+                .frame(width: 20, height: 20)
+                .background(
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Palette.surface)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 3)
+                                .strokeBorder(Palette.border, lineWidth: 0.5)
+                        )
+                )
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
+
     private func keyBadge(_ key: String) -> some View {
         Text(key)
             .font(Typo.geistMonoBold(10))
             .foregroundColor(Palette.text)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
             .background(

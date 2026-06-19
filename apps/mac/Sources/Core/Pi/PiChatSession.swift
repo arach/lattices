@@ -5,6 +5,13 @@ import Foundation
 import HudsonAI
 #endif
 
+/// A prompt the user queued mid-turn. Carries a stable id so the composer's chips
+/// diff cleanly and remove/edit resolve by identity (not a shifting index).
+struct QueuedPrompt: Identifiable, Equatable {
+    let id = UUID()
+    var text: String
+}
+
 struct PiChatMessage: Identifiable, Equatable {
     enum Role {
         case system
@@ -160,7 +167,7 @@ final class PiChatSession: ObservableObject {
     @Published private(set) var statusText: String = "idle"
     /// Prompts submitted while a turn was streaming. They render as pending chips
     /// and fire FIFO once the current turn finishes (the "queue" primitive).
-    @Published private(set) var queuedPrompts: [String] = []
+    @Published private(set) var queuedPrompts: [QueuedPrompt] = []
     @Published var dockHeight: CGFloat = 230 {
         didSet {
             dockHeight = Self.clampDockHeight(dockHeight)
@@ -574,7 +581,7 @@ final class PiChatSession: ObservableObject {
         guard !text.isEmpty else { return }
         draft = ""
         if isSending {
-            queuedPrompts.append(text)   // queue while a turn is in flight
+            queuedPrompts.append(QueuedPrompt(text: text))   // queue while a turn is in flight
             return
         }
         send(text)
@@ -1049,35 +1056,52 @@ final class PiChatSession: ObservableObject {
     private func drainQueuedPrompt() {
         guard !isSending, !queuedPrompts.isEmpty else { return }
         let next = queuedPrompts.removeFirst()
-        send(next)
+        send(next.text)
     }
 
-    /// Stop button. Halts the in-flight turn (cancelling generation on the
-    /// HudAIClient path; the generation guard neutralizes the native path's stale
-    /// callbacks), settles the partial answer, then — if the composer has text —
-    /// sends it immediately as a redirect (steer). Empty draft = plain stop, and
-    /// any queued prompts still continue.
-    func interruptAndSteer() {
-        guard isSending else { return }
-        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+    /// Halt the in-flight turn (cancelling generation on the HudAIClient path; the
+    /// generation guard neutralizes the native path's stale callbacks) and settle
+    /// the partial answer. `drainQueue` fires the next queued prompt afterward —
+    /// true for a plain stop, false when the caller is about to send a steer.
+    private func stop(drainQueue: Bool) {
         turnGeneration &+= 1
         streamingTask?.cancel()
         streamingTask = nil
         isSending = false
         statusText = "idle"
         settleActiveStreamingMessage(interrupted: true)
-        if text.isEmpty {
-            drainQueuedPrompt()
-        } else {
-            draft = ""
-            send(text)
-        }
+        if drainQueue { drainQueuedPrompt() }
     }
 
-    /// Remove a still-pending queued prompt (tapping its chip before it fires).
-    func removeQueuedPrompt(at index: Int) {
-        guard queuedPrompts.indices.contains(index) else { return }
-        queuedPrompts.remove(at: index)
+    /// Stop button. Halts the in-flight turn without sending anything; any queued
+    /// prompts still continue.
+    func stop() {
+        guard isSending else { return }
+        stop(drainQueue: true)
+    }
+
+    /// Stop the in-flight turn and, if the composer has text, send it immediately
+    /// as a redirect (steer). Empty draft falls back to a plain stop.
+    func interruptAndSteer() {
+        guard isSending else { return }
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        stop(drainQueue: text.isEmpty)   // don't drain when we're about to steer
+        guard !text.isEmpty else { return }
+        draft = ""
+        send(text)
+    }
+
+    /// Remove a still-pending queued prompt (tapping its chip's ✕ before it fires).
+    func removeQueuedPrompt(id: UUID) {
+        queuedPrompts.removeAll { $0.id == id }
+    }
+
+    /// Pull a queued prompt back into the composer to edit it: splice its text into
+    /// the draft and drop it from the queue.
+    func editQueuedPrompt(id: UUID) {
+        guard let index = queuedPrompts.firstIndex(where: { $0.id == id }) else { return }
+        let removed = queuedPrompts.remove(at: index)
+        draft = WorkspaceDictationBuffer.appending(removed.text, to: draft)
     }
 
     private func removeMessageIfEmpty(id: UUID) {
@@ -1996,6 +2020,7 @@ final class PiChatSession: ObservableObject {
                     "deepScanBudget": prefs.ocrDeepBudget,
                 ],
                 "mouseShortcuts": mouseShortcutContextPayload(),
+                "studioLayers": StudioLayerStore.shared.assistantContextPayload(),
             ],
             "settingsCatalog": [
                 [
@@ -2040,6 +2065,7 @@ final class PiChatSession: ObservableObject {
             ],
             "settingsFiles": [
                 "workspace": "\(NSHomeDirectory())/.lattices/workspace.json",
+                "studioLayers": StudioLayerStore.shared.configFilePath,
                 "mouseShortcuts": MouseShortcutStore.shared.configURL.path,
                 "mouseShortcutsHistory": MouseShortcutStore.shared.historyDirectoryURL.path,
                 "snapZones": "\(NSHomeDirectory())/.lattices/snap-zones.json",

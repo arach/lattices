@@ -64,7 +64,7 @@ struct CommandModeView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: isEmbedded ? .topLeading : .top)
         }
         .onAppear { installKeyHandler(); installMouseMonitors() }
         .onDisappear { removeKeyHandler(); removeMouseMonitors() }
@@ -137,7 +137,7 @@ struct CommandModeView: View {
             .frame(maxHeight: .infinity)
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     // MARK: - Header
@@ -1905,12 +1905,28 @@ struct CommandModeView: View {
     private func installKeyHandler() {
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             guard state.phase == .inventory || state.phase == .desktopInventory else { return event }
-            // Only handle keys when our panel is the key window
-            guard let panel = CommandModeWindow.shared.panelWindow,
-                  panel.isKeyWindow else { return event }
+            guard shouldHandleKeyEvent(event) else { return event }
             let consumed = state.handleKey(event.keyCode, modifiers: event.modifierFlags)
             return consumed ? nil : event
         }
+    }
+
+    private func shouldHandleKeyEvent(_ event: NSEvent) -> Bool {
+        if isEmbedded {
+            guard let window = ScreenMapWindowController.shared.nsWindow,
+                  window.isKeyWindow else { return false }
+            if let eventWindow = event.window {
+                return eventWindow === window
+            }
+            return NSApp.keyWindow === window
+        }
+
+        guard let panel = CommandModeWindow.shared.panelWindow,
+              panel.isKeyWindow else { return false }
+        if let eventWindow = event.window {
+            return eventWindow === panel
+        }
+        return NSApp.keyWindow === panel
     }
 
     // MARK: - Mouse Monitors (marquee drag + screen map drag)

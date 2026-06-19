@@ -183,6 +183,16 @@ class HotkeyManager {
         }
     }
 
+    /// Unregister one global hotkey and clear its active callback.
+    func unregisterSingle(id: UInt32) {
+        if let existing = hotKeyRefs[id] {
+            UnregisterEventHotKey(existing)
+            hotKeyRefs.removeValue(forKey: id)
+        }
+        hotkeyCallbacks.removeValue(forKey: id)
+        DiagnosticLog.shared.info("HotkeyManager: unregistered id=\(id)")
+    }
+
     /// Unregister all global hotkeys and clear callbacks
     func unregisterAll() {
         for (id, ref) in hotKeyRefs {
