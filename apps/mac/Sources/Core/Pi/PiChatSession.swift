@@ -1975,6 +1975,7 @@ final class PiChatSession: ObservableObject {
                     "deepScanBudget": prefs.ocrDeepBudget,
                 ],
                 "mouseShortcuts": mouseShortcutContextPayload(),
+                "studioLayers": StudioLayerStore.shared.assistantContextPayload(),
             ],
             "settingsCatalog": [
                 [
@@ -2019,6 +2020,7 @@ final class PiChatSession: ObservableObject {
             ],
             "settingsFiles": [
                 "workspace": "\(NSHomeDirectory())/.lattices/workspace.json",
+                "studioLayers": StudioLayerStore.shared.configFilePath,
                 "mouseShortcuts": MouseShortcutStore.shared.configURL.path,
                 "mouseShortcutsHistory": MouseShortcutStore.shared.historyDirectoryURL.path,
                 "snapZones": "\(NSHomeDirectory())/.lattices/snap-zones.json",

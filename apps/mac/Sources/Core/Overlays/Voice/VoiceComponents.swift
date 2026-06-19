@@ -341,10 +341,10 @@ final class VoiceCommandState: ObservableObject {
                     self.resultSummary = "\(items.count) result\(items.count == 1 ? "" : "s")"
                 case .object(let obj):
                     self.resultItems = []
-                    self.resultSummary = obj.map { "\($0.key): \($0.value)" }.joined(separator: ", ")
+                    self.resultSummary = self.friendlyObjectSummary(obj, fallback: result)
                 default:
                     self.resultItems = []
-                    self.resultSummary = "\(data)"
+                    self.resultSummary = self.friendlyScalarSummary(data, fallback: result)
                 }
             } else {
                 self.resultItems = []
@@ -366,6 +366,63 @@ final class VoiceCommandState: ObservableObject {
         // Sync immediately (no delay for transcript), then start polling
         syncState()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { poll() }
+    }
+
+    private func friendlyObjectSummary(_ obj: [String: JSON], fallback: String?) -> String {
+        if let summary = obj["summary"]?.stringValue, !summary.isEmpty {
+            return summary
+        }
+        if let message = obj["message"]?.stringValue, !message.isEmpty {
+            return message
+        }
+        if obj["ok"]?.boolValue == false {
+            return obj["reason"]?.stringValue ?? fallbackSummary(fallback, defaultValue: "Voice command did not complete")
+        }
+
+        switch intentName ?? "" {
+        case "focus":
+            if let target = obj["focused"]?.stringValue ?? obj["app"]?.stringValue {
+                return "Focused \(target)"
+            }
+        case "tile_window":
+            if let position = obj["position"]?.stringValue {
+                return "Moved window to \(position)"
+            }
+        case "move_to_display":
+            if let display = obj["display"]?.intValue {
+                return "Moved window to display \(display + 1)"
+            }
+        case "launch":
+            if let launched = obj["launched"]?.stringValue {
+                return "Opened \(launched)"
+            }
+        case "kill":
+            if let killed = obj["killed"]?.stringValue ?? obj["session"]?.stringValue {
+                return "Closed \(killed)"
+            }
+        default:
+            break
+        }
+
+        return fallbackSummary(fallback, defaultValue: obj["ok"]?.boolValue == true ? "Done" : "Result ready")
+    }
+
+    private func friendlyScalarSummary(_ data: JSON, fallback: String?) -> String {
+        if let text = data.stringValue, !text.isEmpty {
+            return text
+        }
+        if let ok = data.boolValue {
+            return ok ? "Done" : "Voice command did not complete"
+        }
+        return fallbackSummary(fallback, defaultValue: "Result ready")
+    }
+
+    private func fallbackSummary(_ fallback: String?, defaultValue: String) -> String {
+        let text = fallback?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !text.isEmpty && text != "ok" {
+            return text
+        }
+        return defaultValue
     }
 }
 

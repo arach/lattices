@@ -62,7 +62,8 @@ final class UnifiedCommandBarWindow {
             state: st,
             onCommit: { [weak self] in self?.commit() },
             onMic: { [weak self] in self?.onMic() },
-            onSettings: { [weak self] in self?.dismiss(); SettingsWindowController.shared.show() }
+            onSettings: { [weak self] in self?.dismiss(); SettingsWindowController.shared.show() },
+            onDismiss: { [weak self] in self?.dismiss() }
         )
         .preferredColorScheme(.dark)
 
@@ -71,13 +72,8 @@ final class UnifiedCommandBarWindow {
 
         let p = OverlayPanelShell.makePanel(
             config: .init(
-                // `.utilityWindow` at `.floating` mirrors OmniSearch's proven recipe:
-                // a plain titled panel at `.popUpMenu` level never reliably becomes
-                // key for a background (accessory) app, so typing fell through.
                 size: NSSize(width: panelWidth, height: panelHeight),
-                styleMask: [.titled, .utilityWindow, .nonactivatingPanel],
-                titleVisible: .hidden,
-                titlebarAppearsTransparent: true,
+                styleMask: [.borderless, .nonactivatingPanel],
                 background: .clear,          // SwiftUI draws the opaque card + shadow
                 level: .floating,
                 hasShadow: false,            // the card draws its own shadow
@@ -179,7 +175,7 @@ final class UnifiedCommandBarWindow {
         flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
             guard let self, self.panel?.isKeyWindow == true, let voice = self.state?.voice else { return event }
             if event.modifierFlags.contains(.option) {
-                if voice.armed, voice.phase == .idle || voice.phase == .result {
+                if voice.armed && (voice.phase == .idle || voice.phase == .result) {
                     voice.startListening()
                 }
             } else if voice.phase == .listening {
@@ -193,8 +189,10 @@ final class UnifiedCommandBarWindow {
 
     private func commit() {
         guard let st = state else { return }
-        // Voice commits by releasing ⌥ / stopping; routing lands in Phase C.
-        if st.voiceActive { return }
+        if st.voiceActive {
+            commitVoice(st.voice)
+            return
+        }
         if st.commandMode {
             // Enter on an empty / unmatched command is a no-op, not a dismiss.
             guard let s = st.search.command.selected else { return }
@@ -228,6 +226,19 @@ final class UnifiedCommandBarWindow {
             guard st.search.selectedIndex >= 0, st.search.selectedIndex < ordered.count else { return }
             ordered[st.search.selectedIndex].action()
             dismiss()
+        }
+    }
+
+    private func commitVoice(_ voice: VoiceCommandState) {
+        switch voice.phase {
+        case .connecting:
+            voice.cancelProcessing()
+        case .listening:
+            voice.stopListening()
+        case .result:
+            dismiss()
+        case .idle, .transcribing:
+            break
         }
     }
 
@@ -341,7 +352,17 @@ final class UnifiedCommandBarWindow {
 
     /// Tapping the mic toggles listening (start/stop); ⌥-hold is the power gesture.
     private func onMic() {
-        state?.voice.toggleListening()
+        guard let voice = state?.voice else { return }
+        switch voice.phase {
+        case .connecting:
+            voice.cancelProcessing()
+        case .listening:
+            voice.stopListening()
+        case .idle, .result:
+            voice.startListening()
+        case .transcribing:
+            break
+        }
     }
 
     // MARK: - Glide (grab → accelerate → snap)

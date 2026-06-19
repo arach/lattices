@@ -315,6 +315,59 @@ event is broadcast to all connected clients.
 
 More methods in the [Agent API reference](/docs/api).
 
+## Rule-backed Studio layers
+
+Studio layers are live window rules stored in `~/.lattices/layers.json`.
+They are separate from `workspace.json` launch-and-tile layers: Studio
+layers do not launch projects. They resolve matching desktop windows,
+then recall or scope those windows in Studio and Screen Map.
+
+Each layer has a `match` array. A window joins the layer when it matches
+any clause in that array. Inside one clause, every present positive field
+must match, and every clause in `not` must fail.
+
+```json
+[
+  {
+    "id": "review",
+    "name": "Review",
+    "match": [
+      {
+        "appEquals": "Google Chrome",
+        "titleRegex": "(GitHub|Pull Request)",
+        "not": [
+          { "titleContains": "Actions" }
+        ]
+      },
+      {
+        "sessionContains": "lattices",
+        "isOnScreen": true
+      }
+    ]
+  }
+]
+```
+
+Supported clause fields:
+
+| Field | Match |
+|-------|-------|
+| `app` | App name contains this string |
+| `appEquals` | App name exactly equals this string |
+| `appRegex` | App name matches this regular expression |
+| `titleContains` | Window title contains this string |
+| `titleEquals` | Window title exactly equals this string |
+| `titleRegex` | Window title matches this regular expression |
+| `session` | Parsed lattices tmux session exactly equals this string |
+| `sessionContains` | Parsed lattices tmux session contains this string |
+| `isOnScreen` | Window is, or is not, visible on the current Space |
+| `spaceId` | Window belongs to this macOS Space id |
+| `not` | Exclusion clauses; any match rejects the window |
+
+`app` and `titleContains` are the original substring fields, so older
+`layers.json` files continue to work. New layers created from plucked
+windows use `appEquals` by default to avoid accidental substring matches.
+
 ### Layer bar
 
 When a workspace config is loaded, a layer bar appears between the

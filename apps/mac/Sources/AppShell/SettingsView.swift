@@ -3334,7 +3334,6 @@ struct SettingsContentView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         VStack(alignment: .leading, spacing: 16) {
-                            shortcutsOverviewCard
                             inputControlsCard
 
                             LazyVGrid(columns: sectionColumns, alignment: .leading, spacing: 16) {
@@ -3523,36 +3522,6 @@ struct SettingsContentView: View {
                     .font(Typo.caption(10.5))
                     .foregroundColor(Palette.textDim)
                 }
-            }
-        }
-    }
-
-    private var shortcutsOverviewCard: some View {
-        shortcutSectionCard(
-            title: "Shortcut Map",
-            eyebrow: "Quick Reference",
-            summary: "Global hotkeys are editable here. tmux shortcuts stay as a built-in reference so you can keep your workspace flow in one place."
-        ) {
-            LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 180, maximum: 240), spacing: 10, alignment: .top)],
-                alignment: .leading,
-                spacing: 10
-            ) {
-                shortcutFactCard(
-                    icon: "command",
-                    title: "Global Hotkeys",
-                    detail: "Edit palette, search, voice, and workspace actions without leaving settings."
-                )
-                shortcutFactCard(
-                    icon: "rectangle.split.3x3",
-                    title: "Spatial Tiling",
-                    detail: "The layout grid mirrors the screen positions used by the menu bar app."
-                )
-                shortcutFactCard(
-                    icon: "terminal",
-                    title: "Pane Muscle Memory",
-                    detail: "Keep the core pane controls visible here while you tune the app-level shortcuts."
-                )
             }
         }
     }
@@ -3790,7 +3759,7 @@ struct SettingsContentView: View {
 
     private func tileCell(action: HotkeyAction, label: String) -> some View {
         let binding = hotkeyStore.bindings[action]
-        let badgeText = binding?.displayParts.last ?? ""
+        let badgeText = binding?.displayParts.last ?? "Unset"
 
         return Button {
             // Open inline key recorder for this action

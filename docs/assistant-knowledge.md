@@ -41,8 +41,10 @@ bar. → [Tiling reference](/docs/tiling-reference), positions in [Configuration
 
 ### Workspace layers & tab groups
 Group projects into named **layers** you can switch between, and tab-group related
-windows. Layers are rule-backed and persisted (`~/.lattices/layers.json`); switch
-via the palette or `lattices layer [name|index]`. → [Layers](/docs/layers).
+windows. `workspace.json` layers launch/focus/tile projects. Studio layers are
+rule-backed live window sets persisted in `~/.lattices/layers.json`; their clauses
+support app/title/session exact, substring, regex, Space, visibility, and exclusion
+matches. → [Layers](/docs/layers).
 
 ### Command palette & menu bar app
 The palette (**Cmd+Shift+M**) is the app's primary surface: launch projects, tile,

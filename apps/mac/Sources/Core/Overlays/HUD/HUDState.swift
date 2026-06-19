@@ -92,6 +92,16 @@ final class HUDState: ObservableObject {
     /// Snapshot of the flat item list — set by HUDLeftBar so key handler can index into it
     var flatItems: [HUDItem] = []
 
+    /// wid → jump letter for the Windows list. Set by HUDLeftBar; consumed by the
+    /// sidebar rows, the on-window badge overlays, and the ⌥+letter key handler.
+    @Published var windowHints: [UInt32: String] = [:]
+
+    /// Reverse lookup for the ⌥+letter jump.
+    func hintWid(for letter: String) -> UInt32? {
+        let key = letter.lowercased()
+        return windowHints.first(where: { $0.value == key })?.key
+    }
+
     var hoverPreviewAnchorScreenY: CGFloat?
     var previewInteractionActive: Bool = false
 

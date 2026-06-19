@@ -33,6 +33,8 @@ final class OcrModel: ObservableObject {
 
     @Published private(set) var results: [UInt32: OcrWindowResult] = [:]
     @Published private(set) var isScanning: Bool = false
+    @Published private(set) var lastReviewedAt: Date?
+    @Published private(set) var lastReviewedWindowCount: Int = 0
     @Published var interval: TimeInterval = 60
     @Published var enabled: Bool = true
 
@@ -180,6 +182,8 @@ final class OcrModel: ObservableObject {
 
             DispatchQueue.main.async {
                 self.results = fresh
+                self.lastReviewedAt = Date()
+                self.lastReviewedWindowCount = windows.count
                 self.isScanning = false
             }
 
@@ -302,6 +306,8 @@ final class OcrModel: ObservableObject {
 
             DispatchQueue.main.async {
                 self.results = fresh
+                self.lastReviewedAt = Date()
+                self.lastReviewedWindowCount = windows.count
                 self.isScanning = false
             }
 

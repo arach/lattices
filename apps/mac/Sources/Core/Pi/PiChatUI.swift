@@ -730,6 +730,7 @@ struct PiChatCodeBlock: View {
         HudCodeBlock(language: language, source: source)
     }
 }
+
 // MARK: - Composer
 
 struct PiChatComposer: View {

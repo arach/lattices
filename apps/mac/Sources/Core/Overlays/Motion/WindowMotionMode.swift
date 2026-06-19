@@ -12,15 +12,26 @@ import SwiftUI
 final class WindowMotionMode {
     static let shared = WindowMotionMode()
     private var panel: MotionPanel?
+    private var lastToggle: CFTimeInterval = 0
 
     var isActive: Bool { panel != nil }
 
     func toggle() {
+        // Debounce machine-gun re-fire. The Hyper trigger rides the Caps Lock
+        // transport remap, which can flicker active/inactive and fire the hotkey
+        // several times in a few ms — racing activate against deactivate. A human
+        // toggle is never this fast, so swallow anything inside the window.
+        let now = CACurrentMediaTime()
+        if now - lastToggle < 0.18 { return }
+        lastToggle = now
         if isActive { deactivate() } else { activate() }
     }
 
     func activate() {
         guard panel == nil else { return }
+        // Defensive: clear any overlay panels orphaned by a prior race before we
+        // open a fresh one, so we never stack a new survey on top of a stuck one.
+        MotionPanel.teardownStrayPanels()
         let t0 = CACurrentMediaTime()
         DesktopModel.shared.forcePoll()
         let tPoll = CACurrentMediaTime()
@@ -53,6 +64,10 @@ final class WindowMotionMode {
     func deactivate() {
         panel?.dismiss()
         panel = nil
+        // Belt-and-suspenders: sweep up any Hyperspace overlay panel still on screen
+        // even if we lost the reference to it. Guarantees the toggle hotkey always
+        // clears the spread — the recovery path for the "stuck on top" trap.
+        MotionPanel.teardownStrayPanels()
     }
 }
 
@@ -186,6 +201,7 @@ final class HyperspaceDrag: ObservableObject {
     @Published var hoverLayer: String?       // layer pile under the cursor (layer id, or newLayerKey)
     @Published var inspectLayer: String?     // pile under a plain mouse hover (no drag) — reveals its roster
     @Published var inspectScreen: String?    // which screen that hovered pile is on
+    @Published var selectedLayer: String?    // layer pile clicked open → the inspector modal (layer id)
     @Published var screenID: String = ""     // which screen owns the in-flight drag
 
     // Right-click "place me" mode: a tile was secondary-clicked, opening a life-size
@@ -248,6 +264,7 @@ private final class MotionPanel: NSPanel {
     private var borderLayers: [CALayer] = []
     private var originalFrames: [UInt32: CGRect] = [:]   // for Esc-undo
     private var exposed = false                          // Exposé spread is laid out
+    private var dismissed = false                        // torn down — any late async work must no-op
 
     private var lastSide: MotionSide?
     private var cycleStep = 0
@@ -270,6 +287,8 @@ private final class MotionPanel: NSPanel {
     private var mouseUpMonitor: Any?    // re-claims key focus after a survey click/drag
     private var keyMonitor: Any?        // catches Enter/Esc even when a survey panel holds key
     private var newLayerPanel: NewLayerPanel?   // the "create a new layer" authoring flow, when open
+    private var rulePanel: LayerRulePanel?       // the "add/edit layer rule" flow, when open
+    private var commandPanel: HyperspaceCommandPanel?   // the `/` command bar, when open
 
     // Selection order — `group` is membership, `pickOrder` is the order picks were
     // made, which is what the slot numbers (and the gather grid) follow.
@@ -448,7 +467,7 @@ private final class MotionPanel: NSPanel {
                 return event
             }
             DispatchQueue.main.async { [weak self] in
-                guard let self, self.exposed, !self.isKeyWindow else { return }
+                guard let self, self.exposed, !self.isKeyWindow, self.commandPanel == nil else { return }
                 self.makeKey()
             }
             return event   // don't swallow — the click/drag still needs to process
@@ -458,8 +477,10 @@ private final class MotionPanel: NSPanel {
         // keyDown never fires. Catch Enter/Esc here and route them so they never fall on the
         // floor. When the MotionPanel *is* key, defer to its keyDown (don't double-handle).
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            // Stand down while the New Layer panel is up — it owns the keyboard (text field).
-            guard let self, self.exposed, !self.isKeyWindow, self.newLayerPanel == nil else { return event }
+            // Stand down while the New Layer panel, rule panel, or command bar is up — they own
+            // the keyboard (text field).
+            guard let self, self.exposed, !self.isKeyWindow,
+                  self.newLayerPanel == nil, self.rulePanel == nil, self.commandPanel == nil else { return event }
             switch event.keyCode {
             case 53:
                 if self.dragModel.isPlacing { self.dragModel.endPlacing() } else { self.undoAndExit() }
@@ -477,6 +498,17 @@ private final class MotionPanel: NSPanel {
     }
 
     func dismiss() {
+        // Mark dead FIRST. A rapid hotkey re-fire can land a deactivate while the
+        // async survey capture / first-paint from the *previous* activate is still
+        // in flight. Those callbacks check `exposed` and self-heal via
+        // rebuildExposeView() → installExposeHosts() — which, after teardown, would
+        // resurrect the survey panels on a controller we no longer track (no key
+        // monitor, no resign observer). That's the "Hyperspace stuck on top, esc /
+        // quit / hotkey do nothing" trap. Clearing `exposed` + `dismissed` makes
+        // every late callback a no-op so nothing can come back.
+        dismissed = true
+        exposed = false
+        ignoresMouseEvents = false
         if let keyObserver { NotificationCenter.default.removeObserver(keyObserver) }
         keyObserver = nil
         if let scrollMonitor { NSEvent.removeMonitor(scrollMonitor) }
@@ -487,9 +519,24 @@ private final class MotionPanel: NSPanel {
         keyMonitor = nil
         newLayerPanel?.close()
         newLayerPanel = nil
+        rulePanel?.close()
+        rulePanel = nil
+        commandPanel?.close()
+        commandPanel = nil
         animators.values.forEach { $0.cancel() }
         removeExposeHost()
         orderOut(nil)
+    }
+
+    /// Force every Hyperspace overlay panel off screen — even ones no live
+    /// controller still tracks. Used as the recovery sweep so the toggle hotkey
+    /// can always clear a survey that a prior race left orphaned (no key monitor,
+    /// no resign observer) and stuck on top. Cheap; runs only on activate/deactivate.
+    static func teardownStrayPanels() {
+        for window in NSApp.windows where window is HyperspaceScreenPanel || window is MotionPanel {
+            window.orderOut(nil)
+            window.close()
+        }
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -592,7 +639,8 @@ private final class MotionPanel: NSPanel {
 
     override func keyDown(with event: NSEvent) {
         let code = event.keyCode
-        if code == 53 {                                     // Esc — close the placement stage first, else leave
+        if code == 53 {                                     // Esc — close inspector / placement stage first, else leave
+            if dragModel.selectedLayer != nil { dragModel.selectedLayer = nil; return }
             if dragModel.isPlacing { dragModel.endPlacing(); return }
             undoAndExit(); return
         }
@@ -652,6 +700,9 @@ private final class MotionPanel: NSPanel {
             case 27: zoomCanvasStep(-0.2); return                           // −      — zoom out
             case 29:
                 if let eventScreen { canvasForScreen(eventScreen).reset() }  // 0      — reset to fit
+                return
+            case 44:                                                         // / — curated command bar
+                if let eventScreen { presentCommandBar(on: eventScreen) }
                 return
             default:
                 let ch = event.charactersIgnoringModifiers?.lowercased()
@@ -773,7 +824,7 @@ private final class MotionPanel: NSPanel {
         let picked = orderedGroup()
         guard !picked.isEmpty else { NSSound.beep(); return }
         let layer = StudioLayerStore.shared.saveFromPluck(picked)
-        DiagnosticLog.shared.info("Motion — saved \(picked.count) plucked windows as layer '\(layer.name)' [\(layer.summary)]")
+        DiagnosticLog.shared.info("Motion — saved \(picked.count) selected windows as layer '\(layer.name)' [\(layer.summary)]")
         LayerBezel.shared.show(label: "Saved · \(layer.name)", index: 0, total: 1, allLabels: ["Saved · \(layer.name)"])
     }
 
@@ -1068,6 +1119,72 @@ private final class MotionPanel: NSPanel {
         rebuildExposeView()
     }
 
+    /// Edit mode: drop one rule clause from a layer (the ✕ on a pile's rule chip).
+    /// Writes straight through to StudioLayerStore — these are committed rules, not
+    /// staged intents. A layer whose last rule is removed is deleted (a ruleless
+    /// layer matches nothing). The band rebuilds so the pile preview re-resolves.
+    private func removeLayerClause(_ layerId: String, _ clauseIndex: Int) {
+        let store = StudioLayerStore.shared
+        guard var layer = store.layers.first(where: { $0.id == layerId }),
+              layer.match.indices.contains(clauseIndex) else { return }
+        layer.match.remove(at: clauseIndex)
+        if layer.match.isEmpty {
+            store.delete(id: layerId)
+        } else {
+            store.update(layer)
+        }
+        DiagnosticLog.shared.info("Hyperspace edit — layer \(layer.name) dropped clause \(clauseIndex)")
+        rebuildExposeView()
+    }
+
+    /// Edit mode: write a new or edited rule clause from the Hyperspace inspector.
+    private func saveLayerClause(_ layerId: String, _ clauseIndex: Int?, _ clause: StudioLayerClause) {
+        let store = StudioLayerStore.shared
+        guard var layer = store.layers.first(where: { $0.id == layerId }) else { return }
+        if let clauseIndex, layer.match.indices.contains(clauseIndex) {
+            layer.match[clauseIndex] = clause
+            DiagnosticLog.shared.info("Hyperspace edit — layer \(layer.name) updated clause \(clauseIndex)")
+        } else {
+            layer.match.append(clause)
+            DiagnosticLog.shared.info("Hyperspace edit — layer \(layer.name) added clause [\(clause.summary)]")
+        }
+        store.update(layer)
+        rebuildExposeView()
+    }
+
+    private func presentLayerRuleEditor(_ layerId: String, _ clauseIndex: Int?, _ clause: StudioLayerClause, on screen: NSScreen) {
+        guard exposed, rulePanel == nil,
+              let layer = StudioLayerStore.shared.layers.first(where: { $0.id == layerId }) else { return }
+        ignoreResign = true
+        let panel = LayerRulePanel(
+            layerName: layer.name,
+            clauseIndex: clauseIndex,
+            clause: clause,
+            onSave: { [weak self] saved in
+                guard let self else { return }
+                self.saveLayerClause(layerId, clauseIndex, saved)
+                self.finishLayerRuleEditor()
+            },
+            onCancel: { [weak self] in self?.finishLayerRuleEditor() }
+        )
+        rulePanel = panel
+        panel.present(on: screen)
+    }
+
+    private func finishLayerRuleEditor() {
+        rulePanel = nil
+        ignoreResign = false
+        makeKey()
+    }
+
+    /// Edit mode: delete a whole layer (the "Delete layer" item in a pile's right-click menu).
+    private func deleteLayer(_ layerId: String) {
+        let name = StudioLayerStore.shared.layers.first(where: { $0.id == layerId })?.name ?? layerId
+        StudioLayerStore.shared.delete(id: layerId)
+        DiagnosticLog.shared.info("Hyperspace edit — deleted layer \(name)")
+        rebuildExposeView()
+    }
+
     /// The ＋ pile's authoring flow: open the New Layer panel seeded with the apps on the active
     /// display (the plucked apps preselected, if any), let the user name it and pick which apps
     /// define it, then write a rule-backed StudioLayer. A real flow vs the drag-onto-＋ quick path.
@@ -1096,7 +1213,7 @@ private final class MotionPanel: NSPanel {
             candidates: candidates, preselected: pluckedApps, defaultName: defaultName,
             onCreate: { [weak self] name, apps in
                 guard let self else { return }
-                let clauses = apps.map { StudioLayerClause(app: $0, titleContains: nil) }
+                let clauses = apps.map { StudioLayerClause(appEquals: $0) }
                 let layer = StudioLayerStore.shared.add(
                     name: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Layer" : name,
                     match: clauses.isEmpty ? [StudioLayerClause()] : clauses)
@@ -1144,8 +1261,8 @@ private final class MotionPanel: NSPanel {
             }
             let stagedCount = stagedIntents.values.filter { $0.layers.contains(layer.id) }.count
             return ExposeView.LayerPile(id: layer.id, name: layer.name, count: onScreen.count,
-                                        members: members, rule: layer.summary, isNew: false,
-                                        staged: stagedCount > 0, stagedCount: stagedCount)
+                                        members: members, rule: layer.summary, clauses: layer.match,
+                                        isNew: false, staged: stagedCount > 0, stagedCount: stagedCount)
         }
         let newCount = stagedIntents.values.filter { $0.newLayer }.count
         piles.append(ExposeView.LayerPile(id: HyperspaceDrag.newLayerKey, name: "new", count: 0,
@@ -1211,15 +1328,28 @@ private final class MotionPanel: NSPanel {
         }
     }
 
-    /// Add an app clause to a layer's rule so it (and future windows of that app)
-    /// join the layer. Rule-backed membership — coarse by design, like saveFromPluck.
+    /// Add an exact app clause to a layer's rule so it (and future windows of that
+    /// app) join the layer.
     /// No-op if the layer already matches the app.
     private func addAppToLayer(_ app: String, layerID: String) {
         let store = StudioLayerStore.shared
         guard var layer = store.layers.first(where: { $0.id == layerID }) else { return }
-        let already = layer.match.contains { $0.titleContains == nil && $0.app?.localizedCaseInsensitiveCompare(app) == .orderedSame }
+        let already = layer.match.contains { clause in
+            let appOnly = clause.titleContains == nil
+                && clause.titleEquals == nil
+                && clause.titleRegex == nil
+                && clause.session == nil
+                && clause.sessionContains == nil
+                && clause.isOnScreen == nil
+                && clause.spaceId == nil
+                && (clause.not?.isEmpty ?? true)
+            let sameExactApp = clause.appEquals?.localizedCaseInsensitiveCompare(app) == .orderedSame
+            let sameLegacyApp = clause.app?.localizedCaseInsensitiveCompare(app) == .orderedSame
+                && clause.appRegex == nil
+            return appOnly && (sameExactApp || sameLegacyApp)
+        }
         guard !already else { return }
-        layer.match.append(StudioLayerClause(app: app, titleContains: nil))
+        layer.match.append(StudioLayerClause(appEquals: app))
         store.update(layer)
         DiagnosticLog.shared.info("Hyperspace commit — layer '\(layer.name)' += app '\(app)'")
     }
@@ -1517,6 +1647,7 @@ private final class MotionPanel: NSPanel {
     // MARK: - Survey overlay (SwiftUI spread)
 
     private func installExposeHosts() {
+        guard !dismissed else { return }   // never re-create panels after teardown (orphan guard)
         removeExposeHost()
         for screen in surveyScreens() {
             let id = MotionPanel.screenID(screen)
@@ -1612,6 +1743,10 @@ private final class MotionPanel: NSPanel {
                 },
                 onExit: { [weak self] in self?.onExit?() },   // ✕ — leave, keep what's on screen
                 onNewLayer: { [weak self] in self?.presentNewLayer() },
+                onRecallLayer: { [weak self] id in self?.pluckLayer(id, on: screen) },
+                onEditClause: { [weak self] id, idx, clause in self?.presentLayerRuleEditor(id, idx, clause, on: screen) },
+                onRemoveClause: { [weak self] id, idx in self?.removeLayerClause(id, idx) },
+                onDeleteLayer: { [weak self] id in self?.deleteLayer(id) },
                 loadSummary: loadSummaryText())
         }
     }
@@ -1748,6 +1883,78 @@ private final class MotionPanel: NSPanel {
         rebuildExposeView()
         updateLegend()
         updateStack()
+    }
+
+    // MARK: - Command bar (/)
+
+    /// Open the curated `/` palette for one monitor: search its windows, target a
+    /// group/layer (⏎ plucks), or /tile to stage a placement. Snapshots this screen's
+    /// windows/clusters/layers and wires each verb to the survey's own selection path.
+    private func presentCommandBar(on screen: NSScreen) {
+        guard commandPanel == nil else { return }
+        let id = MotionPanel.screenID(screen)
+        let windows = surveyMembers(on: screen).map {
+            HyperspaceCommandModel.WindowItem(wid: $0.wid, title: $0.title.isEmpty ? $0.app : $0.title, app: $0.app)
+        }
+        let hintFor = clusterHintForByScreen[id] ?? [:]
+        let groups = (exposeClustersByScreen[id] ?? []).map { cluster in
+            HyperspaceCommandModel.GroupItem(cid: cluster.id, name: cluster.name,
+                                             hint: hintFor[cluster.id] ?? "", members: cluster.members.map(\.wid))
+        }
+        let store = StudioLayerStore.shared
+        let layers = store.layers.map { layer in
+            HyperspaceCommandModel.LayerItem(lid: layer.id, name: layer.name,
+                                             members: store.resolve(layer).filter { self.entry($0, isOn: screen) }.map(\.wid))
+        }
+        let model = HyperspaceCommandModel(windows: windows, groups: groups, layers: layers)
+        model.onPluckWindow = { [weak self] wid in self?.exposeToggle(wid, on: screen) }
+        model.onPluckGroup  = { [weak self] cid in self?.exposeToggleCluster(cid, on: screen) }
+        model.onRecallLayer = { [weak self] lid in self?.pluckLayer(lid, on: screen) }
+        model.onTile        = { [weak self] gp  in self?.stageTileForSelection(gp, on: screen) }
+        model.onSaveLayer   = { [weak self] in self?.saveGroupAsLayer() }
+        model.pluckedProvider = { [weak self] in self?.pickOrderByScreen[id] ?? [] }
+        let panel = HyperspaceCommandPanel(model: model, onClose: { [weak self] in self?.dismissCommandBar() })
+        commandPanel = panel
+        ignoreResign = true                 // the bar takes key → our key-resign must NOT exit the survey
+        panel.present(on: screen)
+    }
+
+    private func dismissCommandBar() {
+        commandPanel?.close()
+        commandPanel = nil
+        ignoreResign = false
+        makeKey()                           // reclaim key so the survey keeps responding
+    }
+
+    /// Select every on-screen window a layer's rule resolves to — the survey-native
+    /// read of "recall this layer": it builds the selection (nothing raises), and
+    /// gather (⏎/G) is still the only real move.
+    private func pluckLayer(_ layerID: String, on screen: NSScreen) {
+        let store = StudioLayerStore.shared
+        guard let layer = store.layers.first(where: { $0.id == layerID }) else { NSSound.beep(); return }
+        let members = store.resolve(layer).filter { entry($0, isOn: screen) }
+        guard !members.isEmpty else { NSSound.beep(); return }
+        let id = MotionPanel.screenID(screen)
+        var order = pickOrderByScreen[id] ?? []
+        for w in members where !order.contains(w.wid) {
+            order.append(w.wid)
+            if let e = eligible.first(where: { $0.wid == w.wid }) { _ = ax(for: e) }
+        }
+        pickOrderByScreen[id] = order
+        if activeSurveyScreen.map(MotionPanel.screenID) != id { setActiveSurveyScreen(screen) }
+        else { restorePickState(for: screen) }
+        rebuildExposeView(); updateLegend(); updateStack()
+    }
+
+    /// Stage a named placement for the plucked set on this screen — the same staging
+    /// a drag onto the Grid does. Nothing moves until gather (⏎/G).
+    private func stageTileForSelection(_ gp: GridPlacement, on screen: NSScreen) {
+        let id = MotionPanel.screenID(screen)
+        let picked = pickOrderByScreen[id] ?? []
+        guard !picked.isEmpty else { NSSound.beep(); return }
+        let spec = PlacementSpec.grid(gp)
+        for wid in picked { handleDrop(wid, spec) }
+        rebuildExposeView()
     }
 
     // MARK: - Display-scoped survey
@@ -2265,7 +2472,7 @@ private struct MotionLegend: View {
             Rectangle().fill(Palette.border).frame(width: 1, height: 13)
 
             if exposed {
-                keyHint("a–z", "pluck")
+                keyHint("a–z", "select")
                 keyHint("⇧a–z", "group")
                 keyHint("Tab", "aim")
                 keyHint("⌘scroll", "zoom")
@@ -2275,7 +2482,7 @@ private struct MotionLegend: View {
                 keyHint("esc", "cancel")
             } else {
                 keyHint("Tab", "aim")
-                keyHint("Space", "pluck")
+                keyHint("Space", "select")
                 keyHint("E", "expose")
                 keyHint("G", "grid")
                 if groupCount > 0 { keyHint("⌘L", "save layer") }
@@ -2663,6 +2870,7 @@ struct ExposeView: View {
         let count: Int                       // members on the active screen
         var members: [LayerMember] = []      // for the screen-map preview
         var rule: String = ""                // human-readable match rule, e.g. "Chrome · ~dev"
+        var clauses: [StudioLayerClause] = []// structured rules, for edit-mode removal
         var isNew: Bool = false
         var staged: Bool = false
         var stagedCount: Int = 0             // how many windows are staged to join this pile
@@ -2698,6 +2906,10 @@ struct ExposeView: View {
     var onHandKeys: (Bool) -> Void = { _ in }
     var onExit: () -> Void = { }              // mouse-driven leave (the ✕ button)
     var onNewLayer: () -> Void = { }          // tap the ＋ pile → open the New Layer authoring flow
+    var onRecallLayer: (String) -> Void = { _ in } // add every live match to the survey selection
+    var onEditClause: (String, Int?, StudioLayerClause) -> Void = { _, _, _ in }
+    var onRemoveClause: (String, Int) -> Void = { _, _ in }  // edit mode: drop a rule clause (layerId, clauseIndex)
+    var onDeleteLayer: (String) -> Void = { _ in }           // edit mode: delete a whole layer (layerId)
     var loadSummary: String = ""
 
     private let ink = Color(red: 0.02, green: 0.03, blue: 0.05)
@@ -2775,6 +2987,12 @@ struct ExposeView: View {
                 planSummaryBar.padding(.top, bandHeight + 4)   // sits just under the intent band
             }
         }
+        .overlay {
+            if let id = drag.selectedLayer, let pile = layers.first(where: { $0.id == id }) {
+                layerInspector(pile).transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.16), value: drag.selectedLayer)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
@@ -3362,22 +3580,27 @@ struct ExposeView: View {
     private var intentBand: some View {
         // Two slots: Layers (pick/tag) · Grid (drop a position). No preview canvas — the survey
         // *is* the preview: a staged move badges its tile, and hovering a layer lights its windows
-        // in place. Centred. design/hyperspace-drag-drop.md
-        HStack(alignment: .top, spacing: 14) {
-            layersSection.frame(width: layersWidth)
-            gridSection.frame(width: gridWidth)
+        // in place. Each panel is a predictable 20% of the display width, the pair centred with a
+        // proportional gap. design/hyperspace-drag-drop.md
+        GeometryReader { geo in
+            let panelW = (geo.size.width * 0.20).rounded()
+            let gap    = (geo.size.width * 0.03).rounded()
+            HStack(alignment: .top, spacing: gap) {
+                layersSection.frame(width: panelW)
+                gridSection.frame(width: panelW)
+            }
+            .frame(maxWidth: .infinity)        // centre the cluster (not full-bleed)
+            .padding(.top, 16)
+            .padding(.bottom, 8)
         }
-        .frame(maxWidth: .infinity)        // centre the cluster (not full-bleed)
-        .padding(.top, 16)
-        .padding(.bottom, 8)
     }
 
-    // The Layers list hugs its pile count; Grid is a fixed, comfortable drop target.
-    private var layersWidth: CGFloat {
-        let pileSlot: CGFloat = 90
-        return min(max(CGFloat(min(max(layers.count, 1), 3)) * pileSlot + 24, 220), 340)
+    // Layer piles chunked into rows of two for the 2×N band grid (＋ pile trails last).
+    private var layerRows: [[LayerPile]] {
+        stride(from: 0, to: layers.count, by: 2).map {
+            Array(layers[$0 ..< min($0 + 2, layers.count)])
+        }
     }
-    private var gridWidth: CGFloat { 320 }
 
     // A not-yet-live section — visible so the three-axis model reads, dimmed so it's
     // clearly inert. Replaced by real piles / a Spaces strip in later phases.
@@ -3411,14 +3634,31 @@ struct ExposeView: View {
                     Text("\(max(0, layers.count - 1)) \(layers.count - 1 == 1 ? "layer" : "layers")")
                         .font(Typo.mono(9)).foregroundColor(.white.opacity(0.55))
                     Spacer(minLength: 6)
-                    Text("hover → preview · drop to tag")
-                        .font(Typo.mono(8.5)).foregroundColor(.white.opacity(0.35))
+                    Button(action: onNewLayer) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(Palette.bg)
+                            .frame(width: 22, height: 22)
+                            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Palette.running))
+                    }
+                    .buttonStyle(.plain)
+                    .help("New layer")
                 }
-                FlowLayout(spacing: 10, lineSpacing: 10, alignment: .leading) {
-                    ForEach(layers) { layerPileView($0) }
+                // Fixed 2-wide grid: layers fill row-major and the ＋ pile trails as the
+                // next free cell ([L1][＋] → [L1][L2]/[＋] → …). Eager VStack/HStack — not a
+                // lazy grid — so every pile reports its LayerFrameKey for drag hit-testing.
+                GeometryReader { geo in
+                    let pileW = max(104, min(220, ((geo.size.width - 10) / 2).rounded()))
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(layerRows.indices, id: \.self) { r in
+                            HStack(alignment: .top, spacing: 10) {
+                                ForEach(layerRows[r]) { layerPileView($0, mapW: pileW) }
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .onPreferenceChange(LayerFrameKey.self) { drag.layerFrames[screenID] = $0 }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .onPreferenceChange(LayerFrameKey.self) { drag.layerFrames[screenID] = $0 }
             }
         }
     }
@@ -3436,17 +3676,16 @@ struct ExposeView: View {
     // you read what the layer looks like at a glance (design/hyperspace-drag-drop.md). The
     // full-size formation renders in the middle Preview on hover / drop. Lights as a drop
     // target and stays tinted while it holds a staged join. ＋ = a new-layer drop slot.
-    private func layerPileView(_ pile: LayerPile) -> some View {
+    private func layerPileView(_ pile: LayerPile, mapW: CGFloat = 104) -> some View {
         let lit = dragOnThisScreen && drag.hoverLayer == pile.id
         let on = lit || pile.staged
-        let mapW: CGFloat = 104
         let mapH = layerMapHeight(for: mapW)
         return VStack(spacing: 4) {
             Group {
                 if pile.isNew {
                     ZStack {
                         RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(on ? Palette.running.opacity(0.9) : Color.white.opacity(0.05))
+                            .fill(on ? HUDChrome.cyan.opacity(0.9) : Color.white.opacity(0.05))
                         Image(systemName: "plus")
                             .font(.system(size: 18, weight: .semibold))
                             .foregroundColor(on ? Palette.bg : .white.opacity(0.6))
@@ -3458,7 +3697,7 @@ struct ExposeView: View {
             }
             .overlay(                                       // the "monitor" bezel
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .strokeBorder(on ? Palette.running : Palette.border, lineWidth: on ? 1.5 : 0.5)
+                    .strokeBorder(on ? HUDChrome.cyan : Palette.border, lineWidth: on ? 1.5 : 0.5)
             )
             .overlay(alignment: .topTrailing) {
                 if !pile.isNew && pile.count > 0 {
@@ -3482,17 +3721,304 @@ struct ExposeView: View {
             Text(pile.isNew ? "new" : pile.name)
                 .font(Typo.mono(9)).foregroundColor(.white.opacity(on ? 0.9 : 0.65))
                 .lineLimit(1).frame(maxWidth: mapW)
+            layerPileMeta(pile, active: on, width: mapW)
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: pile.stagedCount)
         .scaleEffect(lit ? 1.06 : 1)
-        .shadow(color: lit ? Palette.running.opacity(0.5) : .clear, radius: lit ? 8 : 0)
+        .shadow(color: lit ? HUDChrome.cyan.opacity(0.5) : .clear, radius: lit ? 8 : 0)
         .animation(.spring(response: 0.24, dampingFraction: 0.72), value: lit)
         .background(layerFrameReporter(pile.id))     // hit-test = the compact footprint
         .onHover { hovering in
             if hovering { drag.inspectLayer = pile.id; drag.inspectScreen = screenID }
             else if drag.inspectLayer == pile.id { drag.inspectLayer = nil; drag.inspectScreen = nil }
         }
-        .onTapGesture { if pile.isNew { onNewLayer() } }   // ＋ → author a new layer (name it, pick apps)
+        .onTapGesture {                                    // ＋ → author a new layer; else open the inspector
+            if pile.isNew { onNewLayer() } else { drag.selectedLayer = pile.id }
+        }
+        .contextMenu { layerPileMenu(pile) }               // right-click → inspect / remove rules, delete layer
+    }
+
+    // Right-click menu for a layer pile: see each rule, what it currently matches, and
+    // remove it — plus delete the whole layer. The rules are the committed StudioLayer
+    // clauses (the same ones the Studio panel and, later, the agent edit). Empty for the
+    // ＋ pile (it has no layer yet).
+    @ViewBuilder
+    private func layerPileMenu(_ pile: LayerPile) -> some View {
+        if !pile.isNew {
+            Text(pile.name)
+            Divider()
+            Button("Select matching windows") {
+                onRecallLayer(pile.id)
+            }
+            Divider()
+            if pile.clauses.isEmpty {
+                Text("No rules")
+            } else {
+                ForEach(Array(pile.clauses.enumerated()), id: \.offset) { idx, clause in
+                    let matches = DesktopModel.shared.allWindows().filter { clause.matches($0) }
+                    Menu("\(clauseTitle(clause))  ·  \(matches.count)") {
+                        if matches.isEmpty {
+                            Text("No live windows match")
+                        } else {
+                            ForEach(matches.prefix(12), id: \.wid) { w in
+                                Text(w.title.isEmpty ? w.app : "\(w.app) — \(w.title)")
+                            }
+                            if matches.count > 12 { Text("+\(matches.count - 12) more") }
+                        }
+                        Divider()
+                        Button("Remove this rule", role: .destructive) { onRemoveClause(pile.id, idx) }
+                    }
+                }
+            }
+            Divider()
+            Button("Delete layer “\(pile.name)”", role: .destructive) { onDeleteLayer(pile.id) }
+        }
+    }
+
+    // A rule clause as a readable menu label.
+    private func clauseTitle(_ clause: StudioLayerClause) -> String {
+        clause.summary
+    }
+
+    private func layerPileMeta(_ pile: LayerPile, active: Bool, width: CGFloat) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: pile.isNew ? "plus.square" : "line.3.horizontal.decrease.circle")
+                .font(.system(size: 7.5, weight: .semibold))
+            if pile.isNew {
+                Text("create")
+            } else {
+                Text("\(pile.clauses.count) rule\(pile.clauses.count == 1 ? "" : "s")")
+                if pile.count == 0 {
+                    Text("empty")
+                        .foregroundColor(Palette.detach.opacity(active ? 0.9 : 0.65))
+                }
+            }
+        }
+        .font(Typo.mono(7.5))
+        .foregroundColor(active ? Palette.running : .white.opacity(0.38))
+        .lineLimit(1)
+        .frame(maxWidth: width)
+    }
+
+    // MARK: - Layer inspector (click a pile to open)
+    //
+    // A top-area modal: the layer's match rules on the left, the windows they currently
+    // resolve to on the right (a table). Backdrop tap / ✕ / esc closes it. Rules are the
+    // committed StudioLayer clauses — editable in place (remove), the live source of truth.
+    @ViewBuilder
+    private func layerInspector(_ pile: LayerPile) -> some View {
+        let allWindows = DesktopModel.shared.allWindows()
+        let windows = allWindows.filter { w in pile.clauses.contains { $0.matches(w) } }
+        GeometryReader { geo in
+            let panelW = min(760, max(440, geo.size.width * 0.55))
+            let panelH = min(440, max(260, geo.size.height * 0.52))
+            ZStack(alignment: .top) {
+                Color.black.opacity(0.5)
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture { drag.selectedLayer = nil }
+                inspectorPanel(pile, windows: windows, allWindows: allWindows)
+                    .frame(width: panelW, height: panelH)
+                    .padding(.top, max(24, geo.size.height * 0.12))
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+        }
+    }
+
+    private func inspectorPanel(_ pile: LayerPile, windows: [WindowEntry], allWindows: [WindowEntry]) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: "square.stack.3d.up")
+                    .font(.system(size: 12, weight: .semibold)).foregroundColor(HUDChrome.cyan)
+                Text(pile.name).font(Typo.monoBold(14)).foregroundColor(.white)
+                Text("\(windows.count) window\(windows.count == 1 ? "" : "s")")
+                    .font(Typo.mono(10)).foregroundColor(.white.opacity(0.5))
+                Spacer()
+                Button {
+                    onRecallLayer(pile.id)
+                    drag.selectedLayer = nil
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "scope")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text("Select")
+                            .font(Typo.monoBold(10))
+                    }
+                    .foregroundColor(Palette.bg)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(Capsule().fill(Palette.running))
+                }
+                .buttonStyle(.plain)
+                .disabled(windows.isEmpty)
+                .opacity(windows.isEmpty ? 0.4 : 1)
+                .help("Select matching windows")
+                Button { drag.selectedLayer = nil } label: {
+                    Image(systemName: "xmark").font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.white.opacity(0.6)).contentShape(Rectangle())
+                }.buttonStyle(.plain)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 12)
+            Rectangle().fill(Palette.border).frame(height: 0.5)
+            inspectorSummary(pile, windows: windows)
+            Rectangle().fill(Palette.border).frame(height: 0.5)
+            HStack(alignment: .top, spacing: 0) {
+                inspectorRules(pile, allWindows: allWindows).frame(width: 240)
+                Rectangle().fill(Palette.border).frame(width: 0.5)
+                inspectorWindows(windows).frame(maxWidth: .infinity)
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.black.opacity(0.35)))
+        )
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Palette.borderLit, lineWidth: 1))
+        .shadow(color: .black.opacity(0.5), radius: 24, y: 10)
+    }
+
+    private func inspectorSummary(_ pile: LayerPile, windows: [WindowEntry]) -> some View {
+        HStack(spacing: 8) {
+            inspectorMetric("rules", "\(pile.clauses.count)")
+            inspectorMetric("live", "\(windows.count)")
+            inspectorMetric("screen", "\(pile.count)")
+            Text(pile.rule.isEmpty ? "no rule" : pile.rule)
+                .font(Typo.mono(9))
+                .foregroundColor(.white.opacity(0.5))
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color.black.opacity(0.14))
+    }
+
+    private func inspectorMetric(_ label: String, _ value: String) -> some View {
+        HStack(spacing: 4) {
+            Text(label).foregroundColor(.white.opacity(0.38))
+            Text(value).foregroundColor(.white.opacity(0.82))
+        }
+        .font(Typo.monoBold(9))
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background(
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .fill(Color.white.opacity(0.05))
+                .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).strokeBorder(Palette.border, lineWidth: 0.5))
+        )
+    }
+
+    // Left column: the layer's match rules, each removable.
+    private func inspectorRules(_ pile: LayerPile, allWindows: [WindowEntry]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Text("RULES").font(Typo.monoBold(9)).foregroundColor(.white.opacity(0.4)).tracking(0.5)
+                Spacer()
+                Button {
+                    onEditClause(pile.id, nil, StudioLayerClause())
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(Palette.bg)
+                        .frame(width: 18, height: 18)
+                        .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(Palette.running))
+                }
+                .buttonStyle(.plain)
+                .help("Add rule")
+            }
+            .padding(.horizontal, 14).padding(.vertical, 8)
+            Rectangle().fill(Palette.border).frame(height: 0.5)
+            if pile.clauses.isEmpty {
+                Text("No rules — matches nothing")
+                    .font(Typo.mono(11)).foregroundColor(.white.opacity(0.4)).padding(14)
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(Array(pile.clauses.enumerated()), id: \.offset) { idx, clause in
+                        inspectorRuleRow(clause, count: allWindows.filter { clause.matches($0) }.count) {
+                            onEditClause(pile.id, idx, clause)
+                        } remove: {
+                            onRemoveClause(pile.id, idx)
+                        }
+                    }
+                }
+                .padding(12)
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(maxHeight: .infinity, alignment: .top)
+    }
+
+    private func inspectorRuleRow(
+        _ clause: StudioLayerClause,
+        count: Int,
+        edit: @escaping () -> Void,
+        remove: @escaping () -> Void
+    ) -> some View {
+        return HStack(alignment: .top, spacing: 6) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(clause.summary)
+                    .font(Typo.mono(10))
+                    .foregroundColor(clause.not?.isEmpty == false ? Palette.detach : .white.opacity(0.85))
+                    .lineLimit(2)
+                Text("\(count) live match\(count == 1 ? "" : "es")")
+                    .font(Typo.mono(8))
+                    .foregroundColor(count == 0 ? Palette.detach.opacity(0.72) : .white.opacity(0.38))
+            }
+            Spacer(minLength: 4)
+            Button(action: edit) {
+                Image(systemName: "pencil").font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.45)).contentShape(Rectangle())
+            }.buttonStyle(.plain).help("Edit rule")
+            Button(action: remove) {
+                Image(systemName: "xmark.circle.fill").font(.system(size: 11))
+                    .foregroundColor(.white.opacity(0.35)).contentShape(Rectangle())
+            }.buttonStyle(.plain).help("Remove this rule")
+        }
+        .padding(.horizontal, 10).padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.white.opacity(0.05))
+                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Palette.border, lineWidth: 0.5))
+        )
+    }
+
+    // Right column: the windows the rules currently resolve to — a simple app/title table.
+    private func inspectorWindows(_ windows: [WindowEntry]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Text("APP").frame(width: 84, alignment: .leading)
+                Text("WINDOW").frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .font(Typo.monoBold(9)).foregroundColor(.white.opacity(0.4)).tracking(0.5)
+            .padding(.horizontal, 14).padding(.vertical, 8)
+            Rectangle().fill(Palette.border).frame(height: 0.5)
+            if windows.isEmpty {
+                Text("No live windows match")
+                    .font(Typo.mono(11)).foregroundColor(.white.opacity(0.4)).padding(14)
+                Spacer(minLength: 0)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(windows, id: \.wid) { w in
+                            HStack(spacing: 8) {
+                                HStack(spacing: 6) {
+                                    Circle().fill(Color(nsColor: MotionPanel.tint(for: w.app)))
+                                        .frame(width: 6, height: 6)
+                                    Text(w.app).font(Typo.mono(10)).foregroundColor(.white.opacity(0.7)).lineLimit(1)
+                                }
+                                .frame(width: 84, alignment: .leading)
+                                Text(w.title.isEmpty ? "—" : w.title)
+                                    .font(Typo.mono(10)).foregroundColor(.white.opacity(0.85))
+                                    .frame(maxWidth: .infinity, alignment: .leading).lineLimit(1)
+                            }
+                            .padding(.horizontal, 14).padding(.vertical, 6)
+                            Rectangle().fill(Palette.border.opacity(0.5)).frame(height: 0.5)
+                        }
+                    }
+                }
+            }
+        }
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 
     // Map height for a given width — the active screen's aspect, clamped so a very wide
@@ -3747,11 +4273,11 @@ struct ExposeView: View {
             HStack(spacing: 6) {
                 Image(systemName: icon)
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(live ? Palette.running : .white.opacity(0.5))
+                    .foregroundColor(.white.opacity(live ? 0.85 : 0.5))
                 Text(title)
                     .font(Typo.monoBold(11)).foregroundColor(.white).tracking(0.3)
                 Text(sub)
-                    .font(Typo.mono(8.5)).foregroundColor(armed ? Palette.running : Palette.textMuted)
+                    .font(Typo.mono(8.5)).foregroundColor(armed ? HUDChrome.cyan : Palette.textMuted)
                 Spacer(minLength: 0)
             }
             content()
@@ -3760,14 +4286,15 @@ struct ExposeView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(armed ? Palette.running.opacity(0.14) : (live ? Palette.running.opacity(0.05) : Color.white.opacity(0.02)))
+                .fill(.ultraThinMaterial)                                  // frosted glass — opacity + blur, no colour wash
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(armed ? HUDChrome.cyan.opacity(0.10) : Color.white.opacity(0.02)))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(armed ? Palette.running.opacity(0.75) : (live ? Palette.running.opacity(0.30) : Palette.border),
-                              lineWidth: armed ? 1.5 : 1)
+                .strokeBorder(armed ? HUDChrome.cyan.opacity(0.5) : Palette.borderLit, lineWidth: armed ? 1.5 : 1)
         )
-        .shadow(color: armed ? Palette.running.opacity(0.35) : .clear, radius: armed ? 12 : 0)
+        .shadow(color: armed ? HUDChrome.cyan.opacity(0.22) : Color.black.opacity(0.3), radius: armed ? 12 : 14, y: 6)
         .animation(.easeOut(duration: 0.16), value: armed)
     }
 
@@ -3893,7 +4420,7 @@ struct ExposeView: View {
                                 .fill(c.userDefined ? Palette.running.opacity(0.8) : Color.white.opacity(0.16))
                                 .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color.white.opacity(0.28), lineWidth: 0.5))
                         )
-                        .help("Pluck the whole \(c.name) group")
+                        .help("Select the whole \(c.name) group")
                 }
                 Text(c.name)
                     .font(Typo.monoBold(11)).foregroundColor(.white).tracking(0.3)
@@ -3919,11 +4446,11 @@ struct ExposeView: View {
         .padding(.horizontal, 11).padding(.top, 9).padding(.bottom, 11)
         .background(
             RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .fill(c.userDefined ? Palette.running.opacity(0.04) : Color.white.opacity(0.018))
+                .fill(Color.white.opacity(c.userDefined ? 0.03 : 0.018))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .strokeBorder(c.userDefined ? Palette.running.opacity(0.32) : Palette.border, lineWidth: 1)
+                .strokeBorder(c.userDefined ? Palette.borderLit : Palette.border, lineWidth: 1)
         )
     }
 
@@ -3976,8 +4503,8 @@ struct ExposeView: View {
         let layerLit = inLayer == true
         let layerDimmed = inLayer == false
         let lit = t.isAimed || picked                          // on the spotlight's stage
-        let strokeColor: Color = staged ? Palette.running
-            : (picked ? t.tint : (t.isAimed ? Color.white.opacity(0.9) : Color.white.opacity(0.1)))
+        let strokeColor: Color = staged ? HUDChrome.cyan
+            : (picked ? HUDChrome.cyan : (t.isAimed ? Color.white.opacity(0.9) : Color.white.opacity(0.1)))
         let strokeW: CGFloat = staged ? 2 : (picked ? 2 : (t.isAimed ? 1.5 : 0.75))
         let veil: Double = lit ? 0 : spotlight * 0.5
         let bloom: Color = t.isAimed ? lightColor.opacity(0.7 * spotlight) : .clear
@@ -3986,7 +4513,7 @@ struct ExposeView: View {
             .overlay(shape.fill(Color.black.opacity(veil)))    // spotlight: off-stage tiles sink to shadow
             .overlay(shape.strokeBorder(strokeColor, lineWidth: strokeW))
             .overlay(alignment: .topTrailing) { hintChip(t) }
-            .overlay(alignment: .topLeading) { if let s = t.pickSlot { slotBadge(s, t.tint) } }
+            .overlay(alignment: .topLeading) { if let s = t.pickSlot { slotBadge(s, HUDChrome.cyan) } }
             .overlay(alignment: .bottomLeading) {
                 VStack(alignment: .leading, spacing: 3) {
                     if !t.layerTags.isEmpty { layerTagRow(t.layerTags) }
@@ -4003,7 +4530,7 @@ struct ExposeView: View {
             .animation(.spring(response: 0.3, dampingFraction: 0.62), value: t.layerTags)      // layer labels pop
             // While previewing a layer, this tile's windows ring on-brand and the rest sink.
             .overlay {
-                if layerLit { shape.strokeBorder(Palette.running, lineWidth: 2) }
+                if layerLit { shape.strokeBorder(HUDChrome.cyan, lineWidth: 2) }
             }
             // While this tile is the one being dragged, hollow it out so it keeps its
             // slot (no reflow) but reads as "lifted" — the ghost is what moves.
@@ -4011,12 +4538,12 @@ struct ExposeView: View {
             .overlay {
                 if beingDragged {
                     shape.strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
-                        .foregroundColor(Palette.running.opacity(0.8))
+                        .foregroundColor(HUDChrome.cyan.opacity(0.8))
                 }
             }
             .background(frameReporter(t.id))
             .shadow(color: .black.opacity(picked ? 0.5 : 0.35), radius: picked ? 14 : 8, x: 0, y: 5)
-            .shadow(color: layerLit ? Palette.running.opacity(0.55) : bloom, radius: layerLit ? 14 : bloomR)  // layer-lit / aimed tile glows
+            .shadow(color: layerLit ? HUDChrome.cyan.opacity(0.55) : bloom, radius: layerLit ? 14 : bloomR)  // layer-lit / aimed tile glows
             .contentShape(Rectangle())
             // Right-click → a menu of options (not a surprise action). Quick tile presets stage
             // immediately; "Place…" opens the life-size stage for a visual pick.
@@ -4033,9 +4560,9 @@ struct ExposeView: View {
     private func stagedBadge(_ text: String) -> some View {
         Text(text)
             .font(Typo.monoBold(9))
-            .foregroundColor(Palette.bg)
+            .foregroundColor(HUDChrome.onSignal)
             .padding(.horizontal, 5).padding(.vertical, 2)
-            .background(Capsule().fill(Palette.running))
+            .background(Capsule().fill(HUDChrome.cyan))
             .overlay(Capsule().strokeBorder(Color.white.opacity(0.4), lineWidth: 0.5))
             .padding(5)
     }
@@ -4044,7 +4571,7 @@ struct ExposeView: View {
     private func tileBody(_ t: Tile, w: CGFloat, h: CGFloat, shape: RoundedRectangle) -> some View {
         ZStack(alignment: .topLeading) {
             ZStack {
-                t.tint.opacity(0.16)
+                Color.white.opacity(0.04)
                 if let img = t.image {
                     Image(nsImage: img).resizable().aspectRatio(contentMode: .fill)
                 }
@@ -4052,8 +4579,8 @@ struct ExposeView: View {
             .frame(width: w, height: h)
             .clipShape(shape)
 
-            VStack(spacing: 0) {                                   // app-tint top accent
-                Rectangle().fill(t.tint).frame(height: 2)
+            VStack(spacing: 0) {                                   // a light top edge, not an app colour
+                Rectangle().fill(Color.white.opacity(0.12)).frame(height: 1)
                 Spacer(minLength: 0)
             }
         }
@@ -4106,14 +4633,14 @@ struct ExposeView: View {
             ForEach(Array(tags.prefix(3).enumerated()), id: \.offset) { _, tag in
                 Text(tag)
                     .font(Typo.monoBold(8))
-                    .foregroundColor(Palette.bg)
+                    .foregroundColor(HUDChrome.onSignal)
                     .lineLimit(1)
                     .padding(.horizontal, 4).padding(.vertical, 1.5)
-                    .background(Capsule().fill(Palette.running))
+                    .background(Capsule().fill(HUDChrome.cyan))
             }
             if tags.count > 3 {
                 Text("+\(tags.count - 3)")
-                    .font(Typo.monoBold(8)).foregroundColor(Palette.running)
+                    .font(Typo.monoBold(8)).foregroundColor(HUDChrome.cyan)
             }
         }
     }

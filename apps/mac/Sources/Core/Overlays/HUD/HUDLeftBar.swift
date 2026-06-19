@@ -25,6 +25,23 @@ struct HUDLeftBar: View {
         let items: [HUDItem]
     }
 
+    private struct FooterHint: Identifiable {
+        let key: String
+        let label: String
+        var id: String { "\(key)-\(label)" }
+    }
+
+    private var footerHints: [FooterHint] {
+        [
+            FooterHint(key: "⇧↕", label: "Range"),
+            FooterHint(key: "⌘", label: "Multi"),
+            FooterHint(key: "⇥", label: "Focus"),
+            FooterHint(key: "↵", label: "Go"),
+            FooterHint(key: "⌥A", label: "Jump"),
+            FooterHint(key: "[ ]", label: "Layer"),
+        ]
+    }
+
     private var sections: [SectionDef] {
         [
             SectionDef(key: 1, title: "Projects", icon: "folder.fill", items: filteredProjects.map { .project($0) }),
@@ -199,6 +216,14 @@ struct HUDLeftBar: View {
         state.flatItems = flat
         state.sectionOffsets = offsets
         state.reconcileSelection(with: flat)
+
+        // Assign ⌥+letter jump hints over the full filtered window list (independent
+        // of section expansion) so the on-window badges work even when collapsed.
+        let windowWids = filteredWindows.map(\.wid)
+        let hints = HUDWindowHintAssigner.assign(orderedWids: windowWids)
+        if state.windowHints != hints {
+            state.windowHints = hints
+        }
     }
 
     private var resizeHandle: some View {
@@ -398,6 +423,10 @@ struct HUDLeftBar: View {
                 }
 
                 Spacer()
+
+                if case .window(let w) = item, let hint = state.windowHints[w.wid] {
+                    windowHintBadge(hint)
+                }
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
@@ -769,11 +798,7 @@ struct HUDLeftBar: View {
                     keyBadge("D", label: "Distrib")
                 }
             }
-            keyBadge("⇧↕", label: "Range")
-            keyBadge("⌘", label: "Multi")
-            keyBadge("⇥", label: "Focus")
-            keyBadge("↵", label: "Go")
-            keyBadge("[ ]", label: "Layer")
+            footerNavigationHints(selectionActive: selectionCount > 1)
 
             // Experience badge (visible when no top bar)
             if !xp.showChrome && xp.presetIndex > 0 {
@@ -834,11 +859,38 @@ struct HUDLeftBar: View {
         .padding(.vertical, 7)
     }
 
-    private func keyBadge(_ key: String, label: String) -> some View {
-        HStack(spacing: 3) {
+    @ViewBuilder
+    private func footerNavigationHints(selectionActive: Bool) -> some View {
+        let minimapDockButtonVisible = state.minimapMode != .docked
+
+        if selectionActive || minimapDockButtonVisible || state.leftSidebarWidth < 300 {
+            footerHintRow(footerHints, labeled: false, spacing: 6)
+        } else if state.leftSidebarWidth < 390 {
+            VStack(alignment: .leading, spacing: 4) {
+                footerHintRow(Array(footerHints.prefix(3)), labeled: true, spacing: 8)
+                footerHintRow(Array(footerHints.suffix(3)), labeled: true, spacing: 8)
+            }
+        } else {
+            footerHintRow(footerHints, labeled: true, spacing: 8)
+        }
+    }
+
+    private func footerHintRow(_ hints: [FooterHint], labeled: Bool, spacing: CGFloat) -> some View {
+        HStack(spacing: spacing) {
+            ForEach(hints) { hint in
+                keyBadge(hint.key, label: labeled ? hint.label : nil)
+            }
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private func keyBadge(_ key: String, label: String? = nil) -> some View {
+        HStack(spacing: label == nil ? 0 : 3) {
             Text(key)
                 .font(.system(size: 9, weight: .semibold, design: .monospaced))
                 .foregroundColor(Palette.text)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
                 .padding(.horizontal, 4)
                 .padding(.vertical, 2)
                 .background(
@@ -849,10 +901,33 @@ struct HUDLeftBar: View {
                                 .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
                         )
                 )
-            Text(label)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundColor(Palette.textMuted)
+            if let label {
+                Text(label)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(Palette.textMuted)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
         }
+        .fixedSize(horizontal: true, vertical: false)
+        .help(label.map { "\($0) (\(key))" } ?? key)
+    }
+
+    /// ⌥-jump letter shown on the trailing edge of a window row, echoing the
+    /// badge drawn over the window itself.
+    private func windowHintBadge(_ letter: String) -> some View {
+        Text(letter.uppercased())
+            .font(.system(size: 11, weight: .bold, design: .monospaced))
+            .foregroundColor(HUDChrome.cyan)
+            .frame(width: 19, height: 19)
+            .background(
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(HUDChrome.cyan.opacity(0.12))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 5)
+                            .strokeBorder(HUDChrome.cyan.opacity(0.35), lineWidth: 0.5)
+                    )
+            )
     }
 
     private func shortcutBadge(_ key: String) -> some View {
