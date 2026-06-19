@@ -2,7 +2,7 @@ import AppKit
 import CoreGraphics
 import SwiftUI
 
-private final class PermissionDragAssistantPanel: NSPanel {
+private final class PermissionDragAssistantPanel: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
 }
@@ -10,7 +10,7 @@ private final class PermissionDragAssistantPanel: NSPanel {
 final class PermissionDragAssistantWindowController: ObservableObject {
     static let shared = PermissionDragAssistantWindowController()
 
-    private var panel: NSPanel?
+    private var panel: NSWindow?
     @Published private(set) var focusedCapability: Capability = .windowControl
 
     var isVisible: Bool { panel?.isVisible ?? false }
@@ -32,7 +32,7 @@ final class PermissionDragAssistantWindowController: ObservableObject {
             onClose: { PermissionDragAssistantWindowController.shared.close() }
         )
 
-        let activePanel: NSPanel
+        let activePanel: NSWindow
         if let panel {
             panel.title = "\(capability.requirementLabel) Helper"
             panel.contentViewController = NSHostingController(rootView: content)
@@ -40,21 +40,18 @@ final class PermissionDragAssistantWindowController: ObservableObject {
         } else {
             let panel = PermissionDragAssistantPanel(
                 contentRect: NSRect(x: 0, y: 0, width: 430, height: 260),
-                styleMask: [.titled, .closable, .utilityWindow, .fullSizeContentView],
+                styleMask: [.titled, .closable, .resizable, .miniaturizable],
                 backing: .buffered,
                 defer: false
             )
             panel.title = "\(capability.requirementLabel) Helper"
-            panel.titleVisibility = .hidden
-            panel.titlebarAppearsTransparent = true
-            panel.isMovableByWindowBackground = true
+            panel.titleVisibility = .visible
+            panel.titlebarAppearsTransparent = false
+            panel.isMovableByWindowBackground = false
             panel.isReleasedWhenClosed = false
             panel.isRestorable = false
-            panel.hidesOnDeactivate = false
-            panel.becomesKeyOnlyIfNeeded = false
             panel.acceptsMouseMovedEvents = true
-            panel.level = .floating
-            panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
+            panel.minSize = NSSize(width: 430, height: 260)
             panel.backgroundColor = NSColor(red: 0.10, green: 0.10, blue: 0.11, alpha: 1.0)
             panel.appearance = NSAppearance(named: .darkAqua)
             panel.contentViewController = NSHostingController(rootView: content)
@@ -102,7 +99,7 @@ final class PermissionDragAssistantWindowController: ObservableObject {
         }
     }
 
-    private func position(_ panel: NSPanel) {
+    private func position(_ panel: NSWindow) {
         let size = CGSize(width: 430, height: 260)
         let anchor = Self.systemSettingsWindowBounds()
             ?? Self.largestCurrentAppWindowBounds(excluding: panel)
@@ -149,7 +146,7 @@ final class PermissionDragAssistantWindowController: ObservableObject {
         panel.setFrame(NSRect(origin: origin, size: size), display: true)
     }
 
-    private func positionOnMainScreen(_ panel: NSPanel, size: CGSize) {
+    private func positionOnMainScreen(_ panel: NSWindow, size: CGSize) {
         let screenFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let x = max(screenFrame.minX + 16, screenFrame.maxX - size.width - 32)
         let y = max(screenFrame.minY + 16, screenFrame.maxY - size.height - 72)
@@ -162,7 +159,7 @@ final class PermissionDragAssistantWindowController: ObservableObject {
         }
     }
 
-    private static func largestCurrentAppWindowBounds(excluding panel: NSPanel) -> CGRect? {
+    private static func largestCurrentAppWindowBounds(excluding panel: NSWindow) -> CGRect? {
         let currentPID = ProcessInfo.processInfo.processIdentifier
         return visibleWindowBounds {
             guard let ownerPID = ($0[kCGWindowOwnerPID as String] as? NSNumber)?.intValue,
@@ -340,7 +337,13 @@ private struct PermissionDragAssistantView: View {
             .font(Typo.caption(10))
         }
         .padding(16)
-        .frame(width: 430)
+        .frame(
+            minWidth: 430,
+            maxWidth: .infinity,
+            minHeight: 260,
+            maxHeight: .infinity,
+            alignment: .topLeading
+        )
         .background(PanelBackground())
         .preferredColorScheme(.dark)
         .task(id: capability.rawValue) {

@@ -28,6 +28,8 @@ final class MouseInputEventViewer: ObservableObject {
 
     private init() {}
 
+    var isVisible: Bool { window?.isVisible ?? false }
+
     func show() {
         if let window {
             isCaptureActive = true
@@ -41,8 +43,7 @@ final class MouseInputEventViewer: ObservableObject {
             config: .init(
                 title: "Mouse Shortcut Event Viewer",
                 initialSize: NSSize(width: 980, height: 620),
-                minSize: NSSize(width: 840, height: 460),
-                maxSize: NSSize(width: 1500, height: 1000)
+                minSize: NSSize(width: 840, height: 460)
             ),
             rootView: view
         )
@@ -101,6 +102,7 @@ final class MouseInputEventViewer: ObservableObject {
         }
         window = nil
         isCaptureActive = false
+        AppDelegate.updateActivationPolicy()
     }
 
     private static func modifierLabels(for flags: NSEvent.ModifierFlags) -> [String] {

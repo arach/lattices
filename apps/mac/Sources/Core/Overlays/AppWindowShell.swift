@@ -2,10 +2,11 @@ import AppKit
 import SwiftUI
 
 /// NSWindow that strips the blue focus ring AppKit's shared field editor draws
-/// around a focused text field. Lattices' windows are chromeless and dark, so
-/// that ring reads as a stray little blue rectangle. `.textFieldStyle(.plain)`
-/// removes the field's *own* bezel/ring but not the field editor's, so we kill it
-/// here, once, for every text field hosted in the window.
+/// around a focused text field. Lattices windows use dark, custom SwiftUI
+/// content, so that ring reads as a stray little blue rectangle.
+/// `.textFieldStyle(.plain)` removes the field's *own* bezel/ring but not the
+/// field editor's, so we kill it here, once, for every text field hosted in the
+/// window.
 private final class NoFocusRingWindow: NSWindow {
     override func fieldEditor(_ createFlag: Bool, for object: Any?) -> NSText? {
         let editor = super.fieldEditor(createFlag, for: object)
@@ -24,8 +25,9 @@ struct AppWindowShell {
         var titleVisible: Bool = true
         var initialSize: NSSize
         var minSize: NSSize
-        var maxSize: NSSize
+        var maxSize: NSSize? = nil
         var miniaturizable: Bool = true
+        var titlebarAppearsTransparent: Bool = false
         /// Let content fill the whole window, including under the title bar, so
         /// chrome (e.g. a tab strip) can sit in the traffic-light row instead of
         /// below a reserved title band.
@@ -63,14 +65,16 @@ struct AppWindowShell {
 
         w.contentView = container
         w.title = config.title
-        w.titlebarAppearsTransparent = true
+        w.titlebarAppearsTransparent = config.titlebarAppearsTransparent
         w.titleVisibility = config.titleVisible ? .visible : .hidden
         w.isReleasedWhenClosed = false
         w.isRestorable = false
         w.backgroundColor = NSColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1.0)
         w.appearance = NSAppearance(named: .darkAqua)
         w.minSize = config.minSize
-        w.maxSize = config.maxSize
+        if let maxSize = config.maxSize {
+            w.maxSize = maxSize
+        }
         return w
     }
 

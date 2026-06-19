@@ -70,7 +70,12 @@ struct OnboardingView: View {
             .padding(.horizontal, 40)
             .padding(.bottom, 28)
         }
-        .frame(width: 480, height: 470)
+        .frame(
+            minWidth: 480,
+            maxWidth: .infinity,
+            minHeight: 470,
+            maxHeight: .infinity
+        )
         .background(Palette.bg)
         .preferredColorScheme(.dark)
         .onAppear {
@@ -283,6 +288,8 @@ final class OnboardingWindowController {
     private var window: NSWindow?
     private static let completedKey = "onboarding.completed"
 
+    var isVisible: Bool { window?.isVisible ?? false }
+
     var hasCompleted: Bool {
         UserDefaults.standard.bool(forKey: Self.completedKey)
     }
@@ -310,15 +317,11 @@ final class OnboardingWindowController {
         let w = AppWindowShell.makeWindow(
             config: .init(
                 title: "Welcome to Lattices",
-                titleVisible: false,
                 initialSize: NSSize(width: 480, height: 470),
-                minSize: NSSize(width: 480, height: 470),
-                maxSize: NSSize(width: 480, height: 470),
-                miniaturizable: false
+                minSize: NSSize(width: 480, height: 470)
             ),
             rootView: view
         )
-        w.styleMask.remove(.resizable)
         AppWindowShell.positionCentered(w)
         AppWindowShell.present(w)
         self.window = w

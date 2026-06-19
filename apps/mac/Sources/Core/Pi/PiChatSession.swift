@@ -10,6 +10,29 @@ import HudsonAI
 struct QueuedPrompt: Identifiable, Equatable {
     let id = UUID()
     var text: String
+    var attachments: [PiChatAttachment] = []
+}
+
+struct PiChatAttachment: Identifiable, Equatable {
+    let id: UUID
+    var name: String
+    var mediaType: String
+    var content: String
+    var systemImage: String
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        mediaType: String = "text/plain",
+        content: String,
+        systemImage: String = "doc.text"
+    ) {
+        self.id = id
+        self.name = name
+        self.mediaType = mediaType
+        self.content = content
+        self.systemImage = systemImage
+    }
 }
 
 struct PiChatMessage: Identifiable, Equatable {
@@ -22,12 +45,20 @@ struct PiChatMessage: Identifiable, Equatable {
     let id: UUID
     let role: Role
     var text: String
+    var attachments: [PiChatAttachment]
     let timestamp: Date
 
-    init(id: UUID = UUID(), role: Role, text: String, timestamp: Date) {
+    init(
+        id: UUID = UUID(),
+        role: Role,
+        text: String,
+        attachments: [PiChatAttachment] = [],
+        timestamp: Date
+    ) {
         self.id = id
         self.role = role
         self.text = text
+        self.attachments = attachments
         self.timestamp = timestamp
     }
 }
@@ -588,11 +619,18 @@ final class PiChatSession: ObservableObject {
     }
 
     func send(_ text: String) {
+        send(text, attachments: [])
+    }
+
+    func send(_ text: String, attachments: [PiChatAttachment]) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        guard !isSending else { return }
+        if isSending {
+            queuedPrompts.append(QueuedPrompt(text: trimmed, attachments: attachments))
+            return
+        }
 
-        messages.append(PiChatMessage(role: .user, text: trimmed, timestamp: Date()))
+        messages.append(PiChatMessage(role: .user, text: trimmed, attachments: attachments, timestamp: Date()))
 
         if let localResponse = handleImmediateLocalCommand(trimmed) {
             appendLocalAssistantResponse(localResponse)
@@ -628,7 +666,7 @@ final class PiChatSession: ObservableObject {
         settleActiveStreamingMessage(interrupted: false)   // snap any prior reveal to full before a new turn
         turnGeneration &+= 1
         let turnGen = turnGeneration
-        let prompt = providerPrompt(for: trimmed)
+        let prompt = providerPrompt(for: trimmed, attachments: attachments)
         let runtime = chatRuntime(piPath: piPath, provider: provider)
         let inferenceTimer = DiagnosticLog.shared.startTimed("Chat inference via \(provider.name) RPC")
         let messageID = UUID()
@@ -1056,7 +1094,7 @@ final class PiChatSession: ObservableObject {
     private func drainQueuedPrompt() {
         guard !isSending, !queuedPrompts.isEmpty else { return }
         let next = queuedPrompts.removeFirst()
-        send(next.text)
+        send(next.text, attachments: next.attachments)
     }
 
     /// Halt the in-flight turn (cancelling generation on the HudAIClient path; the
@@ -1793,13 +1831,18 @@ final class PiChatSession: ObservableObject {
         return nil
     }
 
-    private func providerPrompt(for userText: String) -> String {
+    private func providerPrompt(for userText: String, attachments: [PiChatAttachment] = []) -> String {
         let knowledge = Self.capabilitiesGuide
         let knowledgeBlock = knowledge.isEmpty ? "" : """
 
             Lattices product knowledge (how the app works; cite the linked docs when a question goes deeper):
             \(knowledge)
             """
+        let attachmentBlock = attachments.isEmpty ? "" : """
+
+        Attached files:
+        \(providerAttachmentBlock(attachments))
+        """
         return """
         You are the Workspace Assistant, the in-app assistant for Lattices.
 
@@ -1807,6 +1850,7 @@ final class PiChatSession: ObservableObject {
 
         For setting changes, inspect or update the relevant local config with tools when available and safe. If you cannot apply the change, say so plainly and give the exact next step. Never claim a setting or file changed unless it actually changed.
         \(knowledgeBlock)
+        \(attachmentBlock)
 
         Structured context:
         \(assistantKnowledgeBrief())
@@ -1814,6 +1858,17 @@ final class PiChatSession: ObservableObject {
         User request:
         \(userText)
         """
+    }
+
+    private func providerAttachmentBlock(_ attachments: [PiChatAttachment]) -> String {
+        attachments.map { attachment in
+            """
+            --- \(attachment.name) (\(attachment.mediaType)) ---
+            \(attachment.content)
+            --- end \(attachment.name) ---
+            """
+        }
+        .joined(separator: "\n\n")
     }
 
     private func voiceAdvisorPrompt(transcript: String, matched: String) -> String {

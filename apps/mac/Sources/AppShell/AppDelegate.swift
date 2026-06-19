@@ -91,9 +91,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         coordinator.registerSurface(id: "commandMode") { CommandModeWindow.shared.isVisible }
         coordinator.registerSurface(id: "commandPalette") { CommandPaletteWindow.shared.isVisible }
         coordinator.registerSurface(id: "mainWindow") { MainWindow.shared.isVisible }
+        coordinator.registerSurface(id: "onboarding") { OnboardingWindowController.shared.isVisible }
         coordinator.registerSurface(id: "permissionsAssistant") { PermissionsAssistantWindowController.shared.isVisible }
         coordinator.registerSurface(id: "permissionDragAssistant") { PermissionDragAssistantWindowController.shared.isVisible }
         coordinator.registerSurface(id: "screenMap") { ScreenMapWindowController.shared.isVisible }
+        coordinator.registerSurface(id: "diagnosticWindow") { DiagnosticWindow.shared.isVisible }
+        coordinator.registerSurface(id: "mouseInputEventViewer") { MouseInputEventViewer.shared.isVisible }
         coordinator.registerSurface(id: "unifiedCommandBar") { UnifiedCommandBarWindow.shared.isVisible }
         coordinator.registerSurface(id: "gridPlacement") { GridPlacementWindow.shared.isVisible }
     }
