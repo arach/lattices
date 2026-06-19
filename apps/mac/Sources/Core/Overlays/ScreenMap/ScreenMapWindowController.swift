@@ -34,7 +34,7 @@ final class ScreenMapWindowController: ObservableObject {
         switch page {
         case .home:
             return NSSize(width: 980, height: 720)
-        case .settings, .companionSettings, .docs, .activity:
+        case .settings, .companionSettings, .docs, .activity, .runs:
             return NSSize(width: 900, height: 640)
         case .screenMap, .desktopInventory, .pi:
             return workspaceWindowSize

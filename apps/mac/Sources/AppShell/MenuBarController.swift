@@ -117,6 +117,10 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 
         menu.addItem(.separator())
 
+        let runs = NSMenuItem(title: "Runs…", action: #selector(menuRuns), keyEquivalent: "")
+        runs.target = self
+        menu.addItem(runs)
+
         let activityLog = NSMenuItem(title: "Activity Log…", action: #selector(menuActivityLog), keyEquivalent: "")
         activityLog.target = self
         menu.addItem(activityLog)
@@ -148,6 +152,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     @objc private func menuProjects() { DispatchQueue.main.async { self.showProjectsPopover() } }
     @objc private func menuInitializeProject() { CliActionLauncher.initializeProjectInTerminal() }
     @objc private func menuLaunchProject() { CliActionLauncher.launchProjectInTerminal() }
+    @objc private func menuRuns() { ScreenMapWindowController.shared.showPage(.runs) }
     @objc private func menuActivityLog() { ScreenMapWindowController.shared.showPage(.activity) }
     @MainActor @objc private func menuUpdate() { AppUpdater.shared.promptForUpdate() }
     @objc private func menuSettings() { SettingsWindowController.shared.show() }

@@ -1,23 +1,36 @@
-# LAT-006: Mira Inside Lattices
+# LAT-006: Runs and Capture in Lattices
 
 ## Status
 
-Proposed.
+Accepted direction; initial screenshot slice in progress.
 
 ## Summary
 
-Mira should stop being a separate product the user has to remember.
+The Action/Mira experiment should stop being a separate product the user has to
+remember. The useful runtime loop should become plain Lattices functionality:
 
-The useful parts of Mira should become a named capability inside Lattices:
+```text
+observe -> act -> capture -> trace -> artifact -> review
+```
+
+The user-facing concepts should be:
 
 ```text
 Lattices = workspace control plane
-Mira = run, capture, review, and proof mode
+Actions = executable workspace operations
+Runs = executions with trace and artifacts
+Capture = screenshots and recordings
+Review = inspect output
+Actors = optional on-screen presences
 ```
 
-This is a stronger integration than keeping Mira as a nearby helper. The
-desired user experience is one macOS app, one daemon surface, one permission
-assistant, one command palette, and one place to find runs and artifacts.
+This retires Mira as a feature name or product brand. Actors, pets, and
+on-screen presences remain useful Lattices primitives, but no specific actor
+should become the identity of the capture/review system.
+
+The desired user experience is one macOS app, one daemon surface, one
+permission assistant, one command palette, and one place to find runs and
+artifacts.
 
 Internally, Lattices can still keep specialized helper processes. The important
 distinction is that helpers are implementation details. The product the user
@@ -25,12 +38,12 @@ grants permissions to, launches, trusts, and remembers should be Lattices.
 
 ## Why This Belongs Here
 
-Lattices and Mira are converging on the same operating model from opposite
+Lattices and Action converged on the same operating model from opposite
 directions:
 
 - Lattices already knows about workspaces, projects, windows, Spaces, layers,
   overlays, command surfaces, and local daemon control.
-- Mira already knows about observing surfaces, resolving targets, running
+- Action already knows about observing surfaces, resolving targets, running
   deterministic actions, recording what happened, and saving reviewable
   artifacts.
 
@@ -40,7 +53,7 @@ LAT-005 proposes the shared action loop:
 input -> canonical action -> plan -> execute -> verify -> receipt -> history
 ```
 
-Mira supplies the missing proof loop:
+Action supplies the missing proof loop:
 
 ```text
 run -> observe -> act -> capture -> trace -> artifact -> review
@@ -51,7 +64,7 @@ control the desktop and prove what happened.
 
 ## Problem
 
-Keeping Mira as a separate project creates exactly the kind of operational
+Keeping Action/Mira as a separate product creates exactly the kind of operational
 friction Lattices is supposed to remove:
 
 - another repo to remember
@@ -71,24 +84,23 @@ sound.
 
 ## Product Decision
 
-Mira should become a Lattices feature area, not a second app.
+Runs and capture should become a Lattices feature area, not a second app.
 
 Recommended naming:
 
 | Concept | Product Name |
 | --- | --- |
-| Capture/review mode | Mira |
 | Individual execution | Run |
 | Saved output | Artifact |
 | Machine-readable event log | Trace |
 | Human-facing result | Review |
-| Visual desktop presence | Mira actor |
+| Visual desktop presence | Actor |
 
 Examples of user-facing commands:
 
 - `Record Current Window`
 - `Capture Frontmost App`
-- `Start Mira Run`
+- `Start Run`
 - `Review Last Run`
 - `Show Run Artifacts`
 - `Rerun Scenario`
@@ -99,17 +111,17 @@ Those details belong in diagnostics and receipts.
 
 ## Goals
 
-1. Make Lattices the single user-facing app for workspace control and Mira
+1. Make Lattices the single user-facing app for workspace control and
    capture/review flows.
 2. Consolidate permission guidance into the existing Lattices Permissions
    Assistant.
-3. Preserve Mira's important native runtime lesson: AppKit-dependent work must
+3. Preserve Action's important native runtime lesson: AppKit-dependent work must
    run inside a real app lifecycle.
 4. Add a first-class run/artifact model that extends LAT-005 receipts and
    history.
-5. Route Mira activity through the Lattices daemon instead of requiring users
+5. Route run/capture activity through the Lattices daemon instead of requiring users
    or agents to remember a second public control plane.
-6. Bundle the Mira actor as a normal Lattices overlay actor.
+6. Keep actors as optional generic Lattices presences, not a required product identity.
 7. Migrate the useful protocol/runtime ideas without importing every demo,
    composer, or release workflow at once.
 
@@ -118,9 +130,9 @@ Those details belong in diagnostics and receipts.
 - Do not ship two visible apps as the normal experience.
 - Do not push ScreenCaptureKit recording into a headless-only lifecycle.
 - Do not make Lattices a general cross-platform automation product.
-- Do not absorb Mira's composer/export stack before the run/capture/review loop
+- Do not absorb Action's composer/export stack before the run/capture/review loop
   is integrated.
-- Do not remove the existing Mira/Action repo until Lattices can own the
+- Do not remove the existing Action repo until Lattices can own the
   important runtime paths.
 - Do not ask users to manage Action.app permissions as part of normal Lattices
   usage.
@@ -132,8 +144,8 @@ The desired experience is:
 1. User launches Lattices.
 2. Lattices shows one permission checklist.
 3. User opens the palette and chooses `Record Current Window`.
-4. Lattices starts a Mira run.
-5. Mira's overlay actor indicates recording or inspection state.
+4. Lattices starts a run.
+5. Optional actors or overlays indicate recording or inspection state.
 6. The run writes media, screenshots, trace events, and receipts into the
    Lattices run store.
 7. User opens `Review Last Run` from the same app.
@@ -141,7 +153,7 @@ The desired experience is:
 
 The user should not need to open a second project, remember the `action-dev`
 CLI, or reason about `Action.app` unless they are intentionally working on the
-old Mira codebase.
+old Action codebase.
 
 ## Permission Model
 
@@ -154,8 +166,9 @@ Lattices already has a real permission assistant for:
 - Automation
 - Input Monitoring
 
-Mira should extend that assistant with capture/review-specific explanations
-instead of introducing a second prompt path.
+The Permissions Assistant should extend its existing capability model with
+capture/review-specific explanations instead of introducing a second prompt
+path.
 
 ### TCC Identity
 
@@ -172,7 +185,7 @@ the integration strategy important:
 
 ### AppKit Lifecycle Boundary
 
-Mira's recording work found an important constraint: ScreenCaptureKit recording
+Action's recording work found an important constraint: ScreenCaptureKit recording
 is more reliable when the actual recording path runs inside a real AppKit app
 lifecycle.
 
@@ -183,7 +196,7 @@ Recommended shape:
 ```text
 Lattices.app
   normal mode
-  --mira-recording-probe mode
+  --recording-probe mode
 
 Lattices daemon
   accepts run/capture requests
@@ -204,7 +217,7 @@ Lattices.app
   permissions assistant
   window/session/layer/overlay control
 
-Action.app / Mira
+Action.app
   agent: ws://127.0.0.1:4319
   capture, recording probe, review loop
   runtime/session/protocol packages
@@ -217,8 +230,8 @@ Lattices.app
   daemon: ws://127.0.0.1:9399
   action runtime
   permission assistant
-  Mira run/capture/review UI
-  Mira recording probe mode
+  run/capture/review UI
+  recording probe mode
   overlay actor renderer
 
 Optional internal helpers
@@ -289,7 +302,7 @@ Add a run model that complements LAT-005 receipts.
   "summary": "Started recording current window",
   "data": {
     "wid": 12345,
-    "probe": "Lattices.app --mira-recording-probe"
+    "probe": "Lattices.app --recording-probe"
   }
 }
 ```
@@ -321,8 +334,8 @@ Development-only bridge methods may exist while migrating:
 
 | Method | Purpose |
 | --- | --- |
-| `mira.bridge.status` | Check whether the old Action/Mira agent is running |
-| `mira.bridge.call` | Proxy a small allowlist of old agent methods |
+| `action.bridge.status` | Check whether the old Action agent is running |
+| `action.bridge.call` | Proxy a small allowlist of old agent methods |
 
 Those bridge methods should be treated as scaffolding, not the destination.
 
@@ -330,7 +343,7 @@ Those bridge methods should be treated as scaffolding, not the destination.
 
 ### Home
 
-Add a compact Mira status area only when relevant:
+Add a compact run status area only when relevant:
 
 - last run
 - active recording
@@ -346,13 +359,12 @@ Add commands over the same run API:
 - `Record Current Window`
 - `Screenshot Current Window`
 - `Review Last Run`
-- `Stop Mira Run`
-- `Show Mira`
-- `Hide Mira`
+- `Stop Run`
+- `Open Run Artifacts`
 
 ### Permissions Assistant
 
-Add a Mira capability section that explains why capture/review uses:
+Add a capture capability section that explains why capture/review uses:
 
 - Screen Recording for screenshots and recordings
 - Accessibility for target resolution and window interaction
@@ -361,13 +373,14 @@ Add a Mira capability section that explains why capture/review uses:
 
 The assistant should report which exact component is missing permission.
 
-### Overlay Actor
+### Actors
 
-Bundle the Mira actor as a normal Lattices overlay actor.
+Keep actors available as normal Lattices overlay actors.
 
-Mira states should map onto LAT-004 actor states:
+Run/capture states can map onto LAT-004 actor states when a visible presence is
+useful:
 
-| Mira State | Overlay State |
+| Run State | Overlay State |
 | --- | --- |
 | idle | `idle` |
 | observing | `active` |
@@ -387,7 +400,7 @@ Move concepts before moving everything.
 
 ### Bring Into Lattices Early
 
-- Mira actor metadata and assets
+- generic actor metadata and assets
 - run/session lifecycle concepts
 - artifact and trace event types
 - capture request/response contracts
@@ -406,7 +419,7 @@ Move concepts before moving everything.
 
 ### Rework Instead Of Copying Directly
 
-- `Action.app` shell becomes Lattices Mira mode
+- `Action.app` shell becomes Lattices run/capture mode
 - old Action agent protocol becomes internal migration scaffolding
 - old CLI commands become Lattices palette, CLI, or daemon commands
 - old docs become migration references, not another documentation tree
@@ -416,21 +429,21 @@ Move concepts before moving everything.
 Suggested Lattices locations:
 
 ```text
-apps/mac/Sources/Core/Mira/
-  MiraRunStore.swift
-  MiraCaptureController.swift
-  MiraRecordingProbe.swift
-  MiraArtifact.swift
-  MiraTraceEvent.swift
-  MiraDaemonMethods.swift
+apps/mac/Sources/Core/Runs/
+  RunStore.swift
+  RunModels.swift
 
-apps/mac/Sources/Core/Overlays/Actors/Mira/
+apps/mac/Sources/Core/Capture/
+  CaptureController.swift
+  RecordingProbe.swift
+
+apps/mac/Sources/Core/Overlays/Actors/
   actor metadata and bundled assets
 
 docs/proposals/
-  LAT-006-mira-in-lattices.md
+  LAT-006-runs-and-capture-in-lattices.md
 
-docs/mira.md
+docs/runs.md
   user-facing capture/review docs once implemented
 ```
 
@@ -444,24 +457,24 @@ package namespace rather than keeping `action` as the product name.
 - Add this proposal.
 - Cross-link LAT-005 and LAT-006.
 - Define `RunSession`, `RunArtifact`, and `TraceEvent`.
-- Add a dev-only bridge to the old Mira agent if useful for experiments.
+- Add a dev-only bridge to the old Action agent if useful for experiments.
 - Do not present the bridge as the final user experience.
 
 ### Phase 2: One-Permission Screenshot Slice
 
-Implement the first real Mira feature entirely inside Lattices:
+Implement the first real capture feature entirely inside Lattices:
 
 ```text
 Screenshot Current Window -> RunSession -> Artifact -> Review
 ```
 
 This proves the most important integration point: the user grants Lattices
-permission and receives a Mira artifact without opening Action.app.
+permission and receives a run artifact without opening Action.app.
 
 ### Phase 3: Recording Probe In Lattices
 
 - Port the recording probe pattern.
-- Launch `Lattices.app --mira-recording-probe` for actual recording work.
+- Launch `Lattices.app --recording-probe` for actual recording work.
 - Preserve stop-file, finished-file, and debug-log behavior.
 - Store outputs in the Lattices run directory.
 
@@ -487,7 +500,7 @@ permission and receives a Mira artifact without opening Action.app.
 The smallest meaningful integration is:
 
 ```text
-Record a screenshot of the current window as a Mira run inside Lattices.
+Record a screenshot of the current window as a run inside Lattices.
 ```
 
 Required pieces:
@@ -498,18 +511,18 @@ Required pieces:
 - palette command
 - permission receipt
 - recent-run review surface
-- optional Mira actor state change
+- optional actor state change
 
 This avoids the two-app permission problem from the start and gives the product
-a concrete user-facing Mira feature before the heavier recording probe is
+a concrete user-facing capture feature before the heavier recording probe is
 ported.
 
 ## Open Questions
 
-### Should The Name Stay Mira?
+### Should Actors Stay?
 
-Recommendation: yes. "Mira" is useful as the named capture/review personality,
-but it should live inside Lattices.
+Recommendation: yes, as generic presences. Retire Mira as the product name, but
+keep actors/pets available for agent, run, app, and task presence.
 
 ### Should The Old Action Agent Port Stay?
 
@@ -541,13 +554,13 @@ recording once the run store and review loop exist.
 
 This proposal is successful when:
 
-- the user sees Mira as part of Lattices, not as another app to remember
+- the user sees runs and capture as part of Lattices, not as another app to remember
 - the normal capture path asks for Lattices permissions, not Action.app
 - a palette command can create a run artifact from the current window
 - run artifacts are reviewable inside Lattices
 - action receipts and run traces can reference each other
-- the Mira actor can reflect run state without owning the run contract
+- actors can reflect run state without owning the run contract
 - recording uses a real AppKit lifecycle without requiring a separate visible
   product
-- the old Mira repo can eventually become a migration source, not an active
+- the old Action repo can eventually become a migration source, not an active
   parallel product

@@ -1,4 +1,5 @@
 import { findStudioBySlug } from "../lib/studios";
+import { CursorStudio } from "./studios/CursorStudio";
 import { HandsoffStudio } from "./studios/HandsoffStudio";
 import { IntentExplorer } from "./studios/IntentExplorer";
 import { TilingStudio } from "./studios/TilingStudio";
@@ -29,6 +30,7 @@ export function StudioPage({ slug, exhibit }: StudioPageProps) {
   if (slug === "tiling") return <TilingStudio entry={entry} exhibit={exhibit} />;
   if (slug === "intents") return <IntentExplorer entry={entry} />;
   if (slug === "handsoff") return <HandsoffStudio entry={entry} />;
+  if (slug === "cursor") return <CursorStudio entry={entry} />;
 
   return (
     <main className="px-8 py-12">

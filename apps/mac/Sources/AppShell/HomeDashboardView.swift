@@ -70,6 +70,13 @@ struct HomeDashboardView: View {
                 ) { onNavigate?(.desktopInventory) }
 
                 homeActionCard(
+                    title: "Runs",
+                    subtitle: "Review artifacts",
+                    icon: "record.circle",
+                    tint: Palette.running
+                ) { onNavigate?(.runs) }
+
+                homeActionCard(
                     title: "Activity",
                     subtitle: "Logs and diagnostics",
                     icon: "list.bullet.rectangle",

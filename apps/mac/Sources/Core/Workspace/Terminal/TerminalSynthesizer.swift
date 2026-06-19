@@ -97,7 +97,7 @@ enum TerminalSynthesizer {
         }
 
         // 5. Collect all known TTYs (union of all maps)
-        var allTTYs = Set(interestingByTTY.keys)
+        var allTTYs = Set(allProcessesByTTY.keys)
         allTTYs.formUnion(tmuxByTTY.keys)
         allTTYs.formUnion(tabByTTY.keys)
 
@@ -111,10 +111,16 @@ enum TerminalSynthesizer {
             let tab = tabByTTY[tty]
             let tmux = tmuxByTTY[tty]
 
-            // Shell PID: process on this TTY whose parent is NOT on this TTY
+            // Shell PID: prefer the interactive shell on this TTY, then fall
+            // back to the root process whose parent is not on this TTY.
             let ttyProcs = allProcessesByTTY[tty] ?? []
             let ttyPids = Set(ttyProcs.map(\.pid))
-            let shellPid = ttyProcs.first { !ttyPids.contains($0.ppid) }?.pid
+            let shellPid = ttyProcs
+                .filter { isInteractiveShell($0.comm) }
+                .sorted { $0.pid < $1.pid }
+                .last?
+                .pid
+                ?? ttyProcs.first { !ttyPids.contains($0.ppid) }?.pid
 
             // CWD: deepest interesting process's cwd, or shell's cwd
             let cwd = procs.last(where: { $0.cwd != nil })?.cwd
@@ -124,13 +130,15 @@ enum TerminalSynthesizer {
             let windowMatch = resolveWindow(
                 tmuxSession: tmux?.session,
                 tab: tab,
+                cwd: cwd,
                 windowsByApp: windowsByApp,
                 allWindows: windows
             )
+            let app = tab?.app ?? windowMatch.flatMap { terminal(forWindowApp: $0.app) }
 
             instances.append(TerminalInstance(
                 tty: tty,
-                app: tab?.app,
+                app: app,
                 windowIndex: tab?.windowIndex,
                 tabIndex: tab?.tabIndex,
                 isActiveTab: tab?.isActiveTab ?? false,
@@ -177,10 +185,17 @@ enum TerminalSynthesizer {
         return result
     }
 
-    /// Resolve a window for this TTY. Try lattices tag match first, then positional.
+    private static func isInteractiveShell(_ command: String) -> Bool {
+        ProcessQuery.isInteractiveShell(command)
+    }
+
+    /// Resolve a window for this TTY without terminal app scripting. Try the
+    /// lattices tmux tag first, then cached tab position, then shell cwd in the
+    /// terminal window title.
     private static func resolveWindow(
         tmuxSession: String?,
         tab: TerminalTab?,
+        cwd: String?,
         windowsByApp: [String: [WindowEntry]],
         allWindows: [UInt32: WindowEntry]
     ) -> WindowEntry? {
@@ -192,15 +207,71 @@ enum TerminalSynthesizer {
             }
         }
 
-        // Strategy 2: positional match by app + window index
+        // Strategy 2: direct AppleScript window ID match. iTerm2 exposes the
+        // same ID as CGWindowList, which is safer than positional matching
+        // when multiple terminal windows share the same shell title.
+        if let windowId = tab?.windowId,
+           let match = allWindows[windowId] {
+            return match
+        }
+
+        // Strategy 3: positional match by app + window index
         if let tab = tab {
-            let appName = tab.app.rawValue
+            let appName = windowAppName(for: tab.app)
             if let appWindows = windowsByApp[appName],
                tab.windowIndex < appWindows.count {
                 return appWindows[tab.windowIndex]
             }
         }
 
+        // Strategy 4: shell cwd appears in the terminal window title.
+        if let cwdMatch = terminalWindowMatching(cwd: cwd, allWindows: allWindows) {
+            return cwdMatch
+        }
+
         return nil
+    }
+
+    private static func terminalWindowMatching(
+        cwd: String?,
+        allWindows: [UInt32: WindowEntry]
+    ) -> WindowEntry? {
+        guard let cwd, !cwd.isEmpty else { return nil }
+        let fragments = cwdTitleFragments(cwd)
+        guard !fragments.isEmpty else { return nil }
+
+        let matches = allWindows.values.filter { window in
+            terminal(forWindowApp: window.app) != nil &&
+            fragments.contains { fragment in window.title.contains(fragment) }
+        }
+        return matches.sorted {
+            if $0.isOnScreen != $1.isOnScreen { return $0.isOnScreen && !$1.isOnScreen }
+            if $0.zIndex != $1.zIndex { return $0.zIndex < $1.zIndex }
+            return $0.wid < $1.wid
+        }.first
+    }
+
+    private static func cwdTitleFragments(_ cwd: String) -> [String] {
+        guard cwd != "/" else { return [] }
+        var fragments: [String] = [cwd]
+        let home = NSHomeDirectory()
+        if cwd == home {
+            return []
+        } else if cwd.hasPrefix(home + "/") {
+            fragments.append("~" + cwd.dropFirst(home.count))
+        }
+        return fragments.filter { $0.count >= 5 }
+    }
+
+    private static func terminal(forWindowApp app: String) -> Terminal? {
+        if app == "iTerm 2" { return .iterm2 }
+        return Terminal(rawValue: app)
+    }
+
+    private static func windowAppName(for terminal: Terminal) -> String {
+        switch terminal {
+        case .iterm2: return "iTerm 2"
+        default: return terminal.rawValue
+        }
     }
 }

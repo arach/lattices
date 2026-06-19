@@ -13,12 +13,14 @@ struct PaletteCommand: Identifiable {
     enum Category: String, CaseIterable {
         case project = "Projects"
         case window  = "Window"
+        case run     = "Runs"
         case app     = "App"
 
         var icon: String {
             switch self {
             case .project: return "terminal"
             case .window:  return "macwindow"
+            case .run:     return "record.circle"
             case .app:     return "gearshape"
             }
         }
@@ -352,6 +354,46 @@ enum CommandBuilder {
         }
 
         // App actions
+        commands.append(PaletteCommand(
+            id: "run-screenshot-current-window",
+            title: "Screenshot Current Window",
+            subtitle: "Save a run artifact from the frontmost window",
+            icon: "camera.viewfinder",
+            category: .run,
+            badge: nil,
+            action: {
+                Task.detached(priority: .userInitiated) {
+                    do {
+                        let result = try CaptureController.shared.screenshotWindow(params: .object([
+                            "source": .string("palette"),
+                        ]))
+                        if let path = result["artifact"]?["path"]?.stringValue {
+                            DiagnosticLog.shared.success("Capture: saved screenshot artifact \(path)")
+                        }
+                    } catch {
+                        DiagnosticLog.shared.warn("Capture: screenshot failed — \(error.localizedDescription)")
+                    }
+                }
+            }
+        ))
+
+        commands.append(PaletteCommand(
+            id: "runs-review-last",
+            title: "Review Runs",
+            subtitle: "Inspect run traces and artifacts",
+            icon: "folder",
+            category: .run,
+            badge: nil,
+            action: {
+                guard let run = RunStore.shared.list(limit: 1).first else {
+                    DiagnosticLog.shared.info("Runs: no runs available to review")
+                    return
+                }
+                DiagnosticLog.shared.info("Runs: reviewing \(run.id)")
+                ScreenMapWindowController.shared.showPage(.runs)
+            }
+        ))
+
         commands.append(PaletteCommand(
             id: "app-workspace-chat",
             title: "Workspace Assistant",

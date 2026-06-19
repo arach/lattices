@@ -138,6 +138,44 @@ if (await isDaemonRunning()) {
 
 Returns `true` if `daemon.status` responds within 1 second.
 
+## TypeScript SDK facade
+
+The CLI is a human/debug surface. Product code and agents should prefer the
+typed SDK facade, which validates params with Zod and calls the same daemon
+methods directly.
+
+```ts
+import { cua } from '@lattices/sdk'
+
+await cua.magicCursor({
+  app: 'Scout',
+  xRatio: 0.52,
+  yRatio: 0.91,
+  text: 'What are the most important docs in this project, and what would an agent say after reading them?',
+  treatment: 'execute',
+  trail: 'comet',
+  motion: 'rush',
+  trajectory: 'overshoot',
+  glow: 'halo',
+  idle: 'wiggle',
+  edge: 'ripple',
+})
+
+await cua.click({
+  app: 'Scout',
+  xRatio: 0.74,
+  yRatio: 0.95,
+  transport: 'ax',
+  axLabel: 'Send',
+  noFocus: true,
+  treatment: 'execute',
+})
+```
+
+`@lattices/cli/cua` exposes the same CUA module for CLI-adjacent scripts, but
+new app and agent code should use `@lattices/sdk` or `@lattices/sdk/cua` so the
+import names the product surface instead of the CLI package.
+
 ### Error handling
 
 `daemonCall` throws on errors — always wrap calls in try/catch:
@@ -156,6 +194,394 @@ try {
   //   ECONNREFUSED             — daemon not running
   console.error('Daemon error:', err.message)
 }
+```
+
+---
+
+## Runs And Capture
+
+Runs are local executions that produce trace events and artifacts. Capture
+methods write into the Lattices run store under
+`~/Library/Application Support/Lattices/Runs/`.
+
+| Method | Type | Description |
+|--------|------|-------------|
+| `runs.create` | write | Create a run record and artifact directory |
+| `runs.list` | read | List recent runs |
+| `runs.get` | read | Inspect one run, including artifacts and trace events |
+| `runs.artifacts` | read | List artifacts for one run |
+| `capture.screenshotWindow` | write | Capture a window screenshot as a run artifact |
+| `computer.prepare` | write | Resolve and optionally capture a terminal target without mutating it |
+| `computer.focusWindow` | write | Resolve, capture, focus, and verify a target window |
+| `computer.showCursor` | write | Show a visible cursor appearance and record it as a run |
+| `computer.launchApp` | write | Launch or focus a normal macOS app and record the run |
+| `computer.typeWindowText` | write | Type or paste into a normal app window, optionally after a click |
+| `computer.click` | write | Stage or execute a window-relative click target; prefers no-focus `AXPress` in auto/ax transport |
+| `computer.demoScout` | write | Scout warm-up run for memo/demo recording |
+| `computer.typeText` | write | Insert text into a safe terminal using the least intrusive transport |
+| `computer.demoTerminal` | write | Compatibility wrapper for a bounded terminal text action |
+
+#### `capture.screenshotWindow`
+
+Capture a window as a PNG artifact. If no target is provided, Lattices captures
+the frontmost non-Lattices window.
+
+**Params**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `wid` | uint32 | no | Target CGWindowID |
+| `session` | string | no | Target lattices session |
+| `app` | string | no | Target app name |
+| `title` | string | no | Optional title filter for `app`, or run title |
+| `runId` | string | no | Existing run to append to |
+| `source` | string | no | Calling surface label |
+| `filename` | string | no | Optional artifact filename |
+
+```js
+await daemonCall('capture.screenshotWindow', { source: 'agent' })
+
+await daemonCall('capture.screenshotWindow', {
+  session: 'frontend-a1b2c3',
+  filename: 'before-layout.png'
+})
+```
+
+CLI:
+
+```bash
+lattices capture window
+lattices runs
+lattices runs run_20260617-120000_a1b2c3
+lattices terminals
+lattices terminals --refresh
+lattices computer prepare --text "# hello" --treatment stage
+lattices computer focus-window --wid 7258 --treatment present
+lattices computer cursor --style marker --shape chevron --angle-deg -8 --label typing
+lattices computer launch-app Scout
+lattices computer scout --treatment present
+lattices computer scout "Draft memo text" --execute
+lattices computer type-window --app Scout --text "Draft memo text" --x-ratio .5 --y-ratio .86 --execute
+lattices computer click --app Scout --x-ratio .5 --y-ratio .86 --execute
+lattices cua click --app Scout --x-ratio .74 --y-ratio .95 --transport ax --ax-label Send --execute
+lattices computer type-text --text "# hello from lattices"
+lattices computer demo-terminal --dry-run
+```
+
+---
+
+#### Computer Action Treatments
+
+Computer-use endpoints accept a `treatment` field that controls how intrusive
+the action may be:
+
+| Treatment | Behavior |
+|-----------|----------|
+| `observe` | Resolve target and record a run, without focus or input |
+| `stage` | Resolve target and stage intent/artifacts, without focus or input |
+| `present` | Focus or present the target, without input |
+| `execute` | Perform the action after safety checks |
+
+The legacy `dryRun: true` flag maps to `stage`.
+
+#### `computer.prepare`
+
+Resolve and score terminal candidates for a future computer-use action. This is
+the least intrusive endpoint: by default it observes the target and captures an
+artifact, but it does not focus or type.
+
+**Params**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `wid` | uint32 | no | Specific terminal window id |
+| `tty` | string | no | Specific terminal TTY |
+| `app` | string | no | Preferred terminal app, such as `iTerm2` |
+| `text` | string | no | Text to stage in the run trace |
+| `treatment` | string | no | `observe`, `stage`, `present`, or `execute` |
+| `capture` | bool | no | Capture target screenshot artifact. Defaults to `true` |
+| `source` | string | no | Calling surface label |
+
+```js
+await daemonCall('computer.prepare', {
+  text: '# review before typing',
+  treatment: 'stage'
+})
+```
+
+#### `computer.focusWindow`
+
+Resolve a target window, optionally capture it, focus it, and verify the focused
+window id. Use `treatment: 'observe'` or `stage` to plan without presenting.
+
+**Params**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `wid` | uint32 | no | Target window id |
+| `session` | string | no | Target lattices session |
+| `app` | string | no | Target app name |
+| `title` | string | no | Optional title substring for `app` |
+| `treatment` | string | no | `observe`, `stage`, `present`, or `execute` |
+| `dryRun` | bool | no | Stage without focusing |
+| `capture` | bool | no | Capture before/after artifacts. Defaults to `true` |
+| `source` | string | no | Calling surface label |
+
+```js
+await daemonCall('computer.focusWindow', {
+  app: 'iTerm2',
+  treatment: 'present'
+})
+```
+
+#### `computer.showCursor`
+
+Resolve the current cursor location and show a visible cursor appearance. This
+is the cursor equivalent of a typing action: it records a run, cursor target,
+appearance parameters, and trace events. Use `observe` or `stage` to plan
+without showing anything.
+
+**Params**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `x` | double | no | Screen x coordinate. Defaults to current cursor |
+| `y` | double | no | Screen y coordinate. Defaults to current cursor |
+| `treatment` | string | no | `observe`, `stage`, `present`, or `execute` |
+| `style` | string | no | `spotlight`, `pulse`, or `marker` |
+| `appearance` | string | no | Alias for `style` |
+| `shape` | string | no | Marker shape: `chevron`, `facet`, `shard`, `wedge`, `prism`, or `notch` |
+| `angleDeg` | double | no | Marker rotation in degrees. Positive rotates visually clockwise; default is `-8` for marker |
+| `size` | string | no | Marker size: `small`, `regular`, or `large`. Defaults to Settings |
+| `color` | string | no | `blue`, `green`, `amber`, `pink`, `red`, or `white` |
+| `durationMs` | int | no | Appearance duration in milliseconds |
+| `label` | string | no | Optional marker label |
+| `dryRun` | bool | no | Stage without showing |
+| `source` | string | no | Calling surface label |
+
+```js
+await daemonCall('computer.showCursor', {
+  style: 'marker',
+  shape: 'chevron',
+  angleDeg: -8,
+  size: 'regular',
+  color: 'white',
+  treatment: 'present'
+})
+```
+
+#### `computer.launchApp`
+
+Launch or focus a normal macOS app and record the result as a run. Use
+`dryRun: true` or `treatment: 'stage'` to plan without launching.
+
+**Params**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `app` | string | yes | App name, such as `Scout`, `Slack`, or `Notes` |
+| `bundleId` | string | no | Bundle identifier fallback for precise launch |
+| `path` | string | no | Explicit `.app` bundle path |
+| `title` | string | no | Optional title substring for app window selection |
+| `treatment` | string | no | `observe`, `stage`, `present`, or `execute` |
+| `dryRun` | bool | no | Stage without launching |
+| `capture` | bool | no | Capture the launched app window. Defaults to `true` outside dry-run |
+| `source` | string | no | Calling surface label |
+
+```js
+await daemonCall('computer.launchApp', {
+  app: 'Scout',
+  treatment: 'present'
+})
+```
+
+#### `computer.typeWindowText`
+
+Focus a normal app window and insert text. If click coordinates are provided,
+Lattices clicks that target before typing. Coordinates can be absolute screen
+points (`x`, `y`) or ratios inside the target window (`xRatio`, `yRatio`).
+For window ratios, `0,0` is the top-left of the window and `1,1` is the
+bottom-right.
+
+**Params**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `wid` | uint32 | no | Target window id |
+| `app` | string | no | Target app name |
+| `title` | string | no | Optional title substring for app target |
+| `text` | string | yes | Text to insert |
+| `enter` | bool | no | Press Enter after typing. Defaults to `false` |
+| `send` | bool | no | Alias for `enter` in chat-style demos |
+| `x`, `y` | double | no | Absolute click point before typing |
+| `xRatio`, `yRatio` | double | no | Window-relative click point before typing |
+| `treatment` | string | no | `observe`, `stage`, `present`, or `execute` |
+| `dryRun` | bool | no | Stage without typing |
+| `capture` | bool | no | Capture before/after artifacts. Defaults to `true` |
+| `source` | string | no | Calling surface label |
+
+```js
+await daemonCall('computer.typeWindowText', {
+  app: 'Scout',
+  text: 'Draft memo text',
+  xRatio: 0.5,
+  yRatio: 0.86,
+  treatment: 'execute'
+})
+```
+
+#### `computer.click`
+
+Stage or execute a click target. `stage` records the target without clicking.
+In `execute`, `transport: "auto"` prefers `AXPress` on the resolved accessibility
+button/control before falling back to a pointer click. Use `transport: "ax"` or
+`noFocus: true` when the action must not focus the app or move the hardware
+pointer. When a window target is provided, ratios are relative to that window.
+
+**Params**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `wid` | uint32 | no | Target window id |
+| `app` | string | no | Target app name |
+| `title` | string | no | Optional title substring for app target |
+| `x`, `y` | double | no | Absolute click point |
+| `xRatio`, `yRatio` | double | no | Window-relative click point |
+| `button` | string | no | `left` or `right`; defaults to `left` |
+| `transport` | string | no | `auto`, `ax`, or `pointer`; defaults to `auto` |
+| `axLabel` | string | no | Optional AX text/title hint, such as `Send` |
+| `noFocus` | bool | no | Require no-focus AX execution; disable pointer fallback |
+| `treatment` | string | no | `stage`, `present`, or `execute` |
+| `dryRun` | bool | no | Stage without clicking |
+| `capture` | bool | no | Capture before/after artifacts when targeting a window |
+| `source` | string | no | Calling surface label |
+
+```js
+await daemonCall('computer.click', {
+  app: 'Scout',
+  xRatio: 0.5,
+  yRatio: 0.86,
+  treatment: 'execute'
+})
+
+await daemonCall('computer.click', {
+  app: 'Scout',
+  xRatio: 0.74,
+  yRatio: 0.95,
+  transport: 'ax',
+  axLabel: 'Send',
+  noFocus: true,
+  treatment: 'execute'
+})
+```
+
+#### `computer.demoScout`
+
+Warm up a Scout memo/demo recording run. In `present` mode it launches or
+focuses Scout and records a run without typing. In `execute` mode it can click
+the likely composer area, type a draft, and optionally press Enter when
+`enter` or `send` is true. Dry-run/stage mode does not capture by default, so it
+works before Screen Recording permission is granted.
+
+**Params**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `app` | string | no | Scout app name override. Defaults to `Scout` |
+| `title` | string | no | Optional title substring for the Scout window |
+| `text` | string | no | Draft text to type in `execute` mode |
+| `enter` | bool | no | Press Enter after typing. Defaults to `false` |
+| `send` | bool | no | Alias for `enter` |
+| `click` | bool | no | Click the likely composer area before typing |
+| `xRatio`, `yRatio` | double | no | Composer click point; defaults to `0.5`, `0.86` |
+| `treatment` | string | no | `observe`, `stage`, `present`, or `execute` |
+| `dryRun` | bool | no | Stage without launching or typing |
+| `capture` | bool | no | Capture before/after artifacts. Defaults to `true` outside dry-run |
+| `source` | string | no | Calling surface label |
+
+```js
+await daemonCall('computer.demoScout', { dryRun: true })
+
+await daemonCall('computer.demoScout', {
+  treatment: 'present',
+  capture: false
+})
+
+await daemonCall('computer.demoScout', {
+  text: 'Draft memo text',
+  treatment: 'execute',
+  send: false
+})
+```
+
+#### `computer.typeText`
+
+Resolve a terminal target and insert text after safety checks. Lattices prefers
+the least intrusive available transport: tmux pane input when a tmux pane is
+known, then target-pid key events/pasteboard insertion when window focus is
+required. Enter is never pressed unless `enter: true` is provided.
+
+**Params**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `wid` | uint32 | no | Specific terminal window id |
+| `tty` | string | no | Specific terminal TTY |
+| `app` | string | no | Preferred terminal app, such as `iTerm2` |
+| `text` | string | yes | Text to insert |
+| `enter` | bool | no | Press Enter after typing. Defaults to `false` |
+| `treatment` | string | no | `observe`, `stage`, `present`, or `execute` |
+| `transport` | string | no | `auto`, `tmux`, or `pasteboard`. Defaults to `auto` |
+| `dryRun` | bool | no | Stage without typing |
+| `capture` | bool | no | Capture before/after artifacts. Defaults to `true` |
+| `source` | string | no | Calling surface label |
+
+```js
+await daemonCall('computer.typeText', {
+  text: '# hello from lattices',
+  transport: 'auto',
+  enter: false
+})
+```
+
+#### `computer.demoTerminal`
+
+Compatibility endpoint for the original terminal demo. It follows the same
+treatment, safety, capture, and transport rules as `computer.typeText`, but
+provides a default text payload when `text` is omitted.
+
+Run a bounded computer-use sequence against a terminal window:
+
+1. synthesize and score terminal candidates
+2. choose a safe shell-like terminal unless `wid` or `tty` is supplied
+3. capture a `before` screenshot artifact
+4. focus the terminal window
+5. insert text without pressing Enter by default
+6. capture an `after` screenshot artifact
+
+**Params**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `wid` | uint32 | no | Specific terminal window id |
+| `tty` | string | no | Specific terminal TTY |
+| `app` | string | no | Preferred terminal app, such as `iTerm2` |
+| `text` | string | no | Text to insert |
+| `enter` | bool | no | Press Enter after typing. Defaults to `false` |
+| `treatment` | string | no | `observe`, `stage`, `present`, or `execute` |
+| `transport` | string | no | `auto`, `tmux`, or `pasteboard`. Defaults to `auto` |
+| `dryRun` | bool | no | Plan and capture without typing |
+| `capture` | bool | no | Capture before/after artifacts. Defaults to `true` |
+| `source` | string | no | Calling surface label |
+
+```js
+await daemonCall('computer.demoTerminal', { dryRun: true })
+
+await daemonCall('computer.demoTerminal', {
+  app: 'iTerm2',
+  text: '# hello from lattices',
+  enter: false
+})
 ```
 
 ---
@@ -1145,7 +1571,7 @@ List all discovered terminal instances with their processes, tabs, and tmux asso
 
 | Field     | Type    | Required | Description                          |
 |-----------|---------|----------|--------------------------------------|
-| `refresh` | boolean | no       | Force-refresh the terminal tab cache |
+| `refresh` | boolean | no       | Explicitly refresh terminal-tab metadata through terminal app scripting |
 
 **Returns**: array of terminal instance objects:
 

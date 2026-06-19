@@ -317,6 +317,39 @@ final class LatticesApi {
             Field(name: "events", type: "[object]", required: true, description: "Structured execution events"),
         ]))
 
+        api.model(ApiModel(name: "RunSession", fields: [
+            Field(name: "id", type: "string", required: true, description: "Stable run identifier"),
+            Field(name: "title", type: "string", required: true, description: "Human-readable run title"),
+            Field(name: "source", type: "string", required: true, description: "Calling surface, such as palette, CLI, daemon, or agent"),
+            Field(name: "state", type: "string", required: true, description: "created, running, completed, failed, or cancelled"),
+            Field(name: "startedAt", type: "string", required: true, description: "ISO-8601 start timestamp"),
+            Field(name: "completedAt", type: "string", required: false, description: "ISO-8601 completion timestamp"),
+            Field(name: "artifactDirectoryPath", type: "string", required: true, description: "Local directory containing run artifacts"),
+            Field(name: "surfaces", type: "[object]", required: true, description: "Windows, apps, or regions involved in the run"),
+            Field(name: "artifacts", type: "[RunArtifact]", required: true, description: "Artifacts produced by the run"),
+            Field(name: "trace", type: "[RunTraceEvent]", required: true, description: "Machine-readable run timeline"),
+        ]))
+
+        api.model(ApiModel(name: "RunArtifact", fields: [
+            Field(name: "id", type: "string", required: true, description: "Stable artifact identifier"),
+            Field(name: "runId", type: "string", required: true, description: "Owning run id"),
+            Field(name: "kind", type: "string", required: true, description: "Artifact kind, such as screenshot or recording"),
+            Field(name: "path", type: "string", required: true, description: "Absolute local artifact path"),
+            Field(name: "relativePath", type: "string", required: true, description: "Path relative to the run artifact directory"),
+            Field(name: "mimeType", type: "string", required: true, description: "Artifact MIME type"),
+            Field(name: "createdAt", type: "string", required: true, description: "ISO-8601 creation timestamp"),
+            Field(name: "metadata", type: "object", required: true, description: "Artifact-specific metadata such as dimensions and target window"),
+        ]))
+
+        api.model(ApiModel(name: "RunTraceEvent", fields: [
+            Field(name: "id", type: "string", required: true, description: "Stable trace event identifier"),
+            Field(name: "runId", type: "string", required: true, description: "Owning run id"),
+            Field(name: "time", type: "string", required: true, description: "ISO-8601 event timestamp"),
+            Field(name: "kind", type: "string", required: true, description: "Event kind, such as run.created or artifact.created"),
+            Field(name: "summary", type: "string", required: true, description: "Human-readable event summary"),
+            Field(name: "data", type: "object", required: true, description: "Structured event payload"),
+        ]))
+
         api.model(ApiModel(name: "MouseShortcutConfig", fields: [
             Field(name: "version", type: "int", required: true, description: "Mouse shortcut config version"),
             Field(name: "tuning", type: "object", required: true, description: "Gesture recognition tuning values"),
@@ -1090,11 +1123,17 @@ final class LatticesApi {
             description: "List all synthesized terminal instances (unified TTY view)",
             access: .read,
             params: [
-                Param(name: "refresh", type: "bool", required: false, description: "Force-refresh terminal tab cache before synthesizing"),
+                Param(name: "refresh", type: "bool", required: false, description: "Explicitly refresh terminal tab metadata through terminal app scripting before synthesizing"),
             ],
             returns: .array(model: "TerminalInstance"),
             handler: { params in
                 let pm = ProcessModel.shared
+                DesktopModel.shared.forcePoll()
+                TmuxModel.shared.poll()
+                pm.poll()
+                if !Thread.isMainThread {
+                    DispatchQueue.main.sync {}
+                }
                 if params?["refresh"]?.boolValue == true {
                     pm.refreshTerminalTabs()
                 }
@@ -1313,6 +1352,440 @@ final class LatticesApi {
             returns: .custom("ActionReceipt for the undo operation"),
             handler: { params in
                 try ActionRuntime.shared.undo(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "runs.create",
+            description: "Create a local run record and artifact directory",
+            access: .mutate,
+            params: [
+                Param(name: "title", type: "string", required: false, description: "Run title"),
+                Param(name: "source", type: "string", required: false, description: "Calling surface label"),
+                Param(name: "wid", type: "uint32", required: false, description: "Optional window surface to attach"),
+            ],
+            returns: .object(model: "RunSession"),
+            handler: { params in
+                let title = params?["title"]?.stringValue ?? "Manual run"
+                let source = params?["source"]?.stringValue ?? "daemon"
+                let surfaces: [RunSurface]
+                if let wid = params?["wid"]?.uint32Value {
+                    guard let window = DesktopModel.shared.windows[wid] else {
+                        throw RouterError.notFound("window \(wid)")
+                    }
+                    surfaces = [.window(window)]
+                } else {
+                    surfaces = []
+                }
+                return try RunStore.shared.createRun(title: title, source: source, surfaces: surfaces).json
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "runs.list",
+            description: "List recent local runs",
+            access: .read,
+            params: [
+                Param(name: "limit", type: "int", required: false, description: "Max runs to return (default 20)"),
+            ],
+            returns: .array(model: "RunSession"),
+            handler: { params in
+                let limit = params?["limit"]?.intValue ?? 20
+                return .array(RunStore.shared.list(limit: limit).map(\.json))
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "runs.get",
+            description: "Inspect one local run, including artifacts and trace events",
+            access: .read,
+            params: [
+                Param(name: "id", type: "string", required: true, description: "Run id"),
+            ],
+            returns: .object(model: "RunSession"),
+            handler: { params in
+                guard let id = params?["id"]?.stringValue, !id.isEmpty else {
+                    throw RouterError.missingParam("id")
+                }
+                guard let run = RunStore.shared.get(id: id) else {
+                    throw RouterError.notFound("run \(id)")
+                }
+                return run.json
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "runs.artifacts",
+            description: "List artifacts for one local run",
+            access: .read,
+            params: [
+                Param(name: "id", type: "string", required: true, description: "Run id"),
+            ],
+            returns: .array(model: "RunArtifact"),
+            handler: { params in
+                guard let id = params?["id"]?.stringValue, !id.isEmpty else {
+                    throw RouterError.missingParam("id")
+                }
+                guard let artifacts = RunStore.shared.artifacts(for: id) else {
+                    throw RouterError.notFound("run \(id)")
+                }
+                return .array(artifacts.map(\.json))
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "capture.screenshotWindow",
+            description: "Capture a window screenshot as a run artifact. Defaults to the frontmost non-Lattices window.",
+            access: .mutate,
+            params: [
+                Param(name: "wid", type: "uint32", required: false, description: "Target window id"),
+                Param(name: "session", type: "string", required: false, description: "Target lattices session"),
+                Param(name: "app", type: "string", required: false, description: "Target app name"),
+                Param(name: "title", type: "string", required: false, description: "Optional title substring for app target, or run title when no app is provided"),
+                Param(name: "runId", type: "string", required: false, description: "Existing run id to append to"),
+                Param(name: "source", type: "string", required: false, description: "Calling surface label"),
+                Param(name: "filename", type: "string", required: false, description: "Optional artifact filename"),
+            ],
+            returns: .custom("Object with ok, run, artifact, and target window"),
+            handler: { params in
+                try CaptureController.shared.screenshotWindow(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "capture.recordWindow",
+            description: "Start recording a target window as a run artifact. Defaults to region capture so overlays and visible cursor cues are included.",
+            access: .mutate,
+            params: [
+                Param(name: "wid", type: "uint32", required: false, description: "Target window id"),
+                Param(name: "session", type: "string", required: false, description: "Target lattices session"),
+                Param(name: "app", type: "string", required: false, description: "Target app name"),
+                Param(name: "title", type: "string", required: false, description: "Optional title substring for app target, or run title when no app is provided"),
+                Param(name: "mode", type: "string", required: false, description: "region (default, captures overlays) or app-window (captures only the app window)"),
+                Param(name: "fps", type: "double", required: false, description: "Frames per second for region recording"),
+                Param(name: "scale", type: "double", required: false, description: "Output scale for region recording"),
+                Param(name: "filename", type: "string", required: false, description: "Optional .mov artifact filename"),
+                Param(name: "runId", type: "string", required: false, description: "Existing run id to append to"),
+                Param(name: "source", type: "string", required: false, description: "Calling surface label"),
+            ],
+            returns: .custom("Object with ok, run, recording artifact, stopFile, finishedFile, and debugLog"),
+            handler: { params in
+                try CaptureController.shared.recordWindow(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "capture.recordRegion",
+            description: "Start recording a screen region as a run artifact. If no explicit region is supplied, resolves a window target and records its frame.",
+            access: .mutate,
+            params: [
+                Param(name: "x", type: "double", required: false, description: "Region x in screen coordinates"),
+                Param(name: "y", type: "double", required: false, description: "Region y in screen coordinates"),
+                Param(name: "width", type: "double", required: false, description: "Region width"),
+                Param(name: "height", type: "double", required: false, description: "Region height"),
+                Param(name: "w", type: "double", required: false, description: "Alias for width"),
+                Param(name: "h", type: "double", required: false, description: "Alias for height"),
+                Param(name: "wid", type: "uint32", required: false, description: "Window id whose frame should be recorded when no explicit region is supplied"),
+                Param(name: "app", type: "string", required: false, description: "App whose window frame should be recorded when no explicit region is supplied"),
+                Param(name: "fps", type: "double", required: false, description: "Frames per second"),
+                Param(name: "scale", type: "double", required: false, description: "Output scale"),
+                Param(name: "filename", type: "string", required: false, description: "Optional .mov artifact filename"),
+                Param(name: "runId", type: "string", required: false, description: "Existing run id to append to"),
+                Param(name: "source", type: "string", required: false, description: "Calling surface label"),
+            ],
+            returns: .custom("Object with ok, run, recording artifact, stopFile, finishedFile, and debugLog"),
+            handler: { params in
+                try CaptureController.shared.recordRegion(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "capture.stopRecording",
+            description: "Stop a recording started by capture.recordWindow or capture.recordRegion.",
+            access: .mutate,
+            params: [
+                Param(name: "runId", type: "string", required: false, description: "Run id with a recording artifact"),
+                Param(name: "id", type: "string", required: false, description: "Alias for runId"),
+                Param(name: "stopFile", type: "string", required: false, description: "Stop signal file path when no run id is available"),
+                Param(name: "finishedFile", type: "string", required: false, description: "Finished marker path"),
+                Param(name: "wait", type: "bool", required: false, description: "Wait for finished marker (default true)"),
+                Param(name: "timeoutMs", type: "int", required: false, description: "Timeout while waiting for finished marker"),
+            ],
+            returns: .custom("Object with ok, finished, marker, and optional completed run"),
+            handler: { params in
+                try CaptureController.shared.stopRecording(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "computer.prepare",
+            description: "Resolve and optionally capture a computer-use target without mutating it.",
+            access: .mutate,
+            params: [
+                Param(name: "wid", type: "uint32", required: false, description: "Specific terminal window id"),
+                Param(name: "tty", type: "string", required: false, description: "Specific terminal TTY"),
+                Param(name: "app", type: "string", required: false, description: "Preferred terminal app, such as iTerm2"),
+                Param(name: "text", type: "string", required: false, description: "Optional text to stage"),
+                Param(name: "treatment", type: "string", required: false, description: "observe, stage, present, or execute"),
+                Param(name: "capture", type: "bool", required: false, description: "Capture target screenshot artifact (default true)"),
+                Param(name: "source", type: "string", required: false, description: "Calling surface label"),
+            ],
+            returns: .custom("Object with ok, run, selected target, candidates, and optional artifacts"),
+            handler: { params in
+                try ComputerUseController.shared.prepare(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "computer.focusWindow",
+            description: "Resolve, optionally capture, focus, and verify a target window.",
+            access: .mutate,
+            params: [
+                Param(name: "wid", type: "uint32", required: false, description: "Target window id"),
+                Param(name: "session", type: "string", required: false, description: "Target lattices session"),
+                Param(name: "app", type: "string", required: false, description: "Target app name"),
+                Param(name: "title", type: "string", required: false, description: "Optional title substring for app target"),
+                Param(name: "treatment", type: "string", required: false, description: "observe, stage, present, or execute"),
+                Param(name: "dryRun", type: "bool", required: false, description: "Plan without focusing"),
+                Param(name: "capture", type: "bool", required: false, description: "Capture before/after artifacts (default true)"),
+                Param(name: "source", type: "string", required: false, description: "Calling surface label"),
+            ],
+            returns: .custom("Object with ok, run, target, focused, and optional artifacts"),
+            handler: { params in
+                try ComputerUseController.shared.focusWindow(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "computer.showCursor",
+            description: "Resolve the cursor location and show a visible cursor appearance.",
+            access: .mutate,
+            params: [
+                Param(name: "x", type: "double", required: false, description: "Screen x coordinate; defaults to current cursor"),
+                Param(name: "y", type: "double", required: false, description: "Screen y coordinate; defaults to current cursor"),
+                Param(name: "treatment", type: "string", required: false, description: "observe, stage, present, or execute"),
+                Param(name: "style", type: "string", required: false, description: "spotlight, pulse, or marker"),
+                Param(name: "appearance", type: "string", required: false, description: "Alias for style"),
+                Param(name: "shape", type: "string", required: false, description: "Marker shape override: arrow, needle, petal, shard, chevron, facet, wedge, prism, notch, or kite; defaults to Settings"),
+                Param(name: "angleDeg", type: "double", required: false, description: "Marker rotation override; defaults to Settings"),
+                Param(name: "size", type: "string", required: false, description: "Marker size override: tiny, small, regular, or large; defaults to Settings"),
+                Param(name: "color", type: "string", required: false, description: "pearl, mist, ash, graphite, white, green, amber, pink, red, or #RRGGBB"),
+                Param(name: "durationMs", type: "int", required: false, description: "Appearance duration in milliseconds"),
+                Param(name: "label", type: "string", required: false, description: "Optional marker label"),
+                Param(name: "caption", type: "string", required: false, description: "Readable overlay caption for recordings; use auto for current selections"),
+                Param(name: "captionTitle", type: "string", required: false, description: "Caption panel title"),
+                Param(name: "captionBody", type: "string", required: false, description: "Caption panel body copy"),
+                Param(name: "captionTags", type: "string", required: false, description: "Comma-separated caption tags, or omitted for current selection tags"),
+                Param(name: "captionLeadMs", type: "double", required: false, description: "Delay before the cursor action begins, so the caption lands first"),
+                Param(name: "captionSound", type: "string", required: false, description: "Caption cue sound: none, tick, click, engage, or chime"),
+                Param(name: "captionPlacement", type: "string", required: false, description: "Caption placement: top-left, top-right, bottom-left, bottom-right, top-center, center, or near-cursor"),
+                Param(name: "captionX", type: "double", required: false, description: "Absolute caption top-left x coordinate"),
+                Param(name: "captionY", type: "double", required: false, description: "Absolute caption top-left y coordinate"),
+                Param(name: "captionXRatio", type: "double", required: false, description: "Window-relative caption top-left x ratio"),
+                Param(name: "captionYRatio", type: "double", required: false, description: "Window-relative caption top-left y ratio"),
+                Param(name: "sound", type: "string", required: false, description: "Cursor motion cue sound: none, tick, click, engage, or chime"),
+                Param(name: "glow", type: "string", required: false, description: "Marker glow treatment: none, soft, halo, or comet"),
+                Param(name: "idle", type: "string", required: false, description: "Marker idle treatment: still, breathe, wiggle, orbit, hover, nod, drift, shimmer, blink, or tremble"),
+                Param(name: "edge", type: "string", required: false, description: "Start/arrival accent: none, pulse, ripple, tick, reticle, blink, spark, underline, echo, scan, or pin"),
+                Param(name: "dryRun", type: "bool", required: false, description: "Plan without showing"),
+                Param(name: "source", type: "string", required: false, description: "Calling surface label"),
+            ],
+            returns: .custom("Object with ok, run, cursor, appearance, and shown"),
+            handler: { params in
+                try ComputerUseController.shared.showCursor(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "computer.magicCursor",
+            description: "Animate a non-interactive overlay cursor to a target point and optionally set text through Accessibility without focusing the app.",
+            access: .mutate,
+            params: [
+                Param(name: "wid", type: "uint32", required: false, description: "Target window id"),
+                Param(name: "app", type: "string", required: false, description: "Target app name"),
+                Param(name: "title", type: "string", required: false, description: "Optional title substring for app target"),
+                Param(name: "text", type: "string", required: false, description: "Text to set through AX when treatment is execute"),
+                Param(name: "append", type: "bool", required: false, description: "Append to the current editable value instead of replacing it"),
+                Param(name: "x", type: "double", required: false, description: "Target x coordinate, or absolute AX target point"),
+                Param(name: "y", type: "double", required: false, description: "Target y coordinate, or absolute AX target point"),
+                Param(name: "xRatio", type: "double", required: false, description: "Window-relative target x ratio, 0 left to 1 right"),
+                Param(name: "yRatio", type: "double", required: false, description: "Window-relative target y ratio, 0 top to 1 bottom"),
+                Param(name: "fromX", type: "double", required: false, description: "Starting x coordinate for the ghost cursor path"),
+                Param(name: "fromY", type: "double", required: false, description: "Starting y coordinate for the ghost cursor path"),
+                Param(name: "fromXRatio", type: "double", required: false, description: "Window-relative starting x ratio"),
+                Param(name: "fromYRatio", type: "double", required: false, description: "Window-relative starting y ratio"),
+                Param(name: "treatment", type: "string", required: false, description: "observe, stage, present, or execute"),
+                Param(name: "style", type: "string", required: false, description: "Defaults to marker for magic cursor paths"),
+                Param(name: "shape", type: "string", required: false, description: "Marker shape override: arrow, needle, petal, shard, chevron, facet, wedge, prism, notch, or kite"),
+                Param(name: "angleDeg", type: "double", required: false, description: "Marker rotation override"),
+                Param(name: "size", type: "string", required: false, description: "Marker size override: tiny, small, regular, or large"),
+                Param(name: "color", type: "string", required: false, description: "pearl, mist, ash, graphite, white, green, amber, pink, red, or #RRGGBB"),
+                Param(name: "trail", type: "string", required: false, description: "Path treatment: thread, ribbon, spark, comet, route, or none"),
+                Param(name: "motion", type: "string", required: false, description: "Velocity treatment: glide, snap, float, rush, crawl, accelerate, teleport, spring, magnet, or slingshot"),
+                Param(name: "trajectory", type: "string", required: false, description: "Path trajectory: straight, soft, arc, swoop, or overshoot"),
+                Param(name: "glow", type: "string", required: false, description: "Marker glow treatment: none, soft, halo, or comet"),
+                Param(name: "idle", type: "string", required: false, description: "Marker idle treatment: still, breathe, wiggle, orbit, hover, nod, drift, shimmer, blink, or tremble"),
+                Param(name: "edge", type: "string", required: false, description: "Start/arrival accent: none, pulse, ripple, tick, reticle, blink, spark, underline, echo, scan, or pin"),
+                Param(name: "durationMs", type: "int", required: false, description: "Total overlay duration in milliseconds"),
+                Param(name: "typewriter", type: "bool", required: false, description: "When setting AX text, reveal characters incrementally without keyboard events"),
+                Param(name: "typeIntervalMs", type: "double", required: false, description: "Milliseconds between AX text updates for typewriter mode"),
+                Param(name: "label", type: "string", required: false, description: "Optional marker label"),
+                Param(name: "caption", type: "string", required: false, description: "Readable overlay caption for recordings; use auto for current selections"),
+                Param(name: "captionTitle", type: "string", required: false, description: "Caption panel title"),
+                Param(name: "captionBody", type: "string", required: false, description: "Caption panel body copy"),
+                Param(name: "captionTags", type: "string", required: false, description: "Comma-separated caption tags, or omitted for current selection tags"),
+                Param(name: "captionLeadMs", type: "double", required: false, description: "Delay before the cursor action begins, so the caption lands first"),
+                Param(name: "captionSound", type: "string", required: false, description: "Caption cue sound: none, tick, click, engage, or chime"),
+                Param(name: "captionPlacement", type: "string", required: false, description: "Caption placement: top-left, top-right, bottom-left, bottom-right, top-center, center, or near-cursor"),
+                Param(name: "captionX", type: "double", required: false, description: "Absolute caption top-left x coordinate"),
+                Param(name: "captionY", type: "double", required: false, description: "Absolute caption top-left y coordinate"),
+                Param(name: "captionXRatio", type: "double", required: false, description: "Window-relative caption top-left x ratio"),
+                Param(name: "captionYRatio", type: "double", required: false, description: "Window-relative caption top-left y ratio"),
+                Param(name: "sound", type: "string", required: false, description: "Cursor motion cue sound: none, tick, click, engage, or chime"),
+                Param(name: "dryRun", type: "bool", required: false, description: "Plan without showing or setting AX text"),
+                Param(name: "source", type: "string", required: false, description: "Calling surface label"),
+            ],
+            returns: .custom("Object with ok, run, target, from/cursor points, appearance, transport, and optional AX insertion details"),
+            handler: { params in
+                try ComputerUseController.shared.magicCursor(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "computer.launchApp",
+            description: "Launch or focus a normal macOS app and capture the resulting run artifact.",
+            access: .mutate,
+            params: [
+                Param(name: "app", type: "string", required: true, description: "App name, such as Scout, Slack, or Notes"),
+                Param(name: "bundleId", type: "string", required: false, description: "Bundle identifier fallback for precise app launch"),
+                Param(name: "path", type: "string", required: false, description: "Explicit .app bundle path"),
+                Param(name: "title", type: "string", required: false, description: "Optional title substring used to select the app window"),
+                Param(name: "treatment", type: "string", required: false, description: "observe, stage, present, or execute"),
+                Param(name: "dryRun", type: "bool", required: false, description: "Plan without launching"),
+                Param(name: "capture", type: "bool", required: false, description: "Capture the launched app window (default true)"),
+                Param(name: "source", type: "string", required: false, description: "Calling surface label"),
+            ],
+            returns: .custom("Object with ok, run, app, target window, and launch/focus flags"),
+            handler: { params in
+                try ComputerUseController.shared.launchApp(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "computer.typeWindowText",
+            description: "Focus a normal app window and type or paste text into it, optionally after a window-relative click.",
+            access: .mutate,
+            params: [
+                Param(name: "wid", type: "uint32", required: false, description: "Target window id"),
+                Param(name: "app", type: "string", required: false, description: "Target app name"),
+                Param(name: "title", type: "string", required: false, description: "Optional title substring for app target"),
+                Param(name: "text", type: "string", required: true, description: "Text to insert"),
+                Param(name: "enter", type: "bool", required: false, description: "Press Enter after typing (default false)"),
+                Param(name: "send", type: "bool", required: false, description: "Alias for enter in chat-style demos"),
+                Param(name: "x", type: "double", required: false, description: "Absolute click x coordinate before typing"),
+                Param(name: "y", type: "double", required: false, description: "Absolute click y coordinate before typing"),
+                Param(name: "xRatio", type: "double", required: false, description: "Window-relative click x ratio, 0 left to 1 right"),
+                Param(name: "yRatio", type: "double", required: false, description: "Window-relative click y ratio, 0 top to 1 bottom"),
+                Param(name: "treatment", type: "string", required: false, description: "observe, stage, present, or execute"),
+                Param(name: "dryRun", type: "bool", required: false, description: "Stage without typing"),
+                Param(name: "capture", type: "bool", required: false, description: "Capture before/after artifacts (default true)"),
+                Param(name: "source", type: "string", required: false, description: "Calling surface label"),
+            ],
+            returns: .custom("Object with ok, run, target window, typed text, and artifacts"),
+            handler: { params in
+                try ComputerUseController.shared.typeWindowText(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "computer.click",
+            description: "Stage or execute a click target. In auto/ax transport Lattices prefers AXPress without focusing or moving the hardware pointer.",
+            access: .mutate,
+            params: [
+                Param(name: "wid", type: "uint32", required: false, description: "Target window id"),
+                Param(name: "app", type: "string", required: false, description: "Target app name"),
+                Param(name: "title", type: "string", required: false, description: "Optional title substring for app target"),
+                Param(name: "x", type: "double", required: false, description: "Absolute click x coordinate"),
+                Param(name: "y", type: "double", required: false, description: "Absolute click y coordinate"),
+                Param(name: "xRatio", type: "double", required: false, description: "Window-relative click x ratio, 0 left to 1 right"),
+                Param(name: "yRatio", type: "double", required: false, description: "Window-relative click y ratio, 0 top to 1 bottom"),
+                Param(name: "button", type: "string", required: false, description: "left or right"),
+                Param(name: "transport", type: "string", required: false, description: "auto, ax, or pointer. auto tries AXPress before pointer fallback"),
+                Param(name: "axLabel", type: "string", required: false, description: "Optional AX title/description text to prefer, such as Send"),
+                Param(name: "noFocus", type: "bool", required: false, description: "Require AX/no-focus execution; do not focus or use pointer fallback"),
+                Param(name: "treatment", type: "string", required: false, description: "stage, present, or execute; execute is required to post the click"),
+                Param(name: "dryRun", type: "bool", required: false, description: "Stage without clicking"),
+                Param(name: "capture", type: "bool", required: false, description: "Capture before/after artifacts when targeting a window (default true)"),
+                Param(name: "source", type: "string", required: false, description: "Calling surface label"),
+            ],
+            returns: .custom("Object with ok, run, cursor point, target window, and clicked flag"),
+            handler: { params in
+                try ComputerUseController.shared.click(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "computer.demoScout",
+            description: "Warm up a Scout memo/demo recording run: launch/focus Scout, capture it, and optionally type a staged message.",
+            access: .mutate,
+            params: [
+                Param(name: "app", type: "string", required: false, description: "Scout app name override (default Scout)"),
+                Param(name: "title", type: "string", required: false, description: "Optional title substring for the Scout window"),
+                Param(name: "text", type: "string", required: false, description: "Message draft to type when treatment is execute"),
+                Param(name: "enter", type: "bool", required: false, description: "Press Enter after typing (default false)"),
+                Param(name: "send", type: "bool", required: false, description: "Alias for enter"),
+                Param(name: "click", type: "bool", required: false, description: "Click the likely composer area before typing"),
+                Param(name: "xRatio", type: "double", required: false, description: "Composer click x ratio; default 0.5"),
+                Param(name: "yRatio", type: "double", required: false, description: "Composer click y ratio; default 0.86 from top"),
+                Param(name: "treatment", type: "string", required: false, description: "observe, stage, present, or execute"),
+                Param(name: "dryRun", type: "bool", required: false, description: "Stage without launching/typing"),
+                Param(name: "capture", type: "bool", required: false, description: "Capture before/after artifacts (default true)"),
+                Param(name: "source", type: "string", required: false, description: "Calling surface label"),
+            ],
+            returns: .custom("Object with ok, run, Scout target, artifacts, and typed/clicked flags"),
+            handler: { params in
+                try ComputerUseController.shared.demoScout(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "computer.typeText",
+            description: "Resolve a terminal target and insert text using the least intrusive available transport.",
+            access: .mutate,
+            params: [
+                Param(name: "wid", type: "uint32", required: false, description: "Specific terminal window id"),
+                Param(name: "tty", type: "string", required: false, description: "Specific terminal TTY"),
+                Param(name: "app", type: "string", required: false, description: "Preferred terminal app, such as iTerm2"),
+                Param(name: "text", type: "string", required: true, description: "Text to insert"),
+                Param(name: "enter", type: "bool", required: false, description: "Press Enter after typing (default false)"),
+                Param(name: "treatment", type: "string", required: false, description: "observe, stage, present, or execute"),
+                Param(name: "transport", type: "string", required: false, description: "auto, tmux, or pasteboard"),
+                Param(name: "dryRun", type: "bool", required: false, description: "Stage without typing"),
+                Param(name: "capture", type: "bool", required: false, description: "Capture before/after artifacts (default true)"),
+                Param(name: "source", type: "string", required: false, description: "Calling surface label"),
+            ],
+            returns: .custom("Object with ok, run, selected terminal, transport, and artifacts"),
+            handler: { params in
+                try ComputerUseController.shared.typeText(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "computer.demoTerminal",
+            description: "Select a terminal, capture before/after screenshots, focus it, and insert bounded text without pressing Enter by default.",
+            access: .mutate,
+            params: [
+                Param(name: "wid", type: "uint32", required: false, description: "Specific terminal window id"),
+                Param(name: "tty", type: "string", required: false, description: "Specific terminal TTY"),
+                Param(name: "app", type: "string", required: false, description: "Preferred terminal app, such as iTerm2"),
+                Param(name: "text", type: "string", required: false, description: "Text to insert"),
+                Param(name: "enter", type: "bool", required: false, description: "Press Enter after typing (default false)"),
+                Param(name: "dryRun", type: "bool", required: false, description: "Plan and capture without typing"),
+                Param(name: "source", type: "string", required: false, description: "Calling surface label"),
+            ],
+            returns: .custom("Object with ok, run, selected terminal, candidates, beforeArtifact, and afterArtifact"),
+            handler: { params in
+                try ComputerUseController.shared.demoTerminal(params: params)
             }
         ))
 
@@ -2320,6 +2793,34 @@ final class LatticesApi {
 
         // ── Meta endpoint ───────────────────────────────────────
 
+        // ── Settings ────────────────────────────────────────────
+
+        api.register(Endpoint(
+            method: "settings.cursorAppearance.get",
+            description: "Return the default cursor marker appearance settings",
+            access: .read,
+            params: [],
+            returns: .custom("Object with shape, angleDeg, size, and supported settings options"),
+            handler: { _ in
+                Self.cursorAppearanceSettingsResponse()
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "settings.cursorAppearance.set",
+            description: "Update default cursor marker appearance settings",
+            access: .mutate,
+            params: [
+                Param(name: "shape", type: "string", required: false, description: "Default marker shape: arrow, needle, petal, shard, chevron, facet, wedge, prism, notch, or kite"),
+                Param(name: "angleDeg", type: "int", required: false, description: "Default marker rotation: -8 or -16"),
+                Param(name: "size", type: "string", required: false, description: "Default marker size: tiny, small, regular, or large"),
+            ],
+            returns: .custom("Updated cursor marker settings"),
+            handler: { params in
+                try Self.updateCursorAppearanceSettings(params)
+            }
+        ))
+
         // ── Mouse Finder ────────────────────────────────────────
 
         api.register(Endpoint(
@@ -2949,6 +3450,103 @@ private extension LatticesApi {
             object[key] = value
         }
         return .object(object)
+    }
+
+    static func cursorAppearanceSettingsResponse() -> JSON {
+        let prefs = Preferences.shared
+        return .object([
+            "ok": .bool(true),
+            "shape": .string(prefs.cursorMarkerShape.rawValue),
+            "angleDeg": .int(prefs.cursorMarkerAngleDeg),
+            "size": .string(prefs.cursorMarkerSize.rawValue),
+            "scale": .double(Double(prefs.cursorMarkerSize.scale)),
+            "shapeOptions": .array(CursorMarkerShape.settingsOptions.map { shape in
+                .object([
+                    "id": .string(shape.rawValue),
+                    "label": .string(shape.label),
+                ])
+            }),
+            "angleOptions": .array([-8, -16].map { .int($0) }),
+            "sizeOptions": .array(CursorMarkerSize.settingsOptions.map { size in
+                .object([
+                    "id": .string(size.rawValue),
+                    "label": .string(size.label),
+                    "scale": .double(Double(size.scale)),
+                ])
+            }),
+        ])
+    }
+
+    static func updateCursorAppearanceSettings(_ params: JSON?) throws -> JSON {
+        let rawShape = params?["shape"]?.stringValue
+        let rawSize = params?["size"]?.stringValue
+            ?? params?["markerSize"]?.stringValue
+            ?? params?["cursorSize"]?.stringValue
+        let rawAngle: Int?
+        if let value = params?["angleDeg"]?.intValue {
+            rawAngle = value
+        } else if let value = params?["rotationDeg"]?.intValue {
+            rawAngle = value
+        } else if let value = params?["angle"]?.intValue {
+            rawAngle = value
+        } else if let value = params?["rotation"]?.intValue {
+            rawAngle = value
+        } else if let value = params?["angleDeg"]?.numericDouble {
+            rawAngle = Int(value.rounded())
+        } else if let value = params?["rotationDeg"]?.numericDouble {
+            rawAngle = Int(value.rounded())
+        } else {
+            rawAngle = nil
+        }
+
+        let shape: CursorMarkerShape?
+        if let rawShape, !rawShape.isEmpty {
+            guard let parsed = CursorMarkerShape(rawValue: rawShape),
+                  CursorMarkerShape.settingsOptions.contains(parsed) else {
+                let options = CursorMarkerShape.settingsOptions.map(\.rawValue).joined(separator: ", ")
+                throw RouterError.custom("Unsupported cursor marker shape: \(rawShape). Use \(options).")
+            }
+            shape = parsed
+        } else {
+            shape = nil
+        }
+
+        let size: CursorMarkerSize?
+        if let rawSize, !rawSize.isEmpty {
+            guard let parsed = CursorMarkerSize(rawValue: rawSize),
+                  CursorMarkerSize.settingsOptions.contains(parsed) else {
+                let options = CursorMarkerSize.settingsOptions.map(\.rawValue).joined(separator: ", ")
+                throw RouterError.custom("Unsupported cursor marker size: \(rawSize). Use \(options).")
+            }
+            size = parsed
+        } else if let rawScale = params?["scale"]?.numericDouble
+                    ?? params?["markerScale"]?.numericDouble
+                    ?? params?["cursorScale"]?.numericDouble {
+            size = CursorMarkerSize.closest(to: rawScale)
+        } else {
+            size = nil
+        }
+
+        let apply = {
+            let prefs = Preferences.shared
+            if let shape {
+                prefs.cursorMarkerShape = shape
+            }
+            if let rawAngle {
+                prefs.cursorMarkerAngleDeg = Preferences.normalizedCursorMarkerAngle(rawAngle)
+            }
+            if let size {
+                prefs.cursorMarkerSize = size
+            }
+        }
+
+        if Thread.isMainThread {
+            apply()
+        } else {
+            DispatchQueue.main.sync(execute: apply)
+        }
+
+        return cursorAppearanceSettingsResponse()
     }
 
     static func parsePlacement(from json: JSON?) -> PlacementSpec? {

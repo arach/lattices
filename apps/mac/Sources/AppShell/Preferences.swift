@@ -83,6 +83,18 @@ class Preferences: ObservableObject {
         didSet { UserDefaults.standard.set(mouseGestureHUDStyle.rawValue, forKey: "mouseGestures.hud.style") }
     }
 
+    @Published var cursorMarkerShape: CursorMarkerShape {
+        didSet { UserDefaults.standard.set(cursorMarkerShape.rawValue, forKey: "cursorMarker.shape") }
+    }
+
+    @Published var cursorMarkerAngleDeg: Int {
+        didSet { UserDefaults.standard.set(Self.normalizedCursorMarkerAngle(cursorMarkerAngleDeg), forKey: "cursorMarker.angleDeg") }
+    }
+
+    @Published var cursorMarkerSize: CursorMarkerSize {
+        didSet { UserDefaults.standard.set(cursorMarkerSize.rawValue, forKey: "cursorMarker.size") }
+    }
+
     @Published var keyboardRemapsEnabled: Bool {
         didSet { UserDefaults.standard.set(keyboardRemapsEnabled, forKey: "keyboardRemaps.enabled") }
     }
@@ -210,6 +222,28 @@ class Preferences: ObservableObject {
             self.mouseGestureHUDStyle = .technical
         }
 
+        if let savedShape = UserDefaults.standard.string(forKey: "cursorMarker.shape"),
+           let shape = CursorMarkerShape(rawValue: savedShape),
+           CursorMarkerShape.settingsOptions.contains(shape) {
+            self.cursorMarkerShape = shape
+        } else {
+            self.cursorMarkerShape = .default
+        }
+
+        if UserDefaults.standard.object(forKey: "cursorMarker.angleDeg") != nil {
+            self.cursorMarkerAngleDeg = Self.normalizedCursorMarkerAngle(UserDefaults.standard.integer(forKey: "cursorMarker.angleDeg"))
+        } else {
+            self.cursorMarkerAngleDeg = -8
+        }
+
+        if let savedSize = UserDefaults.standard.string(forKey: "cursorMarker.size"),
+           let size = CursorMarkerSize(rawValue: savedSize),
+           CursorMarkerSize.settingsOptions.contains(size) {
+            self.cursorMarkerSize = size
+        } else {
+            self.cursorMarkerSize = .default
+        }
+
         if UserDefaults.standard.object(forKey: "keyboardRemaps.enabled") != nil {
             self.keyboardRemapsEnabled = UserDefaults.standard.bool(forKey: "keyboardRemaps.enabled")
         } else {
@@ -281,5 +315,9 @@ class Preferences: ObservableObject {
 
         guard let data = try? JSONEncoder().encode(normalized) else { return }
         UserDefaults.standard.set(data, forKey: CompanionDefaultsKey.cockpitLayout)
+    }
+
+    static func normalizedCursorMarkerAngle(_ value: Int) -> Int {
+        value <= -12 ? -16 : -8
     }
 }

@@ -131,9 +131,26 @@ final class DesktopModel: ObservableObject {
             $0.app.localizedCaseInsensitiveContains(app)
         }
         if let title {
-            return matches.first { $0.title.localizedCaseInsensitiveContains(title) }
+            return bestAppWindow(matches.filter { $0.title.localizedCaseInsensitiveContains(title) })
         }
-        return matches.first
+        return bestAppWindow(matches)
+    }
+
+    private func bestAppWindow(_ matches: [WindowEntry]) -> WindowEntry? {
+        matches.sorted { lhs, rhs in
+            if lhs.isOnScreen != rhs.isOnScreen {
+                return lhs.isOnScreen && !rhs.isOnScreen
+            }
+            if lhs.zIndex != rhs.zIndex {
+                return lhs.zIndex < rhs.zIndex
+            }
+            let lhsArea = lhs.frame.w * lhs.frame.h
+            let rhsArea = rhs.frame.w * rhs.frame.h
+            if lhsArea != rhsArea {
+                return lhsArea > rhsArea
+            }
+            return lhs.wid > rhs.wid
+        }.first
     }
 
     // MARK: - Polling

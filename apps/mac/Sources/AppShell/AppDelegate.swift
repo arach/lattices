@@ -17,6 +17,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if LatticesRecordingProbeAppRunner.startFromCommandLineIfNeeded() {
+            return
+        }
+
         AppFocusRingSuppressor.install()
         NSApp.setActivationPolicy(.accessory)
         NSApp.appearance = NSAppearance(named: .darkAqua)

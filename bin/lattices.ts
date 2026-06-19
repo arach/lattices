@@ -117,6 +117,16 @@ function parseFlagValue(args: string[], name: string): string | undefined {
   return undefined;
 }
 
+function parseOptionalNumber(args: string[], ...names: string[]): number | undefined {
+  for (const name of names) {
+    const raw = parseFlagValue(args, name);
+    if (raw === undefined || raw === "") continue;
+    const value = Number(raw);
+    if (Number.isFinite(value)) return value;
+  }
+  return undefined;
+}
+
 function hasFlag(args: string[], name: string): boolean {
   return args.includes(`--${name}`);
 }
@@ -127,7 +137,31 @@ function nonFlagArgs(args: string[]): string[] {
     "hud-url", "hudUrl", "hud-html", "hudHTML", "hudHtml", "hud-title", "hudTitle",
     "hud-width", "hudWidth", "hud-height", "hudHeight", "width", "height",
     "manifest", "root", "max-depth", "maxDepth", "read-access", "readAccess",
-    "pause",
+    "pause", "limit", "session", "app", "name", "bundle-id", "bundleId", "bundleIdentifier",
+    "path", "app-path", "appPath", "title", "filename", "run-id", "runId",
+    "text", "tty", "wid", "treatment", "mode", "phase", "transport", "capture",
+    "appearance", "cursor-style", "cursorStyle", "shape", "marker-shape", "markerShape",
+    "cursor-shape", "cursorShape", "angle-deg", "angleDeg", "rotation-deg", "rotationDeg",
+    "rotation", "angle", "color", "duration-ms", "durationMs",
+    "type-interval-ms", "typeIntervalMs", "typing-interval-ms", "typingIntervalMs", "label",
+    "caption", "treatment-label", "treatmentLabel", "variant",
+    "caption-title", "captionTitle", "caption-body", "captionBody",
+    "caption-detail", "captionDetail", "caption-tags", "captionTags",
+    "caption-mode", "captionMode", "caption-eyebrow", "captionEyebrow",
+    "caption-lead-ms", "captionLeadMs", "caption-sound", "captionSound",
+    "caption-placement", "captionPlacement", "caption-margin", "captionMargin",
+    "caption-x", "captionX", "caption-y", "captionY",
+    "caption-x-ratio", "captionXRatio", "caption-y-ratio", "captionYRatio",
+    "caption-left-ratio", "captionLeftRatio", "caption-top-ratio", "captionTopRatio",
+    "sound", "sfx",
+    "trail", "effect", "path-style", "pathStyle", "motion", "easing", "velocity",
+    "trajectory", "curve", "arc", "glow", "bloom", "idle", "settle", "presence",
+    "edge", "edge-effect", "edgeEffect", "arrival",
+    "fps", "w", "h", "stop-file", "stopFile", "finished-file", "finishedFile",
+    "timeout-ms", "timeoutMs", "duration",
+    "x", "y", "x-ratio", "xRatio", "y-ratio", "yRatio",
+    "relative-x", "relativeX", "relative-y", "relativeY",
+    "window-x", "windowX", "window-y", "windowY", "button",
   ]);
   const out: string[] = [];
   for (let i = 0; i < args.length; i++) {
@@ -1264,6 +1298,626 @@ async function sessionsCommand(jsonFlag: boolean): Promise<void> {
     }
   } catch {
     console.log("Daemon not running. Start with: lattices app");
+  }
+}
+
+async function terminalsCommand(rawArgs: string[] = []): Promise<void> {
+  const { daemonCall } = await getDaemonClient();
+  const jsonFlag = hasFlag(rawArgs, "json");
+  const refresh = hasFlag(rawArgs, "refresh");
+  const terminals = await daemonCall("terminals.list", { refresh }, refresh ? 15000 : undefined) as any[];
+
+  if (jsonFlag) {
+    console.log(JSON.stringify(terminals, null, 2));
+    return;
+  }
+  if (!terminals.length) {
+    console.log("No terminal instances found.");
+    return;
+  }
+
+  console.log(`Terminals (${terminals.length}):\n`);
+  for (const terminal of terminals) {
+    const app = terminal.app || "terminal";
+    const wid = terminal.windowId ? ` wid=${terminal.windowId}` : "";
+    const cwd = terminal.cwd ? ` cwd=${terminal.cwd}` : "";
+    const session = terminal.tmuxSession ? ` session=${terminal.tmuxSession}` : "";
+    const claude = terminal.hasClaude ? " claude" : "";
+    console.log(`  ${app} ${terminal.tty}${wid}${session}${claude}`);
+    if (terminal.displayName) console.log(`    ${terminal.displayName}`);
+    if (cwd) console.log(`   ${cwd.trim()}`);
+  }
+}
+
+function runLine(run: any): string {
+  const count = Array.isArray(run.artifacts) ? run.artifacts.length : 0;
+  const completed = run.completedAt ? ` completed=${run.completedAt}` : "";
+  return `  ${run.id}  ${run.state || "?"}  artifacts=${count}  ${run.title || "Untitled run"}${completed}`;
+}
+
+async function runsCommand(rawArgs: string[] = []): Promise<void> {
+  const { daemonCall } = await getDaemonClient();
+  const jsonFlag = hasFlag(rawArgs, "json");
+  const positional = nonFlagArgs(rawArgs);
+  const sub = positional[0];
+
+  try {
+    if (sub && sub !== "list") {
+      const run = await daemonCall("runs.get", { id: sub }) as any;
+      if (jsonFlag) {
+        console.log(JSON.stringify(run, null, 2));
+        return;
+      }
+      console.log(runLine(run));
+      console.log(`  artifacts: ${run.artifactDirectoryPath}`);
+      for (const artifact of run.artifacts || []) {
+        console.log(`    ${artifact.kind}  ${artifact.path}`);
+      }
+      return;
+    }
+
+    const limit = Number(parseFlagValue(rawArgs, "limit") || 20);
+    const runs = await daemonCall("runs.list", { limit }) as any[];
+    if (jsonFlag) {
+      console.log(JSON.stringify(runs, null, 2));
+      return;
+    }
+    if (!runs.length) {
+      console.log("No runs yet.");
+      return;
+    }
+    console.log(`Runs (${runs.length}):\n`);
+    for (const run of runs) console.log(runLine(run));
+  } catch (error) {
+    console.log(`Error: ${(error as Error).message}`);
+  }
+}
+
+async function captureCommand(subcommand?: string, ...rawArgs: string[]): Promise<void> {
+  const sub = subcommand || "window";
+  const dashIndex = rawArgs.indexOf("--");
+  const commandArgs = dashIndex >= 0 ? rawArgs.slice(0, dashIndex) : rawArgs;
+  const childArgs = dashIndex >= 0 ? rawArgs.slice(dashIndex + 1) : [];
+  const jsonFlag = hasFlag(commandArgs, "json");
+  const positional = nonFlagArgs(commandArgs);
+
+  if (["stop", "stop-recording", "stopRecording"].includes(sub)) {
+    const params: Record<string, unknown> = {};
+    const runId = positional[0] || parseFlagValue(commandArgs, "run-id") || parseFlagValue(commandArgs, "runId") || parseFlagValue(commandArgs, "id");
+    const stopFile = parseFlagValue(commandArgs, "stop-file") || parseFlagValue(commandArgs, "stopFile");
+    const finishedFile = parseFlagValue(commandArgs, "finished-file") || parseFlagValue(commandArgs, "finishedFile");
+    const timeoutMs = Number(parseFlagValue(commandArgs, "timeout-ms") || parseFlagValue(commandArgs, "timeoutMs") || 30000);
+    if (runId) params.runId = runId;
+    if (stopFile) params.stopFile = stopFile;
+    if (finishedFile) params.finishedFile = finishedFile;
+    if (Number.isFinite(timeoutMs)) params.timeoutMs = timeoutMs;
+    params.wait = !hasFlag(commandArgs, "no-wait");
+
+    try {
+      const { daemonCall } = await getDaemonClient();
+      const result = await daemonCall("capture.stopRecording", params, timeoutMs + 5000) as any;
+      if (jsonFlag) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      console.log(result.finished ? "Recording finished." : "Recording stop requested.");
+      if (result.run?.id) console.log(`  run: ${result.run.id}`);
+      if (result.marker) console.log(`  marker: ${result.marker}`);
+    } catch (error) {
+      console.log(`Error: ${(error as Error).message}`);
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  const isRecordCommand = [
+    "record-command",
+    "recordCommand",
+    "record-run",
+    "recordRun",
+    "record-exec",
+    "recordExec",
+  ].includes(sub);
+
+  if (isRecordCommand) {
+    if (!childArgs.length) {
+      console.log(`lattices capture record-command — record while running a command
+
+Usage:
+  lattices capture record-command --app Scout --filename demo.mov -- <command> [...args]
+`);
+      return;
+    }
+
+    const params: Record<string, unknown> = { source: "cli" };
+    const explicitWid = positional[0] ? Number(positional[0]) : NaN;
+    if (Number.isFinite(explicitWid)) params.wid = explicitWid;
+
+    const session = parseFlagValue(commandArgs, "session");
+    const app = parseFlagValue(commandArgs, "app");
+    const title = parseFlagValue(commandArgs, "title");
+    const filename = parseFlagValue(commandArgs, "filename");
+    const runId = parseFlagValue(commandArgs, "run-id") || parseFlagValue(commandArgs, "runId");
+    const mode = parseFlagValue(commandArgs, "mode");
+    const fps = parseOptionalNumber(commandArgs, "fps");
+    const scale = parseOptionalNumber(commandArgs, "scale");
+    const timeoutMs = Number(parseFlagValue(commandArgs, "timeout-ms") || parseFlagValue(commandArgs, "timeoutMs") || 30000);
+    if (session) params.session = session;
+    if (app) params.app = app;
+    if (title) params.title = title;
+    if (filename) params.filename = filename;
+    if (runId) params.runId = runId;
+    if (mode) params.mode = mode;
+    if (fps !== undefined) params.fps = fps;
+    if (scale !== undefined) params.scale = scale;
+
+    for (const [flag, key] of [["x", "x"], ["y", "y"], ["width", "width"], ["height", "height"], ["w", "w"], ["h", "h"]] as const) {
+      const value = parseOptionalNumber(commandArgs, flag);
+      if (value !== undefined) params[key] = value;
+    }
+
+    const recordsRegion = hasFlag(commandArgs, "region") ||
+      (params.x !== undefined && params.y !== undefined &&
+        (params.width !== undefined || params.w !== undefined) &&
+        (params.height !== undefined || params.h !== undefined));
+    const method = recordsRegion ? "capture.recordRegion" : "capture.recordWindow";
+
+    try {
+      const { daemonCall } = await getDaemonClient();
+      const start = await daemonCall(method, params, 20000) as any;
+      let childExitCode = 0;
+      let childError: string | undefined;
+
+      try {
+        const proc = Bun.spawn(childArgs, {
+          cwd: process.cwd(),
+          env: process.env,
+          stdin: "inherit",
+          stdout: "inherit",
+          stderr: "inherit",
+        });
+        childExitCode = await proc.exited;
+      } catch (error) {
+        childExitCode = 127;
+        childError = (error as Error).message;
+      }
+
+      const stop = await daemonCall(
+        "capture.stopRecording",
+        { runId: start.run?.id, wait: true, timeoutMs },
+        timeoutMs + 5000
+      ) as any;
+
+      if (jsonFlag) {
+        console.log(JSON.stringify({
+          ok: childExitCode === 0 && stop.ok !== false,
+          child: {
+            command: childArgs,
+            exitCode: childExitCode,
+            error: childError,
+          },
+          recording: start,
+          stopResult: stop,
+        }, null, 2));
+      } else {
+        const artifact = start.artifact || {};
+        const run = stop.run || start.run || {};
+        console.log(`Recording finished.`);
+        console.log(`  run: ${run.id || start.run?.id || "?"}`);
+        console.log(`  artifact: ${artifact.path || "?"}`);
+        console.log(`  child exit: ${childExitCode}`);
+        if (childError) console.log(`  child error: ${childError}`);
+      }
+
+      if (childExitCode !== 0 && !hasFlag(commandArgs, "ignore-child-failure")) {
+        process.exitCode = childExitCode;
+      }
+    } catch (error) {
+      console.log(`Error: ${(error as Error).message}`);
+    }
+    return;
+  }
+
+  const isRecord = ["record", "record-window", "recording", "video"].includes(sub);
+  const isRecordRegion = ["record-region", "recordRegion", "region-recording"].includes(sub) ||
+    (sub === "record" && ["region", "rect"].includes(positional[0] || ""));
+
+  if (isRecord || isRecordRegion) {
+    const params: Record<string, unknown> = { source: "cli" };
+    const targetKind = sub === "record" ? positional[0] : undefined;
+    const positionalOffset = targetKind === "window" || targetKind === "region" || targetKind === "rect" ? 1 : 0;
+    const explicitWid = positional[positionalOffset] ? Number(positional[positionalOffset]) : NaN;
+    if (Number.isFinite(explicitWid)) params.wid = explicitWid;
+
+    const session = parseFlagValue(commandArgs, "session");
+    const app = parseFlagValue(commandArgs, "app");
+    const title = parseFlagValue(commandArgs, "title");
+    const filename = parseFlagValue(commandArgs, "filename");
+    const runId = parseFlagValue(commandArgs, "run-id") || parseFlagValue(commandArgs, "runId");
+    const mode = parseFlagValue(commandArgs, "mode");
+    const fps = parseOptionalNumber(commandArgs, "fps");
+    const scale = parseOptionalNumber(commandArgs, "scale");
+    const durationMs = parseOptionalNumber(commandArgs, "duration-ms", "durationMs", "duration");
+    if (session) params.session = session;
+    if (app) params.app = app;
+    if (title) params.title = title;
+    if (filename) params.filename = filename;
+    if (runId) params.runId = runId;
+    if (mode) params.mode = mode;
+    if (fps !== undefined) params.fps = fps;
+    if (scale !== undefined) params.scale = scale;
+
+    for (const [flag, key] of [["x", "x"], ["y", "y"], ["width", "width"], ["height", "height"], ["w", "w"], ["h", "h"]] as const) {
+      const value = parseOptionalNumber(commandArgs, flag);
+      if (value !== undefined) params[key] = value;
+    }
+
+    try {
+      const { daemonCall } = await getDaemonClient();
+      const method = isRecordRegion ? "capture.recordRegion" : "capture.recordWindow";
+      const result = await daemonCall(method, params, 20000) as any;
+
+      if (durationMs !== undefined && durationMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, durationMs));
+        const stop = await daemonCall(
+          "capture.stopRecording",
+          { runId: result.run?.id, wait: true, timeoutMs: 30000 },
+          35000
+        ) as any;
+        result.stopResult = stop;
+      }
+
+      if (jsonFlag) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      const artifact = result.artifact || {};
+      const run = result.stopResult?.run || result.run || {};
+      console.log(`Recording ${result.stopResult ? "finished" : "started"}.`);
+      console.log(`  run: ${run.id || result.run?.id || "?"}`);
+      console.log(`  artifact: ${artifact.path || "?"}`);
+      if (!result.stopResult) {
+        console.log(`  stop: lattices capture stop ${result.run?.id || ""}`);
+      }
+    } catch (error) {
+      console.log(`Error: ${(error as Error).message}`);
+    }
+    return;
+  }
+
+  if (!["window", "screenshot", "shot"].includes(sub)) {
+    console.log(`lattices capture — capture run artifacts
+
+Usage:
+  lattices capture window [wid] [--json]
+  lattices capture screenshot [wid] [--session name] [--app name]
+  lattices capture record window [wid] [--app name] [--duration-ms 5000] [--json]
+  lattices capture record region --x N --y N --width N --height N [--duration-ms 5000]
+  lattices capture record-command --app Scout --filename demo.mov -- <command> [...args]
+  lattices capture stop <run-id>
+`);
+    return;
+  }
+
+  const params: Record<string, unknown> = { source: "cli" };
+  const explicitWid = positional[0] ? Number(positional[0]) : NaN;
+  if (Number.isFinite(explicitWid)) params.wid = explicitWid;
+  const session = parseFlagValue(commandArgs, "session");
+  const app = parseFlagValue(commandArgs, "app");
+  const title = parseFlagValue(commandArgs, "title");
+  const filename = parseFlagValue(commandArgs, "filename");
+  const runId = parseFlagValue(commandArgs, "run-id") || parseFlagValue(commandArgs, "runId");
+  if (session) params.session = session;
+  if (app) params.app = app;
+  if (title) params.title = title;
+  if (filename) params.filename = filename;
+  if (runId) params.runId = runId;
+
+  try {
+    const { daemonCall } = await getDaemonClient();
+    const result = await daemonCall("capture.screenshotWindow", params, 20000) as any;
+    if (jsonFlag) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+    const artifact = result.artifact || {};
+    const run = result.run || {};
+    const target = result.target || {};
+    console.log(`Captured ${target.app || "window"} ${target.wid ? `wid:${target.wid}` : ""}`);
+    console.log(`  run: ${run.id || "?"}`);
+    console.log(`  artifact: ${artifact.path || "?"}`);
+  } catch (error) {
+    console.log(`Error: ${(error as Error).message}`);
+    process.exitCode = 1;
+  }
+}
+
+async function computerCommand(subcommand?: string, ...rawArgs: string[]): Promise<void> {
+  const sub = subcommand || "demo-terminal";
+  const jsonFlag = hasFlag(rawArgs, "json");
+  const aliases: Record<string, string> = {
+    "demo-terminal": "computer.demoTerminal",
+    "terminal-demo": "computer.demoTerminal",
+    "term-demo": "computer.demoTerminal",
+    "demo-scout": "computer.demoScout",
+    "scout-demo": "computer.demoScout",
+    "scout": "computer.demoScout",
+    "prepare": "computer.prepare",
+    "observe": "computer.prepare",
+    "stage": "computer.prepare",
+    "launch": "computer.launchApp",
+    "launch-app": "computer.launchApp",
+    "app": "computer.launchApp",
+    "focus": "computer.focusWindow",
+    "focus-window": "computer.focusWindow",
+    "click": "computer.click",
+    "mouse-click": "computer.click",
+    "cursor": "computer.showCursor",
+    "show-cursor": "computer.showCursor",
+    "mouse-cursor": "computer.showCursor",
+    "magic-cursor": "computer.magicCursor",
+    "ghost-cursor": "computer.magicCursor",
+    "move-cursor": "computer.magicCursor",
+    "magic-scout": "computer.magicCursor",
+    "scout-magic": "computer.magicCursor",
+    "type": "computer.typeText",
+    "type-text": "computer.typeText",
+    "typetext": "computer.typeText",
+    "type-window": "computer.typeWindowText",
+    "type-app": "computer.typeWindowText",
+    "app-type": "computer.typeWindowText",
+  };
+  const method = aliases[sub];
+
+  if (!method) {
+    console.log(`lattices computer — run bounded computer-use actions
+
+Usage:
+  lattices computer prepare [--json] [--text "hello"]
+  lattices computer focus-window [--json] [--wid id] [--app name]
+  lattices computer launch-app Scout [--json]
+  lattices computer type-window --app Scout --text "hello" [--x-ratio .5 --y-ratio .86] [--execute]
+  lattices computer click --app Scout --x-ratio .5 --y-ratio .86 --treatment execute
+  lattices computer click --app Scout --x-ratio .74 --y-ratio .95 --transport ax --ax-label Send --execute
+  lattices cua click --app Scout --x-ratio .74 --y-ratio .95 --transport ax --ax-label Send --execute
+  lattices computer magic-scout "draft text" --execute
+  lattices computer scout [message] [--treatment present|execute] [--send]
+  lattices computer cursor [--json] [--style marker] [--shape arrow] [--size tiny] [--trail thread]
+  lattices computer type-text --text "hello" [--json] [--enter]
+  lattices computer demo-terminal [--json] [--dry-run]
+  lattices computer demo-terminal --text "hello" [--wid id] [--tty tty] [--iterm-session-id id] [--app iTerm2]
+
+Common flags:
+  --treatment observe|stage|present|execute
+  --style spotlight|pulse|marker
+  --shape arrow|needle|petal|shard|chevron|facet|wedge|prism|notch|kite
+  --angle-deg -16..16
+  --size tiny|small|regular|large
+  --trail thread|ribbon|spark|comet|route|none
+  --motion glide|snap|float|rush|crawl|accelerate|teleport|spring|magnet|slingshot
+  --trajectory straight|soft|arc|swoop|overshoot
+  --glow none|soft|halo|comet
+  --idle still|breathe|wiggle|orbit|hover|nod|drift|shimmer|blink|tremble
+  --edge none|pulse|ripple|tick|reticle|blink|spark|underline|echo|scan|pin
+  --caption auto
+  --caption-title "Spring reticle" --caption-body "AX text follows the cursor"
+  --caption-tags "shape arrow,motion spring,edge reticle"
+  --caption-placement top-left|top-right|bottom-left|bottom-right|top-center|center|near-cursor
+  --caption-x-ratio 0.04 --caption-y-ratio 0.08
+  --caption-lead-ms 650 --caption-sound engage
+  --typewriter --type-interval-ms 18
+  --transport auto|tmux|iterm|pasteboard
+  --transport ax|pointer for app clicks
+  --ax-label Send --no-focus
+  --x-ratio 0..1 --y-ratio 0..1
+  --from-x-ratio 0..1 --from-y-ratio 0..1
+  --send
+  --no-capture
+`);
+    return;
+  }
+
+  const params: Record<string, unknown> = { source: "cli" };
+  const magicScout = sub === "magic-scout" || sub === "scout-magic";
+  const positional = nonFlagArgs(rawArgs);
+  let text = parseFlagValue(rawArgs, "text");
+  const tty = parseFlagValue(rawArgs, "tty");
+  const app = parseFlagValue(rawArgs, "app");
+  const name = parseFlagValue(rawArgs, "name");
+  const bundleId = parseFlagValue(rawArgs, "bundleId") || parseFlagValue(rawArgs, "bundle-id") || parseFlagValue(rawArgs, "bundleIdentifier");
+  const path = parseFlagValue(rawArgs, "path") || parseFlagValue(rawArgs, "appPath") || parseFlagValue(rawArgs, "app-path");
+  const wid = parseFlagValue(rawArgs, "wid");
+  const terminalSessionId = parseFlagValue(rawArgs, "terminalSessionId")
+    || parseFlagValue(rawArgs, "terminal-session-id")
+    || parseFlagValue(rawArgs, "itermSessionId")
+    || parseFlagValue(rawArgs, "iterm-session-id");
+  const session = parseFlagValue(rawArgs, "session");
+  const title = parseFlagValue(rawArgs, "title");
+  const treatment = parseFlagValue(rawArgs, "treatment") || parseFlagValue(rawArgs, "mode") || parseFlagValue(rawArgs, "phase");
+  const transport = parseFlagValue(rawArgs, "transport");
+  const capture = parseFlagValue(rawArgs, "capture");
+  const x = parseFlagValue(rawArgs, "x");
+  const y = parseFlagValue(rawArgs, "y");
+  const fromX = parseFlagValue(rawArgs, "fromX") || parseFlagValue(rawArgs, "from-x") || parseFlagValue(rawArgs, "startX") || parseFlagValue(rawArgs, "start-x");
+  const fromY = parseFlagValue(rawArgs, "fromY") || parseFlagValue(rawArgs, "from-y") || parseFlagValue(rawArgs, "startY") || parseFlagValue(rawArgs, "start-y");
+  const xRatio = parseFlagValue(rawArgs, "xRatio") || parseFlagValue(rawArgs, "x-ratio") || parseFlagValue(rawArgs, "relativeX") || parseFlagValue(rawArgs, "relative-x") || parseFlagValue(rawArgs, "windowX") || parseFlagValue(rawArgs, "window-x");
+  const yRatio = parseFlagValue(rawArgs, "yRatio") || parseFlagValue(rawArgs, "y-ratio") || parseFlagValue(rawArgs, "relativeY") || parseFlagValue(rawArgs, "relative-y") || parseFlagValue(rawArgs, "windowY") || parseFlagValue(rawArgs, "window-y");
+  const fromXRatio = parseFlagValue(rawArgs, "fromXRatio") || parseFlagValue(rawArgs, "from-x-ratio") || parseFlagValue(rawArgs, "startXRatio") || parseFlagValue(rawArgs, "start-x-ratio");
+  const fromYRatio = parseFlagValue(rawArgs, "fromYRatio") || parseFlagValue(rawArgs, "from-y-ratio") || parseFlagValue(rawArgs, "startYRatio") || parseFlagValue(rawArgs, "start-y-ratio");
+  const button = parseFlagValue(rawArgs, "button");
+  const axLabel = parseFlagValue(rawArgs, "axLabel") || parseFlagValue(rawArgs, "ax-label") || parseFlagValue(rawArgs, "targetText") || parseFlagValue(rawArgs, "target-text");
+  const appearance = parseFlagValue(rawArgs, "appearance") || parseFlagValue(rawArgs, "style") || parseFlagValue(rawArgs, "cursor-style") || parseFlagValue(rawArgs, "cursorStyle");
+  const shape = parseFlagValue(rawArgs, "shape") || parseFlagValue(rawArgs, "marker-shape") || parseFlagValue(rawArgs, "markerShape") || parseFlagValue(rawArgs, "cursor-shape") || parseFlagValue(rawArgs, "cursorShape");
+  const angleDeg = parseFlagValue(rawArgs, "angleDeg") || parseFlagValue(rawArgs, "angle-deg") || parseFlagValue(rawArgs, "rotationDeg") || parseFlagValue(rawArgs, "rotation-deg") || parseFlagValue(rawArgs, "rotation") || parseFlagValue(rawArgs, "angle");
+  const size = parseFlagValue(rawArgs, "size") || parseFlagValue(rawArgs, "marker-size") || parseFlagValue(rawArgs, "markerSize") || parseFlagValue(rawArgs, "cursor-size") || parseFlagValue(rawArgs, "cursorSize");
+  const color = parseFlagValue(rawArgs, "color");
+  const durationMs = parseFlagValue(rawArgs, "durationMs") || parseFlagValue(rawArgs, "duration-ms");
+  const typeIntervalMs = parseFlagValue(rawArgs, "typeIntervalMs")
+    || parseFlagValue(rawArgs, "type-interval-ms")
+    || parseFlagValue(rawArgs, "typingIntervalMs")
+    || parseFlagValue(rawArgs, "typing-interval-ms");
+  const label = parseFlagValue(rawArgs, "label");
+  const caption = parseFlagValue(rawArgs, "caption")
+    || parseFlagValue(rawArgs, "treatmentLabel")
+    || parseFlagValue(rawArgs, "treatment-label")
+    || parseFlagValue(rawArgs, "variant");
+  const captionTitle = parseFlagValue(rawArgs, "captionTitle") || parseFlagValue(rawArgs, "caption-title");
+  const captionBody = parseFlagValue(rawArgs, "captionBody")
+    || parseFlagValue(rawArgs, "caption-body")
+    || parseFlagValue(rawArgs, "captionDetail")
+    || parseFlagValue(rawArgs, "caption-detail");
+  const captionTags = parseFlagValue(rawArgs, "captionTags") || parseFlagValue(rawArgs, "caption-tags");
+  const captionMode = parseFlagValue(rawArgs, "captionMode") || parseFlagValue(rawArgs, "caption-mode");
+  const captionEyebrow = parseFlagValue(rawArgs, "captionEyebrow") || parseFlagValue(rawArgs, "caption-eyebrow");
+  const captionLeadMs = parseFlagValue(rawArgs, "captionLeadMs") || parseFlagValue(rawArgs, "caption-lead-ms");
+  const captionSound = parseFlagValue(rawArgs, "captionSound") || parseFlagValue(rawArgs, "caption-sound");
+  const captionPlacement = parseFlagValue(rawArgs, "captionPlacement") || parseFlagValue(rawArgs, "caption-placement");
+  const captionMargin = parseFlagValue(rawArgs, "captionMargin") || parseFlagValue(rawArgs, "caption-margin");
+  const captionX = parseFlagValue(rawArgs, "captionX") || parseFlagValue(rawArgs, "caption-x");
+  const captionY = parseFlagValue(rawArgs, "captionY") || parseFlagValue(rawArgs, "caption-y");
+  const captionXRatio = parseFlagValue(rawArgs, "captionXRatio") || parseFlagValue(rawArgs, "caption-x-ratio") || parseFlagValue(rawArgs, "captionLeftRatio") || parseFlagValue(rawArgs, "caption-left-ratio");
+  const captionYRatio = parseFlagValue(rawArgs, "captionYRatio") || parseFlagValue(rawArgs, "caption-y-ratio") || parseFlagValue(rawArgs, "captionTopRatio") || parseFlagValue(rawArgs, "caption-top-ratio");
+  const sound = parseFlagValue(rawArgs, "sound") || parseFlagValue(rawArgs, "sfx");
+  const trail = parseFlagValue(rawArgs, "trail") || parseFlagValue(rawArgs, "effect");
+  const pathStyle = parseFlagValue(rawArgs, "pathStyle") || parseFlagValue(rawArgs, "path-style");
+  const motion = parseFlagValue(rawArgs, "motion") || parseFlagValue(rawArgs, "easing") || parseFlagValue(rawArgs, "velocity");
+  const trajectory = parseFlagValue(rawArgs, "trajectory") || parseFlagValue(rawArgs, "curve") || parseFlagValue(rawArgs, "arc");
+  const glow = parseFlagValue(rawArgs, "glow") || parseFlagValue(rawArgs, "bloom");
+  const idle = parseFlagValue(rawArgs, "idle") || parseFlagValue(rawArgs, "settle") || parseFlagValue(rawArgs, "presence");
+  const edge = parseFlagValue(rawArgs, "edge") || parseFlagValue(rawArgs, "edgeEffect") || parseFlagValue(rawArgs, "edge-effect") || parseFlagValue(rawArgs, "arrival");
+
+  if (!app && !name && method === "computer.launchApp" && positional[0]) {
+    params.app = positional[0];
+  }
+  if (magicScout && !app && !name) {
+    params.app = "Scout";
+  }
+  if (!text && (method === "computer.typeWindowText" || method === "computer.demoScout" || method === "computer.magicCursor")) {
+    const targetApp = String(params.app || app || name || "");
+    const messageOffset = targetApp && positional[0] === targetApp ? 1 : 0;
+    const positionalText = positional.slice(messageOffset).join(" ").trim();
+    if (positionalText) text = positionalText;
+  }
+  if (method === "computer.click" && !x && !y && positional.length >= 2) {
+    const px = Number(positional[0]);
+    const py = Number(positional[1]);
+    if (Number.isFinite(px) && Number.isFinite(py)) {
+      params.x = px;
+      params.y = py;
+    }
+  }
+
+  if (text) params.text = text;
+  if (tty) params.tty = tty;
+  if (app) params.app = app;
+  if (name) params.name = name;
+  if (bundleId) params.bundleId = bundleId;
+  if (path) params.path = path;
+  if (wid && Number.isFinite(Number(wid))) params.wid = Number(wid);
+  if (terminalSessionId) params.terminalSessionId = terminalSessionId;
+  if (session) params.session = session;
+  if (title) params.title = title;
+  if (treatment) params.treatment = treatment;
+  if (transport) params.transport = transport;
+  if (x && Number.isFinite(Number(x))) params.x = Number(x);
+  if (y && Number.isFinite(Number(y))) params.y = Number(y);
+  if (fromX && Number.isFinite(Number(fromX))) params.fromX = Number(fromX);
+  if (fromY && Number.isFinite(Number(fromY))) params.fromY = Number(fromY);
+  if (xRatio && Number.isFinite(Number(xRatio))) params.xRatio = Number(xRatio);
+  if (yRatio && Number.isFinite(Number(yRatio))) params.yRatio = Number(yRatio);
+  if (fromXRatio && Number.isFinite(Number(fromXRatio))) params.fromXRatio = Number(fromXRatio);
+  if (fromYRatio && Number.isFinite(Number(fromYRatio))) params.fromYRatio = Number(fromYRatio);
+  if (magicScout && params.xRatio === undefined) params.xRatio = 0.5;
+  if (magicScout && params.yRatio === undefined) params.yRatio = 0.86;
+  if (button) params.button = button;
+  if (axLabel) params.axLabel = axLabel;
+  if (appearance) params.appearance = appearance;
+  if (shape) params.shape = shape;
+  if (angleDeg && Number.isFinite(Number(angleDeg))) params.angleDeg = Number(angleDeg);
+  if (size) params.size = size;
+  if (color) params.color = color;
+  if (durationMs && Number.isFinite(Number(durationMs))) params.durationMs = Number(durationMs);
+  if (typeIntervalMs && Number.isFinite(Number(typeIntervalMs))) params.typeIntervalMs = Number(typeIntervalMs);
+  if (label) params.label = label;
+  if (caption) params.caption = caption;
+  if (captionTitle) params.captionTitle = captionTitle;
+  if (captionBody) params.captionBody = captionBody;
+  if (captionTags) params.captionTags = captionTags;
+  if (captionMode) params.captionMode = captionMode;
+  if (captionEyebrow) params.captionEyebrow = captionEyebrow;
+  if (captionLeadMs && Number.isFinite(Number(captionLeadMs))) params.captionLeadMs = Number(captionLeadMs);
+  if (captionSound) params.captionSound = captionSound;
+  if (captionPlacement) params.captionPlacement = captionPlacement;
+  if (captionMargin && Number.isFinite(Number(captionMargin))) params.captionMargin = Number(captionMargin);
+  if (captionX && Number.isFinite(Number(captionX))) params.captionX = Number(captionX);
+  if (captionY && Number.isFinite(Number(captionY))) params.captionY = Number(captionY);
+  if (captionXRatio && Number.isFinite(Number(captionXRatio))) params.captionXRatio = Number(captionXRatio);
+  if (captionYRatio && Number.isFinite(Number(captionYRatio))) params.captionYRatio = Number(captionYRatio);
+  if (sound) params.sound = sound;
+  if (trail) params.trail = trail;
+  if (pathStyle) params.pathStyle = pathStyle;
+  if (motion) params.motion = motion;
+  if (trajectory) params.trajectory = trajectory;
+  if (glow) params.glow = glow;
+  if (idle) params.idle = idle;
+  if (edge) params.edge = edge;
+  if (capture === "false" || capture === "0") params.capture = false;
+  if (hasFlag(rawArgs, "no-capture") || hasFlag(rawArgs, "noCapture")) params.capture = false;
+  if (hasFlag(rawArgs, "no-focus") || hasFlag(rawArgs, "noFocus") || hasFlag(rawArgs, "nofocus")) params.noFocus = true;
+  if (hasFlag(rawArgs, "dry-run") || hasFlag(rawArgs, "dryRun")) params.dryRun = true;
+  if (hasFlag(rawArgs, "enter")) params.enter = true;
+  if (hasFlag(rawArgs, "send")) params.send = true;
+  if (hasFlag(rawArgs, "append")) params.append = true;
+  if (hasFlag(rawArgs, "show-caption") || hasFlag(rawArgs, "showCaption")) params.showCaption = true;
+  if (hasFlag(rawArgs, "no-caption-selections") || hasFlag(rawArgs, "noCaptionSelections")) params.captionSelections = false;
+  if (hasFlag(rawArgs, "typewriter") || hasFlag(rawArgs, "typing")) params.typewriter = true;
+  if (hasFlag(rawArgs, "execute")) params.treatment = "execute";
+  if (hasFlag(rawArgs, "present")) params.treatment = "present";
+  if (hasFlag(rawArgs, "stage")) params.treatment = "stage";
+  if (hasFlag(rawArgs, "observe")) params.treatment = "observe";
+  if (hasFlag(rawArgs, "click")) params.click = true;
+
+  try {
+    let result: any;
+    if (method === "computer.click" || method === "computer.magicCursor") {
+      const cua = await import("./cua.ts");
+      result = method === "computer.click"
+        ? await cua.click(params as any)
+        : await cua.magicCursor(params as any);
+    } else {
+      const { daemonCall } = await getDaemonClient();
+      result = await daemonCall(method, params, 30000) as any;
+    }
+    if (jsonFlag) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+
+    const selected = result.selected || {};
+    const terminal = selected.terminal || {};
+    const target = result.target || terminal;
+    const run = result.run || {};
+    console.log(`${result.action || sub} ${result.treatment ? `(${result.treatment})` : ""}`);
+    if (result.cursor) {
+      console.log("  target: cursor");
+    } else {
+      console.log(`  target: ${target.app || result.app || "terminal"} ${terminal.tty || ""}${target.windowId || target.wid ? ` wid:${target.windowId || target.wid}` : ""}`);
+    }
+	    if (result.cursor) console.log(`  cursor: (${Math.round(result.cursor.x)}, ${Math.round(result.cursor.y)})`);
+	    if (result.from) console.log(`  from: (${Math.round(result.from.x)}, ${Math.round(result.from.y)})`);
+	    console.log(`  run: ${run.id || "?"}`);
+    if (typeof result.launched === "boolean") console.log(`  launched: ${result.launched}`);
+    if (typeof result.focused === "boolean") console.log(`  focused: ${result.focused}`);
+    if (typeof result.clicked === "boolean") console.log(`  clicked: ${result.clicked}`);
+    if (typeof result.shown === "boolean") console.log(`  shown: ${result.shown}`);
+    if (result.button) console.log(`  button: ${result.button}`);
+    if (result.appearance?.style) console.log(`  appearance: ${result.appearance.style}${result.appearance.color ? ` ${result.appearance.color}` : ""}${result.appearance.shape ? ` shape:${result.appearance.shape}` : ""}${result.appearance.angleDeg !== undefined ? ` angle:${result.appearance.angleDeg}` : ""}${result.appearance.size ? ` size:${result.appearance.size}` : ""}`);
+    if (result.typedText !== undefined) console.log(`  typed: ${result.dryRun ? "dry run" : JSON.stringify(result.typedText || "")}`);
+    if (result.transport) console.log(`  transport: ${result.transport}`);
+    if (result.beforeArtifact?.path) console.log(`  before: ${result.beforeArtifact.path}`);
+    if (result.afterArtifact?.path) console.log(`  after: ${result.afterArtifact.path}`);
+  } catch (error) {
+    console.log(`Error: ${(error as Error).message}`);
   }
 }
 
@@ -2667,6 +3321,24 @@ Usage:
   lattices focus <session>    Raise a session's window
   lattices windows [--json]   List all desktop windows (daemon required)
   lattices sessions [--json]  List active sessions via daemon
+  lattices terminals [--json] [--refresh]
+                         List synthesized terminal instances
+  lattices capture window [wid]  Save a screenshot run artifact
+  lattices capture record window [wid]  Record a window/visible region as a .mov artifact
+  lattices capture record-command --app Scout -- <cmd>
+                         Record a target while running an action command
+  lattices capture stop <run-id> Stop a running capture recording
+  lattices runs [id] [--json] List recent runs or inspect one run
+  lattices computer prepare      Resolve/stage a safe terminal action
+  lattices computer focus-window Focus and verify a target window
+  lattices computer launch-app  Launch/focus a normal macOS app
+  lattices computer type-window Type into a normal app window
+  lattices computer click       Stage or post a window-relative click
+  lattices cua click            CLI alias for the CUA SDK click action
+  lattices computer scout       Scout warm-up run for memo/demo recording
+  lattices computer cursor       Show a recorded cursor appearance
+  lattices computer type-text    Type text into a safe terminal target
+  lattices computer demo-terminal  Record/focus/type a safe terminal demo
   lattices tile <position>    Tile the frontmost window (left, right, top, etc.)
   lattices tile family [app] [region]  Smart-grid the frontmost app family, or a named app
   lattices distribute [app] [region]   Smart-grid visible windows or just one app (daemon required)
@@ -3221,6 +3893,24 @@ switch (command) {
     break;
   case "sessions":
     await sessionsCommand(args[1] === "--json");
+    break;
+  case "terminals":
+    await terminalsCommand(args.slice(1));
+    break;
+  case "capture":
+    await captureCommand(args[1], ...args.slice(2));
+    break;
+  case "runs":
+    await runsCommand(args.slice(1));
+    break;
+  case "run":
+    await runsCommand(args.slice(1));
+    break;
+  case "computer":
+    await computerCommand(args[1], ...args.slice(2));
+    break;
+  case "cua":
+    await computerCommand(args[1], ...args.slice(2));
     break;
   case "voice":
     await voiceCommand(args[1], ...args.slice(2));

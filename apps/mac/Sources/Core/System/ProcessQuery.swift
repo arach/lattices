@@ -23,6 +23,16 @@ enum ProcessQuery {
         "pnpm", "swift", "make", "git"
     ]
 
+    static let interactiveShellCommands: Set<String> = [
+        "zsh", "bash", "fish", "sh", "dash"
+    ]
+
+    static func isInteractiveShell(_ command: String) -> Bool {
+        interactiveShellCommands.contains(
+            command.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        )
+    }
+
     /// Snapshot the full process table in a single `ps` call.
     /// Returns [pid: ProcessEntry].
     static func snapshot() -> [Int: ProcessEntry] {
@@ -147,5 +157,36 @@ enum ProcessQuery {
 
         guard status == 0 else { return "" }
         return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    /// Run a command with stdout/stderr discarded using posix_spawn + waitpid.
+    /// Returns true when the process exits with status 0.
+    static func run(_ args: [String]) -> Bool {
+        guard !args.isEmpty else { return false }
+
+        var fileActions: posix_spawn_file_actions_t?
+        posix_spawn_file_actions_init(&fileActions)
+        posix_spawn_file_actions_addopen(&fileActions, STDOUT_FILENO, "/dev/null", O_WRONLY, 0)
+        posix_spawn_file_actions_addopen(&fileActions, STDERR_FILENO, "/dev/null", O_WRONLY, 0)
+
+        let cPath = args[0]
+        let cArgs = args.map { strdup($0) } + [nil]
+        defer { cArgs.compactMap({ $0 }).forEach { free($0) } }
+
+        var pid: pid_t = 0
+        let spawnResult = cPath.withCString { path in
+            posix_spawn(&pid, path, &fileActions, nil, cArgs, environ)
+        }
+        posix_spawn_file_actions_destroy(&fileActions)
+
+        guard spawnResult == 0 else {
+            return false
+        }
+
+        var status: Int32 = 0
+        guard waitpid(pid, &status, 0) == pid else {
+            return false
+        }
+        return status == 0
     }
 }

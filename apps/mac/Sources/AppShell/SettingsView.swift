@@ -67,7 +67,7 @@ struct SettingsContentView: View {
             case .shortcuts:
                 return "A full map of global hotkeys for workspace movement and tmux flow."
             case .mouse:
-                return "Middle-click gestures, HUD confirmation, and rule configuration."
+                return "Cursor marker defaults, middle-click gestures, HUD confirmation, and rule configuration."
             case .hyperspace:
                 return "Per-display window surveys, lighting, zoom, and layout for Hyperspace."
             case .voice:
@@ -895,6 +895,67 @@ struct SettingsContentView: View {
         .background(shortcutsInsetPanel)
     }
 
+    private var cursorMarkerSettingsControls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Agent cursor marker")
+                    .font(Typo.monoBold(10.5))
+                    .foregroundColor(Palette.text)
+                Text("Default resting marker for computer-use cursor actions. Individual actions can still override these values.")
+                    .font(Typo.caption(9.5))
+                    .foregroundColor(Palette.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack {
+                Text("Shape")
+                    .font(Typo.mono(10))
+                    .foregroundColor(Palette.textDim)
+                Spacer()
+                Picker("", selection: $prefs.cursorMarkerShape) {
+                    ForEach(CursorMarkerShape.settingsOptions) { shape in
+                        Text(shape.label).tag(shape)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 210)
+            }
+
+            HStack {
+                Text("Rotation")
+                    .font(Typo.mono(10))
+                    .foregroundColor(Palette.textDim)
+                Spacer()
+                Picker("", selection: $prefs.cursorMarkerAngleDeg) {
+                    ForEach([-8, -16], id: \.self) { angle in
+                        Text("\(angle)deg").tag(angle)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 160)
+            }
+
+            HStack {
+                Text("Size")
+                    .font(Typo.mono(10))
+                    .foregroundColor(Palette.textDim)
+                Spacer()
+                Picker("", selection: $prefs.cursorMarkerSize) {
+                    ForEach(CursorMarkerSize.settingsOptions) { size in
+                        Text(size.label).tag(size)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 210)
+            }
+        }
+        .padding(10)
+        .background(shortcutsInsetPanel)
+    }
+
     private var mouseGesturesContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
@@ -910,6 +971,10 @@ struct SettingsContentView: View {
                                 .controlSize(.small)
                                 .labelsHidden()
                         }
+
+                        cardDivider
+
+                        cursorMarkerSettingsControls
 
                         cardDivider
 

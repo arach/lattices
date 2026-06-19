@@ -1,0 +1,2654 @@
+import AppKit
+import CoreGraphics
+import Foundation
+
+enum ComputerTreatment: String {
+    case observe
+    case stage
+    case present
+    case execute
+
+    var focusesWindow: Bool {
+        self == .present || self == .execute
+    }
+
+    var insertsText: Bool {
+        self == .execute
+    }
+
+    var performsPointerAction: Bool {
+        self == .execute
+    }
+
+    static func resolve(params: JSON?, defaultValue: ComputerTreatment) -> ComputerTreatment {
+        if params?["dryRun"]?.boolValue == true || params?["dry-run"]?.boolValue == true {
+            return .stage
+        }
+        let raw = params?["treatment"]?.stringValue
+            ?? params?["mode"]?.stringValue
+            ?? params?["phase"]?.stringValue
+        switch raw?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "observe", "inspect":
+            return .observe
+        case "stage", "plan", "preview", "dry-run", "dryrun":
+            return .stage
+        case "present", "prepare", "focus":
+            return .present
+        case "execute", "type", "insert":
+            return .execute
+        default:
+            return defaultValue
+        }
+    }
+}
+
+private struct AXTextInsertionResult {
+    let role: String
+    let roleDescription: String?
+    let frame: CGRect?
+    let previousValue: String?
+    let insertedValue: String
+    let verifiedValue: String?
+    let typedCharacters: Int?
+    let typeIntervalMs: Double?
+
+    var json: JSON {
+        var object: [String: JSON] = [
+            "role": .string(role),
+            "insertedValue": .string(insertedValue),
+            "verified": .bool(verifiedValue == insertedValue),
+        ]
+        if let roleDescription {
+            object["roleDescription"] = .string(roleDescription)
+        }
+        if let previousValue {
+            object["previousValue"] = .string(previousValue)
+        }
+        if let verifiedValue {
+            object["verifiedValue"] = .string(verifiedValue)
+        }
+        if let typedCharacters {
+            object["typedCharacters"] = .int(typedCharacters)
+        }
+        if let typeIntervalMs {
+            object["typeIntervalMs"] = .double(typeIntervalMs)
+        }
+        if let frame {
+            object["frame"] = .object([
+                "x": .double(frame.origin.x),
+                "y": .double(frame.origin.y),
+                "w": .double(frame.width),
+                "h": .double(frame.height),
+            ])
+        }
+        return .object(object)
+    }
+}
+
+private struct AXPressResult {
+    let role: String
+    let roleDescription: String?
+    let title: String?
+    let value: String?
+    let description: String?
+    let frame: CGRect?
+    let action: String
+    let performed: Bool
+
+    var json: JSON {
+        var object: [String: JSON] = [
+            "role": .string(role),
+            "action": .string(action),
+            "performed": .bool(performed),
+        ]
+        if let roleDescription {
+            object["roleDescription"] = .string(roleDescription)
+        }
+        if let title {
+            object["title"] = .string(title)
+        }
+        if let value {
+            object["value"] = .string(value)
+        }
+        if let description {
+            object["description"] = .string(description)
+        }
+        if let frame {
+            object["frame"] = .object([
+                "x": .double(frame.origin.x),
+                "y": .double(frame.origin.y),
+                "w": .double(frame.width),
+                "h": .double(frame.height),
+            ])
+        }
+        return .object(object)
+    }
+}
+
+private struct AXEditableCandidate {
+    let element: AXUIElement
+    let role: String
+    let roleDescription: String?
+    let frame: CGRect?
+    let value: String?
+    let score: Double
+}
+
+private struct AXPressCandidate {
+    let element: AXUIElement
+    let role: String
+    let roleDescription: String?
+    let title: String?
+    let value: String?
+    let description: String?
+    let frame: CGRect?
+    let score: Double
+}
+
+final class ComputerUseController {
+    static let shared = ComputerUseController()
+
+    private let shellCommands: Set<String> = ["zsh", "bash", "fish", "sh", "dash"]
+    private let riskyCommands: Set<String> = [
+        "claude", "codex", "vim", "nvim", "emacs", "nano", "less", "more", "top",
+        "ssh", "python", "python3", "node", "bun", "npm", "pnpm", "yarn", "swift",
+    ]
+
+    private init() {}
+
+    func demoTerminal(params: JSON?) throws -> JSON {
+        try runTerminalText(
+            params: params,
+            title: "Terminal computer-use demo",
+            defaultText: Self.defaultTypedText(),
+            requireText: false,
+            defaultTreatment: .execute
+        )
+    }
+
+    func prepare(params: JSON?) throws -> JSON {
+        try runTerminalText(
+            params: params,
+            title: "Prepare computer action",
+            defaultText: nil,
+            requireText: false,
+            defaultTreatment: .observe
+        )
+    }
+
+    func typeText(params: JSON?) throws -> JSON {
+        try runTerminalText(
+            params: params,
+            title: "Type text",
+            defaultText: nil,
+            requireText: true,
+            defaultTreatment: .execute
+        )
+    }
+
+    func focusWindow(params: JSON?) throws -> JSON {
+        let source = params?["source"]?.stringValue ?? "daemon"
+        let treatment = ComputerTreatment.resolve(params: params, defaultValue: .present)
+        let shouldCapture = params?["capture"]?.boolValue ?? true
+        let window = try CaptureController.shared.resolveWindow(params: params)
+        let run = try RunStore.shared.createRun(
+            title: "Focus \(window.app)",
+            source: source,
+            surfaces: [.window(window)]
+        )
+
+        do {
+            _ = try RunStore.shared.markRunning(
+                id: run.id,
+                summary: "Resolved focus target",
+                data: [
+                    "action": .string("focusWindow"),
+                    "treatment": .string(treatment.rawValue),
+                    "wid": .int(Int(window.wid)),
+                    "app": .string(window.app),
+                ]
+            )
+
+            let before = try maybeCaptureWindow(
+                shouldCapture: shouldCapture,
+                runId: run.id,
+                source: source,
+                wid: window.wid,
+                prefix: "focus-before"
+            )
+
+            if !treatment.focusesWindow {
+                let completed = try RunStore.shared.complete(
+                    id: run.id,
+                    summary: "Planned window focus without presenting",
+                    data: ["wid": .int(Int(window.wid)), "treatment": .string(treatment.rawValue)]
+                )
+                return focusResponse(
+                    run: completed,
+                    target: window,
+                    before: before,
+                    after: nil,
+                    treatment: treatment,
+                    focused: false
+                )
+            }
+
+            let focused = try focus(window: window)
+            guard focused else {
+                throw RouterError.custom("failed to focus window \(window.wid)")
+            }
+            _ = try RunStore.shared.appendTrace(
+                id: run.id,
+                kind: "computer.focused",
+                summary: "Focused window",
+                data: ["wid": .int(Int(window.wid)), "focused": .bool(true)]
+            )
+
+            let after = try maybeCaptureWindow(
+                shouldCapture: shouldCapture,
+                runId: run.id,
+                source: source,
+                wid: window.wid,
+                prefix: "focus-after"
+            )
+            let completed = try RunStore.shared.complete(
+                id: run.id,
+                summary: "Focused and verified window",
+                data: ["wid": .int(Int(window.wid))]
+            )
+
+            return focusResponse(
+                run: completed,
+                target: window,
+                before: before,
+                after: after,
+                treatment: treatment,
+                focused: true
+            )
+        } catch {
+            _ = try? RunStore.shared.fail(
+                id: run.id,
+                summary: "Window focus failed",
+                data: ["error": .string(error.localizedDescription), "wid": .int(Int(window.wid))]
+            )
+            throw error
+        }
+    }
+
+    func showCursor(params: JSON?) throws -> JSON {
+        let source = params?["source"]?.stringValue ?? "daemon"
+        let treatment = ComputerTreatment.resolve(params: params, defaultValue: .present)
+        let appearance = CursorAppearance.resolve(params: params)
+        let point = cursorPoint(params: params)
+        let shouldShow = treatment == .present || treatment == .execute
+        let run = try RunStore.shared.createRun(
+            title: "Show cursor",
+            source: source,
+            surfaces: [.cursor(point)]
+        )
+
+        do {
+            _ = try RunStore.shared.markRunning(
+                id: run.id,
+                summary: "Resolved cursor target",
+                data: [
+                    "action": .string("showCursor"),
+                    "treatment": .string(treatment.rawValue),
+                    "x": .double(point.x),
+                    "y": .double(point.y),
+                    "appearance": appearance.json,
+                ]
+            )
+
+            if shouldShow {
+                if Thread.isMainThread {
+                    MouseFinder.shared.showCursor(at: point, appearance: appearance)
+                } else {
+                    DispatchQueue.main.sync {
+                        MouseFinder.shared.showCursor(at: point, appearance: appearance)
+                    }
+                }
+                _ = try RunStore.shared.appendTrace(
+                    id: run.id,
+                    kind: "computer.cursor.shown",
+                    summary: "Showed cursor appearance",
+                    data: [
+                        "x": .double(point.x),
+                        "y": .double(point.y),
+                        "appearance": appearance.json,
+                    ]
+                )
+            }
+
+            let completed = try RunStore.shared.complete(
+                id: run.id,
+                summary: shouldShow ? "Presented cursor appearance" : "Planned cursor appearance without showing",
+                data: [
+                    "shown": .bool(shouldShow),
+                    "treatment": .string(treatment.rawValue),
+                    "x": .double(point.x),
+                    "y": .double(point.y),
+                ]
+            )
+
+            return .object([
+                "ok": .bool(true),
+                "action": .string("showCursor"),
+                "treatment": .string(treatment.rawValue),
+                "shown": .bool(shouldShow),
+                "run": completed.json,
+                "cursor": cursorJSON(point),
+                "appearance": appearance.json,
+            ])
+        } catch {
+            _ = try? RunStore.shared.fail(
+                id: run.id,
+                summary: "Cursor appearance failed",
+                data: ["error": .string(error.localizedDescription)]
+            )
+            throw error
+        }
+    }
+
+    func magicCursor(params: JSON?) throws -> JSON {
+        let source = params?["source"]?.stringValue ?? "daemon"
+        let treatment = ComputerTreatment.resolve(params: params, defaultValue: .present)
+        let appearance = CursorAppearance.resolve(params: markerDefaultParams(params))
+        let text = params?["text"]?.stringValue
+        let window = try? CaptureController.shared.resolveWindow(params: params)
+        let endPoint = clickPoint(params: params, window: window) ?? cursorPointCG(params: params)
+        let startPoint = startPoint(params: params, window: window, endPoint: endPoint)
+        let shouldShow = treatment == .present || treatment == .execute
+        let run = try RunStore.shared.createRun(
+            title: "Magic cursor",
+            source: source,
+            surfaces: window.map { [.window($0), .cursor(endPoint)] } ?? [.cursor(endPoint)]
+        )
+
+        do {
+            _ = try RunStore.shared.markRunning(
+                id: run.id,
+                summary: "Resolved magic cursor path",
+                data: [
+                    "action": .string("magicCursor"),
+                    "treatment": .string(treatment.rawValue),
+                    "from": cursorJSON(startPoint),
+                    "to": cursorJSON(endPoint),
+                    "appearance": appearance.json,
+                    "willUseAX": .bool(treatment.insertsText && text?.isEmpty == false),
+                ]
+            )
+
+            if shouldShow {
+                let overlayStart = overlayPoint(fromCGPoint: startPoint)
+                let overlayEnd = overlayPoint(fromCGPoint: endPoint)
+                let captionTopLeft = overlayCaptionTopLeft(
+                    params: params,
+                    window: window,
+                    fallbackPoint: endPoint
+                )
+                try onMain {
+                    MouseFinder.shared.animateCursor(
+                        from: overlayStart,
+                        to: overlayEnd,
+                        appearance: appearance,
+                        captionTopLeft: captionTopLeft
+                    )
+                }
+                _ = try RunStore.shared.appendTrace(
+                    id: run.id,
+                    kind: "computer.cursor.animated",
+                    summary: "Animated ghost cursor without moving the hardware pointer",
+                    data: [
+                        "from": cursorJSON(startPoint),
+                        "to": cursorJSON(endPoint),
+                        "overlayFrom": cursorJSON(overlayStart),
+                        "overlayTo": cursorJSON(overlayEnd),
+                    ]
+                )
+            }
+
+            var typedText: String?
+            var axResult: AXTextInsertionResult?
+            if treatment.insertsText, let text, !text.isEmpty {
+                guard let window else {
+                    throw RouterError.custom("AX text insertion requires a target window")
+                }
+                let delaySeconds = max(0.25, min(1.8, appearance.duration * 0.72))
+                usleep(UInt32(delaySeconds * 1_000_000))
+                axResult = try setTextViaAX(
+                    text,
+                    window: window,
+                    targetPoint: endPoint,
+                    append: params?["append"]?.boolValue == true,
+                    typeIntervalMs: axTypeIntervalMs(params: params)
+                )
+                typedText = text
+                _ = try RunStore.shared.appendTrace(
+                    id: run.id,
+                    kind: "computer.axTextSet",
+                    summary: "Set editable AX value without focusing the app",
+                    data: [
+                        "result": axResult?.json ?? .null
+                    ]
+                )
+            }
+
+            let completed = try RunStore.shared.complete(
+                id: run.id,
+                summary: typedText == nil
+                    ? "Presented magic cursor path"
+                    : "Animated magic cursor and set AX text without focusing",
+                data: [
+                    "shown": .bool(shouldShow),
+                    "typed": .bool(typedText != nil),
+                    "focused": .bool(false),
+                    "transport": .string(typedText == nil ? "overlay" : "ax"),
+                ]
+            )
+
+            var object: [String: JSON] = [
+                "ok": .bool(true),
+                "action": .string("magicCursor"),
+                "treatment": .string(treatment.rawValue),
+                "shown": .bool(shouldShow),
+                "focused": .bool(false),
+                "run": completed.json,
+                "from": cursorJSON(startPoint),
+                "cursor": cursorJSON(endPoint),
+                "appearance": appearance.json,
+                "transport": .string(typedText == nil ? "overlay" : "ax"),
+            ]
+            if let window {
+                object["target"] = Encoders.window(window)
+            }
+            if let typedText {
+                object["typedText"] = .string(typedText)
+            }
+            if let axResult {
+                object["ax"] = axResult.json
+            }
+            return .object(object)
+        } catch {
+            _ = try? RunStore.shared.fail(
+                id: run.id,
+                summary: "Magic cursor action failed",
+                data: ["error": .string(error.localizedDescription)]
+            )
+            throw error
+        }
+    }
+
+    func launchApp(params: JSON?) throws -> JSON {
+        let source = params?["source"]?.stringValue ?? "daemon"
+        let treatment = ComputerTreatment.resolve(params: params, defaultValue: .present)
+        let shouldCapture = params?["capture"]?.boolValue ?? true
+        let appName = try appNameParam(params)
+        let title = params?["title"]?.stringValue
+        let run = try RunStore.shared.createRun(
+            title: "Launch \(appName)",
+            source: source,
+            surfaces: []
+        )
+
+        do {
+            _ = try RunStore.shared.markRunning(
+                id: run.id,
+                summary: "Resolved app launch target",
+                data: [
+                    "action": .string("launchApp"),
+                    "app": .string(appName),
+                    "treatment": .string(treatment.rawValue),
+                ]
+            )
+
+            let existing = windowForApp(appName, title: title)
+            if treatment == .observe || treatment == .stage {
+                if let existing {
+                    _ = try RunStore.shared.appendSurfaces(id: run.id, surfaces: [.window(existing)])
+                }
+                let completed = try RunStore.shared.complete(
+                    id: run.id,
+                    summary: existing == nil ? "Staged app launch" : "Observed running app",
+                    data: [
+                        "app": .string(appName),
+                        "running": .bool(existing != nil),
+                        "treatment": .string(treatment.rawValue),
+                    ]
+                )
+                return appResponse(
+                    action: "launchApp",
+                    run: completed,
+                    appName: appName,
+                    target: existing,
+                    before: nil,
+                    after: nil,
+                    treatment: treatment,
+                    launched: false,
+                    focused: false,
+                    typedText: nil,
+                    clicked: nil
+                )
+            }
+
+            let launched = try openOrActivateApp(params: params, appName: appName)
+            guard launched else {
+                throw RouterError.custom("Unable to launch app '\(appName)'")
+            }
+
+            guard let window = waitForWindow(app: appName, title: title, timeout: 4.0) else {
+                let completed = try RunStore.shared.complete(
+                    id: run.id,
+                    summary: "Launched app but no window was discovered yet",
+                    data: ["app": .string(appName), "launched": .bool(true)]
+                )
+                return appResponse(
+                    action: "launchApp",
+                    run: completed,
+                    appName: appName,
+                    target: nil,
+                    before: nil,
+                    after: nil,
+                    treatment: treatment,
+                    launched: true,
+                    focused: false,
+                    typedText: nil,
+                    clicked: nil
+                )
+            }
+            _ = try RunStore.shared.appendSurfaces(id: run.id, surfaces: [.window(window)])
+
+            let focused = try focus(window: window)
+            let after = try maybeCaptureWindow(
+                shouldCapture: shouldCapture,
+                runId: run.id,
+                source: source,
+                wid: window.wid,
+                prefix: "app-launch"
+            )
+            let completed = try RunStore.shared.complete(
+                id: run.id,
+                summary: "Launched and focused app",
+                data: [
+                    "app": .string(appName),
+                    "wid": .int(Int(window.wid)),
+                    "focused": .bool(focused),
+                ]
+            )
+            return appResponse(
+                action: "launchApp",
+                run: completed,
+                appName: appName,
+                target: window,
+                before: nil,
+                after: after?["artifact"],
+                treatment: treatment,
+                launched: true,
+                focused: focused,
+                typedText: nil,
+                clicked: nil
+            )
+        } catch {
+            _ = try? RunStore.shared.fail(
+                id: run.id,
+                summary: "App launch failed",
+                data: ["app": .string(appName), "error": .string(error.localizedDescription)]
+            )
+            throw error
+        }
+    }
+
+    func typeWindowText(params: JSON?) throws -> JSON {
+        let source = params?["source"]?.stringValue ?? "daemon"
+        let treatment = ComputerTreatment.resolve(params: params, defaultValue: .execute)
+        let shouldCapture = params?["capture"]?.boolValue ?? true
+        let shouldPressEnter = params?["enter"]?.boolValue ?? params?["send"]?.boolValue ?? false
+        guard let text = params?["text"]?.stringValue, !text.isEmpty else {
+            throw RouterError.missingParam("text")
+        }
+        let window = try CaptureController.shared.resolveWindow(params: params)
+        let run = try RunStore.shared.createRun(
+            title: "Type into \(window.app)",
+            source: source,
+            surfaces: [.window(window)]
+        )
+
+        do {
+            _ = try RunStore.shared.markRunning(
+                id: run.id,
+                summary: "Resolved app text target",
+                data: [
+                    "action": .string("typeWindowText"),
+                    "treatment": .string(treatment.rawValue),
+                    "wid": .int(Int(window.wid)),
+                    "app": .string(window.app),
+                    "characters": .int(text.count),
+                ]
+            )
+
+            let before = try maybeCaptureWindow(
+                shouldCapture: shouldCapture,
+                runId: run.id,
+                source: source,
+                wid: window.wid,
+                prefix: "app-type-before"
+            )
+
+            if !treatment.focusesWindow && !treatment.insertsText {
+                let completed = try RunStore.shared.complete(
+                    id: run.id,
+                    summary: "Staged app text insertion without typing",
+                    data: ["wid": .int(Int(window.wid)), "text": .string(text)]
+                )
+                return appResponse(
+                    action: "typeWindowText",
+                    run: completed,
+                    appName: window.app,
+                    target: window,
+                    before: before?["artifact"],
+                    after: nil,
+                    treatment: treatment,
+                    launched: false,
+                    focused: false,
+                    typedText: text,
+                    clicked: nil
+                )
+            }
+
+            let focused = try focus(window: window)
+            guard focused else {
+                throw RouterError.custom("failed to focus window \(window.wid)")
+            }
+            _ = try RunStore.shared.appendTrace(
+                id: run.id,
+                kind: "computer.focused",
+                summary: "Focused app window",
+                data: ["wid": .int(Int(window.wid))]
+            )
+
+            if let point = clickPoint(params: params, window: window), treatment.insertsText {
+                try postMouseClick(at: point, rawButton: params?["button"]?.stringValue)
+                _ = try RunStore.shared.appendTrace(
+                    id: run.id,
+                    kind: "computer.clicked",
+                    summary: "Clicked app text target",
+                    data: clickJSON(point, button: params?["button"]?.stringValue)
+                )
+                usleep(120_000)
+            }
+
+            if treatment.insertsText {
+                let typedCharacters = try CompanionKeyboardController.shared.typeText(
+                    text,
+                    targetPid: window.pid
+                )
+                if shouldPressEnter {
+                    _ = try CompanionKeyboardController.shared.send(
+                        key: "enter",
+                        modifiers: [],
+                        targetPid: window.pid
+                    )
+                }
+                _ = try RunStore.shared.appendTrace(
+                    id: run.id,
+                    kind: "computer.typed",
+                    summary: shouldPressEnter ? "Typed app text and pressed Enter" : "Typed app text",
+                    data: [
+                        "wid": .int(Int(window.wid)),
+                        "characters": .int(typedCharacters),
+                        "pressedEnter": .bool(shouldPressEnter),
+                    ]
+                )
+            }
+
+            usleep(180_000)
+            let after = try maybeCaptureWindow(
+                shouldCapture: shouldCapture,
+                runId: run.id,
+                source: source,
+                wid: window.wid,
+                prefix: "app-type-after"
+            )
+            let completed = try RunStore.shared.complete(
+                id: run.id,
+                summary: treatment.insertsText ? "Completed app text action" : "Presented app text target",
+                data: [
+                    "wid": .int(Int(window.wid)),
+                    "typed": .bool(treatment.insertsText),
+                    "pressedEnter": .bool(shouldPressEnter),
+                ]
+            )
+            return appResponse(
+                action: "typeWindowText",
+                run: completed,
+                appName: window.app,
+                target: window,
+                before: before?["artifact"],
+                after: after?["artifact"],
+                treatment: treatment,
+                launched: false,
+                focused: focused,
+                typedText: text,
+                clicked: nil
+            )
+        } catch {
+            _ = try? RunStore.shared.fail(
+                id: run.id,
+                summary: "App text action failed",
+                data: ["error": .string(error.localizedDescription), "wid": .int(Int(window.wid))]
+            )
+            throw error
+        }
+    }
+
+    func click(params: JSON?) throws -> JSON {
+        let source = params?["source"]?.stringValue ?? "daemon"
+        let treatment = ComputerTreatment.resolve(params: params, defaultValue: .stage)
+        let shouldCapture = params?["capture"]?.boolValue ?? true
+        let requestedTransport = clickTransport(params)
+        let noFocus = params?["noFocus"]?.boolValue == true
+            || params?["no-focus"]?.boolValue == true
+            || requestedTransport == "ax"
+            || requestedTransport == "accessibility"
+        let window = try? CaptureController.shared.resolveWindow(params: params)
+        let point = clickPoint(params: params, window: window) ?? cursorPoint(params: params)
+        let run = try RunStore.shared.createRun(
+            title: "Click",
+            source: source,
+            surfaces: window.map { [.window($0), .cursor(point)] } ?? [.cursor(point)]
+        )
+
+        do {
+            _ = try RunStore.shared.markRunning(
+                id: run.id,
+                summary: "Resolved click target",
+                data: [
+                    "action": .string("click"),
+                    "treatment": .string(treatment.rawValue),
+                    "point": cursorJSON(point),
+                    "button": .string(normalizedMouseButton(params?["button"]?.stringValue)),
+                    "transport": .string(requestedTransport),
+                    "noFocus": .bool(noFocus),
+                ]
+            )
+
+            let before = try window.flatMap { target in
+                try maybeCaptureWindow(
+                    shouldCapture: shouldCapture,
+                    runId: run.id,
+                    source: source,
+                    wid: target.wid,
+                    prefix: "click-before"
+                )
+            }
+
+            var clicked = false
+            var focused = false
+            var transportUsed = "none"
+            var axResult: AXPressResult?
+            if treatment.performsPointerAction {
+                let canTryAX = window != nil
+                    && normalizedMouseButton(params?["button"]?.stringValue) == "left"
+                    && requestedTransport != "pointer"
+                    && requestedTransport != "mouse"
+
+                if canTryAX, let targetWindow = window {
+                    do {
+                        axResult = try pressViaAX(
+                            window: targetWindow,
+                            targetPoint: point,
+                            label: axPressLabel(params)
+                        )
+                        clicked = axResult?.performed == true
+                        transportUsed = "ax"
+                        _ = try RunStore.shared.appendTrace(
+                            id: run.id,
+                            kind: "computer.axPressed",
+                            summary: "Performed AXPress without focusing or moving the hardware pointer",
+                            data: [
+                                "point": cursorJSON(point),
+                                "result": axResult?.json ?? .null,
+                            ]
+                        )
+                        usleep(180_000)
+                    } catch {
+                        if requestedTransport == "ax" || requestedTransport == "accessibility" || noFocus {
+                            throw error
+                        }
+                        _ = try RunStore.shared.appendTrace(
+                            id: run.id,
+                            kind: "computer.axPress.skipped",
+                            summary: "AXPress was unavailable; falling back to pointer click",
+                            data: ["error": .string(error.localizedDescription)]
+                        )
+                    }
+                }
+
+                if !clicked {
+                    if noFocus {
+                        throw RouterError.custom("No AX press target was available and pointer fallback is disabled")
+                    }
+                    if let window, treatment.focusesWindow {
+                        focused = try focus(window: window)
+                        _ = try RunStore.shared.appendTrace(
+                            id: run.id,
+                            kind: "computer.focused",
+                            summary: "Focused window before pointer click fallback",
+                            data: ["wid": .int(Int(window.wid)), "focused": .bool(focused)]
+                        )
+                    }
+                    try postMouseClick(at: point, rawButton: params?["button"]?.stringValue)
+                    clicked = true
+                    transportUsed = "pointer"
+                    _ = try RunStore.shared.appendTrace(
+                        id: run.id,
+                        kind: "computer.clicked",
+                        summary: "Posted mouse click",
+                        data: clickJSON(point, button: params?["button"]?.stringValue)
+                    )
+                    usleep(180_000)
+                }
+            }
+
+            let after = try window.flatMap { target in
+                try maybeCaptureWindow(
+                    shouldCapture: shouldCapture,
+                    runId: run.id,
+                    source: source,
+                    wid: target.wid,
+                    prefix: "click-after"
+                )
+            }
+            let completed = try RunStore.shared.complete(
+                id: run.id,
+                summary: clicked ? "Completed click action" : "Staged click without posting",
+                data: [
+                    "clicked": .bool(clicked),
+                    "point": cursorJSON(point),
+                    "focused": .bool(focused),
+                    "transport": .string(transportUsed),
+                ]
+            )
+            return clickResponse(
+                run: completed,
+                target: window,
+                point: point,
+                before: before?["artifact"],
+                after: after?["artifact"],
+                treatment: treatment,
+                clicked: clicked,
+                button: params?["button"]?.stringValue,
+                transport: transportUsed,
+                focused: focused,
+                axResult: axResult
+            )
+        } catch {
+            _ = try? RunStore.shared.fail(
+                id: run.id,
+                summary: "Click action failed",
+                data: ["error": .string(error.localizedDescription)]
+            )
+            throw error
+        }
+    }
+
+    func demoScout(params: JSON?) throws -> JSON {
+        let source = params?["source"]?.stringValue ?? "daemon"
+        let treatment = ComputerTreatment.resolve(params: params, defaultValue: .present)
+        let appName = params?["app"]?.stringValue ?? params?["name"]?.stringValue ?? "Scout"
+        let title = params?["title"]?.stringValue
+        let text = params?["text"]?.stringValue
+            ?? "Lattices demo warm-up: Scout is open, captured, and ready for memo recording."
+        let shouldPressEnter = params?["enter"]?.boolValue ?? params?["send"]?.boolValue ?? false
+        let shouldClickComposer = params?["click"]?.boolValue ?? treatment.insertsText
+        let shouldCapture = params?["capture"]?.boolValue ?? (treatment != .stage && treatment != .observe)
+
+        let run = try RunStore.shared.createRun(
+            title: "Scout demo warm-up",
+            source: source,
+            surfaces: []
+        )
+
+        do {
+            _ = try RunStore.shared.markRunning(
+                id: run.id,
+                summary: "Starting Scout demo warm-up",
+                data: [
+                    "app": .string(appName),
+                    "treatment": .string(treatment.rawValue),
+                    "willType": .bool(treatment.insertsText),
+                    "willSend": .bool(shouldPressEnter && treatment.insertsText),
+                ]
+            )
+
+            if treatment.focusesWindow || treatment.insertsText {
+                guard try openOrActivateApp(params: params, appName: appName) else {
+                    throw RouterError.custom("Unable to launch app '\(appName)'")
+                }
+            }
+
+            guard let window = waitForWindow(app: appName, title: title, timeout: 4.0)
+                ?? windowForApp(appName, title: title) else {
+                let completed = try RunStore.shared.complete(
+                    id: run.id,
+                    summary: "Scout app launch staged; no window discovered",
+                    data: ["app": .string(appName)]
+                )
+                return appResponse(
+                    action: "demoScout",
+                    run: completed,
+                    appName: appName,
+                    target: nil,
+                    before: nil,
+                    after: nil,
+                    treatment: treatment,
+                    launched: treatment.focusesWindow,
+                    focused: false,
+                    typedText: nil,
+                    clicked: nil
+                )
+            }
+            _ = try RunStore.shared.appendSurfaces(id: run.id, surfaces: [.window(window)])
+
+            let before = try maybeCaptureWindow(
+                shouldCapture: shouldCapture,
+                runId: run.id,
+                source: source,
+                wid: window.wid,
+                prefix: "scout-before"
+            )
+
+            var focused = false
+            if treatment.focusesWindow || treatment.insertsText {
+                focused = try focus(window: window)
+                _ = try RunStore.shared.appendTrace(
+                    id: run.id,
+                    kind: "computer.focused",
+                    summary: "Focused Scout window",
+                    data: ["wid": .int(Int(window.wid)), "focused": .bool(focused)]
+                )
+            }
+            if treatment.insertsText && !focused {
+                throw RouterError.custom("failed to focus Scout window \(window.wid)")
+            }
+
+            var clicked = false
+            if shouldClickComposer && treatment.insertsText {
+                let point = clickPoint(params: params, window: window)
+                    ?? windowRelativePoint(window, xRatio: 0.5, yRatio: 0.86)
+                try postMouseClick(at: point, rawButton: params?["button"]?.stringValue)
+                clicked = true
+                _ = try RunStore.shared.appendTrace(
+                    id: run.id,
+                    kind: "computer.clicked",
+                    summary: "Clicked likely Scout composer area",
+                    data: clickJSON(point, button: params?["button"]?.stringValue)
+                )
+                usleep(140_000)
+            }
+
+            if treatment.insertsText {
+                let typedCharacters = try CompanionKeyboardController.shared.typeText(
+                    text,
+                    targetPid: window.pid
+                )
+                if shouldPressEnter {
+                    _ = try CompanionKeyboardController.shared.send(
+                        key: "enter",
+                        modifiers: [],
+                        targetPid: window.pid
+                    )
+                }
+                _ = try RunStore.shared.appendTrace(
+                    id: run.id,
+                    kind: "computer.typed",
+                    summary: shouldPressEnter ? "Typed Scout message and pressed Enter" : "Typed Scout message draft",
+                    data: [
+                        "characters": .int(typedCharacters),
+                        "pressedEnter": .bool(shouldPressEnter),
+                        "text": .string(text),
+                    ]
+                )
+                usleep(220_000)
+            }
+
+            let after = try maybeCaptureWindow(
+                shouldCapture: shouldCapture,
+                runId: run.id,
+                source: source,
+                wid: window.wid,
+                prefix: "scout-after"
+            )
+            let completed = try RunStore.shared.complete(
+                id: run.id,
+                summary: treatment.insertsText ? "Completed Scout demo warm-up" : "Presented Scout demo target",
+                data: [
+                    "app": .string(appName),
+                    "wid": .int(Int(window.wid)),
+                    "focused": .bool(focused),
+                    "typed": .bool(treatment.insertsText),
+                    "clicked": .bool(clicked),
+                    "sent": .bool(shouldPressEnter && treatment.insertsText),
+                ]
+            )
+            return appResponse(
+                action: "demoScout",
+                run: completed,
+                appName: appName,
+                target: window,
+                before: before?["artifact"],
+                after: after?["artifact"],
+                treatment: treatment,
+                launched: treatment.focusesWindow || treatment.insertsText,
+                focused: focused,
+                typedText: treatment.insertsText ? text : nil,
+                clicked: clicked
+            )
+        } catch {
+            _ = try? RunStore.shared.fail(
+                id: run.id,
+                summary: "Scout demo warm-up failed",
+                data: ["app": .string(appName), "error": .string(error.localizedDescription)]
+            )
+            throw error
+        }
+    }
+
+    private func runTerminalText(
+        params: JSON?,
+        title: String,
+        defaultText: String?,
+        requireText: Bool,
+        defaultTreatment: ComputerTreatment
+    ) throws -> JSON {
+        let source = params?["source"]?.stringValue ?? "daemon"
+        let treatment = ComputerTreatment.resolve(params: params, defaultValue: defaultTreatment)
+        let shouldPressEnter = params?["enter"]?.boolValue ?? false
+        let shouldCapture = params?["capture"]?.boolValue ?? true
+        let transportPreference = params?["transport"]?.stringValue?.lowercased() ?? "auto"
+        let typedText = params?["text"]?.stringValue ?? defaultText ?? ""
+        if requireText && typedText.isEmpty {
+            throw RouterError.missingParam("text")
+        }
+        let candidates = terminalCandidates(preferredApp: params?["app"]?.stringValue)
+
+        guard var selected = resolveTerminal(params: params, candidates: candidates) else {
+            throw RouterError.notFound("safe terminal window")
+        }
+        selected = candidateWithTerminalSessionOverride(params: params, selected: selected)
+        guard let wid = selected.instance.windowId,
+              let window = DesktopModel.shared.windows[wid] else {
+            throw RouterError.notFound("window for terminal \(selected.instance.displayName)")
+        }
+        guard !treatment.insertsText || selected.isSafeForTextInsertion else {
+            throw RouterError.custom(
+                "selected terminal is not an idle shell; use --dry-run or target a safe shell terminal"
+            )
+        }
+        guard !treatment.insertsText || !shouldPressEnter || selected.isSafeForEnter else {
+            throw RouterError.custom(
+                "selected terminal is only safe for no-enter text insertion"
+            )
+        }
+
+        let run = try RunStore.shared.createRun(
+            title: title,
+            source: source,
+            surfaces: [.window(window)]
+        )
+
+        do {
+            _ = try RunStore.shared.markRunning(
+                id: run.id,
+                summary: "Selected terminal target",
+                data: [
+                    "action": .string("typeText"),
+                    "treatment": .string(treatment.rawValue),
+                    "wid": .int(Int(wid)),
+                    "tty": .string(selected.instance.tty),
+                    "score": .int(selected.score),
+                    "reason": .string(selected.reason),
+                    "candidates": .array(candidates.prefix(8).map(\.json)),
+                ]
+            )
+
+            let before = try maybeCaptureWindow(
+                shouldCapture: shouldCapture,
+                runId: run.id,
+                source: source,
+                wid: wid,
+                prefix: "terminal-before"
+            )
+
+            if !treatment.focusesWindow && !treatment.insertsText {
+                let completed = try RunStore.shared.complete(
+                    id: run.id,
+                    summary: treatment == .stage ? "Staged text insertion without typing" : "Observed terminal target",
+                    data: [
+                        "wid": .int(Int(wid)),
+                        "text": .string(typedText),
+                        "treatment": .string(treatment.rawValue),
+                    ]
+                )
+                return response(
+                    action: "typeText",
+                    run: completed,
+                    selected: selected,
+                    candidates: candidates,
+                    before: before?["artifact"],
+                    after: nil,
+                    typedText: typedText,
+                    treatment: treatment,
+                    pressedEnter: false,
+                    transport: nil
+                )
+            }
+
+            var focused = false
+            let tmuxAvailable = canUseTmuxTransport(selected: selected, preference: transportPreference)
+            if treatment == .present || (treatment == .execute && !tmuxAvailable) {
+                focused = try focus(window: window)
+                guard focused else {
+                    throw RouterError.custom("failed to focus terminal window \(wid)")
+                }
+                _ = try RunStore.shared.appendTrace(
+                    id: run.id,
+                    kind: "computer.focused",
+                    summary: "Focused terminal window",
+                    data: ["wid": .int(Int(wid)), "focused": .bool(true)]
+                )
+            }
+
+            if !treatment.insertsText {
+                let after = try maybeCaptureWindow(
+                    shouldCapture: shouldCapture,
+                    runId: run.id,
+                    source: source,
+                    wid: wid,
+                    prefix: "terminal-present-after"
+                )
+                let completed = try RunStore.shared.complete(
+                    id: run.id,
+                    summary: "Presented terminal target without typing",
+                    data: ["wid": .int(Int(wid)), "focused": .bool(focused)]
+                )
+                return response(
+                    action: "typeText",
+                    run: completed,
+                    selected: selected,
+                    candidates: candidates,
+                    before: before?["artifact"],
+                    after: after?["artifact"],
+                    typedText: typedText,
+                    treatment: treatment,
+                    pressedEnter: false,
+                    transport: nil
+                )
+            }
+
+            let typed = try insertText(
+                typedText,
+                selected: selected,
+                window: window,
+                pressEnter: shouldPressEnter,
+                transportPreference: transportPreference
+            )
+            _ = try RunStore.shared.appendTrace(
+                id: run.id,
+                kind: "computer.typed",
+                summary: shouldPressEnter ? "Typed text and pressed Enter" : "Typed text without pressing Enter",
+                data: [
+                    "wid": .int(Int(wid)),
+                    "characters": .int(typed.characters),
+                    "pressedEnter": .bool(shouldPressEnter),
+                    "text": .string(typedText),
+                    "transport": .string(typed.transport),
+                ]
+            )
+
+            usleep(160_000)
+
+            let after = try maybeCaptureWindow(
+                shouldCapture: shouldCapture,
+                runId: run.id,
+                source: source,
+                wid: wid,
+                prefix: "terminal-after"
+            )
+
+            let completed = try RunStore.shared.complete(
+                id: run.id,
+                summary: "Completed terminal text action",
+                data: [
+                    "wid": .int(Int(wid)),
+                    "typed": .bool(true),
+                    "transport": .string(typed.transport),
+                ]
+            )
+
+            return response(
+                action: "typeText",
+                run: completed,
+                selected: selected,
+                candidates: candidates,
+                before: before?["artifact"],
+                after: after?["artifact"],
+                typedText: typedText,
+                treatment: treatment,
+                pressedEnter: shouldPressEnter,
+                transport: typed.transport
+            )
+        } catch {
+            _ = try? RunStore.shared.fail(
+                id: run.id,
+                summary: "Terminal computer-use demo failed",
+                data: ["error": .string(error.localizedDescription), "wid": .int(Int(wid))]
+            )
+            throw error
+        }
+    }
+
+    func terminalCandidates(preferredApp: String? = nil) -> [TerminalCandidate] {
+        DesktopModel.shared.forcePoll()
+        TmuxModel.shared.poll()
+        ProcessModel.shared.poll()
+
+        // ProcessModel.poll publishes on the main queue; give the current turn a
+        // tiny chance to observe a fresh snapshot before synthesizing.
+        if !Thread.isMainThread {
+            DispatchQueue.main.sync {}
+        }
+
+        let terminals = ProcessModel.shared.synthesizeTerminals()
+        let existingWindowIds = Set(terminals.compactMap(\.windowId))
+        let candidates = terminals
+            .filter { $0.windowId != nil }
+            .map { candidate(for: $0, preferredApp: preferredApp) }
+            + windowOnlyCandidates(excluding: existingWindowIds, preferredApp: preferredApp)
+
+        return candidates.sorted { a, b in
+            if a.score != b.score { return a.score > b.score }
+            return a.instance.displayName < b.instance.displayName
+        }
+    }
+
+    private func resolveTerminal(params: JSON?, candidates: [TerminalCandidate]) -> TerminalCandidate? {
+        if let terminalSessionId = terminalSessionIdParam(params) {
+            if let match = candidates.first(where: { $0.instance.terminalSessionId == terminalSessionId }) {
+                return match
+            }
+        }
+        if let wid = params?["wid"]?.uint32Value {
+            return candidates.first { $0.instance.windowId == wid }
+        }
+        if let tty = params?["tty"]?.stringValue {
+            return candidates.first { $0.instance.tty == tty }
+        }
+        return candidates.first { $0.isSafeForTextInsertion }
+            ?? candidates.first
+    }
+
+    private func terminalSessionIdParam(_ params: JSON?) -> String? {
+        for key in ["terminalSessionId", "terminal-session-id", "itermSessionId", "iterm-session-id"] {
+            if let value = params?[key]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !value.isEmpty {
+                return value
+            }
+        }
+        return nil
+    }
+
+    private func candidateWithTerminalSessionOverride(
+        params: JSON?,
+        selected: TerminalCandidate
+    ) -> TerminalCandidate {
+        guard let terminalSessionId = terminalSessionIdParam(params) else {
+            return selected
+        }
+        guard selected.instance.app == .iterm2 else {
+            return selected
+        }
+        guard selected.instance.terminalSessionId != terminalSessionId else {
+            return selected
+        }
+
+        let instance = TerminalInstance(
+            tty: selected.instance.tty,
+            app: selected.instance.app,
+            windowIndex: selected.instance.windowIndex,
+            tabIndex: selected.instance.tabIndex,
+            isActiveTab: selected.instance.isActiveTab,
+            tabTitle: selected.instance.tabTitle,
+            terminalSessionId: terminalSessionId,
+            processes: selected.instance.processes,
+            shellPid: selected.instance.shellPid,
+            cwd: selected.instance.cwd,
+            tmuxSession: selected.instance.tmuxSession,
+            tmuxPaneId: selected.instance.tmuxPaneId,
+            windowId: selected.instance.windowId,
+            windowTitle: selected.instance.windowTitle
+        )
+
+        return TerminalCandidate(
+            instance: instance,
+            score: selected.score,
+            reason: selected.reason.isEmpty ? "iterm-session-override" : "\(selected.reason), iterm-session-override",
+            activeCommand: selected.activeCommand
+        )
+    }
+
+    private func candidate(for instance: TerminalInstance, preferredApp: String?) -> TerminalCandidate {
+        var score = 0
+        var reasons: [String] = []
+        let appName = instance.app?.rawValue ?? ""
+        let command = activeCommand(for: instance)
+
+        if instance.windowId != nil {
+            score += 25
+            reasons.append("has-window")
+        }
+        if let wid = instance.windowId,
+           let window = DesktopModel.shared.windows[wid] {
+            if window.zIndex == 0 {
+                score += 80
+                reasons.append("frontmost-window")
+            } else if window.zIndex <= 4 {
+                score += 24
+                reasons.append("near-front-window")
+            }
+            if window.isOnScreen {
+                score += 8
+                reasons.append("on-screen")
+            }
+        }
+        if let preferredApp, !preferredApp.isEmpty, appName.localizedCaseInsensitiveContains(preferredApp) {
+            score += 45
+            reasons.append("preferred-app")
+        } else if appName.localizedCaseInsensitiveContains("iterm") {
+            score += 35
+            reasons.append("iterm")
+        } else if !appName.isEmpty {
+            score += 16
+            reasons.append(appName)
+        }
+        if instance.isActiveTab {
+            score += 10
+            reasons.append("active-tab")
+        }
+        if let session = instance.tmuxSession, !session.isEmpty {
+            score += 14
+            reasons.append("tmux:\(session)")
+        }
+        if let cwd = instance.cwd, cwd.contains("/Users/arach/dev") {
+            score += 12
+            reasons.append("dev-cwd")
+        }
+        if let command, shellCommands.contains(command) {
+            score += 35
+            reasons.append("idle-shell")
+        }
+        if titleSuggestsShell(instance.windowTitle), instance.processes.isEmpty {
+            score += 32
+            reasons.append("shell-title")
+        }
+        if instance.hasClaude {
+            score -= 80
+            reasons.append("avoid-claude")
+        }
+        if let command, riskyCommands.contains(command) {
+            score -= 40
+            reasons.append("avoid-\(command)")
+        }
+
+        return TerminalCandidate(
+            instance: instance,
+            score: score,
+            reason: reasons.joined(separator: ", "),
+            activeCommand: command
+        )
+    }
+
+    private func windowOnlyCandidates(
+        excluding existingWindowIds: Set<UInt32>,
+        preferredApp: String?
+    ) -> [TerminalCandidate] {
+        DesktopModel.shared.windows.values
+            .filter { existingWindowIds.contains($0.wid) == false }
+            .filter { terminal(forWindowApp: $0.app) != nil }
+            .map { window in
+                let app = terminal(forWindowApp: window.app)
+                let instance = TerminalInstance(
+                    tty: "window:\(window.wid)",
+                    app: app,
+                    windowIndex: nil,
+                    tabIndex: nil,
+                    isActiveTab: window.zIndex == 0,
+                    tabTitle: nil,
+                    terminalSessionId: nil,
+                    processes: [],
+                    shellPid: nil,
+                    cwd: cwdFromTerminalTitle(window.title),
+                    tmuxSession: window.latticesSession,
+                    tmuxPaneId: nil,
+                    windowId: window.wid,
+                    windowTitle: window.title
+                )
+                return candidate(for: instance, preferredApp: preferredApp)
+            }
+    }
+
+    private func activeCommand(for instance: TerminalInstance) -> String? {
+        if let session = instance.tmuxSession,
+           let paneId = instance.tmuxPaneId,
+           let pane = TmuxModel.shared.sessions
+            .first(where: { $0.name == session })?
+            .panes
+            .first(where: { $0.id == paneId }) {
+            return normalizeCommand(pane.currentCommand)
+        }
+        if let command = instance.processes.last?.comm {
+            return normalizeCommand(command)
+        }
+        if let shellPid = instance.shellPid,
+           let command = ProcessModel.shared.processTable[shellPid]?.comm {
+            return normalizeCommand(command)
+        }
+        return nil
+    }
+
+    private func normalizeCommand(_ command: String) -> String {
+        command.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+    }
+
+    private func terminal(forWindowApp app: String) -> Terminal? {
+        if app == "iTerm 2" { return .iterm2 }
+        return Terminal(rawValue: app)
+    }
+
+    private func cwdFromTerminalTitle(_ title: String) -> String? {
+        guard let colon = title.lastIndex(of: ":") else { return nil }
+        let suffix = String(title[title.index(after: colon)...])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !suffix.isEmpty else { return nil }
+        if suffix == "~" { return NSHomeDirectory() }
+        if suffix.hasPrefix("~/") {
+            return NSHomeDirectory() + String(suffix.dropFirst())
+        }
+        if suffix.hasPrefix("/") {
+            return suffix
+        }
+        return nil
+    }
+
+    private func titleSuggestsShell(_ title: String?) -> Bool {
+        guard let title, !title.isEmpty else { return false }
+        let lowered = title.lowercased()
+        if lowered.contains("claude") || lowered.contains("codex") || lowered.contains("vim") || lowered.contains("nvim") {
+            return false
+        }
+        return title.contains("@") && title.contains(":") &&
+            (title.contains("~/") || title.contains(":/") || title.hasSuffix(":~"))
+    }
+
+    private func focus(window: WindowEntry) throws -> Bool {
+        if Thread.isMainThread {
+            _ = WindowTiler.focusWindow(wid: window.wid, pid: window.pid)
+        } else {
+            DispatchQueue.main.sync {
+                _ = WindowTiler.focusWindow(wid: window.wid, pid: window.pid)
+            }
+        }
+        return waitForFocusedWindow(wid: window.wid, pid: window.pid)
+    }
+
+    private func waitForFocusedWindow(wid: UInt32, pid: Int32, timeout: TimeInterval = 1.4) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if focusedWindowId(pid: pid) == wid {
+                return true
+            }
+            usleep(50_000)
+        } while Date() < deadline
+        return false
+    }
+
+    private func focusedWindowId(pid: Int32) -> UInt32? {
+        let appRef = AXUIElementCreateApplication(pid)
+        var focusedRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(appRef, kAXFocusedWindowAttribute as CFString, &focusedRef) == .success,
+              let focusedRef else {
+            return nil
+        }
+
+        var wid: CGWindowID = 0
+        guard _AXUIElementGetWindow(focusedRef as! AXUIElement, &wid) == .success else {
+            return nil
+        }
+        return UInt32(wid)
+    }
+
+    private func maybeCaptureWindow(
+        shouldCapture: Bool,
+        runId: String,
+        source: String,
+        wid: UInt32,
+        prefix: String
+    ) throws -> JSON? {
+        guard shouldCapture else { return nil }
+        return try CaptureController.shared.screenshotWindow(params: .object([
+            "runId": .string(runId),
+            "source": .string(source),
+            "wid": .int(Int(wid)),
+            "filename": .string("\(prefix)-\(wid)-\(Self.fileTimestamp()).png"),
+        ]))
+    }
+
+    private func cursorPoint(params: JSON?) -> CGPoint {
+        if let x = params?["x"]?.numericDouble,
+           let y = params?["y"]?.numericDouble {
+            return CGPoint(x: x, y: y)
+        }
+        return NSEvent.mouseLocation
+    }
+
+    private func cursorPointCG(params: JSON?) -> CGPoint {
+        if let x = params?["x"]?.numericDouble,
+           let y = params?["y"]?.numericDouble {
+            return CGPoint(x: x, y: y)
+        }
+        return cgPoint(fromOverlayPoint: NSEvent.mouseLocation)
+    }
+
+    private func startPoint(params: JSON?, window: WindowEntry?, endPoint: CGPoint) -> CGPoint {
+        if let x = params?["fromX"]?.numericDouble ?? params?["from-x"]?.numericDouble,
+           let y = params?["fromY"]?.numericDouble ?? params?["from-y"]?.numericDouble {
+            return CGPoint(x: x, y: y)
+        }
+
+        if let window {
+            let rawXRatio = params?["fromXRatio"]?.numericDouble
+                ?? params?["from-x-ratio"]?.numericDouble
+                ?? params?["startXRatio"]?.numericDouble
+                ?? params?["start-x-ratio"]?.numericDouble
+            let rawYRatio = params?["fromYRatio"]?.numericDouble
+                ?? params?["from-y-ratio"]?.numericDouble
+                ?? params?["startYRatio"]?.numericDouble
+                ?? params?["start-y-ratio"]?.numericDouble
+            return windowRelativePoint(
+                window,
+                xRatio: CGFloat(max(0.0, min(1.0, rawXRatio ?? 0.18))),
+                yRatio: CGFloat(max(0.0, min(1.0, rawYRatio ?? 0.26)))
+            )
+        }
+
+        let current = cgPoint(fromOverlayPoint: NSEvent.mouseLocation)
+        if current == endPoint {
+            return CGPoint(x: endPoint.x - 320, y: endPoint.y - 180)
+        }
+        return current
+    }
+
+    private func cursorJSON(_ point: CGPoint) -> JSON {
+        .object([
+            "x": .double(point.x),
+            "y": .double(point.y),
+        ])
+    }
+
+    private func markerDefaultParams(_ params: JSON?) -> JSON {
+        var dict: [String: JSON] = [:]
+        if case .object(let existing) = params {
+            dict = existing
+        }
+        if dict["style"] == nil && dict["appearance"] == nil && dict["cursorStyle"] == nil {
+            dict["style"] = .string("marker")
+        }
+        if dict["durationMs"] == nil && dict["duration-ms"] == nil {
+            dict["durationMs"] = .int(1800)
+        }
+        if dict["color"] == nil {
+            dict["color"] = .string("pearl")
+        }
+        if dict["shape"] == nil {
+            dict["shape"] = .string("arrow")
+        }
+        if dict["size"] == nil && dict["markerSize"] == nil && dict["cursorSize"] == nil {
+            dict["size"] = .string("tiny")
+        }
+        return .object(dict)
+    }
+
+    private func overlayPoint(fromCGPoint point: CGPoint) -> CGPoint {
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+        return CGPoint(x: point.x, y: primaryHeight - point.y)
+    }
+
+    private func overlayCaptionTopLeft(
+        params: JSON?,
+        window: WindowEntry?,
+        fallbackPoint: CGPoint
+    ) -> CGPoint? {
+        if let x = params?["captionX"]?.numericDouble ?? params?["caption-x"]?.numericDouble,
+           let y = params?["captionY"]?.numericDouble ?? params?["caption-y"]?.numericDouble {
+            return CGPoint(x: x, y: y)
+        }
+
+        guard let window else { return nil }
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+        let margin: Double = params?["captionMargin"]?.numericDouble
+            ?? params?["caption-margin"]?.numericDouble
+            ?? 18
+        let estimatedWidth: Double = 388
+        let estimatedHeight: Double = 138
+
+        let ratioX = params?["captionXRatio"]?.numericDouble
+            ?? params?["caption-x-ratio"]?.numericDouble
+            ?? params?["captionLeftRatio"]?.numericDouble
+            ?? params?["caption-left-ratio"]?.numericDouble
+        let ratioY = params?["captionYRatio"]?.numericDouble
+            ?? params?["caption-y-ratio"]?.numericDouble
+            ?? params?["captionTopRatio"]?.numericDouble
+            ?? params?["caption-top-ratio"]?.numericDouble
+        if ratioX != nil || ratioY != nil {
+            let xRatio = max(0, min(1, ratioX ?? 0.02))
+            let yRatio = max(0, min(1, ratioY ?? 0.06))
+            return CGPoint(
+                x: window.frame.x + window.frame.w * xRatio,
+                y: primaryHeight - (window.frame.y + window.frame.h * yRatio)
+            )
+        }
+
+        let placement = (params?["captionPlacement"]?.stringValue
+            ?? params?["caption-placement"]?.stringValue
+            ?? "top-left")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+
+        switch placement {
+        case "top-right", "right-top":
+            return CGPoint(
+                x: window.frame.x + window.frame.w - estimatedWidth - margin,
+                y: primaryHeight - window.frame.y - margin
+            )
+        case "bottom-left", "left-bottom":
+            return CGPoint(
+                x: window.frame.x + margin,
+                y: primaryHeight - (window.frame.y + window.frame.h) + estimatedHeight + margin
+            )
+        case "bottom-right", "right-bottom":
+            return CGPoint(
+                x: window.frame.x + window.frame.w - estimatedWidth - margin,
+                y: primaryHeight - (window.frame.y + window.frame.h) + estimatedHeight + margin
+            )
+        case "top-center", "top", "center-top":
+            return CGPoint(
+                x: window.frame.x + (window.frame.w - estimatedWidth) / 2,
+                y: primaryHeight - window.frame.y - margin
+            )
+        case "center", "middle":
+            return CGPoint(
+                x: window.frame.x + (window.frame.w - estimatedWidth) / 2,
+                y: primaryHeight - (window.frame.y + window.frame.h / 2) + estimatedHeight / 2
+            )
+        case "near-cursor", "cursor":
+            let overlayPoint = overlayPoint(fromCGPoint: fallbackPoint)
+            return CGPoint(x: overlayPoint.x + margin, y: overlayPoint.y + estimatedHeight / 2)
+        default:
+            return overlayCaptionTopLeft(for: window)
+        }
+    }
+
+    private func overlayCaptionTopLeft(for window: WindowEntry) -> CGPoint {
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+        return CGPoint(
+            x: window.frame.x + 18,
+            y: primaryHeight - window.frame.y - 18
+        )
+    }
+
+    private func cgPoint(fromOverlayPoint point: CGPoint) -> CGPoint {
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+        return CGPoint(x: point.x, y: primaryHeight - point.y)
+    }
+
+    private func appNameParam(_ params: JSON?, defaultName: String? = nil) throws -> String {
+        let raw = params?["app"]?.stringValue
+            ?? params?["name"]?.stringValue
+            ?? params?["bundleName"]?.stringValue
+            ?? defaultName
+        guard let value = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else {
+            throw RouterError.missingParam("app")
+        }
+        return value
+    }
+
+    private func openOrActivateApp(params: JSON?, appName: String) throws -> Bool {
+        try onMain {
+            if let running = NSWorkspace.shared.runningApplications.first(where: { app in
+                app.localizedName?.localizedCaseInsensitiveContains(appName) == true
+                    || app.bundleIdentifier?.localizedCaseInsensitiveContains(appName) == true
+            }) {
+                return running.activate(options: [.activateAllWindows])
+            }
+
+            if let bundleId = params?["bundleId"]?.stringValue
+                ?? params?["bundleIdentifier"]?.stringValue,
+               let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
+                NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+                return true
+            }
+
+            if let path = params?["path"]?.stringValue
+                ?? params?["appPath"]?.stringValue,
+               FileManager.default.fileExists(atPath: path) {
+                NSWorkspace.shared.openApplication(
+                    at: URL(fileURLWithPath: path),
+                    configuration: NSWorkspace.OpenConfiguration()
+                )
+                return true
+            }
+
+            let fileManager = FileManager.default
+            let trimmedName = appName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let filenames = trimmedName.hasSuffix(".app")
+                ? [trimmedName]
+                : ["\(trimmedName).app", trimmedName]
+            let roots = [
+                "/Applications",
+                "/System/Applications",
+                fileManager.homeDirectoryForCurrentUser.appendingPathComponent("Applications").path,
+                "/Users/arach/Applications",
+            ]
+
+            for root in roots {
+                for filename in filenames {
+                    let url = URL(fileURLWithPath: root).appendingPathComponent(filename)
+                    guard fileManager.fileExists(atPath: url.path) else { continue }
+                    NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+                    return true
+                }
+            }
+
+            return ProcessQuery.run(["/usr/bin/open", "-a", trimmedName])
+        }
+    }
+
+    private func waitForWindow(app appName: String, title: String?, timeout: TimeInterval) -> WindowEntry? {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if let window = windowForApp(appName, title: title) {
+                return window
+            }
+            usleep(90_000)
+        } while Date() < deadline
+        return windowForApp(appName, title: title)
+    }
+
+    private func windowForApp(_ appName: String, title: String?) -> WindowEntry? {
+        DesktopModel.shared.forcePoll()
+        return DesktopModel.shared.windowForApp(app: appName, title: title)
+    }
+
+    private func clickPoint(params: JSON?, window: WindowEntry?) -> CGPoint? {
+        if let x = params?["x"]?.numericDouble,
+           let y = params?["y"]?.numericDouble {
+            return CGPoint(x: x, y: y)
+        }
+        guard let window else { return nil }
+        let xRatio = params?["xRatio"]?.numericDouble
+            ?? params?["relativeX"]?.numericDouble
+            ?? params?["windowX"]?.numericDouble
+        let yRatio = params?["yRatio"]?.numericDouble
+            ?? params?["relativeY"]?.numericDouble
+            ?? params?["windowY"]?.numericDouble
+        guard xRatio != nil || yRatio != nil else { return nil }
+        return windowRelativePoint(
+            window,
+            xRatio: CGFloat(max(0.0, min(1.0, xRatio ?? 0.5))),
+            yRatio: CGFloat(max(0.0, min(1.0, yRatio ?? 0.5)))
+        )
+    }
+
+    private func windowRelativePoint(_ window: WindowEntry, xRatio: CGFloat, yRatio: CGFloat) -> CGPoint {
+        CGPoint(
+            x: window.frame.x + window.frame.w * Double(xRatio),
+            y: window.frame.y + window.frame.h * Double(yRatio)
+        )
+    }
+
+    private func postMouseClick(at point: CGPoint, rawButton: String?) throws {
+        guard AXIsProcessTrusted() else {
+            throw RouterError.custom("Accessibility permission is required to click")
+        }
+        let button = mouseButton(rawButton)
+        guard let source = CGEventSource(stateID: .combinedSessionState),
+              let down = CGEvent(
+                mouseEventSource: source,
+                mouseType: button.downType,
+                mouseCursorPosition: point,
+                mouseButton: button.button
+              ),
+              let up = CGEvent(
+                mouseEventSource: source,
+                mouseType: button.upType,
+                mouseCursorPosition: point,
+                mouseButton: button.button
+              ) else {
+            throw RouterError.custom("Unable to create mouse click event")
+        }
+
+        CGAssociateMouseAndMouseCursorPosition(0)
+        CGWarpMouseCursorPosition(point)
+        usleep(35_000)
+        down.post(tap: .cghidEventTap)
+        usleep(28_000)
+        up.post(tap: .cghidEventTap)
+        CGAssociateMouseAndMouseCursorPosition(1)
+    }
+
+    private func mouseButton(_ raw: String?) -> (button: CGMouseButton, downType: CGEventType, upType: CGEventType, label: String) {
+        switch normalizedMouseButton(raw) {
+        case "right":
+            return (.right, .rightMouseDown, .rightMouseUp, "right")
+        default:
+            return (.left, .leftMouseDown, .leftMouseUp, "left")
+        }
+    }
+
+    private func normalizedMouseButton(_ raw: String?) -> String {
+        switch raw?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "right", "secondary", "context":
+            return "right"
+        default:
+            return "left"
+        }
+    }
+
+    private func clickTransport(_ params: JSON?) -> String {
+        let raw = params?["transport"]?.stringValue
+            ?? params?["method"]?.stringValue
+            ?? params?["inputMode"]?.stringValue
+            ?? params?["input-mode"]?.stringValue
+        switch raw?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "ax", "accessibility", "no-focus", "nofocus":
+            return "ax"
+        case "pointer", "mouse", "hardware":
+            return "pointer"
+        default:
+            return "auto"
+        }
+    }
+
+    private func axPressLabel(_ params: JSON?) -> String? {
+        let explicit = params?["axLabel"]?.stringValue
+            ?? params?["ax-label"]?.stringValue
+            ?? params?["targetText"]?.stringValue
+            ?? params?["target-text"]?.stringValue
+            ?? params?["label"]?.stringValue
+        if let explicit, !explicit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return explicit
+        }
+        if params?["send"]?.boolValue == true || params?["enter"]?.boolValue == true {
+            return "send"
+        }
+        return nil
+    }
+
+    private func clickJSON(_ point: CGPoint, button: String?) -> [String: JSON] {
+        [
+            "x": .double(point.x),
+            "y": .double(point.y),
+            "button": .string(normalizedMouseButton(button)),
+        ]
+    }
+
+    private func pressViaAX(
+        window: WindowEntry,
+        targetPoint: CGPoint?,
+        label: String?
+    ) throws -> AXPressResult {
+        guard AXIsProcessTrusted() else {
+            throw RouterError.custom("Accessibility permission is required for AXPress")
+        }
+        guard let axWindow = axWindow(pid: window.pid, wid: window.wid) else {
+            throw RouterError.custom("Unable to resolve AX window \(window.wid)")
+        }
+
+        let windowFrame = CGRect(
+            x: window.frame.x,
+            y: window.frame.y,
+            width: window.frame.w,
+            height: window.frame.h
+        )
+        var candidates: [AXPressCandidate] = []
+        let deadline = Date().addingTimeInterval(0.75)
+        collectPressCandidates(
+            element: axWindow,
+            depth: 0,
+            deadline: deadline,
+            targetPoint: targetPoint,
+            targetLabel: label,
+            windowFrame: windowFrame,
+            candidates: &candidates
+        )
+
+        guard let candidate = candidates.sorted(by: { $0.score > $1.score }).first else {
+            throw RouterError.custom("No AXPress target found in window \(window.wid)")
+        }
+
+        let action = kAXPressAction as String
+        let err = AXUIElementPerformAction(candidate.element, kAXPressAction as CFString)
+        guard err == .success else {
+            throw RouterError.custom("AXPress failed with \(err.rawValue)")
+        }
+
+        return AXPressResult(
+            role: candidate.role,
+            roleDescription: candidate.roleDescription,
+            title: candidate.title,
+            value: candidate.value,
+            description: candidate.description,
+            frame: candidate.frame,
+            action: action,
+            performed: true
+        )
+    }
+
+    private func setTextViaAX(
+        _ text: String,
+        window: WindowEntry,
+        targetPoint: CGPoint?,
+        append: Bool,
+        typeIntervalMs: Double?
+    ) throws -> AXTextInsertionResult {
+        guard AXIsProcessTrusted() else {
+            throw RouterError.custom("Accessibility permission is required for AX text insertion")
+        }
+        guard let axWindow = axWindow(pid: window.pid, wid: window.wid) else {
+            throw RouterError.custom("Unable to resolve AX window \(window.wid)")
+        }
+
+        let windowFrame = CGRect(
+            x: window.frame.x,
+            y: window.frame.y,
+            width: window.frame.w,
+            height: window.frame.h
+        )
+        var candidates: [AXEditableCandidate] = []
+        let deadline = Date().addingTimeInterval(0.75)
+        collectEditableCandidates(
+            element: axWindow,
+            depth: 0,
+            deadline: deadline,
+            targetPoint: targetPoint,
+            windowFrame: windowFrame,
+            candidates: &candidates
+        )
+
+        guard let candidate = candidates.sorted(by: { $0.score > $1.score }).first else {
+            throw RouterError.custom("No editable AX text target found in window \(window.wid)")
+        }
+
+        func setAXValue(_ value: String) throws {
+            let err = AXUIElementSetAttributeValue(
+                candidate.element,
+                kAXValueAttribute as CFString,
+                value as CFString
+            )
+            guard err == .success else {
+                throw RouterError.custom("AX text insertion failed with \(err.rawValue)")
+            }
+        }
+
+        let previousValue = candidate.value
+        let baseValue = append ? (previousValue ?? "") : ""
+        let insertedValue = append ? (baseValue + text) : text
+        let interval = typeIntervalMs.map { max(4, min($0, 160)) }
+        if let interval {
+            if !append, previousValue?.isEmpty == false {
+                try setAXValue("")
+                usleep(80_000)
+            }
+            var staged = baseValue
+            for character in text {
+                staged.append(character)
+                try setAXValue(staged)
+                usleep(UInt32(interval * 1_000))
+            }
+        } else {
+            try setAXValue(insertedValue)
+        }
+
+        let verified = axString(candidate.element, attribute: kAXValueAttribute)
+        return AXTextInsertionResult(
+            role: candidate.role,
+            roleDescription: candidate.roleDescription,
+            frame: candidate.frame,
+            previousValue: previousValue,
+            insertedValue: insertedValue,
+            verifiedValue: verified,
+            typedCharacters: interval == nil ? nil : text.count,
+            typeIntervalMs: interval
+        )
+    }
+
+    private func axTypeIntervalMs(params: JSON?) -> Double? {
+        let rawInterval = params?["typeIntervalMs"]?.numericDouble
+            ?? params?["type-interval-ms"]?.numericDouble
+            ?? params?["typingIntervalMs"]?.numericDouble
+            ?? params?["typing-interval-ms"]?.numericDouble
+        if let rawInterval, rawInterval > 0 {
+            return max(4, min(rawInterval, 160))
+        }
+        if params?["typewriter"]?.boolValue == true || params?["typing"]?.boolValue == true {
+            return 18
+        }
+        return nil
+    }
+
+    private func axWindow(pid: Int32, wid: UInt32) -> AXUIElement? {
+        let appRef = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(appRef, 0.5)
+        var windowsRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &windowsRef) == .success,
+              let windows = windowsRef as? [AXUIElement] else {
+            return nil
+        }
+
+        for window in windows {
+            var windowId: CGWindowID = 0
+            if _AXUIElementGetWindow(window, &windowId) == .success, windowId == CGWindowID(wid) {
+                return window
+            }
+        }
+        return nil
+    }
+
+    private func collectEditableCandidates(
+        element: AXUIElement,
+        depth: Int,
+        deadline: Date,
+        targetPoint: CGPoint?,
+        windowFrame: CGRect,
+        candidates: inout [AXEditableCandidate]
+    ) {
+        guard depth <= 10, Date() < deadline, candidates.count < 80 else { return }
+
+        if let candidate = editableCandidate(
+            element: element,
+            depth: depth,
+            targetPoint: targetPoint,
+            windowFrame: windowFrame
+        ) {
+            candidates.append(candidate)
+        }
+
+        var childrenRef: CFTypeRef?
+        var children: [AXUIElement] = []
+        if AXUIElementCopyAttributeValue(element, kAXVisibleChildrenAttribute as CFString, &childrenRef) == .success,
+           let visible = childrenRef as? [AXUIElement],
+           !visible.isEmpty {
+            children = visible
+        } else {
+            childrenRef = nil
+            if AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+               let all = childrenRef as? [AXUIElement] {
+                children = all
+            }
+        }
+
+        for child in children.prefix(80) {
+            collectEditableCandidates(
+                element: child,
+                depth: depth + 1,
+                deadline: deadline,
+                targetPoint: targetPoint,
+                windowFrame: windowFrame,
+                candidates: &candidates
+            )
+        }
+    }
+
+    private func collectPressCandidates(
+        element: AXUIElement,
+        depth: Int,
+        deadline: Date,
+        targetPoint: CGPoint?,
+        targetLabel: String?,
+        windowFrame: CGRect,
+        candidates: inout [AXPressCandidate]
+    ) {
+        guard depth <= 12, Date() < deadline, candidates.count < 120 else { return }
+
+        if let candidate = pressCandidate(
+            element: element,
+            depth: depth,
+            targetPoint: targetPoint,
+            targetLabel: targetLabel,
+            windowFrame: windowFrame
+        ) {
+            candidates.append(candidate)
+        }
+
+        var childrenRef: CFTypeRef?
+        var children: [AXUIElement] = []
+        if AXUIElementCopyAttributeValue(element, kAXVisibleChildrenAttribute as CFString, &childrenRef) == .success,
+           let visible = childrenRef as? [AXUIElement],
+           !visible.isEmpty {
+            children = visible
+        } else {
+            childrenRef = nil
+            if AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+               let all = childrenRef as? [AXUIElement] {
+                children = all
+            }
+        }
+
+        for child in children.prefix(120) {
+            collectPressCandidates(
+                element: child,
+                depth: depth + 1,
+                deadline: deadline,
+                targetPoint: targetPoint,
+                targetLabel: targetLabel,
+                windowFrame: windowFrame,
+                candidates: &candidates
+            )
+        }
+    }
+
+    private func editableCandidate(
+        element: AXUIElement,
+        depth: Int,
+        targetPoint: CGPoint?,
+        windowFrame: CGRect
+    ) -> AXEditableCandidate? {
+        let role = axString(element, attribute: kAXRoleAttribute) ?? "unknown"
+        let roleDescription = axString(element, attribute: kAXRoleDescriptionAttribute)
+        let value = axString(element, attribute: kAXValueAttribute)
+        var settable = DarwinBoolean(false)
+        let settableErr = AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &settable)
+        guard settableErr == .success, settable.boolValue else { return nil }
+
+        let roleText = "\(role) \(roleDescription ?? "")".lowercased()
+        let roleLooksEditable = roleText.contains("text")
+            || role == "AXTextArea"
+            || role == "AXTextField"
+            || role == "AXComboBox"
+        guard roleLooksEditable else { return nil }
+
+        let frame = axFrame(element)
+        var score = 100.0 - Double(depth) * 8.0
+        if role == "AXTextArea" {
+            score += 130
+        } else if role == "AXTextField" {
+            score += 100
+        } else if role == "AXComboBox" {
+            score += 40
+        }
+
+        if let frame {
+            let lowerHalf = frame.midY >= windowFrame.midY
+            if lowerHalf {
+                score += 90
+            }
+            let area = max(1, frame.width * frame.height)
+            score -= min(80, Double(area / max(1, windowFrame.width * windowFrame.height)) * 120)
+
+            if let targetPoint {
+                let hitFrame = frame.insetBy(dx: -8, dy: -8)
+                if hitFrame.contains(targetPoint) {
+                    score += 1_000
+                    score += Double(depth) * 12
+                } else {
+                    let dx = frame.midX - targetPoint.x
+                    let dy = frame.midY - targetPoint.y
+                    score -= min(350, Double(hypot(dx, dy) / 4))
+                }
+            }
+        } else if targetPoint != nil {
+            score -= 120
+        }
+
+        return AXEditableCandidate(
+            element: element,
+            role: role,
+            roleDescription: roleDescription,
+            frame: frame,
+            value: value,
+            score: score
+        )
+    }
+
+    private func pressCandidate(
+        element: AXUIElement,
+        depth: Int,
+        targetPoint: CGPoint?,
+        targetLabel: String?,
+        windowFrame: CGRect
+    ) -> AXPressCandidate? {
+        let actions = axActions(element)
+        guard actions.contains(kAXPressAction as String) else { return nil }
+
+        let role = axString(element, attribute: kAXRoleAttribute) ?? "unknown"
+        let roleDescription = axString(element, attribute: kAXRoleDescriptionAttribute)
+        let title = axString(element, attribute: kAXTitleAttribute)
+        let value = axString(element, attribute: kAXValueAttribute)
+        let description = axString(element, attribute: kAXDescriptionAttribute)
+        let help = axString(element, attribute: kAXHelpAttribute)
+        let identifier = axString(element, attribute: kAXIdentifierAttribute)
+        let frame = axFrame(element)
+
+        var score = 80.0 - Double(depth) * 5.0
+        let roleText = "\(role) \(roleDescription ?? "")".lowercased()
+        if role == "AXButton" || roleText.contains("button") {
+            score += 140
+        } else if role == "AXMenuItem" || roleText.contains("menu item") {
+            score += 60
+        } else {
+            score += 20
+        }
+
+        if let frame {
+            let lowerRight = frame.midX >= windowFrame.midX && frame.midY >= windowFrame.midY
+            let area = max(1, frame.width * frame.height)
+            score -= min(70, Double(area / max(1, windowFrame.width * windowFrame.height)) * 130)
+            if lowerRight {
+                score += 35
+            }
+
+            if let targetPoint {
+                let hitFrame = frame.insetBy(dx: -10, dy: -10)
+                if hitFrame.contains(targetPoint) {
+                    score += 1_000
+                    score += Double(depth) * 8
+                } else {
+                    let dx = frame.midX - targetPoint.x
+                    let dy = frame.midY - targetPoint.y
+                    score -= min(420, Double(hypot(dx, dy) / 3.5))
+                }
+            }
+        } else if targetPoint != nil {
+            score -= 120
+        }
+
+        if let targetLabel = targetLabel?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+           !targetLabel.isEmpty {
+            let searchable = [
+                title,
+                value,
+                description,
+                help,
+                identifier,
+                roleDescription,
+            ]
+                .compactMap { $0?.lowercased() }
+                .joined(separator: " ")
+            if searchable.contains(targetLabel) {
+                score += 650
+            } else if targetLabel == "send" && frame?.midY ?? 0 >= windowFrame.midY && frame?.midX ?? 0 >= windowFrame.midX {
+                score += 170
+            } else {
+                score -= 70
+            }
+        }
+
+        return AXPressCandidate(
+            element: element,
+            role: role,
+            roleDescription: roleDescription,
+            title: title,
+            value: value,
+            description: description,
+            frame: frame,
+            score: score
+        )
+    }
+
+    private func axActions(_ element: AXUIElement) -> [String] {
+        var ref: CFArray?
+        guard AXUIElementCopyActionNames(element, &ref) == .success,
+              let actions = ref as? [String] else {
+            return []
+        }
+        return actions
+    }
+
+    private func axString(_ element: AXUIElement, attribute: String) -> String? {
+        var ref: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &ref) == .success else {
+            return nil
+        }
+        return ref as? String
+    }
+
+    private func axFrame(_ element: AXUIElement) -> CGRect? {
+        var posRef: CFTypeRef?
+        var sizeRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &posRef) == .success,
+              AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeRef) == .success,
+              let posRef,
+              let sizeRef,
+              CFGetTypeID(posRef) == AXValueGetTypeID(),
+              CFGetTypeID(sizeRef) == AXValueGetTypeID() else {
+            return nil
+        }
+        let posValue = posRef as! AXValue
+        let sizeValue = sizeRef as! AXValue
+        var point = CGPoint.zero
+        var size = CGSize.zero
+        guard AXValueGetValue(posValue, .cgPoint, &point),
+              AXValueGetValue(sizeValue, .cgSize, &size) else {
+            return nil
+        }
+        return CGRect(origin: point, size: size)
+    }
+
+    private func appResponse(
+        action: String,
+        run: RunSession,
+        appName: String,
+        target: WindowEntry?,
+        before: JSON?,
+        after: JSON?,
+        treatment: ComputerTreatment,
+        launched: Bool,
+        focused: Bool,
+        typedText: String?,
+        clicked: Bool?
+    ) -> JSON {
+        var object: [String: JSON] = [
+            "ok": .bool(true),
+            "action": .string(action),
+            "treatment": .string(treatment.rawValue),
+            "app": .string(appName),
+            "launched": .bool(launched),
+            "focused": .bool(focused),
+            "run": run.json,
+        ]
+        if let target { object["target"] = Encoders.window(target) }
+        if let before { object["beforeArtifact"] = before }
+        if let after { object["afterArtifact"] = after }
+        if let typedText { object["typedText"] = .string(typedText) }
+        if let clicked { object["clicked"] = .bool(clicked) }
+        return .object(object)
+    }
+
+    private func clickResponse(
+        run: RunSession,
+        target: WindowEntry?,
+        point: CGPoint,
+        before: JSON?,
+        after: JSON?,
+        treatment: ComputerTreatment,
+        clicked: Bool,
+        button: String?,
+        transport: String,
+        focused: Bool,
+        axResult: AXPressResult?
+    ) -> JSON {
+        var object: [String: JSON] = [
+            "ok": .bool(true),
+            "action": .string("click"),
+            "treatment": .string(treatment.rawValue),
+            "clicked": .bool(clicked),
+            "focused": .bool(focused),
+            "transport": .string(transport),
+            "run": run.json,
+            "cursor": cursorJSON(point),
+            "button": .string(normalizedMouseButton(button)),
+        ]
+        if let target { object["target"] = Encoders.window(target) }
+        if let before { object["beforeArtifact"] = before }
+        if let after { object["afterArtifact"] = after }
+        if let axResult { object["ax"] = axResult.json }
+        return .object(object)
+    }
+
+    private func onMain<T>(_ work: () throws -> T) throws -> T {
+        if Thread.isMainThread {
+            return try work()
+        }
+        var result: Result<T, Error>!
+        DispatchQueue.main.sync {
+            result = Result { try work() }
+        }
+        return try result.get()
+    }
+
+    private func canUseTmuxTransport(selected: TerminalCandidate, preference: String) -> Bool {
+        guard preference == "auto" || preference == "tmux" else { return false }
+        guard TmuxQuery.resolvedPath != nil else { return false }
+        return selected.instance.tmuxPaneId?.isEmpty == false
+    }
+
+    private func canUseITermSessionTransport(selected: TerminalCandidate, preference: String) -> Bool {
+        guard preference == "auto" || preference == "iterm" || preference == "iterm2" else { return false }
+        guard selected.instance.app == .iterm2 else { return false }
+        return selected.instance.terminalSessionId?.isEmpty == false
+    }
+
+    private func canUseFocusedKeyboardTransport(selected: TerminalCandidate) -> Bool {
+        // Pasteboard/key-event insertion is window-scoped. It is only safe when
+        // the selected terminal tab is already the active receiver. iTerm2 tab
+        // queries currently do not expose active-tab state, so iTerm2 must use
+        // tmux or direct session transport instead of app-level pasteboard.
+        if selected.instance.app == .iterm2 {
+            return false
+        }
+        if selected.instance.tabIndex != nil {
+            return selected.instance.isActiveTab
+        }
+        return selected.instance.terminalSessionId == nil
+    }
+
+    private func insertText(
+        _ text: String,
+        selected: TerminalCandidate,
+        window: WindowEntry,
+        pressEnter: Bool,
+        transportPreference: String
+    ) throws -> (characters: Int, transport: String) {
+        if canUseTmuxTransport(selected: selected, preference: transportPreference) {
+            try insertTextViaTmux(text, selected: selected, pressEnter: pressEnter)
+            return (text.count, "tmux")
+        }
+        if canUseITermSessionTransport(selected: selected, preference: transportPreference) {
+            try insertTextViaITermSession(text, selected: selected, pressEnter: pressEnter)
+            return (text.count, "iterm-session")
+        }
+        if transportPreference == "tmux" {
+            throw RouterError.custom("tmux transport requested but target has no tmux pane")
+        }
+        if transportPreference == "iterm" || transportPreference == "iterm2" {
+            throw RouterError.custom("iTerm session transport requested but target has no iTerm session id")
+        }
+        guard canUseFocusedKeyboardTransport(selected: selected) else {
+            throw RouterError.custom("pasteboard/key-event transport requires the selected terminal tab to be active")
+        }
+
+        let typedCharacters = try CompanionKeyboardController.shared.typeText(
+            text,
+            targetPid: window.pid
+        )
+        if pressEnter {
+            _ = try CompanionKeyboardController.shared.send(
+                key: "enter",
+                modifiers: [],
+                targetPid: window.pid
+            )
+        }
+        return (typedCharacters, text.count > 1 ? "pasteboard" : "key-events")
+    }
+
+    private func insertTextViaTmux(
+        _ text: String,
+        selected: TerminalCandidate,
+        pressEnter: Bool
+    ) throws {
+        guard let tmux = TmuxQuery.resolvedPath else {
+            throw RouterError.custom("tmux is not available")
+        }
+        guard let paneId = selected.instance.tmuxPaneId, !paneId.isEmpty else {
+            throw RouterError.custom("target has no tmux pane")
+        }
+        if !text.isEmpty {
+            guard ProcessQuery.run([tmux, "send-keys", "-t", paneId, "-l", text]) else {
+                throw RouterError.custom("tmux failed to insert text into \(paneId)")
+            }
+        }
+        if pressEnter {
+            guard ProcessQuery.run([tmux, "send-keys", "-t", paneId, "Enter"]) else {
+                throw RouterError.custom("tmux failed to press Enter in \(paneId)")
+            }
+        }
+    }
+
+    private func insertTextViaITermSession(
+        _ text: String,
+        selected: TerminalCandidate,
+        pressEnter: Bool
+    ) throws {
+        guard let sessionId = selected.instance.terminalSessionId, !sessionId.isEmpty else {
+            throw RouterError.custom("target has no iTerm session id")
+        }
+
+        let script = """
+        tell application "iTerm2"
+            repeat with w in windows
+                repeat with t in tabs of w
+                    repeat with s in sessions of t
+                        if (unique ID of s) is \(appleScriptString(sessionId)) then
+                            select w
+                            select t
+                            select s
+                            tell s to write text \(appleScriptString(text)) newline \(pressEnter ? "yes" : "no")
+                            return "ok"
+                        end if
+                    end repeat
+                end repeat
+            end repeat
+            error "iTerm session not found"
+        end tell
+        """
+
+        guard ProcessQuery.run(["/usr/bin/osascript", "-e", script]) else {
+            throw RouterError.custom("iTerm failed to insert text into session \(sessionId)")
+        }
+    }
+
+    private func appleScriptString(_ value: String) -> String {
+        "\"" + value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\r", with: "\\r")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            + "\""
+    }
+
+    private func focusResponse(
+        run: RunSession,
+        target: WindowEntry,
+        before: JSON?,
+        after: JSON?,
+        treatment: ComputerTreatment,
+        focused: Bool
+    ) -> JSON {
+        var object: [String: JSON] = [
+            "ok": .bool(true),
+            "action": .string("focusWindow"),
+            "treatment": .string(treatment.rawValue),
+            "focused": .bool(focused),
+            "run": run.json,
+            "target": Encoders.window(target),
+        ]
+        if let before { object["beforeArtifact"] = before["artifact"] ?? before }
+        if let after { object["afterArtifact"] = after["artifact"] ?? after }
+        return .object(object)
+    }
+
+    private func response(
+        action: String,
+        run: RunSession,
+        selected: TerminalCandidate,
+        candidates: [TerminalCandidate],
+        before: JSON?,
+        after: JSON?,
+        typedText: String,
+        treatment: ComputerTreatment,
+        pressedEnter: Bool,
+        transport: String?
+    ) -> JSON {
+        var object: [String: JSON] = [
+            "ok": .bool(true),
+            "action": .string(action),
+            "treatment": .string(treatment.rawValue),
+            "run": run.json,
+            "selected": selected.json,
+            "candidates": .array(candidates.prefix(12).map(\.json)),
+            "typedText": .string(typedText),
+            "dryRun": .bool(!treatment.insertsText),
+            "pressedEnter": .bool(pressedEnter),
+        ]
+        if let transport {
+            object["transport"] = .string(transport)
+        }
+        if let before { object["beforeArtifact"] = before }
+        if let after { object["afterArtifact"] = after }
+        return .object(object)
+    }
+
+    private static func defaultTypedText() -> String {
+        "# lattices computer-use demo: observed, focused, typed; Enter intentionally not pressed"
+    }
+
+    private static func fileTimestamp() -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return formatter.string(from: Date())
+    }
+}
+
+struct TerminalCandidate {
+    let instance: TerminalInstance
+    let score: Int
+    let reason: String
+    let activeCommand: String?
+
+    var isSafeForTextInsertion: Bool {
+        if let activeCommand,
+           ["zsh", "bash", "fish", "sh", "dash"].contains(activeCommand),
+           !instance.hasClaude {
+            return true
+        }
+        guard instance.processes.isEmpty, !instance.hasClaude else { return false }
+        guard let title = instance.windowTitle else { return false }
+        let lowered = title.lowercased()
+        if lowered.contains("claude") || lowered.contains("codex") || lowered.contains("vim") || lowered.contains("nvim") {
+            return false
+        }
+        return title.contains("@") && title.contains(":") &&
+            (title.contains("~/") || title.contains(":/") || title.hasSuffix(":~"))
+    }
+
+    var isSafeForEnter: Bool {
+        guard let activeCommand else { return false }
+        return ["zsh", "bash", "fish", "sh", "dash"].contains(activeCommand)
+            && !instance.hasClaude
+    }
+
+    var json: JSON {
+        var object: [String: JSON] = [
+            "score": .int(score),
+            "reason": .string(reason),
+            "safeForTextInsertion": .bool(isSafeForTextInsertion),
+            "terminal": Encoders.terminalInstance(instance),
+        ]
+        if let activeCommand {
+            object["activeCommand"] = .string(activeCommand)
+        }
+        return .object(object)
+    }
+}

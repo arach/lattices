@@ -27,6 +27,7 @@
   "exports": {
     ".": "./bin/client.ts",
     "./assistant-intelligence": "./bin/assistant-intelligence.ts",
+    "./cua": "./bin/cua.ts",
     "./daemon-client": "./bin/daemon-client.ts",
     "./project-twin": "./bin/project-twin.ts"
   },
@@ -52,6 +53,9 @@
   "os": ["darwin"],
   "files": [
     "bin",
+    "packages/npm/sdk/cua.mjs",
+    "packages/npm/sdk/cua.d.ts",
+    "packages/npm/sdk/cua.d.mts",
     "apps/mac/Info.plist",
     "apps/mac/Lattices.app",
     "apps/mac/Lattices.entitlements",

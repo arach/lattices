@@ -10,10 +10,10 @@ final class ProcessModel: ObservableObject {
     private var timer: DispatchSourceTimer?
     private var lastInterestingPids: Set<Int> = []
 
-    // Terminal tab cache — refreshed lazily when terminals are queried
+    // Terminal tab cache. This is refreshed only by explicit callers because
+    // terminal app scripting can trigger Automation prompts.
     private var cachedTerminalTabs: [TerminalTab] = []
     private var lastTabQueryTime: Date = .distantPast
-    private static let tabCacheTTL: TimeInterval = 300.0  // 5 minutes
 
     /// Background queue for process polling — avoids blocking the main thread
     /// with posix_spawn calls (waitUntilExit deadlocks on macOS 26 main run loop).
@@ -118,16 +118,9 @@ final class ProcessModel: ObservableObject {
     // MARK: - Terminal Synthesis (on-demand)
 
     /// Synthesize terminal instances on demand. Merges the current process table,
-    /// tmux sessions, terminal tabs (cached), and window list into a unified view.
-    /// Called by API endpoints — no background polling needed.
+    /// tmux sessions, any explicitly cached terminal tabs, and window list into
+    /// a unified view. This intentionally does not script terminal apps.
     func synthesizeTerminals() -> [TerminalInstance] {
-        // Refresh tab cache if stale
-        let now = Date()
-        if now.timeIntervalSince(lastTabQueryTime) >= Self.tabCacheTTL {
-            cachedTerminalTabs = TerminalQuery.queryAll()
-            lastTabQueryTime = now
-        }
-
         return TerminalSynthesizer.synthesize(
             processTable: processTable,
             interesting: interesting,
@@ -158,7 +151,11 @@ final class ProcessModel: ObservableObject {
         // 3. Filter interesting, batch-resolve CWDs
         let interestingEntries = ProcessQuery.filterInteresting(table)
         let pids = interestingEntries.map(\.pid)
-        let cwds = ProcessQuery.batchCWD(pids: pids)
+        let shellPids = table.values
+            .filter { ProcessQuery.isInteractiveShell($0.comm) }
+            .map(\.pid)
+        let cwdPids = Array(Set(pids).union(shellPids))
+        let cwds = ProcessQuery.batchCWD(pids: cwdPids)
 
         // 4. Merge CWDs back into table
         for (pid, cwd) in cwds {

@@ -1,0 +1,45 @@
+{
+  "name": "@lattices/sdk",
+  "version": "0.1.0",
+  "description": "Typed SDK modules for Lattices desktop automation",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.mjs"
+    },
+    "./cua": {
+      "types": "./cua.d.ts",
+      "default": "./cua.mjs"
+    }
+  },
+  "types": "./index.d.ts",
+  "files": [
+    "index.mjs",
+    "index.d.ts",
+    "cua.mjs",
+    "cua.d.ts",
+    "cua.d.mts",
+    "README.md"
+  ],
+  "keywords": [
+    "lattices",
+    "sdk",
+    "computer-use",
+    "desktop-automation",
+    "cua"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/arach/lattices",
+    "directory": "packages/npm/sdk"
+  },
+  "homepage": "https://github.com/arach/lattices",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "zod": "^3.25.76"
+  }
+}

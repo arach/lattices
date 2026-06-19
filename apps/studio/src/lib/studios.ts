@@ -24,6 +24,12 @@ export const STUDIO_ENTRIES: StudioEntry[] = [
     caption: "The open-ended path — model in the loop",
     status: "live",
   },
+  {
+    slug: "cursor",
+    title: "Cursor appearance",
+    caption: "The desktop marker as a testable treatment",
+    status: "live",
+  },
 ];
 
 const STUDIO_BY_SLUG = new Map<string, StudioEntry>();
