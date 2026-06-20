@@ -1,5 +1,6 @@
 // swift-tools-version: 6.2
 import PackageDescription
+import Foundation
 
 // HudsonKit source: a local sibling checkout for fast local iteration, or the
 // git dependency for CI/release builds that have no sibling repo. Set
@@ -9,6 +10,18 @@ let hudsonSource = Context.environment["LATTICES_HUDSON_SOURCE"] ?? "path"
 let hudsonDependency: Package.Dependency = hudsonSource == "git"
     ? .package(url: "git@github.com:arach/hudson.git", branch: "main")
     : .package(path: "../../../hudson")
+
+let voiceEnabled = Context.environment["HUDSONKIT_WITH_VOICE"] == "1"
+
+var latticesDependencies: [Target.Dependency] = [
+    .product(name: "DeckKit", package: "swift"),
+    .product(name: "HudsonUI", package: "hudson"),
+    .product(name: "HudsonAI", package: "hudson"),
+    .product(name: "HudsonShell", package: "hudson"),
+]
+if voiceEnabled {
+    latticesDependencies.append(.product(name: "HudsonVoice", package: "hudson"))
+}
 
 let package = Package(
     name: "Lattices",
@@ -20,18 +33,13 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "Lattices",
-            dependencies: [
-                .product(name: "DeckKit", package: "swift"),
-                .product(name: "HudsonUI", package: "hudson"),
-                .product(name: "HudsonAI", package: "hudson"),
-                .product(name: "HudsonVoice", package: "hudson"),
-                .product(name: "HudsonShell", package: "hudson"),
-            ],
+            dependencies: latticesDependencies,
             path: "Sources",
             resources: [
                 .copy("../Resources/tap.wav"),
                 .copy("../Resources/Pets"),
-            ]
+            ],
+            swiftSettings: voiceEnabled ? [.define("LATTICES_VOICE")] : []
         ),
         .testTarget(
             name: "LatticesTests",

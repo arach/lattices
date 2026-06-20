@@ -52,7 +52,13 @@ export function resolveFeatureEnv(features: string[] = []): Record<string, strin
 
 /** Resolve the manifest's declared features into a build-env map. */
 export function resolveBuildEnv(manifestPath?: string): Record<string, string> {
-  return resolveFeatureEnv(loadManifest(manifestPath).features ?? []);
+  const features = loadManifest(manifestPath).features ?? [];
+  const env = resolveFeatureEnv(features);
+  // HudsonKit enables HudsonVoice by default; opt out unless the voice feature is declared.
+  if (!features.includes("voice")) {
+    env.HUDSONKIT_WITH_VOICE = "0";
+  }
+  return env;
 }
 
 // --- CLI: emit the resolved env for shell / json consumers -------------------

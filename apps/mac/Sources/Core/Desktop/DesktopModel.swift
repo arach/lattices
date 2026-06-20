@@ -86,6 +86,19 @@ final class DesktopModel: ObservableObject {
         windows.values.min { $0.zIndex < $1.zIndex }
     }
 
+    /// Frontmost window containing `point` (CG coords, top-left origin).
+    /// Walks `allWindows()` front-to-back — zIndex 0 is topmost (CGWindowList order).
+    func frontWindow(at point: CGPoint, on screen: NSScreen? = nil, excludingPid: Int32? = nil) -> WindowEntry? {
+        for entry in allWindows() {
+            if let excludingPid, entry.pid == excludingPid { continue }
+            guard entry.isOnScreen, !entry.title.isEmpty else { continue }
+            if let screen, WindowTiler.screenForWindowFrame(entry.frame) != screen { continue }
+            let r = CGRect(x: entry.frame.x, y: entry.frame.y, width: entry.frame.w, height: entry.frame.h)
+            if r.contains(point) { return entry }
+        }
+        return nil
+    }
+
     func lastInteractionDate(for wid: UInt32) -> Date? {
         interactionDates[wid]
     }

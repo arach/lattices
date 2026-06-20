@@ -92,7 +92,10 @@ enum HotkeyBootstrap {
             CommandModeWindow.shared.show(launchMode: .organize(appName: appName))
         }
         store.register(action: .motionMode) {
-            WindowMotionMode.shared.toggle()
+            WindowMotionMode.shared.toggleHyperspace()
+        }
+        store.register(action: .inPlaceMode) {
+            WindowMotionMode.shared.toggleInPlace()
         }
     }
 }

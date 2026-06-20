@@ -180,7 +180,7 @@ struct CheatSheetView: View {
             }
             .padding(.vertical, 10)
         }
-        .frame(width: 520, height: 480)
+        .frame(width: 520, height: 520)
         .background(
             RoundedRectangle(cornerRadius: 12)
                 .fill(Palette.bg)
@@ -371,6 +371,11 @@ struct CheatSheetView: View {
             shortcutRow(action: .hud)
             shortcutRow(action: .voiceCommand)
             shortcutRow(action: .cheatSheet)
+
+            columnHeader("Workspace")
+            shortcutRow(action: .motionMode)
+            shortcutRow(action: .inPlaceMode)
+            shortcutRow(action: .desktopInventory)
         }
     }
 
