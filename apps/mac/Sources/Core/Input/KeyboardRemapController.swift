@@ -9,6 +9,7 @@ final class KeyboardRemapController: ObservableObject {
     /// Live state of the event-tap circuit breaker. SettingsView observes
     /// this to surface "paused" / "disabled" status and a re-arm button.
     @Published private(set) var breakerState: EventTapBreaker.State = .armed
+    @Published private(set) var capsLockTransportActive = false
 
     private static let syntheticMarker: Int64 = 0x4C4B524D
 
@@ -49,6 +50,22 @@ final class KeyboardRemapController: ObservableObject {
         }
     }
 
+    @discardableResult
+    func clearStuckCapsLockState() -> Bool {
+        dispatchPrecondition(condition: .onQueue(.main))
+        clearCapsLayer()
+        pressedKeyCodes.removeAll()
+        bypassUntil = CFAbsoluteTimeGetCurrent() + emergencyBypassDuration
+        let cleared = clearCapsLockLatch(reason: "manual settings recovery")
+        if let eventTap {
+            CGEvent.tapEnable(tap: eventTap, enable: true)
+        } else {
+            refresh()
+        }
+        DiagnosticLog.shared.warn("KeyboardRemap: manual Caps Lock recovery \(cleared ? "succeeded" : "failed")")
+        return cleared
+    }
+
     func start() {
         installObserversIfNeeded()
         refresh()
@@ -57,6 +74,7 @@ final class KeyboardRemapController: ObservableObject {
     func stop() {
         removeEventTap()
         capsLockTransport.disable()
+        capsLockTransportActive = capsLockTransport.isActive
         clearCapsLayer()
     }
 
@@ -98,12 +116,14 @@ final class KeyboardRemapController: ObservableObject {
               PermissionChecker.shared.accessibility else {
             removeEventTap()
             capsLockTransport.disable()
+            capsLockTransportActive = capsLockTransport.isActive
             return
         }
 
         KeyboardRemapStore.shared.ensureConfigFile()
         let shouldUseCapsLockTransport = KeyboardRemapStore.shared.capsLockRule?.toIfHeld == .hyper
         capsLockTransport.setEnabled(shouldUseCapsLockTransport)
+        capsLockTransportActive = capsLockTransport.isActive
 
         if eventTap == nil {
             installEventTap()
@@ -174,6 +194,7 @@ final class KeyboardRemapController: ObservableObject {
             CFMachPortInvalidate(tap)
         }
         eventTap = nil
+        capsLockTransportActive = capsLockTransport.isActive
     }
 
     private static let eventTapCallback: CGEventTapCallBack = { _, type, event, userInfo in
