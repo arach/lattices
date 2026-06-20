@@ -39,6 +39,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
     case tileTop, tileBottom, tileDistribute, tileTypeGrid, tileOrganize
     case tileLeftThird, tileCenterThird, tileRightThird
     case motionMode
+    case inPlaceMode
 
     var label: String {
         switch self {
@@ -86,13 +87,14 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .tileLeftThird:   return "Left Third"
         case .tileCenterThird: return "Center Third"
         case .tileRightThird:  return "Right Third"
-        case .motionMode:      return "Motion Mode"
+        case .motionMode:      return "Hyperspace"
+        case .inPlaceMode:     return "In-Place Tools"
         }
     }
 
     var group: HotkeyGroup {
         switch self {
-        case .palette, .screenMap, .bezel, .cheatSheet, .desktopInventory, .omniSearch, .voiceCommand, .handsOff, .unifiedWindow, .hud, .mouseFinder, .overlayActors, .workspaceAssistant, .activityLog, .gridPlacement, .commandBar: return .app
+        case .palette, .screenMap, .bezel, .cheatSheet, .desktopInventory, .omniSearch, .voiceCommand, .handsOff, .unifiedWindow, .hud, .mouseFinder, .overlayActors, .workspaceAssistant, .activityLog, .gridPlacement, .commandBar, .inPlaceMode: return .app
         case .layer1, .layer2, .layer3, .layer4, .layer5,
              .layer6, .layer7, .layer8, .layer9,
              .layerNext, .layerPrev, .layerTag: return .layers
@@ -147,6 +149,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .tileRightThird:  return 313
         case .tileOrganize:    return 315
         case .motionMode:      return 316
+        case .inPlaceMode:     return 317
         }
     }
 
@@ -276,7 +279,7 @@ class HotkeyStore: ObservableObject {
         bind(.screenMap, 37, hyper)      // Hyper+L (Layout)
         bind(.bezel,     19, hyper)      // Hyper+2
         bind(.hud,       20, hyper)      // Hyper+3 (HUD overlay)
-        bind(.desktopInventory, 5, hyper) // Hyper+G
+        bind(.desktopInventory, 35, hyper) // Hyper+P
         let cmdCtrl = UInt32(cmdKey | controlKey)
         bind(.handsOff, 46, cmdCtrl)          // Ctrl+Cmd+M
         bind(.activityLog, 37, cmdShift)   // Cmd+Shift+L
@@ -308,12 +311,13 @@ class HotkeyStore: ObservableObject {
         bind(.tileBottomLeft,   38, ctrlOpt)  // Ctrl+Opt+J
         bind(.tileBottomRight,  40, ctrlOpt)  // Ctrl+Opt+K
         bind(.tileDistribute,    2, ctrlOpt)  // Ctrl+Opt+D
-        bind(.tileTypeGrid,      5, hyper)    // Hyper+G
+        bind(.tileTypeGrid,     16, hyper)    // Hyper+Y
         bind(.tileLeftThird,    18, ctrlOpt)  // Ctrl+Opt+1
         bind(.tileCenterThird,  19, ctrlOpt)  // Ctrl+Opt+2
         bind(.tileRightThird,   20, ctrlOpt)  // Ctrl+Opt+3
         bind(.tileOrganize,     31, ctrlOpt)  // Ctrl+Opt+O
-        bind(.motionMode,       49, hyper)    // Hyper+Space (keyboard window motion)
+        bind(.motionMode,       49, hyper)    // Hyper+Space — Hyperspace (full survey)
+        bind(.inPlaceMode,       5, hyper)    // Hyper+G — in-place window tools
 
         return d
     }()

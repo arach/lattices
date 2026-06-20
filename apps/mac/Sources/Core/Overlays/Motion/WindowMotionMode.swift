@@ -11,12 +11,19 @@ import SwiftUI
 
 final class WindowMotionMode {
     static let shared = WindowMotionMode()
+
+    enum Entry { case hyperspace, inPlace }
+
     private var panel: MotionPanel?
+    private var activeEntry: Entry?
     private var lastToggle: CFTimeInterval = 0
 
     var isActive: Bool { panel != nil }
 
-    func toggle() {
+    func toggleHyperspace() { toggle(entry: .hyperspace) }
+    func toggleInPlace() { toggle(entry: .inPlace) }
+
+    private func toggle(entry: Entry) {
         // Debounce machine-gun re-fire. The Hyper trigger rides the Caps Lock
         // transport remap, which can flicker active/inactive and fire the hotkey
         // several times in a few ms — racing activate against deactivate. A human
@@ -24,10 +31,15 @@ final class WindowMotionMode {
         let now = CACurrentMediaTime()
         if now - lastToggle < 0.18 { return }
         lastToggle = now
-        if isActive { deactivate() } else { activate() }
+        if isActive {
+            if activeEntry == entry { deactivate() }
+            else { deactivate(); activate(entry: entry) }
+        } else {
+            activate(entry: entry)
+        }
     }
 
-    func activate() {
+    private func activate(entry: Entry = .hyperspace) {
         guard panel == nil else { return }
         // Defensive: clear any overlay panels orphaned by a prior race before we
         // open a fresh one, so we never stack a new survey on top of a stuck one.
@@ -46,17 +58,21 @@ final class WindowMotionMode {
             return
         }
         let tEligible = CACurrentMediaTime()
-        let p = MotionPanel(eligible: eligible)
+        let inPlace = entry == .inPlace
+        let p = MotionPanel(eligible: eligible, inPlace: inPlace)
         p.loadStart = t0
         let tInit = CACurrentMediaTime()
         p.onExit = { [weak self] in self?.deactivate() }
         panel = p
+        activeEntry = entry
         p.present()
         let tUp = CACurrentMediaTime()
+        let tag = inPlace ? "In-place" : "Hyperspace"
         // Time-to-load profile (the async capture + first-paint marks land later,
         // logged from the panel). Read it back from ~/.lattices/lattices.log.
         DiagnosticLog.shared.info(String(
-            format: "Hyperspace load — poll %.1f · build %.1f · init %.1f · present+expose %.1f · on-screen %.1fms (from trigger)",
+            format: "%@ load — poll %.1f · build %.1f · init %.1f · present+expose %.1f · on-screen %.1fms (from trigger)",
+            tag,
             (tPoll - t0) * 1000, (tEligible - tPoll) * 1000, (tInit - tEligible) * 1000,
             (tUp - tInit) * 1000, (tUp - t0) * 1000))
     }
@@ -64,6 +80,7 @@ final class WindowMotionMode {
     func deactivate() {
         panel?.dismiss()
         panel = nil
+        activeEntry = nil
         // Belt-and-suspenders: sweep up any Hyperspace overlay panel still on screen
         // even if we lost the reference to it. Guarantees the toggle hotkey always
         // clears the spread — the recovery path for the "stuck on top" trap.
@@ -125,6 +142,38 @@ private final class HyperspaceScreenPanel: NSPanel {
 
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
+}
+
+/// Full-screen overlay host. SwiftUI marks empty regions with allowsHitTesting(false)
+/// so super.hitTest returns nil and clicks reach the desktop; gesture-backed HUD
+/// targets resolve to self and must be kept (the old `self → nil` pass-through broke taps).
+/// In-place mode also captures clicks over live window frames (see InPlaceHostingView).
+private final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        super.hitTest(point)
+    }
+}
+
+/// Hyper+G overlay: HUD regions stay SwiftUI-tappable; clicks on real desktop windows
+/// are captured here (local monitors never see them — they go to the app underneath).
+private final class InPlaceHostingView<Content: View>: NSHostingView<Content> {
+    weak var panel: MotionPanel?
+    var screen: NSScreen?
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        if let hit = super.hitTest(point) { return hit }
+        guard let panel, let screen, panel.inPlaceCapturesDesktopClick(at: point, in: self, on: screen) else { return nil }
+        return self
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let local = convert(event.locationInWindow, from: nil)
+        if let panel, let screen, panel.inPlaceCapturesDesktopClick(at: local, in: self, on: screen) {
+            panel.performInPlaceDesktopSelect(at: local, in: self, on: screen)
+            return
+        }
+        super.mouseDown(with: event)
+    }
 }
 
 // MARK: - Expose canvas (zoom/pan)
@@ -198,11 +247,21 @@ final class HyperspaceDrag: ObservableObject {
     @Published var res: LatticeRes = .quarters   // effective resolution (modifier ?? base)
     @Published var baseRes: LatticeRes = .quarters // selector choice; modifiers override live
     @Published var hoverCell: HoverCell?     // cell under the cursor in the lattice grid
+    @Published var hoverCurrentView = false  // cursor over the Current View screen-map
+    @Published var hoverLayoutWid: UInt32?   // outline under the cursor in Current View
+    @Published var hoverSurveyWid: UInt32?   // survey tile under the cursor — links to Current View
+    @Published var hoverGrid = false         // cursor over the Grid drop zone mid-drag
+    @Published var inspectCurrentView = false // plain hover on Current View (no drag)
+    var ghostTint: Color?                    // tinted ghost when dragging an outline without a thumb
     @Published var hoverLayer: String?       // layer pile under the cursor (layer id, or newLayerKey)
     @Published var inspectLayer: String?     // pile under a plain mouse hover (no drag) — reveals its roster
     @Published var inspectScreen: String?    // which screen that hovered pile is on
     @Published var selectedLayer: String?    // layer pile clicked open → the inspector modal (layer id)
     @Published var screenID: String = ""     // which screen owns the in-flight drag
+    /// Where the in-flight drag started — survey tile vs Current View outline.
+    var dragSource: DragSource?
+
+    enum DragSource { case survey, currentView }
 
     // Right-click "place me" mode: a tile was secondary-clicked, opening a life-size
     // interactive stage to pick its grid spot (mouse-only alternative to drag → Grid).
@@ -214,6 +273,7 @@ final class HyperspaceDrag: ObservableObject {
     func endPlacing() { placeWid = nil; placeScreen = nil; placeCell = nil }
 
     var latticeFrames: [String: CGRect] = [:]              // per-screen lattice grid frame (root space)
+    var currentViewFrames: [String: CGRect] = [:]          // per-screen Current View canvas frame (root space)
     var layerFrames: [String: [String: CGRect]] = [:]      // [screenID: [layerKey: frame]] (root space)
 
     static let newLayerKey = "+new"          // sentinel for the ＋ "new layer" pile
@@ -229,7 +289,14 @@ final class HyperspaceDrag: ObservableObject {
     func reset() {
         wid = nil
         image = nil
+        dragSource = nil
         hoverCell = nil
+        hoverCurrentView = false
+        hoverLayoutWid = nil
+        hoverSurveyWid = nil
+        hoverGrid = false
+        ghostTint = nil
+        inspectCurrentView = false
         hoverLayer = nil
     }
 
@@ -283,6 +350,10 @@ private final class MotionPanel: NSPanel {
     private var thumbInFlight: Set<UInt32> = []          // de-dupe in-flight captures
     private let stackMargin: CGFloat = 24
     private var keyObserver: Any?
+    private var layoutRefreshTimer: Timer?   // keep Current View frames live while surveying
+    /// In-place tools (Hyper+G): float Current View + inventory over the live desktop.
+    /// Hyperspace (Hyper+Space) keeps the full scrim + screenshot survey.
+    private let inPlaceMode: Bool
     private var scrollMonitor: Any?
     private var mouseUpMonitor: Any?    // re-claims key focus after a survey click/drag
     private var keyMonitor: Any?        // catches Enter/Esc even when a survey panel holds key
@@ -354,8 +425,9 @@ private final class MotionPanel: NSPanel {
         return eligible.filter { entry($0, isOn: screen) }
     }
 
-    init(eligible: [WindowEntry]) {
+    init(eligible: [WindowEntry], inPlace: Bool = false) {
         self.eligible = eligible
+        self.inPlaceMode = inPlace
 
         let union = MotionPanel.screensUnion()
         super.init(contentRect: union, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -444,6 +516,16 @@ private final class MotionPanel: NSPanel {
                 DiagnosticLog.shared.info("MotionPanel: ignored transient key resign")
                 return
             }
+            // Hyper+G is a staging session — clicks and window raises must not dismiss it.
+            // Leave only via Enter (commit) or Esc (cancel).
+            if self.inPlaceMode {
+                DiagnosticLog.shared.info("MotionPanel: in-place key resign — reclaiming key")
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.exposed, !self.dismissed else { return }
+                    self.makeKey()
+                }
+                return
+            }
             DiagnosticLog.shared.info("MotionPanel: key resigned, exiting")
             self.onExit?()
         }
@@ -507,6 +589,7 @@ private final class MotionPanel: NSPanel {
         // quit / hotkey do nothing" trap. Clearing `exposed` + `dismissed` makes
         // every late callback a no-op so nothing can come back.
         dismissed = true
+        stopLayoutRefresh()
         exposed = false
         ignoresMouseEvents = false
         if let keyObserver { NotificationCenter.default.removeObserver(keyObserver) }
@@ -559,11 +642,13 @@ private final class MotionPanel: NSPanel {
         let primaryH = NSScreen.screens.first?.frame.height ?? 0
         let cg = CGPoint(x: globalAppKit.x, y: primaryH - globalAppKit.y)   // CG top-left
 
-        // Hit-test each window's *live* frame so a click lands on what you see.
-        let hit = eligible
-            .filter { liveFrame(for: $0).contains(cg) }
-            .min(by: { $0.zIndex < $1.zIndex })
-        guard let hit else { return }
+        // Fresh z-order from CGWindowList — stale eligible zIndex picks the wrong overlap.
+        DesktopModel.shared.forcePoll()
+        let myPid = ProcessInfo.processInfo.processIdentifier
+        let eligibleWids = Set(eligible.map(\.wid))
+        guard let fresh = DesktopModel.shared.frontWindow(at: cg, excludingPid: myPid),
+              eligibleWids.contains(fresh.wid),
+              let hit = eligible.first(where: { $0.wid == fresh.wid }) else { return }
 
         togglePicked(hit.wid)
         updateLegend()
@@ -645,7 +730,16 @@ private final class MotionPanel: NSPanel {
             undoAndExit(); return
         }
         if code == 36 || code == 76 {                       // Return / keypad Enter — confirm: keep + leave
-            if exposed {                                    // gather the plucked, send the rest home, then leave
+            if exposed && inPlaceMode {
+                let screen = validSurveyScreen(screenForPointer())
+                    ?? validSurveyScreen(screenForEvent(event))
+                    ?? activeSurveyScreen
+                if let screen {
+                    commitStagedIntents(on: screen)
+                    DiagnosticLog.shared.info("In-place confirm — commit staged + exit")
+                }
+                onExit?()
+            } else if exposed {                             // Hyperspace: gather the plucked, then leave
                 let screen = validSurveyScreen(screenForPointer())
                     ?? validSurveyScreen(screenForEvent(event))
                     ?? activeSurveyScreen
@@ -692,9 +786,16 @@ private final class MotionPanel: NSPanel {
                     if let wid = exposeOrderByScreen[id]?[safe: aim] { exposeToggle(wid, on: eventScreen) }
                 }
                 return
-            case 14 where !mods.contains(.shift): collapseExpose(); return  // E — collapse survey
-            case 5  where !mods.contains(.shift):                            // G — gather, stay in mode
+            case 14 where !mods.contains(.shift) && !inPlaceMode: collapseExpose(); return  // E — collapse survey
+            case 5  where !mods.contains(.shift):                            // G — grid selection (stay in mode)
                 if let eventScreen { gatherInPlace(on: eventScreen) }
+                return
+            case 1  where !mods.contains(.shift) && inPlaceMode:             // S — swap first two picks
+                if let eventScreen, let id = screenID,
+                   let a = pickOrderByScreen[id]?[safe: 0],
+                   let b = pickOrderByScreen[id]?[safe: 1] {
+                    swapWindows(widA: a, widB: b, on: eventScreen)
+                } else { NSSound.beep() }
                 return
             case 24: zoomCanvasStep(0.2); return                            // = / +  — zoom in
             case 27: zoomCanvasStep(-0.2); return                           // −      — zoom out
@@ -1050,7 +1151,7 @@ private final class MotionPanel: NSPanel {
         guard !members.isEmpty else { NSSound.beep(); return }    // nothing to survey
 
         exposed = true
-        ignoresMouseEvents = true
+        ignoresMouseEvents = !inPlaceMode
         resetSurveyState(for: screens)
         for surveyScreen in screens {
             rebuildSurveyState(for: surveyScreen, resetAim: true)
@@ -1063,6 +1164,7 @@ private final class MotionPanel: NSPanel {
         allMembers.forEach { captureThumb(for: $0) }              // seed from the shared cache; capture only misses
         rebuildExposeView()
         checkCapturesSettled()                                     // every tile a cache hit → already done
+        startLayoutRefresh()
 
         // First-paint mark: the next main-loop turn after we install and lay out
         // the spread is a good proxy for "the survey is on screen."
@@ -1083,6 +1185,7 @@ private final class MotionPanel: NSPanel {
     /// E (while surveying) — drop the spread, back to normal motion mode. Picks
     /// are kept (nothing moved), so you can still gather or keep arranging.
     private func collapseExpose() {
+        stopLayoutRefresh()
         removeExposeHost()
         exposed = false
         ignoresMouseEvents = false
@@ -1255,7 +1358,7 @@ private final class MotionPanel: NSPanel {
             let members = onScreen.map { w -> ExposeView.LayerMember in
                 ExposeView.LayerMember(
                     id: w.wid,
-                    frac: MotionPanel.frac(of: w.frame, in: screenAX),
+                    frac: MotionPanel.frac(of: layoutFrame(for: freshEntry(w)), in: screenAX),
                     tint: Color(nsColor: MotionPanel.tint(for: w.app)),
                     image: thumbs[w.wid])
             }
@@ -1270,16 +1373,61 @@ private final class MotionPanel: NSPanel {
         return piles
     }
 
-    /// Every window currently on a screen, as fractional footprints — the Preview's
-    /// always-on baseline ("what this display looks like right now").
+    /// Latest polled entry for a survey window (DesktopModel refreshes on its own timer).
+    private func freshEntry(_ w: WindowEntry) -> WindowEntry {
+        DesktopModel.shared.allWindows().first { $0.wid == w.wid } ?? w
+    }
+
+    /// Live AX frame when we can resolve it, else the freshest polled CG frame.
+    private func layoutFrame(for entry: WindowEntry) -> CGRect {
+        if let el = ax(for: entry), let f = RealWindowAnimator.axFrame(el) { return f }
+        return layoutCGFrame(for: entry)
+    }
+
+    /// Polled CG frame for display maps — matches DesktopModel / inferTilePlacement coords.
+    private func layoutCGFrame(for entry: WindowEntry) -> CGRect {
+        let fresh = freshEntry(entry)
+        return CGRect(x: fresh.frame.x, y: fresh.frame.y, width: fresh.frame.w, height: fresh.frame.h)
+    }
+
+    /// Same eligibility rules as the survey, but polled live so moved / raised windows
+    /// still appear in Current View without reopening Hyperspace.
+    private func liveMembers(on screen: NSScreen) -> [WindowEntry] {
+        let myPid = ProcessInfo.processInfo.processIdentifier
+        return DesktopModel.shared.allWindows()
+            .filter { $0.pid != myPid && $0.isOnScreen && !$0.title.isEmpty }
+            .filter { entry($0, isOn: screen) }
+    }
+
+    private func layoutSignificantOverlap(_ a: CGRect, _ b: CGRect) -> Bool {
+        let inter = a.intersection(b)
+        guard !inter.isNull && inter.width > 0 && inter.height > 0 else { return false }
+        let interArea = inter.width * inter.height
+        let smallerArea = min(a.width * a.height, b.width * b.height)
+        guard smallerArea > 0 else { return false }
+        return interArea / smallerArea >= 0.15
+    }
+
+    /// Every window currently on a screen, as fractional footprints — the Current View's
+    /// always-on baseline ("what this display looks like right now"). Uses live members
+    /// + CG frames (not the open-time snapshot) and paints back-to-front so frontmost
+    /// reads on top; windows covered by a front neighbor are marked `behind`.
     private func currentLayout(on screen: NSScreen) -> [ExposeView.LayerMember] {
+        DesktopModel.shared.poll()
         let screenAX = MotionPanel.axRect(of: screen)
-        return surveyMembers(on: screen).map { w in
-            ExposeView.LayerMember(
+        let windows = liveMembers(on: screen).sorted { $0.zIndex < $1.zIndex }
+        let frames = windows.map { layoutCGFrame(for: $0) }
+        return windows.enumerated().map { i, w in
+            let frame = frames[i]
+            let behind = (0..<i).contains { j in
+                layoutSignificantOverlap(frames[j], frame)
+            }
+            return ExposeView.LayerMember(
                 id: w.wid,
-                frac: MotionPanel.frac(of: w.frame, in: screenAX),
+                frac: MotionPanel.frac(of: frame, in: screenAX),
                 tint: Color(nsColor: MotionPanel.tint(for: w.app)),
-                image: thumbs[w.wid])
+                image: thumbs[w.wid],
+                behind: behind)
         }
     }
 
@@ -1297,6 +1445,77 @@ private final class MotionPanel: NSPanel {
                 tint: Color(nsColor: MotionPanel.tint(for: w.app)),
                 image: thumbs[wid],
                 label: stagedLabel(for: wid) ?? "")
+        }
+    }
+
+    /// Swap two windows' live frames in place — no grid staging, no separate flow.
+    private func clearPicks(on screen: NSScreen) {
+        let id = MotionPanel.screenID(screen)
+        pickOrderByScreen[id] = []
+        restorePickState(for: screen)
+        rebuildExposeView()
+        updateLegend()
+        updateStack()
+    }
+
+    private func focusWindow(_ wid: UInt32, on screen: NSScreen) {
+        guard let entry = eligible.first(where: { $0.wid == wid }), let el = ax(for: entry) else {
+            NSSound.beep()
+            return
+        }
+        raising { RealWindowAnimator.raise(el) }
+        DesktopModel.shared.markInteraction(wid: wid)
+        DispatchQueue.main.async { [weak self] in self?.makeKey() }
+        DiagnosticLog.shared.info("In-place focus — wid=\(wid) app=\(entry.app)")
+    }
+
+    /// Immediate tile (explicit menu action) — distinct from staging for Enter.
+    private func applyPlacementNow(_ wid: UInt32, _ placement: PlacementSpec, on screen: NSScreen) {
+        guard let entry = eligible.first(where: { $0.wid == wid }) else { NSSound.beep(); return }
+        if originalFrames[wid] == nil, let el = ax(for: entry), let cur = RealWindowAnimator.axFrame(el) {
+            originalFrames[wid] = cur
+        }
+        raising {
+            WindowTiler.tileWindowById(wid: wid, pid: entry.pid, to: placement, on: screen)
+        }
+        DesktopModel.shared.poll()
+        rebuildExposeView()
+        updateLegend()
+        refreshBorders()
+        DispatchQueue.main.async { [weak self] in self?.makeKey() }
+        DiagnosticLog.shared.info("In-place apply — wid=\(wid) \(placement.wireValue)")
+    }
+
+    private func swapWindows(widA: UInt32, widB: UInt32, on screen: NSScreen) {
+        guard widA != widB,
+              let entryA = eligible.first(where: { $0.wid == widA }),
+              let entryB = eligible.first(where: { $0.wid == widB }) else {
+            NSSound.beep()
+            return
+        }
+        DesktopModel.shared.poll()
+        let frameA = layoutFrame(for: entryA)
+        let frameB = layoutFrame(for: entryB)
+        if originalFrames[widA] == nil { originalFrames[widA] = frameA }
+        if originalFrames[widB] == nil { originalFrames[widB] = frameB }
+        raising {
+            WindowTiler.batchMoveAndRaiseWindows([
+                (wid: widA, pid: entryA.pid, frame: frameB),
+                (wid: widB, pid: entryB.pid, frame: frameA),
+            ])
+        }
+        let id = MotionPanel.screenID(screen)
+        pickOrderByScreen[id]?.removeAll { $0 == widA || $0 == widB }
+        if activeSurveyScreen.map(MotionPanel.screenID) == id {
+            restorePickState(for: screen)
+        }
+        DiagnosticLog.shared.info("Hyperspace swap — \(entryA.app) ↔ \(entryB.app)")
+        rebuildExposeView()
+        updateLegend()
+        refreshBorders()
+        updateStack()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            self?.rebuildExposeView()
         }
     }
 
@@ -1358,7 +1577,6 @@ private final class MotionPanel: NSPanel {
     /// place real windows move) and stay in the mode. Un-picked windows are left
     /// exactly where they are — in the survey they never moved. Shared by G and ⏎.
     private func gatherInPlace() {
-        removeExposeHost()
         let screen = activeSurveyScreen ?? NSScreen.main ?? NSScreen.screens[0]
         commitStagedIntents(on: screen)   // drag & drop plan; no-op until staged
         let members = gatherMembers()
@@ -1367,6 +1585,16 @@ private final class MotionPanel: NSPanel {
         } else if let only = members.first, let el = ax(for: only) {
             raising { RealWindowAnimator.raise(el) }              // a single pick just comes forward
         }
+        if inPlaceMode {
+            DesktopModel.shared.poll()
+            rebuildExposeView()
+            updateLegend()
+            refreshBorders()
+            updateStack()
+            DispatchQueue.main.async { [weak self] in self?.makeKey() }
+            return
+        }
+        removeExposeHost()
         exposed = false
         ignoresMouseEvents = false
         updateLegend()
@@ -1608,11 +1836,14 @@ private final class MotionPanel: NSPanel {
     /// Height of the top intent band on a given display. Shared by the survey
     /// fit (so tiles never run under the band) and ExposeView (which draws it).
     private func bandHeight(for screen: NSScreen) -> CGFloat {
+        if inPlaceMode {
+            return max(188, min(screen.frame.height * 0.24, 260))
+        }
         // Reserve a touch under the top third for the intent band so the survey
         // grid gets the bottom ~2/3 (design/hyperspace-drag-drop.md). Floored so the
         // Layers/Lattice/Spaces cards still fit on a short display, capped so it
         // doesn't bloat on a tall external one.
-        max(196, min(screen.frame.height * 0.30, 420))
+        return max(196, min(screen.frame.height * 0.30, 420))
     }
 
     private func autoTileWidth(count n: Int, screen: NSScreen) -> CGFloat {
@@ -1651,16 +1882,26 @@ private final class MotionPanel: NSPanel {
         removeExposeHost()
         for screen in surveyScreens() {
             let id = MotionPanel.screenID(screen)
-            let hosting = NSHostingView(rootView: ExposeView(
+            let placeholder = ExposeView(
                 clusters: [],
                 tileWidth: autoTileWidth(count: max(1, surveyMembers(on: screen).count), screen: screen),
                 canvas: canvasForScreen(screen),
                 drag: dragModel,
                 screenID: id,
                 bandHeight: bandHeight(for: screen),
+                inPlace: inPlaceMode,
                 screenAspect: screen.visibleFrame.width / max(1, screen.visibleFrame.height),
                 usableInset: MotionPanel.usableInset(of: screen),
-                onNewLayer: { [weak self] in self?.presentNewLayer() }))
+                onNewLayer: { [weak self] in self?.presentNewLayer() })
+            let hosting: NSHostingView<ExposeView>
+            if inPlaceMode {
+                let inPlaceHost = InPlaceHostingView(rootView: placeholder)
+                inPlaceHost.panel = self
+                inPlaceHost.screen = screen
+                hosting = inPlaceHost
+            } else {
+                hosting = NSHostingView(rootView: placeholder)
+            }
             hosting.frame = NSRect(origin: .zero, size: screen.frame.size)
             hosting.autoresizingMask = [.width, .height]
             let panel = HyperspaceScreenPanel(screen: screen)
@@ -1670,6 +1911,20 @@ private final class MotionPanel: NSPanel {
             exposePanelsByScreenID[id] = panel
         }
         exposeHost = activeSurveyScreen.flatMap { exposeHostsByScreenID[MotionPanel.screenID($0)] }
+    }
+
+    /// Poll DesktopModel and refresh Current View outlines while the survey is open.
+    private func startLayoutRefresh() {
+        stopLayoutRefresh()
+        layoutRefreshTimer = Timer.scheduledTimer(withTimeInterval: 0.75, repeats: true) { [weak self] _ in
+            guard let self, self.exposed, !self.dismissed, !self.dragModel.isActive else { return }
+            self.rebuildExposeView()
+        }
+    }
+
+    private func stopLayoutRefresh() {
+        layoutRefreshTimer?.invalidate()
+        layoutRefreshTimer = nil
     }
 
     private func removeExposeHost() {
@@ -1719,14 +1974,32 @@ private final class MotionPanel: NSPanel {
                 drag: dragModel,
                 screenID: id,
                 bandHeight: bandHeight(for: screen),
+                inPlace: inPlaceMode,
                 screenAspect: screen.visibleFrame.width / max(1, screen.visibleFrame.height),
                 usableInset: MotionPanel.usableInset(of: screen),
                 onPick: { [weak self] wid in self?.exposeToggle(wid, on: screen) },
                 onDrop: { [weak self] wid, spec in self?.handleDrop(wid, spec) },
                 onDropLayer: { [weak self] wid, key in self?.handleLayerDrop(wid, key) },
+                onSwap: { [weak self] a, b in self?.swapWindows(widA: a, widB: b, on: screen) },
+                onGridSelection: { [weak self] in self?.gatherInPlace(on: screen) },
+                onSwapFirstTwo: { [weak self] in
+                    guard let self, let a = self.pickOrderByScreen[id]?[safe: 0],
+                          let b = self.pickOrderByScreen[id]?[safe: 1] else { NSSound.beep(); return }
+                    self.swapWindows(widA: a, widB: b, on: screen)
+                },
+                onSwapWith: { [weak self] a, b in self?.swapWindows(widA: a, widB: b, on: screen) },
+                onFocusWindow: { [weak self] wid in self?.focusWindow(wid, on: screen) },
+                onClearSelection: { [weak self] in self?.clearPicks(on: screen) },
+                onApplyPlacement: { [weak self] wid, spec in self?.applyPlacementNow(wid, spec, on: screen) },
+                onOpenHyperspace: {
+                    WindowMotionMode.shared.deactivate()
+                    WindowMotionMode.shared.toggleHyperspace()
+                },
                 layers: layerPiles(on: screen),
                 stagedPlan: stagedPlan(on: screen),
                 currentLayout: currentLayout(on: screen),
+                pickedWids: Set(pickOrderByScreen[id] ?? []),
+                pickedOrder: pickOrderByScreen[id] ?? [],
                 displayScope: exposeDisplayScope(for: screen),
                 onLayout: { [weak self] frames in
                     guard let self else { return }
@@ -1995,6 +2268,79 @@ private final class MotionPanel: NSPanel {
     private func screenForPointer() -> NSScreen? {
         let point = NSEvent.mouseLocation
         return NSScreen.screens.first(where: { $0.frame.contains(point) })
+    }
+
+    // MARK: - In-place desktop click (Hyper+G)
+
+    /// Frontmost eligible window at a desktop click. Walks CGWindowList fresh so
+    /// z-order and bounds match what you see at click time — the open-time
+    /// `eligible` snapshot can be stale after raises.
+    private func topWindowAtDesktopClick(cg: CGPoint, on screen: NSScreen) -> WindowEntry? {
+        let selectable = Dictionary(uniqueKeysWithValues: surveyMembers(on: screen).map { ($0.wid, $0) })
+        guard !selectable.isEmpty,
+              let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
+            return nil
+        }
+
+        let myPid = ProcessInfo.processInfo.processIdentifier
+        for info in list {
+            guard let wid = info[kCGWindowNumber as String] as? UInt32,
+                  let pid = info[kCGWindowOwnerPID as String] as? Int32,
+                  let boundsDict = info[kCGWindowBounds as String] as? NSDictionary else { continue }
+            if pid == myPid { continue }       // skip our transparent overlay panels
+
+            var rect = CGRect.zero
+            guard CGRectMakeWithDictionaryRepresentation(boundsDict, &rect),
+                  rect.width >= 50, rect.height >= 50,
+                  rect.contains(cg) else { continue }
+
+            let isOnScreen = info[kCGWindowIsOnscreen as String] as? Bool ?? true
+            guard isOnScreen else { continue }
+
+            let layer = info[kCGWindowLayer as String] as? Int ?? 0
+            guard layer == 0 else {
+                return nil                      // front menu/panel/etc. blocks windows behind it
+            }
+
+            // The first real window containing the click owns the click.  If it
+            // is not in this in-place survey roster, do not fall through and pick
+            // some eligible window hidden behind it.
+            return selectable[wid]
+        }
+        return nil
+    }
+
+    /// AppKit screen point (bottom-left origin) → CG top-left, matching liveFrame / AX.
+    fileprivate func cgPoint(fromAppKitScreen point: CGPoint) -> CGPoint {
+        let primaryH = NSScreen.screens.first?.frame.height ?? 0
+        return CGPoint(x: point.x, y: primaryH - point.y)
+    }
+
+    fileprivate func appKitScreenPoint(from viewPoint: NSPoint, in view: NSView) -> CGPoint {
+        let windowPoint = view.convert(viewPoint, to: nil)
+        if let window = view.window {
+            return window.convertPoint(toScreen: windowPoint)
+        }
+        return NSEvent.mouseLocation
+    }
+
+    /// True when this click should be captured by the overlay (over a live window).
+    fileprivate func inPlaceCapturesDesktopClick(at viewPoint: NSPoint, in view: NSView, on screen: NSScreen) -> Bool {
+        guard exposed, inPlaceMode, !dismissed, !dragModel.isActive, !dragModel.isPlacing else { return false }
+        guard commandPanel == nil, newLayerPanel == nil, rulePanel == nil else { return false }
+        let cg = cgPoint(fromAppKitScreen: appKitScreenPoint(from: viewPoint, in: view))
+        return topWindowAtDesktopClick(cg: cg, on: screen) != nil
+    }
+
+    fileprivate func performInPlaceDesktopSelect(at viewPoint: NSPoint, in view: NSView, on screen: NSScreen) {
+        let cg = cgPoint(fromAppKitScreen: appKitScreenPoint(from: viewPoint, in: view))
+        guard let hit = topWindowAtDesktopClick(cg: cg, on: screen) else { return }
+        exposeToggle(hit.wid, on: screen)
+        DiagnosticLog.shared.info("In-place select — click wid=\(hit.wid) app=\(hit.app)")
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.exposed, !self.isKeyWindow, self.commandPanel == nil else { return }
+            self.makeKey()
+        }
     }
 
     private func validSurveyScreen(_ screen: NSScreen?) -> NSScreen? {
@@ -2281,13 +2627,17 @@ private final class MotionPanel: NSPanel {
     /// A window frame as a top-origin fractional rect within `screenAX`, clamped to the
     /// unit square so off-screen spill doesn't blow out the map.
     static func frac(of frame: WindowFrame, in screenAX: CGRect) -> CGRect {
+        frac(of: CGRect(x: frame.x, y: frame.y, width: frame.w, height: frame.h), in: screenAX)
+    }
+
+    static func frac(of frame: CGRect, in screenAX: CGRect) -> CGRect {
         guard screenAX.width > 1, screenAX.height > 1 else { return .zero }
-        let x = (CGFloat(frame.x) - screenAX.minX) / screenAX.width
-        let y = (CGFloat(frame.y) - screenAX.minY) / screenAX.height
+        let x = (frame.minX - screenAX.minX) / screenAX.width
+        let y = (frame.minY - screenAX.minY) / screenAX.height
         let cx = min(max(x, 0), 1), cy = min(max(y, 0), 1)
         return CGRect(x: cx, y: cy,
-                      width: min(CGFloat(frame.w) / screenAX.width, 1 - cx),
-                      height: min(CGFloat(frame.h) / screenAX.height, 1 - cy))
+                      width: min(frame.width / screenAX.width, 1 - cx),
+                      height: min(frame.height / screenAX.height, 1 - cy))
     }
 
     static func tint(for app: String) -> NSColor {
@@ -2335,6 +2685,7 @@ private final class MotionPanel: NSPanel {
                      tint: Color(nsColor: MotionPanel.tint(for: activeEntry.app)),
                      groupCount: group.count,
                      exposed: exposed,
+                     inPlace: inPlaceMode,
                      displayCount: surveyScreens().count)
     }
 
@@ -2359,6 +2710,11 @@ private final class MotionPanel: NSPanel {
 
     private func updateStack() {
         guard let stackHost else { return }
+        if inPlaceMode {
+            stackHost.isHidden = true
+            return
+        }
+        stackHost.isHidden = false
         let activeWid = activeEntry.wid
         let groupMembers = orderedGroup()                                   // picked set, in pick order
 
@@ -2452,6 +2808,7 @@ private struct MotionLegend: View {
     let tint: Color
     let groupCount: Int
     var exposed: Bool = false
+    var inPlace: Bool = false
     var displayCount: Int = 1
 
     var body: some View {
@@ -2472,14 +2829,26 @@ private struct MotionLegend: View {
             Rectangle().fill(Palette.border).frame(width: 1, height: 13)
 
             if exposed {
-                keyHint("a–z", "select")
-                keyHint("⇧a–z", "group")
-                keyHint("Tab", "aim")
-                keyHint("⌘scroll", "zoom")
-                keyHint("⏎", "gather")
-                if groupCount > 0 { keyHint("⌘L", "save layer") }
-                keyHint("E", "collapse")
-                keyHint("esc", "cancel")
+                if inPlace {
+                    keyHint("click", "select")
+                    keyHint("a–z", "select")
+                    keyHint("S", "swap 2")
+                    keyHint("G", "grid")
+                    keyHint("drag", "stage")
+                    keyHint("⏎", "commit")
+                    keyHint("esc", "exit")
+                    keyHint("Hyper+␣", "survey")
+                } else {
+                    keyHint("a–z", "select")
+                    keyHint("⇧a–z", "group")
+                    keyHint("Tab", "aim")
+                    keyHint("⌘scroll", "zoom")
+                    keyHint("⏎", "gather")
+                    if groupCount > 0 { keyHint("⌘L", "save layer") }
+                    keyHint("E", "collapse")
+                    keyHint("esc", "cancel")
+                    keyHint("Hyper+G", "in-place")
+                }
             } else {
                 keyHint("Tab", "aim")
                 keyHint("Space", "select")
@@ -2765,6 +3134,15 @@ private struct LatticeFrameKey: PreferenceKey {
     }
 }
 
+/// Collects the Current View screen-map frame (root space) for drop hit-testing.
+private struct CurrentViewFrameKey: PreferenceKey {
+    static let defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        let next = nextValue()
+        if next != .zero { value = next }
+    }
+}
+
 /// Collects each Layers pile's frame (root space, keyed by layer id / newLayerKey)
 /// so a drop can be hit-tested to a pile.
 private struct LayerFrameKey: PreferenceKey {
@@ -2858,6 +3236,7 @@ struct ExposeView: View {
         let frac: CGRect
         let tint: Color
         let image: NSImage?
+        var behind: Bool = false   // covered by a more-front window on this display
     }
 
     // A layer rendered as a drop "pile": a screen-map preview of its member windows
@@ -2893,14 +3272,25 @@ struct ExposeView: View {
     @ObservedObject var drag: HyperspaceDrag
     var screenID: String = ""
     var bandHeight: CGFloat = 200
+    var inPlace: Bool = false
     var screenAspect: CGFloat = 1.6
     var usableInset = EdgeInsets()   // full panel(frame) → visibleFrame, so the Place stage clears the menu bar/Dock
     var onPick: (UInt32) -> Void = { _ in }
     var onDrop: (UInt32, PlacementSpec?) -> Void = { _, _ in }
     var onDropLayer: (UInt32, String) -> Void = { _, _ in }
+    var onSwap: (UInt32, UInt32) -> Void = { _, _ in }
+    var onGridSelection: () -> Void = {}
+    var onSwapFirstTwo: () -> Void = {}
+    var onSwapWith: (UInt32, UInt32) -> Void = { _, _ in }
+    var onFocusWindow: (UInt32) -> Void = { _ in }
+    var onClearSelection: () -> Void = {}
+    var onApplyPlacement: (UInt32, PlacementSpec) -> Void = { _, _ in }
+    var onOpenHyperspace: () -> Void = {}
     var layers: [LayerPile] = []
     var stagedPlan: [StagedMarker] = []
     var currentLayout: [LayerMember] = []   // every window on this display — context for the Place stage
+    var pickedWids: Set<UInt32> = []      // plucked on this screen — outlined brighter when focused
+    var pickedOrder: [UInt32] = []        // pick order — swap uses the first two
     var displayScope: DisplayScope?
     var onLayout: ([UInt32: CGRect]) -> Void = { _ in }
     var onHandKeys: (Bool) -> Void = { _ in }
@@ -2940,6 +3330,7 @@ struct ExposeView: View {
     // The visual-settings rig (lighting/size/zoom/keys/perf) lives behind a gear
     // in the top-right; collapsed by default so it doesn't cover the intent band.
     @State private var dialsOpen = false
+    @State private var guideOpen = true
 
     @State private var perfMode = false
     @State private var perfFlat = false                  // A = true, B = false
@@ -2947,31 +3338,52 @@ struct ExposeView: View {
 
     var body: some View {
         ZStack {
-            backdrop                                    // full-bleed lit scrim
-            VStack(spacing: 0) {
-                intentBand                              // top: Layers · Grid
-                    .frame(height: bandHeight)
-                survey                                  // bottom: the window lattice (the preview surface)
+            if inPlace {
+                Color.clear.allowsHitTesting(false)
+            } else {
+                backdrop
+                VStack(spacing: 0) {
+                    intentBand.frame(height: bandHeight)
+                    survey
+                }
             }
-            placementStage                              // "Place…" → full-screen, click where it goes
-            ghostOverlay                                // the dragged thumbnail
-            dropPulseOverlay                            // the "landed" ring at the drop target
+            if inPlace {
+                VStack(spacing: 0) {
+                    floatingIntentChrome
+                    Spacer(minLength: 0).allowsHitTesting(false)
+                }
+                VStack {
+                    Spacer(minLength: 0).allowsHitTesting(false)
+                    HStack {
+                        Spacer(minLength: 0)
+                        floatingWindowInventory
+                    }
+                    .padding(.trailing, 18)
+                    .padding(.bottom, 18)
+                }
+            }
+            placementStage
+            ghostOverlay
+            dropPulseOverlay
         }
         .coordinateSpace(name: ExposeView.rootSpace)    // band, survey, ghost share one space
         .animation(.spring(response: 0.26, dampingFraction: 0.82), value: rosterPileID)
         .animation(.spring(response: 0.26, dampingFraction: 0.82), value: drag.placeWid)
         .animation(.spring(response: 0.2, dampingFraction: 0.74), value: drag.placeCell)
         .overlay(alignment: .topLeading) {
-            if let displayScope, !drag.isPlacing {
-                displayBadge(displayScope)
-                    .padding(20)
+            if !drag.isPlacing {
+                VStack(alignment: .leading, spacing: 8) {
+                    if let displayScope { displayBadge(displayScope) }
+                    if inPlace { inPlaceActionGuide }
+                }
+                .padding(20)
             }
         }
         .overlay(alignment: .topTrailing) {
             if !drag.isPlacing {                            // the Place stage owns the screen
                 VStack(alignment: .trailing, spacing: 8) {
                     exitButton
-                    settingsToggle
+                    if !inPlace { settingsToggle }
                     if dialsOpen { dials }
                 }
                 .padding(20)
@@ -3246,6 +3658,61 @@ struct ExposeView: View {
         onDrop(wid, spec)
     }
 
+    // Compact action reference for In-Place (Hyper+G). No modifier on click — plain tap selects.
+    private var inPlaceActionGuide: some View {
+        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+        return VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.easeOut(duration: 0.16)) { guideOpen.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    Text("ACTIONS")
+                        .font(Typo.monoBold(9))
+                        .foregroundColor(Palette.running)
+                        .tracking(0.6)
+                    Spacer(minLength: 0)
+                    Image(systemName: guideOpen ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(Palette.textMuted)
+                }
+                .padding(.horizontal, 10).padding(.vertical, 8)
+            }
+            .buttonStyle(.plain)
+            if guideOpen {
+                VStack(alignment: .leading, spacing: 5) {
+                    guideAction("Click window", "select (no action)")
+                    guideAction("Right-click", "contextual actions")
+                    guideAction("a–z", "select by letter")
+                    guideAction("S", "swap first two picks")
+                    guideAction("G", "grid selected windows")
+                    guideAction("Drag", "stage → Grid or Layers")
+                    guideAction("Enter", "commit staged + exit")
+                    guideAction("Esc", "discard + exit")
+                    guideAction("Hyper+Space", "full Hyperspace")
+                }
+                .padding(.horizontal, 10).padding(.bottom, 9)
+            }
+        }
+        .frame(width: 196, alignment: .leading)
+        .background(
+            shape.fill(Color.black.opacity(0.58))
+                .overlay(shape.strokeBorder(Palette.borderLit, lineWidth: 0.5))
+        )
+    }
+
+    private func guideAction(_ key: String, _ label: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(key)
+                .font(Typo.monoBold(8.5))
+                .foregroundColor(.white.opacity(0.88))
+                .frame(width: 72, alignment: .leading)
+            Text(label)
+                .font(Typo.mono(8))
+                .foregroundColor(Palette.textMuted)
+                .lineLimit(2)
+        }
+    }
+
     private func displayBadge(_ scope: DisplayScope) -> some View {
         HStack(spacing: 8) {
             Image(systemName: scope.index == 0 ? "display" : "rectangle.on.rectangle")
@@ -3287,7 +3754,7 @@ struct ExposeView: View {
                 )
         }
         .buttonStyle(.plain)
-        .help("Exit Hyperspace")
+        .help(inPlace ? "Exit In-Place" : "Exit Hyperspace")
     }
 
     // The gear that reveals the control rig. Small by default so the intent band
@@ -3577,21 +4044,173 @@ struct ExposeView: View {
     // stage a location (nothing real moves until gather). See
     // design/hyperspace-drag-drop.md.
 
-    private var intentBand: some View {
-        // Two slots: Layers (pick/tag) · Grid (drop a position). No preview canvas — the survey
-        // *is* the preview: a staged move badges its tile, and hovering a layer lights its windows
-        // in place. Each panel is a predictable 20% of the display width, the pair centred with a
-        // proportional gap. design/hyperspace-drag-drop.md
-        GeometryReader { geo in
-            let panelW = (geo.size.width * 0.20).rounded()
-            let gap    = (geo.size.width * 0.03).rounded()
-            HStack(alignment: .top, spacing: gap) {
-                layersSection.frame(width: panelW)
-                gridSection.frame(width: panelW)
+    /// All survey tiles on this display — drives the floating inventory roster.
+    private var inventoryTiles: [Tile] {
+        clusters.flatMap(\.tiles).sorted {
+            $0.app.localizedCaseInsensitiveCompare($1.app) == .orderedAscending
+        }
+    }
+
+    // Floating intent band — Current View is the hero in in-place mode.
+    private var floatingIntentChrome: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 6) {
+                Text("IN-PLACE")
+                    .font(Typo.monoBold(9))
+                    .foregroundColor(Palette.running)
+                    .tracking(0.8)
+                Text("shared with Hyperspace")
+                    .font(Typo.mono(8.5))
+                    .foregroundColor(Palette.textMuted)
+                Spacer(minLength: 0)
             }
-            .frame(maxWidth: .infinity)        // centre the cluster (not full-bleed)
-            .padding(.top, 16)
-            .padding(.bottom, 8)
+            .padding(.horizontal, 4)
+            intentBand
+                .frame(height: bandHeight)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(Palette.borderLit, lineWidth: 1))
+        )
+        .shadow(color: .black.opacity(0.45), radius: 24, y: 10)
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
+    }
+
+    // Bottom-right window inventory — compact roster linked to Current View.
+    private var floatingWindowInventory: some View {
+        let tiles = inventoryTiles
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "macwindow.on.rectangle")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(Palette.running)
+                Text("Windows")
+                    .font(Typo.monoBold(11))
+                    .foregroundColor(.white)
+                Text("\(tiles.count)")
+                    .font(Typo.monoBold(10))
+                    .foregroundColor(Palette.running)
+                Spacer(minLength: 0)
+                if !pickedWids.isEmpty {
+                    Text("\(pickedWids.count) selected")
+                        .font(Typo.mono(9))
+                        .foregroundColor(Palette.running)
+                }
+                Text("a–z")
+                    .font(Typo.mono(8))
+                    .foregroundColor(Palette.textMuted)
+            }
+            ScrollView {
+                LazyVStack(spacing: 6) {
+                    ForEach(tiles) { t in
+                        inventoryRow(t)
+                    }
+                }
+            }
+            .frame(maxHeight: min(380, CGFloat(tiles.count) * 58 + 8))
+        }
+        .frame(width: 292)
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Palette.borderLit, lineWidth: 1))
+        )
+        .shadow(color: .black.opacity(0.5), radius: 22, y: 10)
+    }
+
+    private func inventoryRow(_ t: Tile) -> some View {
+        let linked = activeLinkWid == t.id
+        let picked = t.pickSlot != nil
+        let lit = surveyHighlightWids?.contains(t.id) == true
+        let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
+        let thumbW: CGFloat = 72
+        let thumbH: CGFloat = 44
+        return HStack(spacing: 8) {
+            ZStack {
+                shape.fill(t.tint.opacity(0.22))
+                if let img = t.image {
+                    Image(nsImage: img).resizable().aspectRatio(contentMode: .fill)
+                }
+            }
+            .frame(width: thumbW, height: thumbH)
+            .clipShape(shape)
+            .overlay(shape.strokeBorder(linked ? HUDChrome.cyan : t.tint.opacity(0.55), lineWidth: linked ? 2 : 0.75))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(t.app)
+                    .font(Typo.monoBold(10))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                Text(t.title)
+                    .font(Typo.mono(8.5))
+                    .foregroundColor(Palette.textMuted)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            if let slot = t.pickSlot {
+                Text("\(slot)")
+                    .font(Typo.monoBold(9))
+                    .foregroundColor(Palette.bg)
+                    .padding(.horizontal, 5).padding(.vertical, 2)
+                    .background(Capsule().fill(Palette.running))
+            } else if inPlace, !t.hint.isEmpty {
+                Text(t.hint)
+                    .font(Typo.monoBold(9))
+                    .foregroundColor(.white.opacity(0.7))
+                    .padding(.horizontal, 5).padding(.vertical, 2)
+                    .background(Capsule().fill(Color.white.opacity(0.1)))
+            }
+        }
+        .padding(.horizontal, 6).padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(lit ? Color.white.opacity(0.08) : Color.white.opacity(0.03))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(linked ? HUDChrome.cyan.opacity(0.7)
+                                    : (picked ? Palette.running.opacity(0.5) : Palette.border),
+                                  lineWidth: linked ? 1.5 : 0.5))
+        )
+        .contentShape(Rectangle())
+        .highPriorityGesture(TapGesture().onEnded { onPick(t.id) })
+        .gesture(
+            DragGesture(minimumDistance: 10, coordinateSpace: .named(ExposeView.rootSpace))
+                .onChanged { handleDragChange(t, $0) }
+                .onEnded { handleDragEnd(t, $0) }
+        )
+        .onHover { over in
+            guard !drag.isActive else { return }
+            if over { drag.hoverSurveyWid = t.id }
+            else if drag.hoverSurveyWid == t.id { drag.hoverSurveyWid = nil }
+        }
+        .contextMenu { windowContextMenu(t) }
+        .animation(.easeOut(duration: 0.14), value: linked)
+    }
+
+    @ViewBuilder
+    private func windowContextMenu(_ t: Tile) -> some View {
+        if inPlace { inPlaceTileMenu(t) } else { tileMenu(t) }
+    }
+
+    private var intentBand: some View {
+        // Three slots: Layers (pick/tag) · Current View (select) · Grid (drop a cell).
+        GeometryReader { geo in
+            let sideW = (geo.size.width * (inPlace ? 0.17 : 0.18)).rounded()
+            let centerW = (geo.size.width * (inPlace ? 0.30 : 0.18)).rounded()
+            let gap = (geo.size.width * 0.018).rounded()
+            HStack(alignment: .top, spacing: gap) {
+                layersSection.frame(width: sideW)
+                currentViewSection.frame(width: centerW)
+                gridSection.frame(width: sideW)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, inPlace ? 4 : 16)
+            .padding(.bottom, inPlace ? 4 : 8)
         }
     }
 
@@ -4069,6 +4688,176 @@ struct ExposeView: View {
             .overlay(shape.strokeBorder(m.tint, lineWidth: big ? 1 : 0.5))
     }
 
+    // One window on the Current View map — true fractional size (no 8px floor), with a
+    // thumbnail when we have one so the mini-map reads like the desktop, not an abstract grid.
+    private func currentViewWindow(_ frac: CGRect, _ tint: Color, _ image: NSImage?,
+                                   _ box: CGSize, staged: Bool) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 2, style: .continuous)
+        let w = max(2, frac.width * box.width)
+        let h = max(2, frac.height * box.height)
+        let r = CGRect(x: frac.minX * box.width, y: frac.minY * box.height, width: w, height: h)
+        return ZStack {
+            shape.fill(tint.opacity(staged ? 0.42 : 0.22))
+            if let image {
+                Image(nsImage: image).resizable().aspectRatio(contentMode: .fill).opacity(staged ? 0.65 : 0.45)
+            }
+        }
+        .frame(width: w, height: h)
+        .clipShape(shape)
+        .overlay(shape.strokeBorder(staged ? tint : tint.opacity(0.7),
+                                    lineWidth: staged ? 1.25 : 0.75))
+        .position(x: r.midX, y: r.midY)
+    }
+
+    // Visual + hit rects for a layout outline in canvas-local coords. Behind windows peek
+    // out from under a front neighbor and get a larger hit pad so stacks stay grabbable.
+    private struct LayoutMetrics {
+        let visual: CGRect
+        let hit: CGRect
+    }
+
+    private func layoutMetrics(frac: CGRect, box: CGSize, behind: Bool) -> LayoutMetrics {
+        let peek: CGFloat = behind ? 7 : 0
+        let minHit: CGFloat = behind ? 28 : 22
+        let vw = max(2, frac.width * box.width)
+        let vh = max(2, frac.height * box.height)
+        let visual = CGRect(x: frac.minX * box.width + peek, y: frac.minY * box.height + peek,
+                            width: vw, height: vh)
+        let hw = max(minHit, vw)
+        let hh = max(minHit, vh)
+        let hit = CGRect(x: visual.midX - hw / 2, y: visual.midY - hh / 2, width: hw, height: hh)
+        return LayoutMetrics(visual: visual, hit: hit)
+    }
+
+    // Cross-link: hover from Current View or the survey lattice, plus any plucked picks.
+    private var activeLinkWid: UInt32? {
+        drag.hoverLayoutWid ?? drag.hoverSurveyWid
+    }
+
+    private var peekWids: Set<UInt32> {
+        var s = pickedWids
+        if let w = activeLinkWid { s.insert(w) }
+        return s
+    }
+
+    /// Survey dim/highlight — layer-roster preview takes priority, then cross-link peeks.
+    private var surveyHighlightWids: Set<UInt32>? {
+        if let layer = highlightWids { return layer }
+        if !peekWids.isEmpty { return peekWids }
+        return nil
+    }
+
+    // Screenshot peek inside a layout footprint — shown when linked from either direction.
+    private func layoutPeekCard(_ rect: CGRect, _ tint: Color, _ image: NSImage?,
+                                picked: Bool, hovered: Bool, behind: Bool) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 2, style: .continuous)
+        let stroke: Color = picked ? Palette.running : (hovered ? .white : HUDChrome.cyan)
+        let lineW: CGFloat = picked || hovered ? 2 : 1.5
+        return ZStack {
+            shape.fill(Color.black.opacity(0.25))
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .opacity(0.94)
+            } else {
+                shape.fill(tint.opacity(0.35))
+            }
+            shape.strokeBorder(stroke, lineWidth: lineW)
+        }
+        .frame(width: rect.width, height: rect.height)
+        .clipShape(shape)
+        .shadow(color: tint.opacity(0.55), radius: hovered ? 8 : 5)
+        .scaleEffect(hovered ? 1.07 : 1.03, anchor: .center)
+        .position(x: rect.midX, y: rect.midY)
+    }
+
+    // Hollow footprint drawn at a canvas-local rect.
+    private func currentViewOutlineAt(_ rect: CGRect, _ tint: Color,
+                                      picked: Bool, hovered: Bool, dragged: Bool, behind: Bool) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 2, style: .continuous)
+        let stroke: Color = dragged ? HUDChrome.cyan
+            : (picked ? Palette.running : (hovered ? .white : tint))
+        let lineW: CGFloat = dragged ? 2 : (picked || hovered ? 1.75 : (behind ? 0.75 : 1))
+        let fillOpacity = dragged ? 0.16 : (picked ? 0.12 : (hovered ? 0.09 : (behind ? 0.02 : 0.05)))
+        let strokeOpacity = dragged ? 1.0 : (behind ? 0.5 : (hovered ? 1.0 : 0.82))
+        return shape
+            .fill(tint.opacity(fillOpacity))
+            .overlay(
+                shape.stroke(
+                    stroke.opacity(strokeOpacity),
+                    style: StrokeStyle(lineWidth: lineW, dash: behind ? [4, 3] : [])
+                )
+            )
+            .shadow(color: dragged ? HUDChrome.cyan.opacity(0.4)
+                    : (hovered ? tint.opacity(0.35) : .clear),
+                    radius: dragged ? 5 : (hovered ? 4 : 0))
+            .frame(width: rect.width, height: rect.height)
+            .position(x: rect.midX, y: rect.midY)
+    }
+
+    // Expanded invisible pad + visual outline + grab affordance. The pad is what you
+    // actually hit — tiny quarter-tiles on the mini-map would otherwise be un-grabbable.
+    private func layoutOutlineInteractive(_ m: LayerMember, box: CGSize) -> some View {
+        let metrics = layoutMetrics(frac: m.frac, box: box, behind: m.behind)
+        let hovered = drag.hoverLayoutWid == m.id
+        let linked = activeLinkWid == m.id
+        let picked = pickedWids.contains(m.id)
+        let peeking = peekWids.contains(m.id)
+        let lifted = drag.wid == m.id && drag.screenID == screenID
+        return ZStack {
+            Color.white.opacity(0.001)
+                .frame(width: metrics.hit.width, height: metrics.hit.height)
+                .contentShape(Rectangle())
+                .position(x: metrics.hit.midX, y: metrics.hit.midY)
+                .highPriorityGesture(TapGesture().onEnded { onPick(m.id) })
+                .gesture(layoutDragGesture(m))
+            Group {
+                if peeking && !lifted {
+                    layoutPeekCard(metrics.visual, m.tint, m.image,
+                                   picked: picked, hovered: hovered || linked, behind: m.behind)
+                } else {
+                    currentViewOutlineAt(metrics.visual, m.tint,
+                                         picked: picked, hovered: hovered, dragged: lifted, behind: m.behind)
+                        .scaleEffect(hovered && !lifted ? 1.06 : 1, anchor: .center)
+                }
+            }
+            .animation(.spring(response: 0.2, dampingFraction: 0.72), value: peeking)
+            if hovered && !lifted && !drag.isActive && !peeking {
+                Image(systemName: "arrow.up.forward")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(.white.opacity(0.92))
+                    .shadow(color: .black.opacity(0.45), radius: 2)
+                    .position(x: metrics.visual.midX, y: metrics.visual.midY)
+                    .allowsHitTesting(false)
+            }
+        }
+        .opacity(lifted ? 0.3 : (m.behind && !peeking ? 0.72 : 1))
+        .overlay {
+            if lifted {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .strokeBorder(style: StrokeStyle(lineWidth: 1.25, dash: [4, 3]))
+                    .foregroundColor(HUDChrome.cyan.opacity(0.85))
+                    .frame(width: metrics.visual.width, height: metrics.visual.height)
+                    .position(x: metrics.visual.midX, y: metrics.visual.midY)
+                    .allowsHitTesting(false)
+            }
+        }
+        .zIndex(peeking ? 100 : (hovered || picked ? 10 : (m.behind ? 0 : 1)))
+        .onHover { over in
+            if over {
+                drag.hoverLayoutWid = m.id
+                if !drag.isActive { NSCursor.openHand.push() }
+            } else {
+                if drag.hoverLayoutWid == m.id { drag.hoverLayoutWid = nil }
+                if !drag.isActive { NSCursor.pop() }
+            }
+        }
+        .contextMenu {
+            if inPlace, let t = tileForWid(m.id) { inPlaceTileMenu(t) }
+        }
+    }
+
     // Reports a pile's frame (root space) keyed by its id so a drop can hit-test it.
     private func layerFrameReporter(_ key: String) -> some View {
         GeometryReader { g in
@@ -4094,12 +4883,98 @@ struct ExposeView: View {
         return Set(p.members.map(\.id))
     }
 
+    /// Current View highlights while hovering an outline or a linked survey tile.
+    private var currentViewFocused: Bool {
+        drag.inspectCurrentView && drag.inspectScreen == screenID
+            || drag.hoverLayoutWid != nil
+            || drag.hoverSurveyWid != nil
+    }
+
+    private var currentViewSub: String {
+        if drag.isActive, drag.screenID == screenID, drag.dragSource == .currentView {
+            return drag.hoverGrid ? "release on cell" : "drag to grid →"
+        }
+        if !pickedOrder.isEmpty { return "\(pickedOrder.count) selected · S swap · G grid" }
+        return "click or a–z to select"
+    }
+
+    // The Current View section (middle): a screen-map of this display's windows at their
+    // real positions. Tap two to swap; drag an outline into Grid to stage a cell.
+    private var currentViewSection: some View {
+        sectionCard(title: "Current View", icon: "rectangle.on.rectangle",
+                    sub: currentViewSub,
+                    live: true, armed: currentViewFocused || (drag.isActive && drag.dragSource == .currentView)) {
+            currentLayoutCanvas
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    // Screen-map canvas: always hollow outlines at each window's live fractional rect —
+    // a wireframe of the desktop (including stacked-behind windows as dashed footprints).
+    private var currentLayoutCanvas: some View {
+        let focused = currentViewFocused
+        let showHint = focused && activeLinkWid == nil && pickedWids.isEmpty && !drag.isActive
+        return GeometryReader { geo in
+            let box = aspectFit(in: geo.size, aspect: screenAspect)
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(Color.black.opacity(0.38))
+                ForEach(currentLayout) { m in
+                    layoutOutlineInteractive(m, box: box)
+                }
+                if showHint {
+                    Text("click windows to select")
+                        .font(Typo.monoBold(8))
+                        .foregroundColor(.white.opacity(0.45))
+                        .padding(.horizontal, 6).padding(.vertical, 3)
+                        .background(Capsule().fill(Color.black.opacity(0.35)))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                        .padding(.bottom, 5)
+                        .allowsHitTesting(false)
+                }
+            }
+            .frame(width: box.width, height: box.height)
+            .overlay(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .strokeBorder(focused ? HUDChrome.cyan : Palette.border, lineWidth: focused ? 1.5 : 0.5)
+            )
+            .scaleEffect(focused ? 1.03 : 1)
+            .shadow(color: focused ? HUDChrome.cyan.opacity(0.45) : .clear, radius: focused ? 8 : 0)
+            .animation(.spring(response: 0.24, dampingFraction: 0.72), value: focused)
+            .background(
+                GeometryReader { g in
+                    Color.clear.preference(key: CurrentViewFrameKey.self,
+                                           value: g.frame(in: .named(ExposeView.rootSpace)))
+                }
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onHover { hovering in
+                if hovering {
+                    drag.inspectCurrentView = true
+                    drag.inspectScreen = screenID
+                } else if drag.inspectScreen == screenID {
+                    drag.inspectCurrentView = false
+                    drag.inspectScreen = nil
+                    drag.hoverLayoutWid = nil
+                }
+            }
+        }
+        .onPreferenceChange(CurrentViewFrameKey.self) { drag.currentViewFrames[screenID] = $0 }
+    }
+
     // The Grid section (right): a resolution selector above a grid of drop positions.
-    // Dropping a window on a cell stages that position; the result renders in the middle
-    // Preview, so the grid here is purely the input (cells just light under the cursor).
+    // Dropping a window on a cell stages that position.
     private var gridSection: some View {
-        sectionCard(title: "Grid", icon: "rectangle.split.2x2", sub: "drop a position",
-                    live: true, armed: dragOnThisScreen && drag.hoverCell != nil) {
+        let draggingHere = dragOnThisScreen && drag.isActive
+        let sub: String = {
+            guard draggingHere else { return "drop a position" }
+            if drag.hoverCell != nil { return "release here" }
+            if drag.hoverGrid { return "pick a cell" }
+            return "drop here"
+        }()
+        let armed = dragOnThisScreen && drag.isActive && (drag.hoverCell != nil || drag.hoverGrid)
+        return sectionCard(title: "Grid", icon: "rectangle.split.2x2", sub: sub,
+                    live: true, armed: armed) {
             VStack(spacing: 8) {
                 controlRow { resSelector }
                 latticeGrid
@@ -4184,11 +5059,13 @@ struct ExposeView: View {
             let cw = box.width / CGFloat(cols)
             let ch = box.height / CGFloat(rows)
             let active = drag.isActive && drag.screenID == screenID
+            let warm = active && drag.hoverGrid && drag.hoverCell == nil
             VStack(spacing: 3) {
                 ForEach(0..<rows, id: \.self) { r in
                     HStack(spacing: 3) {
                         ForEach(0..<cols, id: \.self) { c in
-                            gridCell(lit: active && drag.hoverCell == HoverCell(col: c, row: r),
+                            let lit = active && drag.hoverCell == HoverCell(col: c, row: r)
+                            gridCell(lit: lit, warm: warm,
                                      w: max(8, cw - 3), h: max(8, ch - 3))
                         }
                     }
@@ -4210,15 +5087,21 @@ struct ExposeView: View {
 
     // One drop-grid cell — a plain target that lights under the cursor. The actual
     // placement preview now renders in the middle Preview canvas, not in the cell.
-    private func gridCell(lit: Bool, w: CGFloat, h: CGFloat) -> some View {
+    private func gridCell(lit: Bool, warm: Bool, w: CGFloat, h: CGFloat) -> some View {
         let shape = RoundedRectangle(cornerRadius: 4, style: .continuous)
+        let fill = lit ? Palette.running.opacity(0.32)
+            : (warm ? Palette.running.opacity(0.12) : Color.white.opacity(0.05))
+        let stroke = lit ? Palette.running : (warm ? Palette.running.opacity(0.45) : Palette.border)
         return shape
-            .fill(lit ? Palette.running.opacity(0.32) : Color.white.opacity(0.05))
-            .overlay(shape.strokeBorder(lit ? Palette.running : Palette.border, lineWidth: lit ? 1.5 : 0.5))
+            .fill(fill)
+            .overlay(shape.strokeBorder(stroke, lineWidth: lit ? 1.5 : (warm ? 1 : 0.5)))
             .frame(width: w, height: h)
-            .scaleEffect(lit ? 1.07 : 1)
-            .shadow(color: lit ? Palette.running.opacity(0.55) : .clear, radius: lit ? 9 : 0)
+            .scaleEffect(lit ? 1.08 : (warm ? 1.02 : 1))
+            .shadow(color: lit ? Palette.running.opacity(0.55)
+                    : (warm ? Palette.running.opacity(0.2) : .clear),
+                    radius: lit ? 9 : (warm ? 4 : 0))
             .zIndex(lit ? 1 : 0)
+            .animation(.spring(response: 0.22, dampingFraction: 0.72), value: lit)
     }
 
     // MARK: - Preview — a dedicated slot that always shows the screen's zones
@@ -4269,6 +5152,14 @@ struct ExposeView: View {
     private func sectionCard<Content: View>(title: String, icon: String, sub: String,
                                             live: Bool, armed: Bool = false,
                                             @ViewBuilder content: () -> Content) -> some View {
+        sectionCard(title: title, icon: icon, sub: sub, live: live, armed: armed,
+                    trailing: { EmptyView() }, content: content)
+    }
+
+    private func sectionCard<Content: View, Trailing: View>(title: String, icon: String, sub: String,
+                                            live: Bool, armed: Bool = false,
+                                            @ViewBuilder trailing: () -> Trailing,
+                                            @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 6) {
                 Image(systemName: icon)
@@ -4279,6 +5170,7 @@ struct ExposeView: View {
                 Text(sub)
                     .font(Typo.mono(8.5)).foregroundColor(armed ? HUDChrome.cyan : Palette.textMuted)
                 Spacer(minLength: 0)
+                trailing()
             }
             content()
         }
@@ -4303,19 +5195,31 @@ struct ExposeView: View {
     // land here" tell that also previews how small the window reads in the target.
     @ViewBuilder
     private var ghostOverlay: some View {
-        if drag.isActive, drag.screenID == screenID, let img = drag.image {
+        if drag.isActive, drag.screenID == screenID, drag.image != nil || drag.ghostTint != nil {
             let armed = drag.hoverCell != nil || drag.hoverLayer != nil
-            Image(nsImage: img)
-                .resizable().aspectRatio(contentMode: .fill)
-                .frame(width: drag.tileSize.width, height: drag.tileSize.height)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Palette.running, lineWidth: armed ? 2.5 : 2))
-                .shadow(color: .black.opacity(armed ? 0.6 : 0.5), radius: armed ? 10 : 16, x: 0, y: armed ? 4 : 8)
-                .scaleEffect(armed ? 0.6 : 1, anchor: .center)
-                .opacity(armed ? 1 : 0.9)
-                .animation(.spring(response: 0.22, dampingFraction: 0.72), value: armed)
-                .position(drag.location)
-                .allowsHitTesting(false)
+            let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
+            Group {
+                if let img = drag.image {
+                    Image(nsImage: img)
+                        .resizable().aspectRatio(contentMode: .fill)
+                } else if let tint = drag.ghostTint {
+                    ZStack {
+                        shape.fill(tint.opacity(0.38))
+                        Image(systemName: "arrow.up.forward")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(.white.opacity(0.9))
+                    }
+                }
+            }
+            .frame(width: drag.tileSize.width, height: drag.tileSize.height)
+            .clipShape(shape)
+            .overlay(shape.strokeBorder(armed ? HUDChrome.cyan : Palette.running, lineWidth: armed ? 2.5 : 2))
+            .shadow(color: .black.opacity(armed ? 0.6 : 0.5), radius: armed ? 10 : 16, x: 0, y: armed ? 4 : 8)
+            .scaleEffect(armed ? 0.62 : 1, anchor: .center)
+            .opacity(armed ? 1 : 0.92)
+            .animation(.spring(response: 0.22, dampingFraction: 0.72), value: armed)
+            .position(drag.location)
+            .allowsHitTesting(false)
         }
     }
 
@@ -4341,27 +5245,63 @@ struct ExposeView: View {
     }
 
     private func handleDragChange(_ t: Tile, _ v: DragGesture.Value) {
+        handleDragChange(wid: t.id, image: t.image, source: .survey,
+                         tileW: tile, tileH: (tile * 0.62).rounded(), v)
+    }
+
+    private func popDragCursor() {
+        NSCursor.pop()
+    }
+
+    private func layoutDragGesture(_ m: LayerMember) -> some Gesture {
+        let ghostW: CGFloat = 72
+        let ghostH = (ghostW * 0.62).rounded()
+        return DragGesture(minimumDistance: 10, coordinateSpace: .named(ExposeView.rootSpace))
+            .onChanged { handleDragChange(wid: m.id, image: m.image, ghostTint: m.tint,
+                                          source: .currentView, tileW: ghostW, tileH: ghostH, $0) }
+            .onEnded { handleLayoutDragEnd(m, $0) }
+    }
+
+    private func handleDragChange(wid: UInt32, image: NSImage?, ghostTint: Color? = nil,
+                                  source: HyperspaceDrag.DragSource,
+                                  tileW: CGFloat, tileH: CGFloat, _ v: DragGesture.Value) {
         drag.location = v.location
         let dist = hypot(v.translation.width, v.translation.height)
         if drag.wid == nil {
-            guard dist >= 8 else { return }       // below threshold → still a potential tap
-            drag.wid = t.id
-            drag.image = t.image
+            guard dist >= 10 else { return }
+            drag.wid = wid
+            drag.image = image
+            drag.ghostTint = image == nil ? ghostTint : nil
             drag.screenID = screenID
-            drag.tileSize = CGSize(width: tile, height: (tile * 0.62).rounded())
+            drag.dragSource = source
+            drag.tileSize = CGSize(width: tileW, height: tileH)
+            if source == .currentView {
+                NSCursor.pop()                 // openHand from hover
+                NSCursor.closedHand.push()
+            }
         }
         drag.res = Self.modifierRes() ?? drag.baseRes
         updateHoverCell()
+        updateHoverCurrentView()
         updateHoverLayer()
     }
 
+    private func handleLayoutDragEnd(_ m: LayerMember, _ v: DragGesture.Value) {
+        handleDragEnd(wid: m.id, source: .currentView, onTap: { onPick(m.id) }, v)
+    }
+
     private func handleDragEnd(_ t: Tile, _ v: DragGesture.Value) {
+        handleDragEnd(wid: t.id, source: .survey, onTap: { onPick(t.id) }, v)
+    }
+
+    private func handleDragEnd(wid: UInt32, source: HyperspaceDrag.DragSource,
+                               onTap: () -> Void, _ v: DragGesture.Value) {
         let dist = hypot(v.translation.width, v.translation.height)
         let wasDragging = drag.wid != nil
-        // Resolve the drop target before reset() clears the hover state. The Lattice
-        // grid wins if the cursor is over it; otherwise a layer pile; else a miss.
+        // Resolve the drop target before reset() clears the hover state. Priority:
+        // Grid cell → layer pile → miss.
         var spec: PlacementSpec?
-        var pulseFrame: CGRect?                   // where to flash the "landed" ring
+        var pulseFrame: CGRect?
         if wasDragging,
            let frame = drag.latticeFrames[screenID], frame.contains(v.location),
            let cell = drag.hoverCell {
@@ -4373,17 +5313,27 @@ struct ExposeView: View {
         }
         let layerKey = (wasDragging && spec == nil) ? drag.hoverLayer : nil
         if let layerKey { pulseFrame = drag.layerFrames[screenID]?[layerKey] }
-        let wid = t.id
-        drag.reset()                              // clear FIRST so the panel rebuild isn't suppressed
-        if !wasDragging && dist < 8 {
-            onPick(wid)                           // a tap → pluck
+        let fromLayout = drag.dragSource == .currentView
+        drag.reset()
+        if fromLayout { popDragCursor() }
+        if !wasDragging && dist < 12 {
+            onTap()
         } else if let layerKey {
-            onDropLayer(wid, layerKey)            // a drag onto a layer pile → stage join / new layer
+            onDropLayer(wid, layerKey)
             if let pulseFrame { drag.firePulse(at: pulseFrame) }
         } else {
-            onDrop(wid, spec)                     // a drag → stage location (or nil = missed, just rebuild)
+            onDrop(wid, spec)
             if spec != nil, let pulseFrame { drag.firePulse(at: pulseFrame) }
         }
+    }
+
+    private func updateHoverCurrentView() {
+        guard let frame = drag.currentViewFrames[screenID], frame.width > 1 else {
+            if drag.hoverCurrentView { drag.hoverCurrentView = false }
+            return
+        }
+        let hit = frame.contains(drag.location)
+        if drag.hoverCurrentView != hit { drag.hoverCurrentView = hit }
     }
 
     private func updateHoverLayer() {
@@ -4393,16 +5343,36 @@ struct ExposeView: View {
     }
 
     private func updateHoverCell() {
-        guard let frame = drag.latticeFrames[screenID], frame.width > 1, frame.contains(drag.location) else {
+        guard let frame = drag.latticeFrames[screenID], frame.width > 1 else {
             if drag.hoverCell != nil { drag.hoverCell = nil }
+            if drag.hoverGrid { drag.hoverGrid = false }
             return
         }
+        // Forgiving hit: pad the grid bounds so you don't have to thread the needle.
+        let pad: CGFloat = drag.isActive ? 14 : 0
+        let hitFrame = frame.insetBy(dx: -pad, dy: -pad)
+        guard hitFrame.contains(drag.location) else {
+            if drag.hoverCell != nil { drag.hoverCell = nil }
+            if drag.hoverGrid { drag.hoverGrid = false }
+            return
+        }
+        if !drag.hoverGrid { drag.hoverGrid = true }
         let (cols, rows) = drag.res.dims
         let cw = frame.width / CGFloat(cols)
         let ch = frame.height / CGFloat(rows)
-        let c = min(cols - 1, max(0, Int((drag.location.x - frame.minX) / cw)))
-        let r = min(rows - 1, max(0, Int((drag.location.y - frame.minY) / ch)))
-        let cell = HoverCell(col: c, row: r)
+        // Snap to the nearest cell center — more forgiving than strict rect partitions.
+        var bestCol = 0
+        var bestRow = 0
+        var bestDist = CGFloat.infinity
+        for r in 0..<rows {
+            for c in 0..<cols {
+                let cx = frame.minX + (CGFloat(c) + 0.5) * cw
+                let cy = frame.minY + (CGFloat(r) + 0.5) * ch
+                let d = hypot(drag.location.x - cx, drag.location.y - cy)
+                if d < bestDist { bestDist = d; bestCol = c; bestRow = r }
+            }
+        }
+        let cell = HoverCell(col: bestCol, row: bestRow)
         if drag.hoverCell != cell { drag.hoverCell = cell }
     }
 
@@ -4454,6 +5424,109 @@ struct ExposeView: View {
         )
     }
 
+    private func tileForWid(_ wid: UInt32) -> Tile? {
+        clusters.flatMap(\.tiles).first { $0.id == wid }
+    }
+
+    // Hyper+G inventory / Current View menu — selection-aware actions, not just placements.
+    @ViewBuilder
+    private func inPlaceTileMenu(_ t: Tile) -> some View {
+        inPlaceSelectionActions(t)
+        Divider()
+        Button { onFocusWindow(t.id) } label: {
+            Label("Focus on Desktop", systemImage: "macwindow.on.rectangle")
+        }
+        Divider()
+        inPlacePlacementMenus(t)
+        inPlaceLayerMenu(t)
+        Divider()
+        Button { onOpenHyperspace() } label: {
+            Label("Open Hyperspace Survey", systemImage: "rectangle.on.rectangle.angled")
+        }
+    }
+
+    @ViewBuilder
+    private func inPlaceSelectionActions(_ t: Tile) -> some View {
+        let picked = t.pickSlot != nil
+        let pickCount = pickedWids.count
+        Button { onPick(t.id) } label: {
+            Label(picked ? "Deselect" : "Select", systemImage: picked ? "minus.circle" : "plus.circle")
+        }
+        if pickCount > 0 {
+            Divider()
+            Button { onGridSelection() } label: {
+                Label(pickCount >= 2 ? "Grid \(pickCount) Windows" : "Grid Selection",
+                      systemImage: "square.grid.2x2")
+            }
+            .disabled(pickCount < 2)
+            if pickCount >= 2 {
+                Button { onSwapFirstTwo() } label: {
+                    Label("Swap First Two (S)", systemImage: "arrow.left.arrow.right")
+                }
+            }
+            inPlaceSwapWithMenu(t)
+            Button(role: .destructive) { onClearSelection() } label: {
+                Label("Clear Selection", systemImage: "xmark.circle")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func inPlaceSwapWithMenu(_ t: Tile) -> some View {
+        let picked = t.pickSlot != nil
+        let others = pickedOrder.filter { $0 != t.id }
+        if picked, !others.isEmpty {
+            Menu("Swap with…", systemImage: "arrow.triangle.swap") {
+                ForEach(others, id: \.self) { wid in
+                    Button(tileForWid(wid)?.app ?? "Window") { onSwapWith(t.id, wid) }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func inPlacePlacementMenus(_ t: Tile) -> some View {
+        Menu("Apply Now", systemImage: "arrow.up.left.and.arrow.down.right") {
+            placementQuickItems(wid: t.id, handler: onApplyPlacement)
+        }
+        Menu("Stage for Enter", systemImage: "clock.badge.checkmark") {
+            Button { drag.beginPlacing(t.id, on: screenID) } label: {
+                Label("Place…", systemImage: "rectangle.dashed")
+            }
+            Divider()
+            placementQuickItems(wid: t.id) { wid, spec in onDrop(wid, spec) }
+        }
+    }
+
+    @ViewBuilder
+    private func inPlaceLayerMenu(_ t: Tile) -> some View {
+        let joinable = layers.filter { !$0.isNew }
+        if !joinable.isEmpty {
+            Divider()
+            Menu("Add to Layer") {
+                ForEach(joinable) { p in
+                    Button(p.name) { onDropLayer(t.id, p.id) }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func placementQuickItems(wid: UInt32,
+                                     handler: @escaping (UInt32, PlacementSpec) -> Void) -> some View {
+        Button("Left Half")   { handler(wid, GridPlacement(columns: 2, rows: 1, column: 0, row: 0).map(PlacementSpec.grid)!) }
+        Button("Right Half")  { handler(wid, GridPlacement(columns: 2, rows: 1, column: 1, row: 0).map(PlacementSpec.grid)!) }
+        Button("Top Half")    { handler(wid, GridPlacement(columns: 1, rows: 2, column: 0, row: 0).map(PlacementSpec.grid)!) }
+        Button("Bottom Half") { handler(wid, GridPlacement(columns: 1, rows: 2, column: 0, row: 1).map(PlacementSpec.grid)!) }
+        Menu("Quarter") {
+            Button("Top Left")     { handler(wid, GridPlacement(columns: 2, rows: 2, column: 0, row: 0).map(PlacementSpec.grid)!) }
+            Button("Top Right")    { handler(wid, GridPlacement(columns: 2, rows: 2, column: 1, row: 0).map(PlacementSpec.grid)!) }
+            Button("Bottom Left")  { handler(wid, GridPlacement(columns: 2, rows: 2, column: 0, row: 1).map(PlacementSpec.grid)!) }
+            Button("Bottom Right") { handler(wid, GridPlacement(columns: 2, rows: 2, column: 1, row: 1).map(PlacementSpec.grid)!) }
+        }
+        Button("Maximize") { handler(wid, GridPlacement(columns: 1, rows: 1, column: 0, row: 0).map(PlacementSpec.grid)!) }
+    }
+
     // The right-click menu for a window: quick tile presets (stage immediately), a visual
     // "Place…" that opens the life-size stage, layer joins, and pluck. Options, not actions —
     // nothing real moves until ⏎/G, same as the rest of Hyperspace.
@@ -4463,17 +5536,7 @@ struct ExposeView: View {
             Label("Place…", systemImage: "rectangle.dashed")
         }
         Divider()
-        Button("Left Half")   { stagePlacement(t.id, GridPlacement(columns: 2, rows: 1, column: 0, row: 0)) }
-        Button("Right Half")  { stagePlacement(t.id, GridPlacement(columns: 2, rows: 1, column: 1, row: 0)) }
-        Button("Top Half")    { stagePlacement(t.id, GridPlacement(columns: 1, rows: 2, column: 0, row: 0)) }
-        Button("Bottom Half") { stagePlacement(t.id, GridPlacement(columns: 1, rows: 2, column: 0, row: 1)) }
-        Menu("Quarter") {
-            Button("Top Left")     { stagePlacement(t.id, GridPlacement(columns: 2, rows: 2, column: 0, row: 0)) }
-            Button("Top Right")    { stagePlacement(t.id, GridPlacement(columns: 2, rows: 2, column: 1, row: 0)) }
-            Button("Bottom Left")  { stagePlacement(t.id, GridPlacement(columns: 2, rows: 2, column: 0, row: 1)) }
-            Button("Bottom Right") { stagePlacement(t.id, GridPlacement(columns: 2, rows: 2, column: 1, row: 1)) }
-        }
-        Button("Maximize") { stagePlacement(t.id, GridPlacement(columns: 1, rows: 1, column: 0, row: 0)) }
+        placementQuickItems(wid: t.id) { wid, spec in onDrop(wid, spec) }
         let joinable = layers.filter { !$0.isNew }
         if !joinable.isEmpty {
             Divider()
@@ -4498,15 +5561,19 @@ struct ExposeView: View {
         let picked = t.pickSlot != nil
         let staged = t.staged != nil || !t.layerTags.isEmpty
         let beingDragged = drag.wid == t.id && drag.screenID == screenID
-        // Layer preview: when a pile is hovered, this layer's windows pop and the rest fade.
-        let inLayer = highlightWids?.contains(t.id)
-        let layerLit = inLayer == true
-        let layerDimmed = inLayer == false
-        let lit = t.isAimed || picked                          // on the spotlight's stage
+        // Cross-link + layer roster: highlighted tiles pop, the rest sink.
+        let inHighlight = surveyHighlightWids?.contains(t.id)
+        let highlightLit = inHighlight == true
+        let highlightDimmed = inHighlight == false && surveyHighlightWids != nil
+        let crossLinked = activeLinkWid == t.id
+        let lit = t.isAimed || picked || highlightLit
         let strokeColor: Color = staged ? HUDChrome.cyan
-            : (picked ? HUDChrome.cyan : (t.isAimed ? Color.white.opacity(0.9) : Color.white.opacity(0.1)))
-        let strokeW: CGFloat = staged ? 2 : (picked ? 2 : (t.isAimed ? 1.5 : 0.75))
-        let veil: Double = lit ? 0 : spotlight * 0.5
+            : (crossLinked ? HUDChrome.cyan
+               : (picked ? HUDChrome.cyan : (highlightLit ? Palette.running
+                  : (t.isAimed ? Color.white.opacity(0.9) : Color.white.opacity(0.1)))))
+        let strokeW: CGFloat = staged ? 2
+            : (crossLinked ? 2.5 : (picked || highlightLit ? 2 : (t.isAimed ? 1.5 : 0.75)))
+        let veil: Double = highlightLit || lit ? 0 : spotlight * 0.5
         let bloom: Color = t.isAimed ? lightColor.opacity(0.7 * spotlight) : .clear
         let bloomR: CGFloat = t.isAimed ? 8 + spotlight * 22 : 0
         return tileBody(t, w: w, h: h, shape: shape)
@@ -4528,13 +5595,19 @@ struct ExposeView: View {
             }
             .animation(.spring(response: 0.3, dampingFraction: 0.62), value: t.staged)        // location badge pops
             .animation(.spring(response: 0.3, dampingFraction: 0.62), value: t.layerTags)      // layer labels pop
-            // While previewing a layer, this tile's windows ring on-brand and the rest sink.
             .overlay {
-                if layerLit { shape.strokeBorder(HUDChrome.cyan, lineWidth: 2) }
+                if crossLinked {
+                    shape.strokeBorder(HUDChrome.cyan, lineWidth: 2.5)
+                        .shadow(color: HUDChrome.cyan.opacity(0.55), radius: 10)
+                } else if highlightLit {
+                    shape.strokeBorder(Palette.running, lineWidth: 2)
+                }
             }
+            .scaleEffect(crossLinked ? 1.05 : 1, anchor: .center)
+            .animation(.spring(response: 0.22, dampingFraction: 0.72), value: crossLinked)
             // While this tile is the one being dragged, hollow it out so it keeps its
             // slot (no reflow) but reads as "lifted" — the ghost is what moves.
-            .opacity(beingDragged ? 0.22 : (layerDimmed ? 0.26 : 1))
+            .opacity(beingDragged ? 0.22 : (highlightDimmed ? 0.26 : 1))
             .overlay {
                 if beingDragged {
                     shape.strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
@@ -4543,15 +5616,24 @@ struct ExposeView: View {
             }
             .background(frameReporter(t.id))
             .shadow(color: .black.opacity(picked ? 0.5 : 0.35), radius: picked ? 14 : 8, x: 0, y: 5)
-            .shadow(color: layerLit ? HUDChrome.cyan.opacity(0.55) : bloom, radius: layerLit ? 14 : bloomR)  // layer-lit / aimed tile glows
+            .shadow(color: crossLinked ? HUDChrome.cyan.opacity(0.6)
+                    : (highlightLit ? Palette.running.opacity(0.45) : bloom),
+                    radius: crossLinked ? 16 : (highlightLit ? 14 : bloomR))
             .contentShape(Rectangle())
+            .onHover { over in
+                guard !drag.isActive else { return }
+                if over {
+                    drag.hoverSurveyWid = t.id
+                } else if drag.hoverSurveyWid == t.id {
+                    drag.hoverSurveyWid = nil
+                }
+            }
             // Right-click → a menu of options (not a surprise action). Quick tile presets stage
             // immediately; "Place…" opens the life-size stage for a visual pick.
             .contextMenu { tileMenu(t) }
-            // One gesture does both: a near-zero move is a tap (pluck); a real drag
-            // lifts a ghost and stages a location on drop.
+            .highPriorityGesture(TapGesture().onEnded { onPick(t.id) })
             .gesture(
-                DragGesture(minimumDistance: 0, coordinateSpace: .named(ExposeView.rootSpace))
+                DragGesture(minimumDistance: 10, coordinateSpace: .named(ExposeView.rootSpace))
                     .onChanged { handleDragChange(t, $0) }
                     .onEnded { handleDragEnd(t, $0) }
             )
