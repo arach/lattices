@@ -3450,17 +3450,17 @@ struct ExposeView: View {
     var body: some View {
         ZStack {
             if inPlace {
-                Color.clear.allowsHitTesting(false)
+                inPlaceSignatureBackdrop
             } else {
                 backdrop
                 VStack(spacing: 0) {
-                    intentBand.frame(height: bandHeight)
+                    overlayIntentChrome(mode: "hyperspace", detail: "window survey")
                     survey
                 }
             }
             if inPlace {
                 VStack(spacing: 0) {
-                    floatingIntentChrome
+                    overlayIntentChrome(mode: "in-place", detail: "shared with hyperspace")
                     Spacer(minLength: 0).allowsHitTesting(false)
                 }
                 VStack {
@@ -3481,10 +3481,9 @@ struct ExposeView: View {
         .animation(.spring(response: 0.26, dampingFraction: 0.82), value: rosterPileID)
         .animation(.spring(response: 0.26, dampingFraction: 0.82), value: drag.placeWid)
         .animation(.spring(response: 0.2, dampingFraction: 0.74), value: drag.placeCell)
-        .overlay(alignment: .topLeading) {
-            if !drag.isPlacing, let displayScope {
-                displayBadge(displayScope)
-                    .padding(20)
+        .overlay(alignment: .bottomLeading) {
+            if !drag.isPlacing {
+                LatticesOverlayWatermarkPlacement()
             }
         }
         .overlay(alignment: .topTrailing) {
@@ -3504,7 +3503,7 @@ struct ExposeView: View {
         }
         .overlay(alignment: .top) {
             if !drag.isPlacing {
-                planSummaryBar.padding(.top, bandHeight + 4)   // sits just under the intent band
+                planSummaryBar.padding(.top, intentChromeHeight + 4)   // sits just under the intent strip
             }
         }
         .overlay {
@@ -3827,32 +3826,6 @@ struct ExposeView: View {
         .lineLimit(1)
     }
 
-    private func displayBadge(_ scope: DisplayScope) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: scope.index == 0 ? "display" : "rectangle.on.rectangle")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(Palette.running)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(scope.label)
-                    .font(Typo.monoBold(10))
-                    .foregroundColor(Palette.text)
-                Text("\(scope.windowCount) \(scope.windowCount == 1 ? "window" : "windows")")
-                    .font(Typo.caption(8.5))
-                    .foregroundColor(Palette.textMuted)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.black.opacity(0.42)))
-                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Palette.running.opacity(0.65), lineWidth: 1))
-        )
-        .shadow(color: .black.opacity(0.55), radius: 22, y: 10)
-    }
-
     // Mouse-driven leave: the keyboard has Enter (commit) / Esc (discard), but there was no
     // way out with the trackpad. This ✕ just *closes* the survey, keeping whatever's on screen
     // (Esc remains the explicit discard/revert). Top-right, above the gear.
@@ -4047,6 +4020,9 @@ struct ExposeView: View {
                 VisualEffectBackdrop(material: .hudWindow)
                     .ignoresSafeArea()
 
+                LatticesLatticeGrid(spacing: 26, opacity: 0.04, tint: Palette.running)
+                    .ignoresSafeArea()
+
                 // Ambient floor: how lit the room is. Low = near-black and dramatic,
                 // high = airy. A little blur always survives so it never goes flat.
                 Color.black.opacity(0.82 - ambient * 0.60)
@@ -4167,20 +4143,67 @@ struct ExposeView: View {
         }
     }
 
-    // Floating intent band — full-bleed across the display; Current View is the hero.
-    private var floatingIntentChrome: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Text("IN-PLACE")
-                    .font(Typo.monoBold(9))
-                    .foregroundColor(Palette.running)
-                    .tracking(0.8)
-                Text("shared with Hyperspace")
-                    .font(Typo.mono(8.5))
+    // Quiet signature wash under the live desktop — corner mark does the heavy lifting.
+    private var inPlaceSignatureBackdrop: some View {
+        ZStack(alignment: .top) {
+            LinearGradient(
+                colors: [Palette.running.opacity(0.04), .clear],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 140)
+            .frame(maxHeight: .infinity, alignment: .top)
+            LatticesLatticeGrid(spacing: 28, opacity: 0.028, tint: Palette.running)
+                .mask(
+                    LinearGradient(
+                        colors: [.white.opacity(0.5), .clear],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+        }
+        .allowsHitTesting(false)
+    }
+
+    // Inline monitor readout for the strip header — avoids a second top-left chip.
+    private func displayScopeChip(_ scope: DisplayScope) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: scope.index == 0 ? "display" : "rectangle.on.rectangle")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundColor(Palette.running)
+            Text(scope.label)
+                .font(Typo.monoBold(9))
+                .foregroundColor(Palette.text)
+            if scope.count > 1 {
+                Text("\(scope.index + 1)/\(scope.count)")
+                    .font(Typo.mono(8))
                     .foregroundColor(Palette.textMuted)
-                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 16)
+            Text("\(scope.windowCount)")
+                .font(Typo.monoBold(9))
+                .foregroundColor(Palette.running)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
+                .background(
+                    Capsule()
+                        .fill(Palette.running.opacity(0.12))
+                        .overlay(Capsule().strokeBorder(Palette.running.opacity(0.28), lineWidth: 0.5))
+                )
+        }
+        .lineLimit(1)
+    }
+
+    /// Header row + intent band — shared by Hyperspace survey and Hyper+G in-place.
+    private var intentChromeHeight: CGFloat { bandHeight + 44 }
+
+    private func overlayIntentChrome(mode: String, detail: String?) -> some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .center, spacing: 12) {
+                LatticesOverlayStripHeader(mode: mode, detail: detail)
+                Spacer(minLength: 0)
+                if let displayScope { displayScopeChip(displayScope) }
+            }
+            .padding(.horizontal, LatticesOverlayMetrics.edgeInset)
             .padding(.top, 10)
             .padding(.bottom, 6)
             intentBand
@@ -4190,15 +4213,7 @@ struct ExposeView: View {
                 .padding(.bottom, 8)
         }
         .frame(maxWidth: .infinity)
-        .background(
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .overlay(alignment: .bottom) {
-                    Rectangle()
-                        .fill(Palette.borderLit)
-                        .frame(height: 1)
-                }
-        )
+        .background { LatticesOverlayStripBackground() }
     }
 
     // Bottom-right window inventory — compact roster linked to Current View.
@@ -4329,7 +4344,7 @@ struct ExposeView: View {
                 gridSection.frame(width: sideW)
             }
             .frame(maxWidth: .infinity)
-            .padding(.top, inPlace ? 2 : 16)
+            .padding(.top, inPlace ? 2 : 4)
             .padding(.bottom, inPlace ? 2 : 8)
         }
     }
