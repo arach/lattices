@@ -2415,6 +2415,22 @@ final class PiChatSession: ObservableObject {
         }
 
         storedCredentialKinds = kinds
+        autoSelectConnectedProviderIfNeeded()
+    }
+
+    /// If the selected provider has no stored credential but another provider is
+    /// already connected, switch to the first connected one (in supported order).
+    /// Keeps the assistant usable instead of stranding the user on a setup screen
+    /// for a provider they never authenticated — e.g. the default `openai-codex`
+    /// when only `github-copilot` is signed in. Skipped while an auth flow is in
+    /// progress so we never yank the user mid-setup. Goes through the normal
+    /// `authProviderID` setter so it persists and refreshes exactly like a manual
+    /// provider switch.
+    private func autoSelectConnectedProviderIfNeeded() {
+        guard !isAuthenticating else { return }
+        guard storedCredentialKinds[authProviderID] == nil else { return }
+        guard let connected = PiProvider.supported.first(where: { storedCredentialKinds[$0.id] != nil }) else { return }
+        authProviderID = connected.id
     }
 
     private func reconcileAuthState() {
