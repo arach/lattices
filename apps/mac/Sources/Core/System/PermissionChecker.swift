@@ -21,6 +21,7 @@ final class PermissionChecker: ObservableObject {
     private var screenProbeCooldownUntil: Date?
     private static let deniedScreenProbeCooldown: TimeInterval = 20
     private static let successfulScreenProbeTTL: TimeInterval = 8
+    private static let microphoneUsageDescriptionKey = "NSMicrophoneUsageDescription"
 
     var allGranted: Bool { accessibility && screenRecording && microphoneGranted }
     var microphoneGranted: Bool { microphone == .authorized }
@@ -122,6 +123,12 @@ final class PermissionChecker: ObservableObject {
             schedulePermissionRefresh()
             return
         case .notDetermined:
+            guard Self.hasMicrophoneUsageDescription() else {
+                diag.error("requestMicrophone: missing \(Self.microphoneUsageDescriptionKey); rebuild the Lattices app bundle before requesting microphone access")
+                microphone = before
+                return
+            }
+            diag.info("requestMicrophone: calling AVCaptureDevice.requestAccess(audio)")
             AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
                 DispatchQueue.main.async {
                     guard let self else { return }
@@ -138,6 +145,13 @@ final class PermissionChecker: ObservableObject {
         @unknown default:
             microphone = before
         }
+    }
+
+    private static func hasMicrophoneUsageDescription() -> Bool {
+        guard let value = Bundle.main.object(forInfoDictionaryKey: microphoneUsageDescriptionKey) as? String else {
+            return false
+        }
+        return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     /// Request Accessibility permission — shows the system dialog if not yet granted,
