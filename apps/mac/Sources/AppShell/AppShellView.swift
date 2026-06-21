@@ -304,15 +304,13 @@ struct AppShellView: View {
                 if page == .desktopInventory { commandState.enter() }
             })
         case .screenMap:
-            HStack(spacing: 0) {
-                StudioLayersView(selectedLayerId: $selectedStudioLayerId)
-                    .frame(width: 320)
-                ScreenMapView(controller: controller, onNavigate: { page in
+            ScreenMapView(
+                controller: controller,
+                studioLayerScopeId: $selectedStudioLayerId,
+                onNavigate: { page in
                     windowController.activePage = page
-                }, studioLayerScopeId: selectedStudioLayerId, onClearStudioLayerScope: {
-                    selectedStudioLayerId = nil
-                })
-            }
+                }
+            )
         case .desktopInventory:
             CommandModeView(state: commandState, presentation: .embedded)
         case .activity:
