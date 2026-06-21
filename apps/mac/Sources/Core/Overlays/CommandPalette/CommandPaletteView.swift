@@ -10,12 +10,23 @@ struct CommandPaletteView: View {
     @State private var eventMonitor: Any?
     @FocusState private var isSearchFocused: Bool
 
+    private var trimmedQuery: String {
+        query.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var searchableCommands: [PaletteCommand] {
+        trimmedQuery.isEmpty ? commands.filter { !$0.isHiddenByDefault } : commands
+    }
+
     private var filtered: [PaletteCommand] {
-        if query.isEmpty { return commands }
-        return commands
-            .map { ($0, $0.matchScore(query: query)) }
+        if trimmedQuery.isEmpty { return searchableCommands }
+        return searchableCommands
+            .map { ($0, $0.matchScore(query: trimmedQuery)) }
             .filter { $0.1 > 0 }
-            .sorted { $0.1 > $1.1 }
+            .sorted {
+                if $0.1 != $1.1 { return $0.1 > $1.1 }
+                return $0.0.title.localizedCaseInsensitiveCompare($1.0.title) == .orderedAscending
+            }
             .map(\.0)
     }
 
@@ -44,8 +55,10 @@ struct CommandPaletteView: View {
             // Results
             ScrollViewReader { proxy in
                 ScrollView {
-                    if query.isEmpty {
+                    if trimmedQuery.isEmpty {
                         groupedList
+                    } else if filtered.isEmpty {
+                        emptyResults
                     } else {
                         flatList
                     }
@@ -130,6 +143,24 @@ struct CommandPaletteView: View {
             }
         }
         .padding(.vertical, 6)
+    }
+
+    private var emptyResults: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 18, weight: .medium))
+                .foregroundColor(Palette.textMuted)
+
+            Text("No commands found")
+                .font(Typo.body(13))
+                .foregroundColor(Palette.text.opacity(0.85))
+
+            Text("Try a project name, app surface, or settings area.")
+                .font(Typo.caption(10))
+                .foregroundColor(Palette.textMuted)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 72)
     }
 
     // MARK: - Section Header

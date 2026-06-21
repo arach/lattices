@@ -53,9 +53,10 @@ final class UnifiedCommandBarWindow {
             capturedScreen = screenForWindowFrame(entry.frame)
         }
 
-        // Open empty (a welcome shows) regardless of hotkey — "/" enters command
-        // mode, plain text searches. Voice auto-listens below.
         let st = UnifiedCommandBarState()
+        if mode == .command {
+            st.query = "/"
+        }
         state = st
 
         let view = UnifiedCommandBarView(
@@ -67,8 +68,8 @@ final class UnifiedCommandBarWindow {
         )
         .preferredColorScheme(.dark)
 
-        let screen = capturedScreen ?? NSScreen.main ?? NSScreen.screens.first!
-        let panelHeight = min(520, screen.visibleFrame.height - 200)
+        let presentationScreen = invocationScreen()
+        let panelHeight = min(520, presentationScreen.visibleFrame.height - 200)
 
         let p = OverlayPanelShell.makePanel(
             config: .init(
@@ -84,13 +85,12 @@ final class UnifiedCommandBarWindow {
             rootView: view
         )
         p.becomesKeyOnlyIfNeeded = false   // keep the panel key so the field stays focused (no beep) and Esc works
-        OverlayPanelShell.position(p, placement: .topCenter(margin: 120))
-        // Restore the last dragged position if it's still on a screen.
-        if let o = savedOrigin() {
-            let frame = CGRect(origin: o, size: p.frame.size)
-            if NSScreen.screens.contains(where: { $0.visibleFrame.intersects(frame) }) {
-                p.setFrameOrigin(o)
-            }
+        positionPanel(p, on: presentationScreen)
+        // Restore the last dragged position only when it belongs to the screen
+        // that invoked the bar. A stale origin on another monitor is worse than
+        // the default top-center placement.
+        if let o = savedOrigin(for: p.frame.size, on: presentationScreen) {
+            p.setFrameOrigin(o)
         }
         OverlayPanelShell.present(p)
         panel = p
@@ -137,6 +137,29 @@ final class UnifiedCommandBarWindow {
     private func savedOrigin() -> NSPoint? {
         guard let a = UserDefaults.standard.array(forKey: originKey) as? [Double], a.count == 2 else { return nil }
         return NSPoint(x: a[0], y: a[1])
+    }
+
+    private func savedOrigin(for size: CGSize, on screen: NSScreen) -> NSPoint? {
+        guard let origin = savedOrigin() else { return nil }
+        let frame = CGRect(origin: origin, size: size)
+        return screen.visibleFrame.intersects(frame) ? origin : nil
+    }
+
+    private func invocationScreen() -> NSScreen {
+        let mouse = NSEvent.mouseLocation
+        return NSScreen.screens.first(where: { $0.frame.contains(mouse) })
+            ?? capturedScreen
+            ?? NSScreen.main
+            ?? NSScreen.screens[0]
+    }
+
+    private func positionPanel(_ panel: NSWindow, on screen: NSScreen) {
+        let visibleFrame = screen.visibleFrame
+        let size = panel.frame.size
+        panel.setFrameOrigin(NSPoint(
+            x: visibleFrame.midX - size.width / 2,
+            y: visibleFrame.maxY - size.height - 120
+        ))
     }
 
     // MARK: - Key handling

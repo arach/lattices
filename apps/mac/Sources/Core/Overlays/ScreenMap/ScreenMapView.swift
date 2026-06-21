@@ -147,13 +147,13 @@ struct ScreenMapView: View {
     }
 
     @ObservedObject var controller: ScreenMapController
+    @Binding var studioLayerScopeId: String?
     var onNavigate: ((AppPage) -> Void)? = nil
-    var studioLayerScopeId: String? = nil
-    var onClearStudioLayerScope: (() -> Void)? = nil
     @ObservedObject private var daemon = DaemonServer.shared
     @ObservedObject private var handsOff = HandsOffSession.shared
     @ObservedObject private var diagnosticLog = DiagnosticLog.shared
     @ObservedObject private var studioLayers = StudioLayerStore.shared
+    @ObservedObject private var desktop = DesktopModel.shared
     @StateObject private var piChat = PiChatSession.shared
     @State private var eventMonitor: Any?
     @State private var mouseDownMonitor: Any?
@@ -174,7 +174,10 @@ struct ScreenMapView: View {
     @State private var expandedLayers: Set<Int> = []
     @State private var showUnnamedLayers: Bool = false
     @State private var showSets: Bool = false
+    @State private var showStudioLayers: Bool = true
     @State private var showExplorer: Bool = false
+    @State private var editingStudioLayerId: String?
+    @State private var draftStudioLayerName = ""
     @State private var mouseMovedMonitor: Any?
     @State private var sidebarWidth: CGFloat = 180
     @State private var isDraggingSidebar: Bool = false
@@ -188,6 +191,7 @@ struct ScreenMapView: View {
     @State private var canvasPanStart: NSPoint? = nil
     @State private var canvasPanStartOffset: CGPoint = .zero
     @State private var searchOverlayFrame: CGRect = .zero
+    @FocusState private var isStudioLayerNameFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -198,10 +202,14 @@ struct ScreenMapView: View {
                                       range: 140...320, edge: .trailing)
                 }
                 ZStack {
+                    canvasCenterBackground
                     VStack(spacing: 0) {
                         canvasHeaderBezel
                         screenMapCanvas(editor: controller.editor)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                            .padding(.horizontal, 14)
+                            .padding(.top, 16)
+                            .padding(.bottom, 12)
                     }
                     .offset(x: canvasTransitionOffset)
                     .opacity(canvasTransitionOpacity)
@@ -258,6 +266,12 @@ struct ScreenMapView: View {
         return studioLayers.layers.first { $0.id == studioLayerScopeId }
     }
 
+    private func clearStudioLayerScope() {
+        studioLayerScopeId = nil
+        editingStudioLayerId = nil
+        isStudioLayerNameFocused = false
+    }
+
     private func scopedWindows(_ windows: [ScreenMapWindowEntry]) -> [ScreenMapWindowEntry] {
         guard let layer = activeStudioLayer else { return windows }
         return windows.filter { screenMapWindow($0, matches: layer) }
@@ -293,15 +307,11 @@ struct ScreenMapView: View {
     // MARK: - Display Toolbar (floating in canvas)
 
     private func displayToolbar(editor: ScreenMapEditorState) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 6) {
             Button {
                 controller.stepDisplayFocus(.previous)
             } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundColor(Palette.textDim)
-                    .frame(width: 18, height: 18)
-                    .contentShape(Rectangle())
+                displayToolbarChevron("chevron.left")
             }
             .buttonStyle(.plain)
 
@@ -329,24 +339,31 @@ struct ScreenMapView: View {
             Button {
                 controller.stepDisplayFocus(.next)
             } label: {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundColor(Palette.textDim)
-                    .frame(width: 18, height: 18)
-                    .contentShape(Rectangle())
+                displayToolbarChevron("chevron.right")
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 5)
         .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.black.opacity(0.65))
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.030, green: 0.034, blue: 0.035).opacity(0.94),
+                            Color(red: 0.010, green: 0.012, blue: 0.013).opacity(0.94),
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5)
                 )
         )
+        .shadow(color: .black.opacity(0.28), radius: 10, y: 4)
+        .shadow(color: Palette.running.opacity(0.08), radius: 16, y: 0)
     }
 
     private func displayToolbarPill(badge: Int? = nil, name: String, isActive: Bool) -> some View {
@@ -354,28 +371,44 @@ struct ScreenMapView: View {
             if let badge = badge {
                 ZStack {
                     Circle()
-                        .fill(isActive ? Palette.running.opacity(0.5) : Color.white.opacity(0.25))
-                        .frame(width: 14, height: 14)
+                        .fill(isActive ? Palette.running.opacity(0.72) : Color.white.opacity(0.22))
+                        .frame(width: 15, height: 15)
                     Text("\(badge)")
                         .font(.system(size: 7, weight: .bold, design: .monospaced))
-                        .foregroundColor(isActive ? .white : .black)
+                        .foregroundColor(isActive ? Palette.bg : Color.black.opacity(0.72))
                 }
             }
             Text(name)
                 .font(Typo.monoBold(8))
-                .foregroundColor(isActive ? Palette.text : Palette.textDim)
+                .foregroundColor(isActive ? Palette.text : Palette.textMuted)
                 .lineLimit(1)
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 3)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
         .background(
-            RoundedRectangle(cornerRadius: 5)
-                .fill(isActive ? Palette.running.opacity(0.15) : Color.white.opacity(0.06))
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(isActive ? Palette.running.opacity(0.16) : Color.white.opacity(0.045))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 5)
-                .strokeBorder(isActive ? Palette.running.opacity(0.4) : Color.clear, lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .strokeBorder(isActive ? Palette.running.opacity(0.42) : Color.white.opacity(0.055), lineWidth: 0.5)
         )
+    }
+
+    private func displayToolbarChevron(_ systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 8, weight: .bold))
+            .foregroundColor(Palette.textDim)
+            .frame(width: 22, height: 21)
+            .background(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(Color.white.opacity(0.045))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.055), lineWidth: 0.5)
+                    )
+            )
+            .contentShape(Rectangle())
     }
 
     // MARK: - Canvas Header Bezel
@@ -402,9 +435,57 @@ struct ScreenMapView: View {
                 Text("\(visibleWindowCount(in: editor)) windows").font(Typo.mono(8)).foregroundColor(Palette.textMuted)
             } else { Text("Canvas"); Spacer() }
         }
-        .padding(.horizontal, 10).padding(.vertical, 5)
-        .background(Color(red: 0.08, green: 0.08, blue: 0.09))
-        .overlay(alignment: .bottom) { Rectangle().fill(Palette.border).frame(height: 0.5) }
+        .padding(.horizontal, 12)
+        .frame(height: 28)
+        .background(
+            LinearGradient(
+                colors: [
+                    Color(red: 0.082, green: 0.086, blue: 0.090),
+                    Color(red: 0.062, green: 0.064, blue: 0.068),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+        .overlay(alignment: .top) {
+            Rectangle().fill(Color.white.opacity(0.035)).frame(height: 0.5)
+        }
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Palette.border).frame(height: 0.5)
+        }
+    }
+
+    private var canvasCenterBackground: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.066, green: 0.068, blue: 0.072),
+                    Color(red: 0.045, green: 0.047, blue: 0.050),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            Canvas { context, size in
+                let spacing: CGFloat = 28
+                let dot = Color.white.opacity(0.018)
+                for x in stride(from: spacing / 2, to: size.width, by: spacing) {
+                    for y in stride(from: spacing / 2, to: size.height, by: spacing) {
+                        context.fill(
+                            Path(ellipseIn: CGRect(x: x - 0.45, y: y - 0.45, width: 0.9, height: 0.9)),
+                            with: .color(dot)
+                        )
+                    }
+                }
+            }
+
+            VStack(spacing: 0) {
+                Rectangle()
+                    .fill(Palette.running.opacity(0.025))
+                    .frame(height: 1)
+                Spacer()
+            }
+        }
     }
 
     // MARK: - Panel Resize Handle
@@ -1185,6 +1266,11 @@ struct ScreenMapView: View {
             .frame(maxWidth: .infinity)
             .background(Color(red: 0.05, green: 0.05, blue: 0.06))
 
+            if let layer = activeStudioLayer {
+                Rectangle().fill(Palette.border).frame(height: 0.5)
+                studioLayerToolTray(layer: layer, editor: editor)
+            }
+
             // Actions grid (always pinned at bottom)
             Rectangle().fill(Palette.border).frame(height: 0.5)
 
@@ -1239,6 +1325,184 @@ struct ScreenMapView: View {
             inspectorLogTray
         }
         .background(Color(red: 0.06, green: 0.06, blue: 0.07))
+    }
+
+    private func studioLayerToolTray(layer: StudioLayer, editor: ScreenMapEditorState) -> some View {
+        let matches = studioLayers.resolve(layer, in: desktop)
+        let visibleCount = visibleWindowCount(in: editor)
+
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text("LAYER")
+                    .font(Typo.monoBold(8))
+                    .foregroundColor(Palette.textMuted)
+                Text("\(visibleCount) visible")
+                    .font(Typo.mono(8))
+                    .foregroundColor(Palette.textMuted)
+                Spacer()
+                studioLayerToolButton("arrow.up.forward.square", help: "Focus matching windows") {
+                    studioLayers.recall(layer)
+                    controller.flash("Recalled \(layer.name)")
+                }
+                studioLayerToolButton("pencil", help: "Rename layer") {
+                    beginStudioLayerRename(layer)
+                }
+                studioLayerToolButton("doc.on.doc", help: "Copy layer spec") {
+                    copyStudioLayerSpec(layer, matches: matches)
+                }
+                studioLayerToolButton("sparkles", help: "Ask assistant about this layer") {
+                    askAssistantAboutStudioLayer(layer, matches: matches)
+                }
+                studioLayerToolButton("trash", tint: Palette.kill.opacity(0.8), help: "Delete layer") {
+                    deleteStudioLayer(layer)
+                }
+                studioLayerToolButton("xmark", help: "Clear layer scope") {
+                    clearStudioLayerScope()
+                    controller.flash("All Desktop")
+                }
+            }
+
+            if editingStudioLayerId == layer.id {
+                TextField("Layer name", text: $draftStudioLayerName)
+                    .textFieldStyle(.plain)
+                    .font(Typo.monoBold(10))
+                    .foregroundColor(Palette.text)
+                    .focused($isStudioLayerNameFocused)
+                    .onSubmit(commitStudioLayerRename)
+                    .onExitCommand(perform: cancelStudioLayerRename)
+                    .onAppear { isStudioLayerNameFocused = true }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 4)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Palette.surface.opacity(0.9))
+                            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.running.opacity(0.3), lineWidth: 0.5))
+                    )
+            } else {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(layer.name)
+                        .font(Typo.monoBold(10))
+                        .foregroundColor(Palette.text)
+                        .lineLimit(1)
+                    Text(layer.summary)
+                        .font(Typo.mono(8))
+                        .foregroundColor(Palette.textMuted)
+                        .lineLimit(2)
+                }
+            }
+
+            if matches.isEmpty {
+                Text("No live windows match this rule.")
+                    .font(Typo.mono(8))
+                    .foregroundColor(Palette.textMuted)
+            } else {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(Array(matches.prefix(3)), id: \.wid) { entry in
+                        studioLayerToolWindowRow(entry)
+                    }
+                    if matches.count > 3 {
+                        Text("+\(matches.count - 3) more")
+                            .font(Typo.mono(7))
+                            .foregroundColor(Palette.textMuted)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 8)
+        .background(Color(red: 0.05, green: 0.05, blue: 0.06))
+    }
+
+    private func studioLayerToolWindowRow(_ entry: WindowEntry) -> some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(entry.isOnScreen ? Palette.running.opacity(0.75) : Palette.textMuted.opacity(0.55))
+                .frame(width: 4, height: 4)
+            Text(entry.app)
+                .font(Typo.monoBold(8))
+                .foregroundColor(Palette.textDim)
+                .lineLimit(1)
+                .frame(width: 58, alignment: .leading)
+            Text(entry.title.isEmpty ? "untitled" : entry.title)
+                .font(Typo.mono(8))
+                .foregroundColor(Palette.textMuted)
+                .lineLimit(1)
+        }
+    }
+
+    private func studioLayerToolButton(_ systemName: String, tint: Color = Palette.textMuted,
+                                       help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundColor(tint)
+                .frame(width: 17, height: 17)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Palette.surface.opacity(0.7))
+                        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.border, lineWidth: 0.5))
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
+
+    private func beginStudioLayerRename(_ layer: StudioLayer) {
+        draftStudioLayerName = layer.name
+        editingStudioLayerId = layer.id
+        isStudioLayerNameFocused = true
+    }
+
+    private func commitStudioLayerRename() {
+        guard let id = editingStudioLayerId else { return }
+        studioLayers.rename(id: id, to: draftStudioLayerName)
+        editingStudioLayerId = nil
+        isStudioLayerNameFocused = false
+        controller.flash("Renamed layer")
+    }
+
+    private func cancelStudioLayerRename() {
+        editingStudioLayerId = nil
+        isStudioLayerNameFocused = false
+    }
+
+    private func copyStudioLayerSpec(_ layer: StudioLayer, matches: [WindowEntry]) {
+        let text = studioLayers.layerContextJSON(layer, matches: matches)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        controller.flash("Copied layer spec")
+    }
+
+    private func askAssistantAboutStudioLayer(_ layer: StudioLayer, matches: [WindowEntry]) {
+        let spec = studioLayers.layerContextJSON(layer, matches: matches)
+        let attachment = PiChatAttachment(
+            name: "\(safeAttachmentStem(layer.name))-layer.json",
+            mediaType: "application/json",
+            content: spec,
+            systemImage: "doc.text.magnifyingglass"
+        )
+        let prompt = "Help me reason about the attached Lattices Studio layer. Explain what the rules mean, what live windows currently match, and suggest a cleaner rule if the layer is too broad or too narrow."
+        ScreenMapWindowController.shared.showAssistant()
+        PiChatSession.shared.send(prompt, attachments: [attachment])
+    }
+
+    private func deleteStudioLayer(_ layer: StudioLayer) {
+        studioLayers.delete(id: layer.id)
+        if studioLayerScopeId == layer.id {
+            clearStudioLayerScope()
+        }
+        controller.flash("Deleted \(layer.name)")
+    }
+
+    private func safeAttachmentStem(_ value: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+        let scalars = value.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" }
+        let collapsed = String(scalars)
+            .split(separator: "-", omittingEmptySubsequences: true)
+            .joined(separator: "-")
+            .lowercased()
+        return collapsed.isEmpty ? "studio" : collapsed
     }
 
     private var inspectorVoiceStateLabel: String {
@@ -1527,7 +1791,7 @@ struct ScreenMapView: View {
                             color: Palette.running
                         ) {
                             if activeStudioLayer != nil {
-                                onClearStudioLayerScope?()
+                                clearStudioLayerScope()
                             } else {
                                 editor.selectLayer(nil)
                             }
@@ -1616,6 +1880,9 @@ struct ScreenMapView: View {
             .coordinateSpace(name: "layerSidebar")
 
             Spacer(minLength: 8)
+            collapsibleSection(title: "LAYERS", count: studioLayers.layers.count, isExpanded: $showStudioLayers) {
+                studioLayerExplorer(editor: editor)
+            }
             collapsibleSection(title: "SETS", count: controller.windowSets.count, isExpanded: $showSets) {
                 windowSetsSection(editor: editor)
             }
@@ -1920,6 +2187,91 @@ struct ScreenMapView: View {
         }
     }
 
+    private func studioLayerExplorer(editor: ScreenMapEditorState) -> some View {
+        let allCount = desktop.allWindows().filter(\.isOnScreen).count
+        let visibleLayers = Array(studioLayers.layers.prefix(8))
+
+        return VStack(alignment: .leading, spacing: 4) {
+            studioLayerExplorerRow(
+                title: "All Desktop",
+                subtitle: "whole visible desktop",
+                count: allCount,
+                isActive: activeStudioLayer == nil,
+                tint: Palette.running,
+                systemImage: "display"
+            ) {
+                clearStudioLayerScope()
+                editor.selectLayer(nil)
+                controller.flash("All Desktop")
+            }
+
+            ForEach(visibleLayers) { layer in
+                let matches = studioLayers.resolve(layer, in: desktop)
+                studioLayerExplorerRow(
+                    title: layer.name,
+                    subtitle: layer.summary,
+                    count: matches.count,
+                    isActive: studioLayerScopeId == layer.id,
+                    tint: matches.isEmpty ? Palette.textMuted.opacity(0.8) : Palette.running,
+                    systemImage: "square.stack.3d.up"
+                ) {
+                    studioLayerScopeId = layer.id
+                    controller.flash("Layer · \(layer.name)")
+                }
+            }
+
+            if studioLayers.layers.count > visibleLayers.count {
+                Text("+\(studioLayers.layers.count - visibleLayers.count) more layers")
+                    .font(Typo.mono(7))
+                    .foregroundColor(Palette.textMuted)
+                    .padding(.horizontal, 6)
+                    .padding(.top, 2)
+            }
+        }
+    }
+
+    private func studioLayerExplorerRow(title: String, subtitle: String, count: Int, isActive: Bool,
+                                        tint: Color, systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundColor(isActive ? Palette.running : tint)
+                    .frame(width: 12)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .font(Typo.monoBold(8))
+                        .foregroundColor(isActive ? Palette.text : Palette.textDim)
+                        .lineLimit(1)
+                    Text(subtitle)
+                        .font(Typo.mono(7))
+                        .foregroundColor(Palette.textMuted)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 4)
+                Text("\(count)")
+                    .font(Typo.monoBold(7))
+                    .foregroundColor(isActive ? Palette.bg : Palette.textMuted)
+                    .frame(minWidth: 14)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(isActive ? Palette.running : Palette.surface.opacity(0.8)))
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(isActive ? Palette.running.opacity(0.10) : Palette.surface.opacity(0.35))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .strokeBorder(isActive ? Palette.running.opacity(0.28) : Color.white.opacity(0.04), lineWidth: 0.5)
+                    )
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
     private func layerTreeHeader(label: String, count: Int, isActive: Bool, color: Color,
                                    isExpandable: Bool = false, isExpanded: Bool = false,
                                    onToggleExpand: (() -> Void)? = nil,
@@ -2040,12 +2392,19 @@ struct ScreenMapView: View {
         .background(
             ZStack {
                 canvasShape
-                    .fill(Color.black.opacity(0.25))
-                canvasShape
-                    .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.023, green: 0.026, blue: 0.027),
+                                Color(red: 0.009, green: 0.011, blue: 0.012),
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
                 Canvas { context, size in
-                    let spacing: CGFloat = 20
-                    let dotColor = Color.white.opacity(0.04)
+                    let spacing: CGFloat = 22
+                    let dotColor = Color.white.opacity(0.035)
                     for x in stride(from: spacing, to: size.width, by: spacing) {
                         for y in stride(from: spacing, to: size.height, by: spacing) {
                             context.fill(
@@ -2055,8 +2414,13 @@ struct ScreenMapView: View {
                         }
                     }
                 }
+                canvasShape
+                    .strokeBorder(Color.white.opacity(0.075), lineWidth: 0.5)
+                canvasShape
+                    .strokeBorder(Palette.running.opacity(0.045), lineWidth: 1)
             }
         )
+        .shadow(color: .black.opacity(0.26), radius: 18, y: 6)
         .overlay(alignment: .topLeading) {
             Group {
                 if let editor = editor {
@@ -2139,11 +2503,13 @@ struct ScreenMapView: View {
         .overlay(alignment: .top) {
             if let editor = controller.editor, editor.displays.count > 1 {
                 displayToolbar(editor: editor)
-                    .padding(.top, 8)
+                    .padding(.top, 10)
             }
         }
         .overlay(alignment: .bottomLeading) {
             canvasContextBadge
+                .padding(.leading, 12)
+                .padding(.bottom, 12)
         }
         .overlay(
             GeometryReader { geo in
@@ -2165,10 +2531,19 @@ struct ScreenMapView: View {
     private func focusedDisplayBackground(mapSize: CGSize) -> some View {
         ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: 6)
-                .fill(Palette.bg.opacity(0.5))
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Palette.running.opacity(0.070),
+                            Palette.running.opacity(0.032),
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(Palette.running.opacity(0.3), lineWidth: 1)
+                        .strokeBorder(Palette.running.opacity(0.34), lineWidth: 0.9)
                 )
                 .contentShape(Rectangle())
                 .onTapGesture { controller.clearSelection() }
@@ -2183,16 +2558,16 @@ struct ScreenMapView: View {
 
             ZStack {
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.white.opacity(0.07))
+                    .fill(Color.white.opacity(0.052))
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .strokeBorder(Color.white.opacity(0.18), lineWidth: 1.5)
+                            .strokeBorder(Color.white.opacity(0.145), lineWidth: 1)
                     )
                 RoundedRectangle(cornerRadius: 5)
-                    .fill(Palette.bg.opacity(0.55))
+                    .fill(Color(red: 0.058, green: 0.063, blue: 0.062).opacity(0.72))
                     .overlay(
                         RoundedRectangle(cornerRadius: 5)
-                            .strokeBorder(Color.black.opacity(0.4), lineWidth: 0.5)
+                            .strokeBorder(Color.black.opacity(0.32), lineWidth: 0.5)
                     )
                     .padding(bezel)
 
@@ -2226,10 +2601,10 @@ struct ScreenMapView: View {
     private func singleDisplayBackground(mapSize: CGSize) -> some View {
         ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: 6)
-                .fill(Palette.bg.opacity(0.5))
+                .fill(Color(red: 0.055, green: 0.059, blue: 0.060).opacity(0.76))
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(Palette.border, lineWidth: 0.5)
+                        .strokeBorder(Color.white.opacity(0.085), lineWidth: 0.5)
                 )
                 .contentShape(Rectangle())
                 .onTapGesture { controller.clearSelection() }

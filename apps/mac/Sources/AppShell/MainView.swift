@@ -375,13 +375,24 @@ struct MainView: View {
                 ScreenMapWindowController.shared.showPage(.screenMap)
             }
             ActionRow(
+                label: "Command Box",
+                detail: "Type slash commands and workspace actions",
+                hotkeyTokens: hotkeyTokens(.commandBar),
+                icon: "text.cursor",
+                accentColor: Palette.textDim
+            ) {
+                MenuBarController.shared.dismissPopover()
+                UnifiedCommandBarWindow.shared.toggle(mode: .command)
+            }
+            ActionRow(
                 label: "Search",
                 detail: "Windows, projects, sessions, processes, and OCR",
                 hotkeyTokens: hotkeyTokens(.omniSearch),
                 icon: "magnifyingglass",
                 accentColor: Palette.textDim
             ) {
-                ScreenMapWindowController.shared.showPage(.desktopInventory)
+                MenuBarController.shared.dismissPopover()
+                UnifiedCommandBarWindow.shared.toggle(mode: .search)
             }
             ActionRow(
                 label: "Command Palette",

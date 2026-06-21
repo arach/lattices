@@ -12,6 +12,7 @@ struct SettingsContentView: View {
     private enum SettingsSection: String, CaseIterable, Identifiable {
         case general
         case shortcuts
+        case keyboard
         case mouse
         case hyperspace
         case voice
@@ -25,6 +26,7 @@ struct SettingsContentView: View {
             switch self {
             case .general: return "General"
             case .shortcuts: return "Shortcuts"
+            case .keyboard: return "Keyboard"
             case .mouse: return "Mouse"
             case .hyperspace: return "Hyperspace"
             case .voice: return "Voice"
@@ -38,6 +40,7 @@ struct SettingsContentView: View {
             switch self {
             case .general: return "slider.horizontal.3"
             case .shortcuts: return "command"
+            case .keyboard: return "keyboard"
             case .mouse: return "computermouse"
             case .hyperspace: return "square.grid.3x3.fill"
             case .voice: return "waveform.badge.mic"
@@ -51,6 +54,7 @@ struct SettingsContentView: View {
             switch self {
             case .general: return "Workspace"
             case .shortcuts: return "Controls"
+            case .keyboard: return "Keys"
             case .mouse: return "Input"
             case .hyperspace: return "Survey"
             case .voice: return "Capture"
@@ -66,6 +70,8 @@ struct SettingsContentView: View {
                 return "App updates, permissions, terminal defaults, project discovery, and interaction behavior."
             case .shortcuts:
                 return "A full map of global hotkeys for workspace movement and tmux flow."
+            case .keyboard:
+                return "Caps Lock to Hyper, tap-for-Escape, and key-state recovery."
             case .mouse:
                 return "Cursor marker defaults, middle-click gestures, HUD confirmation, and rule configuration."
             case .hyperspace:
@@ -85,7 +91,7 @@ struct SettingsContentView: View {
             switch self {
             case .general, .shortcuts:
                 return "Workspace"
-            case .mouse, .hyperspace, .voice:
+            case .keyboard, .mouse, .hyperspace, .voice:
                 return "Control"
             case .ai, .search:
                 return "Intelligence"
@@ -120,6 +126,7 @@ struct SettingsContentView: View {
     var onBack: (() -> Void)? = nil
 
     @State private var selectedTab: SettingsSection = .general
+    @State private var keyboardRecoveryStatus: String?
     @FocusState private var assistantAuthFieldFocused: Bool
 
     // Hyperspace survey dials — same UserDefaults keys (and defaults) the in-survey
@@ -337,6 +344,8 @@ struct SettingsContentView: View {
             generalContent
         case .shortcuts:
             shortcutsContent
+        case .keyboard:
+            keyboardContent
         case .mouse:
             mouseGesturesContent
         case .hyperspace:
@@ -748,8 +757,8 @@ struct SettingsContentView: View {
     private var inputControlsCard: some View {
         shortcutSectionCard(
             title: "Input Controls",
-            eyebrow: "Gestures & Remaps",
-            summary: "Mouse gestures, drag snapping, and Hyper key remaps live alongside the shortcuts they trigger."
+            eyebrow: "Gestures",
+            summary: "Mouse gestures and drag snapping live alongside the shortcuts they trigger."
         ) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 12) {
@@ -815,34 +824,127 @@ struct SettingsContentView: View {
                 ) {
                     mouseGestureController.reArmAfterBreakerTrip()
                 }
+            }
+        }
+    }
 
-                cardDivider
+    private var keyboardContent: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                settingsCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(alignment: .top, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text("Caps Lock as Hyper")
+                                    .font(Typo.monoBold(12))
+                                    .foregroundColor(Palette.text)
+                                Text("Hold Caps Lock for Hyper. Tap Caps Lock for Escape.")
+                                    .font(Typo.caption(10))
+                                    .foregroundColor(Palette.textMuted)
+                            }
 
-                HStack(alignment: .top, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("Caps Lock as Hyper")
-                            .font(Typo.monoBold(11))
-                            .foregroundColor(Palette.text)
-                        Text("Hold Caps Lock for Hyper shortcuts, tap it for Escape. Lattices maps the physical key through a private F18 transport while this is enabled.")
-                            .font(Typo.caption(10))
-                            .foregroundColor(Palette.textMuted)
+                            Spacer()
+
+                            Toggle("", isOn: $prefs.keyboardRemapsEnabled)
+                                .toggleStyle(.switch)
+                                .controlSize(.small)
+                                .labelsHidden()
+                        }
+
+                        HStack(spacing: 10) {
+                            statusToken(
+                                prefs.keyboardRemapsEnabled ? "Enabled" : "Off",
+                                color: prefs.keyboardRemapsEnabled ? Palette.running : Palette.textDim
+                            )
+                            statusToken(
+                                keyboardRemapController.capsLockTransportActive ? "Transport active" : "Transport idle",
+                                color: keyboardRemapController.capsLockTransportActive ? Palette.running : Palette.textDim
+                            )
+                            if !permChecker.accessibility {
+                                statusToken("Accessibility needed", color: Palette.detach)
+                            }
+                            Spacer(minLength: 0)
+                        }
+
+                        cardDivider
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Active remap")
+                                .font(Typo.mono(10))
+                                .foregroundColor(Palette.textDim)
+
+                            if keyboardRemapStore.summaryLines.isEmpty {
+                                Text("No active keyboard remaps")
+                                    .font(Typo.caption(9.5))
+                                    .foregroundColor(Palette.textMuted.opacity(0.7))
+                            } else {
+                                ForEach(keyboardRemapStore.summaryLines.prefix(3), id: \.self) { line in
+                                    Text(line)
+                                        .font(Typo.caption(9.5))
+                                        .foregroundColor(Palette.textMuted.opacity(0.82))
+                                }
+                            }
+                        }
+
+                        breakerStatusRow(
+                            state: keyboardRemapController.breakerState,
+                            label: "Keyboard remaps"
+                        ) {
+                            keyboardRemapController.reArmAfterBreakerTrip()
+                        }
+
+                        if let keyboardRecoveryStatus {
+                            Text(keyboardRecoveryStatus)
+                                .font(Typo.caption(9.5))
+                                .foregroundColor(Palette.textMuted.opacity(0.8))
+                        }
+
+                        HStack(spacing: 8) {
+                            Button {
+                                let didClear = keyboardRemapController.clearStuckCapsLockState()
+                                keyboardRecoveryStatus = didClear
+                                    ? "Caps Lock state cleared."
+                                    : "Could not clear Caps Lock state; check Accessibility/Input Monitoring."
+                            } label: {
+                                settingsActionLabel("Clear Stuck State", icon: "escape", emphasized: true)
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                keyboardRemapStore.restoreDefaults()
+                                keyboardRecoveryStatus = "Keyboard remaps restored to defaults."
+                            } label: {
+                                settingsActionLabel("Restore Defaults", icon: "arrow.counterclockwise")
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                keyboardRemapStore.openConfiguration()
+                            } label: {
+                                settingsActionLabel("Open Config", icon: "doc.text")
+                            }
+                            .buttonStyle(.plain)
+
+                            Spacer()
+                        }
+
+                        if !permChecker.accessibility {
+                            cardDivider
+
+                            permissionSettingsRow(
+                                "Accessibility",
+                                granted: permChecker.accessibility,
+                                detail: "Required for Caps Lock as Hyper and tap-for-Escape handling."
+                            ) {
+                                permChecker.requestAccessibility()
+                            }
+                        }
                     }
-
-                    Spacer()
-
-                    Toggle("", isOn: $prefs.keyboardRemapsEnabled)
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
-                        .labelsHidden()
-                }
-
-                breakerStatusRow(
-                    state: keyboardRemapController.breakerState,
-                    label: "Keyboard remaps"
-                ) {
-                    keyboardRemapController.reArmAfterBreakerTrip()
                 }
             }
+            .padding(16)
+            .frame(maxWidth: 760, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 

@@ -214,34 +214,73 @@ function resolveSigningIdentity(): string | null {
   }
 }
 
+function bundleTeamIdentifier(): string | null {
+  try {
+    const output = execSync(`codesign -dv '${bundlePath}' 2>&1`, { encoding: "utf8" });
+    const match = output.match(/TeamIdentifier=(.+)/);
+    const team = match?.[1]?.trim();
+    return team && team !== "not set" ? team : null;
+  } catch {
+    return null;
+  }
+}
+
+function runCodesign(args: string[]): void {
+  try {
+    execFileSync("codesign", args, { stdio: "pipe" });
+  } catch (error) {
+    const stderr = (error as { stderr?: Buffer | string }).stderr;
+    const detail = stderr ? `\n${String(stderr).trim()}` : "";
+    throw new Error(`codesign ${args.join(" ")}${detail}`);
+  }
+}
+
 function signBundle(): void {
   const identity = resolveSigningIdentity();
-  const entFlag = existsSync(entitlementsPath) ? ` --entitlements '${entitlementsPath}'` : "";
+  const entitlements = existsSync(entitlementsPath) ? entitlementsPath : null;
   const tempBinaryPath = `${binaryPath}.cstemp`;
 
   try {
     if (existsSync(tempBinaryPath)) rmSync(tempBinaryPath, { force: true });
   } catch {}
 
+  const sign = (signer: string, label: string) => {
+    // Sign the Mach-O first, then the bundle — more reliable than --deep and
+    // keeps a stable TeamIdentifier so macOS TCC grants survive rebuilds.
+    const binaryArgs = ["--force", "--options", "runtime", "--sign", signer];
+    if (entitlements) binaryArgs.push("--entitlements", entitlements);
+    binaryArgs.push(binaryPath);
+    runCodesign(binaryArgs);
+
+    const bundleArgs = ["--force", "--options", "runtime", "--sign", signer];
+    if (entitlements) bundleArgs.push("--entitlements", entitlements);
+    bundleArgs.push("--identifier", "dev.lattices.app", bundlePath);
+    runCodesign(bundleArgs);
+
+    const team = bundleTeamIdentifier();
+    if (team) {
+      console.log(`Signed (${label}) — TeamIdentifier=${team}`);
+      return;
+    }
+    if (label === "ad-hoc") return;
+    throw new Error(`codesign reported no TeamIdentifier after ${label} signing`);
+  };
+
   if (identity) {
     console.log(`Signing with: ${identity}`);
     try {
-      execSync(
-        `codesign --force --options runtime --deep --sign '${identity}'${entFlag} --identifier dev.lattices.app '${bundlePath}'`,
-        { stdio: "pipe" }
-      );
+      sign(identity, "developer");
       return;
-    } catch {
-      console.log(`Warning: signing with '${identity}' failed — falling back to ad-hoc.`);
+    } catch (error) {
+      console.log(`Warning: signing with '${identity}' failed — ${(error as Error).message}`);
+      console.log("Warning: falling back to ad-hoc. Privacy permissions will not persist across rebuilds.");
     }
   } else {
     console.log("Warning: no local signing identity found — falling back to ad-hoc.");
+    console.log("Warning: grant Accessibility/Screen Recording again after each rebuild, or install a signing cert.");
   }
 
-  execSync(
-    `codesign --force --options runtime --deep --sign -${entFlag} --identifier dev.lattices.app '${bundlePath}'`,
-    { stdio: "pipe" }
-  );
+  sign("-", "ad-hoc");
 
   try {
     if (existsSync(tempBinaryPath)) rmSync(tempBinaryPath, { force: true });

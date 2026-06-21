@@ -109,7 +109,6 @@ private enum MotionKeys {
         case 32:    return .topRight    // u
         case 11:    return .bottomLeft  // b
         case 45:    return .bottomRight // n
-        case 3:     return .maximize    // f
         case 8:     return .center      // c
         default:    return nil
         }
@@ -325,6 +324,7 @@ private final class MotionPanel: NSPanel {
 
     private let eligible: [WindowEntry]
     private var reticle = 0                          // index of the active window
+    private var fillAimWid: UInt32?                  // last click/Tab aim — F fills this window
     private var group: Set<UInt32> = []             // plucked window ids
     private var resolved: [UInt32: AXUIElement] = [:]
     private var animators: [UInt32: RealWindowAnimator] = [:]
@@ -490,6 +490,7 @@ private final class MotionPanel: NSPanel {
         }
         if let bestIdx, bestDelta < 80 {
             reticle = bestIdx
+            fillAimWid = eligible[bestIdx].wid
             resolved[eligible[bestIdx].wid] = focused
         }
     }
@@ -790,6 +791,9 @@ private final class MotionPanel: NSPanel {
             case 5  where !mods.contains(.shift):                            // G — grid selection (stay in mode)
                 if let eventScreen { gatherInPlace(on: eventScreen) }
                 return
+            case 3  where !mods.contains(.shift) && inPlaceMode:             // F — fill available space
+                fillAvailableSpace()
+                return
             case 1  where !mods.contains(.shift) && inPlaceMode:             // S — swap first two picks
                 if let eventScreen, let id = screenID,
                    let a = pickOrderByScreen[id]?[safe: 0],
@@ -833,6 +837,9 @@ private final class MotionPanel: NSPanel {
         case 5:                                             // G — grid the group (in Exposé: gather but stay)
             if exposed { gatherInPlace() } else { distributeGroup() }
             return
+        case 3:                                             // F — grow into open space until a neighbor
+            fillAvailableSpace()
+            return
         default:
             break
         }
@@ -867,6 +874,7 @@ private final class MotionPanel: NSPanel {
         let next = ((current + delta) % members.count + members.count) % members.count
         if let idx = eligible.firstIndex(where: { $0.wid == members[next].wid }) {
             reticle = idx
+            fillAimWid = activeEntry.wid
         }
         lastSide = nil
         _ = ax(for: activeEntry)          // resolve + cache
@@ -1021,14 +1029,93 @@ private final class MotionPanel: NSPanel {
 
     /// Place the active window instantly and exactly — snappy, no jittery tween.
     private func placeActive(to target: CGRect) {
-        guard let el = ax(for: activeEntry) else { NSSound.beep(); return }
-        recordOriginal(activeEntry.wid, el)
+        placeEntry(activeEntry, to: target, label: "place")
+    }
+
+    private func placeEntry(_ entry: WindowEntry, to target: CGRect, label: String = "place") {
+        guard let el = ax(for: entry) else { NSSound.beep(); return }
+        recordOriginal(entry.wid, el)
         let before = RealWindowAnimator.axFrame(el) ?? .zero
-        raising { RealWindowAnimator.setFrameRobust(el, target, pid: activeEntry.pid, raise: true) }
+        raising { RealWindowAnimator.setFrameRobust(el, target, pid: entry.pid, raise: true) }
         let after = RealWindowAnimator.axFrame(el) ?? .zero
-        DiagnosticLog.shared.info("Motion place \(activeEntry.app) wid=\(activeEntry.wid) step=\(cycleStep) before=\(rectStr(before)) target=\(rectStr(target)) after=\(rectStr(after))")
+        DiagnosticLog.shared.info("Motion \(label) \(entry.app) wid=\(entry.wid) step=\(cycleStep) before=\(rectStr(before)) target=\(rectStr(target)) after=\(rectStr(after))")
         refreshBorders()
         updateStack()
+        if exposed { rebuildExposeView() }
+    }
+
+    /// F — expand the aimed window until it hits a same-screen neighbor or the
+    /// display edge. Perpendicular overlap counts as a wall (same rule as Screen Map grow).
+    private func fillAvailableSpace(for wid: UInt32? = nil) {
+        guard let target = wid.flatMap({ w in eligible.first(where: { $0.wid == w }) }) ?? fillTargetEntry(),
+              let el = ax(for: target),
+              let me = RealWindowAnimator.axFrame(el) else { NSSound.beep(); return }
+
+        let primaryH = NSScreen.screens.first?.frame.height ?? 0
+        let currentCenter = CGPoint(x: me.midX, y: primaryH - me.midY)
+        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(currentCenter) }) ?? screen(for: target) else {
+            NSSound.beep(); return
+        }
+
+        let bounds = WindowTiler.tileFrame(fractions: (0, 0, 1, 1), on: screen)
+        var left = bounds.minX, right = bounds.maxX, top = bounds.minY, bottom = bounds.maxY
+        let tolerance: CGFloat = 2
+
+        for other in eligible where other.wid != target.wid {
+            guard entry(other, isOn: screen),
+                  let otherEl = ax(for: other),
+                  let of = RealWindowAnimator.axFrame(otherEl) else { continue }
+            if of.maxX <= me.minX + tolerance && of.maxY > me.minY + tolerance && of.minY < me.maxY - tolerance {
+                left = max(left, of.maxX)
+            }
+            if of.minX >= me.maxX - tolerance && of.maxY > me.minY + tolerance && of.minY < me.maxY - tolerance {
+                right = min(right, of.minX)
+            }
+            if of.maxY <= me.minY + tolerance && of.maxX > me.minX + tolerance && of.minX < me.maxX - tolerance {
+                top = max(top, of.maxY)
+            }
+            if of.minY >= me.maxY - tolerance && of.maxX > me.minX + tolerance && of.minX < me.maxX - tolerance {
+                bottom = min(bottom, of.minY)
+            }
+        }
+
+        let newFrame = CGRect(x: left, y: top, width: right - left, height: bottom - top)
+        guard newFrame.width >= 160, newFrame.height >= 120 else { NSSound.beep(); return }
+        if abs(newFrame.minX - me.minX) < tolerance && abs(newFrame.minY - me.minY) < tolerance
+            && abs(newFrame.width - me.width) < tolerance && abs(newFrame.height - me.height) < tolerance {
+            NSSound.beep(); return
+        }
+
+        lastSide = nil
+        placeEntry(target, to: newFrame, label: "fill")
+    }
+
+    /// Pin keyboard actions (F fill, half-tiles, etc.) to the window the user last
+    /// clicked or Tab-aimed — not a stale expose index from mode entry.
+    private func aimWindow(_ wid: UInt32, on surveyScreen: NSScreen? = nil) {
+        fillAimWid = wid
+        if let idx = eligible.firstIndex(where: { $0.wid == wid }) {
+            reticle = idx
+        }
+        let resolvedScreen = surveyScreen
+            ?? activeSurveyScreen
+            ?? eligible.first(where: { $0.wid == wid }).flatMap { self.screen(for: $0) }
+        if let resolvedScreen {
+            let id = MotionPanel.screenID(resolvedScreen)
+            if let order = exposeOrderByScreen[id], let aimIdx = order.firstIndex(of: wid) {
+                exposeAimByScreen[id] = aimIdx
+                if activeSurveyScreen.map(MotionPanel.screenID) == id {
+                    exposeAim = aimIdx
+                }
+            }
+        }
+    }
+
+    private func fillTargetEntry() -> WindowEntry? {
+        if let wid = fillAimWid, let entry = eligible.first(where: { $0.wid == wid }) {
+            return entry
+        }
+        return activeEntry
     }
 
     private func rectStr(_ r: CGRect) -> String {
@@ -1105,15 +1192,32 @@ private final class MotionPanel: NSPanel {
             return
         }
         let rects = balancedGrid(members.count)
+        var moves: [(wid: UInt32, pid: Int32, frame: CGRect)] = []
+        moves.reserveCapacity(members.count)
+        for (i, m) in members.enumerated() {
+            let r = rects[i]
+            let target = WindowTiler.tileFrame(fractions: (r.minX, r.minY, r.width, r.height), on: screen)
+            if let el = ax(for: m) { recordOriginal(m.wid, el) }
+            moves.append((wid: m.wid, pid: m.pid, frame: target))
+        }
+        guard !moves.isEmpty else { return }
         raising {
-            for (i, m) in members.enumerated() {
-                guard let el = ax(for: m) else { continue }
-                let r = rects[i]
-                let target = WindowTiler.tileFrame(fractions: (r.minX, r.minY, r.width, r.height), on: screen)
-                recordOriginal(m.wid, el)
-                RealWindowAnimator.setFrameRobust(el, target, pid: m.pid, raise: true)
-                DiagnosticLog.shared.info("Motion grid \(m.app) wid=\(m.wid) target=\(rectStr(target)) after=\(rectStr(RealWindowAnimator.axFrame(el) ?? .zero))")
-            }
+            WindowTiler.batchMoveAndRaiseWindows(moves)
+        }
+        AppFeedback.shared.playTapSound()
+        DiagnosticLog.shared.info("Motion grid — \(moves.count) windows")
+    }
+
+    /// Refresh inventory chrome after a grid snap without blocking the batch move.
+    private func refreshAfterGridMove() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            DesktopModel.shared.poll()
+            self.rebuildExposeView()
+            self.updateLegend()
+            self.refreshBorders()
+            self.updateStack()
+            self.makeKey()
         }
     }
 
@@ -1122,8 +1226,12 @@ private final class MotionPanel: NSPanel {
         if !group.contains(activeEntry.wid) { togglePicked(activeEntry.wid) }
         relayoutGroup()
         updateLegend()
-        refreshBorders()
-        updateStack()
+        if inPlaceMode {
+            refreshAfterGridMove()
+        } else {
+            refreshBorders()
+            updateStack()
+        }
     }
 
     // MARK: - Screenshot Exposé (the lattice survey)
@@ -1586,12 +1694,7 @@ private final class MotionPanel: NSPanel {
             raising { RealWindowAnimator.raise(el) }              // a single pick just comes forward
         }
         if inPlaceMode {
-            DesktopModel.shared.poll()
-            rebuildExposeView()
-            updateLegend()
-            refreshBorders()
-            updateStack()
-            DispatchQueue.main.async { [weak self] in self?.makeKey() }
+            refreshAfterGridMove()
             return
         }
         removeExposeHost()
@@ -1991,6 +2094,7 @@ private final class MotionPanel: NSPanel {
                 onFocusWindow: { [weak self] wid in self?.focusWindow(wid, on: screen) },
                 onClearSelection: { [weak self] in self?.clearPicks(on: screen) },
                 onApplyPlacement: { [weak self] wid, spec in self?.applyPlacementNow(wid, spec, on: screen) },
+                onFillAvailable: { [weak self] wid in self?.fillAvailableSpace(for: wid) },
                 onOpenHyperspace: {
                     WindowMotionMode.shared.deactivate()
                     WindowMotionMode.shared.toggleHyperspace()
@@ -2083,12 +2187,14 @@ private final class MotionPanel: NSPanel {
     /// Pluck a tile by wid (hint key or click) and refresh the survey + minimap.
     private func exposeToggle(_ wid: UInt32) {
         togglePicked(wid)
+        aimWindow(wid)
         rebuildExposeView()
         updateLegend()
         updateStack()
     }
 
     private func exposeToggle(_ wid: UInt32, on screen: NSScreen) {
+        aimWindow(wid, on: screen)
         let id = MotionPanel.screenID(screen)
         var order = pickOrderByScreen[id] ?? []
         if order.contains(wid) {
@@ -2336,7 +2442,7 @@ private final class MotionPanel: NSPanel {
         let cg = cgPoint(fromAppKitScreen: appKitScreenPoint(from: viewPoint, in: view))
         guard let hit = topWindowAtDesktopClick(cg: cg, on: screen) else { return }
         exposeToggle(hit.wid, on: screen)
-        DiagnosticLog.shared.info("In-place select — click wid=\(hit.wid) app=\(hit.app)")
+        DiagnosticLog.shared.info("In-place select — click wid=\(hit.wid) app=\(hit.app) fillAim=\(hit.wid)")
         DispatchQueue.main.async { [weak self] in
             guard let self, self.exposed, !self.isKeyWindow, self.commandPanel == nil else { return }
             self.makeKey()
@@ -2438,6 +2544,7 @@ private final class MotionPanel: NSPanel {
         guard !exposeOrder.isEmpty else { return }
         let n = exposeOrder.count
         exposeAim = ((exposeAim + delta) % n + n) % n
+        if let wid = exposeOrder[safe: exposeAim] { aimWindow(wid) }
         rebuildExposeView()
     }
 
@@ -2452,6 +2559,7 @@ private final class MotionPanel: NSPanel {
         } else {
             exposeAim = exposeAimByScreen[id] ?? 0
         }
+        if let wid = order[safe: exposeAimByScreen[id] ?? 0] { aimWindow(wid, on: screen) }
         rebuildExposeView()
     }
 
@@ -2834,6 +2942,7 @@ private struct MotionLegend: View {
                     keyHint("a–z", "select")
                     keyHint("S", "swap 2")
                     keyHint("G", "grid")
+                    keyHint("F", "fill")
                     keyHint("drag", "stage")
                     keyHint("⏎", "commit")
                     keyHint("esc", "exit")
@@ -2854,6 +2963,7 @@ private struct MotionLegend: View {
                 keyHint("Space", "select")
                 keyHint("E", "expose")
                 keyHint("G", "grid")
+                keyHint("F", "fill")
                 if groupCount > 0 { keyHint("⌘L", "save layer") }
                 keyHint("←↑→↓", "half · gap")
                 keyHint("⇧/⌥", "nudge/size")
@@ -3285,6 +3395,7 @@ struct ExposeView: View {
     var onFocusWindow: (UInt32) -> Void = { _ in }
     var onClearSelection: () -> Void = {}
     var onApplyPlacement: (UInt32, PlacementSpec) -> Void = { _, _ in }
+    var onFillAvailable: (UInt32) -> Void = { _ in }
     var onOpenHyperspace: () -> Void = {}
     var layers: [LayerPile] = []
     var stagedPlan: [StagedMarker] = []
@@ -3330,7 +3441,7 @@ struct ExposeView: View {
     // The visual-settings rig (lighting/size/zoom/keys/perf) lives behind a gear
     // in the top-right; collapsed by default so it doesn't cover the intent band.
     @State private var dialsOpen = false
-    @State private var guideOpen = true
+    @State private var showInPlaceCommands = false
 
     @State private var perfMode = false
     @State private var perfFlat = false                  // A = true, B = false
@@ -3339,17 +3450,17 @@ struct ExposeView: View {
     var body: some View {
         ZStack {
             if inPlace {
-                Color.clear.allowsHitTesting(false)
+                inPlaceSignatureBackdrop
             } else {
                 backdrop
                 VStack(spacing: 0) {
-                    intentBand.frame(height: bandHeight)
+                    overlayIntentChrome(mode: "hyperspace", detail: "window survey")
                     survey
                 }
             }
             if inPlace {
                 VStack(spacing: 0) {
-                    floatingIntentChrome
+                    overlayIntentChrome(mode: "in-place", detail: "shared with hyperspace")
                     Spacer(minLength: 0).allowsHitTesting(false)
                 }
                 VStack {
@@ -3370,13 +3481,9 @@ struct ExposeView: View {
         .animation(.spring(response: 0.26, dampingFraction: 0.82), value: rosterPileID)
         .animation(.spring(response: 0.26, dampingFraction: 0.82), value: drag.placeWid)
         .animation(.spring(response: 0.2, dampingFraction: 0.74), value: drag.placeCell)
-        .overlay(alignment: .topLeading) {
+        .overlay(alignment: .bottomLeading) {
             if !drag.isPlacing {
-                VStack(alignment: .leading, spacing: 8) {
-                    if let displayScope { displayBadge(displayScope) }
-                    if inPlace { inPlaceActionGuide }
-                }
-                .padding(20)
+                LatticesOverlayWatermarkPlacement()
             }
         }
         .overlay(alignment: .topTrailing) {
@@ -3396,7 +3503,7 @@ struct ExposeView: View {
         }
         .overlay(alignment: .top) {
             if !drag.isPlacing {
-                planSummaryBar.padding(.top, bandHeight + 4)   // sits just under the intent band
+                planSummaryBar.padding(.top, intentChromeHeight + 4)   // sits just under the intent strip
             }
         }
         .overlay {
@@ -3658,83 +3765,65 @@ struct ExposeView: View {
         onDrop(wid, spec)
     }
 
-    // Compact action reference for In-Place (Hyper+G). No modifier on click — plain tap selects.
-    private var inPlaceActionGuide: some View {
-        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
-        return VStack(alignment: .leading, spacing: 0) {
-            Button {
-                withAnimation(.easeOut(duration: 0.16)) { guideOpen.toggle() }
-            } label: {
-                HStack(spacing: 6) {
-                    Text("ACTIONS")
-                        .font(Typo.monoBold(9))
-                        .foregroundColor(Palette.running)
-                        .tracking(0.6)
-                    Spacer(minLength: 0)
-                    Image(systemName: guideOpen ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundColor(Palette.textMuted)
-                }
-                .padding(.horizontal, 10).padding(.vertical, 8)
-            }
-            .buttonStyle(.plain)
-            if guideOpen {
-                VStack(alignment: .leading, spacing: 5) {
-                    guideAction("Click window", "select (no action)")
-                    guideAction("Right-click", "contextual actions")
-                    guideAction("a–z", "select by letter")
-                    guideAction("S", "swap first two picks")
-                    guideAction("G", "grid selected windows")
-                    guideAction("Drag", "stage → Grid or Layers")
-                    guideAction("Enter", "commit staged + exit")
-                    guideAction("Esc", "discard + exit")
-                    guideAction("Hyper+Space", "full Hyperspace")
-                }
-                .padding(.horizontal, 10).padding(.bottom, 9)
+    private enum InPlaceCommandRail { case leading, trailing }
+
+    // In-place command hints flank the Current View mini-map — mouse + keys on the sides.
+    private func inPlaceCommandRail(_ side: InPlaceCommandRail) -> some View {
+        let leading = side == .leading
+        let hints: [(String, String)] = leading
+            ? [("a–z", "select"), ("S", "swap"), ("G", "grid"), ("F", "fill"), ("drag", "stage")]
+            : [("⏎", "commit"), ("esc", "discard"), ("Hyper+␣", "survey")]
+        return VStack(alignment: leading ? .leading : .trailing, spacing: 6) {
+            inPlaceMouseCommandHint(side: side)
+            ForEach(Array(hints.enumerated()), id: \.offset) { _, hint in
+                inPlaceCommandHint(key: hint.0, label: hint.1, leading: leading)
             }
         }
-        .frame(width: 196, alignment: .leading)
-        .background(
-            shape.fill(Color.black.opacity(0.58))
-                .overlay(shape.strokeBorder(Palette.borderLit, lineWidth: 0.5))
-        )
+        .frame(width: leading ? 76 : 86, alignment: leading ? .leading : .trailing)
     }
 
-    private func guideAction(_ key: String, _ label: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(key)
-                .font(Typo.monoBold(8.5))
-                .foregroundColor(.white.opacity(0.88))
-                .frame(width: 72, alignment: .leading)
-            Text(label)
-                .font(Typo.mono(8))
-                .foregroundColor(Palette.textMuted)
-                .lineLimit(2)
+    private func inPlaceCommandHint(key: String, label: String, leading: Bool) -> some View {
+        HStack(spacing: 5) {
+            if !leading { inPlaceCommandLabel(label) }
+            inPlaceCommandKey(key)
+            if leading { inPlaceCommandLabel(label) }
         }
+        .lineLimit(1)
     }
 
-    private func displayBadge(_ scope: DisplayScope) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: scope.index == 0 ? "display" : "rectangle.on.rectangle")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(Palette.running)
+    private func inPlaceCommandLabel(_ label: String) -> some View {
+        Text(label)
+            .font(Typo.mono(10))
+            .foregroundColor(Palette.textDim)
+    }
 
-            VStack(alignment: .leading, spacing: 1) {
-                Text(scope.label)
-                    .font(Typo.monoBold(10))
-                    .foregroundColor(Palette.text)
-                Text("\(scope.windowCount) \(scope.windowCount == 1 ? "window" : "windows")")
-                    .font(Typo.caption(8.5))
-                    .foregroundColor(Palette.textMuted)
-            }
+    private func inPlaceCommandKey(_ key: String) -> some View {
+        Text(key)
+            .font(Typo.monoBold(10))
+            .foregroundColor(Palette.text)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(Color.white.opacity(0.10))
+                    .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Palette.borderLit, lineWidth: 0.5))
+            )
+    }
+
+    private func inPlaceMouseCommandHint(side: InPlaceCommandRail) -> some View {
+        let leading = side == .leading
+        let icon = leading ? "hand.tap.fill" : "contextualmenu.and.cursorarrow"
+        let key = leading ? "click" : "right-click"
+        let label = leading ? "select" : "actions"
+        return HStack(spacing: 5) {
+            if !leading { inPlaceCommandLabel(label) }
+            Image(systemName: icon)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundColor(Palette.running.opacity(0.9))
+            inPlaceCommandKey(key)
+            if leading { inPlaceCommandLabel(label) }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.black.opacity(0.58))
-                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.running.opacity(0.55), lineWidth: 0.5))
-        )
+        .lineLimit(1)
     }
 
     // Mouse-driven leave: the keyboard has Enter (commit) / Esc (discard), but there was no
@@ -3931,6 +4020,9 @@ struct ExposeView: View {
                 VisualEffectBackdrop(material: .hudWindow)
                     .ignoresSafeArea()
 
+                LatticesLatticeGrid(spacing: 26, opacity: 0.04, tint: Palette.running)
+                    .ignoresSafeArea()
+
                 // Ambient floor: how lit the room is. Low = near-black and dramatic,
                 // high = airy. A little blur always survives so it never goes flat.
                 Color.black.opacity(0.82 - ambient * 0.60)
@@ -4051,34 +4143,77 @@ struct ExposeView: View {
         }
     }
 
-    // Floating intent band — Current View is the hero in in-place mode.
-    private var floatingIntentChrome: some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 6) {
-                Text("IN-PLACE")
-                    .font(Typo.monoBold(9))
-                    .foregroundColor(Palette.running)
-                    .tracking(0.8)
-                Text("shared with Hyperspace")
-                    .font(Typo.mono(8.5))
+    // Quiet signature wash under the live desktop — corner mark does the heavy lifting.
+    private var inPlaceSignatureBackdrop: some View {
+        ZStack(alignment: .top) {
+            LinearGradient(
+                colors: [Palette.running.opacity(0.04), .clear],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 140)
+            .frame(maxHeight: .infinity, alignment: .top)
+            LatticesLatticeGrid(spacing: 28, opacity: 0.028, tint: Palette.running)
+                .mask(
+                    LinearGradient(
+                        colors: [.white.opacity(0.5), .clear],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+        }
+        .allowsHitTesting(false)
+    }
+
+    // Inline monitor readout for the strip header — avoids a second top-left chip.
+    private func displayScopeChip(_ scope: DisplayScope) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: scope.index == 0 ? "display" : "rectangle.on.rectangle")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundColor(Palette.running)
+            Text(scope.label)
+                .font(Typo.monoBold(9))
+                .foregroundColor(Palette.text)
+            if scope.count > 1 {
+                Text("\(scope.index + 1)/\(scope.count)")
+                    .font(Typo.mono(8))
                     .foregroundColor(Palette.textMuted)
-                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 4)
+            Text("\(scope.windowCount)")
+                .font(Typo.monoBold(9))
+                .foregroundColor(Palette.running)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
+                .background(
+                    Capsule()
+                        .fill(Palette.running.opacity(0.12))
+                        .overlay(Capsule().strokeBorder(Palette.running.opacity(0.28), lineWidth: 0.5))
+                )
+        }
+        .lineLimit(1)
+    }
+
+    /// Header row + intent band — shared by Hyperspace survey and Hyper+G in-place.
+    private var intentChromeHeight: CGFloat { bandHeight + 44 }
+
+    private func overlayIntentChrome(mode: String, detail: String?) -> some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .center, spacing: 12) {
+                LatticesOverlayStripHeader(mode: mode, detail: detail)
+                Spacer(minLength: 0)
+                if let displayScope { displayScopeChip(displayScope) }
+            }
+            .padding(.horizontal, LatticesOverlayMetrics.edgeInset)
+            .padding(.top, 10)
+            .padding(.bottom, 6)
             intentBand
                 .frame(height: bandHeight)
+                .clipped()
+                .padding(.horizontal, 10)
+                .padding(.bottom, 8)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(Palette.borderLit, lineWidth: 1))
-        )
-        .shadow(color: .black.opacity(0.45), radius: 24, y: 10)
-        .padding(.horizontal, 20)
-        .padding(.top, 12)
+        .frame(maxWidth: .infinity)
+        .background { LatticesOverlayStripBackground() }
     }
 
     // Bottom-right window inventory — compact roster linked to Current View.
@@ -4200,17 +4335,17 @@ struct ExposeView: View {
     private var intentBand: some View {
         // Three slots: Layers (pick/tag) · Current View (select) · Grid (drop a cell).
         GeometryReader { geo in
-            let sideW = (geo.size.width * (inPlace ? 0.17 : 0.18)).rounded()
-            let centerW = (geo.size.width * (inPlace ? 0.30 : 0.18)).rounded()
-            let gap = (geo.size.width * 0.018).rounded()
+            let sideW = (geo.size.width * (inPlace ? 0.14 : 0.18)).rounded()
+            let centerW = (geo.size.width * (inPlace ? 0.44 : 0.18)).rounded()
+            let gap = (geo.size.width * (inPlace ? 0.01 : 0.018)).rounded()
             HStack(alignment: .top, spacing: gap) {
                 layersSection.frame(width: sideW)
                 currentViewSection.frame(width: centerW)
                 gridSection.frame(width: sideW)
             }
             .frame(maxWidth: .infinity)
-            .padding(.top, inPlace ? 4 : 16)
-            .padding(.bottom, inPlace ? 4 : 8)
+            .padding(.top, inPlace ? 2 : 4)
+            .padding(.bottom, inPlace ? 2 : 8)
         }
     }
 
@@ -4267,15 +4402,19 @@ struct ExposeView: View {
                 // next free cell ([L1][＋] → [L1][L2]/[＋] → …). Eager VStack/HStack — not a
                 // lazy grid — so every pile reports its LayerFrameKey for drag hit-testing.
                 GeometryReader { geo in
-                    let pileW = max(104, min(220, ((geo.size.width - 10) / 2).rounded()))
-                    VStack(alignment: .leading, spacing: 10) {
-                        ForEach(layerRows.indices, id: \.self) { r in
-                            HStack(alignment: .top, spacing: 10) {
-                                ForEach(layerRows[r]) { layerPileView($0, mapW: pileW) }
+                    let pileW = layerPileWidth(in: geo.size)
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: inPlace ? 6 : 10) {
+                            ForEach(layerRows.indices, id: \.self) { r in
+                                HStack(alignment: .top, spacing: inPlace ? 6 : 10) {
+                                    ForEach(layerRows[r]) { layerPileView($0, mapW: pileW) }
+                                }
                             }
                         }
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .clipped()
                     .onPreferenceChange(LayerFrameKey.self) { drag.layerFrames[screenID] = $0 }
                 }
             }
@@ -4338,9 +4477,11 @@ struct ExposeView: View {
                 }
             }
             Text(pile.isNew ? "new" : pile.name)
-                .font(Typo.mono(9)).foregroundColor(.white.opacity(on ? 0.9 : 0.65))
+                .font(Typo.mono(inPlace ? 8 : 9)).foregroundColor(.white.opacity(on ? 0.9 : 0.65))
                 .lineLimit(1).frame(maxWidth: mapW)
-            layerPileMeta(pile, active: on, width: mapW)
+            if !inPlace {
+                layerPileMeta(pile, active: on, width: mapW)
+            }
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: pile.stagedCount)
         .scaleEffect(lit ? 1.06 : 1)
@@ -4646,6 +4787,25 @@ struct ExposeView: View {
         (width / min(max(screenAspect, 1.2), 2.6)).rounded()
     }
 
+    /// Pile thumbnail width for the Layers grid. In-place mode gives the side column a
+    /// lot of horizontal space but a short band — size from the vertical budget so piles
+    /// don't spill below the reserved intent zone.
+    private func layerPileWidth(in size: CGSize) -> CGFloat {
+        let colW = max(52, ((size.width - 10) / 2).rounded())
+        guard inPlace else {
+            return max(104, min(220, colW))
+        }
+        let rowCount = CGFloat(max(1, layerRows.count))
+        let rowGap: CGFloat = 6
+        let labelStack: CGFloat = 22   // name under map (+ spacing); meta hidden in-place
+        let hoverPad: CGFloat = 1.08   // pile scaleEffect headroom
+        let availH = max(40, size.height)
+        let perRowH = (availH - rowGap * (rowCount - 1)) / rowCount
+        let mapH = max(22, (perRowH - labelStack) / hoverPad)
+        let wFromH = mapH * min(max(screenAspect, 1.2), 2.6)
+        return min(colW, wFromH, 132).rounded()
+    }
+
     // A layer's screen-map: its member windows drawn as app-tinted rects at their real
     // (screen-relative) positions — the "what does this layer look like" preview. `big`
     // (the expanded map) fills rects with the live thumbnail.
@@ -4890,11 +5050,17 @@ struct ExposeView: View {
             || drag.hoverSurveyWid != nil
     }
 
+    /// In-place shortcut rails: on hover, or pinned while windows are selected.
+    private var inPlaceCommandsVisible: Bool {
+        showInPlaceCommands || !pickedOrder.isEmpty
+    }
+
     private var currentViewSub: String {
         if drag.isActive, drag.screenID == screenID, drag.dragSource == .currentView {
             return drag.hoverGrid ? "release on cell" : "drag to grid →"
         }
-        if !pickedOrder.isEmpty { return "\(pickedOrder.count) selected · S swap · G grid" }
+        if !pickedOrder.isEmpty { return "\(pickedOrder.count) selected" }
+        if inPlace { return inPlaceCommandsVisible ? "shortcuts" : "hover for shortcuts" }
         return "click or a–z to select"
     }
 
@@ -4904,8 +5070,29 @@ struct ExposeView: View {
         sectionCard(title: "Current View", icon: "rectangle.on.rectangle",
                     sub: currentViewSub,
                     live: true, armed: currentViewFocused || (drag.isActive && drag.dragSource == .currentView)) {
-            currentLayoutCanvas
+            if inPlace {
+                HStack(alignment: .center, spacing: inPlaceCommandsVisible ? 4 : 0) {
+                    if inPlaceCommandsVisible {
+                        inPlaceCommandRail(.leading)
+                            .transition(.move(edge: .leading).combined(with: .opacity))
+                    }
+                    currentLayoutCanvas
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    if inPlaceCommandsVisible {
+                        inPlaceCommandRail(.trailing)
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                    }
+                }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .animation(.easeOut(duration: 0.16), value: inPlaceCommandsVisible)
+                .onHover { hovering in
+                    showInPlaceCommands = hovering
+                }
+            } else {
+                currentLayoutCanvas
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
     }
 
@@ -4913,7 +5100,8 @@ struct ExposeView: View {
     // a wireframe of the desktop (including stacked-behind windows as dashed footprints).
     private var currentLayoutCanvas: some View {
         let focused = currentViewFocused
-        let showHint = focused && activeLinkWid == nil && pickedWids.isEmpty && !drag.isActive
+        let showHint = !inPlace && focused && activeLinkWid == nil && pickedWids.isEmpty && !drag.isActive
+        let showHoverCue = inPlace && !inPlaceCommandsVisible && !drag.isActive
         return GeometryReader { geo in
             let box = aspectFit(in: geo.size, aspect: screenAspect)
             ZStack(alignment: .topLeading) {
@@ -4921,6 +5109,21 @@ struct ExposeView: View {
                     .fill(Color.black.opacity(0.38))
                 ForEach(currentLayout) { m in
                     layoutOutlineInteractive(m, box: box)
+                }
+                if showHoverCue {
+                    HStack(spacing: 4) {
+                        Image(systemName: "questionmark.circle")
+                            .font(.system(size: 8, weight: .semibold))
+                        Text("hover for shortcuts")
+                            .font(Typo.mono(9))
+                    }
+                    .foregroundColor(.white.opacity(0.38))
+                    .padding(.horizontal, 7).padding(.vertical, 4)
+                    .background(Capsule().fill(Color.black.opacity(0.32)))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .padding(.bottom, 6)
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
                 }
                 if showHint {
                     Text("click windows to select")
@@ -5074,6 +5277,7 @@ struct ExposeView: View {
             // Glide the highlight between cells instead of snapping.
             .animation(.spring(response: 0.24, dampingFraction: 0.72), value: drag.hoverCell)
             .frame(width: box.width, height: box.height)
+            .clipped()
             .background(                                          // measure the fixed grid box…
                 GeometryReader { g in
                     Color.clear.preference(key: LatticeFrameKey.self,
@@ -5081,6 +5285,7 @@ struct ExposeView: View {
                 }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)   // …then center it in the section
+            .clipped()
         }
         .onPreferenceChange(LatticeFrameKey.self) { drag.latticeFrames[screenID] = $0 }
     }
@@ -5173,8 +5378,10 @@ struct ExposeView: View {
                 trailing()
             }
             content()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
         }
-        .padding(.horizontal, 12).padding(.top, 9).padding(.bottom, 11)
+        .padding(.horizontal, inPlace ? 8 : 12).padding(.top, inPlace ? 7 : 9).padding(.bottom, inPlace ? 6 : 11)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -5486,6 +5693,9 @@ struct ExposeView: View {
 
     @ViewBuilder
     private func inPlacePlacementMenus(_ t: Tile) -> some View {
+        Button { onFillAvailable(t.id) } label: {
+            Label("Fill Available Space (F)", systemImage: "arrow.up.backward.and.arrow.down.forward")
+        }
         Menu("Apply Now", systemImage: "arrow.up.left.and.arrow.down.right") {
             placementQuickItems(wid: t.id, handler: onApplyPlacement)
         }

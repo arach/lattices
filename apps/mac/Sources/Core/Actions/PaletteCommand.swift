@@ -8,6 +8,8 @@ struct PaletteCommand: Identifiable {
     let icon: String
     let category: Category
     let badge: String?
+    let keywords: [String]
+    let isHiddenByDefault: Bool
     let action: () -> Void
 
     enum Category: String, CaseIterable {
@@ -26,44 +28,68 @@ struct PaletteCommand: Identifiable {
         }
     }
 
+    init(
+        id: String,
+        title: String,
+        subtitle: String,
+        icon: String,
+        category: Category,
+        badge: String? = nil,
+        keywords: [String] = [],
+        isHiddenByDefault: Bool = false,
+        action: @escaping () -> Void
+    ) {
+        self.id = id
+        self.title = title
+        self.subtitle = subtitle
+        self.icon = icon
+        self.category = category
+        self.badge = badge
+        self.keywords = keywords
+        self.isHiddenByDefault = isHiddenByDefault
+        self.action = action
+    }
+
     /// Fuzzy match score — higher is better, 0 means no match
     func matchScore(query: String) -> Int {
-        let q = query.lowercased()
-        let t = title.lowercased()
-        let s = subtitle.lowercased()
+        let q = normalized(query.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard !q.isEmpty else { return 0 }
 
-        // Exact prefix match on title — best
-        if t.hasPrefix(q) { return 100 }
-        // Word-boundary prefix (e.g. "set" matches "Open Settings")
-        let words = t.split(separator: " ").map(String.init)
-        if words.contains(where: { $0.hasPrefix(q) }) { return 80 }
-        // Contains in title
-        if t.contains(q) { return 60 }
-        // Subtitle prefix
-        if s.hasPrefix(q) { return 50 }
-        // Subtitle contains
+        let terms = words(in: q)
+        let searchableText = ([title, subtitle, badge ?? ""] + keywords)
+            .map(normalized)
+            .joined(separator: " ")
+        if terms.count > 1, terms.contains(where: { !searchableText.contains($0) }) {
+            return 0
+        }
+
+        let t = normalized(title)
+        let s = normalized(subtitle)
+        let keywordText = keywords.map(normalized).joined(separator: " ")
+
+        // Exact and prefix matches keep named actions above incidental text hits.
+        if t == q { return 120 }
+        if t.hasPrefix(q) { return 110 }
+        if words(in: t).contains(where: { $0.hasPrefix(q) }) { return 95 }
+        if t.contains(q) { return 80 }
+        if keywordText.hasPrefix(q) { return 75 }
+        if words(in: keywordText).contains(where: { $0.hasPrefix(q) }) { return 70 }
+        if keywordText.contains(q) { return 60 }
+        if s.hasPrefix(q) { return 55 }
+        if words(in: s).contains(where: { $0.hasPrefix(q) }) { return 50 }
         if s.contains(q) { return 40 }
-        // Subsequence match on title
-        if isSubsequence(q, of: t) { return 20 }
+        if terms.count > 1 { return 35 }
         return 0
     }
 
-    private func isSubsequence(_ needle: String, of haystack: String) -> Bool {
-        var it = haystack.makeIterator()
-        for ch in needle {
-            while let next = it.next() {
-                if next == ch { break }
-            }
-            // If iterator is exhausted before matching all chars, not a subsequence
-            // (handled by the while loop returning nil)
-        }
-        // Verify: re-check properly
-        var hi = haystack.startIndex
-        for ch in needle {
-            guard let found = haystack[hi...].firstIndex(of: ch) else { return false }
-            hi = haystack.index(after: found)
-        }
-        return true
+    private func normalized(_ value: String) -> String {
+        value.lowercased()
+    }
+
+    private func words(in value: String) -> [String] {
+        value.split { ch in
+            !ch.isLetter && !ch.isNumber
+        }.map(String.init)
     }
 }
 
@@ -325,6 +351,13 @@ enum CommandBuilder {
         // Orphan session commands
         let inventory = InventoryManager.shared
         for orphan in inventory.orphans {
+            let orphanKeywords = [
+                "orphan",
+                "unmanaged",
+                "tmux",
+                "session",
+                orphan.name,
+            ]
             commands.append(PaletteCommand(
                 id: "orphan-attach-\(orphan.name)",
                 title: "Attach \(orphan.name)",
@@ -332,6 +365,8 @@ enum CommandBuilder {
                 icon: "play.fill",
                 category: .project,
                 badge: "orphan",
+                keywords: orphanKeywords,
+                isHiddenByDefault: true,
                 action: {
                     let terminal = Preferences.shared.terminal
                     terminal.focusOrAttach(session: orphan.name)
@@ -344,6 +379,8 @@ enum CommandBuilder {
                 icon: "xmark.circle.fill",
                 category: .window,
                 badge: "orphan",
+                keywords: orphanKeywords + ["remove"],
+                isHiddenByDefault: true,
                 action: {
                     SessionManager.killByName(orphan.name)
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -401,19 +438,87 @@ enum CommandBuilder {
             icon: "bubble.left.and.bubble.right",
             category: .app,
             badge: nil,
+            keywords: ["assistant", "ai", "chat", "help"],
             action: { AssistantAccess.show() }
         ))
 
         commands.append(PaletteCommand(
             id: "app-settings",
             title: "Settings",
-            subtitle: "Terminal, scan root, mode",
+            subtitle: "Terminal, scan root, keyboard, shortcuts, voice, and OCR",
             icon: "gearshape",
             category: .app,
             badge: nil,
+            keywords: ["preferences", "configuration", "general", "keyboard"],
             action: {
                 SettingsWindowController.shared.show()
             }
+        ))
+
+        commands.append(PaletteCommand(
+            id: "app-keyboard-settings",
+            title: "Keyboard Settings",
+            subtitle: "Caps Lock as Hyper and tap-for-Escape",
+            icon: "keyboard",
+            category: .app,
+            badge: nil,
+            keywords: ["caps", "caps lock", "hyper", "escape", "remap", "keyboard remaps"],
+            action: { SettingsWindowController.shared.show(section: "keyboard") }
+        ))
+
+        commands.append(PaletteCommand(
+            id: "app-shortcuts-settings",
+            title: "Shortcuts",
+            subtitle: "Review or change global keyboard shortcuts",
+            icon: "command",
+            category: .app,
+            badge: nil,
+            keywords: ["hotkeys", "key bindings", "keyboard", "controls"],
+            action: { SettingsWindowController.shared.show(section: "shortcuts") }
+        ))
+
+        commands.append(PaletteCommand(
+            id: "app-voice-settings",
+            title: "Voice Capture",
+            subtitle: "Microphone, dictation, and voice command settings",
+            icon: "waveform.badge.mic",
+            category: .app,
+            badge: nil,
+            keywords: ["voice", "dictation", "mic", "microphone", "capture", "talk"],
+            action: { SettingsWindowController.shared.show(section: "voice") }
+        ))
+
+        commands.append(PaletteCommand(
+            id: "app-voice-command",
+            title: "Voice Command",
+            subtitle: "Open the voice capture bar",
+            icon: "mic",
+            category: .app,
+            badge: nil,
+            keywords: ["voice", "dictation", "speak", "command box", "universal box"],
+            action: { UnifiedCommandBarWindow.shared.toggle(mode: .voice) }
+        ))
+
+        commands.append(PaletteCommand(
+            id: "app-command-bar",
+            title: "Command Bar",
+            subtitle: "Type slash commands and workspace actions",
+            icon: "text.cursor",
+            category: .app,
+            badge: nil,
+            keywords: ["universal box", "command box", "slash commands", "actions"],
+            action: { UnifiedCommandBarWindow.shared.toggle(mode: .command) }
+        ))
+
+        commands.append(PaletteCommand(
+            id: "app-search-bar",
+            title: "Search Bar",
+            subtitle: "Search windows, projects, sessions, processes, and OCR",
+            icon: "magnifyingglass",
+            category: .app,
+            badge: nil,
+            keywords: ["universal search", "omni search", "find"],
+            action: { UnifiedCommandBarWindow.shared.toggle(mode: .search) }
         ))
 
         commands.append(PaletteCommand(
@@ -428,12 +533,24 @@ enum CommandBuilder {
 
         commands.append(PaletteCommand(
             id: "app-windows-list",
-            title: "Search",
+            title: "Desktop Inventory",
             subtitle: "Browse windows, displays, spaces, and screen text",
             icon: "magnifyingglass",
             category: .app,
             badge: nil,
+            keywords: ["search", "windows", "ocr", "desktop", "inventory"],
             action: { ScreenMapWindowController.shared.showPage(.desktopInventory) }
+        ))
+
+        commands.append(PaletteCommand(
+            id: "app-search-settings",
+            title: "Search & OCR Settings",
+            subtitle: "OCR cadence, quality, and recent capture visibility",
+            icon: "text.viewfinder",
+            category: .app,
+            badge: nil,
+            keywords: ["search", "ocr", "indexing", "screen text"],
+            action: { SettingsWindowController.shared.show(section: "search") }
         ))
 
         commands.append(PaletteCommand(

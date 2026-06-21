@@ -90,6 +90,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             ("Assistant", "⌘⇧A", #selector(menuAssistant)),
             ("Home", "", #selector(menuWorkspace)),
             ("Studio", "", #selector(menuLayout)),
+            ("Command Box", "", #selector(menuCommandBox)),
             ("Search", "", #selector(menuSearch)),
             ("Command Palette", "⌘⇧M", #selector(menuCommandPalette)),
         ]
@@ -148,7 +149,8 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     @objc private func menuAssistant() { AssistantAccess.show() }
     @objc private func menuWorkspace() { ScreenMapWindowController.shared.showPage(.home) }
     @objc private func menuLayout() { ScreenMapWindowController.shared.showPage(.screenMap) }
-    @objc private func menuSearch() { ScreenMapWindowController.shared.showPage(.desktopInventory) }
+    @objc private func menuCommandBox() { UnifiedCommandBarWindow.shared.toggle(mode: .command) }
+    @objc private func menuSearch() { UnifiedCommandBarWindow.shared.toggle(mode: .search) }
     @objc private func menuProjects() { DispatchQueue.main.async { self.showProjectsPopover() } }
     @objc private func menuInitializeProject() { CliActionLauncher.initializeProjectInTerminal() }
     @objc private func menuLaunchProject() { CliActionLauncher.launchProjectInTerminal() }

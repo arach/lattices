@@ -280,6 +280,7 @@ class HotkeyStore: ObservableObject {
         bind(.bezel,     19, hyper)      // Hyper+2
         bind(.hud,       20, hyper)      // Hyper+3 (HUD overlay)
         bind(.desktopInventory, 35, hyper) // Hyper+P
+        bind(.omniSearch, 23, hyper)     // Hyper+5 (search command box)
         let cmdCtrl = UInt32(cmdKey | controlKey)
         bind(.handsOff, 46, cmdCtrl)          // Ctrl+Cmd+M
         bind(.activityLog, 37, cmdShift)   // Cmd+Shift+L
