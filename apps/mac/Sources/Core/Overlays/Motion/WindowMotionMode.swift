@@ -399,6 +399,8 @@ private final class MotionPanel: NSPanel {
     private var clusterHintMapByScreen: [String: [String: Int]] = [:]
     private var exposeTileWByScreen: [String: CGFloat] = [:]
     private var exposeFramesByScreen: [String: [UInt32: CGRect]] = [:]
+    private var clusterSearchQueryByScreen: [String: [Int: String]] = [:]
+    private var activeClusterSearchByScreen: [String: Int] = [:]
     private var exposeClusters: [ExposeCluster] = []      // structural clusters for the spread
     private var exposeOrder: [UInt32] = []                // wids in spread layout order
     private var exposeAim = 0                             // highlighted tile (Tab/Space fallback)
@@ -725,6 +727,7 @@ private final class MotionPanel: NSPanel {
 
     override func keyDown(with event: NSEvent) {
         let code = event.keyCode
+        if exposed, handleClusterSearchKey(event) { return }
         if code == 53 {                                     // Esc — close inspector / placement stage first, else leave
             if dragModel.selectedLayer != nil { dragModel.selectedLayer = nil; return }
             if dragModel.isPlacing { dragModel.endPlacing(); return }
@@ -1762,6 +1765,8 @@ private final class MotionPanel: NSPanel {
         clusterHintMapByScreen.removeAll()
         exposeTileWByScreen.removeAll()
         exposeFramesByScreen.removeAll()
+        clusterSearchQueryByScreen = clusterSearchQueryByScreen.filter { validIDs.contains($0.key) }
+        activeClusterSearchByScreen = activeClusterSearchByScreen.filter { validIDs.contains($0.key) }
         canvasByScreenID = canvasByScreenID.filter { validIDs.contains($0.key) }
     }
 
@@ -1785,6 +1790,13 @@ private final class MotionPanel: NSPanel {
         clusterHintForByScreen[id] = chf
         clusterHintMapByScreen[id] = chm
         exposeTileWByScreen[id] = autoTileWidth(count: members.count, screen: screen)
+
+        let clusterIDs = Set(clusters.map(\.id))
+        clusterSearchQueryByScreen[id] = (clusterSearchQueryByScreen[id] ?? [:])
+            .filter { clusterIDs.contains($0.key) }
+        if let activeID = activeClusterSearchByScreen[id], !clusterIDs.contains(activeID) {
+            activeClusterSearchByScreen[id] = nil
+        }
 
         let memberIDs = Set(members.map(\.wid))
         pickOrderByScreen[id] = (pickOrderByScreen[id] ?? []).filter { memberIDs.contains($0) }
@@ -2060,6 +2072,8 @@ private final class MotionPanel: NSPanel {
             let clusters = exposeClustersByScreen[id] ?? []
             let screenHintFor = hintForByScreen[id] ?? [:]
             let screenClusterHintFor = clusterHintForByScreen[id] ?? [:]
+            let searchQueries = clusterSearchQueryByScreen[id] ?? [:]
+            let activeSearchID = activeClusterSearchByScreen[id]
             let vm = clusters.map { box in
                 ExposeView.Cluster(
                     id: box.id,
@@ -2067,6 +2081,8 @@ private final class MotionPanel: NSPanel {
                     rule: box.rule,
                     userDefined: box.userDefined,
                     hint: screenClusterHintFor[box.id] ?? "",
+                    searchQuery: searchQueries[box.id] ?? "",
+                    searchActive: activeSearchID == box.id,
                     tiles: box.members.map { tileVM($0, on: screen, hints: screenHintFor) }
                 )
             }
@@ -2121,6 +2137,8 @@ private final class MotionPanel: NSPanel {
                 onExit: { [weak self] in self?.onExit?() },   // ✕ — leave, keep what's on screen
                 onNewLayer: { [weak self] in self?.presentNewLayer() },
                 onRecallLayer: { [weak self] id in self?.pluckLayer(id, on: screen) },
+                onBeginClusterSearch: { [weak self] cid in self?.activateClusterSearch(cid, on: screen) },
+                onClearClusterSearch: { [weak self] cid in self?.clearClusterSearch(cid, on: screen) },
                 onEditClause: { [weak self] id, idx, clause in self?.presentLayerRuleEditor(id, idx, clause, on: screen) },
                 onRemoveClause: { [weak self] id, idx in self?.removeLayerClause(id, idx) },
                 onDeleteLayer: { [weak self] id in self?.deleteLayer(id) },
@@ -2262,6 +2280,133 @@ private final class MotionPanel: NSPanel {
         rebuildExposeView()
         updateLegend()
         updateStack()
+    }
+
+    // MARK: - Cluster-local search
+
+    private func activateClusterSearch(_ clusterID: Int, on screen: NSScreen) {
+        let screenID = MotionPanel.screenID(screen)
+        activeClusterSearchByScreen.removeAll()
+        activeClusterSearchByScreen[screenID] = clusterID
+        var queries = clusterSearchQueryByScreen[screenID] ?? [:]
+        queries[clusterID] = queries[clusterID] ?? ""
+        clusterSearchQueryByScreen[screenID] = queries
+        if activeSurveyScreen.map(MotionPanel.screenID) != screenID {
+            setActiveSurveyScreen(screen)
+        }
+        rebuildExposeView()
+    }
+
+    private func clearClusterSearch(_ clusterID: Int, on screen: NSScreen) {
+        let screenID = MotionPanel.screenID(screen)
+        var queries = clusterSearchQueryByScreen[screenID] ?? [:]
+        queries[clusterID] = ""
+        clusterSearchQueryByScreen[screenID] = queries
+        activeClusterSearchByScreen[screenID] = clusterID
+        if activeSurveyScreen.map(MotionPanel.screenID) != screenID {
+            setActiveSurveyScreen(screen)
+        }
+        rebuildExposeView()
+    }
+
+    private func activeClusterSearchTarget() -> (screen: NSScreen, screenID: String, clusterID: Int)? {
+        for (screenID, clusterID) in activeClusterSearchByScreen {
+            if let screen = NSScreen.screens.first(where: { MotionPanel.screenID($0) == screenID }) {
+                return (screen, screenID, clusterID)
+            }
+        }
+        return nil
+    }
+
+    private func handleClusterSearchKey(_ event: NSEvent) -> Bool {
+        guard commandPanel == nil, newLayerPanel == nil, rulePanel == nil,
+              let target = activeClusterSearchTarget() else { return false }
+
+        switch event.keyCode {
+        case 53:                                                    // Esc — clear, then leave filter mode
+            let q = clusterSearchQueryByScreen[target.screenID]?[target.clusterID] ?? ""
+            if q.isEmpty {
+                activeClusterSearchByScreen[target.screenID] = nil
+            } else {
+                setClusterSearchQuery("", clusterID: target.clusterID, screenID: target.screenID)
+            }
+            rebuildExposeView()
+            return true
+        case 51:                                                    // Delete / Backspace
+            var q = clusterSearchQueryByScreen[target.screenID]?[target.clusterID] ?? ""
+            if !q.isEmpty {
+                q.removeLast()
+                setClusterSearchQuery(q, clusterID: target.clusterID, screenID: target.screenID)
+                rebuildExposeView()
+            }
+            return true
+        case 36, 76:                                                // Return — pluck visible matches
+            selectClusterSearchMatches(target.clusterID, on: target.screen)
+            return true
+        default:
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            let blocked = flags.contains(.command) || flags.contains(.control) || flags.contains(.option)
+            guard !blocked, let text = clusterSearchText(from: event) else { return false }
+            let current = clusterSearchQueryByScreen[target.screenID]?[target.clusterID] ?? ""
+            setClusterSearchQuery(current + text, clusterID: target.clusterID, screenID: target.screenID)
+            rebuildExposeView()
+            return true
+        }
+    }
+
+    private func setClusterSearchQuery(_ query: String, clusterID: Int, screenID: String) {
+        var queries = clusterSearchQueryByScreen[screenID] ?? [:]
+        queries[clusterID] = String(query.prefix(80))
+        clusterSearchQueryByScreen[screenID] = queries
+    }
+
+    private func clusterSearchText(from event: NSEvent) -> String? {
+        guard let chars = event.characters, !chars.isEmpty else { return nil }
+        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -_./:@#")
+        guard chars.unicodeScalars.allSatisfy({ allowed.contains($0) }) else { return nil }
+        return chars
+    }
+
+    private func selectClusterSearchMatches(_ clusterID: Int, on screen: NSScreen) {
+        let screenID = MotionPanel.screenID(screen)
+        guard let box = exposeClustersByScreen[screenID]?.first(where: { $0.id == clusterID }) else {
+            NSSound.beep()
+            return
+        }
+        let query = clusterSearchQueryByScreen[screenID]?[clusterID] ?? ""
+        let hints = hintForByScreen[screenID] ?? [:]
+        let matches = box.members
+            .filter { Self.clusterSearchMatches($0, query: query, hint: hints[$0.wid] ?? "") }
+            .map(\.wid)
+        guard !matches.isEmpty else {
+            NSSound.beep()
+            return
+        }
+
+        var order = pickOrderByScreen[screenID] ?? []
+        for wid in matches where !order.contains(wid) {
+            order.append(wid)
+            if let e = eligible.first(where: { $0.wid == wid }) { _ = ax(for: e) }
+        }
+        pickOrderByScreen[screenID] = order
+        setClusterSearchQuery("", clusterID: clusterID, screenID: screenID)
+        activeClusterSearchByScreen[screenID] = nil
+        if activeSurveyScreen.map(MotionPanel.screenID) != screenID {
+            setActiveSurveyScreen(screen)
+        } else {
+            restorePickState(for: screen)
+        }
+        rebuildExposeView()
+        updateLegend()
+        updateStack()
+    }
+
+    private static func clusterSearchMatches(_ entry: WindowEntry, query: String, hint: String) -> Bool {
+        let terms = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            .split(whereSeparator: { $0.isWhitespace })
+        guard !terms.isEmpty else { return true }
+        let haystack = "\(entry.title) \(entry.app) \(hint)".lowercased()
+        return terms.allSatisfy { haystack.range(of: String($0)) != nil }
     }
 
     // MARK: - Command bar (/)
@@ -3328,6 +3473,8 @@ struct ExposeView: View {
         let rule: String
         let userDefined: Bool
         let hint: String          // ⇧-letter that plucks the whole cluster
+        let searchQuery: String
+        let searchActive: Bool
         let tiles: [Tile]
     }
 
@@ -3408,6 +3555,8 @@ struct ExposeView: View {
     var onExit: () -> Void = { }              // mouse-driven leave (the ✕ button)
     var onNewLayer: () -> Void = { }          // tap the ＋ pile → open the New Layer authoring flow
     var onRecallLayer: (String) -> Void = { _ in } // add every live match to the survey selection
+    var onBeginClusterSearch: (Int) -> Void = { _ in }
+    var onClearClusterSearch: (Int) -> Void = { _ in }
     var onEditClause: (String, Int?, StudioLayerClause) -> Void = { _, _, _ in }
     var onRemoveClause: (String, Int) -> Void = { _, _ in }  // edit mode: drop a rule clause (layerId, clauseIndex)
     var onDeleteLayer: (String) -> Void = { _ in }           // edit mode: delete a whole layer (layerId)
@@ -4315,7 +4464,7 @@ struct ExposeView: View {
         .highPriorityGesture(TapGesture().onEnded { onPick(t.id) })
         .gesture(
             DragGesture(minimumDistance: 10, coordinateSpace: .named(ExposeView.rootSpace))
-                .onChanged { handleDragChange(t, $0) }
+                .onChanged { handleDragChange(t, tileWidth: thumbW, $0) }
                 .onEnded { handleDragEnd(t, $0) }
         )
         .onHover { over in
@@ -5451,9 +5600,9 @@ struct ExposeView: View {
         return nil
     }
 
-    private func handleDragChange(_ t: Tile, _ v: DragGesture.Value) {
+    private func handleDragChange(_ t: Tile, tileWidth: CGFloat, _ v: DragGesture.Value) {
         handleDragChange(wid: t.id, image: t.image, source: .survey,
-                         tileW: tile, tileH: (tile * 0.62).rounded(), v)
+                         tileW: tileWidth, tileH: (tileWidth * 0.62).rounded(), v)
     }
 
     private func popDragCursor() {
@@ -5584,8 +5733,12 @@ struct ExposeView: View {
     }
 
     private func clusterBox(_ c: Cluster) -> some View {
-        let cols = min(max(c.tiles.count, 1), colCap)
-        let innerW = tile * CGFloat(cols) + 8 * CGFloat(cols - 1)
+        let expanded = isExpandedTerminalCluster(c)
+        let shown = filteredTiles(in: c)
+        let localTile = clusterTileWidth(c)
+        let cap = clusterColumnCap(c)
+        let cols = min(max(shown.count, 1), cap)
+        let innerW = localTile * CGFloat(cols) + 8 * CGFloat(max(0, cols - 1))
         return VStack(alignment: .leading, spacing: 9) {
             HStack(spacing: 6) {
                 if !c.hint.isEmpty {
@@ -5609,25 +5762,137 @@ struct ExposeView: View {
                             .fill(Color.white.opacity(0.05))
                             .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.border, lineWidth: 0.5))
                     )
+                if expanded {
+                    Text("\(c.tiles.count)")
+                        .font(Typo.monoBold(8))
+                        .tracking(0.6)
+                        .foregroundColor(HUDChrome.cyan.opacity(0.9))
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(HUDChrome.cyan.opacity(0.10))
+                                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(HUDChrome.cyan.opacity(0.35), lineWidth: 0.5))
+                        )
+                        .help("\(c.tiles.count) windows in this terminal group")
+                }
                 Spacer(minLength: 16)
                 Text(c.userDefined ? "you" : "smart")
                     .font(Typo.mono(8))
                     .tracking(0.6)
                     .foregroundColor(c.userDefined ? Palette.running : Palette.textMuted)
             }
+            if expanded {
+                clusterSearchBar(c, visibleCount: shown.count)
+                    .frame(width: innerW, alignment: .leading)
+            }
             FlowLayout(spacing: 8, lineSpacing: 8) {
-                ForEach(c.tiles) { tileView($0) }
+                if shown.isEmpty {
+                    emptyClusterSearchState(c)
+                } else {
+                    ForEach(shown) { tileView($0, width: localTile) }
+                }
             }
             .frame(maxWidth: innerW, alignment: .leading)
         }
         .padding(.horizontal, 11).padding(.top, 9).padding(.bottom, 11)
         .background(
             RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .fill(Color.white.opacity(c.userDefined ? 0.03 : 0.018))
+                .fill(Color.white.opacity(expanded ? 0.032 : (c.userDefined ? 0.03 : 0.018)))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .strokeBorder(c.userDefined ? Palette.borderLit : Palette.border, lineWidth: 1)
+                .strokeBorder(expanded ? HUDChrome.cyan.opacity(0.30) : (c.userDefined ? Palette.borderLit : Palette.border),
+                              lineWidth: expanded ? 1.15 : 1)
+        )
+    }
+
+    private func isExpandedTerminalCluster(_ c: Cluster) -> Bool {
+        guard c.tiles.count >= 10 else { return false }
+        let needles = ["iterm", "terminal", "warp", "ghostty", "wezterm", "kitty", "alacritty"]
+        let clusterName = c.name.lowercased()
+        return needles.contains { needle in
+            clusterName.contains(needle) ||
+                c.tiles.contains { $0.app.lowercased().contains(needle) }
+        }
+    }
+
+    private func clusterColumnCap(_ c: Cluster) -> Int {
+        if isExpandedTerminalCluster(c) { return layoutTall ? 3 : 6 }
+        return colCap
+    }
+
+    private func clusterTileWidth(_ c: Cluster) -> CGFloat {
+        guard isExpandedTerminalCluster(c) else { return tile }
+        return min((tile * 1.16).rounded(), tile + 36)
+    }
+
+    private func filteredTiles(in c: Cluster) -> [Tile] {
+        let q = c.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return c.tiles }
+        return c.tiles.filter { tileMatchesClusterSearch($0, query: q) }
+    }
+
+    private func tileMatchesClusterSearch(_ t: Tile, query: String) -> Bool {
+        let terms = query.lowercased().split(whereSeparator: { $0.isWhitespace })
+        guard !terms.isEmpty else { return true }
+        let haystack = "\(t.title) \(t.app) \(t.hint)".lowercased()
+        return terms.allSatisfy { haystack.range(of: String($0)) != nil }
+    }
+
+    private func clusterSearchBar(_ c: Cluster, visibleCount: Int) -> some View {
+        let active = c.searchActive
+        let query = c.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        let shape = RoundedRectangle(cornerRadius: 7, style: .continuous)
+        return HStack(spacing: 7) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(active ? HUDChrome.cyan : Palette.textMuted)
+            Text(query.isEmpty ? "filter \(c.name)" : query)
+                .font(Typo.mono(10))
+                .foregroundColor(query.isEmpty ? Palette.textMuted : Palette.text)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: 4)
+            if !query.isEmpty {
+                Text("\(visibleCount)/\(c.tiles.count)")
+                    .font(Typo.monoBold(8))
+                    .foregroundColor(visibleCount > 0 ? HUDChrome.cyan.opacity(0.9) : Palette.detach)
+                Button { onClearClusterSearch(c.id) } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(Palette.textMuted)
+                }
+                .buttonStyle(.plain)
+            } else if active {
+                Text("typing")
+                    .font(Typo.monoBold(8))
+                    .foregroundColor(HUDChrome.cyan.opacity(0.8))
+            }
+        }
+        .padding(.horizontal, 8).padding(.vertical, 6)
+        .background(
+            shape.fill(Color.black.opacity(active ? 0.34 : 0.24))
+                .overlay(shape.strokeBorder(active ? HUDChrome.cyan.opacity(0.55) : Color.white.opacity(0.12), lineWidth: 0.75))
+        )
+        .contentShape(Rectangle())
+        .onTapGesture { onBeginClusterSearch(c.id) }
+        .help("Click, type to filter \(c.name), Return selects matches")
+    }
+
+    private func emptyClusterSearchState(_ c: Cluster) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 10, weight: .medium))
+            Text("no matches")
+                .font(Typo.mono(10))
+        }
+        .foregroundColor(Palette.textMuted)
+        .frame(width: clusterTileWidth(c), height: (clusterTileWidth(c) * 0.62).rounded())
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.white.opacity(0.035))
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.10), style: StrokeStyle(lineWidth: 0.75, dash: [4, 4])))
         )
     }
 
@@ -5764,9 +6029,9 @@ struct ExposeView: View {
         onDrop(wid, gp.map(PlacementSpec.grid))
     }
 
-    private func tileView(_ t: Tile) -> some View {
-        let w = tile
-        let h = (tile * 0.62).rounded()
+    private func tileView(_ t: Tile, width: CGFloat? = nil) -> some View {
+        let w = width ?? tile
+        let h = (w * 0.62).rounded()
         let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
         let picked = t.pickSlot != nil
         let staged = t.staged != nil || !t.layerTags.isEmpty
@@ -5844,7 +6109,7 @@ struct ExposeView: View {
             .highPriorityGesture(TapGesture().onEnded { onPick(t.id) })
             .gesture(
                 DragGesture(minimumDistance: 10, coordinateSpace: .named(ExposeView.rootSpace))
-                    .onChanged { handleDragChange(t, $0) }
+                    .onChanged { handleDragChange(t, tileWidth: w, $0) }
                     .onEnded { handleDragEnd(t, $0) }
             )
     }
