@@ -619,6 +619,10 @@ final class HudVoxAudioProvider: AudioProvider {
         onTranscript?(t)
         stopCompletion?(t)
         stopCompletion = nil
+        // Stop the pump as well as the session: if close() doesn't end the event
+        // stream the for-await would suspend forever, leaking the task + session.
+        // finalDelivered is already true, so the resulting streamEnded is a no-op.
+        pumpTask?.cancel()
         session?.close()
         session = nil
     }

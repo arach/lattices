@@ -188,7 +188,7 @@ final class WorkspaceAssistantSession: ObservableObject {
     @Published private(set) var messages: [WorkspaceAssistantMessage] = [
         WorkspaceAssistantMessage(
             role: .system,
-            text: "Assistant ready. Uses a persistent Pi session — clear chat to start fresh.",
+            text: "Assistant ready. Uses a persistent session — clear chat to start fresh.",
             timestamp: Date()
         )
     ]

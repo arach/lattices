@@ -328,9 +328,19 @@ final class PiRpcRuntime {
 
     private func waitForAgentEndLocked(timeout: TimeInterval, sendPrompt: () throws -> Void) throws -> [[String: Any]] {
         final class Collector {
-            var events: [[String: Any]] = []
+            // events is appended from the stdout-reader thread (event handlers run
+            // outside the runtime lock) and read from the timeout work item on a
+            // global queue, so it needs its own synchronization.
+            private let eventsLock = NSLock()
+            private var _events: [[String: Any]] = []
             var finished = false
             var error: Error?
+            func append(_ event: [String: Any]) {
+                eventsLock.lock(); _events.append(event); eventsLock.unlock()
+            }
+            var events: [[String: Any]] {
+                eventsLock.lock(); defer { eventsLock.unlock() }; return _events
+            }
         }
 
         let collector = Collector()
@@ -339,7 +349,7 @@ final class PiRpcRuntime {
 
         lock.lock()
         eventHandlers[handlerID] = { payload in
-            collector.events.append(payload)
+            collector.append(payload)
             if payload["type"] as? String == "agent_end" {
                 collector.finished = true
                 semaphore.signal()
