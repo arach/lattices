@@ -36,24 +36,57 @@ struct GridPlacement: Equatable {
 
     static func parse(_ str: String) -> GridPlacement? {
         let parts = str.split(separator: ":")
-        guard parts.count == 3, parts[0] == "grid" else { return nil }
-        let dims = parts[1].split(separator: "x")
+        let dimsPart: Substring
+        let cellsPart: Substring
+        let oneBasedCoordinates: Bool
+        if parts.count == 3, parts[0] == "grid" {
+            dimsPart = parts[1]
+            cellsPart = parts[2]
+            oneBasedCoordinates = false
+        } else if parts.count == 2 {
+            dimsPart = parts[0]
+            cellsPart = parts[1]
+            oneBasedCoordinates = true
+        } else {
+            return nil
+        }
+
+        let dims = dimsPart.split(separator: "x")
         guard dims.count == 2, let columns = Int(dims[0]), let rows = Int(dims[1]) else { return nil }
 
         // Coordinates are either a single cell ("c,r") or an inclusive span
         // between two corners ("c0,r0-c1,r1", e.g. "grid:4x4:0,0-1,1").
+        // The explicit `grid:` wire form is 0-based for API compatibility.
+        // The compact command form ("4x4:1,1") is 1-based for humans.
         func cell(_ s: Substring) -> (col: Int, row: Int)? {
             let xy = s.split(separator: ",")
             guard xy.count == 2, let c = Int(xy[0]), let r = Int(xy[1]) else { return nil }
-            return (c, r)
+            return oneBasedCoordinates ? (c - 1, r - 1) : (c, r)
         }
-        let corners = parts[2].split(separator: "-", maxSplits: 1)
+        let corners = cellsPart.split(separator: "-", maxSplits: 1)
         guard let start = cell(corners[0]) else { return nil }
         if corners.count == 2 {
             guard let end = cell(corners[1]) else { return nil }
             return GridPlacement(columns: columns, rows: rows, from: start, to: end)
         }
         return GridPlacement(columns: columns, rows: rows, column: start.col, row: start.row)
+    }
+
+    /// Shorthand: `grid:N.K` → an N×N grid, K-th cell in row-major order
+    /// (1-indexed). Useful for the command bar and voice, where typing the full
+    /// `grid:4x4:0,0` is heavy. K must lie in `[1, N*N]`.
+    /// Examples: `grid:4.1` → top-left, `grid:4.5` → row 2 col 1, `grid:4.16` → bottom-right.
+    static func parseShorthand(_ str: String) -> GridPlacement? {
+        let parts = str.split(separator: ":")
+        guard parts.count == 2, parts[0] == "grid" else { return nil }
+        let pair = parts[1].split(separator: ".")
+        guard pair.count == 2,
+              let n = Int(pair[0]), n > 0,
+              let k = Int(pair[1]), k >= 1, k <= n * n else { return nil }
+        let k0 = k - 1
+        let column = k0 % n
+        let row = k0 / n
+        return GridPlacement(columns: n, rows: n, column: column, row: row)
     }
 
     var fractions: (CGFloat, CGFloat, CGFloat, CGFloat) {
@@ -68,6 +101,12 @@ struct GridPlacement: Equatable {
     var wireValue: String {
         if isSingleCell { return "grid:\(columns)x\(rows):\(column),\(row)" }
         return "grid:\(columns)x\(rows):\(column),\(row)-\(column + columnSpan - 1),\(row + rowSpan - 1)"
+    }
+
+    var compactValue: String {
+        let start = "\(column + 1),\(row + 1)"
+        if isSingleCell { return "\(columns)x\(rows):\(start)" }
+        return "\(columns)x\(rows):\(start)-\(column + columnSpan),\(row + rowSpan)"
     }
 }
 
@@ -107,6 +146,10 @@ enum PlacementSpec: Equatable {
             return
         }
         if let grid = GridPlacement.parse(normalized) {
+            self = .grid(grid)
+            return
+        }
+        if let grid = GridPlacement.parseShorthand(normalized) {
             self = .grid(grid)
             return
         }
@@ -180,6 +223,17 @@ enum PlacementSpec: Equatable {
             return grid.wireValue
         case .fractions(let placement):
             return "fractions:\(placement.x),\(placement.y),\(placement.w),\(placement.h)"
+        }
+    }
+
+    var compactValue: String {
+        switch self {
+        case .tile(let position):
+            return position.rawValue
+        case .grid(let grid):
+            return grid.compactValue
+        case .fractions:
+            return wireValue
         }
     }
 

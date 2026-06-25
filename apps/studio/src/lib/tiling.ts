@@ -213,7 +213,7 @@ export function findPreset(name: string): TilePreset | undefined {
   return PRESET_BY_NAME.get(name);
 }
 
-const GRID_PATTERN = /^grid:(\d+)x(\d+):(\d+),(\d+)$/i;
+const GRID_PATTERN = /^(?:grid:)?(\d+)x(\d+):(\d+),(\d+)$/i;
 
 export interface ParsedGrid {
   cols: number;

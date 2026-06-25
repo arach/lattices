@@ -24,10 +24,13 @@ final class UnifiedCommandBarWindow {
     private var ghost: NSPanel?
     private var state: UnifiedCommandBarState?
     private var keyMonitor: Any?
-    private var flagsMonitor: Any?
+    private var localFlagsMonitor: Any?
+    private var globalFlagsMonitor: Any?
     private var ghostObserver: AnyCancellable?
     private var queryObserver: AnyCancellable?
     private var voicePhaseObserver: AnyCancellable?
+    private var optionKeyDown = false
+    private var optionPushToTalkActive = false
 
     private var capturedTarget: (wid: UInt32, pid: Int32)?
     private var capturedScreen: NSScreen?
@@ -80,6 +83,11 @@ final class UnifiedCommandBarWindow {
                 hasShadow: false,            // the card draws its own shadow
                 hidesOnDeactivate: false,
                 isMovableByWindowBackground: true,   // drag the bar/panel chrome to reposition
+                // Do not use `.canJoinAllSpaces` here: on multi-display
+                // setups macOS can mirror all-spaces panels onto each active
+                // display. Moving to the active Space keeps a single command
+                // box on the screen that invoked it.
+                collectionBehavior: [.moveToActiveSpace, .fullScreenAuxiliary],
                 activatesOnMouseDown: true
             ),
             rootView: view
@@ -112,7 +120,9 @@ final class UnifiedCommandBarWindow {
     func dismiss() {
         savePosition()
         if let m = keyMonitor { NSEvent.removeMonitor(m); keyMonitor = nil }
-        if let m = flagsMonitor { NSEvent.removeMonitor(m); flagsMonitor = nil }
+        if let m = localFlagsMonitor { NSEvent.removeMonitor(m); localFlagsMonitor = nil }
+        if let m = globalFlagsMonitor { NSEvent.removeMonitor(m); globalFlagsMonitor = nil }
+        resetOptionVoiceTracking()
         ghostObserver?.cancel(); ghostObserver = nil
         queryObserver?.cancel(); queryObserver = nil
         voicePhaseObserver?.cancel(); voicePhaseObserver = nil
@@ -170,8 +180,17 @@ final class UnifiedCommandBarWindow {
             let cmd = self.state?.commandMode == true
             switch event.keyCode {
             case 53: // Escape — first stops listening, then dismisses
-                if self.state?.voice.phase == .listening {
-                    self.state?.voice.cancelListening(); return nil
+                if let voice = self.state?.voice {
+                    if voice.phase == .listening {
+                        self.resetOptionVoiceTracking()
+                        voice.stopListening()
+                        return nil
+                    }
+                    if voice.phase == .connecting {
+                        self.resetOptionVoiceTracking()
+                        voice.cancelProcessing()
+                        return nil
+                    }
                 }
                 self.dismiss(); return nil
             case 125: // ↓
@@ -192,20 +211,56 @@ final class UnifiedCommandBarWindow {
         }
     }
 
-    /// Push-to-talk: hold ⌥ to record, release to stop — only while the bar is key
-    /// and armed/idle. Mirrors the standalone voice window's gesture.
+    /// Push-to-talk: hold ⌥ to record, release to stop. A global flags monitor
+    /// catches the release even if focus shifts while the non-activating panel is up.
     private func installVoiceMonitor() {
-        flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
-            guard let self, self.panel?.isKeyWindow == true, let voice = self.state?.voice else { return event }
-            if event.modifierFlags.contains(.option) {
-                if voice.armed && (voice.phase == .idle || voice.phase == .result) {
-                    voice.startListening()
-                }
-            } else if voice.phase == .listening {
-                voice.stopListening()
-            }
+        localFlagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            self?.handleFlagsChanged(event)
             return event
         }
+        globalFlagsMonitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            self?.handleFlagsChanged(event)
+        }
+    }
+
+    private func handleFlagsChanged(_ event: NSEvent) {
+        guard isVisible, let voice = state?.voice else { return }
+        let optionDown = event.modifierFlags
+            .intersection(.deviceIndependentFlagsMask)
+            .contains(.option)
+
+        if optionDown {
+            guard !optionKeyDown else { return }
+            optionKeyDown = true
+
+            if voice.phase == .listening && !optionPushToTalkActive {
+                optionPushToTalkActive = false
+                voice.stopListening()
+            } else if voice.armed && (voice.phase == .idle || voice.phase == .result) {
+                optionPushToTalkActive = true
+                voice.startListening()
+            }
+            return
+        }
+
+        guard optionKeyDown else { return }
+        optionKeyDown = false
+        if optionPushToTalkActive {
+            switch voice.phase {
+            case .connecting:
+                voice.cancelProcessing()
+            case .listening:
+                voice.stopListening()
+            default:
+                break
+            }
+        }
+        optionPushToTalkActive = false
+    }
+
+    private func resetOptionVoiceTracking() {
+        optionKeyDown = false
+        optionPushToTalkActive = false
     }
 
     // MARK: - Commit / drill-in
@@ -255,14 +310,26 @@ final class UnifiedCommandBarWindow {
     private func commitVoice(_ voice: VoiceCommandState) {
         switch voice.phase {
         case .connecting:
+            resetOptionVoiceTracking()
             voice.cancelProcessing()
         case .listening:
+            resetOptionVoiceTracking()
             voice.stopListening()
         case .result:
-            dismiss()
+            if voiceResultCanRetry(voice) {
+                resetOptionVoiceTracking()
+                voice.startListening()
+            } else {
+                dismiss()
+            }
         case .idle, .transcribing:
             break
         }
+    }
+
+    private func voiceResultCanRetry(_ voice: VoiceCommandState) -> Bool {
+        let result = voice.executionResult ?? ""
+        return result == "No speech detected" || result == "Transcription failed"
     }
 
     // MARK: - Natural-language command
@@ -329,7 +396,7 @@ final class UnifiedCommandBarWindow {
         dismiss()
         DispatchQueue.main.async {
             ScreenMapWindowController.shared.showAssistant()
-            PiChatSession.shared.send(text)
+            WorkspaceAssistantSession.shared.send(text)
         }
     }
 
@@ -378,10 +445,13 @@ final class UnifiedCommandBarWindow {
         guard let voice = state?.voice else { return }
         switch voice.phase {
         case .connecting:
+            resetOptionVoiceTracking()
             voice.cancelProcessing()
         case .listening:
+            resetOptionVoiceTracking()
             voice.stopListening()
         case .idle, .result:
+            resetOptionVoiceTracking()
             voice.startListening()
         case .transcribing:
             break
@@ -489,7 +559,7 @@ final class UnifiedCommandBarWindow {
         g.level = .floating
         g.hasShadow = false
         g.ignoresMouseEvents = true
-        g.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        g.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         g.sharingType = .readOnly
 
         let v = NSView()

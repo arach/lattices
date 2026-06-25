@@ -1,4 +1,4 @@
 {
   "app": "Lattices",
-  "features": []
+  "features": ["voice"]
 }

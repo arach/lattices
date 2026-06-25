@@ -41,7 +41,7 @@ export function PresetGalleryPanel() {
     }
     const parsed = parseGrid(value);
     if (!parsed) {
-      setCustomError("Expected grid:CxR:c,r — e.g. grid:5x3:2,1");
+      setCustomError("Expected grid:CxR:c,r or CxR:c,r — e.g. 5x3:2,1");
       return;
     }
     setCustomError(null);
@@ -71,17 +71,17 @@ export function PresetGalleryPanel() {
       <section className="mt-12">
         <div className="flex items-baseline justify-between border-b border-studio-edge pb-3">
           <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-studio-ink-faint">
-            custom grid · grid:CxR:c,r
+            custom grid · CxR:c,r
           </span>
           <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-studio-ink-faint">
-            daemon parses this exact syntax
+            daemon also accepts grid:CxR:c,r
           </span>
         </div>
         <div className="mt-4 flex items-stretch gap-3">
           <input
             value={customInput}
             onChange={(event) => onCustomChange(event.target.value)}
-            placeholder="grid:5x3:2,1"
+            placeholder="5x3:2,1"
             spellCheck={false}
             className="flex-1 rounded-sm border border-studio-edge bg-transparent px-3 py-2 font-mono text-[13px] text-studio-ink outline-none focus:border-[color:var(--scout-accent)]"
           />

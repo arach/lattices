@@ -91,8 +91,8 @@ final class AudioLayer: ObservableObject {
     private func startVoiceCommandWhenReady(provider: any AudioProvider, attempt: Int) {
         guard pendingVoiceStart, !isListening else { return }
 
-        // `isAvailable` reflects whether Lattices' embedded HudsonVoice runtime
-        // is discoverable. Do not fall back to Vox.app here; Lattices is the host.
+        // `isAvailable` reflects whether a HudsonVoice endpoint can be resolved.
+        // Health/session errors still surface from HudsonVoice when capture starts.
         if provider.isAvailable {
             pendingVoiceStart = false
             DiagnosticLog.shared.info("AudioLayer: voice provider ready")
@@ -245,7 +245,7 @@ final class AudioLayer: ObservableObject {
 
     /// Fire the selected Assistant provider in parallel — non-blocking, result arrives later.
     private func fireAdvisor(transcript: String, matched: String) {
-        let assistant = PiChatSession.shared
+        let assistant = WorkspaceAssistantSession.shared
         guard assistant.isProviderInferenceReady else {
             DiagnosticLog.shared.info("AudioLayer: advisor skipped (Assistant provider not ready)")
             return
@@ -266,7 +266,7 @@ final class AudioLayer: ObservableObject {
     }
 
     private func assistantFallback(transcription: Transcription) {
-        let assistant = PiChatSession.shared
+        let assistant = WorkspaceAssistantSession.shared
         guard assistant.isProviderInferenceReady else {
             DiagnosticLog.shared.info("AudioLayer: Assistant provider not ready")
             setFinalResult("Connect an Assistant provider in Settings", warning: true)
@@ -326,7 +326,7 @@ final class AudioLayer: ObservableObject {
             if allowRepair {
                 DiagnosticLog.shared.info("AudioLayer: Assistant-resolved failed (\(message)) — attempting repair pass")
                 self.executionResult = "fixing..."
-                PiChatSession.shared.repairVoiceIntent(
+                WorkspaceAssistantSession.shared.repairVoiceIntent(
                     transcript: transcript,
                     failedIntent: resolved.intent,
                     failedSlots: resolved.slots,
@@ -358,7 +358,7 @@ final class AudioLayer: ObservableObject {
     }
 
     private func assistantQuestion(transcription: Transcription) {
-        let assistant = PiChatSession.shared
+        let assistant = WorkspaceAssistantSession.shared
         guard assistant.isProviderInferenceReady else {
             DiagnosticLog.shared.info("AudioLayer: Assistant provider not ready for question")
             setFinalResult("Connect an Assistant provider in Settings", warning: true)
@@ -405,6 +405,9 @@ final class AudioLayer: ObservableObject {
             return message
         }
         if result["ok"]?.boolValue == false {
+            if match.intentName == "focus" {
+                return focusResultSummary(for: match, result: result, success: false)
+            }
             return result["reason"]?.stringValue ?? "Voice command did not complete"
         }
 
@@ -416,10 +419,7 @@ final class AudioLayer: ObservableObject {
             return "Moved window to \(position)"
 
         case "focus":
-            let target = result["focused"]?.stringValue
-                ?? match.slots["app"]?.stringValue
-                ?? "target"
-            return "Focused \(target)"
+            return focusResultSummary(for: match, result: result, success: true)
 
         case "launch":
             if let launched = result["launched"]?.stringValue {
@@ -438,6 +438,74 @@ final class AudioLayer: ObservableObject {
             return "ok"
         }
     }
+
+    private func focusResultSummary(for match: IntentMatch, result: JSON, success: Bool) -> String {
+        if let launched = nonEmpty(result["launched"]?.stringValue) {
+            return "Launched \(launched)"
+        }
+
+        let app = nonEmpty(result["app"]?.stringValue ?? result["focused"]?.stringValue)
+        let session = nonEmpty(result["session"]?.stringValue ?? result["latticesSession"]?.stringValue)
+        let requested = nonEmpty(result["requested"]?.stringValue ?? match.slots["app"]?.stringValue)
+        let rawTitle = nonEmpty(result["title"]?.stringValue)
+        let title = nonEmpty(rawTitle.map(cleanWindowTitle))
+        let target = app ?? session ?? title ?? requested ?? "target"
+
+        var summary = success ? "Focused \(target)" : "Could not focus \(target)"
+        if let title, title.localizedCaseInsensitiveCompare(target) != .orderedSame {
+            summary += " - \"\(clipped(title))\""
+        }
+
+        var details: [String] = []
+        if let session, session.localizedCaseInsensitiveCompare(target) != .orderedSame {
+            details.append("session \(session)")
+        }
+        if let wid = result["wid"]?.intValue {
+            details.append("wid \(wid)")
+        }
+        if let resolution = nonEmpty(result["targetResolution"]?.stringValue) {
+            details.append("via \(humanFocusResolution(resolution))")
+        }
+        if !success, let reason = nonEmpty(result["reason"]?.stringValue) {
+            details.append(reason)
+        } else if success, result["raised"]?.boolValue == false {
+            details.append("raise not confirmed")
+        }
+
+        if !details.isEmpty {
+            summary += " (\(details.joined(separator: ", ")))"
+        }
+        return summary
+    }
+
+    private func nonEmpty(_ text: String?) -> String? {
+        let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func cleanWindowTitle(_ title: String) -> String {
+        let cleaned = title
+            .replacingOccurrences(of: #"\[lattices:[^\]]+\]\s*"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? title : cleaned
+    }
+
+    private func clipped(_ text: String, limit: Int = 90) -> String {
+        guard text.count > limit else { return text }
+        return String(text.prefix(max(0, limit - 3))).trimmingCharacters(in: .whitespacesAndNewlines) + "..."
+    }
+
+    private func humanFocusResolution(_ resolution: String) -> String {
+        switch resolution {
+        case "wid": return "window id"
+        case "app": return "app match"
+        case "search": return "search"
+        case "session": return "session"
+        case "session-locator": return "session locator"
+        case "app-launch": return "app launch"
+        default: return resolution.replacingOccurrences(of: "-", with: " ")
+        }
+    }
 }
 
 // Old IntentExtractor removed — PhraseMatcher handles all intent matching now.
@@ -447,8 +515,7 @@ final class AudioLayer: ObservableObject {
 // MARK: - HudVox Audio Provider (HudsonVoice live session)
 //
 // Delegates recording and transcription through HudsonKit's `HudVoxLiveSession`.
-// Lattices hosts the embedded HudsonVoice runtime in-process and exposes the
-// private tokened capability file HudsonKit uses to connect.
+// Lattices speaks HudsonVoice's Vox WebSocket contract through HudsonKit.
 //
 // This replaces the legacy `VoxAudioProvider` (which drove the now-retired
 // `VoxClient` WebSocket). HudsonVoice opens its own socket per capture rather
@@ -463,7 +530,7 @@ final class HudVoxAudioProvider: AudioProvider {
     private var _isListening = false
     private var finalDelivered = false
 
-    var isAvailable: Bool { HudsonVoiceRuntime.isAvailable() }
+    var isAvailable: Bool { HudsonVoiceRuntimeResolver.resolve(clientId: "lattices") != nil }
     var isListening: Bool { _isListening }
 
     func checkHealth(completion: @escaping (Bool) -> Void) {
@@ -474,8 +541,7 @@ final class HudVoxAudioProvider: AudioProvider {
         Task {
             let ok = (try? await HudVoxProbe.health(
                 endpoint: runtime.endpoint,
-                clientId: runtime.options.clientId,
-                authToken: runtime.options.authToken
+                clientId: runtime.options.clientId
             )) != nil
             await MainActor.run { completion(ok) }
         }

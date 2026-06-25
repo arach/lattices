@@ -87,7 +87,7 @@ export const intentDefinitions: IntentDefinition[] = [
     intent: "tile_window",
     description: "Tile one window to a named position or grid cell.",
     slots: [
-      { name: "position", required: true, description: "Named tile position or grid:CxR:C,R syntax." },
+      { name: "position", required: true, description: "Named tile position, grid:CxR:C,R, or compact CxR:C,R syntax." },
       { name: "app", description: "Loose app name when no window id is known." },
       { name: "wid", description: "Specific macOS window id from the desktop snapshot." },
       { name: "session", description: "Tmux session name." },
@@ -688,8 +688,11 @@ function parseLayerSwitch(text: string): string | null {
 }
 
 function findPosition(text: string): { position: string; phrase: string } | null {
-  const grid = text.match(/grid:\d+x\d+:\d+,\d+/);
-  if (grid) return { position: grid[0], phrase: grid[0] };
+  const grid = text.match(/(?:grid:)?\d+x\d+:\d+,\d+(?:-\d+,\d+)?/);
+  if (grid) {
+    const position = grid[0].startsWith("grid:") ? grid[0] : `grid:${grid[0]}`;
+    return { position, phrase: grid[0] };
+  }
 
   for (const entry of positionAliases) {
     for (const phrase of entry.phrases) {

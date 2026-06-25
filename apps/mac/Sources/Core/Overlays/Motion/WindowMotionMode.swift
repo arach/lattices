@@ -195,9 +195,9 @@ final class ExposeCanvas: ObservableObject {
 
 /// Resolution of the Lattice drop grid. Each step is a plain CxR grid you drop a
 /// window onto; the cell maps straight to `PlacementSpec.grid`. Default is quarters;
-/// modifiers (⇧ halves · ⌥ thirds · ⌘ fine) override the selector while held.
+/// modifiers (⇧ halves · ⌥ thirds · ⌘ fine · ⌃ dense) override the selector while held.
 enum LatticeRes: Int, CaseIterable {
-    case halves, thirds, quarters, fine
+    case halves, thirds, quarters, fine, dense
 
     var dims: (cols: Int, rows: Int) {
         switch self {
@@ -205,6 +205,7 @@ enum LatticeRes: Int, CaseIterable {
         case .thirds:   return (3, 1)
         case .quarters: return (2, 2)
         case .fine:     return (4, 4)
+        case .dense:    return (8, 8)
         }
     }
     var glyph: String {
@@ -213,6 +214,7 @@ enum LatticeRes: Int, CaseIterable {
         case .thirds:   return "⅓"
         case .quarters: return "¼"
         case .fine:     return "▦"
+        case .dense:    return "⊞"
         }
     }
     var name: String {
@@ -221,6 +223,7 @@ enum LatticeRes: Int, CaseIterable {
         case .thirds:   return "thirds"
         case .quarters: return "quarters"
         case .fine:     return "fine"
+        case .dense:    return "dense"
         }
     }
     /// Map a grid's dims back to its selector glyph (for staged badges).
@@ -5338,8 +5341,8 @@ struct ExposeView: View {
 
     // The placement-resolution picker. Each option is a *real mini-grid* of its own
     // dims (2×1, 3×1, 2×2, 4×4) — far clearer than the old ½⅓¼▦ glyphs, where ▦ read as
-    // "fullscreen". Modifiers override it live mid-drag (⇧ halves · ⌥ thirds · ⌘ fine);
-    // releasing returns to the selection. A name readout sits at the trailing edge.
+    // "fullscreen". Modifiers override it live mid-drag (⇧ halves · ⌥ thirds · ⌘ fine ·
+    // ⌃ dense); releasing returns to the selection. A name readout sits at the trailing edge.
     @ViewBuilder
     private var resSelector: some View {
         ForEach(LatticeRes.allCases, id: \.rawValue) { r in
@@ -5394,6 +5397,7 @@ struct ExposeView: View {
     private var resOverrideGlyph: String? {
         guard drag.isActive else { return nil }
         switch Self.modifierRes() {
+        case .dense:   return "⌃"
         case .fine:    return "⌘"
         case .thirds:  return "⌥"
         case .halves:  return "⇧"
@@ -5594,6 +5598,7 @@ struct ExposeView: View {
     /// Modifier-driven resolution while a drag is held — overrides the selector.
     private static func modifierRes() -> LatticeRes? {
         let f = NSEvent.modifierFlags
+        if f.contains(.control) { return .dense }
         if f.contains(.command) { return .fine }
         if f.contains(.option)  { return .thirds }
         if f.contains(.shift)   { return .halves }

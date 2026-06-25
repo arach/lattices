@@ -20,7 +20,7 @@ enum AppServicesBootstrap {
 
     static func stop() {
         LatticesVoiceRuntime.stop()
-        PiChatSession.shared.shutdown()
+        WorkspaceAssistantSession.shared.shutdown()
         LatticesCompanionBridgeServer.shared.stop()
         DaemonServer.shared.stop()
     }

@@ -2,9 +2,10 @@ import Foundation
 
 /// File-based discovery of the standalone Vox compatibility daemon.
 ///
-/// The intended path is the Lattices-hosted HudsonVoice runtime discovered
-/// through `HudsonVoiceRuntime`. Standalone Vox writes its live port + pid to
-/// `~/.vox/runtime.json`; that path remains for legacy/non-HudsonVoice builds.
+/// HudsonVoice's current Swift API can connect directly to a Vox WebSocket
+/// endpoint. Standalone Vox writes its live port + pid to `~/.vox/runtime.json`;
+/// when that file is absent, callers can still try HudsonVoice's default
+/// endpoint.
 ///
 /// Pure Foundation, intentionally **not** gated on `canImport(HudsonVoice)`, so the
 /// availability/launch fallback paths still compile in a build without the voice

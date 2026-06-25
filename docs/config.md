@@ -281,6 +281,10 @@ Aliases: `left-half`/`left`, `right-half`/`right`, `top-half`/`top`,
 Tiling respects the menu bar and dock. It uses the visible desktop
 area, not the full screen.
 
+For arbitrary cells, use `grid:CxR:c,r` or compact `CxR:c,r`, with
+0-indexed `col,row` coordinates from the top-left. Example:
+`lattices tile 4x4:1,2`.
+
 ### Smart app tiling
 
 Use `lattices tile family` when you want lattices to arrange a whole

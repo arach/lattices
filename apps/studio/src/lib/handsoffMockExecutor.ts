@@ -98,7 +98,7 @@ const REGION_KEYS = new Set([
 ]);
 
 function rectFromPosition(position: string, display: { width: number; height: number }): Rect | null {
-  const grid = position.match(/^grid:(\d+)x(\d+):(\d+),(\d+)$/);
+  const grid = position.match(/^(?:grid:)?(\d+)x(\d+):(\d+),(\d+)$/);
   if (grid) {
     const cols = Number(grid[1]);
     const rows = Number(grid[2]);

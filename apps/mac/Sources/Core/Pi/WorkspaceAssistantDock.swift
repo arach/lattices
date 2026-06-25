@@ -1,7 +1,7 @@
 import SwiftUI
 
-struct PiChatDock: View {
-    @ObservedObject var session: PiChatSession
+struct WorkspaceAssistantDock: View {
+    @ObservedObject var session: WorkspaceAssistantSession
     @FocusState private var composerFocused: Bool
     @FocusState private var authFieldFocused: Bool
     @State private var resizeStartHeight: CGFloat?
@@ -17,7 +17,7 @@ struct PiChatDock: View {
             topHandle
 
             if session.hasPiBinary && !session.needsProviderSetup {
-                PiChatTranscript(session: session, style: .dock)
+                WorkspaceAssistantTranscript(session: session, style: .dock)
             } else {
                 legacyTranscriptPlaceholder
             }
@@ -27,7 +27,7 @@ struct PiChatDock: View {
                 .frame(height: 0.5)
 
             if session.hasPiBinary && !session.needsProviderSetup {
-                PiChatComposer(session: session, style: .dock, focus: $composerFocused)
+                WorkspaceAssistantComposer(session: session, style: .dock, focus: $composerFocused)
             } else if session.needsProviderSetup {
                 providerSettingsBar
             } else {
@@ -277,10 +277,10 @@ struct PiChatDock: View {
         .onAppear {
             focusAuthFieldIfNeeded()
         }
-        .onChange(of: session.authProviderID) { _ in
+        .onChange(of: session.authProviderID) { _, _ in
             focusAuthFieldIfNeeded()
         }
-        .onChange(of: session.pendingAuthPrompt?.message) { prompt in
+        .onChange(of: session.pendingAuthPrompt?.message) { _, prompt in
             if prompt != nil {
                 focusAuthFieldIfNeeded()
             }

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct PiAuthNextStepCard: View {
-    @ObservedObject var session: PiChatSession
+    @ObservedObject var session: WorkspaceAssistantSession
     let compact: Bool
 
     var body: some View {

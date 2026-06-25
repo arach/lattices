@@ -321,7 +321,7 @@ struct AppShellView: View {
         case .runs:
             RunsReviewView()
         case .pi:
-            PiWorkspaceView()
+            WorkspaceAssistantView()
         case .settings:
             SettingsContentView(
                 prefs: Preferences.shared,

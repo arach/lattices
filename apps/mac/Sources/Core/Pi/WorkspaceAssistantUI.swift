@@ -86,7 +86,7 @@ struct LatticesMarkAvatar: View {
                     .strokeBorder(tint.opacity(0.35), lineWidth: 1.2)
                     .scaleEffect(1.18)
                     .opacity(0.5)
-                    .modifier(PiChatPulseModifier(minOpacity: 0.0, maxOpacity: 0.55, duration: 1.4))
+                    .modifier(WorkspaceAssistantPulseModifier(minOpacity: 0.0, maxOpacity: 0.55, duration: 1.4))
             }
         }
     }
@@ -96,7 +96,7 @@ struct LatticesMarkAvatar: View {
 
 /// Faint dot-grid drawn with Canvas. Used as the transcript surface so the
 /// background reads as "designed" rather than a flat fill.
-struct PiChatDotGrid: View {
+struct WorkspaceAssistantDotGrid: View {
     var spacing: CGFloat = 26
     var dotSize: CGFloat = 1
     var opacity: Double = 0.06
@@ -126,9 +126,9 @@ private struct ScrollProbe: Equatable {
     var atBottom: Bool
 }
 
-struct PiChatTranscript: View {
-    @ObservedObject var session: PiChatSession
-    var style: PiChatStyle = .workspace
+struct WorkspaceAssistantTranscript: View {
+    @ObservedObject var session: WorkspaceAssistantSession
+    var style: WorkspaceAssistantStyle = .workspace
 
     /// True while the viewport is at (or near) the bottom. Auto-follow only
     /// happens while pinned; scrolling up detaches and stops the chase until
@@ -137,7 +137,7 @@ struct PiChatTranscript: View {
 
     var body: some View {
         if showsEmptyState {
-            PiChatEmptyState(session: session) { prompt in
+            WorkspaceAssistantEmptyState(session: session) { prompt in
                 session.draft = prompt
                 session.sendDraft()
             }
@@ -159,14 +159,12 @@ struct PiChatTranscript: View {
     }
 
     private var scrollTranscript: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.vertical, showsIndicators: true) {
-                LazyVStack(spacing: 0) {
-                    Spacer(minLength: 0)
-
+        GeometryReader { viewport in
+            ScrollViewReader { proxy in
+                ScrollView(.vertical, showsIndicators: true) {
                     LazyVStack(alignment: .leading, spacing: style.messageSpacing) {
                         ForEach(session.messages) { message in
-                            PiChatMessageRow(
+                            WorkspaceAssistantMessageRow(
                                 message: message,
                                 isStreaming: isStreamingMessage(message),
                                 activeToolName: activeToolName(for: message),
@@ -186,40 +184,40 @@ struct PiChatTranscript: View {
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, style.horizontalPadding)
                     .padding(.vertical, style.verticalPadding)
+                    .frame(minHeight: viewport.size.height, alignment: .bottom)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-            }
-            .scrollIndicators(.visible)
-            .background(transcriptBackground)
-            .animation(.spring(response: 0.34, dampingFraction: 0.86), value: session.messages.count)
-            // Detach only on a genuine *upward* scroll — never because content
-            // grew underneath us (that would un-pin us mid-stream and stop the
-            // follow). Re-pin when the user lands back near the bottom.
-            .onScrollGeometryChange(for: ScrollProbe.self) { geo in
-                let maxOffset = geo.contentSize.height - geo.containerSize.height + geo.contentInsets.bottom
-                return ScrollProbe(offsetY: geo.contentOffset.y, atBottom: geo.contentOffset.y >= maxOffset - 48)
-            } action: { old, new in
-                if new.offsetY < old.offsetY - 2 {
-                    isPinnedToBottom = false          // user scrolled up
-                } else if new.atBottom {
-                    isPinnedToBottom = true            // user returned to the end
+                .scrollIndicators(.visible)
+                .background(transcriptBackground)
+                .animation(.spring(response: 0.34, dampingFraction: 0.86), value: session.messages.count)
+                // Detach only on a genuine *upward* scroll — never because content
+                // grew underneath us (that would un-pin us mid-stream and stop the
+                // follow). Re-pin when the user lands back near the bottom.
+                .onScrollGeometryChange(for: ScrollProbe.self) { geo in
+                    let maxOffset = geo.contentSize.height - geo.containerSize.height + geo.contentInsets.bottom
+                    return ScrollProbe(offsetY: geo.contentOffset.y, atBottom: geo.contentOffset.y >= maxOffset - 48)
+                } action: { old, new in
+                    if new.offsetY < old.offsetY - 2 {
+                        isPinnedToBottom = false          // user scrolled up
+                    } else if new.atBottom {
+                        isPinnedToBottom = true            // user returned to the end
+                    }
                 }
-            }
-            .onAppear { scrollToEnd(proxy: proxy, animated: false) }
-            .onChange(of: session.messages.count) { _ in
-                // New message: follow only if the user is still pinned to the end.
-                if isPinnedToBottom { scrollToEnd(proxy: proxy, animated: true) }
-            }
-            .onChange(of: session.messages.last?.text) { _ in
-                // Chase the live edge while pinned. Not gated on isSending: the
-                // closing drain reveals the tail *after* isSending flips false.
-                if isPinnedToBottom { scrollToEnd(proxy: proxy, animated: false) }
-            }
-            .onChange(of: session.isSending) { sending in
-                // Sending re-pins: a fresh turn always snaps you back to the end.
-                if sending {
-                    isPinnedToBottom = true
-                    scrollToEnd(proxy: proxy, animated: true)
+                .onAppear { scrollToEnd(proxy: proxy, animated: false) }
+                .onChange(of: session.messages.count) { _, _ in
+                    // New message: follow only if the user is still pinned to the end.
+                    if isPinnedToBottom { scrollToEnd(proxy: proxy, animated: true) }
+                }
+                .onChange(of: session.messages.last?.text) { _, _ in
+                    // Chase the live edge while pinned. Not gated on isSending: the
+                    // closing drain reveals the tail *after* isSending flips false.
+                    if isPinnedToBottom { scrollToEnd(proxy: proxy, animated: false) }
+                }
+                .onChange(of: session.isSending) { _, sending in
+                    // Sending re-pins: a fresh turn always snaps you back to the end.
+                    if sending {
+                        isPinnedToBottom = true
+                        scrollToEnd(proxy: proxy, animated: true)
+                    }
                 }
             }
         }
@@ -239,17 +237,17 @@ struct PiChatTranscript: View {
             Rectangle()
                 .fill(Color.black.opacity(0.18))
 
-            PiChatDotGrid(spacing: 26, dotSize: 1, opacity: 0.035, tint: Palette.textMuted)
+            WorkspaceAssistantDotGrid(spacing: 26, dotSize: 1, opacity: 0.035, tint: Palette.textMuted)
                 .blendMode(.plusLighter)
         }
     }
 
-    private func isStreamingMessage(_ message: PiChatMessage) -> Bool {
+    private func isStreamingMessage(_ message: WorkspaceAssistantMessage) -> Bool {
         guard session.isSending, message.role == .assistant else { return false }
         return message.id == session.messages.last?.id
     }
 
-    private func activeToolName(for message: PiChatMessage) -> String? {
+    private func activeToolName(for message: WorkspaceAssistantMessage) -> String? {
         guard isStreamingMessage(message) else { return nil }
         return session.activeToolName
     }
@@ -268,30 +266,30 @@ struct PiChatTranscript: View {
 
 // MARK: - Empty state
 
-private struct PiChatEmptyState: View {
-    @ObservedObject var session: PiChatSession
+private struct WorkspaceAssistantEmptyState: View {
+    @ObservedObject var session: WorkspaceAssistantSession
     var onSelect: (String) -> Void
 
-    private let starters: [PiChatStarterPrompt] = [
-        PiChatStarterPrompt(
+    private let starters: [WorkspaceAssistantStarterPrompt] = [
+        WorkspaceAssistantStarterPrompt(
             title: "Inspect my gestures",
             subtitle: "Read ~/.lattices/mouse-shortcuts.json",
             icon: "hand.draw",
             text: "Read my current mouse gesture configuration and tell me what's set up."
         ),
-        PiChatStarterPrompt(
+        WorkspaceAssistantStarterPrompt(
             title: "What's on my screen?",
             subtitle: "Snapshot the current desktop",
             icon: "rectangle.on.rectangle",
             text: "List the windows I have open right now."
         ),
-        PiChatStarterPrompt(
+        WorkspaceAssistantStarterPrompt(
             title: "Tidy my terminals",
             subtitle: "Distribute iTerm windows to a grid",
             icon: "square.grid.2x2",
             text: "Organize my terminal windows across the displays I have."
         ),
-        PiChatStarterPrompt(
+        WorkspaceAssistantStarterPrompt(
             title: "Plan my next session",
             subtitle: "Spin up a project workspace",
             icon: "wand.and.stars",
@@ -333,7 +331,7 @@ private struct PiChatEmptyState: View {
                         } label: {
                             starterRow(starter)
                         }
-                        .buttonStyle(PiChatStarterButtonStyle())
+                        .buttonStyle(WorkspaceAssistantStarterButtonStyle())
                     }
                 }
             }
@@ -351,7 +349,7 @@ private struct PiChatEmptyState: View {
         "Connected to \(session.currentProvider.name). Ask about layouts, gestures, settings, or anything on screen."
     }
 
-    private func starterRow(_ starter: PiChatStarterPrompt) -> some View {
+    private func starterRow(_ starter: WorkspaceAssistantStarterPrompt) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: starter.icon)
                 .font(.system(size: 12, weight: .semibold))
@@ -393,7 +391,7 @@ private struct PiChatEmptyState: View {
     }
 }
 
-struct PiChatStarterPrompt: Identifiable {
+struct WorkspaceAssistantStarterPrompt: Identifiable {
     let id = UUID()
     let title: String
     let subtitle: String
@@ -401,7 +399,7 @@ struct PiChatStarterPrompt: Identifiable {
     let text: String
 }
 
-private struct PiChatStarterButtonStyle: ButtonStyle {
+private struct WorkspaceAssistantStarterButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
@@ -419,13 +417,13 @@ private struct PiChatStarterButtonStyle: ButtonStyle {
 
 // MARK: - Message row
 
-struct PiChatMessageRow: View, Equatable {
-    let message: PiChatMessage
+struct WorkspaceAssistantMessageRow: View, Equatable {
+    let message: WorkspaceAssistantMessage
     let isStreaming: Bool
     var activeToolName: String? = nil
-    var style: PiChatStyle = .workspace
+    var style: WorkspaceAssistantStyle = .workspace
 
-    static func == (lhs: PiChatMessageRow, rhs: PiChatMessageRow) -> Bool {
+    static func == (lhs: WorkspaceAssistantMessageRow, rhs: WorkspaceAssistantMessageRow) -> Bool {
         lhs.message == rhs.message
             && lhs.isStreaming == rhs.isStreaming
             && lhs.activeToolName == rhs.activeToolName
@@ -433,20 +431,26 @@ struct PiChatMessageRow: View, Equatable {
     }
 
     var body: some View {
-        AgentTurnView(turn: turn, style: style)
+        HudAgentTurnView(
+            turn: turn,
+            style: agentStyle,
+            assistantAvatar: { active, size, tint in
+                AnyView(LatticesMarkAvatar(size: size, tint: tint, isActive: active))
+            }
+        )
     }
 
     /// Map this transport-specific message onto the transport-agnostic turn
     /// model the renderer consumes.
-    private var turn: AgentTurn {
-        AgentTurn(
+    private var turn: HudAgentTurn {
+        HudAgentTurn(
             id: message.id,
             role: agentRole,
             author: agentAuthor,
             timestamp: message.timestamp,
             text: message.text,
             attachments: message.attachments.map {
-                AgentTurnAttachment(
+                HudAgentTurnAttachment(
                     id: $0.id,
                     name: $0.name,
                     mediaType: $0.mediaType,
@@ -458,7 +462,11 @@ struct PiChatMessageRow: View, Equatable {
         )
     }
 
-    private var agentRole: AgentTurnRole {
+    private var agentStyle: HudAgentTurnStyle {
+        HudAgentTurnStyle(bodySize: style.bodySize)
+    }
+
+    private var agentRole: HudAgentTurnRole {
         switch message.role {
         case .system:    return .system
         case .user:      return .user
@@ -476,274 +484,11 @@ struct PiChatMessageRow: View, Equatable {
 
 }
 
-// MARK: - Tool chip
-
-struct PiChatToolChip: View {
-    let name: String
-    var compact: Bool = false
-
-    private var displayName: String {
-        switch name.lowercased() {
-        case "read", "read_file", "readfile": return "read"
-        case "write", "write_file", "writefile": return "write"
-        case "edit", "edit_file", "editfile": return "edit"
-        case "bash", "shell", "exec": return "shell"
-        case "search", "grep", "find": return "search"
-        case "list", "list_dir", "listdir": return "list"
-        case "web", "fetch", "webfetch": return "fetch"
-        default: return name.prefix(12).description
-        }
-    }
-
-    private var symbol: String {
-        switch name.lowercased() {
-        case "read", "read_file", "readfile": return "doc.text"
-        case "write", "write_file", "writefile": return "square.and.pencil"
-        case "edit", "edit_file", "editfile": return "pencil"
-        case "bash", "shell", "exec": return "terminal"
-        case "search", "grep", "find": return "magnifyingglass"
-        case "list", "list_dir", "listdir": return "list.bullet"
-        case "web", "fetch", "webfetch": return "globe"
-        default: return "sparkles"
-        }
-    }
-
-    var body: some View {
-        HStack(spacing: 5) {
-            Image(systemName: symbol)
-                .font(.system(size: compact ? 8 : 9, weight: .semibold))
-
-            Text(displayName)
-                .font(Typo.geistMonoBold(compact ? 8 : 9))
-                .tracking(0.4)
-        }
-        .foregroundColor(Palette.detach.opacity(0.95))
-        .padding(.horizontal, compact ? 6 : 7)
-        .padding(.vertical, compact ? 2 : 3)
-        .background(
-            Capsule(style: .continuous)
-                .fill(Palette.detach.opacity(0.12))
-                .overlay(
-                    Capsule(style: .continuous)
-                        .strokeBorder(Palette.detach.opacity(0.28), lineWidth: 0.5)
-                )
-        )
-        .modifier(PiChatPulseModifier(minOpacity: 0.65, maxOpacity: 1.0, duration: 1.4))
-    }
-}
-
-// MARK: - Formatted text
-
-struct PiChatFormattedText: View, Equatable {
-    let text: String
-    var style: PiChatStyle = .workspace
-    var isStreaming: Bool = false
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    init(_ text: String, style: PiChatStyle = .workspace, isStreaming: Bool = false) {
-        self.text = text
-        self.style = style
-        self.isStreaming = isStreaming
-    }
-
-    static func == (lhs: PiChatFormattedText, rhs: PiChatFormattedText) -> Bool {
-        lhs.text == rhs.text && lhs.isStreaming == rhs.isStreaming && lhs.style == rhs.style
-    }
-
-    var body: some View {
-        if isStreaming {
-            streamingText
-        } else {
-            PiChatMarkdownView(text: text, style: style)
-        }
-    }
-
-    private var fallbackText: some View {
-        Text(text)
-            .font(Typo.reading(style.bodySize))
-            .foregroundColor(Palette.text)
-            .textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var streamingText: some View {
-        // Split the (drained) text into stanzas. Word-level growth happens within
-        // the trailing stanza — that just updates its Text, no transition. A new
-        // stanza appearing is an insertion, so it fades + slides up as a unit:
-        // the "settle" motion. The cursor rides the last stanza.
-        let stanzas = text.components(separatedBy: "\n\n")
-        return VStack(alignment: .leading, spacing: 8) {
-            ForEach(Array(stanzas.enumerated()), id: \.offset) { index, stanza in
-                Group {
-                    if index == stanzas.count - 1 {
-                        // The live, growing paragraph: words materialize in + caret.
-                        PiChatRevealParagraph(text: stanza, size: style.bodySize)
-                    } else {
-                        // Settled paragraphs read as plain copy.
-                        Text(stanza)
-                            .font(Typo.reading(style.bodySize))
-                            .foregroundColor(Palette.text)
-                            .textSelection(.enabled)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .transition(reduceMotion
-                    ? .opacity
-                    : .asymmetric(
-                        insertion: .opacity
-                            .combined(with: .move(edge: .bottom))
-                            .combined(with: .scale(scale: 0.97, anchor: .leading)),
-                        removal: .opacity
-                    ))
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        // Animate only on stanza-count changes, so per-word growth stays smooth
-        // (no layout jitter) while a landing stanza settles with a soft spring.
-        .animation(
-            reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.82),
-            value: stanzas.count
-        )
-    }
-
-    /// Render the text as a vertical stack of either paragraph or code-block
-    /// views. Code blocks (fenced ``` or indented) get their own monospace
-    /// container with shiki-style coloring.
-    private func renderBlocks() -> AnyView? {
-        let blocks = splitBlocks(text)
-        guard !blocks.isEmpty else { return nil }
-
-        let stack = VStack(alignment: .leading, spacing: 10) {
-            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
-                blockView(block)
-            }
-        }
-
-        return AnyView(
-            stack
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .textSelection(.enabled)
-        )
-    }
-
-    @ViewBuilder
-    private func blockView(_ block: PiChatTextBlock) -> some View {
-        switch block.kind {
-        case .code(let language, let body):
-            PiChatCodeBlock(language: language, source: body)
-        case .paragraph:
-            if let attributed = PiChatFormat.markdownText(block.text, size: style.bodySize) {
-                attributed
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                Text(block.text)
-                    .font(Typo.body(style.bodySize))
-                    .foregroundColor(Palette.text)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-    }
-}
-
-struct PiChatTextBlock {
-    enum Kind {
-        case paragraph
-        case code(language: String?, body: String)
-    }
-    let kind: Kind
-    let text: String
-}
-
-private func splitBlocks(_ source: String) -> [PiChatTextBlock] {
-    let lines = source.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
-    var blocks: [PiChatTextBlock] = []
-    var paragraphBuffer: [String] = []
-    var inCodeFence = false
-    var codeLanguage: String?
-    var codeBuffer: [String] = []
-
-    func flushParagraph() {
-        if !paragraphBuffer.isEmpty {
-            let text = paragraphBuffer.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-            if !text.isEmpty {
-                blocks.append(PiChatTextBlock(kind: .paragraph, text: text))
-            }
-            paragraphBuffer.removeAll(keepingCapacity: true)
-        }
-    }
-
-    func flushCode() {
-        let body = codeBuffer.joined(separator: "\n")
-        if !body.isEmpty {
-            blocks.append(PiChatTextBlock(kind: .code(language: codeLanguage, body: body), text: body))
-        }
-        codeBuffer.removeAll(keepingCapacity: true)
-        codeLanguage = nil
-    }
-
-    for raw in lines {
-        let line = raw
-
-        if line.hasPrefix("```") {
-            if inCodeFence {
-                flushCode()
-                inCodeFence = false
-            } else {
-                flushParagraph()
-                inCodeFence = true
-                codeLanguage = String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces)
-                if codeLanguage?.isEmpty == true { codeLanguage = nil }
-            }
-            continue
-        }
-
-        if inCodeFence {
-            codeBuffer.append(line)
-            continue
-        }
-
-        // Indented (4+ spaces) as a code block when no fence is active.
-        if line.hasPrefix("    ") && !line.isEmpty {
-            flushParagraph()
-            inCodeFence = true
-            codeLanguage = nil
-            codeBuffer.append(String(line.dropFirst(4)))
-            continue
-        }
-
-        paragraphBuffer.append(line)
-    }
-
-    if inCodeFence {
-        flushCode()
-    } else {
-        flushParagraph()
-    }
-
-    return blocks
-}
-
-// MARK: - Code block view
-
-struct PiChatCodeBlock: View {
-    let language: String?
-    let source: String
-
-    // Renders through HudsonUI's shared `HudCodeBlock` — the tokenizer that
-    // lived here was donated upstream (as `HudCodeSyntax`) so highlighting is
-    // maintained once, in the kit. Thin adapter; call sites stay stable.
-    var body: some View {
-        HudCodeBlock(language: language, source: source)
-    }
-}
-
 // MARK: - Composer
 
-struct PiChatComposer: View {
-    @ObservedObject var session: PiChatSession
-    var style: PiChatStyle = .workspace
+struct WorkspaceAssistantComposer: View {
+    @ObservedObject var session: WorkspaceAssistantSession
+    var style: WorkspaceAssistantStyle = .workspace
     var focus: FocusState<Bool>.Binding
 
     #if canImport(HudsonVoice)
@@ -775,8 +520,7 @@ struct PiChatComposer: View {
                 onAction: handle(_:),
                 onRemoveQueued: { session.removeQueuedPrompt(id: $0.id) },
                 onEditQueued: { session.editQueuedPrompt(id: $0.id) },
-                model: HudComposerModelInfo(model: session.currentProvider.name.lowercased(), effort: "auto"),
-                onAddAttachment: { /* attachments not wired in Lattices yet — placeholder affordance */ }
+                model: HudComposerModelInfo(model: session.currentProvider.name.lowercased(), effort: "auto")
             )
         }
         .padding(.horizontal, style.horizontalPadding)
@@ -809,10 +553,9 @@ struct PiChatComposer: View {
 
     // MARK: Control-row accessories
 
-    /// The `+` attach affordance and the model · effort label are now first-class
-    /// in HudComposer (passed via `onAddAttachment` / `model`), so Lattices only
+    /// The model · effort label is first-class in HudComposer, so Lattices only
     /// supplies the bespoke mic here. Effort is a placeholder until a real setting
-    /// exists; attachments aren't wired on the chat path yet.
+    /// exists; attachments stay hidden until the chat path wires them.
     @ViewBuilder
     private var micAccessory: some View {
         #if canImport(HudsonVoice)
@@ -867,7 +610,7 @@ struct PiChatComposer: View {
     /// partial transcript beside it. Shown only while the mic is hot.
     private var dictationStrip: some View {
         HStack(spacing: 9) {
-            PiChatWaveform(tint: micAccent)
+            WorkspaceAssistantWaveform(tint: micAccent)
             if !voice.partial.isEmpty {
                 Text(voice.partial)
                     .font(Typo.body(style.composerSize))
@@ -952,7 +695,7 @@ struct PiChatComposer: View {
 /// A small synthetic 5-bar equalizer shown while dictating. Decorative, not
 /// amplitude-driven — each bar breathes on its own cadence so the cluster never
 /// reads as a flat loop. Ported from OpenScout's ScoutWaveform.
-private struct PiChatWaveform: View {
+private struct WorkspaceAssistantWaveform: View {
     var tint: Color
     @State private var animate = false
 
@@ -982,13 +725,13 @@ private struct PiChatWaveform: View {
 /// Compact provider/status indicator, now living in the header next to the
 /// gear instead of under the composer. A live status dot + provider name;
 /// shows the streaming/tool phase while a turn is in flight.
-struct PiChatModelChip: View {
-    @ObservedObject var session: PiChatSession
+struct WorkspaceAssistantModelChip: View {
+    @ObservedObject var session: WorkspaceAssistantSession
 
     var body: some View {
         HStack(spacing: 6) {
             if session.isSending {
-                PiChatStatusPulse(color: statusColor)
+                WorkspaceAssistantStatusPulse(color: statusColor)
             } else {
                 Circle()
                     .fill(statusColor)
@@ -1030,163 +773,7 @@ struct PiChatModelChip: View {
 
 // MARK: - Chrome (avatars, indicators, badges)
 
-struct PiChatWorkingIndicator: View {
-    var label: String = "Working"
-
-    var body: some View {
-        HStack(spacing: 10) {
-            PiChatWaveDots()
-
-            Text(label)
-                .font(Typo.caption(11))
-                .foregroundColor(Palette.textDim)
-        }
-        .padding(.vertical, 2)
-        .accessibilityLabel(label)
-    }
-}
-
-struct PiChatWaveDots: View {
-    var dotSize: CGFloat = 6
-    var spacing: CGFloat = 5
-
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
-            let time = timeline.date.timeIntervalSinceReferenceDate
-            HStack(spacing: spacing) {
-                ForEach(0..<3, id: \.self) { index in
-                    // Opacity-only: dots never change size or position, so the
-                    // label beside them can't be shoved around. A soft highlight
-                    // travels across the three dots — calm, no motion artifacts.
-                    let wave = sin(time * 2.6 - Double(index) * 0.9)
-                    let opacity = 0.30 + 0.45 * (wave + 1) / 2
-
-                    Circle()
-                        .fill(Palette.running.opacity(opacity))
-                        .frame(width: dotSize, height: dotSize)
-                }
-            }
-            .frame(height: dotSize, alignment: .center)
-        }
-    }
-}
-
-/// A glowing bar caret that occupies a full text line-box with the bar seated
-/// near the baseline — so it sits right when flow-laid after words (which pack
-/// from the row top), instead of floating above the line.
-struct PiChatStreamCursor: View {
-    var size: CGFloat = 13
-
-    var body: some View {
-        let lineH = (size * 1.34).rounded()
-        let barH  = (size * 1.04).rounded()
-        let seat  = (size * 0.20).rounded()
-        return ZStack(alignment: .bottom) {
-            Color.clear.frame(width: 3, height: lineH)
-            RoundedRectangle(cornerRadius: 1, style: .continuous)
-                .fill(Palette.running.opacity(0.95))
-                .frame(width: 2, height: barH)
-                .shadow(color: Palette.running.opacity(0.55), radius: 5)
-                .padding(.bottom, seat)
-                .modifier(PiChatPulseModifier(minOpacity: 0.45, maxOpacity: 1.0, duration: 0.85))
-        }
-    }
-}
-
-/// The actively-streaming paragraph, revealed word-by-word: each new word
-/// materializes out of a soft blur with a small upward drift and a brief emerald
-/// glow, and a glowing caret rides the end. Multi-line in-progress text and
-/// reduce-motion fall back to a plain reveal; settled paragraphs + the finished
-/// message render as normal selectable copy.
-struct PiChatRevealParagraph: View {
-    let text: String
-    let size: CGFloat
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    private struct Token: Identifiable { let id: Int; let text: String }
-
-    private var tokens: [Token] {
-        let words = text.components(separatedBy: " ")
-        return words.enumerated().map { i, w in
-            Token(id: i, text: i < words.count - 1 ? w + " " : w)
-        }
-    }
-
-    var body: some View {
-        if reduceMotion || text.contains("\n") {
-            HStack(alignment: .bottom, spacing: 0) {
-                Text(text).font(Typo.reading(size)).foregroundColor(Palette.text)
-                PiChatStreamCursor(size: size)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        } else {
-            FlowLayout(spacing: 0, lineSpacing: (size * 0.42).rounded(), alignment: .leading) {
-                ForEach(tokens) { tok in
-                    Text(tok.text)
-                        .font(Typo.reading(size))
-                        .foregroundColor(Palette.text)
-                        .transition(.materialize)
-                }
-                PiChatStreamCursor(size: size)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .animation(.easeOut(duration: 0.3), value: tokens.count)
-        }
-    }
-}
-
-private struct RevealModifier: ViewModifier {
-    var blur: CGFloat
-    var opacity: Double
-    var dy: CGFloat
-    var glow: CGFloat
-    func body(content: Content) -> some View {
-        content
-            .blur(radius: blur)
-            .opacity(opacity)
-            .offset(y: dy)
-            .shadow(color: Palette.running.opacity(glow > 0.1 ? 0.55 : 0), radius: glow)
-    }
-}
-
-private extension AnyTransition {
-    /// Words condense into being: blur→sharp, fade in, drift up, with a brief glow.
-    static var materialize: AnyTransition {
-        .modifier(
-            active: RevealModifier(blur: 5, opacity: 0, dy: 3, glow: 7),
-            identity: RevealModifier(blur: 0, opacity: 1, dy: 0, glow: 0)
-        )
-    }
-}
-
-struct PiChatStreamingBadge: View {
-    var body: some View {
-        HStack(spacing: 5) {
-            Circle()
-                .fill(Palette.running)
-                .frame(width: 5, height: 5)
-                .modifier(PiChatPulseModifier(minOpacity: 0.45, maxOpacity: 1.0, duration: 1.1))
-
-            Text("LIVE")
-                .font(Typo.geistMonoBold(9))
-                .tracking(0.6)
-                .foregroundColor(Palette.running)
-        }
-        .padding(.horizontal, 7)
-        .padding(.vertical, 3)
-        .background(
-            Capsule(style: .continuous)
-                .fill(Palette.running.opacity(0.12))
-                .overlay(
-                    Capsule(style: .continuous)
-                        .strokeBorder(Palette.running.opacity(0.28), lineWidth: 0.5)
-                )
-        )
-    }
-}
-
-struct PiChatStatusPulse: View {
+struct WorkspaceAssistantStatusPulse: View {
     let color: Color
 
     var body: some View {
@@ -1194,7 +781,7 @@ struct PiChatStatusPulse: View {
             Circle()
                 .fill(color.opacity(0.22))
                 .frame(width: 10, height: 10)
-                .modifier(PiChatPulseModifier(minOpacity: 0.15, maxOpacity: 0.55, duration: 1.2))
+                .modifier(WorkspaceAssistantPulseModifier(minOpacity: 0.15, maxOpacity: 0.55, duration: 1.2))
 
             Circle()
                 .fill(color)
@@ -1203,20 +790,7 @@ struct PiChatStatusPulse: View {
     }
 }
 
-struct PiChatSendSpinner: View {
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
-            let angle = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1) * 360
-            Circle()
-                .trim(from: 0.08, to: 0.62)
-                .stroke(Palette.bg.opacity(0.92), style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                .rotationEffect(.degrees(angle))
-                .frame(width: 14, height: 14)
-        }
-    }
-}
-
-private struct PiChatPulseModifier: ViewModifier {
+private struct WorkspaceAssistantPulseModifier: ViewModifier {
     var minOpacity: Double = 0.25
     var maxOpacity: Double = 0.9
     var duration: Double = 1.0
@@ -1232,7 +806,7 @@ private struct PiChatPulseModifier: ViewModifier {
 
 // MARK: - Style & formatting
 
-enum PiChatStyle: Equatable {
+enum WorkspaceAssistantStyle: Equatable {
     case workspace
     case dock
 
@@ -1287,56 +861,5 @@ enum PiChatStyle: Equatable {
 
     var placeholder: String {
         "Message the assistant…"
-    }
-}
-
-enum PiChatFormat {
-    private static let timeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm"
-        return formatter
-    }()
-
-    static func time(_ date: Date) -> String {
-        timeFormatter.string(from: date)
-    }
-
-    static func markdownText(_ source: String, size: CGFloat) -> Text? {
-        let normalized = normalizeMarkdownTables(source)
-        var options = AttributedString.MarkdownParsingOptions()
-        // .full flattens block structure — SwiftUI's Text(AttributedString)
-        // ignores paragraph/list presentation intents, so multi-line and
-        // bulleted replies collapse into one run-on blob. Preserving the
-        // source whitespace keeps newlines/lists intact while still rendering
-        // inline bold/italic/code.
-        options.interpretedSyntax = .inlineOnlyPreservingWhitespace
-        guard let attributed = try? AttributedString(markdown: normalized, options: options) else {
-            return nil
-        }
-        return Text(attributed)
-            .font(Typo.body(size))
-            .foregroundColor(Palette.text)
-    }
-
-    private static func normalizeMarkdownTables(_ text: String) -> String {
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        guard !lines.isEmpty else { return text }
-
-        var output: [String] = []
-        var index = 0
-        while index < lines.count {
-            let line = lines[index]
-            let isTableRow = line.contains("|") && line.filter({ $0 != "|" && !$0.isWhitespace }).count > 0
-            let prev = output.last
-            let prevIsBlank = prev?.trimmingCharacters(in: .whitespaces).isEmpty ?? true
-
-            if isTableRow, let prev, !prevIsBlank, !prev.contains("|") {
-                output.append("")
-            }
-
-            output.append(line)
-            index += 1
-        }
-        return output.joined(separator: "\n")
     }
 }

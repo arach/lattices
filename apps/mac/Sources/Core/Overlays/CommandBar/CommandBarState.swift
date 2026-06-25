@@ -59,7 +59,7 @@ final class CommandBarState: ObservableObject {
         switch s.action {
         case .fillCommand(let c):     return (c.hint.aliases.first ?? c.name) + " "
         case .setQuery(let q):        return q
-        case .placeCurrent(let spec): return spec.wireValue
+        case .placeCurrent(let spec): return spec.compactValue
         case .runCommand(let intent, let slots, _):
             let v = verb(intent)
             return slots.isEmpty ? v : v + " " + s.detail
@@ -147,7 +147,7 @@ final class CommandBarState: ObservableObject {
 
         func addPlacement(_ spec: PlacementSpec, _ label: String, _ glyph: String, section: String? = nil) {
             guard seen.insert("p:" + spec.wireValue).inserted else { return }
-            out.append(.init(label: label, detail: spec.wireValue, glyph: glyph,
+            out.append(.init(label: label, detail: placementDetail(spec), glyph: glyph,
                              action: .placeCurrent(spec), previewSpec: spec, section: section))
         }
         func addCommand(_ cmd: BarCommand, section: String? = nil) {
@@ -163,6 +163,12 @@ final class CommandBarState: ObservableObject {
             // A curated starter menu on "/": common placements, then a few key
             // verbs by section. Typing filters the full catalog.
             for p in Self.menuPositions { addPlacement(.tile(p), p.label, p.arrowGlyph, section: "Place") }
+            if let cell = PlacementSpec(string: "4x4:1,2") {
+                addPlacement(cell, "4x4:1,2", "rectangle.split.2x2", section: "Grid")
+            }
+            if let span = PlacementSpec(string: "4x4:1,1-2,2") {
+                addPlacement(span, "4x4 span", "rectangle.split.2x2", section: "Grid")
+            }
             for group in CommandCatalog.featuredGroups {
                 for name in group.names {
                     if let cmd = commands.first(where: { $0.name == name }) {
@@ -235,7 +241,7 @@ final class CommandBarState: ObservableObject {
         var seen = Set<String>()
         func add(_ spec: PlacementSpec, _ label: String, _ glyph: String) {
             guard seen.insert(spec.wireValue).inserted else { return }
-            out.append(.init(label: label, detail: spec.wireValue, glyph: glyph,
+            out.append(.init(label: label, detail: placementDetail(spec), glyph: glyph,
                              action: .runCommand(intent: "move_to_display",
                                                  slots: ["display": .int(idx), "position": .string(spec.wireValue)],
                                                  subject: .currentWindow),
@@ -256,6 +262,10 @@ final class CommandBarState: ObservableObject {
     private func slotValues(_ slot: IntentSlot, filter raw: String) -> [SlotValue] {
         let f = raw.lowercased()
 
+        if slot.type == "position" {
+            return positionSlotValues(filter: raw)
+        }
+
         if let vals = slot.enumValues, !vals.isEmpty {
             return vals.filter { f.isEmpty || $0.lowercased().contains(f) }
                 .map { val in
@@ -272,19 +282,7 @@ final class CommandBarState: ObservableObject {
 
         switch slot.type {
         case "position":
-            var out: [SlotValue] = []
-            var seen = Set<String>()
-            if let spec = PlacementSpec(string: f), !f.isEmpty {
-                seen.insert(spec.wireValue)
-                out.append(SlotValue(label: placementLabel(spec, fallback: f), detail: spec.wireValue,
-                                     glyph: "scope", value: .string(spec.wireValue), spec: spec))
-            }
-            let positions = f.isEmpty ? Self.commonPositions : TilePosition.allCases.filter { positionMatches($0, f) }
-            for p in positions where seen.insert(p.rawValue).inserted {
-                out.append(SlotValue(label: p.label, detail: p.rawValue, glyph: p.arrowGlyph,
-                                     value: .string(p.rawValue), spec: .tile(p)))
-            }
-            return out
+            return positionSlotValues(filter: raw)
 
         case "int":
             // move_to_display's "display" slot is handled by moveToDisplaySuggestions.
@@ -313,6 +311,23 @@ final class CommandBarState: ObservableObject {
         }
     }
 
+    private func positionSlotValues(filter raw: String) -> [SlotValue] {
+        let f = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        var out: [SlotValue] = []
+        var seen = Set<String>()
+        if let spec = PlacementSpec(string: f), !f.isEmpty {
+            seen.insert(spec.wireValue)
+            out.append(SlotValue(label: placementLabel(spec, fallback: f), detail: placementDetail(spec),
+                                 glyph: "scope", value: .string(spec.wireValue), spec: spec))
+        }
+        let positions = f.isEmpty ? Self.commonPositions : TilePosition.allCases.filter { positionMatches($0, f) }
+        for p in positions where seen.insert(p.rawValue).inserted {
+            out.append(SlotValue(label: p.label, detail: p.rawValue, glyph: p.arrowGlyph,
+                                 value: .string(p.rawValue), spec: .tile(p)))
+        }
+        return out
+    }
+
     // MARK: - Matching helpers
 
     private func commandMatches(_ cmd: BarCommand, _ prefix: String) -> Bool {
@@ -328,5 +343,9 @@ final class CommandBarState: ObservableObject {
     private func placementLabel(_ spec: PlacementSpec, fallback: String) -> String {
         if case .tile(let p) = spec { return p.label }
         return fallback
+    }
+
+    private func placementDetail(_ spec: PlacementSpec) -> String {
+        spec.compactValue
     }
 }

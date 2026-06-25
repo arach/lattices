@@ -154,7 +154,7 @@ struct ScreenMapView: View {
     @ObservedObject private var diagnosticLog = DiagnosticLog.shared
     @ObservedObject private var studioLayers = StudioLayerStore.shared
     @ObservedObject private var desktop = DesktopModel.shared
-    @StateObject private var piChat = PiChatSession.shared
+    @StateObject private var piChat = WorkspaceAssistantSession.shared
     @State private var eventMonitor: Any?
     @State private var mouseDownMonitor: Any?
     @State private var mouseDragMonitor: Any?
@@ -236,7 +236,7 @@ struct ScreenMapView: View {
                 }
             }
             if piChat.isVisible {
-                PiChatDock(session: piChat)
+                WorkspaceAssistantDock(session: piChat)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             footerBar
@@ -1476,7 +1476,7 @@ struct ScreenMapView: View {
 
     private func askAssistantAboutStudioLayer(_ layer: StudioLayer, matches: [WindowEntry]) {
         let spec = studioLayers.layerContextJSON(layer, matches: matches)
-        let attachment = PiChatAttachment(
+        let attachment = WorkspaceAssistantAttachment(
             name: "\(safeAttachmentStem(layer.name))-layer.json",
             mediaType: "application/json",
             content: spec,
@@ -1484,7 +1484,7 @@ struct ScreenMapView: View {
         )
         let prompt = "Help me reason about the attached Lattices Studio layer. Explain what the rules mean, what live windows currently match, and suggest a cleaner rule if the layer is too broad or too narrow."
         ScreenMapWindowController.shared.showAssistant()
-        PiChatSession.shared.send(prompt, attachments: [attachment])
+        WorkspaceAssistantSession.shared.send(prompt, attachments: [attachment])
     }
 
     private func deleteStudioLayer(_ layer: StudioLayer) {

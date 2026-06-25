@@ -54,7 +54,7 @@ export function PlacementSpecPanel() {
     }
     const parsed = parseGrid(value.trim());
     if (!parsed) {
-      setErrors((e) => ({ ...e, grid: "expected grid:CxR:c,r" }));
+      setErrors((e) => ({ ...e, grid: "expected grid:CxR:c,r or CxR:c,r" }));
       return;
     }
     setErrors((e) => ({ ...e, grid: undefined }));
@@ -142,7 +142,7 @@ export function PlacementSpecPanel() {
           <Divider />
           <SpecInput
             label="Grid"
-            hint=".grid(CxR:c,r)"
+            hint="grid:CxR:c,r"
             active={resolved.source === "grid"}
             value={gridInput}
             error={errors.grid}

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct PiAuthPromptCard: View {
-    @ObservedObject var session: PiChatSession
+    @ObservedObject var session: WorkspaceAssistantSession
     let prompt: PiAuthPrompt
     let compact: Bool
     var focus: FocusState<Bool>.Binding

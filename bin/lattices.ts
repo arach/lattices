@@ -3585,7 +3585,7 @@ interface SpaceOptimizeRequest {
 function isPlacementToken(value?: string): boolean {
   if (!value) return false;
   const normalized = value.toLowerCase();
-  return normalized in tilePresets || /^grid:\d+x\d+:\d+,\d+$/i.test(normalized);
+  return normalized in tilePresets || /^(?:grid:)?\d+x\d+:\d+,\d+(?:-\d+,\d+)?$/i.test(normalized);
 }
 
 function parseSpaceOptimizeArgs(rawArgs: string[], defaultScope: SpaceOptimizeScope): SpaceOptimizeRequest {
@@ -3637,15 +3637,49 @@ async function optimizeWindowsCommand(
   }
 }
 
+function gridTileBounds(position: string, screen: ScreenBounds): number[] | null {
+  const match = position.toLowerCase().match(/^(?:grid:)?(\d+)x(\d+):(\d+),(\d+)(?:-(\d+),(\d+))?$/);
+  if (!match) return null;
+
+  const columns = Number(match[1]);
+  const rows = Number(match[2]);
+  const c0 = Number(match[3]);
+  const r0 = Number(match[4]);
+  const c1 = match[5] === undefined ? c0 : Number(match[5]);
+  const r1 = match[6] === undefined ? r0 : Number(match[6]);
+  const leftCell = Math.min(c0, c1);
+  const rightCell = Math.max(c0, c1);
+  const topCell = Math.min(r0, r1);
+  const bottomCell = Math.max(r0, r1);
+
+  if (
+    columns <= 0 || rows <= 0 ||
+    leftCell < 0 || topCell < 0 ||
+    rightCell >= columns || bottomCell >= rows
+  ) {
+    return null;
+  }
+
+  const cellW = screen.w / columns;
+  const cellH = screen.h / rows;
+  return [
+    screen.x + leftCell * cellW,
+    screen.y + topCell * cellH,
+    screen.x + (rightCell + 1) * cellW,
+    screen.y + (bottomCell + 1) * cellH,
+  ];
+}
+
 function tileWindow(position: string): void {
-  const preset = tilePresets[position];
-  if (!preset) {
+  const normalized = position.toLowerCase();
+  const screen = getScreenBounds();
+  const bounds = tilePresets[normalized]?.(screen) ?? gridTileBounds(normalized, screen);
+  if (!bounds) {
     console.log(`Unknown position: ${position}`);
-    console.log(`Available: ${Object.keys(tilePresets).filter(k => !k.includes("-half") && k !== "max").join(", ")}`);
+    console.log(`Available: ${Object.keys(tilePresets).filter(k => !k.includes("-half") && k !== "max").join(", ")}, grid:CxR:c,r, CxR:c,r`);
     return;
   }
-  const screen = getScreenBounds();
-  const [x1, y1, x2, y2] = preset(screen).map(Math.round);
+  const [x1, y1, x2, y2] = bounds.map(Math.round);
   const script = `
     tell application "System Events"
       set frontApp to name of first application process whose frontmost is true
@@ -3654,7 +3688,7 @@ function tileWindow(position: string): void {
       set bounds of front window to {${x1}, ${y1}, ${x2}, ${y2}}
     end tell`;
   runQuiet(`osascript -e '${esc(script)}'`);
-  console.log(`Tiled → ${position}`);
+  console.log(`Tiled → ${normalized}`);
 }
 
 function createOrAttach(): void {

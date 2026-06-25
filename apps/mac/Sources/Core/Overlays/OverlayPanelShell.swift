@@ -80,7 +80,7 @@ struct OverlayPanelShell {
         var hidesOnDeactivate = false
         var isReleasedWhenClosed = false
         var isMovableByWindowBackground = false
-        var collectionBehavior: NSWindow.CollectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        var collectionBehavior: NSWindow.CollectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         var minSize: NSSize? = nil
         var maxSize: NSSize? = nil
         var activatesOnMouseDown = false

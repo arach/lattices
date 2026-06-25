@@ -375,14 +375,15 @@ final class VoiceCommandState: ObservableObject {
             return message
         }
         if obj["ok"]?.boolValue == false {
+            if intentName == "focus" {
+                return friendlyFocusSummary(obj, fallback: fallback, success: false)
+            }
             return obj["reason"]?.stringValue ?? fallbackSummary(fallback, defaultValue: "Voice command did not complete")
         }
 
         switch intentName ?? "" {
         case "focus":
-            if let target = obj["focused"]?.stringValue ?? obj["app"]?.stringValue {
-                return "Focused \(target)"
-            }
+            return friendlyFocusSummary(obj, fallback: fallback, success: true)
         case "tile_window":
             if let position = obj["position"]?.stringValue {
                 return "Moved window to \(position)"
@@ -406,6 +407,47 @@ final class VoiceCommandState: ObservableObject {
         return fallbackSummary(fallback, defaultValue: obj["ok"]?.boolValue == true ? "Done" : "Result ready")
     }
 
+    private func friendlyFocusSummary(_ obj: [String: JSON], fallback: String?, success: Bool) -> String {
+        if let launched = nonEmpty(obj["launched"]?.stringValue) {
+            return "Launched \(launched)"
+        }
+
+        let app = nonEmpty(obj["app"]?.stringValue ?? obj["focused"]?.stringValue)
+        let session = nonEmpty(obj["session"]?.stringValue ?? obj["latticesSession"]?.stringValue)
+        let requested = nonEmpty(obj["requested"]?.stringValue)
+        let rawTitle = nonEmpty(obj["title"]?.stringValue)
+        let title = nonEmpty(rawTitle.map(cleanWindowTitle))
+        let fallbackText = nonEmpty(fallback)
+        let fallbackTarget = fallbackText == "ok" ? nil : fallbackText
+        let target = app ?? session ?? title ?? requested ?? fallbackTarget ?? "target"
+
+        var summary = success ? "Focused \(target)" : "Could not focus \(target)"
+        if let title, title.localizedCaseInsensitiveCompare(target) != .orderedSame {
+            summary += " - \"\(clipped(title))\""
+        }
+
+        var details: [String] = []
+        if let session, session.localizedCaseInsensitiveCompare(target) != .orderedSame {
+            details.append("session \(session)")
+        }
+        if let wid = obj["wid"]?.intValue {
+            details.append("wid \(wid)")
+        }
+        if let resolution = nonEmpty(obj["targetResolution"]?.stringValue) {
+            details.append("via \(humanFocusResolution(resolution))")
+        }
+        if !success, let reason = nonEmpty(obj["reason"]?.stringValue) {
+            details.append(reason)
+        } else if success, obj["raised"]?.boolValue == false {
+            details.append("raise not confirmed")
+        }
+
+        if !details.isEmpty {
+            summary += " (\(details.joined(separator: ", ")))"
+        }
+        return summary
+    }
+
     private func friendlyScalarSummary(_ data: JSON, fallback: String?) -> String {
         if let text = data.stringValue, !text.isEmpty {
             return text
@@ -422,6 +464,35 @@ final class VoiceCommandState: ObservableObject {
             return text
         }
         return defaultValue
+    }
+
+    private func nonEmpty(_ text: String?) -> String? {
+        let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func cleanWindowTitle(_ title: String) -> String {
+        let cleaned = title
+            .replacingOccurrences(of: #"\[lattices:[^\]]+\]\s*"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? title : cleaned
+    }
+
+    private func clipped(_ text: String, limit: Int = 90) -> String {
+        guard text.count > limit else { return text }
+        return String(text.prefix(max(0, limit - 3))).trimmingCharacters(in: .whitespacesAndNewlines) + "..."
+    }
+
+    private func humanFocusResolution(_ resolution: String) -> String {
+        switch resolution {
+        case "wid": return "window id"
+        case "app": return "app match"
+        case "search": return "search"
+        case "session": return "session"
+        case "session-locator": return "session locator"
+        case "app-launch": return "app launch"
+        default: return resolution.replacingOccurrences(of: "-", with: " ")
+        }
     }
 }
 

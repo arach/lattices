@@ -1156,7 +1156,8 @@ Target resolution priority is `wid` → `session` → `app/title` → frontmost 
 **Placement strings**: `left`, `right`, `top`, `bottom`, `top-left`, `top-right`,
 `bottom-left`, `bottom-right`, `left-third`, `center-third`, `right-third`,
 `top-third`, `middle-third`, `bottom-third`, `left-quarter`, `right-quarter`,
-`top-quarter`, `bottom-quarter`, `maximize`, `center`, or `grid:CxR:C,R`.
+`top-quarter`, `bottom-quarter`, `maximize`, `center`, `grid:CxR:C,R`, or
+compact `CxR:C,R`.
 
 **Typed placement examples**:
 

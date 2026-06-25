@@ -106,7 +106,11 @@ final class CommandModeWindow {
         panel.isMovableByWindowBackground = true
         panel.hidesOnDeactivate = true
         panel.becomesKeyOnlyIfNeeded = false
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        // Keep this as a single-display panel. `.canJoinAllSpaces` can mirror
+        // transient command surfaces across every active display in dual-monitor
+        // setups; `.moveToActiveSpace` follows the invocation Space without
+        // duplicating the panel.
+        panel.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         panel.isReleasedWhenClosed = false
         panel.sharingType = .readOnly
 
