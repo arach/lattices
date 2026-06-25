@@ -1157,7 +1157,8 @@ Target resolution priority is `wid` → `session` → `app/title` → frontmost 
 `bottom-left`, `bottom-right`, `left-third`, `center-third`, `right-third`,
 `top-third`, `middle-third`, `bottom-third`, `left-quarter`, `right-quarter`,
 `top-quarter`, `bottom-quarter`, `maximize`, `center`, `grid:CxR:C,R`, or
-compact `CxR:C,R`.
+compact `CxR:C,R`. The canonical `grid:` form is 0-indexed; the compact form is
+1-indexed for command entry.
 
 **Typed placement examples**:
 

@@ -22,6 +22,7 @@ final class UnifiedCommandBarWindow {
     /// overlapping the bar — mirrors the old `VoiceCommandWindow.shared.panel`.
     private(set) var panel: OverlayPanel?
     private var ghost: NSPanel?
+    private var gridHint: NSPanel?
     private var state: UnifiedCommandBarState?
     private var keyMonitor: Any?
     private var localFlagsMonitor: Any?
@@ -34,6 +35,8 @@ final class UnifiedCommandBarWindow {
 
     private var capturedTarget: (wid: UInt32, pid: Int32)?
     private var capturedScreen: NSScreen?
+    private var lastHighlightedWid: UInt32?
+    private var lastHighlightAt: Date = .distantPast
 
     private let panelWidth: CGFloat = 560
 
@@ -128,6 +131,9 @@ final class UnifiedCommandBarWindow {
         voicePhaseObserver?.cancel(); voicePhaseObserver = nil
         state?.voice.cancelProcessing()   // stop any in-flight capture/transcription
         ghost?.orderOut(nil); ghost = nil
+        gridHint?.orderOut(nil); gridHint = nil
+        lastHighlightedWid = nil
+        lastHighlightAt = .distantPast
         panel?.orderOut(nil); panel = nil
         state = nil
         capturedTarget = nil
@@ -279,6 +285,10 @@ final class UnifiedCommandBarWindow {
                 st.query = "/" + (c.hint.aliases.first ?? c.name) + " "
             case .setQuery(let q):
                 st.query = "/" + q
+            case .selectTileTarget(let wid, let label):
+                let verb = commandVerb(from: st.search.command.query, fallback: "tile")
+                st.search.command.selectTileTarget(wid: wid, label: label)
+                st.query = "/" + verb + " "
             case .placeCurrent(let spec):
                 guard let t = capturedTarget else { dismiss(); return }
                 let screen = capturedScreen ?? NSScreen.main ?? NSScreen.screens.first!
@@ -289,6 +299,10 @@ final class UnifiedCommandBarWindow {
                 WindowTiler.tileWindowById(wid: t.wid, pid: t.pid, to: spec, on: screen)
                 showConfirmation(glyph: arrow, title: app, subtitle: s.label, on: screen)
             case .runCommand(let intent, let slots, let subject):
+                if let spec = s.previewSpec,
+                   let target = previewTarget(for: s, slots: slots, subject: subject) {
+                    flyIn(wid: target.wid, to: spec, on: target.screen)
+                }
                 runIntent(intent, slots: slots, subject: subject, confirmGlyph: s.glyph, confirmTitle: s.label)
             }
         } else if IntentHeuristics.shouldAskAssistant(st.query) {
@@ -305,6 +319,11 @@ final class UnifiedCommandBarWindow {
             ordered[st.search.selectedIndex].action()
             dismiss()
         }
+    }
+
+    private func commandVerb(from raw: String, fallback: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.split(separator: " ").first.map(String.init) ?? fallback
     }
 
     private func commitVoice(_ voice: VoiceCommandState) {
@@ -417,6 +436,19 @@ final class UnifiedCommandBarWindow {
         st.query = "/" + st.search.command.completion(for: s)
     }
 
+    private func previewTarget(for suggestion: CommandSuggestion, slots: [String: JSON], subject: CommandSubject) -> (wid: UInt32, screen: NSScreen)? {
+        let wid = suggestion.previewWid
+            ?? slots["wid"]?.uint32Value
+            ?? (subject == .currentWindow ? capturedTarget?.wid : nil)
+        guard let wid else { return nil }
+        let screen = suggestion.previewScreen
+            ?? DesktopModel.shared.windows[wid].map { WindowTiler.screenForWindowFrame($0.frame) }
+            ?? capturedScreen
+            ?? NSScreen.main
+        guard let screen else { return nil }
+        return (wid, screen)
+    }
+
     private func runIntent(_ intent: String, slots: [String: JSON], subject: CommandSubject,
                            confirmGlyph: String? = nil, confirmTitle: String? = nil) {
         var slots = slots
@@ -511,27 +543,70 @@ final class UnifiedCommandBarWindow {
     }
 
     private func updateGhost() {
-        guard let st = state else { ghost?.orderOut(nil); ghost = nil; return }
+        guard let st = state else {
+            hidePlacementPreview()
+            return
+        }
         // Command mode previews the highlighted suggestion; plain-text NL commands
         // preview the resolved placement.
         let spec: PlacementSpec?
         let screen: NSScreen?
+        let sourceWid: UInt32?
         if st.commandMode {
+            let selected = st.search.command.selected
             spec = st.search.command.previewSpec
             screen = st.search.command.previewScreen ?? capturedScreen
+            sourceWid = selected?.previewWid ?? st.search.command.tileTarget?.wid ?? (spec == nil ? nil : capturedTarget?.wid)
         } else {
             spec = st.nlSpec
             screen = capturedScreen
+            sourceWid = spec == nil ? nil : capturedTarget?.wid
         }
+
+        if let sourceWid {
+            highlightPreviewSource(wid: sourceWid)
+        }
+
         guard let spec, let screen else {
-            ghost?.orderOut(nil); ghost = nil
+            hidePlacementPreview()
             return
         }
         let g = ghost ?? makeGhost()
         g.setFrame(ghostFrame(for: spec, on: screen), display: true)
         g.orderFront(nil)
+        updateGridHint(for: spec, on: screen)
         panel?.orderFront(nil)   // bar + ghost share .floating → keep the bar on top
         ghost = g
+    }
+
+    private func hidePlacementPreview() {
+        ghost?.orderOut(nil); ghost = nil
+        gridHint?.orderOut(nil); gridHint = nil
+    }
+
+    private func highlightPreviewSource(wid: UInt32) {
+        let now = Date()
+        guard wid != lastHighlightedWid || now.timeIntervalSince(lastHighlightAt) > 1.2 else { return }
+        lastHighlightedWid = wid
+        lastHighlightAt = now
+        WindowTiler.highlightWindowById(wid: wid)
+    }
+
+    private func updateGridHint(for spec: PlacementSpec, on screen: NSScreen) {
+        guard case .grid(let grid) = spec else {
+            gridHint?.orderOut(nil)
+            gridHint = nil
+            return
+        }
+
+        let hint = gridHint ?? makeGridHint()
+        hint.setFrame(screen.visibleFrame, display: true)
+        hint.contentView = NSHostingView(
+            rootView: GridPlacementScreenHint(grid: grid)
+                .preferredColorScheme(.dark)
+        )
+        hint.orderFront(nil)
+        gridHint = hint
     }
 
     /// Destination frame in Cocoa (bottom-left origin) screen coordinates.
@@ -572,6 +647,23 @@ final class UnifiedCommandBarWindow {
         return g
     }
 
+    private func makeGridHint() -> NSPanel {
+        let g = NSPanel(
+            contentRect: .zero,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        g.isOpaque = false
+        g.backgroundColor = .clear
+        g.level = .floating
+        g.hasShadow = false
+        g.ignoresMouseEvents = true
+        g.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+        g.sharingType = .readOnly
+        return g
+    }
+
     private func screenForWindowFrame(_ f: WindowFrame) -> NSScreen {
         let primaryH = NSScreen.screens.first?.frame.height ?? 1080
         let cx = CGFloat(f.x + f.w / 2)
@@ -580,5 +672,85 @@ final class UnifiedCommandBarWindow {
         return NSScreen.screens.first(where: { $0.frame.contains(pt) })
             ?? NSScreen.main
             ?? NSScreen.screens[0]
+    }
+}
+
+private struct GridPlacementScreenHint: View {
+    let grid: GridPlacement
+
+    var body: some View {
+        GeometryReader { geo in
+            let width = geo.size.width
+            let height = geo.size.height
+            let cellW = width / CGFloat(grid.columns)
+            let cellH = height / CGFloat(grid.rows)
+            let selected = CGRect(
+                x: CGFloat(grid.column) * cellW,
+                y: CGFloat(grid.row) * cellH,
+                width: CGFloat(grid.columnSpan) * cellW,
+                height: CGFloat(grid.rowSpan) * cellH
+            )
+            let badgeX = min(max(12, selected.minX + 12), max(12, width - 150))
+            let badgeY = min(max(12, selected.minY + 12), max(12, height - 34))
+
+            ZStack(alignment: .topLeading) {
+                Color.black.opacity(0.055)
+
+                Path { path in
+                    for column in 1..<grid.columns {
+                        let x = CGFloat(column) * cellW
+                        path.move(to: CGPoint(x: x, y: 0))
+                        path.addLine(to: CGPoint(x: x, y: height))
+                    }
+                    for row in 1..<grid.rows {
+                        let y = CGFloat(row) * cellH
+                        path.move(to: CGPoint(x: 0, y: y))
+                        path.addLine(to: CGPoint(x: width, y: y))
+                    }
+                }
+                .stroke(Color.white.opacity(0.18), lineWidth: 1)
+
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(HUDChrome.cyan.opacity(0.13))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(HUDChrome.cyan.opacity(0.85), lineWidth: 2)
+                    )
+                    .frame(width: selected.width, height: selected.height)
+                    .offset(x: selected.minX, y: selected.minY)
+
+                if grid.columns * grid.rows <= 36 {
+                    ForEach(0..<(grid.columns * grid.rows), id: \.self) { index in
+                        let column = index % grid.columns
+                        let row = index / grid.columns
+                        Text("\(column + 1),\(row + 1)")
+                            .font(Typo.monoBold(11))
+                            .foregroundColor(cellIsSelected(column: column, row: row)
+                                ? HUDChrome.cyan.opacity(0.95)
+                                : Palette.textMuted.opacity(0.72))
+                            .frame(width: cellW, height: cellH, alignment: .center)
+                            .offset(x: CGFloat(column) * cellW, y: CGFloat(row) * cellH)
+                    }
+                }
+
+                Text(grid.compactValue)
+                    .font(Typo.monoBold(12))
+                    .foregroundColor(HUDChrome.onSignal)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(HUDChrome.cyan.opacity(0.92))
+                    )
+                    .offset(x: badgeX, y: badgeY)
+            }
+        }
+    }
+
+    private func cellIsSelected(column: Int, row: Int) -> Bool {
+        column >= grid.column
+            && column < grid.column + grid.columnSpan
+            && row >= grid.row
+            && row < grid.row + grid.rowSpan
     }
 }

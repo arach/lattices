@@ -98,12 +98,18 @@ const REGION_KEYS = new Set([
 ]);
 
 function rectFromPosition(position: string, display: { width: number; height: number }): Rect | null {
-  const grid = position.match(/^(?:grid:)?(\d+)x(\d+):(\d+),(\d+)$/);
+  const grid = position.match(/^(grid:)?(\d+)x(\d+):(\d+),(\d+)$/);
   if (grid) {
-    const cols = Number(grid[1]);
-    const rows = Number(grid[2]);
-    const col = Number(grid[3]);
-    const row = Number(grid[4]);
+    const oneBased = !grid[1];
+    const cols = Number(grid[2]);
+    const rows = Number(grid[3]);
+    let col = Number(grid[4]);
+    let row = Number(grid[5]);
+    if (oneBased) {
+      col -= 1;
+      row -= 1;
+    }
+    if (cols <= 0 || rows <= 0 || col < 0 || row < 0 || col >= cols || row >= rows) return null;
     return {
       x: Math.round((col / cols) * display.width),
       y: Math.round((row / rows) * display.height),

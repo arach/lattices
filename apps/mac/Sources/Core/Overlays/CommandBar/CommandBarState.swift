@@ -8,6 +8,7 @@ enum CommandAction {
     case runCommand(intent: String, slots: [String: JSON], subject: CommandSubject)
     case fillCommand(BarCommand)                                       // drill into a command's args
     case setQuery(String)                                              // advance the query (e.g. pick a display)
+    case selectTileTarget(wid: UInt32, label: String)                  // choose a non-frontmost window to tile
 }
 
 /// One row in the bar's suggestion list.
@@ -19,14 +20,20 @@ struct CommandSuggestion: Identifiable {
     let action: CommandAction
     var previewSpec: PlacementSpec?    // drives the ghost when this row is highlighted
     var previewScreen: NSScreen? = nil // screen the ghost draws on (defaults to the captured one)
+    var previewWid: UInt32? = nil      // source window to flash while this row is highlighted
     var section: String? = nil          // optional grouping header shown in the empty menu
 
     var isFill: Bool {
         switch action {
-        case .fillCommand, .setQuery: return true
+        case .fillCommand, .setQuery, .selectTileTarget: return true
         default: return false
         }
     }
+}
+
+struct CommandTileTarget: Equatable {
+    let wid: UInt32
+    let label: String
 }
 
 /// Drives the command bar: parses the query into either a command stage (pick a
@@ -38,6 +45,7 @@ final class CommandBarState: ObservableObject {
     @Published var selectedIndex: Int = 0
     /// Title of the command being filled (nil in the command-picking stage).
     @Published var contextLabel: String? = nil
+    @Published private(set) var tileTarget: CommandTileTarget? = nil
 
     private let commands = CommandCatalog.all()
     private var cancellables = Set<AnyCancellable>()
@@ -60,8 +68,12 @@ final class CommandBarState: ObservableObject {
         case .fillCommand(let c):     return (c.hint.aliases.first ?? c.name) + " "
         case .setQuery(let q):        return q
         case .placeCurrent(let spec): return spec.compactValue
+        case .selectTileTarget:       return query
         case .runCommand(let intent, let slots, _):
             let v = verb(intent)
+            if let pos = slots["position"]?.stringValue, let spec = PlacementSpec(string: pos) {
+                return v + " " + spec.compactValue
+            }
             return slots.isEmpty ? v : v + " " + s.detail
         }
     }
@@ -106,14 +118,21 @@ final class CommandBarState: ObservableObject {
         query = (cmd.hint.aliases.first ?? cmd.name) + " "
     }
 
+    func selectTileTarget(wid: UInt32, label: String) {
+        tileTarget = CommandTileTarget(wid: wid, label: label)
+        rebuild(for: query)
+    }
+
     // MARK: - Parse → suggestions
 
     private func rebuild(for raw: String) {
         let q = raw.trimmingCharacters(in: .whitespaces).lowercased()
         if let (cmd, arg) = resolveCommand(q) {
+            if cmd.name != "tile_window" { tileTarget = nil }
             contextLabel = cmd.title
             suggestions = stageArguments(cmd, arg: arg)
         } else {
+            tileTarget = nil
             contextLabel = nil
             suggestions = stageCommands(prefix: q)
         }
@@ -199,6 +218,9 @@ final class CommandBarState: ObservableObject {
         if cmd.name == "move_to_display" {
             return moveToDisplaySuggestions(arg: arg)
         }
+        if cmd.name == "tile_window" {
+            return tileWindowSuggestions(arg: arg)
+        }
         guard let slot = cmd.activeSlot else {
             return [.init(label: "Run \(cmd.title)", detail: cmd.description, glyph: cmd.icon,
                           action: .runCommand(intent: cmd.name, slots: [:], subject: cmd.subject),
@@ -257,6 +279,154 @@ final class CommandBarState: ObservableObject {
         let label: String, detail: String, glyph: String
         let value: JSON
         let spec: PlacementSpec?
+    }
+
+    private struct TileWindowArg {
+        let targetFilter: String
+        let positionFilter: String
+        let hasExplicitTarget: Bool
+        let hasPositionText: Bool
+    }
+
+    private struct TileTargetMatch {
+        let entry: WindowEntry
+        let label: String
+        let detail: String
+    }
+
+    private func tileWindowSuggestions(arg: String) -> [CommandSuggestion] {
+        var out: [CommandSuggestion] = []
+        let parsed = parseTileWindowArg(arg)
+        let positionRows = positionSlotValues(filter: parsed.positionFilter)
+        let treatsArgumentAsTarget = parsed.hasExplicitTarget || (positionRows.isEmpty && !parsed.positionFilter.isEmpty)
+        let targetFilter = parsed.targetFilter.isEmpty && treatsArgumentAsTarget
+            ? parsed.positionFilter
+            : parsed.targetFilter
+        let lockedTarget = tileTarget
+        let targetMatches = lockedTarget == nil
+            ? tileTargetMatches(filter: targetFilter, limit: treatsArgumentAsTarget ? 10 : 6)
+            : []
+        let lockedMatch = lockedTarget.flatMap { tileTargetMatch(wid: $0.wid, fallbackLabel: $0.label) }
+        let implicitMatch = treatsArgumentAsTarget ? targetMatches.first : nil
+        let targetMatch = lockedMatch ?? implicitMatch
+        let targetWid = targetMatch?.entry.wid ?? lockedTarget?.wid
+        let targetScreen = targetMatch.map { WindowTiler.screenForWindowFrame($0.entry.frame) }
+
+        let targetRows = lockedTarget == nil
+            ? tileTargetSuggestions(matches: targetMatches, section: treatsArgumentAsTarget ? "Matching Windows" : "Target Window")
+            : []
+
+        if !parsed.hasPositionText || positionRows.isEmpty {
+            out.append(contentsOf: targetRows)
+        }
+
+        let section = targetMatch.map { "Place \($0.label)" } ?? (lockedTarget.map { "Place \($0.label)" } ?? "Place Frontmost")
+        for v in positionRows {
+            var slots: [String: JSON] = ["position": v.value]
+            let subject: CommandSubject
+            if let targetWid {
+                slots["wid"] = .int(Int(targetWid))
+                subject = .global
+            } else {
+                subject = .currentWindow
+            }
+            out.append(.init(
+                label: v.label,
+                detail: v.detail,
+                glyph: v.glyph,
+                action: .runCommand(intent: "tile_window", slots: slots, subject: subject),
+                previewSpec: v.spec,
+                previewScreen: targetScreen,
+                previewWid: targetWid,
+                section: section
+            ))
+        }
+        if parsed.hasPositionText, !positionRows.isEmpty {
+            out.append(contentsOf: targetRows)
+        }
+        return out
+    }
+
+    private func parseTileWindowArg(_ raw: String) -> TileWindowArg {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return TileWindowArg(targetFilter: "", positionFilter: "", hasExplicitTarget: false, hasPositionText: false)
+        }
+
+        let tokens = trimmed.split(separator: " ").map(String.init)
+        if let first = tokens.first, isExplicitTargetToken(first) {
+            let position = tokens.dropFirst().joined(separator: " ")
+            return TileWindowArg(
+                targetFilter: first,
+                positionFilter: position,
+                hasExplicitTarget: true,
+                hasPositionText: !position.isEmpty
+            )
+        }
+
+        if tokens.count >= 2, let last = tokens.last, looksLikePositionFragment(last) {
+            let target = tokens.dropLast().joined(separator: " ")
+            return TileWindowArg(
+                targetFilter: target,
+                positionFilter: last,
+                hasExplicitTarget: !target.isEmpty,
+                hasPositionText: true
+            )
+        }
+
+        return TileWindowArg(
+            targetFilter: "",
+            positionFilter: trimmed,
+            hasExplicitTarget: false,
+            hasPositionText: true
+        )
+    }
+
+    private func isExplicitTargetToken(_ token: String) -> Bool {
+        let t = token.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !t.isEmpty else { return false }
+        if PlacementSpec(string: t) != nil || gridFamily(from: t) != nil { return false }
+        if t.hasPrefix("grid:") || t.hasPrefix("fractions:") { return false }
+        if ["app:", "title:", "session:", "wid:", "window:"].contains(where: { t.hasPrefix($0) }) {
+            return true
+        }
+        return t.contains(":")
+    }
+
+    private func tileTargetSuggestions(matches: [TileTargetMatch], section: String) -> [CommandSuggestion] {
+        matches.map { match in
+            return CommandSuggestion(
+                label: match.label,
+                detail: match.detail,
+                glyph: "macwindow",
+                action: .selectTileTarget(wid: match.entry.wid, label: match.label),
+                previewSpec: nil,
+                previewScreen: WindowTiler.screenForWindowFrame(match.entry.frame),
+                previewWid: match.entry.wid,
+                section: section
+            )
+        }
+    }
+
+    private func tileTargetMatches(filter raw: String, limit: Int) -> [TileTargetMatch] {
+        let f = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !f.isEmpty, looksLikePositionFragment(f) { return [] }
+
+        return DesktopModel.shared.allWindows()
+            .filter { $0.isOnScreen && targetMatches($0, filter: f) }
+            .prefix(limit)
+            .map(tileTargetMatch)
+    }
+
+    private func tileTargetMatch(_ entry: WindowEntry) -> TileTargetMatch {
+        let title = entry.title.isEmpty ? "Window \(entry.wid)" : entry.title
+        let detail = entry.latticesSession.map { "\(title) · \($0)" } ?? title
+        return TileTargetMatch(entry: entry, label: entry.app, detail: detail)
+    }
+
+    private func tileTargetMatch(wid: UInt32, fallbackLabel: String) -> TileTargetMatch? {
+        guard let entry = DesktopModel.shared.windows[wid] else { return nil }
+        return tileTargetMatch(entry)
     }
 
     private func slotValues(_ slot: IntentSlot, filter raw: String) -> [SlotValue] {
@@ -320,12 +490,51 @@ final class CommandBarState: ObservableObject {
             out.append(SlotValue(label: placementLabel(spec, fallback: f), detail: placementDetail(spec),
                                  glyph: "scope", value: .string(spec.wireValue), spec: spec))
         }
+        if seen.isEmpty, let gridCells = gridFamilySlotValues(filter: f) {
+            return gridCells
+        }
         let positions = f.isEmpty ? Self.commonPositions : TilePosition.allCases.filter { positionMatches($0, f) }
         for p in positions where seen.insert(p.rawValue).inserted {
             out.append(SlotValue(label: p.label, detail: p.rawValue, glyph: p.arrowGlyph,
                                  value: .string(p.rawValue), spec: .tile(p)))
         }
         return out
+    }
+
+    private func gridFamilySlotValues(filter raw: String) -> [SlotValue]? {
+        guard let family = gridFamily(from: raw), family.columns * family.rows <= 64 else { return nil }
+        var out: [SlotValue] = []
+        for row in 0..<family.rows {
+            for column in 0..<family.columns {
+                guard let grid = GridPlacement(columns: family.columns, rows: family.rows, column: column, row: row) else {
+                    continue
+                }
+                out.append(SlotValue(
+                    label: grid.compactValue,
+                    detail: "row \(row + 1), column \(column + 1)",
+                    glyph: "scope",
+                    value: .string(grid.wireValue),
+                    spec: .grid(grid)
+                ))
+            }
+        }
+        return out
+    }
+
+    private func gridFamily(from raw: String) -> (columns: Int, rows: Int)? {
+        let normalized = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "_", with: "-")
+            .replacingOccurrences(of: " ", with: "-")
+        guard !normalized.isEmpty else { return nil }
+        let body = normalized.hasPrefix("grid:") ? String(normalized.dropFirst("grid:".count)) : normalized
+        guard !body.contains(":") else { return nil }
+        let dims = body.split(separator: "x")
+        guard dims.count == 2,
+              let columns = Int(dims[0]), let rows = Int(dims[1]),
+              columns > 0, rows > 0 else { return nil }
+        return (columns, rows)
     }
 
     // MARK: - Matching helpers
@@ -338,6 +547,73 @@ final class CommandBarState: ObservableObject {
         p.rawValue.contains(q)
             || p.rawValue.replacingOccurrences(of: "-", with: " ").contains(q)
             || p.label.lowercased().contains(q)
+    }
+
+    private func looksLikePositionFragment(_ q: String) -> Bool {
+        let f = q.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !f.isEmpty else { return false }
+        if PlacementSpec(string: f) != nil || gridFamily(from: f) != nil { return true }
+        return TilePosition.allCases.contains { positionMatches($0, f) }
+    }
+
+    private func targetMatches(_ entry: WindowEntry, filter raw: String) -> Bool {
+        let f = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !f.isEmpty else { return true }
+        let lower = f.lowercased()
+
+        func value(after prefix: String) -> String? {
+            lower.hasPrefix(prefix) ? String(f.dropFirst(prefix.count)) : nil
+        }
+
+        if let widText = value(after: "wid:") ?? value(after: "window:") {
+            return UInt32(widText) == entry.wid
+        }
+        if let app = value(after: "app:") {
+            return wildcardMatches(app, in: entry.app)
+        }
+        if let title = value(after: "title:") {
+            return wildcardMatches(title, in: entry.title)
+        }
+        if let session = value(after: "session:") {
+            return wildcardMatches(session, in: entry.latticesSession ?? "")
+        }
+
+        if lower.contains(":") {
+            let parts = f.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+            if parts.count == 2 {
+                return wildcardMatches(parts[0], in: entry.app)
+                    && wildcardMatches(parts[1], in: entry.title)
+            }
+        }
+
+        return f.split(separator: " ").allSatisfy { term in
+            let pattern = String(term)
+            return wildcardMatches(pattern, in: entry.app)
+                || wildcardMatches(pattern, in: entry.title)
+                || wildcardMatches(pattern, in: entry.latticesSession ?? "")
+                || String(entry.wid).contains(pattern)
+        }
+    }
+
+    private func wildcardMatches(_ pattern: String, in value: String) -> Bool {
+        let p = pattern.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let v = value.lowercased()
+        if p.isEmpty || p == "*" { return true }
+        guard p.contains("*") else { return v.contains(p) }
+
+        let anchoredStart = !p.hasPrefix("*")
+        let anchoredEnd = !p.hasSuffix("*")
+        let parts = p.split(separator: "*", omittingEmptySubsequences: true).map(String.init)
+        guard !parts.isEmpty else { return true }
+
+        var searchStart = v.startIndex
+        for (idx, part) in parts.enumerated() {
+            guard let range = v.range(of: part, range: searchStart..<v.endIndex) else { return false }
+            if idx == 0, anchoredStart, range.lowerBound != v.startIndex { return false }
+            searchStart = range.upperBound
+            if idx == parts.count - 1, anchoredEnd, range.upperBound != v.endIndex { return false }
+        }
+        return true
     }
 
     private func placementLabel(_ spec: PlacementSpec, fallback: String) -> String {

@@ -183,7 +183,7 @@ final class IntentEngine {
             ],
             slots: [
                 IntentSlot(name: "position", type: "position", required: true,
-                           description: "Target tile position. Named positions, grid:CxR:C,R, or compact CxR:C,R syntax.",
+                           description: "Target tile position. Named positions, canonical 0-based grid:CxR:C,R, or compact 1-based CxR:C,R syntax.",
                            enumValues: TilePosition.allCases.map(\.rawValue)),
                 IntentSlot(name: "app", type: "string", required: false,
                            description: "Target app name (defaults to frontmost)", enumValues: nil),
@@ -213,8 +213,9 @@ final class IntentEngine {
                 // For wid/app/frontmost: use WindowTiler directly
                 func tileEntry(_ entry: WindowEntry) {
                     IntentEngine.markTiled(entry.wid)
+                    let screen = WindowTiler.screenForWindowFrame(entry.frame)
                     DispatchQueue.main.async {
-                        WindowTiler.tileWindowById(wid: entry.wid, pid: entry.pid, to: placement)
+                        WindowTiler.tileWindowById(wid: entry.wid, pid: entry.pid, to: placement, on: screen)
                     }
                 }
 

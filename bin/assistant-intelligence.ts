@@ -87,7 +87,7 @@ export const intentDefinitions: IntentDefinition[] = [
     intent: "tile_window",
     description: "Tile one window to a named position or grid cell.",
     slots: [
-      { name: "position", required: true, description: "Named tile position, grid:CxR:C,R, or compact CxR:C,R syntax." },
+      { name: "position", required: true, description: "Named tile position, canonical 0-based grid:CxR:C,R, or compact 1-based CxR:C,R syntax." },
       { name: "app", description: "Loose app name when no window id is known." },
       { name: "wid", description: "Specific macOS window id from the desktop snapshot." },
       { name: "session", description: "Tmux session name." },
@@ -690,8 +690,8 @@ function parseLayerSwitch(text: string): string | null {
 function findPosition(text: string): { position: string; phrase: string } | null {
   const grid = text.match(/(?:grid:)?\d+x\d+:\d+,\d+(?:-\d+,\d+)?/);
   if (grid) {
-    const position = grid[0].startsWith("grid:") ? grid[0] : `grid:${grid[0]}`;
-    return { position, phrase: grid[0] };
+    const position = canonicalGridPosition(grid[0]);
+    if (position) return { position, phrase: grid[0] };
   }
 
   for (const entry of positionAliases) {
@@ -702,6 +702,40 @@ function findPosition(text: string): { position: string; phrase: string } | null
     }
   }
   return null;
+}
+
+function canonicalGridPosition(raw: string): string | null {
+  const match = raw.toLowerCase().match(/^(grid:)?(\d+)x(\d+):(\d+),(\d+)(?:-(\d+),(\d+))?$/);
+  if (!match) return null;
+
+  const oneBased = !match[1];
+  const columns = Number(match[2]);
+  const rows = Number(match[3]);
+  let c0 = Number(match[4]);
+  let r0 = Number(match[5]);
+  let c1 = match[6] === undefined ? c0 : Number(match[6]);
+  let r1 = match[7] === undefined ? r0 : Number(match[7]);
+  if (oneBased) {
+    c0 -= 1;
+    r0 -= 1;
+    c1 -= 1;
+    r1 -= 1;
+  }
+
+  const left = Math.min(c0, c1);
+  const right = Math.max(c0, c1);
+  const top = Math.min(r0, r1);
+  const bottom = Math.max(r0, r1);
+  if (
+    columns <= 0 || rows <= 0 ||
+    left < 0 || top < 0 ||
+    right >= columns || bottom >= rows
+  ) {
+    return null;
+  }
+
+  if (left === right && top === bottom) return `grid:${columns}x${rows}:${left},${top}`;
+  return `grid:${columns}x${rows}:${left},${top}-${right},${bottom}`;
 }
 
 function regionFromText(text: string): string | null {

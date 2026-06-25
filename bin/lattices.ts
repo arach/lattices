@@ -3638,15 +3638,22 @@ async function optimizeWindowsCommand(
 }
 
 function gridTileBounds(position: string, screen: ScreenBounds): number[] | null {
-  const match = position.toLowerCase().match(/^(?:grid:)?(\d+)x(\d+):(\d+),(\d+)(?:-(\d+),(\d+))?$/);
+  const match = position.toLowerCase().match(/^(grid:)?(\d+)x(\d+):(\d+),(\d+)(?:-(\d+),(\d+))?$/);
   if (!match) return null;
 
-  const columns = Number(match[1]);
-  const rows = Number(match[2]);
-  const c0 = Number(match[3]);
-  const r0 = Number(match[4]);
-  const c1 = match[5] === undefined ? c0 : Number(match[5]);
-  const r1 = match[6] === undefined ? r0 : Number(match[6]);
+  const oneBased = !match[1];
+  const columns = Number(match[2]);
+  const rows = Number(match[3]);
+  let c0 = Number(match[4]);
+  let r0 = Number(match[5]);
+  let c1 = match[6] === undefined ? c0 : Number(match[6]);
+  let r1 = match[7] === undefined ? r0 : Number(match[7]);
+  if (oneBased) {
+    c0 -= 1;
+    r0 -= 1;
+    c1 -= 1;
+    r1 -= 1;
+  }
   const leftCell = Math.min(c0, c1);
   const rightCell = Math.max(c0, c1);
   const topCell = Math.min(r0, r1);
@@ -3676,7 +3683,7 @@ function tileWindow(position: string): void {
   const bounds = tilePresets[normalized]?.(screen) ?? gridTileBounds(normalized, screen);
   if (!bounds) {
     console.log(`Unknown position: ${position}`);
-    console.log(`Available: ${Object.keys(tilePresets).filter(k => !k.includes("-half") && k !== "max").join(", ")}, grid:CxR:c,r, CxR:c,r`);
+    console.log(`Available: ${Object.keys(tilePresets).filter(k => !k.includes("-half") && k !== "max").join(", ")}, grid:CxR:c,r (0-based), CxR:c,r (1-based)`);
     return;
   }
   const [x1, y1, x2, y2] = bounds.map(Math.round);
