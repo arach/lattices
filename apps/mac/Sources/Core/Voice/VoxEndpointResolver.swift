@@ -4,31 +4,25 @@ import HudsonVoice
 
 /// Resolves the voice runtime Lattices should use.
 ///
-/// HudsonVoice's current native surface speaks Vox's local WebSocket JSON-RPC
-/// contract directly. Prefer a discovered standalone Vox runtime, then fall
-/// back to HudsonVoice's default endpoint so built-in voice mode remains usable
-/// in Hudson-hosted/dev environments.
+/// HudsonVoice speaks Vox's local WebSocket JSON-RPC contract directly and is the
+/// only voice path: Lattices always connects to HudsonVoice's default endpoint.
+/// Vox is no longer a standalone service, so there is no runtime-file discovery
+/// and no fallback chain.
 enum HudsonVoiceRuntimeResolver {
     static func resolve(
         clientId: String = "lattices",
         mode: HudVoiceMode? = nil
     ) -> (endpoint: HudVoxEndpoint, options: HudVoxLiveSessionOptions, source: String, pid: Int?)? {
-        let standalone = VoxDaemon.info()
         let endpoint = HudVoxEndpoint(
             host: "127.0.0.1",
-            port: standalone?.port ?? HudVoxEndpoint.defaultPort
+            port: HudVoxEndpoint.defaultPort
         )
         let options = HudVoxLiveSessionOptions(
             clientId: clientId,
             mode: mode ?? .pushToTalk,
             metadata: ["hostApp": "lattices"]
         )
-        return (
-            endpoint: endpoint,
-            options: options,
-            source: standalone == nil ? "hudson-voice-default" : "vox-runtime",
-            pid: standalone?.pid
-        )
+        return (endpoint: endpoint, options: options, source: "hudson-voice", pid: nil)
     }
 }
 #endif
