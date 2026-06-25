@@ -7,8 +7,8 @@ final class PiRpcRuntime {
         case processExited(String)
         case timedOut(String)
         case commandFailed(String)
-        case invalidResponse
-        case emptyAssistantText
+        case invalidResponse(String)
+        case emptyAssistantText(String)
 
         var errorDescription: String? {
             switch self {
@@ -20,15 +20,16 @@ final class PiRpcRuntime {
                 return "Timed out waiting for Pi. \(detail)"
             case .commandFailed(let detail):
                 return detail
-            case .invalidResponse:
-                return "Pi RPC returned an invalid response."
-            case .emptyAssistantText:
-                return "Pi returned no assistant text."
+            case .invalidResponse(let detail):
+                return "Pi RPC returned an invalid response. \(detail)"
+            case .emptyAssistantText(let detail):
+                return "Pi returned no assistant text. \(detail)"
             }
         }
     }
 
     private struct PendingRequest {
+        let commandDescription: String
         let completion: (Result<[String: Any], Error>) -> Void
         let timeoutWorkItem: DispatchWorkItem
     }
@@ -49,9 +50,14 @@ final class PiRpcRuntime {
     private var stdinHandle: FileHandle?
     private var stdoutBuffer = ""
     private var stderrBuffer = ""
+    private var recentStdoutLines: [String] = []
+    private var recentInvalidStdoutLines: [String] = []
     private var requestCounter = 0
     private var pendingRequests: [String: PendingRequest] = [:]
     private var eventHandlers: [String: ([String: Any]) -> Void] = [:]
+
+    private static let recentOutputLimit = 8
+    private static let outputLineLimit = 1_000
 
     init(
         piPath: String,
@@ -150,13 +156,17 @@ final class PiRpcRuntime {
 
         let response = try sendLocked(["type": "get_last_assistant_text"], timeout: waitTimeout)
         guard let data = response["data"] as? [String: Any] else {
-            throw RuntimeError.invalidResponse
+            throw RuntimeError.invalidResponse(
+                diagnosticSummary(reason: "Missing data payload for get_last_assistant_text.", command: "get_last_assistant_text")
+            )
         }
         if let text = data["text"] as? String,
            !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return text.trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        throw RuntimeError.emptyAssistantText
+        throw RuntimeError.emptyAssistantText(
+            diagnosticSummary(reason: "get_last_assistant_text returned an empty text field.", command: "get_last_assistant_text")
+        )
     }
 
     // MARK: - Process lifecycle
@@ -192,6 +202,8 @@ final class PiRpcRuntime {
         stdinHandle = stdinPipe.fileHandleForWriting
         stderrBuffer = ""
         stdoutBuffer = ""
+        recentStdoutLines = []
+        recentInvalidStdoutLines = []
 
         let stdoutHandle = stdoutPipe.fileHandleForReading
         stdoutHandle.readabilityHandler = { [weak self] handle in
@@ -214,7 +226,7 @@ final class PiRpcRuntime {
 
         proc.terminationHandler = { [weak self] _ in
             self?.workQueue.async {
-                self?.handleProcessExitLocked()
+                self?.handleProcessExitLocked(proc)
             }
         }
     }
@@ -226,7 +238,9 @@ final class PiRpcRuntime {
         stdinHandle = nil
         lock.unlock()
 
-        failPendingRequestsLocked(RuntimeError.processExited(stderrSummaryLocked()))
+        failPendingRequestsLocked(RuntimeError.processExited(
+            diagnosticSummary(reason: "Pi RPC runtime was stopped before the pending request completed.")
+        ))
 
         guard let proc else { return }
         if proc.isRunning {
@@ -239,12 +253,20 @@ final class PiRpcRuntime {
         }
     }
 
-    private func handleProcessExitLocked() {
+    private func handleProcessExitLocked(_ proc: Process) {
+        let exitStatus = proc.terminationStatus
+        let terminationReason = Self.terminationReasonDescription(proc.terminationReason)
         lock.lock()
         process = nil
         stdinHandle = nil
         lock.unlock()
-        failPendingRequestsLocked(RuntimeError.processExited(stderrSummaryLocked()))
+        failPendingRequestsLocked(RuntimeError.processExited(
+            diagnosticSummary(
+                reason: "Pi RPC subprocess exited before returning a response.",
+                exitStatus: exitStatus,
+                terminationReason: terminationReason
+            )
+        ))
     }
 
     private func buildPiArguments() -> [String] {
@@ -332,7 +354,11 @@ final class PiRpcRuntime {
         }
 
         let timeoutWork = DispatchWorkItem {
-            collector.error = RuntimeError.timedOut(self.stderrSummaryLocked())
+            collector.error = RuntimeError.timedOut(self.diagnosticSummary(
+                reason: "Timed out waiting for Pi to finish the assistant turn.",
+                command: "prompt",
+                extra: Self.eventSummaryLines(collector.events)
+            ))
             semaphore.signal()
         }
         DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: timeoutWork)
@@ -351,12 +377,17 @@ final class PiRpcRuntime {
             throw error
         }
         if !collector.finished {
-            throw RuntimeError.timedOut(stderrSummaryLocked())
+            throw RuntimeError.timedOut(diagnosticSummary(
+                reason: "Pi event stream ended without an agent_end event.",
+                command: "prompt",
+                extra: Self.eventSummaryLines(collector.events)
+            ))
         }
         return collector.events
     }
 
     private func sendLocked(_ command: [String: Any], timeout: TimeInterval) throws -> [String: Any] {
+        let commandType = command["type"] as? String ?? "unknown"
         lock.lock()
         guard process?.isRunning == true, let stdinHandle else {
             lock.unlock()
@@ -372,7 +403,9 @@ final class PiRpcRuntime {
 
         guard let lineData = try? JSONSerialization.data(withJSONObject: payload),
               let line = String(data: lineData, encoding: .utf8) else {
-            throw RuntimeError.invalidResponse
+            throw RuntimeError.invalidResponse(
+                diagnosticSummary(reason: "Failed to encode Pi RPC command.", command: commandType)
+            )
         }
 
         let semaphore = DispatchSemaphore(value: 0)
@@ -385,6 +418,7 @@ final class PiRpcRuntime {
 
         lock.lock()
         pendingRequests[id] = PendingRequest(
+            commandDescription: commandType,
             completion: { result in
                 resolved = result
                 semaphore.signal()
@@ -403,17 +437,28 @@ final class PiRpcRuntime {
         lock.unlock()
 
         guard let resolved else {
-            throw RuntimeError.invalidResponse
+            throw RuntimeError.invalidResponse(
+                diagnosticSummary(reason: "Pi RPC request completed without a result.", command: commandType)
+            )
         }
         let response = try resolved.get()
 
         guard response["type"] as? String == "response" else {
-            throw RuntimeError.invalidResponse
+            throw RuntimeError.invalidResponse(
+                diagnosticSummary(
+                    reason: "Unexpected response envelope for Pi RPC command.",
+                    command: commandType,
+                    extra: ["Response keys: \(response.keys.sorted().joined(separator: ", "))"]
+                )
+            )
         }
         let success = response["success"] as? Bool ?? false
         if !success {
             let message = response["error"] as? String ?? "Pi RPC command failed."
-            throw RuntimeError.commandFailed(message)
+            throw RuntimeError.commandFailed(diagnosticSummary(
+                reason: "Pi RPC command failed: \(message)",
+                command: commandType
+            ))
         }
         return response
     }
@@ -426,7 +471,10 @@ final class PiRpcRuntime {
         }
         lock.unlock()
         pending.timeoutWorkItem.cancel()
-        pending.completion(.failure(RuntimeError.timedOut(stderrSummaryLocked())))
+        pending.completion(.failure(RuntimeError.timedOut(diagnosticSummary(
+            reason: "Timed out waiting for Pi RPC response.",
+            command: pending.commandDescription
+        ))))
         semaphore.signal()
     }
 
@@ -439,6 +487,7 @@ final class PiRpcRuntime {
             stdoutBuffer = String(stdoutBuffer[stdoutBuffer.index(after: newlineIndex)...])
             let trimmed = line.trimmingCharacters(in: .newlines)
             if !trimmed.isEmpty {
+                Self.appendRecentLineLocked(trimmed, to: &recentStdoutLines)
                 lines.append(trimmed)
             }
         }
@@ -452,6 +501,9 @@ final class PiRpcRuntime {
     private func handleStdoutLine(_ line: String) {
         guard let data = line.data(using: .utf8),
               let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            lock.lock()
+            Self.appendRecentLineLocked(line, to: &recentInvalidStdoutLines)
+            lock.unlock()
             return
         }
 
@@ -488,10 +540,92 @@ final class PiRpcRuntime {
         }
     }
 
-    private func stderrSummaryLocked() -> String {
+    private func diagnosticSummary(
+        reason: String,
+        command: String? = nil,
+        exitStatus: Int32? = nil,
+        terminationReason: String? = nil,
+        extra: [String] = []
+    ) -> String {
         lock.lock()
-        defer { lock.unlock() }
-        let trimmed = stderrBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? "No stderr output." : trimmed
+        let proc = process
+        let stderr = stderrBuffer
+        let partialStdout = stdoutBuffer
+        let stdoutLines = recentStdoutLines
+        let invalidStdoutLines = recentInvalidStdoutLines
+        lock.unlock()
+
+        var lines: [String] = [reason]
+        if let command {
+            lines.append("RPC command: \(command)")
+        }
+        if let proc {
+            lines.append("Process: pid \(proc.processIdentifier), running \(proc.isRunning)")
+        }
+        if let exitStatus {
+            lines.append("Exit status: \(exitStatus)")
+        }
+        if let terminationReason {
+            lines.append("Termination: \(terminationReason)")
+        }
+        lines.append("Provider/model: \(providerID)/\(modelID)")
+        lines.append("Session dir: \(sessionDir.path)")
+        lines.append(contentsOf: extra)
+
+        let trimmed = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+        lines.append("stderr: \(trimmed.isEmpty ? "<empty>" : Self.clipped(trimmed, limit: 2_000))")
+
+        if !invalidStdoutLines.isEmpty {
+            lines.append("Malformed stdout:")
+            lines.append(contentsOf: invalidStdoutLines.map { "  " + $0 })
+        }
+        if !stdoutLines.isEmpty {
+            lines.append("Recent stdout:")
+            lines.append(contentsOf: stdoutLines.map { "  " + $0 })
+        }
+        let partial = partialStdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !partial.isEmpty {
+            lines.append("Partial stdout: \(Self.clipped(partial, limit: 1_000))")
+        }
+
+        return lines.joined(separator: "\n")
+    }
+
+    private static func appendRecentLineLocked(_ line: String, to lines: inout [String]) {
+        lines.append(clipped(line.trimmingCharacters(in: .whitespacesAndNewlines), limit: outputLineLimit))
+        if lines.count > recentOutputLimit {
+            lines.removeFirst(lines.count - recentOutputLimit)
+        }
+    }
+
+    private static func clipped(_ text: String, limit: Int) -> String {
+        guard text.count > limit else { return text }
+        return String(text.prefix(limit)) + "… [truncated]"
+    }
+
+    private static func terminationReasonDescription(_ reason: Process.TerminationReason) -> String {
+        switch reason {
+        case .exit:
+            return "exit"
+        case .uncaughtSignal:
+            return "uncaught signal"
+        @unknown default:
+            return "unknown"
+        }
+    }
+
+    private static func eventSummaryLines(_ events: [[String: Any]]) -> [String] {
+        var lines = ["Events received: \(events.count)"]
+        let types = events.suffix(6).map { payload -> String in
+            let type = payload["type"] as? String ?? "unknown"
+            if let tool = payload["toolName"] as? String {
+                return "\(type)(\(tool))"
+            }
+            return type
+        }
+        if !types.isEmpty {
+            lines.append("Recent events: \(types.joined(separator: " -> "))")
+        }
+        return lines
     }
 }

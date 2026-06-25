@@ -62,11 +62,13 @@ All valid position strings that `TilePosition` accepts:
 
 ### Custom Grid Syntax
 
-For arbitrary grids: `grid:CxR:C,R`
+For arbitrary grids: compact `CxR:C,R` or canonical `grid:CxR:C,R`
 
 - `C` = total columns, `R` = total rows
-- `C,R` = target cell (0-indexed position)
-- Example: `grid:5x3:2,1` = center cell of a 5×3 grid
+- Compact `CxR:C,R` starts at 1 from the top-left
+- Canonical `grid:CxR:C,R` starts at 0 for API/wire compatibility
+- Example: `5x3:3,2` or `grid:5x3:2,1` = center cell of a 5×3 grid
+- Spans can use two inclusive corners, such as `4x4:1,1-2,2`
 
 Parsed by `PlacementSpec` / `parseGridString()` into fractional `(x, y, w, h)`.
 

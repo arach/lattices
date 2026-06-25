@@ -119,7 +119,7 @@ struct SettingsContentView: View {
     @ObservedObject var permChecker: PermissionChecker = .shared
     @ObservedObject var mouseGestureController: MouseGestureController = .shared
     @ObservedObject var keyboardRemapController: KeyboardRemapController = .shared
-    @ObservedObject var assistantSession: PiChatSession = .shared
+    @ObservedObject var assistantSession: WorkspaceAssistantSession = .shared
     @ObservedObject var audioLayer: AudioLayer = .shared
     @ObservedObject var handsOffSession: HandsOffSession = .shared
     @ObservedObject var desktopModel: DesktopModel = .shared
@@ -2443,11 +2443,36 @@ struct SettingsContentView: View {
                 voiceMicrophoneAccessCard
 
                 #if canImport(HudsonVoice)
-                HudsonVoiceSettingsView(
-                    showsMicrophonePermission: false,
-                    managesMicrophonePermission: false,
-                    appName: "Lattices"
-                )
+                settingsCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 10) {
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Palette.running.opacity(0.12))
+                                .overlay(
+                                    Image(systemName: "waveform")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundColor(Palette.running)
+                                )
+                                .frame(width: 30, height: 30)
+
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("HudsonVoice runtime")
+                                    .font(Typo.mono(12))
+                                    .foregroundColor(Palette.text)
+                                Text("Voice mode is compiled in. The Workspace Assistant mic uses HudsonVoice's Vox local WebSocket session.")
+                                    .font(Typo.caption(9.5))
+                                    .foregroundColor(Palette.textMuted)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+
+                        if let runtime = HudsonVoiceRuntimeResolver.resolve(clientId: "lattices") {
+                            Text("Endpoint: \(runtime.endpoint.url.absoluteString)")
+                                .font(Typo.mono(10))
+                                .foregroundColor(Palette.textDim)
+                        }
+                    }
+                }
                 #else
                 settingsCard {
                     VStack(alignment: .leading, spacing: 10) {

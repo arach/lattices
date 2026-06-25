@@ -10,10 +10,10 @@ import HudsonAI
 struct QueuedPrompt: Identifiable, Equatable {
     let id = UUID()
     var text: String
-    var attachments: [PiChatAttachment] = []
+    var attachments: [WorkspaceAssistantAttachment] = []
 }
 
-struct PiChatAttachment: Identifiable, Equatable {
+struct WorkspaceAssistantAttachment: Identifiable, Equatable {
     let id: UUID
     var name: String
     var mediaType: String
@@ -35,7 +35,7 @@ struct PiChatAttachment: Identifiable, Equatable {
     }
 }
 
-struct PiChatMessage: Identifiable, Equatable {
+struct WorkspaceAssistantMessage: Identifiable, Equatable {
     enum Role {
         case system
         case user
@@ -45,14 +45,14 @@ struct PiChatMessage: Identifiable, Equatable {
     let id: UUID
     let role: Role
     var text: String
-    var attachments: [PiChatAttachment]
+    var attachments: [WorkspaceAssistantAttachment]
     let timestamp: Date
 
     init(
         id: UUID = UUID(),
         role: Role,
         text: String,
-        attachments: [PiChatAttachment] = [],
+        attachments: [WorkspaceAssistantAttachment] = [],
         timestamp: Date
     ) {
         self.id = id
@@ -181,12 +181,12 @@ struct PiProvider: Identifiable, Equatable {
     }
 }
 
-final class PiChatSession: ObservableObject {
-    static let shared = PiChatSession()
+final class WorkspaceAssistantSession: ObservableObject {
+    static let shared = WorkspaceAssistantSession()
     private static let installCommand = "npm install -g --ignore-scripts @earendil-works/pi-coding-agent@latest"
 
-    @Published private(set) var messages: [PiChatMessage] = [
-        PiChatMessage(
+    @Published private(set) var messages: [WorkspaceAssistantMessage] = [
+        WorkspaceAssistantMessage(
             role: .system,
             text: "Assistant ready. Uses a persistent Pi session — clear chat to start fresh.",
             timestamp: Date()
@@ -599,7 +599,7 @@ final class PiChatSession: ObservableObject {
         guard !text.isEmpty else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
-        DiagnosticLog.shared.success("PiChat: copied conversation to clipboard (\(text.count) chars)")
+        DiagnosticLog.shared.success("WorkspaceAssistant: copied conversation to clipboard (\(text.count) chars)")
     }
 
     func installPiInTerminal() {
@@ -622,7 +622,7 @@ final class PiChatSession: ObservableObject {
         send(text, attachments: [])
     }
 
-    func send(_ text: String, attachments: [PiChatAttachment]) {
+    func send(_ text: String, attachments: [WorkspaceAssistantAttachment]) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         if isSending {
@@ -630,7 +630,7 @@ final class PiChatSession: ObservableObject {
             return
         }
 
-        messages.append(PiChatMessage(role: .user, text: trimmed, attachments: attachments, timestamp: Date()))
+        messages.append(WorkspaceAssistantMessage(role: .user, text: trimmed, attachments: attachments, timestamp: Date()))
 
         if let localResponse = handleImmediateLocalCommand(trimmed) {
             appendLocalAssistantResponse(localResponse)
@@ -670,7 +670,7 @@ final class PiChatSession: ObservableObject {
         let runtime = chatRuntime(piPath: piPath, provider: provider)
         let inferenceTimer = DiagnosticLog.shared.startTimed("Chat inference via \(provider.name) RPC")
         let messageID = UUID()
-        messages.append(PiChatMessage(
+        messages.append(WorkspaceAssistantMessage(
             id: messageID,
             role: .assistant,
             text: "",
@@ -732,11 +732,10 @@ final class PiChatSession: ObservableObject {
                     self.statusText = "idle"
                     self.finalizeStreaming(finalText: text)
                 case .failure(let error):
-                    DiagnosticLog.shared.error("Chat inference failed: \(error.localizedDescription)")
-                    self.cancelPendingStreamingFlush()
-                    self.removeMessageIfEmpty(id: messageID)
-                    self.streamingMessageID = nil
-                    self.handleInferenceFailure(error.localizedDescription)
+                    let detail = error.localizedDescription
+                    DiagnosticLog.shared.fail(inferenceTimer, message: detail)
+                    self.failAssistantMessage(id: messageID, detail: detail)
+                    self.handleInferenceFailure(detail, appendSystemMessage: false)
                 }
                 self.drainQueuedPrompt()
             }
@@ -811,16 +810,27 @@ final class PiChatSession: ObservableObject {
                         break
                     }
                 }
+
+                let final = streamed
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.turnGeneration == generation else { return }
+                    guard self.streamingTask != nil else { return }
+                    self.streamingTask = nil
+                    self.isSending = false
+                    self.statusText = "idle"
+                    DiagnosticLog.shared.finish(inferenceTimer)
+                    self.finalizeStreaming(finalText: final)
+                    self.drainQueuedPrompt()
+                }
             } catch {
                 DispatchQueue.main.async { [weak self] in
                     guard let self, self.turnGeneration == generation else { return }  // cancelled/stopped
                     self.streamingTask = nil
                     self.isSending = false
-                    DiagnosticLog.shared.error("Chat inference (HudAIClient) failed: \(error.localizedDescription)")
-                    self.cancelPendingStreamingFlush()
-                    self.removeMessageIfEmpty(id: messageID)
-                    self.streamingMessageID = nil
-                    self.handleInferenceFailure(error.localizedDescription)
+                    let detail = error.localizedDescription
+                    DiagnosticLog.shared.fail(inferenceTimer, message: detail)
+                    self.failAssistantMessage(id: messageID, detail: detail)
+                    self.handleInferenceFailure(detail, appendSystemMessage: false)
                     self.drainQueuedPrompt()
                 }
             }
@@ -1149,7 +1159,37 @@ final class PiChatSession: ObservableObject {
         }
     }
 
-    private func handleInferenceFailure(_ message: String) {
+    private func failAssistantMessage(id: UUID, detail: String) {
+        let partial = streamingTargetText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let existing = messages.first(where: { $0.id == id })?.text.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let prefix = partial.isEmpty ? existing : partial
+        let failure = Self.formattedInferenceFailure(detail)
+
+        resetStreamingDrain()
+        streamingMessageID = nil
+
+        if prefix.isEmpty {
+            updateAssistantMessage(id: id, text: failure)
+        } else {
+            updateAssistantMessage(id: id, text: "\(prefix)\n\n\(failure)")
+        }
+    }
+
+    private static func formattedInferenceFailure(_ detail: String) -> String {
+        let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = trimmed.isEmpty ? "The assistant failed without returning an error message." : trimmed
+        return """
+        **Assistant error**
+
+        The assistant turn failed before it could finish.
+
+        ```text
+        \(body)
+        ```
+        """
+    }
+
+    private func handleInferenceFailure(_ message: String, appendSystemMessage shouldAppendSystemMessage: Bool = true) {
         if let friendly = friendlyAuthFailureMessage(for: message) {
             statusText = "setup ai"
             authErrorText = friendly
@@ -1159,7 +1199,9 @@ final class PiChatSession: ObservableObject {
             return
         }
         statusText = "error"
-        appendSystemMessage(message)
+        if shouldAppendSystemMessage {
+            appendSystemMessage(message)
+        }
         if Self.looksLikeAuthError(message) {
             isAuthPanelVisible = true
             invalidateChatRuntime()
@@ -1628,7 +1670,7 @@ final class PiChatSession: ObservableObject {
         clearRecordedAuthHelperProcess()
     }
 
-    private static func copyLabel(for role: PiChatMessage.Role) -> String {
+    private static func copyLabel(for role: WorkspaceAssistantMessage.Role) -> String {
         switch role {
         case .system:
             return "System"
@@ -1640,11 +1682,11 @@ final class PiChatSession: ObservableObject {
     }
 
     private func appendSystemMessage(_ text: String) {
-        messages.append(PiChatMessage(role: .system, text: text, timestamp: Date()))
+        messages.append(WorkspaceAssistantMessage(role: .system, text: text, timestamp: Date()))
     }
 
     private func appendLocalAssistantResponse(_ text: String) {
-        messages.append(PiChatMessage(role: .assistant, text: text, timestamp: Date()))
+        messages.append(WorkspaceAssistantMessage(role: .assistant, text: text, timestamp: Date()))
         refreshBinaryAvailability()
         statusText = hasPiBinary ? (needsProviderSetup ? "setup ai" : "idle") : "missing pi"
     }
@@ -1652,7 +1694,7 @@ final class PiChatSession: ObservableObject {
     private func syncStructuredWelcomeMessage() {
         guard !hasConversationHistory else { return }
         messages = [
-            PiChatMessage(
+            WorkspaceAssistantMessage(
                 role: .system,
                 text: structuredWelcomeMessage(),
                 timestamp: Date()
@@ -1831,7 +1873,7 @@ final class PiChatSession: ObservableObject {
         return nil
     }
 
-    private func providerPrompt(for userText: String, attachments: [PiChatAttachment] = []) -> String {
+    private func providerPrompt(for userText: String, attachments: [WorkspaceAssistantAttachment] = []) -> String {
         let knowledge = Self.capabilitiesGuide
         let knowledgeBlock = knowledge.isEmpty ? "" : """
 
@@ -1860,7 +1902,7 @@ final class PiChatSession: ObservableObject {
         """
     }
 
-    private func providerAttachmentBlock(_ attachments: [PiChatAttachment]) -> String {
+    private func providerAttachmentBlock(_ attachments: [WorkspaceAssistantAttachment]) -> String {
         attachments.map { attachment in
             """
             --- \(attachment.name) (\(attachment.mediaType)) ---

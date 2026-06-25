@@ -1,8 +1,8 @@
 import AppKit
 import SwiftUI
 
-struct PiWorkspaceView: View {
-    @StateObject private var session = PiChatSession.shared
+struct WorkspaceAssistantView: View {
+    @StateObject private var session = WorkspaceAssistantSession.shared
     @FocusState private var composerFocused: Bool
     @FocusState private var authFieldFocused: Bool
 
@@ -15,7 +15,7 @@ struct PiWorkspaceView: View {
                 .frame(height: 0.5)
 
             if session.hasPiBinary && !session.needsProviderSetup {
-                PiChatTranscript(session: session, style: .workspace)
+                WorkspaceAssistantTranscript(session: session, style: .workspace)
             } else if session.needsProviderSetup {
                 setupPlaceholder
             } else {
@@ -26,7 +26,7 @@ struct PiWorkspaceView: View {
             }
 
             if session.hasPiBinary && !session.needsProviderSetup {
-                PiChatComposer(session: session, style: .workspace, focus: $composerFocused)
+                WorkspaceAssistantComposer(session: session, style: .workspace, focus: $composerFocused)
             } else if session.needsProviderSetup {
                 providerSettingsPrompt
             }
@@ -61,7 +61,7 @@ struct PiWorkspaceView: View {
             Spacer()
 
             HStack(spacing: 8) {
-                PiChatModelChip(session: session)
+                WorkspaceAssistantModelChip(session: session)
 
                 if session.hasConversationHistory {
                     headerIconButton(symbol: "doc.on.doc", help: "Copy chat") {

@@ -151,7 +151,7 @@ struct StudioLayersView: View {
 
     private func askAssistantAboutLayer(_ layer: StudioLayer, matches: [WindowEntry]) {
         let spec = store.layerContextJSON(layer, matches: matches)
-        let attachment = PiChatAttachment(
+        let attachment = WorkspaceAssistantAttachment(
             name: "\(safeAttachmentStem(layer.name))-layer.json",
             mediaType: "application/json",
             content: spec,
@@ -159,7 +159,7 @@ struct StudioLayersView: View {
         )
         let prompt = "Help me reason about the attached Lattices Studio layer. Explain what the rules mean, what live windows currently match, and suggest a cleaner rule if the layer is too broad or too narrow."
         ScreenMapWindowController.shared.showAssistant()
-        PiChatSession.shared.send(prompt, attachments: [attachment])
+        WorkspaceAssistantSession.shared.send(prompt, attachments: [attachment])
     }
 
     private func safeAttachmentStem(_ value: String) -> String {

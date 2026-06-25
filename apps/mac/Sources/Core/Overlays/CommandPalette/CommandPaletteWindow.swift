@@ -52,7 +52,7 @@ final class CommandPaletteWindow {
             ),
             rootView: view
         )
-        OverlayPanelShell.position(panel, placement: .centered(yOffsetRatio: 0.1))
+        OverlayPanelShell.position(panel, placement: .mouseScreenCentered(yOffsetRatio: 0.1))
         OverlayPanelShell.present(panel)
 
         self.panel = panel

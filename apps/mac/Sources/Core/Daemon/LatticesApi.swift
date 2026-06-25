@@ -1833,8 +1833,20 @@ final class LatticesApi {
                             raised = WindowTiler.focusWindow(wid: wid, pid: entry.pid)
                         }
                     }
-                    return .object(["ok": .bool(raised), "wid": .int(Int(wid)), "app": .string(entry.app),
-                                    "raised": .bool(raised)])
+                    var obj: [String: JSON] = [
+                        "ok": .bool(raised),
+                        "wid": .int(Int(wid)),
+                        "pid": .int(Int(entry.pid)),
+                        "app": .string(entry.app),
+                        "title": .string(entry.title),
+                        "raised": .bool(raised),
+                        "targetResolution": .string("wid"),
+                    ]
+                    if let session = entry.latticesSession {
+                        obj["session"] = .string(session)
+                        obj["latticesSession"] = .string(session)
+                    }
+                    return .object(obj)
                 }
                 guard let session = params?["session"]?.stringValue else {
                     throw RouterError.missingParam("session or wid")
@@ -1852,9 +1864,11 @@ final class LatticesApi {
                     return .object([
                         "ok": .bool(raised),
                         "wid": .int(Int(entry.wid)),
+                        "pid": .int(Int(entry.pid)),
                         "app": .string(entry.app),
                         "title": .string(entry.title),
                         "session": .string(session),
+                        "latticesSession": .string(entry.latticesSession ?? session),
                         "raised": .bool(raised),
                         "targetResolution": .string("session"),
                     ])
@@ -1870,14 +1884,22 @@ final class LatticesApi {
                             raised = WindowTiler.focusWindow(wid: located.wid, pid: Int32(located.pid))
                         }
                     }
-                    return .object([
+                    var obj: [String: JSON] = [
                         "ok": .bool(raised),
                         "wid": .int(Int(located.wid)),
                         "pid": .int(Int(located.pid)),
                         "session": .string(session),
                         "raised": .bool(raised),
                         "targetResolution": .string("session-locator"),
-                    ])
+                    ]
+                    if let entry = DesktopModel.shared.windows[located.wid] {
+                        obj["app"] = .string(entry.app)
+                        obj["title"] = .string(entry.title)
+                        if let latticesSession = entry.latticesSession {
+                            obj["latticesSession"] = .string(latticesSession)
+                        }
+                    }
+                    return .object(obj)
                 }
 
                 throw RouterError.notFound("window for session \(session)")
@@ -2687,32 +2709,23 @@ final class LatticesApi {
             returns: .custom("Voice runtime reachability: { ok, runtimeAvailable, runtimeHost, service, transport, endpoint, port, pid, capabilityPath, standaloneVoxRunning }"),
             handler: { _ in
                 #if canImport(HudsonVoice)
-                let capability: HudsonVoiceRuntimeCapability?
-                let runtimeError: String?
-                do {
-                    capability = try HudsonVoiceRuntime.read()
-                    runtimeError = nil
-                } catch {
-                    capability = nil
-                    runtimeError = error.localizedDescription
-                }
-                let runtimePid = capability?.pid
+                let runtime = HudsonVoiceRuntimeResolver.resolve(clientId: "lattices")
                 let standaloneInfo = VoxDaemon.info()
                 return .object([
                     "ok": .bool(true),
-                    "runtimeAvailable": .bool(capability != nil),
-                    "runtimeHost": .string("lattices"),
-                    "service": capability.map { .string($0.service) } ?? .null,
-                    "transport": capability.map { .string($0.transport) } ?? .null,
-                    "endpoint": capability.map { .string($0.endpoint.url.absoluteString) } ?? .null,
-                    "port": capability.map { .int(Int($0.port)) } ?? .null,
-                    "pid": runtimePid.map { .int(Int($0)) } ?? .null,
-                    "capabilityPath": .string(HudsonVoiceRuntime.runtimeURL().path),
-                    "runtimeError": runtimeError.map { .string($0) } ?? .null,
+                    "runtimeAvailable": .bool(runtime != nil),
+                    "runtimeHost": .string(runtime?.source ?? "none"),
+                    "service": .string("hudson-voice"),
+                    "transport": .string("ws+json-rpc"),
+                    "endpoint": runtime.map { .string($0.endpoint.url.absoluteString) } ?? .null,
+                    "port": runtime.map { .int(Int($0.endpoint.port)) } ?? .null,
+                    "pid": runtime?.pid.map { .int($0) } ?? .null,
+                    "capabilityPath": .null,
+                    "runtimeError": .null,
                     "standaloneVoxRunning": .bool(standaloneInfo != nil),
                     "standaloneVoxPort": standaloneInfo.map { .int(Int($0.port)) } ?? .null,
                     "standaloneVoxPid": standaloneInfo.map { .int($0.pid) } ?? .null,
-                    "note": .string("Lattices hosts the embedded HudsonVoice runtime; standalone Vox is reported only as legacy diagnostic state."),
+                    "note": .string("HudsonVoice is compiled in; Lattices uses HudsonVoice's Vox WebSocket contract for live sessions."),
                 ])
                 #else
                 let standaloneInfo = VoxDaemon.info()

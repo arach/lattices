@@ -109,7 +109,8 @@ struct UnifiedCommandBarView: View {
     }
 
     private var placeholder: String {
-        state.commandMode ? "Run a command…" : "Search, or type / for commands…"
+        if state.commandMode { return "Type a command or placement…" }
+        return "Search, or type / for commands…"
     }
 
     // MARK: - Bar
@@ -141,25 +142,59 @@ struct UnifiedCommandBarView: View {
         )
     }
 
-    /// Left state-aware slot: a live waveform + timer while listening, otherwise
-    /// the mode glyph (⌘ for commands, magnifier for search).
+    /// Left state-aware slot: a live waveform while listening, otherwise a
+    /// compact mode badge so the bar never opens in an unlabeled state.
     @ViewBuilder private var leftIndicator: some View {
         if state.voice.phase == .listening {
             HStack(spacing: 7) {
                 WaveBar()
+                modeText("LISTENING", tone: HUDChrome.cyan)
                 ListeningTimer(startTime: state.voice.listenStartTime)
             }
         } else {
-            Image(systemName: leftGlyph)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(state.wantsAssistant ? HUDChrome.cyan : Palette.textMuted)
-                .frame(width: 20)
+            HStack(spacing: 7) {
+                Image(systemName: leftGlyph)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(modeTone)
+                    .frame(width: 15)
+                modeText(modeLabel, tone: modeTone)
+            }
         }
     }
 
     private var leftGlyph: String {
+        if state.voiceActive { return "mic" }
         if state.wantsAssistant { return "sparkles" }
         return state.commandMode ? "command" : "magnifyingglass"
+    }
+
+    private var modeLabel: String {
+        if state.voiceActive {
+            switch state.voice.phase {
+            case .connecting: return "VOICE"
+            case .listening: return "LISTENING"
+            case .transcribing: return "HEARING"
+            case .result: return voiceRetryable ? "VOICE · RETRY" : "VOICE RESULT"
+            case .idle: return "VOICE"
+            }
+        }
+        if state.wantsAssistant { return "ASK" }
+        return state.commandMode ? "COMMAND" : "SEARCH"
+    }
+
+    private var modeTone: Color {
+        if state.voice.phase == .result && voiceRetryable { return HUDChrome.cyan }
+        if state.voiceActive || state.wantsAssistant || state.commandMode { return HUDChrome.cyan }
+        return Palette.textMuted
+    }
+
+    private func modeText(_ text: String, tone: Color) -> some View {
+        Text(text)
+            .font(Typo.caption(9))
+            .tracking(0.9)
+            .foregroundColor(tone)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
     }
 
     /// Editable field normally; a read-only transcript line while voice is active.
@@ -189,6 +224,10 @@ struct UnifiedCommandBarView: View {
         case .connecting:   return "Connecting…"
         case .listening:    return "Listening…"
         case .transcribing: return "Transcribing…"
+        case .result:
+            if !state.voice.resultSummary.isEmpty { return state.voice.resultSummary }
+            if let result = state.voice.executionResult, !result.isEmpty { return result }
+            return "Voice result"
         default:            return ""
         }
     }
@@ -211,6 +250,9 @@ struct UnifiedCommandBarView: View {
         } else if state.voice.phase == .transcribing {
             actionButton(system: "hourglass", primary: false, action: {})
                 .help("Transcribing")
+        } else if state.voice.phase == .result && voiceRetryable {
+            actionButton(system: "mic.fill", primary: true, action: onCommit)
+                .help("Try voice again · ↵")
         } else if state.wantsAssistant {
             Button(action: onCommit) {
                 Image(systemName: "sparkles")
@@ -356,8 +398,8 @@ struct UnifiedCommandBarView: View {
                     .font(Typo.caption(9)).tracking(1.1)
                     .foregroundColor(Palette.textMuted)
                 welcomeChip("/tile right")
-                welcomeChip("/maximize")
-                welcomeChip("/center")
+                welcomeChip("4x4:1,2", fill: "/tile 4x4:1,2", placement: PlacementSpec(string: "4x4:1,2"))
+                welcomeChip("4x4 span", fill: "/tile 4x4:1,1-2,2", placement: PlacementSpec(string: "4x4:1,1-2,2"))
             }
             HStack(spacing: 16) {
                 helpHint("/", "commands")
@@ -371,15 +413,22 @@ struct UnifiedCommandBarView: View {
         .padding(.vertical, 11)
     }
 
-    private func welcomeChip(_ fill: String) -> some View {
-        Button { state.query = fill } label: {
-            Text(fill)
-                .font(Typo.mono(11))
-                .foregroundColor(Palette.textDim)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 4)
-                .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(Palette.border, lineWidth: 0.5))
-                .contentShape(Rectangle())
+    private func welcomeChip(_ label: String, fill: String? = nil, placement: PlacementSpec? = nil) -> some View {
+        Button { state.query = fill ?? label } label: {
+            HStack(spacing: 6) {
+                if let placement {
+                    MiniPlacementGlyph(spec: placement, selected: false)
+                        .frame(width: 18, height: 12)
+                }
+                Text(label)
+                    .font(Typo.mono(11))
+                    .lineLimit(1)
+            }
+            .foregroundColor(Palette.textDim)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(Palette.border, lineWidth: 0.5))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -397,6 +446,8 @@ struct UnifiedCommandBarView: View {
             } else if state.detail == .nlCommand {
                 helpHint("↵", "run command")
                 helpHint("⌘↵", "ask instead")
+            } else if state.detail == .voice {
+                voiceFooterHints
             }
             Spacer(minLength: 0)
             settingsButton
@@ -404,6 +455,34 @@ struct UnifiedCommandBarView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .overlay(Rectangle().fill(Palette.border).frame(height: 0.5), alignment: .top)
+    }
+
+    @ViewBuilder private var voiceFooterHints: some View {
+        switch state.voice.phase {
+        case .connecting:
+            helpHint("↵", "cancel")
+            helpHint("Esc", "cancel")
+        case .listening:
+            helpHint("↵", "finish")
+            helpHint("Esc", "finish")
+            helpHint("⌥", "release")
+        case .transcribing:
+            helpHint("Esc", "cancel")
+        case .result:
+            if voiceRetryable {
+                helpHint("↵", "try again")
+            } else {
+                helpHint("↵", "close")
+            }
+            helpHint("Esc", "close")
+        case .idle:
+            helpHint("⌥", "hold to speak")
+        }
+    }
+
+    private var voiceRetryable: Bool {
+        let result = state.voice.executionResult ?? ""
+        return result == "No speech detected" || result == "Transcription failed"
     }
 
     private var settingsButton: some View {
@@ -467,10 +546,7 @@ struct UnifiedCommandBarView: View {
             onCommit()
         } label: {
             HStack(spacing: 11) {
-                Image(systemName: s.glyph)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(sel ? HUDChrome.cyan : Palette.textDim)
-                    .frame(width: 16)
+                suggestionGlyph(s, selected: sel)
                 Text(s.label)
                     .font(Typo.mono(12))
                     .foregroundColor(sel ? HUDChrome.cyan : Palette.textDim)
@@ -493,6 +569,19 @@ struct UnifiedCommandBarView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    @ViewBuilder private func suggestionGlyph(_ suggestion: CommandSuggestion, selected: Bool) -> some View {
+        if let spec = suggestion.previewSpec {
+            MiniPlacementGlyph(spec: spec, selected: selected)
+                .frame(width: 16, height: 12)
+                .frame(width: 16)
+        } else {
+            Image(systemName: suggestion.glyph)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(selected ? HUDChrome.cyan : Palette.textDim)
+                .frame(width: 16)
+        }
     }
 
     private var searchList: some View {
@@ -693,5 +782,46 @@ struct UnifiedCommandBarView: View {
         WindowTiler.focusWindow(wid: wid, pid: entry.pid)
         WindowTiler.tileWindowById(wid: wid, pid: entry.pid, to: placement)
         WindowTiler.highlightWindowById(wid: wid)
+    }
+}
+
+private struct MiniPlacementGlyph: View {
+    let spec: PlacementSpec
+    let selected: Bool
+
+    var body: some View {
+        GeometryReader { geo in
+            let size = geo.size
+            let (fx, fy, fw, fh) = spec.fractions
+            let accent = selected ? HUDChrome.cyan : Palette.textDim
+
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(Color.white.opacity(selected ? 0.07 : 0.035))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 2, style: .continuous)
+                            .strokeBorder(accent.opacity(selected ? 0.65 : 0.32), lineWidth: 0.6)
+                    )
+
+                ForEach(1..<4, id: \.self) { index in
+                    Rectangle()
+                        .fill(Palette.border.opacity(selected ? 0.8 : 0.55))
+                        .frame(width: 0.5)
+                        .offset(x: size.width * CGFloat(index) / 4)
+                    Rectangle()
+                        .fill(Palette.border.opacity(selected ? 0.8 : 0.55))
+                        .frame(height: 0.5)
+                        .offset(y: size.height * CGFloat(index) / 4)
+                }
+
+                RoundedRectangle(cornerRadius: 1.2, style: .continuous)
+                    .fill(accent.opacity(selected ? 0.9 : 0.58))
+                    .frame(
+                        width: max(2, size.width * fw),
+                        height: max(2, size.height * fh)
+                    )
+                    .offset(x: size.width * fx, y: size.height * fy)
+            }
+        }
     }
 }

@@ -22,15 +22,21 @@ final class UnifiedCommandBarWindow {
     /// overlapping the bar — mirrors the old `VoiceCommandWindow.shared.panel`.
     private(set) var panel: OverlayPanel?
     private var ghost: NSPanel?
+    private var gridHint: NSPanel?
     private var state: UnifiedCommandBarState?
     private var keyMonitor: Any?
-    private var flagsMonitor: Any?
+    private var localFlagsMonitor: Any?
+    private var globalFlagsMonitor: Any?
     private var ghostObserver: AnyCancellable?
     private var queryObserver: AnyCancellable?
     private var voicePhaseObserver: AnyCancellable?
+    private var optionKeyDown = false
+    private var optionPushToTalkActive = false
 
     private var capturedTarget: (wid: UInt32, pid: Int32)?
     private var capturedScreen: NSScreen?
+    private var lastHighlightedWid: UInt32?
+    private var lastHighlightAt: Date = .distantPast
 
     private let panelWidth: CGFloat = 560
 
@@ -80,6 +86,11 @@ final class UnifiedCommandBarWindow {
                 hasShadow: false,            // the card draws its own shadow
                 hidesOnDeactivate: false,
                 isMovableByWindowBackground: true,   // drag the bar/panel chrome to reposition
+                // Do not use `.canJoinAllSpaces` here: on multi-display
+                // setups macOS can mirror all-spaces panels onto each active
+                // display. Moving to the active Space keeps a single command
+                // box on the screen that invoked it.
+                collectionBehavior: [.moveToActiveSpace, .fullScreenAuxiliary],
                 activatesOnMouseDown: true
             ),
             rootView: view
@@ -112,12 +123,17 @@ final class UnifiedCommandBarWindow {
     func dismiss() {
         savePosition()
         if let m = keyMonitor { NSEvent.removeMonitor(m); keyMonitor = nil }
-        if let m = flagsMonitor { NSEvent.removeMonitor(m); flagsMonitor = nil }
+        if let m = localFlagsMonitor { NSEvent.removeMonitor(m); localFlagsMonitor = nil }
+        if let m = globalFlagsMonitor { NSEvent.removeMonitor(m); globalFlagsMonitor = nil }
+        resetOptionVoiceTracking()
         ghostObserver?.cancel(); ghostObserver = nil
         queryObserver?.cancel(); queryObserver = nil
         voicePhaseObserver?.cancel(); voicePhaseObserver = nil
         state?.voice.cancelProcessing()   // stop any in-flight capture/transcription
         ghost?.orderOut(nil); ghost = nil
+        gridHint?.orderOut(nil); gridHint = nil
+        lastHighlightedWid = nil
+        lastHighlightAt = .distantPast
         panel?.orderOut(nil); panel = nil
         state = nil
         capturedTarget = nil
@@ -170,8 +186,17 @@ final class UnifiedCommandBarWindow {
             let cmd = self.state?.commandMode == true
             switch event.keyCode {
             case 53: // Escape — first stops listening, then dismisses
-                if self.state?.voice.phase == .listening {
-                    self.state?.voice.cancelListening(); return nil
+                if let voice = self.state?.voice {
+                    if voice.phase == .listening {
+                        self.resetOptionVoiceTracking()
+                        voice.stopListening()
+                        return nil
+                    }
+                    if voice.phase == .connecting {
+                        self.resetOptionVoiceTracking()
+                        voice.cancelProcessing()
+                        return nil
+                    }
                 }
                 self.dismiss(); return nil
             case 125: // ↓
@@ -192,20 +217,56 @@ final class UnifiedCommandBarWindow {
         }
     }
 
-    /// Push-to-talk: hold ⌥ to record, release to stop — only while the bar is key
-    /// and armed/idle. Mirrors the standalone voice window's gesture.
+    /// Push-to-talk: hold ⌥ to record, release to stop. A global flags monitor
+    /// catches the release even if focus shifts while the non-activating panel is up.
     private func installVoiceMonitor() {
-        flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
-            guard let self, self.panel?.isKeyWindow == true, let voice = self.state?.voice else { return event }
-            if event.modifierFlags.contains(.option) {
-                if voice.armed && (voice.phase == .idle || voice.phase == .result) {
-                    voice.startListening()
-                }
-            } else if voice.phase == .listening {
-                voice.stopListening()
-            }
+        localFlagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            self?.handleFlagsChanged(event)
             return event
         }
+        globalFlagsMonitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            self?.handleFlagsChanged(event)
+        }
+    }
+
+    private func handleFlagsChanged(_ event: NSEvent) {
+        guard isVisible, let voice = state?.voice else { return }
+        let optionDown = event.modifierFlags
+            .intersection(.deviceIndependentFlagsMask)
+            .contains(.option)
+
+        if optionDown {
+            guard !optionKeyDown else { return }
+            optionKeyDown = true
+
+            if voice.phase == .listening && !optionPushToTalkActive {
+                optionPushToTalkActive = false
+                voice.stopListening()
+            } else if voice.armed && (voice.phase == .idle || voice.phase == .result) {
+                optionPushToTalkActive = true
+                voice.startListening()
+            }
+            return
+        }
+
+        guard optionKeyDown else { return }
+        optionKeyDown = false
+        if optionPushToTalkActive {
+            switch voice.phase {
+            case .connecting:
+                voice.cancelProcessing()
+            case .listening:
+                voice.stopListening()
+            default:
+                break
+            }
+        }
+        optionPushToTalkActive = false
+    }
+
+    private func resetOptionVoiceTracking() {
+        optionKeyDown = false
+        optionPushToTalkActive = false
     }
 
     // MARK: - Commit / drill-in
@@ -224,6 +285,10 @@ final class UnifiedCommandBarWindow {
                 st.query = "/" + (c.hint.aliases.first ?? c.name) + " "
             case .setQuery(let q):
                 st.query = "/" + q
+            case .selectTileTarget(let wid, let label):
+                let verb = commandVerb(from: st.search.command.query, fallback: "tile")
+                st.search.command.selectTileTarget(wid: wid, label: label)
+                st.query = "/" + verb + " "
             case .placeCurrent(let spec):
                 guard let t = capturedTarget else { dismiss(); return }
                 let screen = capturedScreen ?? NSScreen.main ?? NSScreen.screens.first!
@@ -234,6 +299,10 @@ final class UnifiedCommandBarWindow {
                 WindowTiler.tileWindowById(wid: t.wid, pid: t.pid, to: spec, on: screen)
                 showConfirmation(glyph: arrow, title: app, subtitle: s.label, on: screen)
             case .runCommand(let intent, let slots, let subject):
+                if let spec = s.previewSpec,
+                   let target = previewTarget(for: s, slots: slots, subject: subject) {
+                    flyIn(wid: target.wid, to: spec, on: target.screen)
+                }
                 runIntent(intent, slots: slots, subject: subject, confirmGlyph: s.glyph, confirmTitle: s.label)
             }
         } else if IntentHeuristics.shouldAskAssistant(st.query) {
@@ -252,17 +321,34 @@ final class UnifiedCommandBarWindow {
         }
     }
 
+    private func commandVerb(from raw: String, fallback: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.split(separator: " ").first.map(String.init) ?? fallback
+    }
+
     private func commitVoice(_ voice: VoiceCommandState) {
         switch voice.phase {
         case .connecting:
+            resetOptionVoiceTracking()
             voice.cancelProcessing()
         case .listening:
+            resetOptionVoiceTracking()
             voice.stopListening()
         case .result:
-            dismiss()
+            if voiceResultCanRetry(voice) {
+                resetOptionVoiceTracking()
+                voice.startListening()
+            } else {
+                dismiss()
+            }
         case .idle, .transcribing:
             break
         }
+    }
+
+    private func voiceResultCanRetry(_ voice: VoiceCommandState) -> Bool {
+        let result = voice.executionResult ?? ""
+        return result == "No speech detected" || result == "Transcription failed"
     }
 
     // MARK: - Natural-language command
@@ -329,7 +415,7 @@ final class UnifiedCommandBarWindow {
         dismiss()
         DispatchQueue.main.async {
             ScreenMapWindowController.shared.showAssistant()
-            PiChatSession.shared.send(text)
+            WorkspaceAssistantSession.shared.send(text)
         }
     }
 
@@ -348,6 +434,19 @@ final class UnifiedCommandBarWindow {
     private func complete() {
         guard let st = state, let s = st.search.command.selected else { return }
         st.query = "/" + st.search.command.completion(for: s)
+    }
+
+    private func previewTarget(for suggestion: CommandSuggestion, slots: [String: JSON], subject: CommandSubject) -> (wid: UInt32, screen: NSScreen)? {
+        let wid = suggestion.previewWid
+            ?? slots["wid"]?.uint32Value
+            ?? (subject == .currentWindow ? capturedTarget?.wid : nil)
+        guard let wid else { return nil }
+        let screen = suggestion.previewScreen
+            ?? DesktopModel.shared.windows[wid].map { WindowTiler.screenForWindowFrame($0.frame) }
+            ?? capturedScreen
+            ?? NSScreen.main
+        guard let screen else { return nil }
+        return (wid, screen)
     }
 
     private func runIntent(_ intent: String, slots: [String: JSON], subject: CommandSubject,
@@ -378,10 +477,13 @@ final class UnifiedCommandBarWindow {
         guard let voice = state?.voice else { return }
         switch voice.phase {
         case .connecting:
+            resetOptionVoiceTracking()
             voice.cancelProcessing()
         case .listening:
+            resetOptionVoiceTracking()
             voice.stopListening()
         case .idle, .result:
+            resetOptionVoiceTracking()
             voice.startListening()
         case .transcribing:
             break
@@ -441,27 +543,70 @@ final class UnifiedCommandBarWindow {
     }
 
     private func updateGhost() {
-        guard let st = state else { ghost?.orderOut(nil); ghost = nil; return }
+        guard let st = state else {
+            hidePlacementPreview()
+            return
+        }
         // Command mode previews the highlighted suggestion; plain-text NL commands
         // preview the resolved placement.
         let spec: PlacementSpec?
         let screen: NSScreen?
+        let sourceWid: UInt32?
         if st.commandMode {
+            let selected = st.search.command.selected
             spec = st.search.command.previewSpec
             screen = st.search.command.previewScreen ?? capturedScreen
+            sourceWid = selected?.previewWid ?? st.search.command.tileTarget?.wid ?? (spec == nil ? nil : capturedTarget?.wid)
         } else {
             spec = st.nlSpec
             screen = capturedScreen
+            sourceWid = spec == nil ? nil : capturedTarget?.wid
         }
+
+        if let sourceWid {
+            highlightPreviewSource(wid: sourceWid)
+        }
+
         guard let spec, let screen else {
-            ghost?.orderOut(nil); ghost = nil
+            hidePlacementPreview()
             return
         }
         let g = ghost ?? makeGhost()
         g.setFrame(ghostFrame(for: spec, on: screen), display: true)
         g.orderFront(nil)
+        updateGridHint(for: spec, on: screen)
         panel?.orderFront(nil)   // bar + ghost share .floating → keep the bar on top
         ghost = g
+    }
+
+    private func hidePlacementPreview() {
+        ghost?.orderOut(nil); ghost = nil
+        gridHint?.orderOut(nil); gridHint = nil
+    }
+
+    private func highlightPreviewSource(wid: UInt32) {
+        let now = Date()
+        guard wid != lastHighlightedWid || now.timeIntervalSince(lastHighlightAt) > 1.2 else { return }
+        lastHighlightedWid = wid
+        lastHighlightAt = now
+        WindowTiler.highlightWindowById(wid: wid)
+    }
+
+    private func updateGridHint(for spec: PlacementSpec, on screen: NSScreen) {
+        guard case .grid(let grid) = spec else {
+            gridHint?.orderOut(nil)
+            gridHint = nil
+            return
+        }
+
+        let hint = gridHint ?? makeGridHint()
+        hint.setFrame(screen.visibleFrame, display: true)
+        hint.contentView = NSHostingView(
+            rootView: GridPlacementScreenHint(grid: grid)
+                .preferredColorScheme(.dark)
+        )
+        hint.orderFront(nil)
+        gridHint = hint
     }
 
     /// Destination frame in Cocoa (bottom-left origin) screen coordinates.
@@ -489,7 +634,7 @@ final class UnifiedCommandBarWindow {
         g.level = .floating
         g.hasShadow = false
         g.ignoresMouseEvents = true
-        g.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        g.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         g.sharingType = .readOnly
 
         let v = NSView()
@@ -502,6 +647,23 @@ final class UnifiedCommandBarWindow {
         return g
     }
 
+    private func makeGridHint() -> NSPanel {
+        let g = NSPanel(
+            contentRect: .zero,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        g.isOpaque = false
+        g.backgroundColor = .clear
+        g.level = .floating
+        g.hasShadow = false
+        g.ignoresMouseEvents = true
+        g.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+        g.sharingType = .readOnly
+        return g
+    }
+
     private func screenForWindowFrame(_ f: WindowFrame) -> NSScreen {
         let primaryH = NSScreen.screens.first?.frame.height ?? 1080
         let cx = CGFloat(f.x + f.w / 2)
@@ -510,5 +672,85 @@ final class UnifiedCommandBarWindow {
         return NSScreen.screens.first(where: { $0.frame.contains(pt) })
             ?? NSScreen.main
             ?? NSScreen.screens[0]
+    }
+}
+
+private struct GridPlacementScreenHint: View {
+    let grid: GridPlacement
+
+    var body: some View {
+        GeometryReader { geo in
+            let width = geo.size.width
+            let height = geo.size.height
+            let cellW = width / CGFloat(grid.columns)
+            let cellH = height / CGFloat(grid.rows)
+            let selected = CGRect(
+                x: CGFloat(grid.column) * cellW,
+                y: CGFloat(grid.row) * cellH,
+                width: CGFloat(grid.columnSpan) * cellW,
+                height: CGFloat(grid.rowSpan) * cellH
+            )
+            let badgeX = min(max(12, selected.minX + 12), max(12, width - 150))
+            let badgeY = min(max(12, selected.minY + 12), max(12, height - 34))
+
+            ZStack(alignment: .topLeading) {
+                Color.black.opacity(0.055)
+
+                Path { path in
+                    for column in 1..<grid.columns {
+                        let x = CGFloat(column) * cellW
+                        path.move(to: CGPoint(x: x, y: 0))
+                        path.addLine(to: CGPoint(x: x, y: height))
+                    }
+                    for row in 1..<grid.rows {
+                        let y = CGFloat(row) * cellH
+                        path.move(to: CGPoint(x: 0, y: y))
+                        path.addLine(to: CGPoint(x: width, y: y))
+                    }
+                }
+                .stroke(Color.white.opacity(0.18), lineWidth: 1)
+
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(HUDChrome.cyan.opacity(0.13))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(HUDChrome.cyan.opacity(0.85), lineWidth: 2)
+                    )
+                    .frame(width: selected.width, height: selected.height)
+                    .offset(x: selected.minX, y: selected.minY)
+
+                if grid.columns * grid.rows <= 36 {
+                    ForEach(0..<(grid.columns * grid.rows), id: \.self) { index in
+                        let column = index % grid.columns
+                        let row = index / grid.columns
+                        Text("\(column + 1),\(row + 1)")
+                            .font(Typo.monoBold(11))
+                            .foregroundColor(cellIsSelected(column: column, row: row)
+                                ? HUDChrome.cyan.opacity(0.95)
+                                : Palette.textMuted.opacity(0.72))
+                            .frame(width: cellW, height: cellH, alignment: .center)
+                            .offset(x: CGFloat(column) * cellW, y: CGFloat(row) * cellH)
+                    }
+                }
+
+                Text(grid.compactValue)
+                    .font(Typo.monoBold(12))
+                    .foregroundColor(HUDChrome.onSignal)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(HUDChrome.cyan.opacity(0.92))
+                    )
+                    .offset(x: badgeX, y: badgeY)
+            }
+        }
+    }
+
+    private func cellIsSelected(column: Int, row: Int) -> Bool {
+        column >= grid.column
+            && column < grid.column + grid.columnSpan
+            && row >= grid.row
+            && row < grid.row + grid.rowSpan
     }
 }

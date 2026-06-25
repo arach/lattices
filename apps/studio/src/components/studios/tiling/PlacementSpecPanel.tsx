@@ -23,7 +23,7 @@ const NAMED_OPTIONS = TILE_FAMILIES.flatMap((fam) =>
 
 export function PlacementSpecPanel() {
   const [nameInput, setNameInput] = useState(DEFAULT_NAME);
-  const [gridInput, setGridInput] = useState("grid:2x1:1,0");
+  const [gridInput, setGridInput] = useState("2x1:2,1");
   const [fractionsInput, setFractionsInput] = useState(
     JSON.stringify({ x: 0.5, y: 0, w: 0.5, h: 1 }),
   );
@@ -54,7 +54,7 @@ export function PlacementSpecPanel() {
     }
     const parsed = parseGrid(value.trim());
     if (!parsed) {
-      setErrors((e) => ({ ...e, grid: "expected grid:CxR:c,r" }));
+      setErrors((e) => ({ ...e, grid: "expected CxR:c,r from 1 or grid:CxR:c,r from 0" }));
       return;
     }
     setErrors((e) => ({ ...e, grid: undefined }));
@@ -142,7 +142,7 @@ export function PlacementSpecPanel() {
           <Divider />
           <SpecInput
             label="Grid"
-            hint=".grid(CxR:c,r)"
+            hint="CxR:c,r from 1 · grid:CxR:c,r from 0"
             active={resolved.source === "grid"}
             value={gridInput}
             error={errors.grid}
@@ -272,7 +272,7 @@ function deriveGridString(rect: Rect): string | null {
       const row = Math.round(rect.y / cellH);
       if (col < 0 || col >= cols || row < 0 || row >= rows) continue;
       if (!near(rect.x, col * cellW) || !near(rect.y, row * cellH)) continue;
-      return `grid:${cols}x${rows}:${col},${row}`;
+      return `${cols}x${rows}:${col + 1},${row + 1}`;
     }
   }
   return null;

@@ -36,8 +36,8 @@ Each area below is a one-paragraph summary plus the doc to cite for detail.
 ### Window tiling & placement
 Snap windows to preset positions — halves, quarters, thirds, maximize, center —
 from the command palette or `lattices tile <position>`. There is also a grid
-placement primitive (`grid:CxR:c,r`) surfaced through an overlay and a command
-bar. → [Tiling reference](/docs/tiling-reference), positions in [Configuration](/docs/config).
+placement primitive: compact `CxR:c,r` starts at 1 for command entry, while
+canonical `grid:CxR:c,r` starts at 0 for APIs. → [Tiling reference](/docs/tiling-reference), positions in [Configuration](/docs/config).
 
 ### Workspace layers & tab groups
 Group projects into named **layers** you can switch between, and tab-group related

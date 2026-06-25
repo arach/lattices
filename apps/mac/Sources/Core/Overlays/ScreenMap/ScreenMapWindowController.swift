@@ -93,7 +93,7 @@ final class ScreenMapWindowController: ObservableObject {
     }
 
     func showAssistant() {
-        PiChatSession.shared.prepareForDisplay()
+        WorkspaceAssistantSession.shared.prepareForDisplay()
         showPage(.pi)
     }
 

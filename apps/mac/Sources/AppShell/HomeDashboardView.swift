@@ -4,7 +4,7 @@ import SwiftUI
 struct HomeDashboardView: View {
     var onNavigate: ((AppPage) -> Void)? = nil
 
-    @ObservedObject private var piSession = PiChatSession.shared
+    @ObservedObject private var piSession = WorkspaceAssistantSession.shared
     @ObservedObject private var desktop = DesktopModel.shared
 
     var body: some View {
@@ -139,13 +139,20 @@ struct HomeDashboardView: View {
 
     /// On-screen windows, most-recently-interacted first, then frontmost order.
     private var activeWindows: [WindowEntry] {
-        desktop.allWindows()
+        let focusedWindowID = desktop.focusedWindowID
+        return desktop.allWindows()
             .filter { $0.isOnScreen && !$0.title.isEmpty }
             .sorted { a, b in
+                if let focusedWindowID, a.wid != b.wid {
+                    if a.wid == focusedWindowID { return true }
+                    if b.wid == focusedWindowID { return false }
+                }
                 let da = desktop.lastInteractionDate(for: a.wid)
                 let db = desktop.lastInteractionDate(for: b.wid)
                 switch (da, db) {
-                case let (.some(x), .some(y)): return x > y
+                case let (.some(x), .some(y)):
+                    if x != y { return x > y }
+                    return a.zIndex < b.zIndex
                 case (.some, .none):           return true
                 case (.none, .some):           return false
                 case (.none, .none):           return a.zIndex < b.zIndex
@@ -235,16 +242,6 @@ private struct WindowSnapshotRow: View {
                     .foregroundColor(Palette.text)
                     .lineLimit(1)
                     .layoutPriority(1)
-
-                if window.zIndex == 0 {
-                    Text("FRONT")
-                        .font(Typo.geistMonoBold(8))
-                        .tracking(0.5)
-                        .foregroundColor(Palette.running)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(Capsule().fill(Palette.running.opacity(0.12)))
-                }
 
                 if !window.title.isEmpty, window.title != window.app {
                     Text(window.title)

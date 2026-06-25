@@ -165,7 +165,7 @@ struct PiHudAIAdapter: HudAIProviderAdapter, @unchecked Sendable {
             switch runtimeError {
             case .timedOut(let detail):
                 return .timeout(provider: .pi, message: detail)
-            case .notStarted, .processExited, .commandFailed, .invalidResponse, .emptyAssistantText:
+            default:
                 return .providerProtocolError(provider: .pi, requestID: nil, message: runtimeError.localizedDescription)
             }
         }

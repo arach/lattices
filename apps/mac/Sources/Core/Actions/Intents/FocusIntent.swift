@@ -61,7 +61,24 @@ struct FocusIntent: LatticeIntent {
             DispatchQueue.main.async {
                 WindowTiler.focusWindow(wid: wid, pid: Int32(pid))
             }
-            return .object(["ok": .bool(true), "focused": .string(app), "wid": .int(Int(wid))])
+            var receipt: [String: JSON] = [
+                "ok": .bool(true),
+                "requested": .string(app),
+                "wid": .int(Int(wid)),
+                "pid": .int(pid),
+                "targetResolution": .string("search"),
+            ]
+            if let entry = DesktopModel.shared.windows[wid] {
+                receipt["app"] = .string(entry.app)
+                receipt["title"] = .string(entry.title)
+                if let session = entry.latticesSession {
+                    receipt["session"] = .string(session)
+                    receipt["latticesSession"] = .string(session)
+                }
+            } else {
+                receipt["focused"] = .string(app)
+            }
+            return .object(receipt)
         }
 
         return .object(["ok": .bool(false), "reason": .string("No window found for '\(app)'")])

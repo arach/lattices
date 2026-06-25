@@ -59,10 +59,11 @@ final class DesktopModel: ObservableObject {
 
     @Published private(set) var windows: [UInt32: WindowEntry] = [:]
     @Published private(set) var interactionDates: [UInt32: Date] = [:]
+    @Published private(set) var focusedWindowID: UInt32?
     /// In-memory layer tags: wid → layer id (e.g. "lattices", "vox", "hudson")
     private(set) var windowLayerTags: [UInt32: String] = [:]
     private var timer: Timer?
-    private var lastFrontmostWid: UInt32?
+    private var lastFocusedWindowID: UInt32?
 
     func start(interval: TimeInterval = 1.5) {
         guard timer == nil else { return }
@@ -84,6 +85,10 @@ final class DesktopModel: ObservableObject {
 
     func frontmostWindow() -> WindowEntry? {
         windows.values.min { $0.zIndex < $1.zIndex }
+    }
+
+    func focusedWindow() -> WindowEntry? {
+        focusedWindowID.flatMap { windows[$0] }
     }
 
     /// Frontmost window containing `point` (CG coords, top-left origin).
@@ -262,8 +267,8 @@ final class DesktopModel: ObservableObject {
         let removed = Array(oldKeys.subtracting(newKeys))
 
         let changed = added.count > 0 || removed.count > 0 || windowsContentChanged(old: windows, new: fresh)
-        let frontmostWid = fresh.values.min(by: { $0.zIndex < $1.zIndex })?.wid
-        let markFrontmost = frontmostWid != nil && frontmostWid != lastFrontmostWid
+        let focusedWid = resolveFocusedWindowID(in: fresh)
+        let focusedChanged = focusedWid != lastFocusedWindowID
         let interactionTime = Date()
 
         DispatchQueue.main.async {
@@ -275,15 +280,18 @@ final class DesktopModel: ObservableObject {
             for wid in added where interactions[wid] == nil {
                 interactions[wid] = interactionTime
             }
-            if markFrontmost, let frontmostWid {
-                interactions[frontmostWid] = interactionTime
+            if focusedChanged, let focusedWid {
+                interactions[focusedWid] = interactionTime
             }
             // Only publish if something actually changed — avoids unnecessary SwiftUI re-renders
-            if changed || markFrontmost {
+            if changed || focusedChanged {
                 self.windows = fresh
                 self.interactionDates = interactions
             }
-            self.lastFrontmostWid = frontmostWid
+            if self.focusedWindowID != focusedWid {
+                self.focusedWindowID = focusedWid
+            }
+            self.lastFocusedWindowID = focusedWid
         }
 
         if changed {
@@ -293,6 +301,31 @@ final class DesktopModel: ObservableObject {
                 removed: removed
             ))
         }
+    }
+
+    private func resolveFocusedWindowID(in windows: [UInt32: WindowEntry]) -> UInt32? {
+        guard let app = NSWorkspace.shared.frontmostApplication,
+              !LatticesRuntime.isLatticesBundleIdentifier(app.bundleIdentifier) else {
+            return nil
+        }
+
+        let appRef = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetMessagingTimeout(appRef, 0.2)
+
+        var focusedRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(appRef, kAXFocusedWindowAttribute as CFString, &focusedRef) == .success,
+              let focusedWindow = focusedRef else {
+            return nil
+        }
+
+        var wid: CGWindowID = 0
+        guard _AXUIElementGetWindow(focusedWindow as! AXUIElement, &wid) == .success,
+              wid != 0 else {
+            return nil
+        }
+
+        let id = UInt32(wid)
+        return windows[id] == nil ? nil : id
     }
 
     private func reconcileWithAX(_ fresh: inout [UInt32: WindowEntry]) {

@@ -120,6 +120,10 @@ final class IntentEngine {
                 slots[slot.name] = .string(mapped)
                 continue
             }
+            if slot.type == "position", let placement = PlacementSpec(string: raw) {
+                slots[slot.name] = .string(placement.wireValue)
+                continue
+            }
             throw IntentError.invalidSlot("Invalid \(slot.name) '\(raw)'. Valid: \(allowed.joined(separator: ", "))")
         }
 
@@ -179,7 +183,7 @@ final class IntentEngine {
             ],
             slots: [
                 IntentSlot(name: "position", type: "position", required: true,
-                           description: "Target tile position. Named positions or grid:CxR:C,R syntax.",
+                           description: "Target tile position. Named positions, canonical 0-based grid:CxR:C,R, or compact 1-based CxR:C,R syntax.",
                            enumValues: TilePosition.allCases.map(\.rawValue)),
                 IntentSlot(name: "app", type: "string", required: false,
                            description: "Target app name (defaults to frontmost)", enumValues: nil),
@@ -209,8 +213,9 @@ final class IntentEngine {
                 // For wid/app/frontmost: use WindowTiler directly
                 func tileEntry(_ entry: WindowEntry) {
                     IntentEngine.markTiled(entry.wid)
+                    let screen = WindowTiler.screenForWindowFrame(entry.frame)
                     DispatchQueue.main.async {
-                        WindowTiler.tileWindowById(wid: entry.wid, pid: entry.pid, to: placement)
+                        WindowTiler.tileWindowById(wid: entry.wid, pid: entry.pid, to: placement, on: screen)
                     }
                 }
 
@@ -288,6 +293,26 @@ final class IntentEngine {
                            description: "Window ID to focus", enumValues: nil),
             ],
             handler: { req in
+                func focusEntry(_ entry: WindowEntry, resolution: String, requested: String? = nil) throws -> JSON {
+                    let response = try LatticesApi.shared.dispatch(
+                        method: "window.focus",
+                        params: .object(["wid": .int(Int(entry.wid))])
+                    )
+                    guard case .object(var obj) = response else { return response }
+                    obj["targetResolution"] = obj["targetResolution"] ?? .string(resolution)
+                    if let requested {
+                        obj["requested"] = .string(requested)
+                    }
+                    if obj["app"] == nil { obj["app"] = .string(entry.app) }
+                    if obj["title"] == nil { obj["title"] = .string(entry.title) }
+                    if obj["pid"] == nil { obj["pid"] = .int(Int(entry.pid)) }
+                    if let session = entry.latticesSession {
+                        if obj["session"] == nil { obj["session"] = .string(session) }
+                        if obj["latticesSession"] == nil { obj["latticesSession"] = .string(session) }
+                    }
+                    return .object(obj)
+                }
+
                 if let session = req.slots["session"]?.stringValue {
                     return try LatticesApi.shared.dispatch(
                         method: "window.focus",
@@ -301,17 +326,38 @@ final class IntentEngine {
                     )
                 }
                 if let app = req.slots["app"]?.stringValue {
-                    if let entry = DesktopModel.shared.windows.values.first(where: {
-                        $0.app.localizedCaseInsensitiveContains(app)
-                    }) {
-                        return try LatticesApi.shared.dispatch(
-                            method: "window.focus",
-                            params: .object(["wid": .int(Int(entry.wid))])
-                        )
+                    if let entry = DesktopModel.shared.windowForApp(app: app, title: nil) {
+                        return try focusEntry(entry, resolution: "app", requested: app)
                     }
-                    // Try launching the app
-                    NSWorkspace.shared.launchApplication(app)
-                    return .object(["ok": .bool(true), "launched": .string(app)])
+
+                    let searchResult = try? LatticesApi.shared.dispatch(
+                        method: "lattices.search",
+                        params: .object([
+                            "query": .string(app),
+                            "sources": .array([
+                                .string("titles"),
+                                .string("apps"),
+                                .string("sessions"),
+                                .string("cwd"),
+                                .string("tmux")
+                            ]),
+                        ])
+                    )
+                    if case .array(let items) = searchResult,
+                       let wid = items.first?["wid"]?.uint32Value,
+                       let entry = DesktopModel.shared.windows[wid] {
+                        return try focusEntry(entry, resolution: "search", requested: app)
+                    }
+
+                    if NSWorkspace.shared.launchApplication(app) {
+                        return .object([
+                            "ok": .bool(true),
+                            "launched": .string(app),
+                            "requested": .string(app),
+                            "targetResolution": .string("app-launch"),
+                        ])
+                    }
+                    throw IntentError.targetNotFound("No window or app found for '\(app)'")
                 }
                 throw IntentError.missingSlot("app, session, or wid")
             }

@@ -213,7 +213,7 @@ export function findPreset(name: string): TilePreset | undefined {
   return PRESET_BY_NAME.get(name);
 }
 
-const GRID_PATTERN = /^grid:(\d+)x(\d+):(\d+),(\d+)$/i;
+const GRID_PATTERN = /^(grid:)?(\d+)x(\d+):(\d+),(\d+)$/i;
 
 export interface ParsedGrid {
   cols: number;
@@ -227,10 +227,15 @@ export function parseGrid(input: string): ParsedGrid | null {
   const trimmed = input.trim();
   const match = trimmed.match(GRID_PATTERN);
   if (!match) return null;
-  const cols = Number(match[1]);
-  const rows = Number(match[2]);
-  const col = Number(match[3]);
-  const row = Number(match[4]);
+  const oneBased = !match[1];
+  const cols = Number(match[2]);
+  const rows = Number(match[3]);
+  let col = Number(match[4]);
+  let row = Number(match[5]);
+  if (oneBased) {
+    col -= 1;
+    row -= 1;
+  }
   if (!cols || !rows) return null;
   if (col < 0 || col >= cols || row < 0 || row >= rows) return null;
   return {

@@ -113,6 +113,13 @@ final class DiagnosticLog: ObservableObject {
         let ms = Date().timeIntervalSince(action.start) * 1000
         success("▸ \(action.label) — \(String(format: "%.0f", ms))ms")
     }
+
+    func fail(_ action: TimedAction, message: String? = nil) {
+        let ms = Date().timeIntervalSince(action.start) * 1000
+        let detail = message?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let suffix = detail.isEmpty ? "" : "\n\(detail)"
+        error("▸ \(action.label) failed — \(String(format: "%.0f", ms))ms\(suffix)")
+    }
 }
 
 // MARK: - Interaction Feedback

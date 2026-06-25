@@ -433,9 +433,9 @@ final class HandsOffSession: ObservableObject {
 
     private func beginListening() {
         #if canImport(HudsonVoice)
-        // HudsonVoice opens a fresh capture on start. We only gate on whether the
-        // runtime is discoverable so the UI can show a brief connecting phase.
-        if HudsonVoiceRuntime.isAvailable() {
+        // HudsonVoice opens a fresh capture on start. We only gate on whether an
+        // endpoint can be resolved; session errors are handled by the stream.
+        if HudsonVoiceRuntimeResolver.resolve(clientId: "lattices") != nil {
             startDictation()
         } else {
             state = .connecting
@@ -452,7 +452,7 @@ final class HandsOffSession: ObservableObject {
 
     private func retryListenIfReady(attempts: Int) {
         #if canImport(HudsonVoice)
-        if HudsonVoiceRuntime.isAvailable() {
+        if HudsonVoiceRuntimeResolver.resolve(clientId: "lattices") != nil {
             startDictation()
         } else if attempts > 0 {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in

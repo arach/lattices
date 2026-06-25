@@ -3,7 +3,7 @@ import HudsonUI
 
 extension HudTheme {
     /// Lattices' `Palette` mapped onto Hudson's runtime theme so HudsonUI
-    /// primitives (starting with `HudComposer`) render in the app's dark
+    /// primitives (composer, agent transcript rows, markdown) render in the app's dark
     /// aesthetic. Inject with `.environment(\.hudTheme, .lattices)`.
     ///
     /// `statusError → kill` makes the composer's morphing Stop button the exact
