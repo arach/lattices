@@ -2706,11 +2706,10 @@ final class LatticesApi {
             description: "Re-probe the voice runtime. HudsonVoice opens a fresh session per capture, so there is no persistent socket to reconnect.",
             access: .mutate,
             params: [],
-            returns: .custom("Voice runtime reachability: { ok, runtimeAvailable, runtimeHost, service, transport, endpoint, port, pid, capabilityPath, standaloneVoxRunning }"),
+            returns: .custom("Voice runtime reachability: { ok, runtimeAvailable, runtimeHost, service, transport, endpoint, port, pid, capabilityPath }"),
             handler: { _ in
                 #if canImport(HudsonVoice)
                 let runtime = HudsonVoiceRuntimeResolver.resolve(clientId: "lattices")
-                let standaloneInfo = VoxDaemon.info()
                 return .object([
                     "ok": .bool(true),
                     "runtimeAvailable": .bool(runtime != nil),
@@ -2722,13 +2721,9 @@ final class LatticesApi {
                     "pid": runtime?.pid.map { .int($0) } ?? .null,
                     "capabilityPath": .null,
                     "runtimeError": .null,
-                    "standaloneVoxRunning": .bool(standaloneInfo != nil),
-                    "standaloneVoxPort": standaloneInfo.map { .int(Int($0.port)) } ?? .null,
-                    "standaloneVoxPid": standaloneInfo.map { .int($0.pid) } ?? .null,
                     "note": .string("HudsonVoice is compiled in; Lattices uses HudsonVoice's Vox WebSocket contract for live sessions."),
                 ])
                 #else
-                let standaloneInfo = VoxDaemon.info()
                 return .object([
                     "ok": .bool(true),
                     "runtimeAvailable": .bool(false),
@@ -2740,9 +2735,6 @@ final class LatticesApi {
                     "pid": .null,
                     "capabilityPath": .null,
                     "runtimeError": .string("HudsonVoice is not compiled into this build."),
-                    "standaloneVoxRunning": .bool(standaloneInfo != nil),
-                    "standaloneVoxPort": standaloneInfo.map { .int(Int($0.port)) } ?? .null,
-                    "standaloneVoxPid": standaloneInfo.map { .int($0.pid) } ?? .null,
                     "note": .string("HudsonVoice is not compiled into this build."),
                 ])
                 #endif

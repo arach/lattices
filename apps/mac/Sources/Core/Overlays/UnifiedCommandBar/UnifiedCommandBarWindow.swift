@@ -242,7 +242,11 @@ final class UnifiedCommandBarWindow {
             if voice.phase == .listening && !optionPushToTalkActive {
                 optionPushToTalkActive = false
                 voice.stopListening()
-            } else if voice.armed && (voice.phase == .idle || voice.phase == .result) {
+            } else if voice.armed && (voice.phase == .idle || voice.phase == .result)
+                        && panel?.isKeyWindow == true {
+                // Only START push-to-talk while the bar is key. The global flags
+                // monitor exists to catch the RELEASE after focus shifts; without
+                // this gate an ⌥ press aimed at another app would begin recording.
                 optionPushToTalkActive = true
                 voice.startListening()
             }
