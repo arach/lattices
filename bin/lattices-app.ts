@@ -38,6 +38,50 @@ function isRunning(): boolean {
   }
 }
 
+type RunningProcess = { pid: string; command: string };
+
+function runningLatticesProcesses(): RunningProcess[] {
+  let pids: string[];
+  try {
+    pids = execFileSync("pgrep", ["-x", "Lattices"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim().split(/\s+/).filter(Boolean);
+  } catch {
+    return [];
+  }
+
+  const processes: RunningProcess[] = [];
+  for (const pid of pids) {
+    try {
+      const command = execFileSync("ps", ["-p", pid, "-o", "command="], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      }).trim();
+      if (command) processes.push({ pid, command });
+    } catch {}
+  }
+  return processes;
+}
+
+function runningBundleProcesses(targetBundlePath = bundlePath): RunningProcess[] {
+  const executable = resolve(targetBundlePath, "Contents/MacOS/Lattices");
+  return runningLatticesProcesses().filter(({ command }) =>
+    command === executable || command.startsWith(`${executable} `)
+  );
+}
+
+function requireBundleNotRunningForBuild(): void {
+  const running = runningBundleProcesses();
+  if (!running.length) return;
+
+  console.error("Refusing to rebuild Lattices.app while that bundle is running.");
+  console.error("Rewriting or re-signing a live Mach-O can make macOS kill it later with Code Signature Invalid.");
+  console.error(`Running PID(s): ${running.map((proc) => proc.pid).join(", ")}`);
+  console.error("Use `lattices app restart` to quit, rebuild, and relaunch, or run `lattices app quit` before `lattices app build`.");
+  process.exit(1);
+}
+
 function sleep(ms: number): void {
   execFileSync("/bin/sleep", [(ms / 1000).toString()], { stdio: "ignore" });
 }
@@ -571,6 +615,7 @@ const shouldDetachUpdate = flags.includes("--detach");
 const isUpdateWorker = flags.includes("--worker");
 
 if (cmd === "build") {
+  requireBundleNotRunningForBuild();
   if (!hasSwift()) {
     console.error("Swift is required. Install with: xcode-select --install");
     process.exit(1);

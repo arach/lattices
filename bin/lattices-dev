@@ -105,8 +105,9 @@ clear_lattices_drag_cache() {
     done
 }
 
-is_install_bundle_running() {
-    local target="$INSTALL_BUNDLE/Contents/MacOS/Lattices"
+is_bundle_running() {
+    local bundle="$1"
+    local target="$bundle/Contents/MacOS/Lattices"
     local pid args
 
     while IFS= read -r pid; do
@@ -118,6 +119,26 @@ is_install_bundle_running() {
     done < <(pgrep -x Lattices 2>/dev/null || true)
 
     return 1
+}
+
+is_install_bundle_running() {
+    is_bundle_running "$INSTALL_BUNDLE"
+}
+
+require_build_targets_not_running() {
+    if is_bundle_running "$BUNDLE"; then
+        red "Refusing to rebuild the repo-local app artifact while it is running."
+        dim "Rewriting or re-signing a live Mach-O can make macOS kill it later with Code Signature Invalid."
+        dim "Use \`lattices-dev restart\` to quit, rebuild, and relaunch."
+        exit 1
+    fi
+
+    if is_install_bundle_running; then
+        red "Refusing to install over the running dev app bundle."
+        dim "Rewriting or re-signing a live Mach-O can make macOS kill it later with Code Signature Invalid."
+        dim "Use \`lattices-dev restart\` or \`lattices app restart\` to quit, rebuild, and relaunch."
+        exit 1
+    fi
 }
 
 write_info_plist() {
@@ -179,6 +200,7 @@ PLIST
 
 cmd_build() {
     echo "Building dev app..."
+    require_build_targets_not_running
     # Build features are declared in apps/mac/build.json and resolved to the
     # HUDSONKIT_WITH_* env HudsonKit gates on (see bin/lattices-build-env.ts).
     eval "$(bun "$ROOT/bin/lattices-build-env.ts" shell)"
