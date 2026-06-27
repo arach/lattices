@@ -1,5 +1,5 @@
 import AppKit
-#if canImport(HudsonVoice)
+#if LATTICES_VOICE && canImport(HudsonVoice)
 import HudsonVoice
 #endif
 
@@ -11,6 +11,7 @@ import HudsonVoice
 protocol AudioProvider: AnyObject {
     var isAvailable: Bool { get }
     var isListening: Bool { get }
+    var lastErrorMessage: String? { get }
 
     /// Start listening. Transcription arrives via the callback.
     func startListening(onTranscript: @escaping (Transcription) -> Void)
@@ -46,12 +47,13 @@ final class AudioLayer: ObservableObject {
     @Published var provider: (any AudioProvider)?
     @Published var providerName: String = "none"
     @Published var agentResponse: AgentResponse?
+    @Published var assistantHandoffPrompt: String?
 
     private var pendingVoiceStart = false
     private var voiceConnectionRetry: DispatchWorkItem?
 
     private init() {
-        #if canImport(HudsonVoice)
+        #if LATTICES_VOICE && canImport(HudsonVoice)
         provider = HudVoxAudioProvider()
         providerName = "hudson-voice"
         #else
@@ -75,6 +77,7 @@ final class AudioLayer: ObservableObject {
         executionData = nil
         executionError = nil
         agentResponse = nil
+        assistantHandoffPrompt = nil
         didExecuteIntent = false
         DiagnosticLog.shared.info("AudioLayer: voice capture starting")
 
@@ -91,15 +94,6 @@ final class AudioLayer: ObservableObject {
     private func startVoiceCommandWhenReady(provider: any AudioProvider, attempt: Int) {
         guard pendingVoiceStart, !isListening else { return }
 
-        // `isAvailable` reflects whether a HudsonVoice endpoint can be resolved.
-        // Health/session errors still surface from HudsonVoice when capture starts.
-        if provider.isAvailable {
-            pendingVoiceStart = false
-            DiagnosticLog.shared.info("AudioLayer: voice provider ready")
-            beginVoiceCommand(provider: provider)
-            return
-        }
-
         if attempt == 0 {
             executionResult = "Connecting to voice runtime..."
         }
@@ -107,10 +101,28 @@ final class AudioLayer: ObservableObject {
         guard attempt < 40 else {
             pendingVoiceStart = false
             DiagnosticLog.shared.warn("AudioLayer: voice runtime not reachable before voice start")
-            setFinalResult("Voice runtime unavailable", warning: true)
+            setFinalResult(provider.lastErrorMessage ?? "Voice runtime unavailable", warning: true)
             return
         }
 
+        guard provider.isAvailable else {
+            scheduleVoiceStartRetry(provider: provider, attempt: attempt)
+            return
+        }
+
+        provider.checkHealth { [weak self] ok in
+            guard let self, self.pendingVoiceStart, !self.isListening else { return }
+            guard ok else {
+                self.scheduleVoiceStartRetry(provider: provider, attempt: attempt)
+                return
+            }
+            self.pendingVoiceStart = false
+            DiagnosticLog.shared.info("AudioLayer: voice provider ready")
+            self.beginVoiceCommand(provider: provider)
+        }
+    }
+
+    private func scheduleVoiceStartRetry(provider: any AudioProvider, attempt: Int) {
         let retry = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.startVoiceCommandWhenReady(provider: provider, attempt: attempt + 1)
@@ -181,7 +193,8 @@ final class AudioLayer: ObservableObject {
                     DiagnosticLog.shared.info("AudioLayer: heard final transcript — \(t.text)")
                     EventBus.shared.post(.voiceCommand(text: t.text, confidence: t.confidence))
                     self.executeVoiceIntent(t)
-                } else if !self.didExecuteIntent {
+                } else if !self.didExecuteIntent,
+                          self.executionResult == nil || self.executionResult == "Transcribing..." {
                     self.setFinalResult("No speech detected", warning: true)
                 }
             }
@@ -191,15 +204,24 @@ final class AudioLayer: ObservableObject {
     private func executeVoiceIntent(_ transcription: Transcription) {
         didExecuteIntent = true
         let matcher = PhraseMatcher.shared
+        let text = transcription.text
 
         // Clear previous agent response + any stale failure flag
         agentResponse = nil
         executionError = nil
         executionData = nil
+        assistantHandoffPrompt = nil
 
         DiagnosticLog.shared.info("AudioLayer: resolving voice request")
 
-        if let match = matcher.match(text: transcription.text) {
+        if let prompt = IntentHeuristics.assistantWakePrompt(text) {
+            DiagnosticLog.shared.info("AudioLayer: route → Assistant wake word")
+            matchedIntent = nil
+            matchedSlots = [:]
+            executionResult = "thinking..."
+            handoffToAssistant(prompt: prompt)
+
+        } else if let match = matcher.match(text: text) {
             DiagnosticLog.shared.info("AudioLayer: route → local intent")
             matchedIntent = match.intentName
             matchConfidence = match.confidence
@@ -220,16 +242,16 @@ final class AudioLayer: ObservableObject {
             }
 
             // Fire parallel provider-backed advisor for 5+ word utterances.
-            fireAdvisor(transcript: transcription.text, matched: "\(match.intentName)(\(matchedSlots))")
+            fireAdvisor(transcript: text, matched: "\(match.intentName)(\(matchedSlots))")
 
-        } else if shouldAnswerWithAssistant(transcription.text) {
+        } else if shouldAnswerWithAssistant(text) {
             DiagnosticLog.shared.info("AudioLayer: route → Assistant question")
-            DiagnosticLog.shared.info("AudioLayer: question-like voice request, asking Assistant provider")
+            DiagnosticLog.shared.info("AudioLayer: question-like voice request, handing to Assistant")
             matchedIntent = nil
             matchedSlots = [:]
             executionResult = "thinking..."
             executionData = nil
-            assistantQuestion(transcription: transcription)
+            handoffToAssistant(prompt: IntentHeuristics.assistantPromptText(text))
 
         } else {
             // No local match — ask the selected Assistant provider.
@@ -277,7 +299,7 @@ final class AudioLayer: ObservableObject {
             guard let self else { return }
             guard let resolved else {
                 DiagnosticLog.shared.info("AudioLayer: Assistant provider returned no intent")
-                self.setFinalResult("Assistant couldn't resolve an action for that request", warning: true)
+                self.handoffToAssistant(prompt: IntentHeuristics.assistantPromptText(transcription.text))
                 return
             }
 
@@ -357,27 +379,21 @@ final class AudioLayer: ObservableObject {
         setFinalResult("Couldn't run: \(message)", error: message, warning: true)
     }
 
-    private func assistantQuestion(transcription: Transcription) {
-        let assistant = WorkspaceAssistantSession.shared
-        guard assistant.isProviderInferenceReady else {
-            DiagnosticLog.shared.info("AudioLayer: Assistant provider not ready for question")
-            setFinalResult("Connect an Assistant provider in Settings", warning: true)
+    private func handoffToAssistant(prompt rawPrompt: String) {
+        let prompt = IntentHeuristics.assistantPromptText(rawPrompt)
+        guard !prompt.isEmpty else {
+            setFinalResult("Assistant prompt was empty", warning: true)
             return
         }
 
-        assistant.answerVoiceQuestion(transcription.text) { [weak self] response in
-            guard let self else { return }
-            guard let response else {
-                DiagnosticLog.shared.info("AudioLayer: Assistant provider returned no answer")
-                self.setFinalResult("Assistant couldn't answer that question", warning: true)
-                return
-            }
-            self.agentResponse = response
-            if let commentary = response.commentary {
-                DiagnosticLog.shared.info("AudioLayer: Assistant answered — \(commentary.prefix(160))")
-            }
-            self.setFinalResult("Answered as a question; no workspace action ran.")
-        }
+        assistantHandoffPrompt = prompt
+        matchedIntent = nil
+        matchedSlots = [:]
+        executionError = nil
+        executionData = nil
+        DiagnosticLog.shared.info("AudioLayer: handing voice transcript to Assistant")
+        WorkspaceAssistantSession.shared.send(prompt)
+        setFinalResult("Sent to Assistant")
     }
 
     // Question-vs-command classification lives in `IntentHeuristics` so the typed
@@ -521,7 +537,7 @@ final class AudioLayer: ObservableObject {
 // `VoxClient` WebSocket). HudsonVoice opens its own socket per capture rather
 // than holding one open.
 
-#if canImport(HudsonVoice)
+#if LATTICES_VOICE && canImport(HudsonVoice)
 final class HudVoxAudioProvider: AudioProvider {
     private var session: HudVoxLiveSession?
     private var pumpTask: Task<Void, Never>?
@@ -529,21 +545,36 @@ final class HudVoxAudioProvider: AudioProvider {
     private var stopCompletion: ((Transcription?) -> Void)?
     private var _isListening = false
     private var finalDelivered = false
+    private var lastProviderError: String?
 
     var isAvailable: Bool { HudsonVoiceRuntimeResolver.resolve(clientId: "lattices") != nil }
     var isListening: Bool { _isListening }
+    var lastErrorMessage: String? { lastProviderError }
 
     func checkHealth(completion: @escaping (Bool) -> Void) {
         guard let runtime = HudsonVoiceRuntimeResolver.resolve(clientId: "lattices") else {
+            lastProviderError = "Voice runtime unavailable"
             completion(false)
             return
         }
         Task {
-            let ok = (try? await HudVoxProbe.health(
-                endpoint: runtime.endpoint,
-                clientId: runtime.options.clientId
-            )) != nil
-            await MainActor.run { completion(ok) }
+            do {
+                _ = try await HudVoxProbe.health(
+                    endpoint: runtime.endpoint,
+                    clientId: runtime.options.clientId
+                )
+                await MainActor.run {
+                    self.lastProviderError = nil
+                    completion(true)
+                }
+            } catch {
+                let message = Self.voiceRuntimeMessage(for: error, endpoint: runtime.endpoint)
+                await MainActor.run {
+                    self.lastProviderError = message
+                    DiagnosticLog.shared.warn("HudVoxAudioProvider: health check failed — \(message)")
+                    completion(false)
+                }
+            }
         }
     }
 
@@ -557,6 +588,9 @@ final class HudVoxAudioProvider: AudioProvider {
             DiagnosticLog.shared.warn("HudVoxAudioProvider: cannot start because HudsonVoice runtime is unavailable")
             _isListening = false
             self.onTranscript = nil
+            lastProviderError = "Voice runtime unavailable"
+            AudioLayer.shared.setFinalResult("Voice runtime unavailable", warning: true)
+            onTranscript(Transcription(text: "", confidence: 0, source: "hudson-voice", isPartial: false, durationMs: nil))
             return
         }
         let endpoint = runtime.endpoint
@@ -632,8 +666,10 @@ final class HudVoxAudioProvider: AudioProvider {
         _isListening = false
         if !finalDelivered {
             if let error {
-                DiagnosticLog.shared.warn("HudVoxAudioProvider: session error — \(error.localizedDescription)")
-                AudioLayer.shared.setFinalResult("Transcription failed", warning: true)
+                let message = Self.voiceRuntimeMessage(for: error)
+                lastProviderError = message
+                DiagnosticLog.shared.warn("HudVoxAudioProvider: session error — \(message)")
+                AudioLayer.shared.setFinalResult(message, error: message, warning: true)
                 onTranscript?(Transcription(text: "", confidence: 0, source: "hudson-voice", isPartial: false, durationMs: nil))
             }
             stopCompletion?(nil)
@@ -642,6 +678,23 @@ final class HudVoxAudioProvider: AudioProvider {
         }
         session = nil
         pumpTask = nil
+    }
+
+    private static func voiceRuntimeMessage(for error: Error, endpoint: HudVoxEndpoint? = nil) -> String {
+        let raw = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        let detail = raw.isEmpty ? String(describing: error) : raw
+        if detail.localizedCaseInsensitiveContains("unauthorized") {
+            return "Voice runtime rejected Lattices: unauthorized"
+        }
+        if detail.localizedCaseInsensitiveContains("could not connect")
+            || detail.localizedCaseInsensitiveContains("connection refused")
+            || detail.localizedCaseInsensitiveContains("network connection was lost") {
+            if let endpoint {
+                return "Voice runtime unavailable at \(endpoint.url.absoluteString)"
+            }
+            return "Voice runtime unavailable"
+        }
+        return "Transcription failed: \(detail)"
     }
 }
 #endif

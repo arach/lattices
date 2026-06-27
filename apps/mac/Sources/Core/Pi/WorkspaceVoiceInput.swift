@@ -1,6 +1,6 @@
 import Combine
 import Foundation
-#if canImport(HudsonVoice)
+#if LATTICES_VOICE && canImport(HudsonVoice)
 import HudsonVoice
 #endif
 
@@ -42,7 +42,7 @@ enum WorkspaceDictationBuffer {
     }
 }
 
-#if canImport(HudsonVoice)
+#if LATTICES_VOICE && canImport(HudsonVoice)
 
 /// One-session-at-a-time dictation controller backed by HudVoxLiveSession.
 /// Tap the mic to start; tap again to commit and surface the transcript on

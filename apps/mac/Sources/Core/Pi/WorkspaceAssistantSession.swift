@@ -326,7 +326,7 @@ final class WorkspaceAssistantSession: ObservableObject {
 
     private static let dockHeightDefaultsKey = "PiChatDockHeight"
 
-    #if canImport(HudsonVoice)
+    #if LATTICES_VOICE && canImport(HudsonVoice)
     /// Drains finalized voice transcripts from the Hudson-powered mic into the composer draft.
     private var voiceInputCancellable: AnyCancellable?
     #endif
@@ -358,7 +358,7 @@ final class WorkspaceAssistantSession: ObservableObject {
         refreshBinaryAvailability()
         cleanupLingeringAuthHelpers()
 
-        #if canImport(HudsonVoice)
+        #if LATTICES_VOICE && canImport(HudsonVoice)
         // Splice finalized voice transcripts into the draft (one-shot, then drain),
         // mirroring OpenScout's HUDDockState lastFinalText subscription.
         voiceInputCancellable = WorkspaceVoiceInput.shared.$lastFinalText

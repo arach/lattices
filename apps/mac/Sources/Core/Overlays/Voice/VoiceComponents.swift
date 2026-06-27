@@ -55,6 +55,7 @@ final class VoiceCommandState: ObservableObject {
 
     // Agent advisor response
     @Published var agentResponse: AgentResponse?
+    @Published var assistantHandoffPrompt: String?
 
     // Listening timer
     @Published var listenStartTime: Date = Date()
@@ -70,29 +71,53 @@ final class VoiceCommandState: ObservableObject {
     private var cancelled = false
 
     func startListening() {
-        // Capture runs through AudioLayer; this gate only lets the overlay show a
-        // "connecting" phase while the embedded voice runtime becomes discoverable.
-        if AudioLayer.shared.provider?.isAvailable == true {
-            beginListening()
-        } else {
-            phase = .connecting
-            waitForVoiceRuntime(attempts: 0)
-        }
+        // Capture runs through AudioLayer; this gate only lets the overlay enter
+        // listening once the Vox/HudsonVoice socket is actually reachable.
+        cancelled = false
+        phase = .connecting
+        executionResult = "Connecting to voice runtime..."
+        waitForVoiceRuntime(attempts: 0)
     }
 
     private func waitForVoiceRuntime(attempts: Int) {
-        if AudioLayer.shared.provider?.isAvailable == true {
-            beginListening()
-        } else if attempts < 20 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-                self?.waitForVoiceRuntime(attempts: attempts + 1)
-            }
-        } else {
-            appendLog("Voice runtime not running")
-            executionResult = "Voice runtime not running — try again after it starts."
-            resultSummary = executionResult ?? ""
+        guard !cancelled else { return }
+        guard let provider = AudioLayer.shared.provider else {
+            let message = "No voice provider available"
+            appendLog(message)
+            executionResult = message
+            resultSummary = message
             syncLogs()
             phase = .result
+            return
+        }
+
+        guard provider.isAvailable else {
+            retryOrFailVoiceRuntime(provider: provider, attempts: attempts)
+            return
+        }
+
+        provider.checkHealth { [weak self] ok in
+            guard let self, !self.cancelled else { return }
+            if ok {
+                self.beginListening()
+            } else {
+                self.retryOrFailVoiceRuntime(provider: provider, attempts: attempts)
+            }
+        }
+    }
+
+    private func retryOrFailVoiceRuntime(provider: any AudioProvider, attempts: Int) {
+        guard attempts < 20 else {
+            let message = provider.lastErrorMessage ?? "Voice runtime not running - try again after it starts."
+            appendLog(message)
+            executionResult = message
+            resultSummary = message
+            syncLogs()
+            phase = .result
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            self?.waitForVoiceRuntime(attempts: attempts + 1)
         }
     }
 
@@ -109,6 +134,7 @@ final class VoiceCommandState: ObservableObject {
         resultItems = []
         resultSummary = ""
         agentResponse = nil
+        assistantHandoffPrompt = nil
         // Snapshot log position and observe changes reactively (no polling race)
         logSnapshot = DiagnosticLog.shared.entries.count
         logLines = []
@@ -216,6 +242,7 @@ final class VoiceCommandState: ObservableObject {
         resultSummary = entry.resultItems.isEmpty ? "" : "\(entry.resultItems.count) result\(entry.resultItems.count == 1 ? "" : "s")"
         logLines = entry.logLines
         agentResponse = nil
+        assistantHandoffPrompt = nil
         phase = .result
     }
 
@@ -256,6 +283,8 @@ final class VoiceCommandState: ObservableObject {
                 self.agentResponse = resp
             }
 
+            self.assistantHandoffPrompt = audio.assistantHandoffPrompt
+
             // Mirror any execution failure so the UI can flag it
             self.executionError = audio.executionError
         }
@@ -269,27 +298,11 @@ final class VoiceCommandState: ObservableObject {
 
             let result = audio.executionResult
 
-            // Terminal errors — log them, go to idle (not a separate error phase)
-            if result == "No speech detected" {
-                appendLog("No speech detected")
-                self.executionResult = result
-                self.resultSummary = "No speech detected — try again."
-                syncLogs()
-                self.phase = .result
-                return
-            }
-            if result == "Transcription failed" {
-                appendLog("Transcription failed")
-                self.executionResult = result
-                self.resultSummary = "Transcription failed — try again."
-                syncLogs()
-                self.phase = .result
-                return
-            }
-            if let result, result.hasPrefix("Mic in use") {
+            // Terminal errors — log them, go to result (not a separate error phase)
+            if let result, Self.isRetryableFailure(result) {
                 appendLog(result)
                 self.executionResult = result
-                self.resultSummary = result
+                self.resultSummary = Self.failureSummary(result)
                 syncLogs()
                 self.phase = .result
                 return
@@ -492,6 +505,25 @@ final class VoiceCommandState: ObservableObject {
         case "session-locator": return "session locator"
         case "app-launch": return "app launch"
         default: return resolution.replacingOccurrences(of: "-", with: " ")
+        }
+    }
+
+    static func isRetryableFailure(_ result: String) -> Bool {
+        result == "No speech detected"
+            || result == "Transcription failed"
+            || result.hasPrefix("Transcription failed:")
+            || result.hasPrefix("Voice runtime")
+            || result.hasPrefix("Mic in use")
+    }
+
+    static func failureSummary(_ result: String) -> String {
+        switch result {
+        case "No speech detected":
+            return "No speech detected - try again."
+        case "Transcription failed":
+            return "Transcription failed - try again."
+        default:
+            return result
         }
     }
 }

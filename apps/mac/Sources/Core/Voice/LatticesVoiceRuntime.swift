@@ -1,12 +1,12 @@
 import Foundation
 
-#if canImport(HudsonVoice)
+#if LATTICES_VOICE && canImport(HudsonVoice)
 import HudsonVoice
 #endif
 
 enum LatticesVoiceRuntime {
     static func start() {
-        #if canImport(HudsonVoice)
+        #if LATTICES_VOICE && canImport(HudsonVoice)
         DiagnosticLog.shared.info("HudsonVoice: live session client compiled in")
         #else
         DiagnosticLog.shared.info("HudsonVoice: runtime host skipped because HudsonVoice is not compiled into this build")
@@ -14,7 +14,7 @@ enum LatticesVoiceRuntime {
     }
 
     static func stop() {
-        #if canImport(HudsonVoice)
+        #if LATTICES_VOICE && canImport(HudsonVoice)
         DiagnosticLog.shared.info("HudsonVoice: live session client stopped")
         #endif
     }

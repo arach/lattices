@@ -236,6 +236,22 @@ enum LatticeRes: Int, CaseIterable {
 /// `GridPlacement(column:row:)`.
 struct HoverCell: Equatable { let col: Int; let row: Int }
 
+/// Balanced cell assignments within a lattice grid, anchored at the drop cell.
+/// Short final rows are centered — same logic as `MotionPanel.balancedGrid`.
+private func balancedGridCells(count: Int, latticeCols: Int, latticeRows: Int,
+                               anchorCol: Int, anchorRow: Int) -> [(col: Int, row: Int)]? {
+    guard count > 0 else { return [] }
+    let subCols = max(1, Int(ceil(Double(count).squareRoot())))
+    let subRows = max(1, Int(ceil(Double(count) / Double(subCols))))
+    guard anchorCol + subCols <= latticeCols, anchorRow + subRows <= latticeRows else { return nil }
+    return (0..<count).map { i in
+        let r = i / subCols, c = i % subCols
+        let itemsInRow = min(subCols, count - r * subCols)
+        let xOffset = (subCols - itemsInRow) / 2
+        return (col: anchorCol + xOffset + c, row: anchorRow + r)
+    }
+}
+
 /// Ephemeral drag state for the intent layer. Owned by `MotionPanel` (so it
 /// survives the frequent ExposeView rebuilds) and observed by every screen's
 /// ExposeView. The drag is scoped to one screen via `screenID`; only that screen
@@ -262,6 +278,8 @@ final class HyperspaceDrag: ObservableObject {
     @Published var screenID: String = ""     // which screen owns the in-flight drag
     /// Where the in-flight drag started — survey tile vs Current View outline.
     var dragSource: DragSource?
+    /// Full selection when dragging a picked window (2+); otherwise just the one window.
+    var dragWids: [UInt32] = []
 
     enum DragSource { case survey, currentView }
 
@@ -290,6 +308,7 @@ final class HyperspaceDrag: ObservableObject {
 
     func reset() {
         wid = nil
+        dragWids = []
         image = nil
         dragSource = nil
         hoverCell = nil
@@ -1169,6 +1188,8 @@ private final class MotionPanel: NSPanel {
         return (cols, rows)
     }
 
+
+
     /// Balanced grid: `n` items in ceil(√n) columns, but each row is centered so a
     /// short final row sits in the middle instead of leaving a lopsided blank corner
     /// (e.g. 3 → two on top, one centered below). Returns normalized rects
@@ -1319,6 +1340,22 @@ private final class MotionPanel: NSPanel {
             DiagnosticLog.shared.info("Hyperspace stage — wid=\(wid) location \(placement.wireValue)")
         }
         rebuildExposeView()
+    }
+
+    /// Stage a balanced sub-grid for a multi-window drop onto the lattice, anchored at `anchor`.
+    private func handleGridGroupDrop(_ wids: [UInt32], res: LatticeRes, anchor: HoverCell) {
+        let (cols, rows) = res.dims
+        guard let cells = balancedGridCells(count: wids.count, latticeCols: cols, latticeRows: rows,
+                                            anchorCol: anchor.col, anchorRow: anchor.row) else {
+            NSSound.beep()
+            return
+        }
+        for (i, wid) in wids.enumerated() {
+            let cell = cells[i]
+            guard let gp = GridPlacement(columns: cols, rows: rows, column: cell.col, row: cell.row) else { continue }
+            handleDrop(wid, PlacementSpec.grid(gp))
+        }
+        DiagnosticLog.shared.info("Hyperspace stage — \(wids.count) windows grid @ \(anchor.col),\(anchor.row) (\(res.name))")
     }
 
     /// A tile was dropped on a Layers pile. The ＋ pile stages a brand-new layer; any
@@ -2101,6 +2138,9 @@ private final class MotionPanel: NSPanel {
                 usableInset: MotionPanel.usableInset(of: screen),
                 onPick: { [weak self] wid in self?.exposeToggle(wid, on: screen) },
                 onDrop: { [weak self] wid, spec in self?.handleDrop(wid, spec) },
+                onDropGridGroup: { [weak self] wids, res, anchor in
+                    self?.handleGridGroupDrop(wids, res: res, anchor: anchor)
+                },
                 onDropLayer: { [weak self] wid, key in self?.handleLayerDrop(wid, key) },
                 onSwap: { [weak self] a, b in self?.swapWindows(widA: a, widB: b, on: screen) },
                 onGridSelection: { [weak self] in self?.gatherInPlace(on: screen) },
@@ -3537,6 +3577,7 @@ struct ExposeView: View {
     var usableInset = EdgeInsets()   // full panel(frame) → visibleFrame, so the Place stage clears the menu bar/Dock
     var onPick: (UInt32) -> Void = { _ in }
     var onDrop: (UInt32, PlacementSpec?) -> Void = { _, _ in }
+    var onDropGridGroup: ([UInt32], LatticeRes, HoverCell) -> Void = { _, _, _ in }
     var onDropLayer: (UInt32, String) -> Void = { _, _ in }
     var onSwap: (UInt32, UInt32) -> Void = { _, _ in }
     var onGridSelection: () -> Void = {}
@@ -4416,36 +4457,56 @@ struct ExposeView: View {
         let linked = activeLinkWid == t.id
         let picked = t.pickSlot != nil
         let lit = surveyHighlightWids?.contains(t.id) == true
+        let hasSelection = !pickedWids.isEmpty
+        let dimmed = hasSelection && !picked
         let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
         let thumbW: CGFloat = 72
         let thumbH: CGFloat = 44
         return HStack(spacing: 8) {
+            if picked {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(Palette.running)
+                    .frame(width: 3, height: thumbH)
+            }
             ZStack {
-                shape.fill(t.tint.opacity(0.22))
+                shape.fill(t.tint.opacity(picked ? 0.32 : 0.22))
                 if let img = t.image {
                     Image(nsImage: img).resizable().aspectRatio(contentMode: .fill)
+                }
+                if picked {
+                    shape.fill(Palette.running.opacity(0.12))
                 }
             }
             .frame(width: thumbW, height: thumbH)
             .clipShape(shape)
-            .overlay(shape.strokeBorder(linked ? HUDChrome.cyan : t.tint.opacity(0.55), lineWidth: linked ? 2 : 0.75))
+            .overlay(shape.strokeBorder(
+                linked ? HUDChrome.cyan
+                    : (picked ? Palette.running : t.tint.opacity(0.55)),
+                lineWidth: linked ? 2 : (picked ? 2 : 0.75)))
             VStack(alignment: .leading, spacing: 2) {
                 Text(t.app)
                     .font(Typo.monoBold(10))
-                    .foregroundColor(.white)
+                    .foregroundColor(picked ? .white : .white.opacity(dimmed ? 0.65 : 1))
                     .lineLimit(1)
                 Text(t.title)
                     .font(Typo.mono(8.5))
-                    .foregroundColor(Palette.textMuted)
+                    .foregroundColor(picked ? Palette.running.opacity(0.9) : Palette.textMuted)
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
-            if let slot = t.pickSlot {
-                Text("\(slot)")
-                    .font(Typo.monoBold(9))
-                    .foregroundColor(Palette.bg)
-                    .padding(.horizontal, 5).padding(.vertical, 2)
-                    .background(Capsule().fill(Palette.running))
+            if picked {
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Palette.running)
+                    if let slot = t.pickSlot {
+                        Text("\(slot)")
+                            .font(Typo.monoBold(9))
+                            .foregroundColor(Palette.bg)
+                            .padding(.horizontal, 5).padding(.vertical, 2)
+                            .background(Capsule().fill(Palette.running))
+                    }
+                }
             } else if inPlace, !t.hint.isEmpty {
                 Text(t.hint)
                     .font(Typo.monoBold(9))
@@ -4457,12 +4518,14 @@ struct ExposeView: View {
         .padding(.horizontal, 6).padding(.vertical, 5)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(lit ? Color.white.opacity(0.08) : Color.white.opacity(0.03))
+                .fill(picked ? Palette.running.opacity(0.14)
+                      : (lit ? Color.white.opacity(0.08) : Color.white.opacity(0.03)))
                 .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .strokeBorder(linked ? HUDChrome.cyan.opacity(0.7)
-                                    : (picked ? Palette.running.opacity(0.5) : Palette.border),
-                                  lineWidth: linked ? 1.5 : 0.5))
+                                    : (picked ? Palette.running.opacity(0.75) : Palette.border),
+                                  lineWidth: linked ? 1.5 : (picked ? 1.5 : 0.5)))
         )
+        .opacity(dimmed ? 0.48 : 1)
         .contentShape(Rectangle())
         .highPriorityGesture(TapGesture().onEnded { onPick(t.id) })
         .gesture(
@@ -4477,6 +4540,11 @@ struct ExposeView: View {
         }
         .contextMenu { windowContextMenu(t) }
         .animation(.easeOut(duration: 0.14), value: linked)
+        .animation(.easeOut(duration: 0.14), value: picked)
+    }
+
+    private func pickSlot(for wid: UInt32) -> Int? {
+        pickedOrder.firstIndex(of: wid).map { $0 + 1 }
     }
 
     @ViewBuilder
@@ -5155,6 +5223,17 @@ struct ExposeView: View {
                     .allowsHitTesting(false)
             }
         }
+        .overlay(alignment: .topLeading) {
+            if picked, let slot = pickSlot(for: m.id), !lifted {
+                Text("\(slot)")
+                    .font(Typo.monoBold(8))
+                    .foregroundColor(Palette.bg)
+                    .padding(.horizontal, 4).padding(.vertical, 1)
+                    .background(Capsule().fill(Palette.running))
+                    .position(x: metrics.visual.minX + 10, y: metrics.visual.minY + 8)
+                    .allowsHitTesting(false)
+            }
+        }
         .zIndex(peeking ? 100 : (hovered || picked ? 10 : (m.behind ? 0 : 1)))
         .onHover { over in
             if over {
@@ -5208,8 +5287,12 @@ struct ExposeView: View {
     }
 
     private var currentViewSub: String {
-        if drag.isActive, drag.screenID == screenID, drag.dragSource == .currentView {
-            return drag.hoverGrid ? "release on cell" : "drag to grid →"
+        if drag.isActive, drag.screenID == screenID {
+            let n = drag.dragWids.count
+            if drag.hoverGrid || drag.hoverCell != nil {
+                return n > 1 ? "release \(n) on cell" : "release on cell"
+            }
+            return n > 1 ? "drag \(n) to grid →" : "drag to grid →"
         }
         if !pickedOrder.isEmpty { return "\(pickedOrder.count) selected" }
         if inPlace { return inPlaceCommandsVisible ? "shortcuts" : "hover for shortcuts" }
@@ -5321,11 +5404,14 @@ struct ExposeView: View {
     // Dropping a window on a cell stages that position.
     private var gridSection: some View {
         let draggingHere = dragOnThisScreen && drag.isActive
+        let dragN = drag.dragWids.count
         let sub: String = {
             guard draggingHere else { return "drop a position" }
-            if drag.hoverCell != nil { return "release here" }
-            if drag.hoverGrid { return "pick a cell" }
-            return "drop here"
+            if drag.hoverCell != nil {
+                return dragN > 1 ? "release \(dragN) here" : "release here"
+            }
+            if drag.hoverGrid { return dragN > 1 ? "pick anchor cell" : "pick a cell" }
+            return dragN > 1 ? "drop \(dragN) here" : "drop here"
         }()
         let armed = dragOnThisScreen && drag.isActive && (drag.hoverCell != nil || drag.hoverGrid)
         return sectionCard(title: "Grid", icon: "rectangle.split.2x2", sub: sub,
@@ -5578,6 +5664,16 @@ struct ExposeView: View {
             .scaleEffect(armed ? 0.62 : 1, anchor: .center)
             .opacity(armed ? 1 : 0.92)
             .animation(.spring(response: 0.22, dampingFraction: 0.72), value: armed)
+            .overlay(alignment: .topTrailing) {
+                if drag.dragWids.count > 1 {
+                    Text("\(drag.dragWids.count)")
+                        .font(Typo.monoBold(10))
+                        .foregroundColor(Palette.bg)
+                        .padding(.horizontal, 6).padding(.vertical, 3)
+                        .background(Capsule().fill(Palette.running))
+                        .offset(x: 8, y: -8)
+                }
+            }
             .position(drag.location)
             .allowsHitTesting(false)
         }
@@ -5623,6 +5719,11 @@ struct ExposeView: View {
             .onEnded { handleLayoutDragEnd(m, $0) }
     }
 
+    private func dragWidsFor(_ wid: UInt32) -> [UInt32] {
+        if pickedWids.contains(wid), pickedOrder.count >= 2 { return pickedOrder }
+        return [wid]
+    }
+
     private func handleDragChange(wid: UInt32, image: NSImage?, ghostTint: Color? = nil,
                                   source: HyperspaceDrag.DragSource,
                                   tileW: CGFloat, tileH: CGFloat, _ v: DragGesture.Value) {
@@ -5631,6 +5732,7 @@ struct ExposeView: View {
         if drag.wid == nil {
             guard dist >= 10 else { return }
             drag.wid = wid
+            drag.dragWids = dragWidsFor(wid)
             drag.image = image
             drag.ghostTint = image == nil ? ghostTint : nil
             drag.screenID = screenID
@@ -5659,20 +5761,33 @@ struct ExposeView: View {
                                onTap: () -> Void, _ v: DragGesture.Value) {
         let dist = hypot(v.translation.width, v.translation.height)
         let wasDragging = drag.wid != nil
+        let dragWids = drag.dragWids.isEmpty ? [wid] : drag.dragWids
         // Resolve the drop target before reset() clears the hover state. Priority:
         // Grid cell → layer pile → miss.
-        var spec: PlacementSpec?
+        var gridCell: HoverCell?
         var pulseFrame: CGRect?
         if wasDragging,
            let frame = drag.latticeFrames[screenID], frame.contains(v.location),
            let cell = drag.hoverCell {
+            gridCell = cell
             let (cols, rows) = drag.res.dims
-            spec = GridPlacement(columns: cols, rows: rows, column: cell.col, row: cell.row).map(PlacementSpec.grid)
             let cw = frame.width / CGFloat(cols), ch = frame.height / CGFloat(rows)
-            pulseFrame = CGRect(x: frame.minX + CGFloat(cell.col) * cw,
-                                y: frame.minY + CGFloat(cell.row) * ch, width: cw, height: ch)
+            if dragWids.count > 1,
+               let cells = balancedGridCells(count: dragWids.count, latticeCols: cols, latticeRows: rows,
+                                             anchorCol: cell.col, anchorRow: cell.row),
+               let last = cells.last {
+                let spanCols = last.col - cell.col + 1
+                let spanRows = last.row - cell.row + 1
+                pulseFrame = CGRect(x: frame.minX + CGFloat(cell.col) * cw,
+                                    y: frame.minY + CGFloat(cell.row) * ch,
+                                    width: cw * CGFloat(spanCols), height: ch * CGFloat(spanRows))
+            } else {
+                pulseFrame = CGRect(x: frame.minX + CGFloat(cell.col) * cw,
+                                    y: frame.minY + CGFloat(cell.row) * ch, width: cw, height: ch)
+            }
         }
-        let layerKey = (wasDragging && spec == nil) ? drag.hoverLayer : nil
+        let layerKey = (wasDragging && gridCell == nil) ? drag.hoverLayer : nil
+        let dropRes = drag.res
         if let layerKey { pulseFrame = drag.layerFrames[screenID]?[layerKey] }
         let fromLayout = drag.dragSource == .currentView
         drag.reset()
@@ -5680,11 +5795,19 @@ struct ExposeView: View {
         if !wasDragging && dist < 12 {
             onTap()
         } else if let layerKey {
-            onDropLayer(wid, layerKey)
+            for w in dragWids { onDropLayer(w, layerKey) }
+            if let pulseFrame { drag.firePulse(at: pulseFrame) }
+        } else if let cell = gridCell {
+            if dragWids.count > 1 {
+                onDropGridGroup(dragWids, dropRes, cell)
+            } else {
+                let (cols, rows) = dropRes.dims
+                let spec = GridPlacement(columns: cols, rows: rows, column: cell.col, row: cell.row).map(PlacementSpec.grid)
+                onDrop(wid, spec)
+            }
             if let pulseFrame { drag.firePulse(at: pulseFrame) }
         } else {
-            onDrop(wid, spec)
-            if spec != nil, let pulseFrame { drag.firePulse(at: pulseFrame) }
+            onDrop(wid, nil)
         }
     }
 
@@ -5980,10 +6103,12 @@ struct ExposeView: View {
 
     @ViewBuilder
     private func inPlaceLayerMenu(_ t: Tile) -> some View {
-        let joinable = layers.filter { !$0.isNew }
-        if !joinable.isEmpty {
-            Divider()
-            Menu("Add to Layer") {
+        Divider()
+        Menu("Add to Layer", systemImage: "square.stack.3d.up") {
+            Button("New Layer") { onNewLayer() }
+            let joinable = layers.filter { !$0.isNew }
+            if !joinable.isEmpty {
+                Divider()
                 ForEach(joinable) { p in
                     Button(p.name) { onDropLayer(t.id, p.id) }
                 }

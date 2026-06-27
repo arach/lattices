@@ -1,6 +1,6 @@
 import SwiftUI
 import HudsonUI
-#if canImport(HudsonVoice)
+#if LATTICES_VOICE && canImport(HudsonVoice)
 import HudsonVoice
 #endif
 
@@ -491,14 +491,14 @@ struct WorkspaceAssistantComposer: View {
     var style: WorkspaceAssistantStyle = .workspace
     var focus: FocusState<Bool>.Binding
 
-    #if canImport(HudsonVoice)
+    #if LATTICES_VOICE && canImport(HudsonVoice)
     @ObservedObject private var voice = WorkspaceVoiceInput.shared
     @State private var micPulse = false
     #endif
 
     var body: some View {
         VStack(spacing: 7) {
-            #if canImport(HudsonVoice)
+            #if LATTICES_VOICE && canImport(HudsonVoice)
             if voice.state.isCaptureActive || voice.state.isProcessing {
                 dictationStrip
             }
@@ -558,14 +558,14 @@ struct WorkspaceAssistantComposer: View {
     /// exists; attachments stay hidden until the chat path wires them.
     @ViewBuilder
     private var micAccessory: some View {
-        #if canImport(HudsonVoice)
+        #if LATTICES_VOICE && canImport(HudsonVoice)
         micButton
         #else
         EmptyView()
         #endif
     }
 
-    #if canImport(HudsonVoice)
+    #if LATTICES_VOICE && canImport(HudsonVoice)
     /// HudsonVoice-powered mic. Tap to dictate into the draft; tap again to commit.
     /// Filled-circle states (after OpenScout's ScoutMicButton): a soft halo breathes
     /// while recording; the glyph, fill, and ring track idle/recording/processing.
