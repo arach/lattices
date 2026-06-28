@@ -482,7 +482,7 @@ struct UnifiedCommandBarView: View {
 
     private var voiceRetryable: Bool {
         let result = state.voice.executionResult ?? ""
-        return result == "No speech detected" || result == "Transcription failed"
+        return VoiceCommandState.isRetryableFailure(result)
     }
 
     private var settingsButton: some View {

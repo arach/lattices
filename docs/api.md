@@ -1105,6 +1105,9 @@ lattices search vox
 # Deep search — adds terminal tab/process inspection for ranking
 lattices search vox --deep
 
+# Same as --deep (all search sources)
+lattices search vox --all
+
 # Pipeable output
 lattices search vox --wid
 lattices search vox --json
@@ -1752,7 +1755,7 @@ is available at ws://127.0.0.1:9399.
 - Search by content: `daemonCall('windows.search', { query: 'myproject' })`
   Returns windows with `matchSource` ("title", "app", "session", "ocr") and `ocrSnippet`
 - Search terminals: `daemonCall('terminals.search', {})` — tabs, cwds, processes
-- CLI: `lattices search myproject` or `lattices search myproject --deep`
+- CLI: `lattices search myproject`, `lattices search myproject --deep`, or `lattices search myproject --all` (same as `--deep`)
 
 ### Actions
 - Focus a window: `daemonCall('window.focus', { wid: 1234 })`

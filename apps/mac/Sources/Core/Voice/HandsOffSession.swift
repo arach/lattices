@@ -1,5 +1,5 @@
 import AppKit
-#if canImport(HudsonVoice)
+#if LATTICES_VOICE && canImport(HudsonVoice)
 import HudsonVoice
 #endif
 
@@ -413,7 +413,7 @@ final class HandsOffSession: ObservableObject {
 
     /// Cancel any active voice recording session without transcribing.
     private func cancelVoxSession() {
-        #if canImport(HudsonVoice)
+        #if LATTICES_VOICE && canImport(HudsonVoice)
         guard let session = voxSession else { return }
         DiagnosticLog.shared.info("HandsOff: cancelling voice session")
         voxSession = nil
@@ -425,14 +425,14 @@ final class HandsOffSession: ObservableObject {
 
     // MARK: - Voice capture
 
-    #if canImport(HudsonVoice)
+    #if LATTICES_VOICE && canImport(HudsonVoice)
     /// Live HudsonVoice session for the current dictation turn, plus its event pump.
     private var voxSession: HudVoxLiveSession?
     private var voxPump: Task<Void, Never>?
     #endif
 
     private func beginListening() {
-        #if canImport(HudsonVoice)
+        #if LATTICES_VOICE && canImport(HudsonVoice)
         // HudsonVoice opens a fresh capture on start. We only gate on whether an
         // endpoint can be resolved; session errors are handled by the stream.
         if HudsonVoiceRuntimeResolver.resolve(clientId: "lattices") != nil {
@@ -451,7 +451,7 @@ final class HandsOffSession: ObservableObject {
     }
 
     private func retryListenIfReady(attempts: Int) {
-        #if canImport(HudsonVoice)
+        #if LATTICES_VOICE && canImport(HudsonVoice)
         if HudsonVoiceRuntimeResolver.resolve(clientId: "lattices") != nil {
             startDictation()
         } else if attempts > 0 {
@@ -470,7 +470,7 @@ final class HandsOffSession: ObservableObject {
     private var turnProcessed = false
 
     private func startDictation() {
-        #if canImport(HudsonVoice)
+        #if LATTICES_VOICE && canImport(HudsonVoice)
         state = .listening
         lastTranscript = nil
         turnProcessed = false
@@ -615,7 +615,7 @@ final class HandsOffSession: ObservableObject {
         }
     }
 
-    #if canImport(HudsonVoice)
+    #if LATTICES_VOICE && canImport(HudsonVoice)
     @MainActor
     private func handleVoxEvent(_ event: HudVoiceEvent) {
         switch event {
@@ -666,7 +666,7 @@ final class HandsOffSession: ObservableObject {
     func finishListening() {
         guard state == .listening else { return }
         playSound("Tink")
-        #if canImport(HudsonVoice)
+        #if LATTICES_VOICE && canImport(HudsonVoice)
         let session = voxSession
         Task { try? await session?.stop() }
         #endif

@@ -1,7 +1,15 @@
 {
-  "name": "@lattices/cli",
-  "version": "0.6.0",
-  "description": "The agentic workspace manager for macOS — turn your desktop into a coherent API",
+  "name": "@arach/lattices",
+  "version": "0.6.2",
+  "description": "Tile windows, search your screen, keep tmux sessions alive, and let AI agents control your Mac — CLI + daemon API",
+  "homepage": "https://lattices.dev",
+  "bugs": {
+    "url": "https://github.com/arach/lattices/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "packageManager": "bun@1.3.11",
   "engines": {
     "node": ">=18"
@@ -11,13 +19,19 @@
     "lattices-app": "./bin/lattices-app.ts"
   },
   "keywords": [
+    "lattices",
+    "macos",
+    "workspace",
+    "window-manager",
     "tmux",
+    "daemon",
+    "ai-agents",
     "claude",
-    "dev-server",
     "developer-tools",
     "cli",
     "terminal",
-    "multiplexer"
+    "ocr",
+    "tiling"
   ],
   "repository": {
     "type": "git",
@@ -40,6 +54,8 @@
     "check": "bun run check:types && bun run check:app",
     "check:types": "tsc --noEmit",
     "check:app": "env CLANG_MODULE_CACHE_PATH=/tmp/lattices-clang-cache SWIFTPM_TESTS_MODULECACHE=/tmp/lattices-swiftpm-cache swift build --package-path apps/mac",
+    "test": "node --experimental-strip-types --test tests/cli.test.mjs",
+    "test:cli": "node --experimental-strip-types --test tests/cli.test.mjs",
     "test:e2e": "node --experimental-strip-types --test tests/e2e-daemon.test.mjs",
     "test:e2e:voice": "node --experimental-strip-types tests/eval-voice.js",
     "typecheck": "bun run check:types",

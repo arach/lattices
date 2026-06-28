@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 
-#if canImport(HudsonVoice)
+#if LATTICES_VOICE && canImport(HudsonVoice)
 import HudsonVoice
 #endif
 
@@ -34,7 +34,7 @@ enum HudsonKitSwitch {
     /// (the `HudsonVoice` product only exists when the app is built with
     /// `HUDSONKIT_WITH_VOICE=1`).
     static var voiceAvailable: Bool {
-        #if canImport(HudsonVoice)
+        #if LATTICES_VOICE && canImport(HudsonVoice)
         return true
         #else
         return false
@@ -42,7 +42,7 @@ enum HudsonKitSwitch {
     }
 }
 
-#if canImport(HudsonVoice)
+#if LATTICES_VOICE && canImport(HudsonVoice)
 /// The HudsonKit-backed voice surface. `HudVoicePanel` manages its own live
 /// session against the embedded runtime hosted by Lattices.
 struct HudsonVoiceSurface: View {

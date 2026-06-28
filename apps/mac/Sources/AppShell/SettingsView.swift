@@ -2,7 +2,7 @@ import DeckKit
 import AVFoundation
 import SwiftUI
 import HudsonUI
-#if canImport(HudsonVoice)
+#if LATTICES_VOICE && canImport(HudsonVoice)
 import HudsonVoice
 #endif
 
@@ -2442,7 +2442,7 @@ struct SettingsContentView: View {
             VStack(alignment: .leading, spacing: 12) {
                 voiceMicrophoneAccessCard
 
-                #if canImport(HudsonVoice)
+                #if LATTICES_VOICE && canImport(HudsonVoice)
                 settingsCard {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(spacing: 10) {

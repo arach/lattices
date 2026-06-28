@@ -564,7 +564,7 @@ async function ensureBinary(): Promise<void> {
   console.error(
     "Could not find a bundled lattices app or download one.\n" +
     "Options:\n" +
-    "  \u2022 Reinstall or update @lattices/cli\n" +
+    "  \u2022 Reinstall or update @arach/lattices\n" +
     "  \u2022 Developers can build from source with: lattices-app build\n" +
     "  \u2022 Download manually from:   https://github.com/" + REPO + "/releases"
   );

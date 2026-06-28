@@ -2,7 +2,7 @@ import AppKit
 import ApplicationServices
 import DeckKit
 import Foundation
-#if canImport(HudsonVoice)
+#if LATTICES_VOICE && canImport(HudsonVoice)
 import HudsonVoice
 #endif
 
@@ -2562,7 +2562,9 @@ final class LatticesApi {
                     "provider": .string(audio.providerName),
                     "available": .bool(audio.provider?.isAvailable ?? false),
                     "listening": .bool(audio.isListening),
-                    "lastTranscript": audio.lastTranscript.map { .string($0) } ?? .null
+                    "lastTranscript": audio.lastTranscript.map { .string($0) } ?? .null,
+                    "assistantHandoffPrompt": audio.assistantHandoffPrompt.map { .string($0) } ?? .null,
+                    "lastError": audio.provider?.lastErrorMessage.map { .string($0) } ?? .null
                 ])
             }
         ))
@@ -2708,7 +2710,7 @@ final class LatticesApi {
             params: [],
             returns: .custom("Voice runtime reachability: { ok, runtimeAvailable, runtimeHost, service, transport, endpoint, port, pid, capabilityPath }"),
             handler: { _ in
-                #if canImport(HudsonVoice)
+                #if LATTICES_VOICE && canImport(HudsonVoice)
                 let runtime = HudsonVoiceRuntimeResolver.resolve(clientId: "lattices")
                 return .object([
                     "ok": .bool(true),
@@ -2719,7 +2721,8 @@ final class LatticesApi {
                     "endpoint": runtime.map { .string($0.endpoint.url.absoluteString) } ?? .null,
                     "port": runtime.map { .int(Int($0.endpoint.port)) } ?? .null,
                     "pid": runtime?.pid.map { .int($0) } ?? .null,
-                    "capabilityPath": .null,
+                    "capabilityPath": runtime?.capabilityPath.map { .string($0) } ?? .null,
+                    "requiresAuth": .bool(runtime?.authToken != nil),
                     "runtimeError": .null,
                     "note": .string("HudsonVoice is compiled in; Lattices uses HudsonVoice's Vox WebSocket contract for live sessions."),
                 ])

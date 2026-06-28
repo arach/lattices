@@ -352,7 +352,7 @@ final class UnifiedCommandBarWindow {
 
     private func voiceResultCanRetry(_ voice: VoiceCommandState) -> Bool {
         let result = voice.executionResult ?? ""
-        return result == "No speech detected" || result == "Transcription failed"
+        return VoiceCommandState.isRetryableFailure(result)
     }
 
     // MARK: - Natural-language command
@@ -406,10 +406,13 @@ final class UnifiedCommandBarWindow {
     /// (slash stripped so a command-mode "/x" reads as plain "x").
     private func assistantPrompt() -> String {
         guard let st = state else { return "" }
-        if st.voiceActive { return st.voice.finalText }
+        if st.voiceActive {
+            return st.voice.assistantHandoffPrompt
+                ?? IntentHeuristics.assistantPromptText(st.voice.finalText)
+        }
         var q = st.query
         if q.hasPrefix("/") { q.removeFirst() }
-        return q
+        return IntentHeuristics.assistantPromptText(q)
     }
 
     /// Open the `.pi` assistant and stream the prompt; the bar steps aside.
@@ -423,13 +426,29 @@ final class UnifiedCommandBarWindow {
         }
     }
 
+    /// Reveal the assistant for a voice prompt that `AudioLayer` has already
+    /// queued into `WorkspaceAssistantSession`.
+    private func showAssistantForQueuedVoiceHandoff() {
+        dismiss()
+        DispatchQueue.main.async {
+            ScreenMapWindowController.shared.showAssistant()
+        }
+    }
+
     /// A conversational voice utterance (a question with no workspace action ran)
     /// is handed to the assistant rather than answered headlessly in the bar.
     private func maybeEscalateVoiceQuestion() {
         guard let st = state, st.voice.phase == .result,
-              st.voice.intentName == nil,
-              IntentHeuristics.shouldAskAssistant(st.voice.finalText) else { return }
-        handToAssistant(st.voice.finalText)
+              st.voice.intentName == nil else { return }
+
+        if let prompt = st.voice.assistantHandoffPrompt,
+           !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            showAssistantForQueuedVoiceHandoff()
+            return
+        }
+
+        guard IntentHeuristics.shouldAskAssistant(st.voice.finalText) else { return }
+        handToAssistant(IntentHeuristics.assistantPromptText(st.voice.finalText))
     }
 
     /// Tab-to-complete: fill the field with the highlighted suggestion fully

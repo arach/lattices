@@ -135,6 +135,128 @@ private class HighlightBorderView: NSView {
     }
 }
 
+/// Persistent selection rings on real desktop windows (Hyper+G). Each picked window
+/// gets its own borderless overlay at the maximum window level so the ring sits on
+/// the window itself — not buried under the full-screen Hyperspace panel.
+final class WindowSelectionOverlay {
+    static let shared = WindowSelectionOverlay()
+
+    struct Entry {
+        var wid: UInt32
+        var frame: NSRect
+        var slot: Int?
+    }
+
+    private var windows: [UInt32: NSWindow] = [:]
+
+    func sync(_ entries: [Entry]) {
+        let keep = Set(entries.map(\.wid))
+        for wid in windows.keys where !keep.contains(wid) {
+            windows[wid]?.orderOut(nil)
+            windows.removeValue(forKey: wid)
+        }
+        for entry in entries { upsert(entry) }
+        if entries.isEmpty { clear() }
+    }
+
+    func clear() {
+        windows.values.forEach { $0.orderOut(nil) }
+        windows.removeAll()
+    }
+
+    private func upsert(_ entry: Entry) {
+        let expanded = entry.frame.insetBy(dx: -6, dy: -6)
+
+        if let existing = windows[entry.wid] {
+            if existing.frame != expanded {
+                existing.setFrame(expanded, display: true)
+                existing.contentView?.frame = NSRect(origin: .zero, size: expanded.size)
+            }
+            if let border = existing.contentView as? SelectedWindowBorderView {
+                border.slot = entry.slot
+            }
+            existing.orderFrontRegardless()
+            return
+        }
+
+        let window = NSWindow(
+            contentRect: expanded,
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.maximumWindow)))
+        window.hasShadow = false
+        window.ignoresMouseEvents = true
+        window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+
+        let borderView = SelectedWindowBorderView(frame: NSRect(origin: .zero, size: expanded.size), slot: entry.slot)
+        window.contentView = borderView
+        window.alphaValue = 1
+        window.orderFrontRegardless()
+        windows[entry.wid] = window
+    }
+}
+
+private class SelectedWindowBorderView: NSView {
+    var slot: Int? { didSet { needsDisplay = true } }
+
+    init(frame: NSRect, slot: Int?) {
+        self.slot = slot
+        super.init(frame: frame)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override var isOpaque: Bool { false }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let accent = NSColor(calibratedRed: 0.38, green: 0.92, blue: 1.0, alpha: 1.0)
+        let borderWidth: CGFloat = 3
+        let cornerRadius: CGFloat = 12
+
+        let glowRect = bounds.insetBy(dx: 1, dy: 1)
+        let glowPath = NSBezierPath(roundedRect: glowRect, xRadius: cornerRadius + 2, yRadius: cornerRadius + 2)
+        glowPath.lineWidth = borderWidth + 4
+        accent.withAlphaComponent(0.22).setStroke()
+        glowPath.stroke()
+
+        let rect = bounds.insetBy(dx: borderWidth / 2 + 2, dy: borderWidth / 2 + 2)
+        let path = NSBezierPath(roundedRect: rect, xRadius: cornerRadius, yRadius: cornerRadius)
+        path.lineWidth = borderWidth
+        accent.withAlphaComponent(0.95).setStroke()
+        path.stroke()
+
+        let innerRect = rect.insetBy(dx: 3, dy: 3)
+        let innerPath = NSBezierPath(roundedRect: innerRect, xRadius: max(cornerRadius - 3, 6), yRadius: max(cornerRadius - 3, 6))
+        innerPath.lineWidth = 1
+        NSColor.white.withAlphaComponent(0.72).setStroke()
+        innerPath.stroke()
+
+        if let slot {
+            let badge = "\(slot)" as NSString
+            let font = NSFont.monospacedSystemFont(ofSize: 11, weight: .bold)
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: font,
+                .foregroundColor: NSColor.black.withAlphaComponent(0.86),
+            ]
+            let size = badge.size(withAttributes: attrs)
+            let padH: CGFloat = 7
+            let padV: CGFloat = 3
+            let badgeW = size.width + padH * 2
+            let badgeH = size.height + padV * 2
+            let badgeRect = NSRect(x: rect.minX + 8, y: rect.maxY - badgeH - 8, width: badgeW, height: badgeH)
+            let badgePath = NSBezierPath(roundedRect: badgeRect, xRadius: 8, yRadius: 8)
+            accent.withAlphaComponent(0.95).setFill()
+            badgePath.fill()
+            badge.draw(at: NSPoint(x: badgeRect.minX + padH, y: badgeRect.minY + padV), withAttributes: attrs)
+        }
+    }
+}
+
 // MARK: - Grid Tiling
 
 /// Compute fractional (x, y, w, h) for a cell in a cols×rows grid.
@@ -452,6 +574,19 @@ private enum CGS {
 }
 
 enum WindowTiler {
+    enum BatchActivation {
+        case none
+        case frontmostOnly
+        case allApps
+    }
+
+    private struct ResolvedBatchMove {
+        let wid: UInt32
+        let pid: Int32
+        let frame: CGRect
+        let axWindow: AXUIElement
+    }
+
     /// Whether CGS move-between-spaces APIs are available
     static var canMoveWindowsBetweenSpaces: Bool {
         CGS.addWindowsToSpaces != nil && CGS.removeWindowsFromSpaces != nil
@@ -1749,8 +1884,11 @@ enum WindowTiler {
     }
 
     /// Move AND raise windows in a single CG+AX pass (avoids duplicate lookups).
-    /// Does not reactivate lattices at the end — caller controls that.
-    static func batchMoveAndRaiseWindows(_ moves: [(wid: UInt32, pid: Int32, frame: CGRect)]) {
+    /// Does not reactivate lattices at the end — caller controls that separately.
+    static func batchMoveAndRaiseWindows(
+        _ moves: [(wid: UInt32, pid: Int32, frame: CGRect)],
+        activation: BatchActivation = .frontmostOnly
+    ) {
         guard !moves.isEmpty else { return }
         let diag = DiagnosticLog.shared
 
@@ -1759,72 +1897,138 @@ enum WindowTiler {
             byPid[move.pid, default: []].append((wid: move.wid, target: move.frame))
         }
 
-        var processed = 0
-        var activatedPids = Set<Int32>()
+        let appRefs = appRefs(for: Set(byPid.keys))
+        setEnhancedUserInterface(false, for: appRefs)
 
-        // Freeze screen rendering for smooth batch moves
-        let cid = _SLSMainConnectionID?()
-        if let cid { _ = _SLSDisableUpdate?(cid) }
-
-        for (pid, windowMoves) in byPid {
-            let appRef = AXUIElementCreateApplication(pid)
-
-            // Disable enhanced UI — breaks macOS tile lock so resize works
-            AXUIElementSetAttributeValue(appRef, "AXEnhancedUserInterface" as CFString, false as CFTypeRef)
-
+        var axByWid: [UInt32: AXUIElement] = [:]
+        for (pid, _) in byPid {
+            guard let appRef = appRefs[pid] else { continue }
             var windowsRef: CFTypeRef?
             let err = AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &windowsRef)
             guard err == .success, let axWindows = windowsRef as? [AXUIElement] else { continue }
 
-            // Build wid → AXUIElement map using _AXUIElementGetWindow
-            var axByWid: [UInt32: AXUIElement] = [:]
             for axWin in axWindows {
                 var windowId: CGWindowID = 0
                 if _AXUIElementGetWindow(axWin, &windowId) == .success {
                     axByWid[windowId] = axWin
                 }
             }
-
-            for wm in windowMoves {
-                guard let axWin = axByWid[wm.wid] else { continue }
-
-                var newPos = CGPoint(x: wm.target.origin.x, y: wm.target.origin.y)
-                var newSize = CGSize(width: wm.target.width, height: wm.target.height)
-
-                // Size → Position → Size (same pattern as single-window tiler)
-                if let sv = AXValueCreate(.cgSize, &newSize) {
-                    AXUIElementSetAttributeValue(axWin, kAXSizeAttribute as CFString, sv)
-                }
-                if let pv = AXValueCreate(.cgPoint, &newPos) {
-                    AXUIElementSetAttributeValue(axWin, kAXPositionAttribute as CFString, pv)
-                }
-                if let sv = AXValueCreate(.cgSize, &newSize) {
-                    AXUIElementSetAttributeValue(axWin, kAXSizeAttribute as CFString, sv)
-                }
-
-                // Raise
-                AXUIElementPerformAction(axWin, kAXRaiseAction as CFString)
-                AXUIElementSetAttributeValue(axWin, kAXMainAttribute as CFString, kCFBooleanTrue)
-
-                processed += 1
-            }
-
-            // Re-enable enhanced UI
-            AXUIElementSetAttributeValue(appRef, "AXEnhancedUserInterface" as CFString, true as CFTypeRef)
-
-            // Activate each app once so its windows come to front
-            if !activatedPids.contains(pid) {
-                if let app = NSRunningApplication(processIdentifier: pid) {
-                    app.activate()
-                    activatedPids.insert(pid)
-                }
-            }
         }
 
-        // Unfreeze screen rendering
-        if let cid { _ = _SLSReenableUpdate?(cid) }
-        DesktopModel.shared.markInteraction(wids: moves.map(\.wid))
+        let resolvedMoves = moves.compactMap { move -> ResolvedBatchMove? in
+            guard let axWindow = axByWid[move.wid] else {
+                return nil
+            }
+            return ResolvedBatchMove(wid: move.wid, pid: move.pid, frame: move.frame, axWindow: axWindow)
+        }
+
+        let processed = commitResolvedBatchMoves(
+            resolvedMoves,
+            requestedWids: moves.map(\.wid),
+            appRefs: appRefs,
+            activation: activation
+        )
         diag.success("batchMoveAndRaiseWindows: processed \(processed)/\(moves.count) windows")
+    }
+
+    /// Same batch path for callers that already resolved AX windows on the hot path.
+    static func batchMoveAndRaiseWindows(
+        _ moves: [(wid: UInt32, pid: Int32, frame: CGRect, axWindow: AXUIElement)],
+        activation: BatchActivation = .frontmostOnly
+    ) {
+        guard !moves.isEmpty else { return }
+        let resolvedMoves = moves.map {
+            ResolvedBatchMove(wid: $0.wid, pid: $0.pid, frame: $0.frame, axWindow: $0.axWindow)
+        }
+        let appRefs = appRefs(for: Set(moves.map(\.pid)))
+        setEnhancedUserInterface(false, for: appRefs)
+        let processed = commitResolvedBatchMoves(
+            resolvedMoves,
+            requestedWids: moves.map(\.wid),
+            appRefs: appRefs,
+            activation: activation
+        )
+        DiagnosticLog.shared.success("batchMoveAndRaiseWindows: processed \(processed)/\(moves.count) pre-resolved windows")
+    }
+
+    private static func appRefs(for pids: Set<Int32>) -> [Int32: AXUIElement] {
+        var refs: [Int32: AXUIElement] = [:]
+        for pid in pids {
+            refs[pid] = AXUIElementCreateApplication(pid)
+        }
+        return refs
+    }
+
+    private static func setEnhancedUserInterface(_ enabled: Bool, for appRefs: [Int32: AXUIElement]) {
+        let value = enabled as CFTypeRef
+        for appRef in appRefs.values {
+            AXUIElementSetAttributeValue(appRef, "AXEnhancedUserInterface" as CFString, value)
+        }
+    }
+
+    private static func commitResolvedBatchMoves(
+        _ moves: [ResolvedBatchMove],
+        requestedWids: [UInt32],
+        appRefs: [Int32: AXUIElement],
+        activation: BatchActivation
+    ) -> Int {
+        guard !moves.isEmpty else {
+            setEnhancedUserInterface(true, for: appRefs)
+            DesktopModel.shared.markInteraction(wids: requestedWids)
+            return 0
+        }
+
+        var processed = 0
+
+        // Freeze screen rendering only while writing frames and raises.
+        let cid = _SLSMainConnectionID?()
+        if let cid { _ = _SLSDisableUpdate?(cid) }
+
+        for move in moves {
+            setFrameTriplet(move.axWindow, to: move.frame)
+            AXUIElementPerformAction(move.axWindow, kAXRaiseAction as CFString)
+            AXUIElementSetAttributeValue(move.axWindow, kAXMainAttribute as CFString, kCFBooleanTrue)
+            processed += 1
+        }
+
+        if let cid { _ = _SLSReenableUpdate?(cid) }
+
+        setEnhancedUserInterface(true, for: appRefs)
+        activateApps(for: moves, activation: activation)
+        DesktopModel.shared.markInteraction(wids: requestedWids)
+        return processed
+    }
+
+    private static func setFrameTriplet(_ axWindow: AXUIElement, to frame: CGRect) {
+        var newPos = CGPoint(x: frame.origin.x, y: frame.origin.y)
+        var newSize = CGSize(width: frame.width, height: frame.height)
+
+        // Size → Position → Size (same pattern as single-window tiler)
+        if let sv = AXValueCreate(.cgSize, &newSize) {
+            AXUIElementSetAttributeValue(axWindow, kAXSizeAttribute as CFString, sv)
+        }
+        if let pv = AXValueCreate(.cgPoint, &newPos) {
+            AXUIElementSetAttributeValue(axWindow, kAXPositionAttribute as CFString, pv)
+        }
+        if let sv = AXValueCreate(.cgSize, &newSize) {
+            AXUIElementSetAttributeValue(axWindow, kAXSizeAttribute as CFString, sv)
+        }
+    }
+
+    private static func activateApps(for moves: [ResolvedBatchMove], activation: BatchActivation) {
+        switch activation {
+        case .none:
+            return
+        case .frontmostOnly:
+            guard let pid = moves.last?.pid else { return }
+            NSRunningApplication(processIdentifier: pid)?.activate()
+        case .allApps:
+            var activatedPids = Set<Int32>()
+            for move in moves where !activatedPids.contains(move.pid) {
+                NSRunningApplication(processIdentifier: move.pid)?.activate()
+                activatedPids.insert(move.pid)
+            }
+        }
     }
 
     // MARK: - Grid Layout Strategy
