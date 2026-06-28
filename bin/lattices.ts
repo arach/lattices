@@ -15,6 +15,9 @@ import {
   runQuiet,
 } from "./cli/helpers.ts";
 import { searchCommand, placeCommand } from "./cli/search.ts";
+import { captureCommand } from "./cli/capture.ts";
+import { layerCommand } from "./cli/layer.ts";
+import { runsCommand } from "./cli/runs.ts";
 import {
   esc,
   sessionExists,
@@ -817,15 +820,16 @@ function restartPane(target?: string): void {
 // ── Daemon-aware commands ────────────────────────────────────────────
 
 async function mouseCommand(sub?: string): Promise<void> {
-  const { daemonCall } = await getDaemonClient();
-  if (sub === "summon") {
-    const result = await daemonCall("mouse.summon") as any;
-    console.log(`🎯 Mouse summoned to (${result.x}, ${result.y})`);
-  } else {
-    // Default: find
-    const result = await daemonCall("mouse.find") as any;
-    console.log(`🔍 Mouse at (${result.x}, ${result.y})`);
-  }
+  await withDaemon(async ({ daemonCall }) => {
+    if (sub === "summon") {
+      const result = await daemonCall("mouse.summon") as any;
+      console.log(`🎯 Mouse summoned to (${result.x}, ${result.y})`);
+    } else {
+      // Default: find
+      const result = await daemonCall("mouse.find") as any;
+      console.log(`🔍 Mouse at (${result.x}, ${result.y})`);
+    }
+  });
 }
 
 async function daemonStatusCommand(): Promise<void> {
@@ -877,18 +881,14 @@ async function windowAssignCommand(wid?: string, layerId?: string): Promise<void
     console.log("Usage: lattices window assign <wid> <layer-id>");
     return;
   }
-  try {
-    const { daemonCall } = await getDaemonClient();
+  await withDaemon(async ({ daemonCall }) => {
     await daemonCall("window.assignLayer", { wid: parseInt(wid), layer: layerId });
     console.log(`Tagged wid:${wid} → layer:${layerId}`);
-  } catch (e: unknown) {
-    console.log(`Error: ${(e as Error).message}`);
-  }
+  });
 }
 
 async function windowLayerMapCommand(jsonFlag: boolean): Promise<void> {
-  try {
-    const { daemonCall } = await getDaemonClient();
+  await withDaemon(async ({ daemonCall }) => {
     const map = await daemonCall("window.layerMap") as any;
     if (jsonFlag) {
       console.log(JSON.stringify(map, null, 2));
@@ -903,9 +903,7 @@ async function windowLayerMapCommand(jsonFlag: boolean): Promise<void> {
     for (const [wid, layer] of entries) {
       console.log(`  wid:${wid} → ${layer}`);
     }
-  } catch {
-    console.log("Daemon not running. Start with: lattices app");
-  }
+  });
 }
 
 async function focusCommand(session?: string): Promise<void> {
@@ -930,85 +928,86 @@ function receiptLine(receipt: any): string {
 }
 
 async function placementSmokeCommand(rawArgs: string[] = []): Promise<void> {
-  const { daemonCall } = await getDaemonClient();
   const pauseMs = Number(parseFlagValue(rawArgs, "pause") || 1200);
   const positional = nonFlagArgs(rawArgs);
 
-  let sessions = positional.slice(0, 2);
-  if (sessions.length < 2) {
-    const tmuxSessions = await daemonCall("tmux.sessions") as any[];
-    sessions = tmuxSessions
-      .map(s => s?.name)
-      .filter((name: unknown): name is string => typeof name === "string" && name.startsWith("lattices-place-"))
-      .slice(0, 2);
-  }
-
-  if (sessions.length < 2) {
-    console.log("Need two named sessions. Usage: lattices dev placement-smoke <session-a> <session-b>");
-    console.log("Tip: launch two small lattices fixture projects first, then rerun this command.");
-    return;
-  }
-
-  const [a, b] = sessions;
-  console.log(`Placement smoke: ${a} + ${b}`);
-
-  for (const session of sessions) {
-    const resolved = await daemonCall("window.resolve", {
-      target: { kind: "session", session },
-      placement: "left",
-    }) as any;
-    console.log(`  resolve ${session}: wid=${resolved.wid ?? "?"} app=${resolved.app ?? "?"} resolution=${resolved.targetResolution ?? "?"}`);
-  }
-
-  const beats = [
-    {
-      label: "beat 1: halves",
-      actions: [
-        { id: "a-left-half", type: "window.place", target: { kind: "session", session: a }, args: { placement: "left" } },
-        { id: "b-right-half", type: "window.place", target: { kind: "session", session: b }, args: { placement: "right" } },
-      ],
-    },
-    {
-      label: "beat 2: 4x4 corners",
-      actions: [
-        { id: "a-top-left-4x4", type: "window.place", target: { kind: "session", session: a }, args: { placement: "grid:4x4:0,0" } },
-        { id: "b-bottom-right-4x4", type: "window.place", target: { kind: "session", session: b }, args: { placement: "grid:4x4:3,3" } },
-      ],
-    },
-    {
-      label: "beat 3: workbench",
-      actions: [
-        {
-          id: "a-workbench-left",
-          type: "window.place",
-          target: { kind: "session", session: a },
-          args: { placement: { kind: "fractions", x: 0.02, y: 0.05, w: 0.62, h: 0.9 } },
-        },
-        {
-          id: "b-console-right",
-          type: "window.place",
-          target: { kind: "session", session: b },
-          args: { placement: { kind: "fractions", x: 0.67, y: 0.12, w: 0.3, h: 0.76 } },
-        },
-      ],
-    },
-  ];
-
-  for (const beat of beats) {
-    console.log(`\n${beat.label}`);
-    const result = await daemonCall("actions.execute", {
-      source: "placement-smoke",
-      actions: beat.actions,
-    }, 15000) as any;
-    console.log(`  batch=${result.status || "?"} request=${result.requestId || "?"}`);
-    for (const receipt of result.receipts || []) {
-      console.log(receiptLine(receipt));
+  await withDaemon(async ({ daemonCall }) => {
+    let sessions = positional.slice(0, 2);
+    if (sessions.length < 2) {
+      const tmuxSessions = await daemonCall("tmux.sessions") as any[];
+      sessions = tmuxSessions
+        .map(s => s?.name)
+        .filter((name: unknown): name is string => typeof name === "string" && name.startsWith("lattices-place-"))
+        .slice(0, 2);
     }
-    await pause(pauseMs);
-  }
 
-  const focused = await daemonCall("window.focus", { session: a }, 5000) as any;
-  console.log(`\nfocus ${a}: ok=${focused.ok === true} wid=${focused.wid ?? "?"} raised=${focused.raised === true}`);
+    if (sessions.length < 2) {
+      console.log("Need two named sessions. Usage: lattices dev placement-smoke <session-a> <session-b>");
+      console.log("Tip: launch two small lattices fixture projects first, then rerun this command.");
+      return;
+    }
+
+    const [a, b] = sessions;
+    console.log(`Placement smoke: ${a} + ${b}`);
+
+    for (const session of sessions) {
+      const resolved = await daemonCall("window.resolve", {
+        target: { kind: "session", session },
+        placement: "left",
+      }) as any;
+      console.log(`  resolve ${session}: wid=${resolved.wid ?? "?"} app=${resolved.app ?? "?"} resolution=${resolved.targetResolution ?? "?"}`);
+    }
+
+    const beats = [
+      {
+        label: "beat 1: halves",
+        actions: [
+          { id: "a-left-half", type: "window.place", target: { kind: "session", session: a }, args: { placement: "left" } },
+          { id: "b-right-half", type: "window.place", target: { kind: "session", session: b }, args: { placement: "right" } },
+        ],
+      },
+      {
+        label: "beat 2: 4x4 corners",
+        actions: [
+          { id: "a-top-left-4x4", type: "window.place", target: { kind: "session", session: a }, args: { placement: "grid:4x4:0,0" } },
+          { id: "b-bottom-right-4x4", type: "window.place", target: { kind: "session", session: b }, args: { placement: "grid:4x4:3,3" } },
+        ],
+      },
+      {
+        label: "beat 3: workbench",
+        actions: [
+          {
+            id: "a-workbench-left",
+            type: "window.place",
+            target: { kind: "session", session: a },
+            args: { placement: { kind: "fractions", x: 0.02, y: 0.05, w: 0.62, h: 0.9 } },
+          },
+          {
+            id: "b-console-right",
+            type: "window.place",
+            target: { kind: "session", session: b },
+            args: { placement: { kind: "fractions", x: 0.67, y: 0.12, w: 0.3, h: 0.76 } },
+          },
+        ],
+      },
+    ];
+
+    for (const beat of beats) {
+      console.log(`\n${beat.label}`);
+      const result = await daemonCall("actions.execute", {
+        source: "placement-smoke",
+        actions: beat.actions,
+      }, 15000) as any;
+      console.log(`  batch=${result.status || "?"} request=${result.requestId || "?"}`);
+      for (const receipt of result.receipts || []) {
+        console.log(receiptLine(receipt));
+      }
+      await pause(pauseMs);
+    }
+
+    const focused = await daemonCall("window.focus", { session: a }, 5000) as any;
+    console.log(`\nfocus ${a}: ok=${focused.ok === true} wid=${focused.wid ?? "?"} raised=${focused.raised === true}`);
+  });
 }
 
 async function sessionsCommand(jsonFlag: boolean): Promise<void> {
@@ -1057,309 +1056,6 @@ async function terminalsCommand(rawArgs: string[] = []): Promise<void> {
       if (cwd) console.log(`   ${cwd.trim()}`);
     }
   });
-}
-
-function runLine(run: any): string {
-  const count = Array.isArray(run.artifacts) ? run.artifacts.length : 0;
-  const completed = run.completedAt ? ` completed=${run.completedAt}` : "";
-  return `  ${run.id}  ${run.state || "?"}  artifacts=${count}  ${run.title || "Untitled run"}${completed}`;
-}
-
-async function runsCommand(rawArgs: string[] = []): Promise<void> {
-  const { daemonCall } = await getDaemonClient();
-  const jsonFlag = hasFlag(rawArgs, "json");
-  const positional = nonFlagArgs(rawArgs);
-  const sub = positional[0];
-
-  try {
-    if (sub && sub !== "list") {
-      const run = await daemonCall("runs.get", { id: sub }) as any;
-      if (jsonFlag) {
-        console.log(JSON.stringify(run, null, 2));
-        return;
-      }
-      console.log(runLine(run));
-      console.log(`  artifacts: ${run.artifactDirectoryPath}`);
-      for (const artifact of run.artifacts || []) {
-        console.log(`    ${artifact.kind}  ${artifact.path}`);
-      }
-      return;
-    }
-
-    const limit = Number(parseFlagValue(rawArgs, "limit") || 20);
-    const runs = await daemonCall("runs.list", { limit }) as any[];
-    if (jsonFlag) {
-      console.log(JSON.stringify(runs, null, 2));
-      return;
-    }
-    if (!runs.length) {
-      console.log("No runs yet.");
-      return;
-    }
-    console.log(`Runs (${runs.length}):\n`);
-    for (const run of runs) console.log(runLine(run));
-  } catch (error) {
-    console.log(`Error: ${(error as Error).message}`);
-  }
-}
-
-async function captureCommand(subcommand?: string, ...rawArgs: string[]): Promise<void> {
-  const sub = subcommand || "window";
-  const dashIndex = rawArgs.indexOf("--");
-  const commandArgs = dashIndex >= 0 ? rawArgs.slice(0, dashIndex) : rawArgs;
-  const childArgs = dashIndex >= 0 ? rawArgs.slice(dashIndex + 1) : [];
-  const jsonFlag = hasFlag(commandArgs, "json");
-  const positional = nonFlagArgs(commandArgs);
-
-  if (["stop", "stop-recording", "stopRecording"].includes(sub)) {
-    const params: Record<string, unknown> = {};
-    const runId = positional[0] || parseFlagValue(commandArgs, "run-id") || parseFlagValue(commandArgs, "runId") || parseFlagValue(commandArgs, "id");
-    const stopFile = parseFlagValue(commandArgs, "stop-file") || parseFlagValue(commandArgs, "stopFile");
-    const finishedFile = parseFlagValue(commandArgs, "finished-file") || parseFlagValue(commandArgs, "finishedFile");
-    const timeoutMs = Number(parseFlagValue(commandArgs, "timeout-ms") || parseFlagValue(commandArgs, "timeoutMs") || 30000);
-    if (runId) params.runId = runId;
-    if (stopFile) params.stopFile = stopFile;
-    if (finishedFile) params.finishedFile = finishedFile;
-    if (Number.isFinite(timeoutMs)) params.timeoutMs = timeoutMs;
-    params.wait = !hasFlag(commandArgs, "no-wait");
-
-    try {
-      const { daemonCall } = await getDaemonClient();
-      const result = await daemonCall("capture.stopRecording", params, timeoutMs + 5000) as any;
-      if (jsonFlag) {
-        console.log(JSON.stringify(result, null, 2));
-        return;
-      }
-      console.log(result.finished ? "Recording finished." : "Recording stop requested.");
-      if (result.run?.id) console.log(`  run: ${result.run.id}`);
-      if (result.marker) console.log(`  marker: ${result.marker}`);
-    } catch (error) {
-      console.log(`Error: ${(error as Error).message}`);
-      process.exitCode = 1;
-    }
-    return;
-  }
-
-  const isRecordCommand = [
-    "record-command",
-    "recordCommand",
-    "record-run",
-    "recordRun",
-    "record-exec",
-    "recordExec",
-  ].includes(sub);
-
-  if (isRecordCommand) {
-    if (!childArgs.length) {
-      console.log(`lattices capture record-command — record while running a command
-
-Usage:
-  lattices capture record-command --app Scout --filename demo.mov -- <command> [...args]
-`);
-      return;
-    }
-
-    const params: Record<string, unknown> = { source: "cli" };
-    const explicitWid = positional[0] ? Number(positional[0]) : NaN;
-    if (Number.isFinite(explicitWid)) params.wid = explicitWid;
-
-    const session = parseFlagValue(commandArgs, "session");
-    const app = parseFlagValue(commandArgs, "app");
-    const title = parseFlagValue(commandArgs, "title");
-    const filename = parseFlagValue(commandArgs, "filename");
-    const runId = parseFlagValue(commandArgs, "run-id") || parseFlagValue(commandArgs, "runId");
-    const mode = parseFlagValue(commandArgs, "mode");
-    const fps = parseOptionalNumber(commandArgs, "fps");
-    const scale = parseOptionalNumber(commandArgs, "scale");
-    const timeoutMs = Number(parseFlagValue(commandArgs, "timeout-ms") || parseFlagValue(commandArgs, "timeoutMs") || 30000);
-    if (session) params.session = session;
-    if (app) params.app = app;
-    if (title) params.title = title;
-    if (filename) params.filename = filename;
-    if (runId) params.runId = runId;
-    if (mode) params.mode = mode;
-    if (fps !== undefined) params.fps = fps;
-    if (scale !== undefined) params.scale = scale;
-
-    for (const [flag, key] of [["x", "x"], ["y", "y"], ["width", "width"], ["height", "height"], ["w", "w"], ["h", "h"]] as const) {
-      const value = parseOptionalNumber(commandArgs, flag);
-      if (value !== undefined) params[key] = value;
-    }
-
-    const recordsRegion = hasFlag(commandArgs, "region") ||
-      (params.x !== undefined && params.y !== undefined &&
-        (params.width !== undefined || params.w !== undefined) &&
-        (params.height !== undefined || params.h !== undefined));
-    const method = recordsRegion ? "capture.recordRegion" : "capture.recordWindow";
-
-    try {
-      const { daemonCall } = await getDaemonClient();
-      const start = await daemonCall(method, params, 20000) as any;
-      let childExitCode = 0;
-      let childError: string | undefined;
-
-      try {
-        const proc = Bun.spawn(childArgs, {
-          cwd: process.cwd(),
-          env: process.env,
-          stdin: "inherit",
-          stdout: "inherit",
-          stderr: "inherit",
-        });
-        childExitCode = await proc.exited;
-      } catch (error) {
-        childExitCode = 127;
-        childError = (error as Error).message;
-      }
-
-      const stop = await daemonCall(
-        "capture.stopRecording",
-        { runId: start.run?.id, wait: true, timeoutMs },
-        timeoutMs + 5000
-      ) as any;
-
-      if (jsonFlag) {
-        console.log(JSON.stringify({
-          ok: childExitCode === 0 && stop.ok !== false,
-          child: {
-            command: childArgs,
-            exitCode: childExitCode,
-            error: childError,
-          },
-          recording: start,
-          stopResult: stop,
-        }, null, 2));
-      } else {
-        const artifact = start.artifact || {};
-        const run = stop.run || start.run || {};
-        console.log(`Recording finished.`);
-        console.log(`  run: ${run.id || start.run?.id || "?"}`);
-        console.log(`  artifact: ${artifact.path || "?"}`);
-        console.log(`  child exit: ${childExitCode}`);
-        if (childError) console.log(`  child error: ${childError}`);
-      }
-
-      if (childExitCode !== 0 && !hasFlag(commandArgs, "ignore-child-failure")) {
-        process.exitCode = childExitCode;
-      }
-    } catch (error) {
-      console.log(`Error: ${(error as Error).message}`);
-    }
-    return;
-  }
-
-  const isRecord = ["record", "record-window", "recording", "video"].includes(sub);
-  const isRecordRegion = ["record-region", "recordRegion", "region-recording"].includes(sub) ||
-    (sub === "record" && ["region", "rect"].includes(positional[0] || ""));
-
-  if (isRecord || isRecordRegion) {
-    const params: Record<string, unknown> = { source: "cli" };
-    const targetKind = sub === "record" ? positional[0] : undefined;
-    const positionalOffset = targetKind === "window" || targetKind === "region" || targetKind === "rect" ? 1 : 0;
-    const explicitWid = positional[positionalOffset] ? Number(positional[positionalOffset]) : NaN;
-    if (Number.isFinite(explicitWid)) params.wid = explicitWid;
-
-    const session = parseFlagValue(commandArgs, "session");
-    const app = parseFlagValue(commandArgs, "app");
-    const title = parseFlagValue(commandArgs, "title");
-    const filename = parseFlagValue(commandArgs, "filename");
-    const runId = parseFlagValue(commandArgs, "run-id") || parseFlagValue(commandArgs, "runId");
-    const mode = parseFlagValue(commandArgs, "mode");
-    const fps = parseOptionalNumber(commandArgs, "fps");
-    const scale = parseOptionalNumber(commandArgs, "scale");
-    const durationMs = parseOptionalNumber(commandArgs, "duration-ms", "durationMs", "duration");
-    if (session) params.session = session;
-    if (app) params.app = app;
-    if (title) params.title = title;
-    if (filename) params.filename = filename;
-    if (runId) params.runId = runId;
-    if (mode) params.mode = mode;
-    if (fps !== undefined) params.fps = fps;
-    if (scale !== undefined) params.scale = scale;
-
-    for (const [flag, key] of [["x", "x"], ["y", "y"], ["width", "width"], ["height", "height"], ["w", "w"], ["h", "h"]] as const) {
-      const value = parseOptionalNumber(commandArgs, flag);
-      if (value !== undefined) params[key] = value;
-    }
-
-    try {
-      const { daemonCall } = await getDaemonClient();
-      const method = isRecordRegion ? "capture.recordRegion" : "capture.recordWindow";
-      const result = await daemonCall(method, params, 20000) as any;
-
-      if (durationMs !== undefined && durationMs > 0) {
-        await new Promise((resolve) => setTimeout(resolve, durationMs));
-        const stop = await daemonCall(
-          "capture.stopRecording",
-          { runId: result.run?.id, wait: true, timeoutMs: 30000 },
-          35000
-        ) as any;
-        result.stopResult = stop;
-      }
-
-      if (jsonFlag) {
-        console.log(JSON.stringify(result, null, 2));
-        return;
-      }
-      const artifact = result.artifact || {};
-      const run = result.stopResult?.run || result.run || {};
-      console.log(`Recording ${result.stopResult ? "finished" : "started"}.`);
-      console.log(`  run: ${run.id || result.run?.id || "?"}`);
-      console.log(`  artifact: ${artifact.path || "?"}`);
-      if (!result.stopResult) {
-        console.log(`  stop: lattices capture stop ${result.run?.id || ""}`);
-      }
-    } catch (error) {
-      console.log(`Error: ${(error as Error).message}`);
-    }
-    return;
-  }
-
-  if (!["window", "screenshot", "shot"].includes(sub)) {
-    console.log(`lattices capture — capture run artifacts
-
-Usage:
-  lattices capture window [wid] [--json]
-  lattices capture screenshot [wid] [--session name] [--app name]
-  lattices capture record window [wid] [--app name] [--duration-ms 5000] [--json]
-  lattices capture record region --x N --y N --width N --height N [--duration-ms 5000]
-  lattices capture record-command --app Scout --filename demo.mov -- <command> [...args]
-  lattices capture stop <run-id>
-`);
-    return;
-  }
-
-  const params: Record<string, unknown> = { source: "cli" };
-  const explicitWid = positional[0] ? Number(positional[0]) : NaN;
-  if (Number.isFinite(explicitWid)) params.wid = explicitWid;
-  const session = parseFlagValue(commandArgs, "session");
-  const app = parseFlagValue(commandArgs, "app");
-  const title = parseFlagValue(commandArgs, "title");
-  const filename = parseFlagValue(commandArgs, "filename");
-  const runId = parseFlagValue(commandArgs, "run-id") || parseFlagValue(commandArgs, "runId");
-  if (session) params.session = session;
-  if (app) params.app = app;
-  if (title) params.title = title;
-  if (filename) params.filename = filename;
-  if (runId) params.runId = runId;
-
-  try {
-    const { daemonCall } = await getDaemonClient();
-    const result = await daemonCall("capture.screenshotWindow", params, 20000) as any;
-    if (jsonFlag) {
-      console.log(JSON.stringify(result, null, 2));
-      return;
-    }
-    const artifact = result.artifact || {};
-    const run = result.run || {};
-    const target = result.target || {};
-    console.log(`Captured ${target.app || "window"} ${target.wid ? `wid:${target.wid}` : ""}`);
-    console.log(`  run: ${run.id || "?"}`);
-    console.log(`  artifact: ${artifact.path || "?"}`);
-  } catch (error) {
-    console.log(`Error: ${(error as Error).message}`);
-    process.exitCode = 1;
-  }
 }
 
 async function computerCommand(subcommand?: string, ...rawArgs: string[]): Promise<void> {
@@ -1607,7 +1303,7 @@ Common flags:
   if (hasFlag(rawArgs, "observe")) params.treatment = "observe";
   if (hasFlag(rawArgs, "click")) params.click = true;
 
-  try {
+  await withDaemon(async ({ daemonCall }) => {
     let result: any;
     if (method === "computer.click" || method === "computer.magicCursor") {
       const cua = await import("./cua.ts");
@@ -1615,7 +1311,6 @@ Common flags:
         ? await cua.click(params as any)
         : await cua.magicCursor(params as any);
     } else {
-      const { daemonCall } = await getDaemonClient();
       result = await daemonCall(method, params, 30000) as any;
     }
     if (jsonFlag) {
@@ -1646,71 +1341,73 @@ Common flags:
     if (result.transport) console.log(`  transport: ${result.transport}`);
     if (result.beforeArtifact?.path) console.log(`  before: ${result.beforeArtifact.path}`);
     if (result.afterArtifact?.path) console.log(`  after: ${result.afterArtifact.path}`);
-  } catch (error) {
-    console.log(`Error: ${(error as Error).message}`);
-  }
+  });
 }
 
 async function voiceCommand(subcommand?: string, ...rest: string[]): Promise<void> {
-  const { daemonCall } = await getDaemonClient();
-  try {
-    switch (subcommand) {
-      case "status": {
-        const status = await daemonCall("voice.status") as any;
-        console.log(`Provider: ${status.provider}`);
-        console.log(`Available: ${status.available}`);
-        console.log(`Listening: ${status.listening}`);
-        if (status.lastTranscript) console.log(`Last: "${status.lastTranscript}"`);
-        break;
-      }
-      case "simulate":
-      case "sim": {
-        const text = rest.join(" ");
-        if (!text) {
-          console.log("Usage: lattices voice simulate <text>");
-          return;
-        }
-        const execute = !rest.includes("--dry-run");
-        const dryFlag = rest.includes("--dry-run");
-        const cleanText = dryFlag ? rest.filter(r => r !== "--dry-run").join(" ") : text;
-        const result = await daemonCall("voice.simulate", { text: cleanText, execute }, 15000) as any;
-        if (!result.parsed) {
-          console.log(`\x1b[33mNo match:\x1b[0m "${cleanText}"`);
-          return;
-        }
-        const slots = Object.entries(result.slots || {}).map(([k,v]) => `${k}: ${v}`).join(", ");
-        const conf = result.confidence ? ` (${(result.confidence * 100).toFixed(0)}%)` : "";
-        console.log(`\x1b[36m${result.intent}\x1b[0m${slots ? `  ${slots}` : ""}${conf}`);
-        if (result.executed) {
-          console.log(`\x1b[32mExecuted\x1b[0m`);
-        } else if (result.error) {
-          console.log(`\x1b[31mError:\x1b[0m ${result.error}`);
-        }
-        break;
-      }
-      case "intents": {
-        const intents = await daemonCall("intents.list") as any[];
-        for (const intent of intents) {
-          const slots = intent.slots.map((s: any) => `${s.name}:${s.type}${s.required ? "*" : ""}`).join(", ");
-          console.log(`  \x1b[1m${intent.intent}\x1b[0m  ${intent.description}`);
-          if (slots) console.log(`    slots: ${slots}`);
-          console.log(`    e.g. "${intent.examples[0]}"`);
-          console.log();
-        }
-        break;
-      }
-      default:
-        console.log("Usage: lattices voice <subcommand>\n");
-        console.log("  status      Show voice provider status");
-        console.log("  simulate    Parse and execute a voice command");
-        console.log("  intents     List all available intents");
-        console.log("\nExamples:");
-        console.log('  lattices voice simulate "tile this left"');
-        console.log('  lattices voice simulate "focus chrome" --dry-run');
-    }
-  } catch (e: unknown) {
-    console.log(`Error: ${(e as Error).message}`);
+  if (subcommand !== "status" && subcommand !== "simulate" && subcommand !== "sim" && subcommand !== "intents") {
+    console.log("Usage: lattices voice <subcommand>\n");
+    console.log("  status      Show voice provider status");
+    console.log("  simulate    Parse and execute a voice command");
+    console.log("  intents     List all available intents");
+    console.log("\nExamples:");
+    console.log('  lattices voice simulate "tile this left"');
+    console.log('  lattices voice simulate "focus chrome" --dry-run');
+    return;
   }
+
+  if (subcommand === "simulate" || subcommand === "sim") {
+    const text = rest.join(" ");
+    if (!text) {
+      console.log("Usage: lattices voice simulate <text>");
+      return;
+    }
+  }
+
+  await withDaemon(async ({ daemonCall }) => {
+    switch (subcommand) {
+    case "status": {
+      const status = await daemonCall("voice.status") as any;
+      console.log(`Provider: ${status.provider}`);
+      console.log(`Available: ${status.available}`);
+      console.log(`Listening: ${status.listening}`);
+      if (status.lastTranscript) console.log(`Last: "${status.lastTranscript}"`);
+      break;
+    }
+    case "simulate":
+    case "sim": {
+      const text = rest.join(" ");
+      const execute = !rest.includes("--dry-run");
+      const dryFlag = rest.includes("--dry-run");
+      const cleanText = dryFlag ? rest.filter(r => r !== "--dry-run").join(" ") : text;
+      const result = await daemonCall("voice.simulate", { text: cleanText, execute }, 15000) as any;
+      if (!result.parsed) {
+        console.log(`\x1b[33mNo match:\x1b[0m "${cleanText}"`);
+        return;
+      }
+      const slots = Object.entries(result.slots || {}).map(([k,v]) => `${k}: ${v}`).join(", ");
+      const conf = result.confidence ? ` (${(result.confidence * 100).toFixed(0)}%)` : "";
+      console.log(`\x1b[36m${result.intent}\x1b[0m${slots ? `  ${slots}` : ""}${conf}`);
+      if (result.executed) {
+        console.log(`\x1b[32mExecuted\x1b[0m`);
+      } else if (result.error) {
+        console.log(`\x1b[31mError:\x1b[0m ${result.error}`);
+      }
+      break;
+    }
+    case "intents": {
+      const intents = await daemonCall("intents.list") as any[];
+      for (const intent of intents) {
+        const slots = intent.slots.map((s: any) => `${s.name}:${s.type}${s.required ? "*" : ""}`).join(", ");
+        console.log(`  \x1b[1m${intent.intent}\x1b[0m  ${intent.description}`);
+        if (slots) console.log(`    slots: ${slots}`);
+        console.log(`    e.g. "${intent.examples[0]}"`);
+        console.log();
+      }
+      break;
+    }
+    }
+  });
 }
 
 async function assistantCommand(subcommand?: string, ...rest: string[]): Promise<void> {
@@ -1947,40 +1644,42 @@ async function actorHUDCommand(rest: string[]): Promise<void> {
     return;
   }
 
-  const { daemonCall } = await getDaemonClient();
   const url = positional[1];
   const clear = hasFlag(rest, "clear");
-  const result = await daemonCall("overlay.actor.hud", {
-    id,
-    clear,
-    ...(url && !clear ? { hudUrl: url } : {}),
-    ...actorHUDOptions(rest),
-  }, 15000) as any;
+  await withDaemon(async ({ daemonCall }) => {
+    const result = await daemonCall("overlay.actor.hud", {
+      id,
+      clear,
+      ...(url && !clear ? { hudUrl: url } : {}),
+      ...actorHUDOptions(rest),
+    }, 15000) as any;
 
-  if (hasFlag(rest, "json")) {
-    console.log(JSON.stringify(result, null, 2));
-  } else if (clear) {
-    console.log(`Cleared HUD for ${id}.`);
-  } else {
-    console.log(`Attached hover HUD to ${id}.`);
-  }
+    if (hasFlag(rest, "json")) {
+      console.log(JSON.stringify(result, null, 2));
+    } else if (clear) {
+      console.log(`Cleared HUD for ${id}.`);
+    } else {
+      console.log(`Attached hover HUD to ${id}.`);
+    }
+  });
 }
 
 async function actorVisibilityCommand(action: string, rest: string[]): Promise<void> {
-  const { daemonCall } = await getDaemonClient();
-  const result = await daemonCall("overlay.actor.visibility", {
-    action,
-    feedback: !hasFlag(rest, "quiet") && action !== "status",
-  }, 15000) as any;
+  await withDaemon(async ({ daemonCall }) => {
+    const result = await daemonCall("overlay.actor.visibility", {
+      action,
+      feedback: !hasFlag(rest, "quiet") && action !== "status",
+    }, 15000) as any;
 
-  if (hasFlag(rest, "json")) {
-    console.log(JSON.stringify(result, null, 2));
-    return;
-  }
+    if (hasFlag(rest, "json")) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
 
-  const state = result.visible ? "shown" : "hidden";
-  const count = Number(result.actorCount ?? 0);
-  console.log(`Actor layer ${state} (${count} actor${count === 1 ? "" : "s"}).`);
+    const state = result.visible ? "shown" : "hidden";
+    const count = Number(result.actorCount ?? 0);
+    console.log(`Actor layer ${state} (${count} actor${count === 1 ? "" : "s"}).`);
+  });
 }
 
 async function actorAppCommand(rest: string[]): Promise<void> {
@@ -1991,86 +1690,28 @@ async function actorAppCommand(rest: string[]): Promise<void> {
     return;
   }
   const message = positional.slice(1).join(" ") || `Tap to switch to ${appQuery}.`;
-  const asset = ensureAppActorAsset(appQuery);
-  const { daemonCall } = await getDaemonClient();
-  const id = parseFlagValue(rest, "id") || `app-${slugify(asset.appName)}`;
-  const state = parseFlagValue(rest, "state") || "idle";
-  const ttlMs = Number(parseFlagValue(rest, "ttl") || parseFlagValue(rest, "ttlMs") || 0);
-  const x = Number(parseFlagValue(rest, "x") || 520);
-  const y = Number(parseFlagValue(rest, "y") || 340);
-  const placement = parseFlagValue(rest, "placement") || "point";
-  const style = parseFlagValue(rest, "style") || "playful";
-  const dismissible = hasFlag(rest, "dismissible");
-  const labelHidden = shouldHideActorLabel(rest);
-  const closeOnActivate = hasFlag(rest, "close-on-activate") || hasFlag(rest, "closeOnActivate");
-  const scale = Number(parseFlagValue(rest, "scale") || 1);
+  await withDaemon(async ({ daemonCall }) => {
+    const asset = ensureAppActorAsset(appQuery);
+    const id = parseFlagValue(rest, "id") || `app-${slugify(asset.appName)}`;
+    const state = parseFlagValue(rest, "state") || "idle";
+    const ttlMs = Number(parseFlagValue(rest, "ttl") || parseFlagValue(rest, "ttlMs") || 0);
+    const x = Number(parseFlagValue(rest, "x") || 520);
+    const y = Number(parseFlagValue(rest, "y") || 340);
+    const placement = parseFlagValue(rest, "placement") || "point";
+    const style = parseFlagValue(rest, "style") || "playful";
+    const dismissible = hasFlag(rest, "dismissible");
+    const labelHidden = shouldHideActorLabel(rest);
+    const closeOnActivate = hasFlag(rest, "close-on-activate") || hasFlag(rest, "closeOnActivate");
+    const scale = Number(parseFlagValue(rest, "scale") || 1);
 
-  const result = await daemonCall("overlay.actor.publish", {
-    id,
-    renderer: "sprite",
-    asset: asset.id,
-    state,
-    name: parseFlagValue(rest, "name") || asset.appName,
-    message,
-    placement,
-    x,
-    y,
-    style,
-    ttlMs,
-    dismissible,
-    labelHidden,
-    closeOnActivate,
-    scale,
-    ...actorHUDOptions(rest),
-    targetApp: asset.appName,
-    targetBundleId: asset.bundleIdentifier,
-    targetAppPath: asset.appPath,
-  }, 15000) as any;
-
-  if (!hasFlag(rest, "no-move")) {
-    await daemonCall("overlay.actor.moveTo", {
-      id,
-      x: x + 40,
-      y: y + 50,
-      durationMs: 700,
-      easing: "spring",
-    }, 15000);
-  }
-
-  if (hasFlag(rest, "json")) {
-    console.log(JSON.stringify({ ...result, asset: asset.id, appPath: asset.appPath }, null, 2));
-  } else {
-    console.log(`Published ${asset.appName} actor (${id}). Click it to switch to ${asset.appName}.`);
-  }
-}
-
-async function actorSwitcherCommand(rest: string[]): Promise<void> {
-  const appNames = nonFlagArgs(rest);
-  const apps = appNames.length ? appNames : ["Codex", "Talkie"];
-  const { daemonCall } = await getDaemonClient();
-  const startX = Number(parseFlagValue(rest, "x") || 420);
-  const y = Number(parseFlagValue(rest, "y") || 220);
-  const gap = Number(parseFlagValue(rest, "gap") || 270);
-  const ttlMs = Number(parseFlagValue(rest, "ttl") || parseFlagValue(rest, "ttlMs") || 0);
-  const style = parseFlagValue(rest, "style") || "info";
-  const dismissible = hasFlag(rest, "dismissible");
-  const labelHidden = shouldHideActorLabel(rest);
-  const closeOnActivate = hasFlag(rest, "close-on-activate") || hasFlag(rest, "closeOnActivate");
-  const scale = Number(parseFlagValue(rest, "scale") || 1);
-  const results: any[] = [];
-
-  for (let i = 0; i < apps.length; i++) {
-    const asset = ensureAppActorAsset(apps[i]);
-    const id = `switch-${slugify(asset.appName)}`;
-    const x = startX + i * gap;
     const result = await daemonCall("overlay.actor.publish", {
       id,
       renderer: "sprite",
       asset: asset.id,
-      state: "ready",
-      name: asset.appName,
-      message: `Tap to switch to ${asset.appName}.`,
-      placement: "point",
+      state,
+      name: parseFlagValue(rest, "name") || asset.appName,
+      message,
+      placement,
       x,
       y,
       style,
@@ -2084,21 +1725,81 @@ async function actorSwitcherCommand(rest: string[]): Promise<void> {
       targetBundleId: asset.bundleIdentifier,
       targetAppPath: asset.appPath,
     }, 15000) as any;
-    results.push({ ...result, asset: asset.id, appPath: asset.appPath });
-    await daemonCall("overlay.actor.moveTo", {
-      id,
-      x: x + 28,
-      y: y + 36,
-      durationMs: 650,
-      easing: "spring",
-    }, 15000);
-  }
 
-  if (hasFlag(rest, "json")) {
-    console.log(JSON.stringify(results, null, 2));
-  } else {
-    console.log(`Published app switcher for ${apps.join(", ")}.`);
-  }
+    if (!hasFlag(rest, "no-move")) {
+      await daemonCall("overlay.actor.moveTo", {
+        id,
+        x: x + 40,
+        y: y + 50,
+        durationMs: 700,
+        easing: "spring",
+      }, 15000);
+    }
+
+    if (hasFlag(rest, "json")) {
+      console.log(JSON.stringify({ ...result, asset: asset.id, appPath: asset.appPath }, null, 2));
+    } else {
+      console.log(`Published ${asset.appName} actor (${id}). Click it to switch to ${asset.appName}.`);
+    }
+  });
+}
+
+async function actorSwitcherCommand(rest: string[]): Promise<void> {
+  const appNames = nonFlagArgs(rest);
+  const apps = appNames.length ? appNames : ["Codex", "Talkie"];
+  await withDaemon(async ({ daemonCall }) => {
+    const startX = Number(parseFlagValue(rest, "x") || 420);
+    const y = Number(parseFlagValue(rest, "y") || 220);
+    const gap = Number(parseFlagValue(rest, "gap") || 270);
+    const ttlMs = Number(parseFlagValue(rest, "ttl") || parseFlagValue(rest, "ttlMs") || 0);
+    const style = parseFlagValue(rest, "style") || "info";
+    const dismissible = hasFlag(rest, "dismissible");
+    const labelHidden = shouldHideActorLabel(rest);
+    const closeOnActivate = hasFlag(rest, "close-on-activate") || hasFlag(rest, "closeOnActivate");
+    const scale = Number(parseFlagValue(rest, "scale") || 1);
+    const results: any[] = [];
+
+    for (let i = 0; i < apps.length; i++) {
+      const asset = ensureAppActorAsset(apps[i]);
+      const id = `switch-${slugify(asset.appName)}`;
+      const x = startX + i * gap;
+      const result = await daemonCall("overlay.actor.publish", {
+        id,
+        renderer: "sprite",
+        asset: asset.id,
+        state: "ready",
+        name: asset.appName,
+        message: `Tap to switch to ${asset.appName}.`,
+        placement: "point",
+        x,
+        y,
+        style,
+        ttlMs,
+        dismissible,
+        labelHidden,
+        closeOnActivate,
+        scale,
+        ...actorHUDOptions(rest),
+        targetApp: asset.appName,
+        targetBundleId: asset.bundleIdentifier,
+        targetAppPath: asset.appPath,
+      }, 15000) as any;
+      results.push({ ...result, asset: asset.id, appPath: asset.appPath });
+      await daemonCall("overlay.actor.moveTo", {
+        id,
+        x: x + 28,
+        y: y + 36,
+        durationMs: 650,
+        easing: "spring",
+      }, 15000);
+    }
+
+    if (hasFlag(rest, "json")) {
+      console.log(JSON.stringify(results, null, 2));
+    } else {
+      console.log(`Published app switcher for ${apps.join(", ")}.`);
+    }
+  });
 }
 
 type HUDPathField = string | {
@@ -2403,20 +2104,21 @@ function upsertHUDRegistryEntry(resolved: ResolvedHUDManifest, published = false
 }
 
 async function publishHUDManifest(resolved: ResolvedHUDManifest, rest: string[], index = 0): Promise<Record<string, unknown>> {
-  const { daemonCall } = await getDaemonClient();
-  const payload = hudPublishPayload(resolved, rest, index);
-  const result = await daemonCall("overlay.actor.publish", payload, 15000) as Record<string, unknown>;
-  if (!hasFlag(rest, "no-move")) {
-    await daemonCall("overlay.actor.moveTo", {
-      id: resolved.id,
-      x: Number(payload.x) + 24,
-      y: Number(payload.y) + 30,
-      durationMs: 600,
-      easing: "spring",
-    }, 15000);
-  }
-  upsertHUDRegistryEntry(resolved, true);
-  return result;
+  return withDaemon(async ({ daemonCall }) => {
+    const payload = hudPublishPayload(resolved, rest, index);
+    const result = await daemonCall("overlay.actor.publish", payload, 15000) as Record<string, unknown>;
+    if (!hasFlag(rest, "no-move")) {
+      await daemonCall("overlay.actor.moveTo", {
+        id: resolved.id,
+        x: Number(payload.x) + 24,
+        y: Number(payload.y) + 30,
+        durationMs: 600,
+        easing: "spring",
+      }, 15000);
+    }
+    upsertHUDRegistryEntry(resolved, true);
+    return result;
+  });
 }
 
 async function hudRegisterCommand(rest: string[]): Promise<void> {
@@ -2538,186 +2240,8 @@ async function hudCommand(sub?: string, ...rest: string[]): Promise<void> {
   }
 }
 
-async function layerCommand(sub?: string, ...rest: string[]): Promise<void> {
-  await withDaemon(async (client) => {
-    const { daemonCall } = client;
-
-    if (sub === "create") {
-      await layerCreateCommand(client, rest);
-      return;
-    }
-    if (sub === "snap") {
-      await layerSnapCommand(client, rest[0]);
-      return;
-    }
-    if (sub === "session" || sub === "sessions") {
-      await layerSessionCommand(client, rest[0]);
-      return;
-    }
-    if (sub === "clear") {
-      await daemonCall("session.layers.clear");
-      console.log("Cleared all session layers.");
-      return;
-    }
-    if (sub === "delete" || sub === "rm") {
-      if (!rest[0]) { console.log("Usage: lattices layer delete <name>"); return; }
-      await daemonCall("session.layers.delete", { name: rest[0] });
-      console.log(`Deleted session layer "${rest[0]}".`);
-      return;
-    }
-
-    if (sub === undefined || sub === null || sub === "") {
-      const result = await daemonCall("layers.list") as any;
-      if (!result.layers.length) {
-        console.log("No layers configured.");
-        return;
-      }
-      console.log("Layers:\n");
-      for (const layer of result.layers) {
-        const active = layer.index === result.active ? " \x1b[32m● active\x1b[0m" : "";
-        console.log(`  [${layer.index}] ${layer.label}  (${layer.projectCount} projects)${active}`);
-      }
-      return;
-    }
-    const idx = parseInt(sub, 10);
-    if (!isNaN(idx)) {
-      await daemonCall("layer.activate", { index: idx, mode: "launch" });
-      console.log(`Activated layer ${idx}`);
-    } else {
-      await daemonCall("layer.activate", { name: sub, mode: "launch" });
-      console.log(`Activated layer "${sub}"`);
-    }
-  });
-}
-
-// ── Layer create: build a session layer from window specs ────────────
-// Usage: lattices layer create <name> [wid:123 wid:456 ...]
-//        lattices layer create <name> --json '[{"app":"Chrome","tile":"left"},...]'
-async function layerCreateCommand(client: DaemonClient, args: string[]): Promise<void> {
-  const { daemonCall } = client;
-  const name = args[0];
-  if (!name) {
-    console.log("Usage: lattices layer create <name> [wid:123 ...] [--json '<specs>']");
-    return;
-  }
-
-  const jsonIdx = args.indexOf("--json");
-  if (jsonIdx !== -1 && args[jsonIdx + 1]) {
-    // JSON mode: parse window specs with tile positions
-    const specs = JSON.parse(args[jsonIdx + 1]) as Array<{
-      wid?: number; app?: string; title?: string; tile?: string;
-    }>;
-
-    // Collect wids, resolve app-based specs
-    const windowIds: number[] = [];
-    const windows: Array<{ app: string; contentHint?: string }> = [];
-    const tiles: Array<{ wid?: number; app?: string; title?: string; tile: string }> = [];
-
-    for (const spec of specs) {
-      if (spec.wid) {
-        windowIds.push(spec.wid);
-        if (spec.tile) tiles.push({ wid: spec.wid, tile: spec.tile });
-      } else if (spec.app) {
-        windows.push({ app: spec.app, contentHint: spec.title });
-        if (spec.tile) tiles.push({ app: spec.app, title: spec.title, tile: spec.tile });
-      }
-    }
-
-    const result = await daemonCall("session.layers.create", {
-      name,
-      ...(windowIds.length ? { windowIds } : {}),
-      ...(windows.length ? { windows } : {}),
-    }) as any;
-
-    console.log(`Created session layer "${name}" with ${specs.length} window(s).`);
-
-    // Apply tile positions
-    for (const t of tiles) {
-      try {
-        await daemonCall("window.place", {
-          ...(t.wid ? { wid: t.wid } : { app: t.app, title: t.title }),
-          placement: t.tile,
-        });
-      } catch { /* window may not be resolved yet */ }
-    }
-
-    if (tiles.length) console.log(`Tiled ${tiles.length} window(s).`);
-    return;
-  }
-
-  // Simple wid mode: lattices layer create <name> wid:123 wid:456
-  const wids = args.slice(1)
-    .filter(a => a.startsWith("wid:"))
-    .map(a => parseInt(a.slice(4), 10))
-    .filter(n => !isNaN(n));
-
-  const result = await daemonCall("session.layers.create", {
-    name,
-    ...(wids.length ? { windowIds: wids } : {}),
-  }) as any;
-
-  console.log(`Created session layer "${name}"${wids.length ? ` with ${wids.length} window(s)` : ""}.`);
-}
-
-// ── Layer snap: snapshot current visible windows into a session layer ─
-async function layerSnapCommand(client: DaemonClient, name?: string): Promise<void> {
-  const { daemonCall } = client;
-  const layerName = name || `snap-${new Date().toISOString().slice(11, 19).replace(/:/g, "")}`;
-
-  // Get all current windows
-  const windows = await daemonCall("windows.list") as any[];
-  const visibleWids = windows
-    .filter((w: any) => !w.isMinimized && w.app !== "lattices")
-    .map((w: any) => w.wid);
-
-  if (!visibleWids.length) {
-    console.log("No visible windows to snapshot.");
-    return;
-  }
-
-  await daemonCall("session.layers.create", {
-    name: layerName,
-    windowIds: visibleWids,
-  });
-
-  console.log(`Snapped ${visibleWids.length} window(s) → session layer "${layerName}".`);
-}
-
-// ── Layer session: list or switch session layers ─────────────────────
-async function layerSessionCommand(client: DaemonClient, nameOrIndex?: string): Promise<void> {
-  const { daemonCall } = client;
-  const result = await daemonCall("session.layers.list") as any;
-
-  if (!nameOrIndex) {
-    // List session layers
-    if (!result.layers.length) {
-      console.log("No session layers. Create one with: lattices layer create <name>");
-      return;
-    }
-    console.log("Session layers:\n");
-    for (let i = 0; i < result.layers.length; i++) {
-      const l = result.layers[i];
-      const active = i === result.activeIndex ? " \x1b[32m● active\x1b[0m" : "";
-      const winCount = l.windows?.length || 0;
-      console.log(`  [${i}] ${l.name}  (${winCount} windows)${active}`);
-    }
-    return;
-  }
-
-  // Switch by index or name
-  const idx = parseInt(nameOrIndex, 10);
-  if (!isNaN(idx)) {
-    await daemonCall("session.layers.switch", { index: idx });
-    console.log(`Switched to session layer ${idx}.`);
-  } else {
-    await daemonCall("session.layers.switch", { name: nameOrIndex });
-    console.log(`Switched to session layer "${nameOrIndex}".`);
-  }
-}
-
 async function diagCommand(limit?: string): Promise<void> {
-  try {
-    const { daemonCall } = await getDaemonClient();
+  await withDaemon(async ({ daemonCall }) => {
     const result = await daemonCall("diagnostics.list", { limit: parseInt(limit || "", 10) || 40 }) as any;
     if (!result.entries || !result.entries.length) {
       console.log("No diagnostic entries.");
@@ -2729,9 +2253,7 @@ async function diagCommand(limit?: string): Promise<void> {
                    entry.level === "error"   ? "\x1b[31m✗\x1b[0m" : "›";
       console.log(`  \x1b[90m${entry.time}\x1b[0m ${icon} ${entry.message}`);
     }
-  } catch (e: unknown) {
-    console.log(`Error: ${(e as Error).message}`);
-  }
+  });
 }
 
 async function distributeCommand(rawArgs: string[] = []): Promise<void> {
