@@ -31,10 +31,11 @@ your project directory.
 ### Install the CLI
 
 ```sh
-npm install -g @lattices/cli
+npm install -g @arach/lattices
 ```
 
-The CLI and app work independently — use either or both.
+Also published as `@lattices/cli` for existing installs. The CLI and app work
+independently — use either or both.
 
 ### Build from source
 
@@ -169,7 +170,7 @@ events over WebSocket. Anything you can do from the app, an agent or
 script can do over the API.
 
 ```js
-import { daemonCall } from '@lattices/cli/daemon-client'
+import { daemonCall } from '@arach/lattices/daemon-client'
 
 // Search windows by content — title, app, session tags, OCR
 const results = await daemonCall('windows.search', { query: 'myproject' })

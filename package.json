@@ -1,7 +1,15 @@
 {
-  "name": "@lattices/cli",
+  "name": "@arach/lattices",
   "version": "0.6.1",
-  "description": "The agentic workspace manager for macOS — turn your desktop into a coherent API",
+  "description": "macOS workspace manager — menu bar app, CLI, and WebSocket daemon API for tiling, search, layers, and agent control",
+  "homepage": "https://lattices.dev",
+  "bugs": {
+    "url": "https://github.com/arach/lattices/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "packageManager": "bun@1.3.11",
   "engines": {
     "node": ">=18"
@@ -11,13 +19,19 @@
     "lattices-app": "./bin/lattices-app.ts"
   },
   "keywords": [
+    "lattices",
+    "macos",
+    "workspace",
+    "window-manager",
     "tmux",
+    "daemon",
+    "ai-agents",
     "claude",
-    "dev-server",
     "developer-tools",
     "cli",
     "terminal",
-    "multiplexer"
+    "ocr",
+    "tiling"
   ],
   "repository": {
     "type": "git",

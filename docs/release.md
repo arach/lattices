@@ -124,7 +124,8 @@ GitHub release step.
 
 ## npm releases
 
-The CLI package is published as `@lattices/cli`.
+The CLI package is published as `@arach/lattices` (npm page) and also as
+`@lattices/cli` for back-compat — same tarball, dual publish in CI.
 
 There are two valid npm paths:
 
@@ -141,7 +142,7 @@ NPM_TOKEN
 ```
 
 `NPM_TOKEN` must be an npm automation or granular access token that can
-publish `@lattices/cli`. It currently should authenticate as the npm user
+publish `@arach/lattices` and `@lattices/cli`. It currently should authenticate as the npm user
 `arach`; if a different maintainer publishes, set environment variable
 `NPM_EXPECTED_USER` to that npm username.
 
@@ -155,7 +156,7 @@ gh variable set NPM_EXPECTED_USER --repo arach/lattices --env release --body ara
 Release:
 
 ```sh
-git tag -a npm-v0.5.0 -m "@lattices/cli 0.5.0"
+git tag -a npm-v0.6.1 -m "@arach/lattices 0.6.1"
 git push origin npm-v0.5.0
 ```
 

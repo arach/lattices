@@ -78,20 +78,20 @@ install_dep bun "oven-sh/bun/bun" "oven-sh/bun"
 # ── Install CLI ───────────────────────────────────────────────────────
 # If run from inside the source repo, link the local checkout instead of
 # fetching from npm. Detected by package.json next to this script with
-# name "@lattices/cli".
+# name "@arach/lattices" (also published as @lattices/cli).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"   # this script lives in scripts/
 LOCAL_MODE=0
 if [[ -f "$REPO_ROOT/package.json" ]] && \
-   grep -q '"@lattices/cli"' "$REPO_ROOT/package.json"; then
+   grep -qE '"@arach/lattices"|"@lattices/cli"' "$REPO_ROOT/package.json"; then
   LOCAL_MODE=1
 fi
 
 if [[ "$LOCAL_MODE" -eq 1 ]]; then
-  info "Linking @lattices/cli from $REPO_ROOT..."
+  info "Linking @arach/lattices from $REPO_ROOT..."
 else
-  info "Installing @lattices/cli..."
+  info "Installing @arach/lattices..."
 fi
 
 if command -v lattices &>/dev/null; then
@@ -99,9 +99,9 @@ if command -v lattices &>/dev/null; then
 fi
 
 if [[ "$LOCAL_MODE" -eq 1 ]]; then
-  (cd "$REPO_ROOT" && bun link && bun link @lattices/cli)
+  (cd "$REPO_ROOT" && bun link && bun link @arach/lattices)
 else
-  bun install -g @lattices/cli
+  bun install -g @arach/lattices
 fi
 ok "CLI installed → $(command -v lattices)"
 

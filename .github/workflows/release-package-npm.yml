@@ -85,6 +85,13 @@ jobs:
 
       - name: Publish to npm
         if: ${{ github.event_name == 'push' || inputs.publish }}
-        run: npm publish --provenance --access public
+        run: |
+          set -euo pipefail
+          # Primary package (@arach/lattices) — updates the public npm page.
+          npm publish --provenance --access public
+          # Back-compat alias for existing @lattices/cli installs/imports.
+          npm pkg set name=@lattices/cli
+          npm publish --provenance --access public
+          npm pkg set name=@arach/lattices
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
