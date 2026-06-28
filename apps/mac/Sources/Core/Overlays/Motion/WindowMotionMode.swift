@@ -59,6 +59,7 @@ final class WindowMotionMode {
         }
         let tEligible = CACurrentMediaTime()
         let inPlace = entry == .inPlace
+        AppFeedback.shared.warmUp()
         let p = MotionPanel(eligible: eligible, inPlace: inPlace)
         p.loadStart = t0
         let tInit = CACurrentMediaTime()
@@ -373,6 +374,8 @@ private final class MotionPanel: NSPanel {
     private let stackMargin: CGFloat = 24
     private var keyObserver: Any?
     private var layoutRefreshTimer: Timer?   // keep Current View frames live while surveying
+    private var layoutFingerprintByScreen: [String: Int] = [:]
+    private var captureRebuildWorkItemsByScreenID: [String: DispatchWorkItem] = [:]
     /// In-place tools (Hyper+G): float Current View + inventory over the live desktop.
     /// Hyperspace (Hyper+Space) keeps the full scrim + screenshot survey.
     private let inPlaceMode: Bool
@@ -632,6 +635,7 @@ private final class MotionPanel: NSPanel {
         commandPanel?.close()
         commandPanel = nil
         animators.values.forEach { $0.cancel() }
+        WindowSelectionOverlay.shared.clear()
         removeExposeHost()
         orderOut(nil)
     }
@@ -641,6 +645,7 @@ private final class MotionPanel: NSPanel {
     /// can always clear a survey that a prior race left orphaned (no key monitor,
     /// no resign observer) and stuck on top. Cheap; runs only on activate/deactivate.
     static func teardownStrayPanels() {
+        WindowSelectionOverlay.shared.clear()
         for window in NSApp.windows where window is HyperspaceScreenPanel || window is MotionPanel {
             window.orderOut(nil)
             window.close()
@@ -761,6 +766,7 @@ private final class MotionPanel: NSPanel {
                     ?? validSurveyScreen(screenForEvent(event))
                     ?? activeSurveyScreen
                 if let screen {
+                    if !stagedIntents.isEmpty { AppFeedback.shared.commitTactile() }
                     commitStagedIntents(on: screen)
                     DiagnosticLog.shared.info("In-place confirm — commit staged + exit")
                 }
@@ -771,6 +777,7 @@ private final class MotionPanel: NSPanel {
                     ?? activeSurveyScreen
                 if let screen {
                     let count = pickOrderByScreen[MotionPanel.screenID(screen)]?.count ?? 0
+                    if count > 0 { AppFeedback.shared.commitTactile() }
                     DiagnosticLog.shared.info("Motion confirm — gather \(count) from Exposé + exit")
                     gatherInPlace(on: screen)
                     onExit?()
@@ -778,6 +785,7 @@ private final class MotionPanel: NSPanel {
             } else {
                 // Deferred gridding: lay the picked set out now (if any), then leave.
                 if !group.isEmpty {
+                    AppFeedback.shared.commitTactile()
                     DiagnosticLog.shared.info("Motion confirm — grid \(group.count) + exit")
                     relayoutGroup()
                 } else {
@@ -814,6 +822,7 @@ private final class MotionPanel: NSPanel {
                 return
             case 14 where !mods.contains(.shift) && !inPlaceMode: collapseExpose(); return  // E — collapse survey
             case 5  where !mods.contains(.shift):                            // G — grid selection (stay in mode)
+                AppFeedback.shared.commitTactile()
                 if let eventScreen { gatherInPlace(on: eventScreen) }
                 return
             case 3  where !mods.contains(.shift) && inPlaceMode:             // F — fill available space
@@ -860,6 +869,7 @@ private final class MotionPanel: NSPanel {
             toggleExpose()
             return
         case 5:                                             // G — grid the group (in Exposé: gather but stay)
+            AppFeedback.shared.commitTactile()
             if exposed { gatherInPlace() } else { distributeGroup() }
             return
         case 3:                                             // F — grow into open space until a neighbor
@@ -1219,28 +1229,40 @@ private final class MotionPanel: NSPanel {
             return
         }
         let rects = balancedGrid(members.count)
-        var moves: [(wid: UInt32, pid: Int32, frame: CGRect)] = []
-        moves.reserveCapacity(members.count)
+        var resolvedMoves: [(wid: UInt32, pid: Int32, frame: CGRect, axWindow: AXUIElement)] = []
+        var fallbackMoves: [(wid: UInt32, pid: Int32, frame: CGRect)] = []
+        resolvedMoves.reserveCapacity(members.count)
+        fallbackMoves.reserveCapacity(members.count)
         for (i, m) in members.enumerated() {
             let r = rects[i]
             let target = WindowTiler.tileFrame(fractions: (r.minX, r.minY, r.width, r.height), on: screen)
-            if let el = ax(for: m) { recordOriginal(m.wid, el) }
-            moves.append((wid: m.wid, pid: m.pid, frame: target))
+            if let el = ax(for: m) {
+                recordOriginal(m.wid, el)
+                resolvedMoves.append((wid: m.wid, pid: m.pid, frame: target, axWindow: el))
+            } else {
+                fallbackMoves.append((wid: m.wid, pid: m.pid, frame: target))
+            }
         }
-        guard !moves.isEmpty else { return }
+        guard !resolvedMoves.isEmpty || !fallbackMoves.isEmpty else { return }
         raising {
-            WindowTiler.batchMoveAndRaiseWindows(moves)
+            if fallbackMoves.isEmpty {
+                WindowTiler.batchMoveAndRaiseWindows(resolvedMoves)
+            } else {
+                WindowTiler.batchMoveAndRaiseWindows(
+                    resolvedMoves.map { (wid: $0.wid, pid: $0.pid, frame: $0.frame) } + fallbackMoves
+                )
+            }
         }
-        AppFeedback.shared.playTapSound()
-        DiagnosticLog.shared.info("Motion grid — \(moves.count) windows")
+        DiagnosticLog.shared.info("Motion grid — \(resolvedMoves.count + fallbackMoves.count) windows")
     }
 
     /// Refresh inventory chrome after a grid snap without blocking the batch move.
-    private func refreshAfterGridMove() {
+    private func refreshAfterGridMove(on screen: NSScreen) {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             DesktopModel.shared.poll()
-            self.rebuildExposeView()
+            self.layoutFingerprintByScreen[MotionPanel.screenID(screen)] = self.layoutFingerprint(for: screen)
+            self.rebuildExposeView(screens: [screen])
             self.updateLegend()
             self.refreshBorders()
             self.updateStack()
@@ -1251,10 +1273,11 @@ private final class MotionPanel: NSPanel {
     /// G — make sure the aimed window is part of the group, then lay out the grid.
     private func distributeGroup() {
         if !group.contains(activeEntry.wid) { togglePicked(activeEntry.wid) }
+        let screen = activeSurveyScreen
         relayoutGroup()
         updateLegend()
-        if inPlaceMode {
-            refreshAfterGridMove()
+        if inPlaceMode, let screen {
+            refreshAfterGridMove(on: screen)
         } else {
             refreshBorders()
             updateStack()
@@ -1297,6 +1320,9 @@ private final class MotionPanel: NSPanel {
         installExposeHosts()
         captureCount = allMembers.count
         allMembers.forEach { captureThumb(for: $0) }              // seed from the shared cache; capture only misses
+        DesktopModel.shared.poll()
+        layoutFingerprintByScreen.removeAll()
+        for screen in screens { layoutFingerprintByScreen[MotionPanel.screenID(screen)] = layoutFingerprint(for: screen) }
         rebuildExposeView()
         checkCapturesSettled()                                     // every tile a cache hit → already done
         startLayoutRefresh()
@@ -1329,17 +1355,24 @@ private final class MotionPanel: NSPanel {
         updateStack()
     }
 
+    /// Stage a location without rebuilding — callers batch and rebuild once.
+    private func stageDrop(_ wid: UInt32, _ placement: PlacementSpec?) {
+        if let placement {
+            stagedIntents[wid, default: StagedIntent()].location = placement
+        }
+    }
+
     /// A tile was dropped in the survey. A non-nil placement stages a location for
     /// that window (badge shows; nothing real moves until gather); nil means the
     /// drop missed every target — no change, we just rebuild to clear the drag
     /// placeholder. Either way the rebuild here un-suppresses the spread (rebuilds
     /// are skipped while a drag is in flight so the SwiftUI gesture survives).
     private func handleDrop(_ wid: UInt32, _ placement: PlacementSpec?) {
+        stageDrop(wid, placement)
         if let placement {
-            stagedIntents[wid, default: StagedIntent()].location = placement
             DiagnosticLog.shared.info("Hyperspace stage — wid=\(wid) location \(placement.wireValue)")
         }
-        rebuildExposeView()
+        rebuildExposeForActiveScreen()
     }
 
     /// Stage a balanced sub-grid for a multi-window drop onto the lattice, anchored at `anchor`.
@@ -1353,15 +1386,14 @@ private final class MotionPanel: NSPanel {
         for (i, wid) in wids.enumerated() {
             let cell = cells[i]
             guard let gp = GridPlacement(columns: cols, rows: rows, column: cell.col, row: cell.row) else { continue }
-            handleDrop(wid, PlacementSpec.grid(gp))
+            stageDrop(wid, PlacementSpec.grid(gp))
         }
         DiagnosticLog.shared.info("Hyperspace stage — \(wids.count) windows grid @ \(anchor.col),\(anchor.row) (\(res.name))")
+        rebuildExposeForActiveScreen()
     }
 
-    /// A tile was dropped on a Layers pile. The ＋ pile stages a brand-new layer; any
-    /// other pile toggles a staged join (multi-membership). Only *stages* — nothing is
-    /// written to StudioLayerStore until gather, so Esc still discards cleanly.
-    private func handleLayerDrop(_ wid: UInt32, _ layerKey: String) {
+    /// Stage a layer join without rebuilding — callers batch and rebuild once.
+    private func stageLayerDrop(_ wid: UInt32, _ layerKey: String) {
         if layerKey == HyperspaceDrag.newLayerKey {
             stagedIntents[wid, default: StagedIntent()].newLayer.toggle()
         } else if stagedIntents[wid]?.layers.contains(layerKey) == true {
@@ -1369,8 +1401,39 @@ private final class MotionPanel: NSPanel {
         } else {
             stagedIntents[wid, default: StagedIntent()].layers.insert(layerKey)
         }
+    }
+
+    /// A tile was dropped on a Layers pile. The ＋ pile stages a brand-new layer; any
+    /// other pile toggles a staged join (multi-membership). Only *stages* — nothing is
+    /// written to StudioLayerStore until gather, so Esc still discards cleanly.
+    private func handleLayerDrop(_ wid: UInt32, _ layerKey: String) {
+        stageLayerDrop(wid, layerKey)
         DiagnosticLog.shared.info("Hyperspace stage — wid=\(wid) layer \(layerKey)")
-        rebuildExposeView()
+        rebuildExposeForActiveScreen()
+    }
+
+    private func handleLayerDrops(_ wids: [UInt32], _ layerKey: String) {
+        guard !wids.isEmpty else { return }
+        for wid in wids { stageLayerDrop(wid, layerKey) }
+        DiagnosticLog.shared.info("Hyperspace stage — \(wids.count) window(s) layer \(layerKey)")
+        rebuildExposeForActiveScreen()
+    }
+
+    /// In-place: rebuild one screen; hyperspace survey: rebuild all.
+    private func rebuildExposeForActiveScreen() {
+        if inPlaceMode, let screen = activeSurveyScreen {
+            rebuildExposeView(screens: [screen])
+        } else {
+            rebuildExposeView()
+        }
+    }
+
+    private func rebuildExposeForScreenInteraction(on screen: NSScreen) {
+        if inPlaceMode {
+            rebuildExposeView(screens: [screen])
+        } else {
+            rebuildExposeView()
+        }
     }
 
     /// Edit mode: drop one rule clause from a layer (the ✕ on a pile's rule chip).
@@ -1511,7 +1574,7 @@ private final class MotionPanel: NSPanel {
                     id: w.wid,
                     frac: MotionPanel.frac(of: layoutFrame(for: freshEntry(w)), in: screenAX),
                     tint: Color(nsColor: MotionPanel.tint(for: w.app)),
-                    image: thumbs[w.wid])
+                    image: inPlaceMode ? nil : thumbs[w.wid])
             }
             let stagedCount = stagedIntents.values.filter { $0.layers.contains(layer.id) }.count
             return ExposeView.LayerPile(id: layer.id, name: layer.name, count: onScreen.count,
@@ -1559,12 +1622,28 @@ private final class MotionPanel: NSPanel {
         return interArea / smallerArea >= 0.15
     }
 
+    /// Cheap hash of on-screen window frames — skip full ExposeView rebuilds when nothing moved.
+    private func layoutFingerprint(for screen: NSScreen) -> Int {
+        let windows = liveMembers(on: screen)
+        var hasher = Hasher()
+        hasher.combine(windows.count)
+        for w in windows {
+            let f = layoutCGFrame(for: w)
+            hasher.combine(w.wid)
+            hasher.combine(Int64(f.origin.x.rounded()))
+            hasher.combine(Int64(f.origin.y.rounded()))
+            hasher.combine(Int64(f.width.rounded()))
+            hasher.combine(Int64(f.height.rounded()))
+        }
+        return hasher.finalize()
+    }
+
     /// Every window currently on a screen, as fractional footprints — the Current View's
     /// always-on baseline ("what this display looks like right now"). Uses live members
     /// + CG frames (not the open-time snapshot) and paints back-to-front so frontmost
     /// reads on top; windows covered by a front neighbor are marked `behind`.
+    /// Caller must poll DesktopModel first when frames need to be fresh.
     private func currentLayout(on screen: NSScreen) -> [ExposeView.LayerMember] {
-        DesktopModel.shared.poll()
         let screenAX = MotionPanel.axRect(of: screen)
         let windows = liveMembers(on: screen).sorted { $0.zIndex < $1.zIndex }
         let frames = windows.map { layoutCGFrame(for: $0) }
@@ -1577,7 +1656,7 @@ private final class MotionPanel: NSPanel {
                 id: w.wid,
                 frac: MotionPanel.frac(of: frame, in: screenAX),
                 tint: Color(nsColor: MotionPanel.tint(for: w.app)),
-                image: thumbs[w.wid],
+                image: inPlaceMode ? nil : thumbs[w.wid],
                 behind: behind)
         }
     }
@@ -1604,8 +1683,9 @@ private final class MotionPanel: NSPanel {
         let id = MotionPanel.screenID(screen)
         pickOrderByScreen[id] = []
         restorePickState(for: screen)
-        rebuildExposeView()
+        rebuildExposeView(screens: [screen])
         updateLegend()
+        refreshBorders()
         updateStack()
     }
 
@@ -1630,7 +1710,8 @@ private final class MotionPanel: NSPanel {
             WindowTiler.tileWindowById(wid: wid, pid: entry.pid, to: placement, on: screen)
         }
         DesktopModel.shared.poll()
-        rebuildExposeView()
+        invalidateLayoutFingerprint(for: screen)
+        rebuildExposeView(screens: [screen])
         updateLegend()
         refreshBorders()
         DispatchQueue.main.async { [weak self] in self?.makeKey() }
@@ -1645,15 +1726,24 @@ private final class MotionPanel: NSPanel {
             return
         }
         DesktopModel.shared.poll()
-        let frameA = layoutFrame(for: entryA)
-        let frameB = layoutFrame(for: entryB)
+        let axA = ax(for: entryA)
+        let axB = ax(for: entryB)
+        let frameA = axA.flatMap { RealWindowAnimator.axFrame($0) } ?? layoutCGFrame(for: entryA)
+        let frameB = axB.flatMap { RealWindowAnimator.axFrame($0) } ?? layoutCGFrame(for: entryB)
         if originalFrames[widA] == nil { originalFrames[widA] = frameA }
         if originalFrames[widB] == nil { originalFrames[widB] = frameB }
         raising {
-            WindowTiler.batchMoveAndRaiseWindows([
-                (wid: widA, pid: entryA.pid, frame: frameB),
-                (wid: widB, pid: entryB.pid, frame: frameA),
-            ])
+            if let axA, let axB {
+                WindowTiler.batchMoveAndRaiseWindows([
+                    (wid: widA, pid: entryA.pid, frame: frameB, axWindow: axA),
+                    (wid: widB, pid: entryB.pid, frame: frameA, axWindow: axB),
+                ])
+            } else {
+                WindowTiler.batchMoveAndRaiseWindows([
+                    (wid: widA, pid: entryA.pid, frame: frameB),
+                    (wid: widB, pid: entryB.pid, frame: frameA),
+                ])
+            }
         }
         let id = MotionPanel.screenID(screen)
         pickOrderByScreen[id]?.removeAll { $0 == widA || $0 == widB }
@@ -1661,12 +1751,13 @@ private final class MotionPanel: NSPanel {
             restorePickState(for: screen)
         }
         DiagnosticLog.shared.info("Hyperspace swap — \(entryA.app) ↔ \(entryB.app)")
-        rebuildExposeView()
+        invalidateLayoutFingerprint(for: screen)
+        rebuildExposeView(screens: [screen])
         updateLegend()
         refreshBorders()
         updateStack()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
-            self?.rebuildExposeView()
+            self?.rebuildExposeView(screens: [screen])
         }
     }
 
@@ -1737,7 +1828,7 @@ private final class MotionPanel: NSPanel {
             raising { RealWindowAnimator.raise(el) }              // a single pick just comes forward
         }
         if inPlaceMode {
-            refreshAfterGridMove()
+            refreshAfterGridMove(on: screen)
             return
         }
         removeExposeHost()
@@ -1947,22 +2038,24 @@ private final class MotionPanel: NSPanel {
         reassignHandHints(on: screen)
     }
 
-    private func reassignHandHints(on screen: NSScreen) {
-        guard exposed else { return }
+    @discardableResult
+    private func reassignHandHints(on screen: NSScreen, rebuild: Bool = true) -> Bool {
+        guard exposed else { return false }
         let id = MotionPanel.screenID(screen)
         let order = exposeOrderByScreen[id] ?? []
         let frames = exposeFramesByScreen[id] ?? [:]
         let (hf, hm) = (handKeysMode && frames.count >= order.count)
             ? computeHandHints(order: order, frames: frames)
             : readingHints(for: order)
-        guard hf != hintForByScreen[id] else { return }
+        guard hf != hintForByScreen[id] else { return false }
         hintForByScreen[id] = hf
         hintMapByScreen[id] = hm
         if activeSurveyScreen.map(MotionPanel.screenID) == id {
             hintFor = hf
             hintMap = hm
         }
-        rebuildExposeView()
+        if rebuild { rebuildExposeView(screens: [screen]) }
+        return true
     }
 
     /// Per-cluster shortcut: ⇧+letter plucks the whole group at once (e.g. ⇧I →
@@ -2071,10 +2164,33 @@ private final class MotionPanel: NSPanel {
     /// Poll DesktopModel and refresh Current View outlines while the survey is open.
     private func startLayoutRefresh() {
         stopLayoutRefresh()
-        layoutRefreshTimer = Timer.scheduledTimer(withTimeInterval: 0.75, repeats: true) { [weak self] _ in
-            guard let self, self.exposed, !self.dismissed, !self.dragModel.isActive else { return }
-            self.rebuildExposeView()
+        let interval: TimeInterval = inPlaceMode ? 1.5 : 0.75
+        layoutRefreshTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            self?.refreshLiveLayoutIfChanged()
         }
+    }
+
+    /// Timer tick: poll once, rebuild only when a window actually moved or resized.
+    private func refreshLiveLayoutIfChanged() {
+        guard exposed, !dismissed, !dragModel.isActive else { return }
+        DesktopModel.shared.poll()
+        var changedScreens: [NSScreen] = []
+        for screen in surveyScreens() {
+            let id = MotionPanel.screenID(screen)
+            let fp = layoutFingerprint(for: screen)
+            if layoutFingerprintByScreen[id] != fp {
+                layoutFingerprintByScreen[id] = fp
+                changedScreens.append(screen)
+            }
+        }
+        if !changedScreens.isEmpty {
+            rebuildExposeView(screens: changedScreens)
+            if inPlaceMode { refreshBorders() }
+        }
+    }
+
+    private func invalidateLayoutFingerprint(for screen: NSScreen) {
+        layoutFingerprintByScreen.removeValue(forKey: MotionPanel.screenID(screen))
     }
 
     private func stopLayoutRefresh() {
@@ -2082,7 +2198,13 @@ private final class MotionPanel: NSPanel {
         layoutRefreshTimer = nil
     }
 
+    private func cancelCaptureRebuilds() {
+        captureRebuildWorkItemsByScreenID.values.forEach { $0.cancel() }
+        captureRebuildWorkItemsByScreenID.removeAll()
+    }
+
     private func removeExposeHost() {
+        cancelCaptureRebuilds()
         exposePanelsByScreenID.values.forEach { $0.close() }
         exposePanelsByScreenID.removeAll()
         exposeHostsByScreenID.values.forEach { $0.removeFromSuperview() }
@@ -2092,8 +2214,9 @@ private final class MotionPanel: NSPanel {
 
     /// Rebuild the spread's view-model from current picks/aim/captures. Cheap —
     /// the cluster *structure* is fixed for the life of a survey; only the per-tile
-    /// pick slot, highlight, and image change.
-    private func rebuildExposeView() {
+    /// pick slot, highlight, and image change. In-place mode can target one screen
+    /// to avoid rebuilding every monitor on each pick.
+    private func rebuildExposeView(screens: [NSScreen]? = nil) {
         guard exposed else { return }
         // Replacing host.rootView mid-drag would tear down the in-flight SwiftUI
         // gesture and abort the drag. Skip while a drag is live; handleDrop()
@@ -2102,9 +2225,15 @@ private final class MotionPanel: NSPanel {
         if exposeHostsByScreenID.isEmpty { installExposeHosts() }
         exposeHost = activeSurveyScreen.flatMap { exposeHostsByScreenID[MotionPanel.screenID($0)] }
 
-        for screen in surveyScreens() {
+        let targets = screens ?? surveyScreens()
+        for screen in targets {
+            rebuildExposeScreen(screen)
+        }
+    }
+
+    private func rebuildExposeScreen(_ screen: NSScreen) {
             let id = MotionPanel.screenID(screen)
-            guard let host = exposeHostsByScreenID[id] else { continue }
+            guard let host = exposeHostsByScreenID[id] else { return }
             let members = surveyMembers(on: screen)
             if exposeClustersByScreen[id] == nil {
                 rebuildSurveyState(for: screen, resetAim: true)
@@ -2142,6 +2271,7 @@ private final class MotionPanel: NSPanel {
                     self?.handleGridGroupDrop(wids, res: res, anchor: anchor)
                 },
                 onDropLayer: { [weak self] wid, key in self?.handleLayerDrop(wid, key) },
+                onDropLayers: { [weak self] wids, key in self?.handleLayerDrops(wids, key) },
                 onSwap: { [weak self] a, b in self?.swapWindows(widA: a, widB: b, on: screen) },
                 onGridSelection: { [weak self] in self?.gatherInPlace(on: screen) },
                 onSwapFirstTwo: { [weak self] in
@@ -2175,7 +2305,15 @@ private final class MotionPanel: NSPanel {
                 onHandKeys: { [weak self] on in
                     guard let self else { return }
                     self.handKeysMode = on
-                    self.surveyScreens().forEach { self.reassignHandHints(on: $0) }
+                    let changed = self.surveyScreens().filter {
+                        self.reassignHandHints(on: $0, rebuild: false)
+                    }
+                    guard !changed.isEmpty else { return }
+                    if self.inPlaceMode {
+                        self.rebuildExposeView(screens: changed)
+                    } else {
+                        self.rebuildExposeView()
+                    }
                 },
                 onExit: { [weak self] in self?.onExit?() },   // ✕ — leave, keep what's on screen
                 onNewLayer: { [weak self] in self?.presentNewLayer() },
@@ -2186,7 +2324,6 @@ private final class MotionPanel: NSPanel {
                 onRemoveClause: { [weak self] id, idx in self?.removeLayerClause(id, idx) },
                 onDeleteLayer: { [weak self] id in self?.deleteLayer(id) },
                 loadSummary: loadSummaryText())
-        }
     }
 
     /// Compact load readout for the survey: time-to-first-paint and time-to-all-
@@ -2271,8 +2408,13 @@ private final class MotionPanel: NSPanel {
         } else {
             restorePickState(for: screen)
         }
-        rebuildExposeView()
+        if inPlaceMode {
+            rebuildExposeView(screens: [screen])
+        } else {
+            rebuildExposeView()
+        }
         updateLegend()
+        refreshBorders()
         updateStack()
     }
 
@@ -2320,8 +2462,9 @@ private final class MotionPanel: NSPanel {
         } else {
             restorePickState(for: screen)
         }
-        rebuildExposeView()
+        rebuildExposeForScreenInteraction(on: screen)
         updateLegend()
+        refreshBorders()
         updateStack()
     }
 
@@ -2329,6 +2472,9 @@ private final class MotionPanel: NSPanel {
 
     private func activateClusterSearch(_ clusterID: Int, on screen: NSScreen) {
         let screenID = MotionPanel.screenID(screen)
+        let previouslyActiveScreens = activeClusterSearchByScreen.keys.compactMap { id in
+            NSScreen.screens.first(where: { MotionPanel.screenID($0) == id })
+        }
         activeClusterSearchByScreen.removeAll()
         activeClusterSearchByScreen[screenID] = clusterID
         var queries = clusterSearchQueryByScreen[screenID] ?? [:]
@@ -2337,7 +2483,14 @@ private final class MotionPanel: NSPanel {
         if activeSurveyScreen.map(MotionPanel.screenID) != screenID {
             setActiveSurveyScreen(screen)
         }
-        rebuildExposeView()
+        if inPlaceMode {
+            let uniqueTargets = ([screen] + previouslyActiveScreens)
+                .reduce(into: [String: NSScreen]()) { $0[MotionPanel.screenID($1)] = $1 }
+            let targets = Array(uniqueTargets.values)
+            rebuildExposeView(screens: targets)
+        } else {
+            rebuildExposeView()
+        }
     }
 
     private func clearClusterSearch(_ clusterID: Int, on screen: NSScreen) {
@@ -2349,7 +2502,7 @@ private final class MotionPanel: NSPanel {
         if activeSurveyScreen.map(MotionPanel.screenID) != screenID {
             setActiveSurveyScreen(screen)
         }
-        rebuildExposeView()
+        rebuildExposeForScreenInteraction(on: screen)
     }
 
     private func activeClusterSearchTarget() -> (screen: NSScreen, screenID: String, clusterID: Int)? {
@@ -2373,14 +2526,14 @@ private final class MotionPanel: NSPanel {
             } else {
                 setClusterSearchQuery("", clusterID: target.clusterID, screenID: target.screenID)
             }
-            rebuildExposeView()
+            rebuildExposeForScreenInteraction(on: target.screen)
             return true
         case 51:                                                    // Delete / Backspace
             var q = clusterSearchQueryByScreen[target.screenID]?[target.clusterID] ?? ""
             if !q.isEmpty {
                 q.removeLast()
                 setClusterSearchQuery(q, clusterID: target.clusterID, screenID: target.screenID)
-                rebuildExposeView()
+                rebuildExposeForScreenInteraction(on: target.screen)
             }
             return true
         case 36, 76:                                                // Return — pluck visible matches
@@ -2392,7 +2545,7 @@ private final class MotionPanel: NSPanel {
             guard !blocked, let text = clusterSearchText(from: event) else { return false }
             let current = clusterSearchQueryByScreen[target.screenID]?[target.clusterID] ?? ""
             setClusterSearchQuery(current + text, clusterID: target.clusterID, screenID: target.screenID)
-            rebuildExposeView()
+            rebuildExposeForScreenInteraction(on: target.screen)
             return true
         }
     }
@@ -2439,8 +2592,9 @@ private final class MotionPanel: NSPanel {
         } else {
             restorePickState(for: screen)
         }
-        rebuildExposeView()
+        rebuildExposeForScreenInteraction(on: screen)
         updateLegend()
+        refreshBorders()
         updateStack()
     }
 
@@ -2510,7 +2664,7 @@ private final class MotionPanel: NSPanel {
         pickOrderByScreen[id] = order
         if activeSurveyScreen.map(MotionPanel.screenID) != id { setActiveSurveyScreen(screen) }
         else { restorePickState(for: screen) }
-        rebuildExposeView(); updateLegend(); updateStack()
+        rebuildExposeForScreenInteraction(on: screen); updateLegend(); refreshBorders(); updateStack()
     }
 
     /// Stage a named placement for the plucked set on this screen — the same staging
@@ -2520,8 +2674,9 @@ private final class MotionPanel: NSPanel {
         let picked = pickOrderByScreen[id] ?? []
         guard !picked.isEmpty else { NSSound.beep(); return }
         let spec = PlacementSpec.grid(gp)
-        for wid in picked { handleDrop(wid, spec) }
-        rebuildExposeView()
+        for wid in picked { stageDrop(wid, spec) }
+        DiagnosticLog.shared.info("Hyperspace stage — \(picked.count) selected window(s) \(spec.wireValue)")
+        rebuildExposeForScreenInteraction(on: screen)
     }
 
     // MARK: - Display-scoped survey
@@ -2748,7 +2903,7 @@ private final class MotionPanel: NSPanel {
             exposeAim = exposeAimByScreen[id] ?? 0
         }
         if let wid = order[safe: exposeAimByScreen[id] ?? 0] { aimWindow(wid, on: screen) }
-        rebuildExposeView()
+        rebuildExposeForScreenInteraction(on: screen)
     }
 
     /// True if the window's center sits on `screen` (AppKit coords, like screen(for:)).
@@ -2791,30 +2946,36 @@ private final class MotionPanel: NSPanel {
         borderLayers.removeAll()
 
         // During the screenshot survey the SwiftUI spread (ExposeView) draws
-        // everything; real-window chrome would just double up behind it.
-        if exposed { return }
+        // everything; Hyper+G is the exception because its survey floats above the
+        // live desktop and selected windows need an on-screen selected state.
+        if exposed && !inPlaceMode { return }
 
         let activeWid = activeEntry.wid
 
-        // Outlines for the picked set (always) and, in Exposé, every spread window —
-        // drawn first so the aimed window's preview sits on top of them. The aimed
-        // window is handled separately below.
-        for entry in eligible where entry.wid != activeWid {
-            let inGroup = group.contains(entry.wid)
-            guard inGroup || exposed else { continue }
-            guard let el = ax(for: entry), let axf = RealWindowAnimator.axFrame(el) else { continue }
-            let local = panelLocal(appKitFrame(fromAX: axf))
-            let layer = CALayer()
-            layer.frame = local
-            layer.cornerRadius = 10
-            layer.cornerCurve = .continuous
-            layer.borderWidth = 1.5
-            let color = MotionPanel.tint(for: entry.app)
-            // Un-picked spread windows sit back at a dim alpha; picked read fuller.
-            layer.borderColor = color.withAlphaComponent(inGroup ? 0.6 : 0.28).cgColor
-            if inGroup { layer.backgroundColor = color.withAlphaComponent(0.05).cgColor }
-            root.addSublayer(layer)
-            borderLayers.append(layer)
+        // Selected-window chrome on the real desktop. Hyper+G draws via dedicated
+        // per-window overlays above the survey panel; plain motion mode uses the
+        // chrome host beneath the instruction strip.
+        if inPlaceMode {
+            var overlayEntries: [WindowSelectionOverlay.Entry] = []
+            for (_, order) in pickOrderByScreen {
+                for (idx, wid) in order.enumerated() {
+                    guard let entry = eligible.first(where: { $0.wid == wid }) else { continue }
+                    overlayEntries.append(WindowSelectionOverlay.Entry(
+                        wid: wid,
+                        frame: liveAppKitFrame(for: entry),
+                        slot: idx + 1
+                    ))
+                }
+            }
+            WindowSelectionOverlay.shared.sync(overlayEntries)
+            if exposed { return }
+        } else {
+            for (idx, wid) in pickOrder.enumerated() {
+                guard group.contains(wid),
+                      let entry = eligible.first(where: { $0.wid == wid }) else { continue }
+                let local = panelLocal(liveAppKitFrame(for: entry))
+                addSelectedWindowChrome(root: root, frame: local, app: entry.app, slot: idx + 1)
+            }
         }
 
         // The aimed window — a *fake* bring-to-front. We never raise the real window
@@ -2871,11 +3032,66 @@ private final class MotionPanel: NSPanel {
         borderLayers.append(border)
     }
 
+    private func addSelectedWindowChrome(root: CALayer, frame local: CGRect, app: String, slot: Int?) {
+        let accent = MotionPanel.selectedChromeColor
+        let appTint = MotionPanel.tint(for: app)
+        let outerFrame = local.insetBy(dx: -5, dy: -5)
+
+        let glow = CALayer()
+        glow.frame = outerFrame
+        glow.cornerRadius = 14
+        glow.cornerCurve = .continuous
+        glow.borderWidth = 3
+        glow.borderColor = accent.withAlphaComponent(0.92).cgColor
+        glow.backgroundColor = appTint.withAlphaComponent(0.055).cgColor
+        glow.shadowColor = accent.cgColor
+        glow.shadowOpacity = 0.62
+        glow.shadowRadius = 13
+        glow.shadowOffset = .zero
+        root.addSublayer(glow)
+        borderLayers.append(glow)
+
+        let inner = CALayer()
+        inner.frame = local.insetBy(dx: 2, dy: 2)
+        inner.cornerRadius = 8
+        inner.cornerCurve = .continuous
+        inner.borderWidth = 1
+        inner.borderColor = NSColor.white.withAlphaComponent(0.78).cgColor
+        root.addSublayer(inner)
+        borderLayers.append(inner)
+
+        if let slot {
+            let badge = CATextLayer()
+            badge.contentsScale = NSScreen.main?.backingScaleFactor ?? 2
+            badge.string = "\(slot)"
+            badge.fontSize = 11
+            badge.alignmentMode = .center
+            badge.foregroundColor = NSColor.black.withAlphaComponent(0.86).cgColor
+            badge.backgroundColor = accent.withAlphaComponent(0.95).cgColor
+            badge.cornerRadius = 8
+            badge.masksToBounds = true
+            badge.frame = CGRect(x: outerFrame.minX + 8, y: outerFrame.maxY - 26, width: 26, height: 18)
+            root.addSublayer(badge)
+            borderLayers.append(badge)
+        }
+    }
+
     // MARK: - Geometry
 
     private func appKitFrame(fromAX ax: CGRect) -> NSRect {
         let primaryH = NSScreen.screens.first?.frame.height ?? 0
         return NSRect(x: ax.origin.x, y: primaryH - ax.origin.y - ax.height, width: ax.width, height: ax.height)
+    }
+
+    /// Live on-screen frame in global AppKit coords — AX when available, else polled entry.
+    private func liveAppKitFrame(for entry: WindowEntry) -> NSRect {
+        let axf: CGRect
+        if let el = ax(for: entry), let live = RealWindowAnimator.axFrame(el) {
+            axf = live
+        } else {
+            axf = CGRect(x: entry.frame.x, y: entry.frame.y, width: entry.frame.w, height: entry.frame.h)
+        }
+        return appKitFrame(fromAX: axf)
     }
 
     private func panelLocal(_ global: NSRect) -> NSRect {
@@ -2941,6 +3157,10 @@ private final class MotionPanel: NSPanel {
         for b in app.utf8 { v = (v &* 33) &+ UInt64(b) }
         let hue = CGFloat(v % 360) / 360.0
         return NSColor(hue: hue, saturation: 0.58, brightness: 0.98, alpha: 1)
+    }
+
+    static var selectedChromeColor: NSColor {
+        NSColor(calibratedRed: 0.38, green: 0.92, blue: 1.0, alpha: 1.0)
     }
 
     // MARK: - Legend
@@ -3081,11 +3301,29 @@ private final class MotionPanel: NSPanel {
             self.captureFrame[wid] = self.liveFrame(for: entry)   // remember the size this shot represents
             WindowPreviewStore.shared.ingest(cgImage: cg, for: wid, frame: entry.frame)  // write back to the shared cache
             self.updateStack()
-            if self.exposed { self.rebuildExposeView() }          // a survey tile's capture just landed
+            self.scheduleCaptureRebuild(for: entry)               // a survey tile's capture just landed
             self.checkCapturesSettled()
             // A fresh capture for the aimed window is its fake bring-to-front image.
             if wid == self.activeEntry.wid { self.refreshBorders() }
         }
+    }
+
+    private func scheduleCaptureRebuild(for entry: WindowEntry) {
+        guard exposed, !dismissed else { return }
+        guard let screen = validSurveyScreen(screen(for: entry)) ?? activeSurveyScreen else {
+            rebuildExposeView()
+            return
+        }
+        let id = MotionPanel.screenID(screen)
+        guard captureRebuildWorkItemsByScreenID[id] == nil else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.captureRebuildWorkItemsByScreenID[id] = nil
+            guard self.exposed, !self.dismissed else { return }
+            self.rebuildExposeView(screens: [screen])
+        }
+        captureRebuildWorkItemsByScreenID[id] = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.035, execute: work)
     }
 
     /// Mark (once) the moment every survey tile has its image — captures done,
@@ -3579,6 +3817,7 @@ struct ExposeView: View {
     var onDrop: (UInt32, PlacementSpec?) -> Void = { _, _ in }
     var onDropGridGroup: ([UInt32], LatticeRes, HoverCell) -> Void = { _, _, _ in }
     var onDropLayer: (UInt32, String) -> Void = { _, _ in }
+    var onDropLayers: ([UInt32], String) -> Void = { _, _ in }
     var onSwap: (UInt32, UInt32) -> Void = { _, _ in }
     var onGridSelection: () -> Void = {}
     var onSwapFirstTwo: () -> Void = {}
@@ -4539,8 +4778,6 @@ struct ExposeView: View {
             else if drag.hoverSurveyWid == t.id { drag.hoverSurveyWid = nil }
         }
         .contextMenu { windowContextMenu(t) }
-        .animation(.easeOut(duration: 0.14), value: linked)
-        .animation(.easeOut(duration: 0.14), value: picked)
     }
 
     private func pickSlot(for wid: UInt32) -> Int? {
@@ -5109,12 +5346,18 @@ struct ExposeView: View {
         return LayoutMetrics(visual: visual, hit: hit)
     }
 
-    // Cross-link: hover from Current View or the survey lattice, plus any plucked picks.
+    // Cross-link: hover from Current View or the survey lattice.
     private var activeLinkWid: UInt32? {
         drag.hoverLayoutWid ?? drag.hoverSurveyWid
     }
 
+    /// Windows that render a screenshot peek in Current View. In-place mode keeps picks
+    /// as lightweight outlines (slot badge + stroke) and only lifts a thumb on hover.
     private var peekWids: Set<UInt32> {
+        if inPlace {
+            if let w = activeLinkWid { return [w] }
+            return []
+        }
         var s = pickedWids
         if let w = activeLinkWid { s.insert(w) }
         return s
@@ -5158,22 +5401,40 @@ struct ExposeView: View {
         let shape = RoundedRectangle(cornerRadius: 2, style: .continuous)
         let stroke: Color = dragged ? HUDChrome.cyan
             : (picked ? Palette.running : (hovered ? .white : tint))
-        let lineW: CGFloat = dragged ? 2 : (picked || hovered ? 1.75 : (behind ? 0.75 : 1))
-        let fillOpacity = dragged ? 0.16 : (picked ? 0.12 : (hovered ? 0.09 : (behind ? 0.02 : 0.05)))
-        let strokeOpacity = dragged ? 1.0 : (behind ? 0.5 : (hovered ? 1.0 : 0.82))
-        return shape
-            .fill(tint.opacity(fillOpacity))
-            .overlay(
-                shape.stroke(
-                    stroke.opacity(strokeOpacity),
-                    style: StrokeStyle(lineWidth: lineW, dash: behind ? [4, 3] : [])
+        let lineW: CGFloat = dragged ? 2
+            : (picked ? (inPlace ? 2.5 : 1.75) : (hovered ? 1.75 : (behind ? 0.75 : 1)))
+        let fillOpacity = dragged ? 0.16
+            : (picked ? (inPlace ? 0.2 : 0.12) : (hovered ? 0.09 : (behind ? 0.02 : 0.05)))
+        let strokeOpacity = dragged ? 1.0
+            : (picked ? 1.0 : (behind ? 0.5 : (hovered ? 1.0 : 0.82)))
+        let dash: [CGFloat] = behind && !picked ? [4, 3] : []
+        return ZStack {
+            if picked && inPlace {
+                shape
+                    .stroke(Palette.running.opacity(0.42), lineWidth: 5)
+                    .blur(radius: 1.5)
+            }
+            shape
+                .fill(tint.opacity(fillOpacity))
+                .overlay(
+                    shape.stroke(
+                        stroke.opacity(strokeOpacity),
+                        style: StrokeStyle(lineWidth: lineW, dash: dash)
+                    )
                 )
-            )
-            .shadow(color: dragged ? HUDChrome.cyan.opacity(0.4)
-                    : (hovered ? tint.opacity(0.35) : .clear),
-                    radius: dragged ? 5 : (hovered ? 4 : 0))
-            .frame(width: rect.width, height: rect.height)
-            .position(x: rect.midX, y: rect.midY)
+                .overlay {
+                    if picked && inPlace {
+                        shape.strokeBorder(Color.white.opacity(0.55), lineWidth: 0.75)
+                    }
+                }
+        }
+        .shadow(color: dragged ? HUDChrome.cyan.opacity(0.4)
+                : (picked && inPlace ? Palette.running.opacity(0.55)
+                   : (hovered ? tint.opacity(0.35) : .clear)),
+                radius: dragged ? 5 : (picked && inPlace ? 7 : (hovered ? 4 : 0)))
+        .scaleEffect(picked && inPlace && !dragged ? 1.04 : 1, anchor: .center)
+        .frame(width: rect.width, height: rect.height)
+        .position(x: rect.midX, y: rect.midY)
     }
 
     // Expanded invisible pad + visual outline + grab affordance. The pad is what you
@@ -5199,10 +5460,17 @@ struct ExposeView: View {
                 } else {
                     currentViewOutlineAt(metrics.visual, m.tint,
                                          picked: picked, hovered: hovered, dragged: lifted, behind: m.behind)
-                        .scaleEffect(hovered && !lifted ? 1.06 : 1, anchor: .center)
+                        .scaleEffect(hovered && !lifted && !picked ? 1.06 : 1, anchor: .center)
                 }
             }
-            .animation(.spring(response: 0.2, dampingFraction: 0.72), value: peeking)
+            if picked && !lifted && !peeking {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: max(8, min(12, metrics.visual.width * 0.22)), weight: .bold))
+                    .foregroundColor(Palette.running)
+                    .shadow(color: .black.opacity(0.5), radius: 2)
+                    .position(x: metrics.visual.maxX - 8, y: metrics.visual.minY + 8)
+                    .allowsHitTesting(false)
+            }
             if hovered && !lifted && !drag.isActive && !peeking {
                 Image(systemName: "arrow.up.forward")
                     .font(.system(size: 9, weight: .bold))
@@ -5212,7 +5480,7 @@ struct ExposeView: View {
                     .allowsHitTesting(false)
             }
         }
-        .opacity(lifted ? 0.3 : (m.behind && !peeking ? 0.72 : 1))
+        .opacity(lifted ? 0.3 : (m.behind && !peeking && !picked ? 0.72 : 1))
         .overlay {
             if lifted {
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
@@ -5795,7 +6063,7 @@ struct ExposeView: View {
         if !wasDragging && dist < 12 {
             onTap()
         } else if let layerKey {
-            for w in dragWids { onDropLayer(w, layerKey) }
+            onDropLayers(dragWids, layerKey)
             if let pulseFrame { drag.firePulse(at: pulseFrame) }
         } else if let cell = gridCell {
             if dragWids.count > 1 {

@@ -131,6 +131,7 @@ final class AppFeedback {
         guard let url = Bundle.main.url(forResource: "tap", withExtension: "wav") else { return nil }
         return NSSound(contentsOf: url, byReference: true)
     }()
+    private var didWarmTapSound = false
 
     private init() {}
 
@@ -166,11 +167,52 @@ final class AppFeedback {
         playTap()
     }
 
+    func warmUp() {
+        runOnMain { self.warmUpTapSoundOnMain() }
+    }
+
+    func warmUpTapSound() {
+        warmUp()
+    }
+
+    func commitTactile() {
+        runOnMain {
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+            self.playPreparedTapOnMain()
+        }
+    }
+
     private func playTap() {
         DispatchQueue.main.async {
             self.tapSound?.stop()
             self.tapSound?.play()
         }
+    }
+
+    private func runOnMain(_ work: @escaping () -> Void) {
+        if Thread.isMainThread {
+            work()
+        } else {
+            DispatchQueue.main.async(execute: work)
+        }
+    }
+
+    private func warmUpTapSoundOnMain() {
+        guard !didWarmTapSound, let sound = tapSound else { return }
+        didWarmTapSound = true
+        let volume = sound.volume
+        sound.volume = 0
+        sound.currentTime = 0
+        sound.play()
+        sound.stop()
+        sound.currentTime = 0
+        sound.volume = volume
+    }
+
+    private func playPreparedTapOnMain() {
+        guard let sound = tapSound else { return }
+        sound.currentTime = 0
+        sound.play()
     }
 }
 
