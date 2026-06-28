@@ -1,7 +1,7 @@
 {
   "name": "@arach/lattices",
-  "version": "0.6.1",
-  "description": "macOS workspace manager — menu bar app, CLI, and WebSocket daemon API for tiling, search, layers, and agent control",
+  "version": "0.6.2",
+  "description": "Tile windows, search your screen, keep tmux sessions alive, and let AI agents control your Mac — CLI + daemon API",
   "homepage": "https://lattices.dev",
   "bugs": {
     "url": "https://github.com/arach/lattices/issues"
