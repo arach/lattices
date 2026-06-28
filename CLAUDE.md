@@ -44,8 +44,8 @@ The CLI has a tiered search system for finding windows across the desktop:
 ### `lattices search <query>` — Index search
 Calls the daemon's `windows.search` API. Searches window titles, app names, session tags, and OCR content. Fast — uses already-indexed data. Returns scored results (title/session: 3, app: 2, ocr: 1).
 
-### `lattices search <query> --deep` — Deep search
-Starts with index search, then **inspects** candidates live using terminal process data (`terminals.search`). Discovers windows the index missed (e.g. an iTerm window where 4/4 tabs have `~/dev/vox` in their cwd but "vox" doesn't appear in the window title). Each matching tab adds score weight, so terminal windows with many matching tabs rank highest.
+### `lattices search <query> --deep` / `--all` — Deep search
+Both flags request all search sources (`sources: ["all"]`). Starts with index search, then **inspects** candidates live using terminal process data (`terminals.search`). Discovers windows the index missed (e.g. an iTerm window where 4/4 tabs have `~/dev/vox` in their cwd but "vox" doesn't appear in the window title). Each matching tab adds score weight, so terminal windows with many matching tabs rank highest.
 
 ### `lattices place <query> [position]` — Search + act
 Runs deep search, takes the top result, focuses it by wid, and tiles it to a position. Default position: `bottom-right`.
@@ -57,6 +57,6 @@ Runs deep search, takes the top result, focuses it by wid, and tiles it to a pos
 
 ### Search tips for agents
 - Use `lattices search <query>` first. If the results are clear, act on them.
-- Use `--deep` when looking for terminal windows by project name, since project names often only appear in cwd/tab data, not window titles.
+- Use `--deep` or `--all` when looking for terminal windows by project name, since project names often only appear in cwd/tab data, not window titles.
 - Use `--json` for programmatic consumption, `--wid` to pipe into other commands.
 - `lattices call windows.search '{"query":"..."}' ` for raw API access.

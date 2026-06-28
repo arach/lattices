@@ -55,7 +55,9 @@ your pane layout:
 
 ```bash
 brew install tmux
-cd ~/your-project && lattices start
+cd ~/your-project
+lattices          # home screen: status only, does not attach
+lattices start    # create or reattach the session
 ```
 
 This creates a tmux session with your configured panes side by side.

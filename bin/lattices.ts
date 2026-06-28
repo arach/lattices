@@ -1,10 +1,27 @@
 #!/usr/bin/env bun
 
-import { createHash } from "node:crypto";
 import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, resolve } from "node:path";
 import { homedir } from "node:os";
+import { withDaemon, type DaemonClient } from "./cli/daemon.ts";
+import {
+  hasFlag,
+  nonFlagArgs,
+  parseFlagValue,
+  parseOptionalNumber,
+  pause,
+  run,
+  runQuiet,
+} from "./cli/helpers.ts";
+import { searchCommand, placeCommand } from "./cli/search.ts";
+import {
+  esc,
+  sessionExists,
+  slugify,
+  toGroupSessionName,
+  toSessionName,
+} from "./cli/session.ts";
 
 // Daemon client (lazy-loaded to avoid blocking startup for TTY commands)
 let _daemonClient: typeof import("./daemon-client.ts") | undefined;
@@ -19,25 +36,6 @@ const args: string[] = process.argv.slice(2);
 const command: string | undefined = args[0];
 
 // ── Helpers ──────────────────────────────────────────────────────────
-
-interface ExecOpts {
-  encoding?: string;
-  stdio?: string | string[];
-  cwd?: string;
-  [key: string]: any;
-}
-
-function run(cmd: string, opts: ExecOpts = {}): string {
-  return execSync(cmd, { encoding: "utf8", ...opts } as any).trim();
-}
-
-function runQuiet(cmd: string): string | null {
-  try {
-    return run(cmd, { stdio: "pipe" });
-  } catch {
-    return null;
-  }
-}
 
 function hasTmux(): boolean {
   return runQuiet("which tmux") !== null;
@@ -78,102 +76,8 @@ function isInsideTmux(): boolean {
   return !!process.env.TMUX;
 }
 
-function sessionExists(name: string): boolean {
-  return runQuiet(`tmux has-session -t "${name}" 2>&1`) !== null;
-}
-
-function pathHash(dir: string): string {
-  return createHash("sha256").update(resolve(dir)).digest("hex").slice(0, 6);
-}
-
-function toSessionName(dir: string): string {
-  const base = basename(dir).replace(/[^a-zA-Z0-9_-]/g, "-");
-  return `${base}-${pathHash(dir)}`;
-}
-
-function esc(str: string): string {
-  return str.replace(/'/g, "'\\''");
-}
-
 function appleScriptString(str: string): string {
   return str.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
-function slugify(str: string): string {
-  return str
-    .toLowerCase()
-    .replace(/\.app$/i, "")
-    .replace(/[^a-z0-9_-]+/g, "-")
-    .replace(/^-+|-+$/g, "") || "app";
-}
-
-function parseFlagValue(args: string[], name: string): string | undefined {
-  const prefix = `--${name}=`;
-  const exact = `--${name}`;
-  for (let i = 0; i < args.length; i++) {
-    if (args[i].startsWith(prefix)) return args[i].slice(prefix.length);
-    if (args[i] === exact) return args[i + 1];
-  }
-  return undefined;
-}
-
-function parseOptionalNumber(args: string[], ...names: string[]): number | undefined {
-  for (const name of names) {
-    const raw = parseFlagValue(args, name);
-    if (raw === undefined || raw === "") continue;
-    const value = Number(raw);
-    if (Number.isFinite(value)) return value;
-  }
-  return undefined;
-}
-
-function hasFlag(args: string[], name: string): boolean {
-  return args.includes(`--${name}`);
-}
-
-function nonFlagArgs(args: string[]): string[] {
-  const valueFlags = new Set([
-    "id", "state", "ttl", "ttlMs", "x", "y", "gap", "placement", "style", "name", "scale",
-    "hud-url", "hudUrl", "hud-html", "hudHTML", "hudHtml", "hud-title", "hudTitle",
-    "hud-width", "hudWidth", "hud-height", "hudHeight", "width", "height",
-    "manifest", "root", "max-depth", "maxDepth", "read-access", "readAccess",
-    "pause", "limit", "session", "app", "name", "bundle-id", "bundleId", "bundleIdentifier",
-    "path", "app-path", "appPath", "title", "filename", "run-id", "runId",
-    "text", "tty", "wid", "treatment", "mode", "phase", "transport", "capture",
-    "appearance", "cursor-style", "cursorStyle", "shape", "marker-shape", "markerShape",
-    "cursor-shape", "cursorShape", "angle-deg", "angleDeg", "rotation-deg", "rotationDeg",
-    "rotation", "angle", "color", "duration-ms", "durationMs",
-    "type-interval-ms", "typeIntervalMs", "typing-interval-ms", "typingIntervalMs", "label",
-    "caption", "treatment-label", "treatmentLabel", "variant",
-    "caption-title", "captionTitle", "caption-body", "captionBody",
-    "caption-detail", "captionDetail", "caption-tags", "captionTags",
-    "caption-mode", "captionMode", "caption-eyebrow", "captionEyebrow",
-    "caption-lead-ms", "captionLeadMs", "caption-sound", "captionSound",
-    "caption-placement", "captionPlacement", "caption-margin", "captionMargin",
-    "caption-x", "captionX", "caption-y", "captionY",
-    "caption-x-ratio", "captionXRatio", "caption-y-ratio", "captionYRatio",
-    "caption-left-ratio", "captionLeftRatio", "caption-top-ratio", "captionTopRatio",
-    "sound", "sfx",
-    "trail", "effect", "path-style", "pathStyle", "motion", "easing", "velocity",
-    "trajectory", "curve", "arc", "glow", "bloom", "idle", "settle", "presence",
-    "edge", "edge-effect", "edgeEffect", "arrival",
-    "fps", "w", "h", "stop-file", "stopFile", "finished-file", "finishedFile",
-    "timeout-ms", "timeoutMs", "duration",
-    "x", "y", "x-ratio", "xRatio", "y-ratio", "yRatio",
-    "relative-x", "relativeX", "relative-y", "relativeY",
-    "window-x", "windowX", "window-y", "windowY", "button",
-  ]);
-  const out: string[] = [];
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (!arg.startsWith("--")) {
-      out.push(arg);
-      continue;
-    }
-    const flagName = arg.slice(2);
-    if (!arg.includes("=") && valueFlags.has(flagName)) i++;
-  }
-  return out;
 }
 
 // ── Config ───────────────────────────────────────────────────────────
@@ -202,10 +106,6 @@ function readWorkspaceConfig(): any | null {
     console.warn(`Warning: invalid workspace.json — ${(e as Error).message}`);
     return null;
   }
-}
-
-function toGroupSessionName(groupId: string): string {
-  return `lattices-group-${groupId}`;
 }
 
 /** Get ordered pane IDs for a specific window within a session */
@@ -949,8 +849,7 @@ async function daemonStatusCommand(): Promise<void> {
 }
 
 async function windowsCommand(jsonFlag: boolean): Promise<void> {
-  try {
-    const { daemonCall } = await getDaemonClient();
+  await withDaemon(async ({ daemonCall }) => {
     const windows = await daemonCall("windows.list") as any[];
     if (jsonFlag) {
       console.log(JSON.stringify(windows, null, 2));
@@ -970,9 +869,7 @@ async function windowsCommand(jsonFlag: boolean): Promise<void> {
       console.log(`    ${Math.round(w.frame.w)}×${Math.round(w.frame.h)} at (${Math.round(w.frame.x)},${Math.round(w.frame.y)})`);
       console.log();
     }
-  } catch {
-    console.log("Daemon not running. Start with: lattices app");
-  }
+  });
 }
 
 async function windowAssignCommand(wid?: string, layerId?: string): Promise<void> {
@@ -1016,175 +913,10 @@ async function focusCommand(session?: string): Promise<void> {
     console.log("Usage: lattices focus <session-name>");
     return;
   }
-  try {
-    const { daemonCall } = await getDaemonClient();
+  await withDaemon(async ({ daemonCall }) => {
     await daemonCall("window.focus", { session });
     console.log(`Focused: ${session}`);
-  } catch (e: unknown) {
-    console.log(`Error: ${(e as Error).message}`);
-  }
-}
-
-// ── Search ───────────────────────────────────────────────────────────
-
-interface SearchResult {
-  score: number;
-  window: any;
-  tabs: { tab: number; cwd: string; title: string; hasClaude: boolean; tmuxSession: string }[];
-  reasons: string[];
-}
-
-function relativeTime(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime();
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return "just now";
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  return `${d}d ago`;
-}
-
-// Unified search via lattices.search daemon API.
-// All search surfaces should go through this one function.
-interface SearchOptions {
-  sources?: string[];    // e.g. ["titles", "apps", "cwd", "ocr"] — omit for smart default
-  after?: string;        // ISO8601 — only windows interacted after this time
-  before?: string;       // ISO8601 — only windows interacted before this time
-  recency?: boolean;     // boost recently-focused windows (default true)
-  mode?: string;         // legacy compat: "quick", "complete", "terminal"
-}
-
-async function search(query: string, opts: SearchOptions = {}): Promise<SearchResult[]> {
-  const { daemonCall } = await getDaemonClient();
-  const params: Record<string, any> = { query };
-  if (opts.sources) params.sources = opts.sources;
-  if (opts.after) params.after = opts.after;
-  if (opts.before) params.before = opts.before;
-  if (opts.recency !== undefined) params.recency = opts.recency;
-  if (opts.mode) params.mode = opts.mode; // legacy fallback
-  const hits = await daemonCall("lattices.search", params, 10000) as any[];
-  return hits.map((w: any) => ({
-    score: w.score || 0,
-    window: w,
-    tabs: (w.terminalTabs || []).map((t: any) => ({
-      tab: t.tabIndex, cwd: t.cwd, title: t.tabTitle, hasClaude: t.hasClaude, tmuxSession: t.tmuxSession,
-    })),
-    reasons: w.matchSources || [],
-  }));
-}
-
-// Convenience aliases
-async function deepSearch(query: string): Promise<SearchResult[]> { return search(query, { sources: ["all"] }); }
-async function terminalSearch(query: string): Promise<SearchResult[]> { return search(query, { sources: ["terminals"] }); }
-
-// Format and print search results
-function printResults(ranked: SearchResult[]): void {
-  if (!ranked.length) return;
-  for (const r of ranked) {
-    const w = r.window;
-    const age = w.lastInteraction ? ` \x1b[2m${relativeTime(w.lastInteraction)}\x1b[0m` : "";
-    console.log(`  \x1b[1m${w.app}\x1b[0m  "${w.title}"  wid:${w.wid}  score:${r.score}  (${r.reasons.join(", ")})${age}`);
-    for (const t of r.tabs) {
-      const claude = t.hasClaude ? " \x1b[32m●\x1b[0m" : "";
-      const tmux = t.tmuxSession ? ` \x1b[36m[${t.tmuxSession}]\x1b[0m` : "";
-      console.log(`    tab ${t.tab}: ${t.cwd || t.title}${claude}${tmux}`);
-    }
-    if (w.ocrSnippet) console.log(`    ocr: "${w.ocrSnippet}"`);
-  }
-  console.log();
-}
-
-// ── search command ───────────────────────────────────────────────────
-
-async function searchCommand(query: string | undefined, flags: Set<string>, rawArgs: string[] = []): Promise<void> {
-  if (!query) {
-    console.log("Usage: lattices search <query> [--quick | --terminal | --all | --sources=... | --after=... | --before=... | --json | --wid]");
-    return;
-  }
-
-  // Build search options from flags
-  const opts: SearchOptions = {};
-
-  // Source selection: explicit --sources, or legacy --quick/--terminal, or default
-  const sourcesFlag = rawArgs.find(a => a.startsWith("--sources="));
-  if (sourcesFlag) {
-    opts.sources = sourcesFlag.slice("--sources=".length).split(",");
-  } else if (flags.has("--all")) {
-    opts.sources = ["all"];
-  } else if (flags.has("--quick")) {
-    opts.sources = ["titles", "apps", "sessions"];
-  } else if (flags.has("--terminal")) {
-    opts.sources = ["terminals"];
-  }
-  // else: omit → smart default on daemon side
-
-  // Time filters
-  const afterFlag = rawArgs.find(a => a.startsWith("--after="));
-  if (afterFlag) opts.after = afterFlag.slice("--after=".length);
-  const beforeFlag = rawArgs.find(a => a.startsWith("--before="));
-  if (beforeFlag) opts.before = beforeFlag.slice("--before=".length);
-
-  // No-recency flag
-  if (flags.has("--no-recency")) opts.recency = false;
-
-  const ranked = await search(query, opts);
-  const jsonOut = flags.has("--json");
-  const widOnly = flags.has("--wid");
-
-  if (jsonOut) {
-    console.log(JSON.stringify(ranked.map(r => ({
-      wid: r.window.wid, app: r.window.app, title: r.window.title,
-      score: r.score, reasons: r.reasons, tabs: r.tabs, ocrSnippet: r.window.ocrSnippet,
-    })), null, 2));
-    return;
-  }
-
-  if (widOnly) {
-    for (const r of ranked) console.log(r.window.wid);
-    return;
-  }
-
-  if (!ranked.length) {
-    console.log(`No results for "${query}"`);
-    return;
-  }
-
-  printResults(ranked);
-}
-
-// ── place command ────────────────────────────────────────────────────
-
-async function placeCommand(query?: string, tilePosition?: string): Promise<void> {
-  if (!query) {
-    console.log("Usage: lattices place <query> [position]");
-    return;
-  }
-  try {
-    const { daemonCall } = await getDaemonClient();
-    const ranked = await deepSearch(query);
-
-    if (!ranked.length) {
-      console.log(`No window matching "${query}"`);
-      return;
-    }
-
-    const pos = tilePosition || "bottom-right";
-    const win = ranked[0].window;
-    await daemonCall("window.focus", { wid: win.wid });
-    await daemonCall("intents.execute", {
-      intent: "tile_window",
-      slots: { position: pos, wid: win.wid }
-    }, 3000);
-    console.log(`${win.app} "${win.title}" (wid:${win.wid}) → ${pos}`);
-  } catch (e: unknown) {
-    console.log(`Error: ${(e as Error).message}`);
-  }
-}
-
-function pause(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  });
 }
 
 function receiptLine(receipt: any): string {
@@ -1280,8 +1012,7 @@ async function placementSmokeCommand(rawArgs: string[] = []): Promise<void> {
 }
 
 async function sessionsCommand(jsonFlag: boolean): Promise<void> {
-  try {
-    const { daemonCall } = await getDaemonClient();
+  await withDaemon(async ({ daemonCall }) => {
     const sessions = await daemonCall("tmux.sessions") as any[];
     if (jsonFlag) {
       console.log(JSON.stringify(sessions, null, 2));
@@ -1296,37 +1027,36 @@ async function sessionsCommand(jsonFlag: boolean): Promise<void> {
       const windows = s.windowCount || s.windows || "?";
       console.log(`  \x1b[1m${s.name}\x1b[0m  (${windows} windows)`);
     }
-  } catch {
-    console.log("Daemon not running. Start with: lattices app");
-  }
+  });
 }
 
 async function terminalsCommand(rawArgs: string[] = []): Promise<void> {
-  const { daemonCall } = await getDaemonClient();
-  const jsonFlag = hasFlag(rawArgs, "json");
-  const refresh = hasFlag(rawArgs, "refresh");
-  const terminals = await daemonCall("terminals.list", { refresh }, refresh ? 15000 : undefined) as any[];
+  await withDaemon(async ({ daemonCall }) => {
+    const jsonFlag = hasFlag(rawArgs, "json");
+    const refresh = hasFlag(rawArgs, "refresh");
+    const terminals = await daemonCall("terminals.list", { refresh }, refresh ? 15000 : undefined) as any[];
 
-  if (jsonFlag) {
-    console.log(JSON.stringify(terminals, null, 2));
-    return;
-  }
-  if (!terminals.length) {
-    console.log("No terminal instances found.");
-    return;
-  }
+    if (jsonFlag) {
+      console.log(JSON.stringify(terminals, null, 2));
+      return;
+    }
+    if (!terminals.length) {
+      console.log("No terminal instances found.");
+      return;
+    }
 
-  console.log(`Terminals (${terminals.length}):\n`);
-  for (const terminal of terminals) {
-    const app = terminal.app || "terminal";
-    const wid = terminal.windowId ? ` wid=${terminal.windowId}` : "";
-    const cwd = terminal.cwd ? ` cwd=${terminal.cwd}` : "";
-    const session = terminal.tmuxSession ? ` session=${terminal.tmuxSession}` : "";
-    const claude = terminal.hasClaude ? " claude" : "";
-    console.log(`  ${app} ${terminal.tty}${wid}${session}${claude}`);
-    if (terminal.displayName) console.log(`    ${terminal.displayName}`);
-    if (cwd) console.log(`   ${cwd.trim()}`);
-  }
+    console.log(`Terminals (${terminals.length}):\n`);
+    for (const terminal of terminals) {
+      const app = terminal.app || "terminal";
+      const wid = terminal.windowId ? ` wid=${terminal.windowId}` : "";
+      const cwd = terminal.cwd ? ` cwd=${terminal.cwd}` : "";
+      const session = terminal.tmuxSession ? ` session=${terminal.tmuxSession}` : "";
+      const claude = terminal.hasClaude ? " claude" : "";
+      console.log(`  ${app} ${terminal.tty}${wid}${session}${claude}`);
+      if (terminal.displayName) console.log(`    ${terminal.displayName}`);
+      if (cwd) console.log(`   ${cwd.trim()}`);
+    }
+  });
 }
 
 function runLine(run: any): string {
@@ -2020,14 +1750,11 @@ async function callCommand(method?: string, ...rest: string[]): Promise<void> {
     console.log('  lattices call window.place \'{"session":"vox","placement":"left"}\'');
     return;
   }
-  try {
-    const { daemonCall } = await getDaemonClient();
+  await withDaemon(async ({ daemonCall }) => {
     const params = rest[0] ? JSON.parse(rest[0]) : null;
     const result = await daemonCall(method, params, 15000);
     console.log(JSON.stringify(result, null, 2));
-  } catch (e: unknown) {
-    console.log(`Error: ${(e as Error).message}`);
-  }
+  });
 }
 
 interface AppActorAsset {
@@ -2812,20 +2539,19 @@ async function hudCommand(sub?: string, ...rest: string[]): Promise<void> {
 }
 
 async function layerCommand(sub?: string, ...rest: string[]): Promise<void> {
-  try {
-    const { daemonCall } = await getDaemonClient();
+  await withDaemon(async (client) => {
+    const { daemonCall } = client;
 
-    // ── Subcommands ──
     if (sub === "create") {
-      await layerCreateCommand(rest);
+      await layerCreateCommand(client, rest);
       return;
     }
     if (sub === "snap") {
-      await layerSnapCommand(rest[0]);
+      await layerSnapCommand(client, rest[0]);
       return;
     }
     if (sub === "session" || sub === "sessions") {
-      await layerSessionCommand(rest[0]);
+      await layerSessionCommand(client, rest[0]);
       return;
     }
     if (sub === "clear") {
@@ -2840,7 +2566,6 @@ async function layerCommand(sub?: string, ...rest: string[]): Promise<void> {
       return;
     }
 
-    // ── List or switch (original behavior) ──
     if (sub === undefined || sub === null || sub === "") {
       const result = await daemonCall("layers.list") as any;
       if (!result.layers.length) {
@@ -2862,16 +2587,14 @@ async function layerCommand(sub?: string, ...rest: string[]): Promise<void> {
       await daemonCall("layer.activate", { name: sub, mode: "launch" });
       console.log(`Activated layer "${sub}"`);
     }
-  } catch (e: unknown) {
-    console.log(`Error: ${(e as Error).message}`);
-  }
+  });
 }
 
 // ── Layer create: build a session layer from window specs ────────────
 // Usage: lattices layer create <name> [wid:123 wid:456 ...]
 //        lattices layer create <name> --json '[{"app":"Chrome","tile":"left"},...]'
-async function layerCreateCommand(args: string[]): Promise<void> {
-  const { daemonCall } = await getDaemonClient();
+async function layerCreateCommand(client: DaemonClient, args: string[]): Promise<void> {
+  const { daemonCall } = client;
   const name = args[0];
   if (!name) {
     console.log("Usage: lattices layer create <name> [wid:123 ...] [--json '<specs>']");
@@ -2937,8 +2660,8 @@ async function layerCreateCommand(args: string[]): Promise<void> {
 }
 
 // ── Layer snap: snapshot current visible windows into a session layer ─
-async function layerSnapCommand(name?: string): Promise<void> {
-  const { daemonCall } = await getDaemonClient();
+async function layerSnapCommand(client: DaemonClient, name?: string): Promise<void> {
+  const { daemonCall } = client;
   const layerName = name || `snap-${new Date().toISOString().slice(11, 19).replace(/:/g, "")}`;
 
   // Get all current windows
@@ -2961,8 +2684,8 @@ async function layerSnapCommand(name?: string): Promise<void> {
 }
 
 // ── Layer session: list or switch session layers ─────────────────────
-async function layerSessionCommand(nameOrIndex?: string): Promise<void> {
-  const { daemonCall } = await getDaemonClient();
+async function layerSessionCommand(client: DaemonClient, nameOrIndex?: string): Promise<void> {
+  const { daemonCall } = client;
   const result = await daemonCall("session.layers.list") as any;
 
   if (!nameOrIndex) {
@@ -3128,12 +2851,10 @@ async function daemonStatusInventory(): Promise<boolean> {
 // ── OCR commands ──────────────────────────────────────────────────────
 
 async function scanCommand(sub?: string, ...rest: string[]): Promise<void> {
-  const { daemonCall } = await getDaemonClient();
-
   if (!sub || sub === "snapshot" || sub === "ls" || sub === "--full" || sub === "-f" || sub === "--json") {
     const full = sub === "--full" || sub === "-f" || rest.includes("--full") || rest.includes("-f");
     const json = sub === "--json" || rest.includes("--json");
-    try {
+    await withDaemon(async ({ daemonCall }) => {
       const results = await daemonCall("ocr.snapshot", null, 5000) as any[];
       if (!results.length) {
         console.log("No scan results yet. The first scan runs ~60s after launch.");
@@ -3171,9 +2892,7 @@ async function scanCommand(sub?: string, ...rest: string[]): Promise<void> {
         }
         console.log();
       }
-    } catch {
-      console.log("Daemon not running. Start with: lattices app");
-    }
+    });
     return;
   }
 
@@ -3183,7 +2902,7 @@ async function scanCommand(sub?: string, ...rest: string[]): Promise<void> {
       console.log("Usage: lattices scan search <query>");
       return;
     }
-    try {
+    await withDaemon(async ({ daemonCall }) => {
       const results = await daemonCall("ocr.search", { query }, 5000) as any[];
       if (!results.length) {
         console.log(`No matches for "${query}".`);
@@ -3198,9 +2917,7 @@ async function scanCommand(sub?: string, ...rest: string[]): Promise<void> {
         console.log(`    ${snippet}`);
         console.log();
       }
-    } catch (e: unknown) {
-      console.log(`Error: ${(e as Error).message}`);
-    }
+    });
     return;
   }
 
@@ -3208,7 +2925,7 @@ async function scanCommand(sub?: string, ...rest: string[]): Promise<void> {
     const full = rest.includes("--full") || rest.includes("-f");
     const numArg = rest.find(a => !a.startsWith("-"));
     const limit = parseInt(numArg || "", 10) || 20;
-    try {
+    await withDaemon(async ({ daemonCall }) => {
       const results = await daemonCall("ocr.recent", { limit }, 5000) as any[];
       if (!results.length) {
         console.log("No history yet. The first scan runs ~60s after launch.");
@@ -3237,20 +2954,16 @@ async function scanCommand(sub?: string, ...rest: string[]): Promise<void> {
         }
         console.log();
       }
-    } catch {
-      console.log("Daemon not running. Start with: lattices app");
-    }
+    });
     return;
   }
 
   if (sub === "deep" || sub === "now" || sub === "scan") {
-    try {
+    await withDaemon(async ({ daemonCall }) => {
       console.log("Triggering deep scan (Vision OCR)...");
       await daemonCall("ocr.scan", null, 30000);
       console.log("Done.");
-    } catch (e: unknown) {
-      console.log(`Error: ${(e as Error).message}`);
-    }
+    });
     return;
   }
 
@@ -3260,7 +2973,7 @@ async function scanCommand(sub?: string, ...rest: string[]): Promise<void> {
       console.log("Usage: lattices scan history <wid>");
       return;
     }
-    try {
+    await withDaemon(async ({ daemonCall }) => {
       const results = await daemonCall("ocr.history", { wid }, 5000) as any[];
       if (!results.length) {
         console.log(`No history for wid:${wid}.`);
@@ -3278,9 +2991,7 @@ async function scanCommand(sub?: string, ...rest: string[]): Promise<void> {
         }
         console.log();
       }
-    } catch (e: unknown) {
-      console.log(`Error: ${(e as Error).message}`);
-    }
+    });
     return;
   }
 
@@ -3610,8 +3321,7 @@ async function optimizeWindowsCommand(
   request: SpaceOptimizeRequest,
   successVerb: string
 ): Promise<void> {
-  try {
-    const { daemonCall } = await getDaemonClient();
+  await withDaemon(async ({ daemonCall }) => {
     const params: Record<string, unknown> = {
       scope: request.scope,
       strategy: "balanced",
@@ -3632,9 +3342,7 @@ async function optimizeWindowsCommand(
     console.log(
       `${successVerb} ${count} window${count === 1 ? "" : "s"} for ${target}${regionSuffix}.`
     );
-  } catch {
-    console.log("Daemon not running. Start with: lattices app");
-  }
+  });
 }
 
 function gridTileBounds(position: string, screen: ScreenBounds): number[] | null {
@@ -3924,7 +3632,7 @@ switch (command) {
     break;
   case "search":
   case "s":
-    await searchCommand(args[1], new Set(args.slice(2)));
+    await searchCommand(args[1], new Set(args.slice(2)), args.slice(2));
     break;
   case "focus":
     await focusCommand(args[1]);

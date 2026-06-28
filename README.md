@@ -64,8 +64,14 @@ See [Release](docs/release.md) for the CI and local maintainer workflows.
 ## Quick start
 
 ```sh
+# Show workspace status for the current directory
+lattices
+
 # Launch the menu bar app
 lattices app
+
+# Start or reattach a tmux session
+lattices start
 
 # Open the command palette from anywhere
 # Cmd+Shift+M
@@ -182,6 +188,7 @@ Or from the CLI:
 ```sh
 lattices search myproject           # Find windows by content
 lattices search myproject --deep    # Include terminal tab/process data
+lattices search myproject --all     # Same as --deep (all search sources)
 lattices place myproject left       # Search + focus + tile in one step
 ```
 
@@ -199,6 +206,7 @@ lattices ls                 List active sessions
 lattices kill [name]        Kill a session
 lattices search <query>     Search windows by title, app, session, OCR
 lattices search <q> --deep  Deep search: index + terminal inspection
+lattices search <q> --all   Same as --deep (all search sources)
 lattices place <query> [pos]  Deep search + focus + tile
 lattices focus <session>    Raise a session's window
 lattices tile <position>    Tile frontmost window

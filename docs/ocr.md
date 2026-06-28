@@ -65,6 +65,9 @@ lattices search "error"
 # Deep search — also inspects terminal tabs and processes
 lattices search "myproject" --deep
 
+# Same as --deep (all search sources)
+lattices search "myproject" --all
+
 # Search + focus + tile the top result
 lattices place "myproject" left
 

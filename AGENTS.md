@@ -12,6 +12,8 @@
 - Window navigation falls through CG → AX → AppleScript depending on macOS permissions
 - Space switching uses private SkyLight framework APIs loaded via dlopen at runtime
 - The daemon runs on ws://127.0.0.1:9399 with 35+ RPC methods and real-time events
+- Bare `lattices` (no args) shows a home/status screen — use `lattices start` (alias: `lattices tmux`) to create or attach a session
+- `lattices search <q> --deep` and `--all` both request all search sources (index + live terminal inspection)
 
 ## Project Structure
 
@@ -62,21 +64,28 @@ bun link
 
 Verify: `lattices help` should print usage info.
 
-## 3. Launch a workspace
+## 3. Orient yourself
 
 ```bash
 cd ~/your-project
 lattices
 ```
 
-This creates a tmux session with two panes side by side:
-- Left pane (60%): `claude` (AI coding agent)
-- Right pane (40%): your dev command (auto-detected from `package.json`)
+Bare `lattices` (no arguments) prints a home screen: current directory,
+session name, config state, pane list, tmux/app status, and common
+commands. It does **not** create or attach a tmux session.
 
-No config file needed — lattices auto-detects your package manager
-and dev script.
+## 4. Start a session
 
-## 4. Customize with .lattices.json
+```bash
+lattices start
+```
+
+Alias: `lattices tmux`. Creates or reattaches the current directory's
+tmux session with your configured panes (or a shell plus an auto-detected
+dev server when no `.lattices.json` exists).
+
+## 5. Customize with .lattices.json
 
 For more control, add a config to your project:
 
@@ -96,9 +105,9 @@ This generates a `.lattices.json` like:
 }
 ```
 
-Edit it to match your workflow, then run `lattices` again to apply.
+Edit it to match your workflow, then run `lattices start` again to apply.
 
-## 5. Launch the menu bar app
+## 6. Launch the menu bar app
 
 ```bash
 lattices app
@@ -202,11 +211,13 @@ Tiling uses AppleScript bounds and respects the menu bar and dock.
 ## How it works
 
 1. You create a `.lattices.json` file in your project root (or run `lattices init`)
-2. lattices reads the config and creates a tmux session with your layout
-3. Each pane gets its command (claude, dev server, tests, etc.)
-4. The session persists in the background until you kill it
-5. You can attach/detach from any terminal at any time
-6. If `ensure` is enabled, exited commands auto-restart on reattach
+2. The menu bar app discovers the project and adds it to the command palette
+3. You can tile windows, switch layers, search via OCR, and use the agent API
+4. With tmux installed, `lattices start` also creates persistent terminal sessions:
+   - Each pane gets its command (shell, dev server, tests, etc.)
+   - The session persists in the background until you kill it
+   - You can attach/detach from any terminal at any time
+   - If `ensure` is enabled, exited commands auto-restart on reattach
 
 ## Architecture
 
@@ -282,7 +293,7 @@ and other macOS window managers.
 
 ### Ensure/prefill restoration
 
-When you run `lattices` (no arguments) and a session already exists:
+When you run `lattices start` and a session already exists:
 
 1. lattices checks the `ensure` / `prefill` flag in `.lattices.json`
 2. For each pane, it queries `#{pane_current_command}` via tmux
@@ -466,7 +477,9 @@ Run `lattices init` in your project directory to generate a starter
 
 | Command                    | Description                                      |
 |----------------------------|--------------------------------------------------|
-| `lattices`                   | Create or attach to session for current project   |
+| `lattices`                   | Show workspace status and common commands         |
+| `lattices start`             | Create or attach to session for current project   |
+| `lattices tmux`              | Alias for `lattices start`                        |
 | `lattices init`              | Generate .lattices.json config for this project     |
 | `lattices ls`                | List active tmux sessions                         |
 | `lattices kill [name]`       | Kill a session (defaults to current project)      |
@@ -480,6 +493,9 @@ Run `lattices init` in your project directory to generate a starter
 | `lattices app build`         | Rebuild the menu bar app from source              |
 | `lattices app restart`       | Rebuild and relaunch the menu bar app             |
 | `lattices app quit`          | Stop the menu bar app                             |
+| `lattices search <query>`      | Search windows by title, app, session, OCR       |
+| `lattices search <q> --deep`   | Deep search: index + live terminal inspection    |
+| `lattices search <q> --all`    | Same as `--deep` (all search sources)            |
 | `lattices help`              | Show help                                         |
 
 Aliases: `ls`/`list`, `kill`/`rm`, `sync`/`reconcile`,
@@ -669,7 +685,7 @@ For each project found, the app reads:
 
 The app calls the lattices CLI for session operations:
 
-- **Launch** — runs `lattices` in the project directory, which creates
+- **Launch** — runs `lattices start` in the project directory, which creates
   or reattaches to the session
 - **Sync** — runs `lattices sync` to reconcile panes to the config
 - **Restart** — runs `lattices restart <pane>` to kill and re-run a
@@ -873,7 +889,7 @@ to per-project configs.
 - **Session naming**: `lattices-group-<id>` (e.g. `lattices-group-vox`)
 - **tmux mapping**: 1 group = 1 tmux session, each tab = 1 tmux window,
   each window has its own panes from that project's `.lattices.json`
-- **Independent launch still works**: `cd vox-ios && lattices` creates
+- **Independent launch still works**: `cd vox-ios && lattices start` creates
   its own standalone session as before
 
 ### Tab group fields
@@ -1865,9 +1881,9 @@ inside a single shell with no way to manage windows or switch contexts.
 
 lattices solves both sides:
 
-- **For you** — run `lattices` in any project to get a pre-configured
-  tmux session. Use the menu bar app to launch, tile, and navigate
-  sessions with a command palette.
+- **For you** — run `lattices start` in any project to get a pre-configured
+  tmux session (bare `lattices` shows status without attaching). Use the
+  menu bar app to launch, tile, and navigate sessions with a command palette.
 - **For agents** — the daemon API exposes 35+ RPC methods over WebSocket.
   Agents can discover projects, launch sessions, tile windows, and
   switch workspace layers programmatically.
@@ -1884,8 +1900,11 @@ lattices solves both sides:
 ## Quick taste
 
 ```bash
-# Launch a workspace (auto-detects your project)
-cd ~/my-project && lattices
+# Check workspace status for the current directory
+lattices
+
+# Start or reattach a tmux session (auto-detects your project)
+cd ~/my-project && lattices start
 
 # Or give agents programmatic control
 ```

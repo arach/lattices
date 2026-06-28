@@ -59,8 +59,8 @@ types them and waits. → [Concepts](/docs/concepts), [Configuration](/docs/conf
 ### Screen OCR & search
 The app reads on-screen text via the Accessibility API (~60s) and Apple Vision OCR
 on background windows (~2h), indexing everything with FTS5. Search across titles,
-app names, session tags, and OCR with `lattices search <query>` (add `--deep` to
-inspect terminal tabs by cwd). → [Screen OCR & Search](/docs/ocr).
+app names, session tags, and OCR with `lattices search <query>` (add `--deep` or
+`--all` to inspect terminal tabs by cwd). → [Screen OCR & Search](/docs/ocr).
 
 ### Voice commands
 Natural-language voice control for window management ("put the browser on the
@@ -98,7 +98,7 @@ Settings or the [Tiling reference](/docs/tiling-reference) rather than asserting
 `lattices` · `lattices init` · `lattices sync` · `lattices start` ·
 `lattices restart [pane]` · `lattices tile <position>` · `lattices group [id]` ·
 `lattices layer [name|index]` · `lattices windows --json` ·
-`lattices search <query> [--deep] [--json] [--wid]` · `lattices place <query> [position]` ·
+`lattices search <query> [--deep|--all] [--json] [--wid]` · `lattices place <query> [position]` ·
 `lattices app restart`. Full flags: [Configuration](/docs/config).
 
 ## Config & file locations
