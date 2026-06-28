@@ -62,6 +62,7 @@ final class WindowMotionMode {
         AppFeedback.shared.warmUp()
         let p = MotionPanel(eligible: eligible, inPlace: inPlace)
         p.loadStart = t0
+        p.beginLoadTrace()
         let tInit = CACurrentMediaTime()
         p.onExit = { [weak self] in self?.deactivate() }
         panel = p
@@ -329,7 +330,7 @@ final class HyperspaceDrag: ObservableObject {
         pulseCounter += 1
         let id = pulseCounter
         dropPulse = DropPulse(id: id, frame: frame)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.26) { [weak self] in
             if self?.dropPulse?.id == id { self?.dropPulse = nil }
         }
     }
@@ -340,10 +341,17 @@ final class HyperspaceDrag: ObservableObject {
 private final class MotionPanel: NSPanel {
     var onExit: (() -> Void)?
     var loadStart: CFTimeInterval = 0          // set by activate(); base for load-profile marks
+    private var loadTrace: HyperspaceLoadTrace?
 
     private var firstPaintAt: CFTimeInterval = 0
     private var capturesAt: CFTimeInterval = 0
     private var captureCount = 0
+
+    func beginLoadTrace() {
+        guard loadStart > 0 else { return }
+        loadTrace = HyperspaceLoadTrace(origin: loadStart)
+        loadTrace?.mark("trace.start")
+    }
 
     private let eligible: [WindowEntry]
     private var reticle = 0                          // index of the active window
@@ -529,6 +537,7 @@ private final class MotionPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 
     func present() {
+        loadTrace?.mark("present")
         // Opening from the global Hyper+Space path churns focus: the keyboard
         // transport layer goes up/down around the same time this LSUIElement app
         // presents a key panel. A short startup resign can otherwise tear the
@@ -1303,6 +1312,7 @@ private final class MotionPanel: NSPanel {
     /// real window is touched — this is a screenshot survey.
     private func expose() {
         guard let screen = activeSurveyScreen else { return }
+        loadTrace?.mark("expose.begin")
         let screens = surveyScreens()
         let members = eligible.filter { entry($0, isOn: screen) }
         let allMembers = screens.flatMap { surveyMembers(on: $0) }
@@ -1317,13 +1327,18 @@ private final class MotionPanel: NSPanel {
         }
         restorePickState(for: screen)
         syncActiveSurveyState(from: screen)
+        loadTrace?.mark("survey.state")
+        let hostsT0 = CACurrentMediaTime()
         installExposeHosts()
+        loadTrace?.record("installHosts", ms: (CACurrentMediaTime() - hostsT0) * 1000, warnAbove: 48)
+        loadTrace?.mark("hosts.ready")
         captureCount = allMembers.count
         allMembers.forEach { captureThumb(for: $0) }              // seed from the shared cache; capture only misses
         DesktopModel.shared.poll()
         layoutFingerprintByScreen.removeAll()
         for screen in screens { layoutFingerprintByScreen[MotionPanel.screenID(screen)] = layoutFingerprint(for: screen) }
         rebuildExposeView()
+        loadTrace?.mark("expose.ready")
         checkCapturesSettled()                                     // every tile a cache hit → already done
         startLayoutRefresh()
 
@@ -2222,6 +2237,12 @@ private final class MotionPanel: NSPanel {
         // gesture and abort the drag. Skip while a drag is live; handleDrop()
         // rebuilds once it ends.
         guard !dragModel.isActive else { return }
+        let rebuildT0 = CACurrentMediaTime()
+        defer {
+            let ms = (CACurrentMediaTime() - rebuildT0) * 1000
+            loadTrace?.bump("rebuild.count")
+            loadTrace?.record("rebuildView", ms: ms, warnAbove: 24)
+        }
         if exposeHostsByScreenID.isEmpty { installExposeHosts() }
         exposeHost = activeSurveyScreen.flatMap { exposeHostsByScreenID[MotionPanel.screenID($0)] }
 
@@ -3281,13 +3302,16 @@ private final class MotionPanel: NSPanel {
         // Reuse the HUD's warm cache: if the shared store already has this window,
         // use it instantly — no capture. (The store's warmer keeps it stocked.)
         if let cached = WindowPreviewStore.shared.image(for: wid) {
+            loadTrace?.bump("capture.hit")
             thumbs[wid] = cached
             captureFrame[wid] = liveFrame(for: entry)
             return
         }
 
+        loadTrace?.bump("capture.miss")
         thumbInFlight.insert(wid)
         let cgWid = CGWindowID(wid)
+        let captureT0 = CACurrentMediaTime()
         Task { @MainActor [weak self] in
             let cg = await WindowCapture.image(
                 listOption: .optionIncludingWindow,
@@ -3296,6 +3320,7 @@ private final class MotionPanel: NSPanel {
             )
             guard let self else { return }
             self.thumbInFlight.remove(wid)
+            self.loadTrace?.record("capture#\(wid)", ms: (CACurrentMediaTime() - captureT0) * 1000, warnAbove: 120)
             guard let cg else { self.checkCapturesSettled(); return }
             self.thumbs[wid] = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
             self.captureFrame[wid] = self.liveFrame(for: entry)   // remember the size this shot represents
@@ -3332,6 +3357,15 @@ private final class MotionPanel: NSPanel {
         guard exposed, thumbInFlight.isEmpty, capturesAt == 0, loadStart > 0 else { return }
         capturesAt = CACurrentMediaTime()
         DiagnosticLog.shared.info(String(format: "Hyperspace load — captures complete %.1fms · %d windows (from trigger)", (capturesAt - loadStart) * 1000, captureCount))
+        let mode = inPlaceMode ? "in-place" : "hyperspace"
+        let screens = surveyScreens().count
+        loadTrace?.logSummary(
+            mode: mode,
+            windows: captureCount,
+            screens: screens,
+            firstPaintMs: firstPaintAt > 0 ? Int(((firstPaintAt - loadStart) * 1000).rounded()) : nil,
+            capturesMs: Int(((capturesAt - loadStart) * 1000).rounded())
+        )
     }
 }
 
@@ -3699,11 +3733,11 @@ private struct DropPulseRing: View {
         RoundedRectangle(cornerRadius: 6, style: .continuous)
             .strokeBorder(tint, lineWidth: 2.5)
             .frame(width: frame.width, height: frame.height)
-            .scaleEffect(on ? 1.35 : 0.92)
-            .opacity(on ? 0 : 0.95)
+            .scaleEffect(on ? 1.08 : 0.97)
+            .opacity(on ? 0 : 0.65)
             .position(x: frame.midX, y: frame.midY)
             .allowsHitTesting(false)
-            .onAppear { withAnimation(.easeOut(duration: 0.45)) { on = true } }
+            .onAppear { withAnimation(HyperspaceMotion.pulse) { on = true } }
     }
 }
 
@@ -3910,9 +3944,9 @@ struct ExposeView: View {
             dropPulseOverlay
         }
         .coordinateSpace(name: ExposeView.rootSpace)    // band, survey, ghost share one space
-        .animation(.spring(response: 0.26, dampingFraction: 0.82), value: rosterPileID)
-        .animation(.spring(response: 0.26, dampingFraction: 0.82), value: drag.placeWid)
-        .animation(.spring(response: 0.2, dampingFraction: 0.74), value: drag.placeCell)
+        .animation(HyperspaceMotion.panel, value: rosterPileID)
+        .animation(HyperspaceMotion.panel, value: drag.placeWid)
+        .animation(HyperspaceMotion.drag, value: drag.placeCell)
         .overlay(alignment: .bottomLeading) {
             if !drag.isPlacing {
                 LatticesOverlayWatermarkPlacement()
@@ -3943,7 +3977,7 @@ struct ExposeView: View {
                 layerInspector(pile).transition(.opacity)
             }
         }
-        .animation(.easeOut(duration: 0.16), value: drag.selectedLayer)
+        .animation(HyperspaceMotion.inspector, value: drag.selectedLayer)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
@@ -3968,8 +4002,8 @@ struct ExposeView: View {
                 Capsule().fill(Color.black.opacity(0.6))
                     .overlay(Capsule().strokeBorder(Palette.running.opacity(0.4), lineWidth: 0.5))
             )
-            .transition(.move(edge: .top).combined(with: .opacity))
-            .animation(.spring(response: 0.32, dampingFraction: 0.78), value: placed + tagged)
+            .transition(.opacity)
+            .animation(HyperspaceMotion.panel, value: placed + tagged)
         }
     }
 
@@ -4930,7 +4964,7 @@ struct ExposeView: View {
                         .padding(.horizontal, 3).padding(.vertical, 0.5)
                         .background(Capsule().fill(Palette.running))
                         .padding(2)
-                        .transition(.scale.combined(with: .opacity))
+                        .transition(.opacity)
                 }
             }
             Text(pile.isNew ? "new" : pile.name)
@@ -4940,10 +4974,10 @@ struct ExposeView: View {
                 layerPileMeta(pile, active: on, width: mapW)
             }
         }
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: pile.stagedCount)
-        .scaleEffect(lit ? 1.06 : 1)
-        .shadow(color: lit ? HUDChrome.cyan.opacity(0.5) : .clear, radius: lit ? 8 : 0)
-        .animation(.spring(response: 0.24, dampingFraction: 0.72), value: lit)
+        .animation(HyperspaceMotion.badge, value: pile.stagedCount)
+        .scaleEffect(lit ? HyperspaceMotion.pileHoverScale : 1)
+        .shadow(color: lit ? HUDChrome.cyan.opacity(0.35) : .clear, radius: lit ? 4 : 0)
+        .animation(HyperspaceMotion.hover, value: lit)
         .background(layerFrameReporter(pile.id))     // hit-test = the compact footprint
         .onHover { hovering in
             if hovering { drag.inspectLayer = pile.id; drag.inspectScreen = screenID }
@@ -5577,13 +5611,13 @@ struct ExposeView: View {
                 HStack(alignment: .center, spacing: inPlaceCommandsVisible ? 4 : 0) {
                     if inPlaceCommandsVisible {
                         inPlaceCommandRail(.leading)
-                            .transition(.move(edge: .leading).combined(with: .opacity))
+                            .transition(.opacity)
                     }
                     currentLayoutCanvas
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     if inPlaceCommandsVisible {
                         inPlaceCommandRail(.trailing)
-                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                            .transition(.opacity)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -5644,9 +5678,9 @@ struct ExposeView: View {
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .strokeBorder(focused ? HUDChrome.cyan : Palette.border, lineWidth: focused ? 1.5 : 0.5)
             )
-            .scaleEffect(focused ? 1.03 : 1)
-            .shadow(color: focused ? HUDChrome.cyan.opacity(0.45) : .clear, radius: focused ? 8 : 0)
-            .animation(.spring(response: 0.24, dampingFraction: 0.72), value: focused)
+            .scaleEffect(focused ? HyperspaceMotion.canvasFocusScale : 1)
+            .shadow(color: focused ? HUDChrome.cyan.opacity(0.3) : .clear, radius: focused ? 4 : 0)
+            .animation(HyperspaceMotion.focus, value: focused)
             .background(
                 GeometryReader { g in
                     Color.clear.preference(key: CurrentViewFrameKey.self,
@@ -5782,7 +5816,7 @@ struct ExposeView: View {
                 }
             }
             // Glide the highlight between cells instead of snapping.
-            .animation(.spring(response: 0.24, dampingFraction: 0.72), value: drag.hoverCell)
+            .animation(HyperspaceMotion.drag, value: drag.hoverCell)
             .frame(width: box.width, height: box.height)
             .clipped()
             .background(                                          // measure the fixed grid box…
@@ -5808,12 +5842,12 @@ struct ExposeView: View {
             .fill(fill)
             .overlay(shape.strokeBorder(stroke, lineWidth: lit ? 1.5 : (warm ? 1 : 0.5)))
             .frame(width: w, height: h)
-            .scaleEffect(lit ? 1.08 : (warm ? 1.02 : 1))
-            .shadow(color: lit ? Palette.running.opacity(0.55)
-                    : (warm ? Palette.running.opacity(0.2) : .clear),
-                    radius: lit ? 9 : (warm ? 4 : 0))
+            .scaleEffect(lit ? HyperspaceMotion.gridCellLitScale : (warm ? HyperspaceMotion.gridCellWarmScale : 1))
+            .shadow(color: lit ? Palette.running.opacity(0.35)
+                    : (warm ? Palette.running.opacity(0.15) : .clear),
+                    radius: lit ? 5 : (warm ? 3 : 0))
             .zIndex(lit ? 1 : 0)
-            .animation(.spring(response: 0.22, dampingFraction: 0.72), value: lit)
+            .animation(HyperspaceMotion.hover, value: lit)
     }
 
     // MARK: - Preview — a dedicated slot that always shows the screen's zones
@@ -5929,9 +5963,9 @@ struct ExposeView: View {
             .clipShape(shape)
             .overlay(shape.strokeBorder(armed ? HUDChrome.cyan : Palette.running, lineWidth: armed ? 2.5 : 2))
             .shadow(color: .black.opacity(armed ? 0.6 : 0.5), radius: armed ? 10 : 16, x: 0, y: armed ? 4 : 8)
-            .scaleEffect(armed ? 0.62 : 1, anchor: .center)
+            .scaleEffect(armed ? HyperspaceMotion.ghostArmedScale : 1, anchor: .center)
             .opacity(armed ? 1 : 0.92)
-            .animation(.spring(response: 0.22, dampingFraction: 0.72), value: armed)
+            .animation(HyperspaceMotion.drag, value: armed)
             .overlay(alignment: .topTrailing) {
                 if drag.dragWids.count > 1 {
                     Text("\(drag.dragWids.count)")
@@ -6463,21 +6497,21 @@ struct ExposeView: View {
             }
             .overlay(alignment: .bottomTrailing) {
                 if let s = t.staged {
-                    stagedBadge(s).transition(.scale(scale: 0.5).combined(with: .opacity))
+                    stagedBadge(s).transition(.opacity)
                 }
             }
-            .animation(.spring(response: 0.3, dampingFraction: 0.62), value: t.staged)        // location badge pops
-            .animation(.spring(response: 0.3, dampingFraction: 0.62), value: t.layerTags)      // layer labels pop
+            .animation(HyperspaceMotion.badge, value: t.staged)
+            .animation(HyperspaceMotion.badge, value: t.layerTags)
             .overlay {
                 if crossLinked {
-                    shape.strokeBorder(HUDChrome.cyan, lineWidth: 2.5)
-                        .shadow(color: HUDChrome.cyan.opacity(0.55), radius: 10)
+                    shape.strokeBorder(HUDChrome.cyan, lineWidth: 2)
+                        .shadow(color: HUDChrome.cyan.opacity(0.35), radius: 5)
                 } else if highlightLit {
                     shape.strokeBorder(Palette.running, lineWidth: 2)
                 }
             }
-            .scaleEffect(crossLinked ? 1.05 : 1, anchor: .center)
-            .animation(.spring(response: 0.22, dampingFraction: 0.72), value: crossLinked)
+            .scaleEffect(crossLinked ? HyperspaceMotion.tileLinkScale : 1, anchor: .center)
+            .animation(HyperspaceMotion.focus, value: crossLinked)
             // While this tile is the one being dragged, hollow it out so it keeps its
             // slot (no reflow) but reads as "lifted" — the ghost is what moves.
             .opacity(beingDragged ? 0.22 : (highlightDimmed ? 0.26 : 1))
@@ -6489,9 +6523,9 @@ struct ExposeView: View {
             }
             .background(frameReporter(t.id))
             .shadow(color: .black.opacity(picked ? 0.5 : 0.35), radius: picked ? 14 : 8, x: 0, y: 5)
-            .shadow(color: crossLinked ? HUDChrome.cyan.opacity(0.6)
-                    : (highlightLit ? Palette.running.opacity(0.45) : bloom),
-                    radius: crossLinked ? 16 : (highlightLit ? 14 : bloomR))
+            .shadow(color: crossLinked ? HUDChrome.cyan.opacity(0.4)
+                    : (highlightLit ? Palette.running.opacity(0.3) : bloom),
+                    radius: crossLinked ? 8 : (highlightLit ? 8 : bloomR * 0.6))
             .contentShape(Rectangle())
             .onHover { over in
                 guard !drag.isActive else { return }
