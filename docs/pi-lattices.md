@@ -48,6 +48,7 @@ lattices app
 | `lattices_ocr_snapshot` | `ocr.snapshot` |
 | `lattices_ocr_search` | `ocr.search` |
 | `lattices_computer_window_state` | `computer.windowState` |
+| `lattices_computer_element_action` | `computer.elementAction` |
 | `lattices_window_focus` | `computer.focusWindow` |
 | `lattices_window_place` | `window.place` |
 | `lattices_capture_window` | `capture.screenshotWindow` |

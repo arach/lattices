@@ -38,6 +38,7 @@ for (const required of [
   "lattices_windows_list",
   "lattices_window_place",
   "lattices_computer_window_state",
+  "lattices_computer_element_action",
   "lattices_computer_launch_app",
   "lattices_computer_click",
   "lattices_call",
