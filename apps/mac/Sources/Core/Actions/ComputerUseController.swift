@@ -1373,10 +1373,30 @@ final class ComputerUseController {
     }
 
     func click(params: JSON?) throws -> JSON {
+        try clickAction(params: params, actionName: "click", buttonOverride: nil, countOverride: nil)
+    }
+
+    func doubleClick(params: JSON?) throws -> JSON {
+        try clickAction(params: params, actionName: "doubleClick", buttonOverride: nil, countOverride: 2)
+    }
+
+    func rightClick(params: JSON?) throws -> JSON {
+        try clickAction(params: params, actionName: "rightClick", buttonOverride: "right", countOverride: nil)
+    }
+
+    private func clickAction(
+        params: JSON?,
+        actionName: String,
+        buttonOverride: String?,
+        countOverride: Int?
+    ) throws -> JSON {
         let source = params?["source"]?.stringValue ?? "daemon"
         let treatment = ComputerTreatment.resolve(params: params, defaultValue: .stage)
         let shouldCapture = params?["capture"]?.boolValue ?? true
         let requestedTransport = clickTransport(params)
+        let buttonName = buttonOverride ?? params?["button"]?.stringValue
+        let clickCount = clickCount(params: params, defaultValue: countOverride ?? 1)
+        let delayMs = pointerDelayMs(params: params, defaultValue: 90)
         let noFocus = params?["noFocus"]?.boolValue == true
             || params?["no-focus"]?.boolValue == true
             || requestedTransport == "ax"
@@ -1384,7 +1404,7 @@ final class ComputerUseController {
         let window = try? CaptureController.shared.resolveWindow(params: params)
         let point = clickPoint(params: params, window: window) ?? cursorPoint(params: params)
         let run = try RunStore.shared.createRun(
-            title: "Click",
+            title: actionName == "doubleClick" ? "Double click" : actionName == "rightClick" ? "Right click" : "Click",
             source: source,
             surfaces: window.map { [.window($0), .cursor(point)] } ?? [.cursor(point)]
         )
@@ -1394,10 +1414,11 @@ final class ComputerUseController {
                 id: run.id,
                 summary: "Resolved click target",
                 data: [
-                    "action": .string("click"),
+                    "action": .string(actionName),
                     "treatment": .string(treatment.rawValue),
                     "point": cursorJSON(point),
-                    "button": .string(normalizedMouseButton(params?["button"]?.stringValue)),
+                    "button": .string(normalizedMouseButton(buttonName)),
+                    "count": .int(clickCount),
                     "transport": .string(requestedTransport),
                     "noFocus": .bool(noFocus),
                 ]
@@ -1419,7 +1440,8 @@ final class ComputerUseController {
             var axResult: AXPressResult?
             if treatment.performsPointerAction {
                 let canTryAX = window != nil
-                    && normalizedMouseButton(params?["button"]?.stringValue) == "left"
+                    && normalizedMouseButton(buttonName) == "left"
+                    && clickCount == 1
                     && requestedTransport != "pointer"
                     && requestedTransport != "mouse"
 
@@ -1468,14 +1490,14 @@ final class ComputerUseController {
                             data: ["wid": .int(Int(window.wid)), "focused": .bool(focused)]
                         )
                     }
-                    try postMouseClick(at: point, rawButton: params?["button"]?.stringValue)
+                    try postMouseClick(at: point, rawButton: buttonName, count: clickCount, delayMs: delayMs)
                     clicked = true
                     transportUsed = "pointer"
                     _ = try RunStore.shared.appendTrace(
                         id: run.id,
                         kind: "computer.clicked",
                         summary: "Posted mouse click",
-                        data: clickJSON(point, button: params?["button"]?.stringValue)
+                        data: clickJSON(point, button: buttonName, count: clickCount)
                     )
                     usleep(180_000)
                 }
@@ -1498,9 +1520,12 @@ final class ComputerUseController {
                     "point": cursorJSON(point),
                     "focused": .bool(focused),
                     "transport": .string(transportUsed),
+                    "button": .string(normalizedMouseButton(buttonName)),
+                    "count": .int(clickCount),
                 ]
             )
             return clickResponse(
+                action: actionName,
                 run: completed,
                 target: window,
                 point: point,
@@ -1508,7 +1533,8 @@ final class ComputerUseController {
                 after: after?["artifact"],
                 treatment: treatment,
                 clicked: clicked,
-                button: params?["button"]?.stringValue,
+                button: buttonName,
+                count: clickCount,
                 transport: transportUsed,
                 focused: focused,
                 axResult: axResult
@@ -1517,6 +1543,247 @@ final class ComputerUseController {
             _ = try? RunStore.shared.fail(
                 id: run.id,
                 summary: "Click action failed",
+                data: ["error": .string(error.localizedDescription)]
+            )
+            throw error
+        }
+    }
+
+    func scroll(params: JSON?) throws -> JSON {
+        let source = params?["source"]?.stringValue ?? "daemon"
+        let treatment = ComputerTreatment.resolve(params: params, defaultValue: .stage)
+        let shouldCapture = params?["capture"]?.boolValue ?? true
+        let window = try? CaptureController.shared.resolveWindow(params: params)
+        let point = clickPoint(params: params, window: window) ?? cursorPoint(params: params)
+        let delta = scrollDelta(params: params)
+        let count = pointerCount(params: params, defaultValue: 1, maxValue: 30)
+        let delayMs = pointerDelayMs(params: params, defaultValue: 80)
+        let run = try RunStore.shared.createRun(
+            title: "Scroll",
+            source: source,
+            surfaces: window.map { [.window($0), .cursor(point)] } ?? [.cursor(point)]
+        )
+
+        do {
+            _ = try RunStore.shared.markRunning(
+                id: run.id,
+                summary: "Resolved scroll target",
+                data: [
+                    "action": .string("scroll"),
+                    "treatment": .string(treatment.rawValue),
+                    "point": cursorJSON(point),
+                    "delta": scrollJSON(delta),
+                    "count": .int(count),
+                ]
+            )
+
+            let before = try window.flatMap { target in
+                try maybeCaptureWindow(
+                    shouldCapture: shouldCapture,
+                    runId: run.id,
+                    source: source,
+                    wid: target.wid,
+                    prefix: "scroll-before"
+                )
+            }
+
+            var focused = false
+            var scrolled = false
+            if treatment.focusesWindow, let window {
+                focused = try focus(window: window)
+                _ = try RunStore.shared.appendTrace(
+                    id: run.id,
+                    kind: "computer.focused",
+                    summary: "Focused window before scroll",
+                    data: ["wid": .int(Int(window.wid)), "focused": .bool(focused)]
+                )
+            }
+
+            if treatment.performsPointerAction {
+                try postMouseScroll(at: point, deltaX: delta.x, deltaY: delta.y, count: count, delayMs: delayMs)
+                scrolled = true
+                _ = try RunStore.shared.appendTrace(
+                    id: run.id,
+                    kind: "computer.scrolled",
+                    summary: "Posted scroll wheel events",
+                    data: [
+                        "point": cursorJSON(point),
+                        "delta": scrollJSON(delta),
+                        "count": .int(count),
+                    ]
+                )
+                usleep(160_000)
+            }
+
+            let after = try window.flatMap { target in
+                try maybeCaptureWindow(
+                    shouldCapture: shouldCapture,
+                    runId: run.id,
+                    source: source,
+                    wid: target.wid,
+                    prefix: "scroll-after"
+                )
+            }
+            let completed = try RunStore.shared.complete(
+                id: run.id,
+                summary: scrolled ? "Completed scroll action" : "Staged scroll without posting",
+                data: [
+                    "scrolled": .bool(scrolled),
+                    "point": cursorJSON(point),
+                    "delta": scrollJSON(delta),
+                    "focused": .bool(focused),
+                    "count": .int(count),
+                ]
+            )
+
+            return pointerActionResponse(
+                action: "scroll",
+                run: completed,
+                target: window,
+                before: before?["artifact"],
+                after: after?["artifact"],
+                treatment: treatment,
+                focused: focused,
+                performedKey: "scrolled",
+                performed: scrolled,
+                point: point,
+                from: nil,
+                to: nil,
+                delta: delta,
+                button: nil,
+                count: count,
+                transport: "pointer"
+            )
+        } catch {
+            _ = try? RunStore.shared.fail(
+                id: run.id,
+                summary: "Scroll action failed",
+                data: ["error": .string(error.localizedDescription)]
+            )
+            throw error
+        }
+    }
+
+    func drag(params: JSON?) throws -> JSON {
+        let source = params?["source"]?.stringValue ?? "daemon"
+        let treatment = ComputerTreatment.resolve(params: params, defaultValue: .stage)
+        let shouldCapture = params?["capture"]?.boolValue ?? true
+        let window = try? CaptureController.shared.resolveWindow(params: params)
+        let toPoint = dragEndPoint(params: params, window: window)
+        let fromPoint = dragStartPoint(params: params, window: window, fallback: toPoint)
+        let buttonName = params?["button"]?.stringValue
+        let durationMs = dragDurationMs(params: params)
+        let steps = dragSteps(params: params)
+        let run = try RunStore.shared.createRun(
+            title: "Drag",
+            source: source,
+            surfaces: window.map { [.window($0), .cursor(fromPoint), .cursor(toPoint)] } ?? [.cursor(fromPoint), .cursor(toPoint)]
+        )
+
+        do {
+            _ = try RunStore.shared.markRunning(
+                id: run.id,
+                summary: "Resolved drag target",
+                data: [
+                    "action": .string("drag"),
+                    "treatment": .string(treatment.rawValue),
+                    "from": cursorJSON(fromPoint),
+                    "to": cursorJSON(toPoint),
+                    "button": .string(normalizedMouseButton(buttonName)),
+                    "durationMs": .double(durationMs),
+                    "steps": .int(steps),
+                ]
+            )
+
+            let before = try window.flatMap { target in
+                try maybeCaptureWindow(
+                    shouldCapture: shouldCapture,
+                    runId: run.id,
+                    source: source,
+                    wid: target.wid,
+                    prefix: "drag-before"
+                )
+            }
+
+            var focused = false
+            var dragged = false
+            if treatment.focusesWindow, let window {
+                focused = try focus(window: window)
+                _ = try RunStore.shared.appendTrace(
+                    id: run.id,
+                    kind: "computer.focused",
+                    summary: "Focused window before drag",
+                    data: ["wid": .int(Int(window.wid)), "focused": .bool(focused)]
+                )
+            }
+
+            if treatment.performsPointerAction {
+                try postMouseDrag(
+                    from: fromPoint,
+                    to: toPoint,
+                    rawButton: buttonName,
+                    durationMs: durationMs,
+                    steps: steps
+                )
+                dragged = true
+                _ = try RunStore.shared.appendTrace(
+                    id: run.id,
+                    kind: "computer.dragged",
+                    summary: "Posted mouse drag",
+                    data: [
+                        "from": cursorJSON(fromPoint),
+                        "to": cursorJSON(toPoint),
+                        "button": .string(normalizedMouseButton(buttonName)),
+                        "durationMs": .double(durationMs),
+                        "steps": .int(steps),
+                    ]
+                )
+                usleep(180_000)
+            }
+
+            let after = try window.flatMap { target in
+                try maybeCaptureWindow(
+                    shouldCapture: shouldCapture,
+                    runId: run.id,
+                    source: source,
+                    wid: target.wid,
+                    prefix: "drag-after"
+                )
+            }
+            let completed = try RunStore.shared.complete(
+                id: run.id,
+                summary: dragged ? "Completed drag action" : "Staged drag without posting",
+                data: [
+                    "dragged": .bool(dragged),
+                    "from": cursorJSON(fromPoint),
+                    "to": cursorJSON(toPoint),
+                    "focused": .bool(focused),
+                    "button": .string(normalizedMouseButton(buttonName)),
+                ]
+            )
+
+            return pointerActionResponse(
+                action: "drag",
+                run: completed,
+                target: window,
+                before: before?["artifact"],
+                after: after?["artifact"],
+                treatment: treatment,
+                focused: focused,
+                performedKey: "dragged",
+                performed: dragged,
+                point: nil,
+                from: fromPoint,
+                to: toPoint,
+                delta: nil,
+                button: buttonName ?? "left",
+                count: nil,
+                transport: "pointer"
+            )
+        } catch {
+            _ = try? RunStore.shared.fail(
+                id: run.id,
+                summary: "Drag action failed",
                 data: ["error": .string(error.localizedDescription)]
             )
             throw error
@@ -2441,6 +2708,76 @@ final class ComputerUseController {
         )
     }
 
+    private func dragEndPoint(params: JSON?, window: WindowEntry?) -> CGPoint {
+        if let x = params?["toX"]?.numericDouble
+            ?? params?["to-x"]?.numericDouble
+            ?? params?["endX"]?.numericDouble
+            ?? params?["end-x"]?.numericDouble,
+           let y = params?["toY"]?.numericDouble
+            ?? params?["to-y"]?.numericDouble
+            ?? params?["endY"]?.numericDouble
+            ?? params?["end-y"]?.numericDouble {
+            return CGPoint(x: x, y: y)
+        }
+
+        if let window {
+            let xRatio = params?["toXRatio"]?.numericDouble
+                ?? params?["to-x-ratio"]?.numericDouble
+                ?? params?["endXRatio"]?.numericDouble
+                ?? params?["end-x-ratio"]?.numericDouble
+            let yRatio = params?["toYRatio"]?.numericDouble
+                ?? params?["to-y-ratio"]?.numericDouble
+                ?? params?["endYRatio"]?.numericDouble
+                ?? params?["end-y-ratio"]?.numericDouble
+            if xRatio != nil || yRatio != nil {
+                return windowRelativePoint(
+                    window,
+                    xRatio: CGFloat(max(0.0, min(1.0, xRatio ?? 0.5))),
+                    yRatio: CGFloat(max(0.0, min(1.0, yRatio ?? 0.5)))
+                )
+            }
+        }
+
+        return clickPoint(params: params, window: window) ?? cursorPoint(params: params)
+    }
+
+    private func dragStartPoint(params: JSON?, window: WindowEntry?, fallback: CGPoint) -> CGPoint {
+        if let x = params?["fromX"]?.numericDouble
+            ?? params?["from-x"]?.numericDouble
+            ?? params?["startX"]?.numericDouble
+            ?? params?["start-x"]?.numericDouble,
+           let y = params?["fromY"]?.numericDouble
+            ?? params?["from-y"]?.numericDouble
+            ?? params?["startY"]?.numericDouble
+            ?? params?["start-y"]?.numericDouble {
+            return CGPoint(x: x, y: y)
+        }
+
+        if let window {
+            let xRatio = params?["fromXRatio"]?.numericDouble
+                ?? params?["from-x-ratio"]?.numericDouble
+                ?? params?["startXRatio"]?.numericDouble
+                ?? params?["start-x-ratio"]?.numericDouble
+            let yRatio = params?["fromYRatio"]?.numericDouble
+                ?? params?["from-y-ratio"]?.numericDouble
+                ?? params?["startYRatio"]?.numericDouble
+                ?? params?["start-y-ratio"]?.numericDouble
+            if xRatio != nil || yRatio != nil {
+                return windowRelativePoint(
+                    window,
+                    xRatio: CGFloat(max(0.0, min(1.0, xRatio ?? 0.5))),
+                    yRatio: CGFloat(max(0.0, min(1.0, yRatio ?? 0.5)))
+                )
+            }
+        }
+
+        let current = cursorPoint(params: nil)
+        if current == fallback {
+            return CGPoint(x: fallback.x - 240, y: fallback.y - 120)
+        }
+        return current
+    }
+
     private func windowRelativePoint(_ window: WindowEntry, xRatio: CGFloat, yRatio: CGFloat) -> CGPoint {
         CGPoint(
             x: window.frame.x + window.frame.w * Double(xRatio),
@@ -2449,32 +2786,142 @@ final class ComputerUseController {
     }
 
     private func postMouseClick(at point: CGPoint, rawButton: String?) throws {
+        try postMouseClick(at: point, rawButton: rawButton, count: 1, delayMs: 90)
+    }
+
+    private func postMouseClick(at point: CGPoint, rawButton: String?, count: Int, delayMs: Double) throws {
         guard AXIsProcessTrusted() else {
             throw RouterError.custom("Accessibility permission is required to click")
         }
         let button = mouseButton(rawButton)
-        guard let source = CGEventSource(stateID: .combinedSessionState),
-              let down = CGEvent(
-                mouseEventSource: source,
-                mouseType: button.downType,
-                mouseCursorPosition: point,
-                mouseButton: button.button
-              ),
-              let up = CGEvent(
-                mouseEventSource: source,
-                mouseType: button.upType,
-                mouseCursorPosition: point,
-                mouseButton: button.button
-              ) else {
+        guard let source = CGEventSource(stateID: .combinedSessionState) else {
             throw RouterError.custom("Unable to create mouse click event")
         }
 
         CGAssociateMouseAndMouseCursorPosition(0)
         CGWarpMouseCursorPosition(point)
         usleep(35_000)
+        for index in 0..<max(1, count) {
+            guard let down = CGEvent(
+                    mouseEventSource: source,
+                    mouseType: button.downType,
+                    mouseCursorPosition: point,
+                    mouseButton: button.button
+                  ),
+                  let up = CGEvent(
+                    mouseEventSource: source,
+                    mouseType: button.upType,
+                    mouseCursorPosition: point,
+                    mouseButton: button.button
+                  ) else {
+                CGAssociateMouseAndMouseCursorPosition(1)
+                throw RouterError.custom("Unable to create mouse click event")
+            }
+
+            let clickState = Int64(index + 1)
+            down.setIntegerValueField(.mouseEventClickState, value: clickState)
+            up.setIntegerValueField(.mouseEventClickState, value: clickState)
+            down.post(tap: .cghidEventTap)
+            usleep(28_000)
+            up.post(tap: .cghidEventTap)
+            if index < count - 1 {
+                usleep(UInt32(max(0, min(delayMs, 1_000)) * 1_000))
+            }
+        }
+        CGAssociateMouseAndMouseCursorPosition(1)
+    }
+
+    private func postMouseScroll(at point: CGPoint, deltaX: Double, deltaY: Double, count: Int, delayMs: Double) throws {
+        guard AXIsProcessTrusted() else {
+            throw RouterError.custom("Accessibility permission is required to scroll")
+        }
+        guard let source = CGEventSource(stateID: .combinedSessionState) else {
+            throw RouterError.custom("Unable to create scroll event source")
+        }
+
+        CGAssociateMouseAndMouseCursorPosition(0)
+        CGWarpMouseCursorPosition(point)
+        usleep(35_000)
+        for index in 0..<max(1, count) {
+            guard let event = CGEvent(
+                scrollWheelEvent2Source: source,
+                units: .pixel,
+                wheelCount: 2,
+                wheel1: Int32(max(-8_000, min(8_000, deltaY)).rounded()),
+                wheel2: Int32(max(-8_000, min(8_000, deltaX)).rounded()),
+                wheel3: 0
+            ) else {
+                CGAssociateMouseAndMouseCursorPosition(1)
+                throw RouterError.custom("Unable to create scroll event")
+            }
+            event.post(tap: .cghidEventTap)
+            if index < count - 1 {
+                usleep(UInt32(max(0, min(delayMs, 1_000)) * 1_000))
+            }
+        }
+        CGAssociateMouseAndMouseCursorPosition(1)
+    }
+
+    private func postMouseDrag(
+        from start: CGPoint,
+        to end: CGPoint,
+        rawButton: String?,
+        durationMs: Double,
+        steps: Int
+    ) throws {
+        guard AXIsProcessTrusted() else {
+            throw RouterError.custom("Accessibility permission is required to drag")
+        }
+        let button = mouseButton(rawButton)
+        let dragType = mouseDragType(button.button)
+        guard let source = CGEventSource(stateID: .combinedSessionState),
+              let down = CGEvent(
+                mouseEventSource: source,
+                mouseType: button.downType,
+                mouseCursorPosition: start,
+                mouseButton: button.button
+              ) else {
+            throw RouterError.custom("Unable to create drag event")
+        }
+
+        let boundedSteps = max(2, min(steps, 120))
+        let stepDelay = UInt32(max(2, min(durationMs / Double(boundedSteps), 120)) * 1_000)
+        CGAssociateMouseAndMouseCursorPosition(0)
+        CGWarpMouseCursorPosition(start)
+        usleep(35_000)
         down.post(tap: .cghidEventTap)
-        usleep(28_000)
+        usleep(stepDelay)
+
+        for index in 1...boundedSteps {
+            let progress = CGFloat(index) / CGFloat(boundedSteps)
+            let point = CGPoint(
+                x: start.x + (end.x - start.x) * progress,
+                y: start.y + (end.y - start.y) * progress
+            )
+            guard let drag = CGEvent(
+                mouseEventSource: source,
+                mouseType: dragType,
+                mouseCursorPosition: point,
+                mouseButton: button.button
+            ) else {
+                CGAssociateMouseAndMouseCursorPosition(1)
+                throw RouterError.custom("Unable to create drag event")
+            }
+            drag.post(tap: .cghidEventTap)
+            usleep(stepDelay)
+        }
+
+        guard let up = CGEvent(
+            mouseEventSource: source,
+            mouseType: button.upType,
+            mouseCursorPosition: end,
+            mouseButton: button.button
+        ) else {
+            CGAssociateMouseAndMouseCursorPosition(1)
+            throw RouterError.custom("Unable to create drag release event")
+        }
         up.post(tap: .cghidEventTap)
+        CGWarpMouseCursorPosition(end)
         CGAssociateMouseAndMouseCursorPosition(1)
     }
 
@@ -2494,6 +2941,113 @@ final class ComputerUseController {
         default:
             return "left"
         }
+    }
+
+    private func mouseDragType(_ button: CGMouseButton) -> CGEventType {
+        switch button {
+        case .right:
+            return .rightMouseDragged
+        default:
+            return .leftMouseDragged
+        }
+    }
+
+    private func clickCount(params: JSON?, defaultValue: Int) -> Int {
+        pointerCount(params: params, defaultValue: defaultValue, maxValue: 8)
+    }
+
+    private func pointerCount(params: JSON?, defaultValue: Int, maxValue: Int) -> Int {
+        let raw = params?["count"]?.intValue
+            ?? params?["clicks"]?.intValue
+            ?? params?["clickCount"]?.intValue
+            ?? params?["click-count"]?.intValue
+            ?? defaultValue
+        return max(1, min(raw, maxValue))
+    }
+
+    private func pointerDelayMs(params: JSON?, defaultValue: Double) -> Double {
+        let raw: Double
+        if let value = params?["delayMs"]?.numericDouble {
+            raw = value
+        } else if let value = params?["delay-ms"]?.numericDouble {
+            raw = value
+        } else if let value = params?["intervalMs"]?.numericDouble {
+            raw = value
+        } else if let value = params?["interval-ms"]?.numericDouble {
+            raw = value
+        } else {
+            raw = defaultValue
+        }
+        return max(0, min(raw, 1_000))
+    }
+
+    private func dragDurationMs(params: JSON?) -> Double {
+        let raw: Double
+        if let value = params?["durationMs"]?.numericDouble {
+            raw = value
+        } else if let value = params?["duration-ms"]?.numericDouble {
+            raw = value
+        } else if let value = params?["dragDurationMs"]?.numericDouble {
+            raw = value
+        } else if let value = params?["drag-duration-ms"]?.numericDouble {
+            raw = value
+        } else {
+            raw = 360
+        }
+        return max(40, min(raw, 3_000))
+    }
+
+    private func dragSteps(params: JSON?) -> Int {
+        let raw = params?["steps"]?.intValue
+            ?? params?["stepCount"]?.intValue
+            ?? params?["step-count"]?.intValue
+            ?? 18
+        return max(2, min(raw, 120))
+    }
+
+    private func scrollDelta(params: JSON?) -> CGPoint {
+        if params?["deltaX"]?.numericDouble != nil
+            || params?["delta-x"]?.numericDouble != nil
+            || params?["dx"]?.numericDouble != nil
+            || params?["deltaY"]?.numericDouble != nil
+            || params?["delta-y"]?.numericDouble != nil
+            || params?["dy"]?.numericDouble != nil {
+            return CGPoint(
+                x: boundedScrollDelta(
+                    params?["deltaX"]?.numericDouble
+                        ?? params?["delta-x"]?.numericDouble
+                        ?? params?["dx"]?.numericDouble
+                        ?? 0
+                ),
+                y: boundedScrollDelta(
+                    params?["deltaY"]?.numericDouble
+                        ?? params?["delta-y"]?.numericDouble
+                        ?? params?["dy"]?.numericDouble
+                        ?? 0
+                )
+            )
+        }
+
+        let amount = boundedScrollDelta(
+            params?["amount"]?.numericDouble
+                ?? params?["distance"]?.numericDouble
+                ?? params?["delta"]?.numericDouble
+                ?? 420
+        )
+        switch params?["direction"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "up", "north":
+            return CGPoint(x: 0, y: amount)
+        case "left", "west":
+            return CGPoint(x: -amount, y: 0)
+        case "right", "east":
+            return CGPoint(x: amount, y: 0)
+        default:
+            return CGPoint(x: 0, y: -amount)
+        }
+    }
+
+    private func boundedScrollDelta(_ value: Double) -> Double {
+        max(-8_000, min(8_000, value))
     }
 
     private func clickTransport(_ params: JSON?) -> String {
@@ -2527,11 +3081,23 @@ final class ComputerUseController {
     }
 
     private func clickJSON(_ point: CGPoint, button: String?) -> [String: JSON] {
+        clickJSON(point, button: button, count: 1)
+    }
+
+    private func clickJSON(_ point: CGPoint, button: String?, count: Int) -> [String: JSON] {
         [
             "x": .double(point.x),
             "y": .double(point.y),
             "button": .string(normalizedMouseButton(button)),
+            "count": .int(count),
         ]
+    }
+
+    private func scrollJSON(_ delta: CGPoint) -> JSON {
+        .object([
+            "x": .double(delta.x),
+            "y": .double(delta.y),
+        ])
     }
 
     private func pressViaAX(
@@ -3623,6 +4189,7 @@ final class ComputerUseController {
     }
 
     private func clickResponse(
+        action: String,
         run: RunSession,
         target: WindowEntry?,
         point: CGPoint,
@@ -3631,13 +4198,14 @@ final class ComputerUseController {
         treatment: ComputerTreatment,
         clicked: Bool,
         button: String?,
+        count: Int,
         transport: String,
         focused: Bool,
         axResult: AXPressResult?
     ) -> JSON {
         var object: [String: JSON] = [
             "ok": .bool(true),
-            "action": .string("click"),
+            "action": .string(action),
             "treatment": .string(treatment.rawValue),
             "clicked": .bool(clicked),
             "focused": .bool(focused),
@@ -3645,11 +4213,51 @@ final class ComputerUseController {
             "run": run.json,
             "cursor": cursorJSON(point),
             "button": .string(normalizedMouseButton(button)),
+            "count": .int(count),
         ]
         if let target { object["target"] = Encoders.window(target) }
         if let before { object["beforeArtifact"] = before }
         if let after { object["afterArtifact"] = after }
         if let axResult { object["ax"] = axResult.json }
+        return .object(object)
+    }
+
+    private func pointerActionResponse(
+        action: String,
+        run: RunSession,
+        target: WindowEntry?,
+        before: JSON?,
+        after: JSON?,
+        treatment: ComputerTreatment,
+        focused: Bool,
+        performedKey: String,
+        performed: Bool,
+        point: CGPoint?,
+        from: CGPoint?,
+        to: CGPoint?,
+        delta: CGPoint?,
+        button: String?,
+        count: Int?,
+        transport: String
+    ) -> JSON {
+        var object: [String: JSON] = [
+            "ok": .bool(true),
+            "action": .string(action),
+            "treatment": .string(treatment.rawValue),
+            performedKey: .bool(performed),
+            "focused": .bool(focused),
+            "transport": .string(transport),
+            "run": run.json,
+        ]
+        if let target { object["target"] = Encoders.window(target) }
+        if let before { object["beforeArtifact"] = before }
+        if let after { object["afterArtifact"] = after }
+        if let point { object["cursor"] = cursorJSON(point) }
+        if let from { object["from"] = cursorJSON(from) }
+        if let to { object["to"] = cursorJSON(to) }
+        if let delta { object["delta"] = scrollJSON(delta) }
+        if let button { object["button"] = .string(normalizedMouseButton(button)) }
+        if let count { object["count"] = .int(count) }
         return .object(object)
     }
 

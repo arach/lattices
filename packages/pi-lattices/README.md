@@ -67,6 +67,10 @@ All tools use the `lattices_` prefix.
 | `lattices_computer_prepare` | `computer.prepare` | Stages/observes a terminal target. |
 | `lattices_computer_launch_app` | `computer.launchApp` | Defaults to `treatment: "stage"`; pass `present` or `execute` to launch/focus. |
 | `lattices_computer_click` | `computer.click` | Defaults to `treatment: "stage"`; pass `execute` to click. |
+| `lattices_computer_double_click` | `computer.doubleClick` | Defaults to `treatment: "stage"`; pass `execute` to double-click. |
+| `lattices_computer_right_click` | `computer.rightClick` | Defaults to `treatment: "stage"`; pass `execute` to right-click. |
+| `lattices_computer_scroll` | `computer.scroll` | Defaults to `treatment: "stage"`; pass `execute` to scroll. |
+| `lattices_computer_drag` | `computer.drag` | Defaults to `treatment: "stage"`; pass `execute` to drag. |
 | `lattices_computer_type_window_text` | `computer.typeWindowText` | Defaults to `treatment: "stage"`; pass `execute` to insert text. |
 | `lattices_computer_type_text` | `computer.typeText` | Defaults to `treatment: "stage"`; pass `execute` to insert text. |
 | `lattices_call` | caller-selected | Escape hatch; prefer typed tools first. |

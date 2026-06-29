@@ -50,6 +50,9 @@ const modifiers = {
 };
 const shortcut = string("Shortcut shorthand, such as command+shift+p, cmd+k, or shift+tab.");
 const allowGlobal = boolean("Allow treatment=execute without an explicit target by posting to the focused system target.");
+const pointerCount = integer("Repeat count for pointer events.");
+const delayMs = number("Delay between repeated events in milliseconds.");
+const durationMs = number("Pointer action duration in milliseconds.");
 
 const emptyParams = object();
 const runSourceParams = {
@@ -314,11 +317,81 @@ export const LATTICES_TOOLS = [
       ...targetParams,
       ...windowPointParams,
       button: optionalEnum(["left", "right", "secondary", "context"], "Mouse button. Defaults to left."),
+      count: pointerCount,
+      delayMs,
       transport: optionalEnum(["auto", "ax", "accessibility", "pointer", "mouse", "hardware"], "Click transport. auto prefers AXPress when possible."),
       axLabel: string("Optional AX title/label hint, such as Send."),
       targetText: string("Optional visible target text hint."),
       noFocus: boolean("Require no-focus AX execution and disable pointer fallback."),
       label: string("Optional label recorded with the click/cursor target."),
+      ...computerBaseParams,
+    }),
+    defaultTreatment: "stage",
+    defaultSource: DEFAULT_SOURCE,
+  },
+  {
+    name: `${TOOL_PREFIX}computer_double_click`,
+    method: "computer.doubleClick",
+    description: "Stage, present, or execute a window-relative double-click. Defaults to treatment=stage; pass execute to double-click.",
+    parameters: object({
+      ...targetParams,
+      ...windowPointParams,
+      delayMs: number("Delay between the two clicks in milliseconds. Daemon default is 90."),
+      ...computerBaseParams,
+    }),
+    defaultTreatment: "stage",
+    defaultSource: DEFAULT_SOURCE,
+  },
+  {
+    name: `${TOOL_PREFIX}computer_right_click`,
+    method: "computer.rightClick",
+    description: "Stage, present, or execute a window-relative right-click/context-click. Defaults to treatment=stage; pass execute to right-click.",
+    parameters: object({
+      ...targetParams,
+      ...windowPointParams,
+      count: pointerCount,
+      delayMs,
+      ...computerBaseParams,
+    }),
+    defaultTreatment: "stage",
+    defaultSource: DEFAULT_SOURCE,
+  },
+  {
+    name: `${TOOL_PREFIX}computer_scroll`,
+    method: "computer.scroll",
+    description: "Stage, present, or execute scroll wheel input at a cursor or window-relative point. Defaults to treatment=stage; pass execute to scroll.",
+    parameters: object({
+      ...targetParams,
+      ...windowPointParams,
+      direction: optionalEnum(["down", "up", "left", "right"], "High-level scroll direction. Defaults to down."),
+      amount: number("Scroll amount in pixel units when direction is used. Daemon default is 420."),
+      deltaX: number("Horizontal scroll wheel delta override."),
+      deltaY: number("Vertical scroll wheel delta override."),
+      count: integer("Number of scroll events. Daemon default is 1, max 30."),
+      delayMs,
+      ...computerBaseParams,
+    }),
+    defaultTreatment: "stage",
+    defaultSource: DEFAULT_SOURCE,
+  },
+  {
+    name: `${TOOL_PREFIX}computer_drag`,
+    method: "computer.drag",
+    description: "Stage, present, or execute a pointer drag between absolute or window-relative points. Defaults to treatment=stage; pass execute to drag.",
+    parameters: object({
+      ...targetParams,
+      ...windowPointParams,
+      fromX: number("Absolute drag start X coordinate."),
+      fromY: number("Absolute drag start Y coordinate."),
+      toX: number("Absolute drag end X coordinate."),
+      toY: number("Absolute drag end Y coordinate."),
+      fromXRatio: ratio("Window-relative drag start X ratio."),
+      fromYRatio: ratio("Window-relative drag start Y ratio."),
+      toXRatio: ratio("Window-relative drag end X ratio."),
+      toYRatio: ratio("Window-relative drag end Y ratio."),
+      button: optionalEnum(["left", "right", "secondary", "context"], "Mouse button held while dragging. Defaults to left."),
+      durationMs,
+      steps: integer("Interpolated drag event count. Daemon default is 18, max 120."),
       ...computerBaseParams,
     }),
     defaultTreatment: "stage",

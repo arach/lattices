@@ -223,6 +223,10 @@ methods write into the Lattices run store under
 | `computer.launchApp` | write | Launch or focus a normal macOS app and record the run |
 | `computer.typeWindowText` | write | Type or paste into a normal app window, optionally after a click |
 | `computer.click` | write | Stage or execute a window-relative click target; prefers no-focus `AXPress` in auto/ax transport |
+| `computer.doubleClick` | write | Stage or execute a pointer double-click target |
+| `computer.rightClick` | write | Stage or execute a right-click/context-click target |
+| `computer.scroll` | write | Stage or execute scroll wheel input |
+| `computer.drag` | write | Stage or execute a pointer drag between two points |
 | `computer.demoScout` | write | Scout warm-up run for memo/demo recording |
 | `computer.typeText` | write | Insert text into a safe terminal using the least intrusive transport |
 | `computer.demoTerminal` | write | Compatibility wrapper for a bounded terminal text action |
@@ -273,6 +277,10 @@ lattices computer scout "Draft memo text" --execute
 lattices computer type-window --app Scout --text "Draft memo text" --x-ratio .5 --y-ratio .86 --execute
 lattices computer click --app Scout --x-ratio .5 --y-ratio .86 --execute
 lattices cua click --app Scout --x-ratio .74 --y-ratio .95 --transport ax --ax-label Send --execute
+lattices call computer.scroll '{"app":"Safari","direction":"down","amount":420,"treatment":"stage"}'
+lattices call computer.drag '{"app":"Finder","fromXRatio":0.2,"fromYRatio":0.2,"toXRatio":0.7,"toYRatio":0.7,"treatment":"stage"}'
+lattices call computer.doubleClick '{"app":"Finder","xRatio":0.5,"yRatio":0.5,"treatment":"stage"}'
+lattices call computer.rightClick '{"app":"Finder","xRatio":0.5,"yRatio":0.5,"treatment":"stage"}'
 lattices computer type-text --text "# hello from lattices"
 lattices computer demo-terminal --dry-run
 ```
@@ -586,24 +594,29 @@ await daemonCall('computer.typeWindowText', {
 })
 ```
 
-#### `computer.click`
+#### `computer.click` / `computer.doubleClick` / `computer.rightClick`
 
 Stage or execute a click target. `stage` records the target without clicking.
 In `execute`, `transport: "auto"` prefers `AXPress` on the resolved accessibility
 button/control before falling back to a pointer click. Use `transport: "ax"` or
 `noFocus: true` when the action must not focus the app or move the hardware
-pointer. When a window target is provided, ratios are relative to that window.
+pointer. `computer.doubleClick` forces two pointer clicks; `computer.rightClick`
+forces the right button. When a window target is provided, ratios are relative to
+that window.
 
 **Params**:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `wid` | uint32 | no | Target window id |
+| `session` | string | no | Target lattices session |
 | `app` | string | no | Target app name |
 | `title` | string | no | Optional title substring for app target |
 | `x`, `y` | double | no | Absolute click point |
 | `xRatio`, `yRatio` | double | no | Window-relative click point |
 | `button` | string | no | `left` or `right`; defaults to `left` |
+| `count` | int | no | Pointer click count. Defaults to `1`, max `8` |
+| `delayMs` | double | no | Delay between repeated pointer clicks |
 | `transport` | string | no | `auto`, `ax`, or `pointer`; defaults to `auto` |
 | `axLabel` | string | no | Optional AX text/title hint, such as `Send` |
 | `noFocus` | bool | no | Require no-focus AX execution; disable pointer fallback |
@@ -628,6 +641,60 @@ await daemonCall('computer.click', {
   axLabel: 'Send',
   noFocus: true,
   treatment: 'execute'
+})
+```
+
+#### `computer.scroll` / `computer.drag`
+
+Stage or execute richer pointer input while keeping the same run/capture model.
+`computer.scroll` posts scroll wheel events at an absolute or window-relative
+point. `computer.drag` interpolates a pointer drag from a start point to an end
+point. Both default to `stage`.
+
+**Scroll params**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `wid`, `session`, `app`, `title` | target | no | Target window/session/app |
+| `x`, `y` | double | no | Absolute pointer point before scrolling |
+| `xRatio`, `yRatio` | double | no | Window-relative pointer point |
+| `direction` | string | no | `down` (default), `up`, `left`, or `right` |
+| `amount` | double | no | Scroll amount when using `direction`; default `420` |
+| `deltaX`, `deltaY` | double | no | Explicit scroll wheel deltas |
+| `count` | int | no | Number of scroll events; default `1`, max `30` |
+| `delayMs` | double | no | Delay between repeated events |
+| `treatment`, `dryRun`, `capture`, `source` | mixed | no | Standard computer action fields |
+
+**Drag params**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `wid`, `session`, `app`, `title` | target | no | Target window/session/app |
+| `fromX`, `fromY` | double | no | Absolute drag start point |
+| `toX`, `toY` | double | no | Absolute drag end point |
+| `fromXRatio`, `fromYRatio` | double | no | Window-relative drag start point |
+| `toXRatio`, `toYRatio` | double | no | Window-relative drag end point |
+| `x`, `y`, `xRatio`, `yRatio` | double | no | Aliases for the drag end point |
+| `button` | string | no | `left` or `right`; defaults to `left` |
+| `durationMs` | double | no | Drag duration; default `360` |
+| `steps` | int | no | Interpolated drag event count; default `18` |
+| `treatment`, `dryRun`, `capture`, `source` | mixed | no | Standard computer action fields |
+
+```js
+await daemonCall('computer.scroll', {
+  app: 'Safari',
+  direction: 'down',
+  amount: 420,
+  treatment: 'execute'
+})
+
+await daemonCall('computer.drag', {
+  app: 'Finder',
+  fromXRatio: 0.2,
+  fromYRatio: 0.2,
+  toXRatio: 0.7,
+  toYRatio: 0.7,
+  treatment: 'stage'
 })
 ```
 

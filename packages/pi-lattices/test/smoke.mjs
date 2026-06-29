@@ -45,6 +45,10 @@ for (const required of [
   "lattices_computer_hotkey",
   "lattices_computer_launch_app",
   "lattices_computer_click",
+  "lattices_computer_double_click",
+  "lattices_computer_right_click",
+  "lattices_computer_scroll",
+  "lattices_computer_drag",
   "lattices_call",
 ]) {
   assert.ok(names.includes(required), `registered ${required}`);

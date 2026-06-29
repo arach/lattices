@@ -1870,6 +1870,7 @@ final class LatticesApi {
             access: .mutate,
             params: [
                 Param(name: "wid", type: "uint32", required: false, description: "Target window id"),
+                Param(name: "session", type: "string", required: false, description: "Target lattices session"),
                 Param(name: "app", type: "string", required: false, description: "Target app name"),
                 Param(name: "title", type: "string", required: false, description: "Optional title substring for app target"),
                 Param(name: "x", type: "double", required: false, description: "Absolute click x coordinate"),
@@ -1877,6 +1878,8 @@ final class LatticesApi {
                 Param(name: "xRatio", type: "double", required: false, description: "Window-relative click x ratio, 0 left to 1 right"),
                 Param(name: "yRatio", type: "double", required: false, description: "Window-relative click y ratio, 0 top to 1 bottom"),
                 Param(name: "button", type: "string", required: false, description: "left or right"),
+                Param(name: "count", type: "int", required: false, description: "Number of pointer clicks to post in pointer transport (default 1, max 8)"),
+                Param(name: "delayMs", type: "double", required: false, description: "Delay between repeated pointer clicks in milliseconds (default 90)"),
                 Param(name: "transport", type: "string", required: false, description: "auto, ax, or pointer. auto tries AXPress before pointer fallback"),
                 Param(name: "axLabel", type: "string", required: false, description: "Optional AX title/description text to prefer, such as Send"),
                 Param(name: "noFocus", type: "bool", required: false, description: "Require AX/no-focus execution; do not focus or use pointer fallback"),
@@ -1888,6 +1891,122 @@ final class LatticesApi {
             returns: .custom("Object with ok, run, cursor point, target window, and clicked flag"),
             handler: { params in
                 try ComputerUseController.shared.click(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "computer.doubleClick",
+            description: "Stage or execute a double-click target using pointer transport.",
+            access: .mutate,
+            params: [
+                Param(name: "wid", type: "uint32", required: false, description: "Target window id"),
+                Param(name: "session", type: "string", required: false, description: "Target lattices session"),
+                Param(name: "app", type: "string", required: false, description: "Target app name"),
+                Param(name: "title", type: "string", required: false, description: "Optional title substring for app target"),
+                Param(name: "x", type: "double", required: false, description: "Absolute click x coordinate"),
+                Param(name: "y", type: "double", required: false, description: "Absolute click y coordinate"),
+                Param(name: "xRatio", type: "double", required: false, description: "Window-relative click x ratio"),
+                Param(name: "yRatio", type: "double", required: false, description: "Window-relative click y ratio"),
+                Param(name: "delayMs", type: "double", required: false, description: "Delay between the two clicks in milliseconds (default 90)"),
+                Param(name: "treatment", type: "string", required: false, description: "stage, present, or execute; execute is required to post the double-click"),
+                Param(name: "dryRun", type: "bool", required: false, description: "Stage without double-clicking"),
+                Param(name: "capture", type: "bool", required: false, description: "Capture before/after artifacts when targeting a window (default true)"),
+                Param(name: "source", type: "string", required: false, description: "Calling surface label"),
+            ],
+            returns: .custom("Object with ok, run, cursor point, target window, and clicked flag"),
+            handler: { params in
+                try ComputerUseController.shared.doubleClick(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "computer.rightClick",
+            description: "Stage or execute a right-click/context-click target using pointer transport.",
+            access: .mutate,
+            params: [
+                Param(name: "wid", type: "uint32", required: false, description: "Target window id"),
+                Param(name: "session", type: "string", required: false, description: "Target lattices session"),
+                Param(name: "app", type: "string", required: false, description: "Target app name"),
+                Param(name: "title", type: "string", required: false, description: "Optional title substring for app target"),
+                Param(name: "x", type: "double", required: false, description: "Absolute click x coordinate"),
+                Param(name: "y", type: "double", required: false, description: "Absolute click y coordinate"),
+                Param(name: "xRatio", type: "double", required: false, description: "Window-relative click x ratio"),
+                Param(name: "yRatio", type: "double", required: false, description: "Window-relative click y ratio"),
+                Param(name: "count", type: "int", required: false, description: "Number of right clicks to post (default 1, max 8)"),
+                Param(name: "delayMs", type: "double", required: false, description: "Delay between repeated clicks in milliseconds (default 90)"),
+                Param(name: "treatment", type: "string", required: false, description: "stage, present, or execute; execute is required to post the right-click"),
+                Param(name: "dryRun", type: "bool", required: false, description: "Stage without right-clicking"),
+                Param(name: "capture", type: "bool", required: false, description: "Capture before/after artifacts when targeting a window (default true)"),
+                Param(name: "source", type: "string", required: false, description: "Calling surface label"),
+            ],
+            returns: .custom("Object with ok, run, cursor point, target window, and clicked flag"),
+            handler: { params in
+                try ComputerUseController.shared.rightClick(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "computer.scroll",
+            description: "Stage or execute scroll wheel input at a cursor or window-relative point.",
+            access: .mutate,
+            params: [
+                Param(name: "wid", type: "uint32", required: false, description: "Target window id"),
+                Param(name: "session", type: "string", required: false, description: "Target lattices session"),
+                Param(name: "app", type: "string", required: false, description: "Target app name"),
+                Param(name: "title", type: "string", required: false, description: "Optional title substring for app target"),
+                Param(name: "x", type: "double", required: false, description: "Absolute pointer x coordinate before scrolling"),
+                Param(name: "y", type: "double", required: false, description: "Absolute pointer y coordinate before scrolling"),
+                Param(name: "xRatio", type: "double", required: false, description: "Window-relative pointer x ratio"),
+                Param(name: "yRatio", type: "double", required: false, description: "Window-relative pointer y ratio"),
+                Param(name: "direction", type: "string", required: false, description: "down (default), up, left, or right"),
+                Param(name: "amount", type: "double", required: false, description: "Scroll amount in pixel units when direction is used (default 420)"),
+                Param(name: "deltaX", type: "double", required: false, description: "Horizontal scroll wheel delta override"),
+                Param(name: "deltaY", type: "double", required: false, description: "Vertical scroll wheel delta override"),
+                Param(name: "count", type: "int", required: false, description: "Number of scroll events to post (default 1, max 30)"),
+                Param(name: "delayMs", type: "double", required: false, description: "Delay between repeated scroll events in milliseconds (default 80)"),
+                Param(name: "treatment", type: "string", required: false, description: "stage, present, or execute; execute is required to post scroll events"),
+                Param(name: "dryRun", type: "bool", required: false, description: "Stage without scrolling"),
+                Param(name: "capture", type: "bool", required: false, description: "Capture before/after artifacts when targeting a window (default true)"),
+                Param(name: "source", type: "string", required: false, description: "Calling surface label"),
+            ],
+            returns: .custom("Object with ok, run, cursor point, delta, target window, and scrolled flag"),
+            handler: { params in
+                try ComputerUseController.shared.scroll(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "computer.drag",
+            description: "Stage or execute a pointer drag between absolute or window-relative points.",
+            access: .mutate,
+            params: [
+                Param(name: "wid", type: "uint32", required: false, description: "Target window id"),
+                Param(name: "session", type: "string", required: false, description: "Target lattices session"),
+                Param(name: "app", type: "string", required: false, description: "Target app name"),
+                Param(name: "title", type: "string", required: false, description: "Optional title substring for app target"),
+                Param(name: "fromX", type: "double", required: false, description: "Absolute drag start x coordinate"),
+                Param(name: "fromY", type: "double", required: false, description: "Absolute drag start y coordinate"),
+                Param(name: "toX", type: "double", required: false, description: "Absolute drag end x coordinate"),
+                Param(name: "toY", type: "double", required: false, description: "Absolute drag end y coordinate"),
+                Param(name: "x", type: "double", required: false, description: "Alias for absolute drag end x coordinate"),
+                Param(name: "y", type: "double", required: false, description: "Alias for absolute drag end y coordinate"),
+                Param(name: "fromXRatio", type: "double", required: false, description: "Window-relative drag start x ratio"),
+                Param(name: "fromYRatio", type: "double", required: false, description: "Window-relative drag start y ratio"),
+                Param(name: "toXRatio", type: "double", required: false, description: "Window-relative drag end x ratio"),
+                Param(name: "toYRatio", type: "double", required: false, description: "Window-relative drag end y ratio"),
+                Param(name: "xRatio", type: "double", required: false, description: "Alias for window-relative drag end x ratio"),
+                Param(name: "yRatio", type: "double", required: false, description: "Alias for window-relative drag end y ratio"),
+                Param(name: "button", type: "string", required: false, description: "left or right (default left)"),
+                Param(name: "durationMs", type: "double", required: false, description: "Drag duration in milliseconds (default 360)"),
+                Param(name: "steps", type: "int", required: false, description: "Interpolated drag event count (default 18, max 120)"),
+                Param(name: "treatment", type: "string", required: false, description: "stage, present, or execute; execute is required to post drag events"),
+                Param(name: "dryRun", type: "bool", required: false, description: "Stage without dragging"),
+                Param(name: "capture", type: "bool", required: false, description: "Capture before/after artifacts when targeting a window (default true)"),
+                Param(name: "source", type: "string", required: false, description: "Calling surface label"),
+            ],
+            returns: .custom("Object with ok, run, from/to points, target window, and dragged flag"),
+            handler: { params in
+                try ComputerUseController.shared.drag(params: params)
             }
         ))
 
