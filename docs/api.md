@@ -212,6 +212,7 @@ methods write into the Lattices run store under
 | `runs.artifacts` | read | List artifacts for one run |
 | `capture.screenshotWindow` | write | Capture a window screenshot as a run artifact |
 | `computer.prepare` | write | Resolve and optionally capture a terminal target without mutating it |
+| `computer.windowState` | read | Inspect a target window's AX tree and return snapshot-local element ids |
 | `computer.focusWindow` | write | Resolve, capture, focus, and verify a target window |
 | `computer.showCursor` | write | Show a visible cursor appearance and record it as a run |
 | `computer.launchApp` | write | Launch or focus a normal macOS app and record the run |
@@ -256,6 +257,7 @@ lattices runs run_20260617-120000_a1b2c3
 lattices terminals
 lattices terminals --refresh
 lattices computer prepare --text "# hello" --treatment stage
+lattices call computer.windowState '{"app":"Finder","maxDepth":4}'
 lattices computer focus-window --wid 7258 --treatment present
 lattices computer cursor --style marker --shape chevron --angle-deg -8 --label typing
 lattices computer launch-app Scout
@@ -306,6 +308,42 @@ artifact, but it does not focus or type.
 await daemonCall('computer.prepare', {
   text: '# review before typing',
   treatment: 'stage'
+})
+```
+
+#### `computer.windowState`
+
+Inspect a target window's Accessibility tree and return snapshot-local element
+ids (`e1`, `e2`, ...), a flat `elements` list, and a compact `treeMarkdown`
+view. `mode: "ax"` avoids Screen Recording. Use `mode: "both"` or
+`capture: true` when you also want a screenshot artifact linked to a run.
+
+**Params**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `wid` | uint32 | no | Target window id |
+| `session` | string | no | Target lattices session |
+| `app` | string | no | Target app name |
+| `title` | string | no | Optional title substring for app target |
+| `mode` | string | no | `ax` (default), `both`, or `screenshot` |
+| `capture` | bool | no | Capture a screenshot artifact. Defaults true for `both`/`screenshot`, false for `ax` |
+| `maxDepth` | int | no | Maximum AX tree depth. Defaults to `8`, max `14` |
+| `maxElements` | int | no | Maximum elements returned. Defaults to `250`, max `1000` |
+| `timeoutMs` | int | no | Traversal timeout. Defaults to `1200`, max `5000` |
+| `source` | string | no | Calling surface label when capture creates a run |
+
+```js
+await daemonCall('computer.windowState', {
+  app: 'Finder',
+  maxDepth: 4,
+  maxElements: 120
+})
+
+await daemonCall('computer.windowState', {
+  wid: 7258,
+  mode: 'both',
+  source: 'agent'
 })
 ```
 
@@ -1840,3 +1878,18 @@ if (!(await isDaemonRunning())) {
 const status = await daemonCall('daemon.status')
 console.log(`Daemon up for ${Math.round(status.uptime)}s, tracking ${status.windowCount} windows`)
 ```
+
+### Pi extension
+
+Pi users can install the `@arach/pi-lattices` package in
+`packages/pi-lattices/` to expose the daemon as typed `lattices_*` tools:
+
+```bash
+pi install ./packages/pi-lattices --local
+lattices app
+```
+
+The extension wraps the existing daemon and keeps Lattices' macOS-native
+runtime, run artifacts, action receipts, and computer-use `treatment` semantics.
+It does not bundle `cua-driver` or enable browser automation. See
+[Pi Lattices Extension](/docs/pi-lattices) for the tool list and smoke checks.

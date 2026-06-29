@@ -1,0 +1,55 @@
+{
+  "name": "@arach/pi-lattices",
+  "version": "0.1.0",
+  "description": "Pi extension exposing the Lattices macOS daemon as typed, receipt-aware tools",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "extension",
+    "lattices",
+    "macos",
+    "daemon",
+    "computer-use",
+    "workspace"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./index.mjs",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.mjs",
+    "index.d.ts",
+    "daemon-client.mjs",
+    "README.md",
+    "test/smoke.mjs"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.mjs"
+    ]
+  },
+  "scripts": {
+    "smoke": "node test/smoke.mjs",
+    "smoke:no-daemon": "LATTICES_DAEMON_PORT=1 node test/smoke.mjs --no-daemon",
+    "smoke:live": "node test/smoke.mjs --live"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.74.0"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    }
+  }
+}
