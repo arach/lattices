@@ -211,6 +211,10 @@ methods write into the Lattices run store under
 | `runs.get` | read | Inspect one run, including artifacts and trace events |
 | `runs.artifacts` | read | List artifacts for one run |
 | `capture.screenshotWindow` | write | Capture a window screenshot as a run artifact |
+| `capture.screenshotRegion` | write | Capture a screen region as a run artifact |
+| `capture.zoomArtifact` | write | Crop and zoom an image artifact into a linked artifact |
+| `vision.analyzeWindow` | write | Capture a window and run local OCR-based visual analysis |
+| `vision.analyzeArtifact` | write | Analyze an existing image artifact or path with local OCR |
 | `computer.prepare` | write | Resolve and optionally capture a terminal target without mutating it |
 | `computer.windowState` | write | Inspect a target window's AX tree and optionally write screenshot/run artifacts |
 | `computer.elementAction` | write | Stage or execute an AX action against a snapshot element id |
@@ -227,9 +231,13 @@ methods write into the Lattices run store under
 | `computer.rightClick` | write | Stage or execute a right-click/context-click target |
 | `computer.scroll` | write | Stage or execute scroll wheel input |
 | `computer.drag` | write | Stage or execute a pointer drag between two points |
+| `computer.verify` | write | Verify OCR, AX, or artifact-change expectations |
 | `computer.demoScout` | write | Scout warm-up run for memo/demo recording |
 | `computer.typeText` | write | Insert text into a safe terminal using the least intrusive transport |
 | `computer.demoTerminal` | write | Compatibility wrapper for a bounded terminal text action |
+| `browser.getText` | read | Read visible browser text through Accessibility |
+| `browser.queryDom` | read | Query DOM summaries with explicit browser automation consent |
+| `browser.executeJavascript` | write | Stage or execute browser JavaScript with explicit consent |
 
 #### `capture.screenshotWindow`
 
@@ -257,6 +265,81 @@ await daemonCall('capture.screenshotWindow', {
 })
 ```
 
+#### `capture.screenshotRegion`
+
+Capture an explicit screen rectangle as a PNG artifact. If no rectangle is
+provided, the endpoint resolves `wid`/`session`/`app`/frontmost target and
+captures that window frame.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `x`, `y` | double | no | Region origin in screen coordinates |
+| `width`, `height` | double | no | Region size |
+| `w`, `h` | double | no | Size aliases |
+| `wid`, `session`, `app`, `title` | target | no | Target window fallback |
+| `runId`, `source`, `filename` | mixed | no | Standard run/artifact fields |
+
+```js
+await daemonCall('capture.screenshotRegion', {
+  x: 120,
+  y: 160,
+  width: 640,
+  height: 420,
+  filename: 'composer-region.png'
+})
+```
+
+#### `capture.zoomArtifact`
+
+Crop and zoom an existing image artifact into a new PNG artifact on the same
+run. Coordinates are image pixels; ratio fields are relative to the source
+image.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `runId` | string | no | Run containing the artifact |
+| `artifactId` | string | no | Source artifact id |
+| `path` | string | no | Source image path fallback |
+| `x`, `y`, `width`, `height` | double | no | Crop rectangle in image pixels |
+| `xRatio`, `yRatio`, `widthRatio`, `heightRatio` | double | no | Crop rectangle as image ratios |
+| `scale` | double | no | Zoom scale, default `2`, max `8` |
+| `filename`, `source` | string | no | Output artifact metadata |
+
+```js
+await daemonCall('capture.zoomArtifact', {
+  runId: 'run_...',
+  artifactId: 'art_...',
+  xRatio: 0.35,
+  yRatio: 0.7,
+  widthRatio: 0.3,
+  heightRatio: 0.2,
+  scale: 3
+})
+```
+
+#### `vision.analyzeWindow` / `vision.analyzeArtifact`
+
+Run explicit local OCR-based visual analysis. These endpoints do not call a
+cloud vision model; they use the same on-device Vision OCR path as Lattices OCR
+and return `fullText`, text blocks, a short answer, and optional `verified`
+when `contains` or `notContains` is supplied.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `instruction` | string | yes | Question or analysis instruction |
+| `wid`, `session`, `app`, `title` | target | no | Window target for `vision.analyzeWindow` |
+| `runId`, `artifactId`, `path` | mixed | no | Artifact target for `vision.analyzeArtifact` |
+| `contains`, `notContains` | string | no | Optional text expectation |
+| `source` | string | no | Calling surface label |
+
+```js
+await daemonCall('vision.analyzeWindow', {
+  app: 'Safari',
+  instruction: 'Read the visible page heading',
+  contains: 'Documentation'
+})
+```
+
 CLI:
 
 ```bash
@@ -281,6 +364,11 @@ lattices call computer.scroll '{"app":"Safari","direction":"down","amount":420,"
 lattices call computer.drag '{"app":"Finder","fromXRatio":0.2,"fromYRatio":0.2,"toXRatio":0.7,"toYRatio":0.7,"treatment":"stage"}'
 lattices call computer.doubleClick '{"app":"Finder","xRatio":0.5,"yRatio":0.5,"treatment":"stage"}'
 lattices call computer.rightClick '{"app":"Finder","xRatio":0.5,"yRatio":0.5,"treatment":"stage"}'
+lattices call computer.verify '{"app":"Safari","mode":"ocr","contains":"Docs"}'
+lattices call capture.screenshotRegion '{"app":"Safari","filename":"safari-region.png"}'
+lattices call vision.analyzeWindow '{"app":"Safari","instruction":"Read visible text"}'
+lattices call browser.getText '{"app":"Safari"}'
+lattices call browser.queryDom '{"app":"Safari","selector":"h1","allowAutomation":true}'
 lattices computer type-text --text "# hello from lattices"
 lattices computer demo-terminal --dry-run
 ```
@@ -695,6 +783,78 @@ await daemonCall('computer.drag', {
   toXRatio: 0.7,
   toYRatio: 0.7,
   treatment: 'stage'
+})
+```
+
+#### `computer.verify`
+
+Verify a post-action outcome using OCR, AX snapshot text/value, or artifact hash
+comparison. OCR verification captures/analyzes the target when needed. AX
+verification can use a `snapshotId`/`elementId` from `computer.windowState`.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `mode` | string | no | `ocr` (default), `ax`, or `artifactChanged` |
+| `wid`, `session`, `app`, `title` | target | no | Window target |
+| `snapshotId`, `elementId` | string | no | AX snapshot/element target |
+| `runId`, `artifactId`, `path` | mixed | no | Image artifact target for OCR verification |
+| `contains`, `expected` | string | no | Text that should be present |
+| `notContains` | string | no | Text that should be absent |
+| `beforeArtifactId`, `afterArtifactId` | string | no | Artifact ids for `artifactChanged` |
+| `beforePath`, `afterPath` | string | no | Path fallback for `artifactChanged` |
+| `source` | string | no | Calling surface label |
+
+```js
+await daemonCall('computer.verify', {
+  app: 'Safari',
+  mode: 'ocr',
+  contains: 'Lattices'
+})
+
+const state = await daemonCall('computer.windowState', { app: 'Notes' })
+await daemonCall('computer.verify', {
+  mode: 'ax',
+  snapshotId: state.snapshotId,
+  elementId: 'e4',
+  contains: 'Draft'
+})
+```
+
+#### `browser.getText` / `browser.queryDom` / `browser.executeJavascript`
+
+Browser primitives are intentionally gated. `browser.getText` reads visible text
+through Accessibility and does not enable JavaScript automation. DOM querying
+and arbitrary JavaScript use AppleScript browser automation and require
+`allowAutomation: true`; JavaScript mutation also requires
+`treatment: "execute"`.
+
+Supported browser app names: `Safari`, `Google Chrome`, `Chrome`, `Brave
+Browser`, `Microsoft Edge`, and `Arc`.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `wid`, `app`, `title` | target | no | Browser target |
+| `selector` | string | yes for `queryDom` | CSS selector |
+| `limit` | int | no | Max DOM nodes, default `20`, max `200` |
+| `script` | string | yes for `executeJavascript` | JavaScript source |
+| `allowAutomation` | bool | yes for DOM/execute | Explicit browser automation consent |
+| `treatment` | string | no | `stage` (default) or `execute` for JavaScript |
+| `source` | string | no | Calling surface label |
+
+```js
+await daemonCall('browser.getText', { app: 'Safari' })
+
+await daemonCall('browser.queryDom', {
+  app: 'Safari',
+  selector: 'h1, main a',
+  allowAutomation: true
+})
+
+await daemonCall('browser.executeJavascript', {
+  app: 'Safari',
+  script: 'document.title',
+  treatment: 'execute',
+  allowAutomation: true
 })
 ```
 

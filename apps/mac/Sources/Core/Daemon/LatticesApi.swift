@@ -1486,6 +1486,57 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
+            method: "capture.screenshotRegion",
+            description: "Capture a screen region as a PNG run artifact. If no region is supplied, captures the resolved target window frame.",
+            access: .mutate,
+            params: [
+                Param(name: "x", type: "double", required: false, description: "Region x in screen coordinates"),
+                Param(name: "y", type: "double", required: false, description: "Region y in screen coordinates"),
+                Param(name: "width", type: "double", required: false, description: "Region width"),
+                Param(name: "height", type: "double", required: false, description: "Region height"),
+                Param(name: "w", type: "double", required: false, description: "Alias for width"),
+                Param(name: "h", type: "double", required: false, description: "Alias for height"),
+                Param(name: "wid", type: "uint32", required: false, description: "Window id whose frame should be captured when no explicit region is supplied"),
+                Param(name: "session", type: "string", required: false, description: "Target lattices session"),
+                Param(name: "app", type: "string", required: false, description: "App whose window frame should be captured when no explicit region is supplied"),
+                Param(name: "title", type: "string", required: false, description: "Optional title substring for app target"),
+                Param(name: "runId", type: "string", required: false, description: "Existing run id to append to"),
+                Param(name: "source", type: "string", required: false, description: "Calling surface label"),
+                Param(name: "filename", type: "string", required: false, description: "Optional artifact filename"),
+            ],
+            returns: .custom("Object with ok, run, region, artifact, and optional target window"),
+            handler: { params in
+                try CaptureController.shared.screenshotRegion(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "capture.zoomArtifact",
+            description: "Crop and zoom an image artifact into a new PNG artifact linked to the same run.",
+            access: .mutate,
+            params: [
+                Param(name: "runId", type: "string", required: false, description: "Run id containing the source artifact"),
+                Param(name: "artifactId", type: "string", required: false, description: "Source image artifact id"),
+                Param(name: "path", type: "string", required: false, description: "Source image path fallback"),
+                Param(name: "x", type: "double", required: false, description: "Crop x in image pixels"),
+                Param(name: "y", type: "double", required: false, description: "Crop y in image pixels"),
+                Param(name: "width", type: "double", required: false, description: "Crop width in image pixels"),
+                Param(name: "height", type: "double", required: false, description: "Crop height in image pixels"),
+                Param(name: "xRatio", type: "double", required: false, description: "Crop x ratio within source image"),
+                Param(name: "yRatio", type: "double", required: false, description: "Crop y ratio within source image"),
+                Param(name: "widthRatio", type: "double", required: false, description: "Crop width ratio within source image"),
+                Param(name: "heightRatio", type: "double", required: false, description: "Crop height ratio within source image"),
+                Param(name: "scale", type: "double", required: false, description: "Zoom scale, default 2, max 8"),
+                Param(name: "filename", type: "string", required: false, description: "Optional output filename"),
+                Param(name: "source", type: "string", required: false, description: "Calling surface label"),
+            ],
+            returns: .custom("Object with ok, run, artifact, sourceArtifact, crop, and scale"),
+            handler: { params in
+                try CaptureController.shared.zoomArtifact(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
             method: "capture.recordWindow",
             description: "Start recording a target window as a run artifact. Defaults to region capture so overlays and visible cursor cues are included.",
             access: .mutate,
@@ -1547,6 +1598,45 @@ final class LatticesApi {
             returns: .custom("Object with ok, finished, marker, and optional completed run"),
             handler: { params in
                 try CaptureController.shared.stopRecording(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "vision.analyzeWindow",
+            description: "Capture a target window and run explicit local OCR-based visual analysis against it.",
+            access: .mutate,
+            params: [
+                Param(name: "wid", type: "uint32", required: false, description: "Target window id"),
+                Param(name: "session", type: "string", required: false, description: "Target lattices session"),
+                Param(name: "app", type: "string", required: false, description: "Target app name"),
+                Param(name: "title", type: "string", required: false, description: "Optional title substring for app target"),
+                Param(name: "instruction", type: "string", required: true, description: "Question or instruction for the analysis"),
+                Param(name: "contains", type: "string", required: false, description: "Optional text expectation to verify"),
+                Param(name: "notContains", type: "string", required: false, description: "Optional text absence expectation to verify"),
+                Param(name: "source", type: "string", required: false, description: "Calling surface label"),
+            ],
+            returns: .custom("Object with ok, provider, answer, fullText, blocks, run, and artifact"),
+            handler: { params in
+                try CaptureController.shared.analyzeWindow(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "vision.analyzeArtifact",
+            description: "Run explicit local OCR-based visual analysis against an existing image artifact or path.",
+            access: .mutate,
+            params: [
+                Param(name: "runId", type: "string", required: false, description: "Run id containing the source artifact"),
+                Param(name: "artifactId", type: "string", required: false, description: "Source image artifact id"),
+                Param(name: "path", type: "string", required: false, description: "Source image path fallback"),
+                Param(name: "instruction", type: "string", required: true, description: "Question or instruction for the analysis"),
+                Param(name: "contains", type: "string", required: false, description: "Optional text expectation to verify"),
+                Param(name: "notContains", type: "string", required: false, description: "Optional text absence expectation to verify"),
+                Param(name: "source", type: "string", required: false, description: "Calling surface label"),
+            ],
+            returns: .custom("Object with ok, provider, answer, fullText, blocks, run, and artifact"),
+            handler: { params in
+                try CaptureController.shared.analyzeArtifact(params: params)
             }
         ))
 
@@ -2007,6 +2097,88 @@ final class LatticesApi {
             returns: .custom("Object with ok, run, from/to points, target window, and dragged flag"),
             handler: { params in
                 try ComputerUseController.shared.drag(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "computer.verify",
+            description: "Verify OCR, AX, or artifact-change expectations after a computer-use flow.",
+            access: .mutate,
+            params: [
+                Param(name: "mode", type: "string", required: false, description: "ocr (default), ax, or artifactChanged"),
+                Param(name: "wid", type: "uint32", required: false, description: "Target window id for OCR/AX verification"),
+                Param(name: "session", type: "string", required: false, description: "Target lattices session"),
+                Param(name: "app", type: "string", required: false, description: "Target app name"),
+                Param(name: "title", type: "string", required: false, description: "Optional title substring for app target"),
+                Param(name: "snapshotId", type: "string", required: false, description: "AX snapshot id from computer.windowState"),
+                Param(name: "elementId", type: "string", required: false, description: "AX element id within snapshotId"),
+                Param(name: "runId", type: "string", required: false, description: "Run id containing an image artifact"),
+                Param(name: "artifactId", type: "string", required: false, description: "Image artifact id for OCR verification"),
+                Param(name: "path", type: "string", required: false, description: "Image path fallback for OCR verification"),
+                Param(name: "contains", type: "string", required: false, description: "Text that should be present"),
+                Param(name: "expected", type: "string", required: false, description: "Alias for contains"),
+                Param(name: "notContains", type: "string", required: false, description: "Text that should be absent"),
+                Param(name: "beforeArtifactId", type: "string", required: false, description: "Before artifact id for artifactChanged mode"),
+                Param(name: "afterArtifactId", type: "string", required: false, description: "After artifact id for artifactChanged mode"),
+                Param(name: "beforePath", type: "string", required: false, description: "Before image path for artifactChanged mode"),
+                Param(name: "afterPath", type: "string", required: false, description: "After image path for artifactChanged mode"),
+                Param(name: "source", type: "string", required: false, description: "Calling surface label"),
+            ],
+            returns: .custom("Object with ok, verified, mode, expectation, evidence, and optional run"),
+            handler: { params in
+                try ComputerUseController.shared.verify(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "browser.getText",
+            description: "Read visible browser text through Accessibility without enabling browser JavaScript automation.",
+            access: .read,
+            params: [
+                Param(name: "wid", type: "uint32", required: false, description: "Target browser window id"),
+                Param(name: "app", type: "string", required: false, description: "Browser app name"),
+                Param(name: "title", type: "string", required: false, description: "Optional title substring for browser target"),
+            ],
+            returns: .custom("Object with ok, target, source, text, and blocks"),
+            handler: { params in
+                try BrowserUseController.shared.getText(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "browser.queryDom",
+            description: "Read DOM element summaries from a supported browser with explicit allowAutomation gating.",
+            access: .read,
+            params: [
+                Param(name: "wid", type: "uint32", required: false, description: "Target browser window id"),
+                Param(name: "app", type: "string", required: false, description: "Browser app name"),
+                Param(name: "title", type: "string", required: false, description: "Optional title substring for browser target"),
+                Param(name: "selector", type: "string", required: true, description: "CSS selector to query"),
+                Param(name: "limit", type: "int", required: false, description: "Maximum nodes to return (default 20, max 200)"),
+                Param(name: "allowAutomation", type: "bool", required: true, description: "Must be true because DOM reads use browser JavaScript automation"),
+            ],
+            returns: .custom("Object with ok, target, selector, result, and raw JSON"),
+            handler: { params in
+                try BrowserUseController.shared.queryDom(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "browser.executeJavascript",
+            description: "Stage or execute JavaScript in a supported browser tab; execute requires allowAutomation true.",
+            access: .mutate,
+            params: [
+                Param(name: "wid", type: "uint32", required: false, description: "Target browser window id"),
+                Param(name: "app", type: "string", required: false, description: "Browser app name"),
+                Param(name: "title", type: "string", required: false, description: "Optional title substring for browser target"),
+                Param(name: "script", type: "string", required: true, description: "JavaScript source to stage or execute"),
+                Param(name: "treatment", type: "string", required: false, description: "stage (default) or execute"),
+                Param(name: "allowAutomation", type: "bool", required: false, description: "Must be true when treatment is execute"),
+                Param(name: "source", type: "string", required: false, description: "Calling surface label"),
+            ],
+            returns: .custom("Object with ok, treatment, executed, target, run, result, and raw output"),
+            handler: { params in
+                try BrowserUseController.shared.executeJavascript(params: params)
             }
         ))
 

@@ -14,7 +14,8 @@ export default {
       'The app finds terminal windows via a `[lattices:session-name]` tag embedded in the tmux window title',
       'Window navigation falls through CG → AX → AppleScript depending on macOS permissions',
       'Space switching uses private SkyLight framework APIs loaded via dlopen at runtime',
-      'The daemon runs on ws://127.0.0.1:9399 with 35+ RPC methods and real-time events',
+      'The daemon runs on ws://127.0.0.1:9399 with 40+ typed RPC methods and real-time events',
+      'Computer-use work must preserve treatment semantics, run receipts, artifacts, and explicit browser automation gates',
     ],
 
     entryPoints: {
@@ -35,10 +36,12 @@ export default {
       { pattern: 'terminal', instruction: 'Check apps/mac/Sources/Core/Workspace/Terminal/Terminal.swift for supported terminals and launch logic' },
       { pattern: 'daemon', instruction: 'Check apps/mac/Sources/Core/Daemon/DaemonServer.swift and apps/mac/Sources/Core/Daemon/LatticesApi.swift for WebSocket API' },
       { pattern: 'api', instruction: 'Check docs/api.md for the daemon RPC reference' },
+      { pattern: 'computer-use', instruction: 'Check docs/agent/cua-implementation.md and docs/proposals/LAT-008-pi-lattices-computer-use.md before changing CUA endpoints' },
+      { pattern: 'cua', instruction: 'Check docs/agent/cua-implementation.md and docs/proposals/LAT-008-pi-lattices-computer-use.md before changing CUA endpoints' },
       { pattern: 'twin', instruction: 'Check docs/twins.md and bin/project-twin.ts for the Pi-backed project twin runtime' },
     ],
 
-    sections: ['overview', 'quickstart', 'concepts', 'twins', 'config', 'app', 'api', 'layers'],
+    sections: ['overview', 'quickstart', 'concepts', 'twins', 'config', 'app', 'api', 'agent/cua-implementation', 'layers'],
   },
 
   docs: {

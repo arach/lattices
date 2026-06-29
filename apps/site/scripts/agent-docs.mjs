@@ -23,6 +23,7 @@ const primaryDocReadOrder = [
   'app',
   'layers',
   'api',
+  'agent/cua-implementation',
   'agents',
   'voice',
   'ocr',
@@ -156,7 +157,7 @@ export async function writeAgentArtifacts(options = {}) {
   await writeArtifact('agent/context.md', agentContextMarkdown)
   await writeArtifact('agent/bundles/all.md', formatDocsBundle(docs))
   await writeArtifact('agent/bundles/core.md', buildContextBundle(docs, ['overview', 'quickstart', 'concepts', 'config', 'agents']))
-  await writeArtifact('agent/bundles/daemon-api.md', buildContextBundle(docs, ['api', 'agents', 'tiling-reference', 'layers', 'ocr']))
+  await writeArtifact('agent/bundles/daemon-api.md', buildContextBundle(docs, ['api', 'agent/cua-implementation', 'agents', 'tiling-reference', 'layers', 'ocr']))
   await writeArtifact('agent/bundles/voice.md', buildContextBundle(docs, [
     'voice',
     'voice-command-protocol',

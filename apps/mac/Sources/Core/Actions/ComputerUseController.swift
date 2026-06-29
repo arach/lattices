@@ -540,6 +540,16 @@ final class ComputerUseController {
         try keyboardAction(params: params, actionName: "hotkey", requiresModifier: true)
     }
 
+    func verify(params: JSON?) throws -> JSON {
+        let mode = params?["mode"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            ?? params?["type"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            ?? "ocr"
+        if mode.hasPrefix("ax") || params?["snapshotId"]?.stringValue != nil || params?["snapshot-id"]?.stringValue != nil {
+            return try verifyAX(params: params, mode: mode)
+        }
+        return try CaptureController.shared.verifyVisual(params: params)
+    }
+
     private func typeElement(params: JSON?, actionName: String) throws -> JSON {
         let source = params?["source"]?.stringValue ?? "daemon"
         let treatment = ComputerTreatment.resolve(params: params, defaultValue: .stage)
@@ -804,6 +814,153 @@ final class ComputerUseController {
                 ]
             )
             throw error
+        }
+    }
+
+    private struct ComputerVerificationExpectation {
+        let kind: String
+        let value: String
+
+        var json: JSON {
+            .object([
+                "kind": .string(kind),
+                "value": .string(value),
+            ])
+        }
+    }
+
+    private func verifyAX(params: JSON?, mode: String) throws -> JSON {
+        let source = params?["source"]?.stringValue ?? "daemon"
+        let expectation = try computerVerificationExpectation(params: params)
+        let snapshotId = params?["snapshotId"]?.stringValue
+            ?? params?["snapshot-id"]?.stringValue
+            ?? params?["snapshot"]?.stringValue
+        let elementId = params?["elementId"]?.stringValue
+            ?? params?["element-id"]?.stringValue
+            ?? params?["id"]?.stringValue
+
+        let run: RunSession
+        let target: WindowEntry?
+        let text: String
+        let elementJSON: JSON?
+        let resolvedSnapshotId: String?
+
+        if let snapshotId, !snapshotId.isEmpty {
+            let snapshot = try axSnapshot(id: snapshotId)
+            target = snapshot.window
+            resolvedSnapshotId = snapshot.id
+            run = try RunStore.shared.createRun(
+                title: "Verify AX state",
+                source: source,
+                surfaces: [.window(snapshot.window)]
+            )
+
+            if let elementId, !elementId.isEmpty {
+                guard let element = snapshot.elementsById[elementId] else {
+                    throw RouterError.notFound("element \(elementId) in snapshot \(snapshotId)")
+                }
+                elementJSON = element.json
+                text = [
+                    element.value,
+                    element.title,
+                    element.label,
+                    element.description,
+                    element.help,
+                    element.identifier,
+                ]
+                    .compactMap { $0 }
+                    .joined(separator: "\n")
+            } else {
+                elementJSON = nil
+                text = treeMarkdown(for: Array(snapshot.elementsById.values).sorted { $0.path < $1.path })
+            }
+        } else {
+            let window = try CaptureController.shared.resolveWindow(params: params)
+            target = window
+            resolvedSnapshotId = nil
+            run = try RunStore.shared.createRun(
+                title: "Verify window accessibility text",
+                source: source,
+                surfaces: [.window(window)]
+            )
+            elementJSON = nil
+            guard AXIsProcessTrusted() else {
+                throw RouterError.custom("Accessibility permission is required for AX verification")
+            }
+            text = AccessibilityTextExtractor().extract(pid: window.pid, wid: window.wid, minChars: 0)?.fullText ?? ""
+        }
+
+        _ = try RunStore.shared.markRunning(
+            id: run.id,
+            summary: "Verifying AX state",
+            data: [
+                "mode": .string(mode),
+                "expectation": expectation.json,
+                "snapshotId": resolvedSnapshotId.map { .string($0) } ?? .null,
+                "elementId": elementId.map { .string($0) } ?? .null,
+            ]
+        )
+
+        let verified = evaluateComputerExpectation(expectation, fullText: text)
+        let completed = try RunStore.shared.complete(
+            id: run.id,
+            summary: verified ? "AX verification passed" : "AX verification failed",
+            data: [
+                "verified": .bool(verified),
+                "mode": .string("ax"),
+                "characters": .int(text.count),
+            ]
+        )
+
+        var object: [String: JSON] = [
+            "ok": .bool(true),
+            "verified": .bool(verified),
+            "mode": .string("ax"),
+            "expectation": expectation.json,
+            "fullText": .string(text),
+            "run": completed.json,
+        ]
+        if let target {
+            object["target"] = Encoders.window(target)
+        }
+        if let resolvedSnapshotId {
+            object["snapshotId"] = .string(resolvedSnapshotId)
+        }
+        if let elementId {
+            object["elementId"] = .string(elementId)
+        }
+        if let elementJSON {
+            object["element"] = elementJSON
+        }
+        return .object(object)
+    }
+
+    private func computerVerificationExpectation(params: JSON?) throws -> ComputerVerificationExpectation {
+        if let value = params?["contains"]?.stringValue
+            ?? params?["expected"]?.stringValue
+            ?? params?["text"]?.stringValue
+            ?? params?["value"]?.stringValue {
+            return ComputerVerificationExpectation(kind: "contains", value: value)
+        }
+        if let value = params?["notContains"]?.stringValue
+            ?? params?["not-contains"]?.stringValue
+            ?? params?["absent"]?.stringValue {
+            return ComputerVerificationExpectation(kind: "notContains", value: value)
+        }
+        throw RouterError.missingParam("contains, expected, value, or notContains")
+    }
+
+    private func evaluateComputerExpectation(
+        _ expectation: ComputerVerificationExpectation,
+        fullText: String
+    ) -> Bool {
+        let haystack = fullText.lowercased()
+        let needle = expectation.value.lowercased()
+        switch expectation.kind {
+        case "notContains":
+            return !haystack.contains(needle)
+        default:
+            return haystack.contains(needle)
         }
     }
 
