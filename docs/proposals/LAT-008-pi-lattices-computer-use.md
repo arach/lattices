@@ -70,8 +70,9 @@ Confirmed in `docs/api.md` and
 - `computer.windowState` is now present as the first Phase 2 window-state
   endpoint.
 - `computer.elementAction` is present for snapshot element-id press/showMenu/focus
-  actions. Text/value endpoints such as `computer.typeElement` and
-  `computer.setValue` are not yet present as public daemon methods.
+  actions.
+- `computer.typeElement` and `computer.setValue` are present for snapshot
+  element-id AXValue insertion.
 
 MVP wrapper decision: `lattices_window_focus` maps to
 `computer.focusWindow`, not raw `window.focus`, so focus/present calls can stay
@@ -256,7 +257,6 @@ Candidate endpoints:
 - `computer.drag`
 - `computer.doubleClick`
 - `computer.rightClick` or improved `computer.click` with `count` and button
-- `computer.setValue` (if not completed in Phase 2)
 
 Design rules:
 
@@ -355,7 +355,7 @@ Guardrails:
 1. Build `pi-lattices` MVP around current daemon methods.
 2. Add `computer.windowState` window-state endpoint. **Done.**
 3. Add `computer.elementAction` and element-ID support in click/type/set value.
-   **Partially done:** `computer.elementAction` covers AXPress/showMenu/focus.
+   **Done.**
 4. Add keyboard/scroll/drag/double-click primitives.
 5. Add vision/zoom/verify.
 6. Add browser primitives.

@@ -214,6 +214,8 @@ methods write into the Lattices run store under
 | `computer.prepare` | write | Resolve and optionally capture a terminal target without mutating it |
 | `computer.windowState` | write | Inspect a target window's AX tree and optionally write screenshot/run artifacts |
 | `computer.elementAction` | write | Stage or execute an AX action against a snapshot element id |
+| `computer.typeElement` | write | Stage or execute AXValue text insertion against a snapshot element id |
+| `computer.setValue` | write | Alias for replacing a snapshot element's AXValue |
 | `computer.focusWindow` | write | Resolve, capture, focus, and verify a target window |
 | `computer.showCursor` | write | Show a visible cursor appearance and record it as a run |
 | `computer.launchApp` | write | Launch or focus a normal macOS app and record the run |
@@ -378,6 +380,42 @@ await daemonCall('computer.elementAction', {
   snapshotId: state.snapshotId,
   elementId: 'e7',
   action: 'press',
+  treatment: 'execute'
+})
+```
+
+#### `computer.typeElement` / `computer.setValue`
+
+Stage or execute text/value insertion against an element returned by a recent
+`computer.windowState` call. `computer.typeElement` accepts `text`;
+`computer.setValue` accepts `value` and otherwise uses the same behavior. In
+`stage`, Lattices records the intended value without changing the app.
+
+**Params**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `snapshotId` | string | yes | Snapshot id returned by `computer.windowState` |
+| `elementId` | string | yes | Snapshot-local element id, such as `e4` |
+| `text` | string | yes for `typeElement` | Text to set or append |
+| `value` | string | yes for `setValue` | Value to set or append |
+| `append` | bool | no | Append to current `AXValue` instead of replacing it |
+| `typeIntervalMs` | double | no | Per-character interval for typewriter-style AXValue updates |
+| `treatment` | string | no | `stage`, `present`, or `execute`. Defaults to `stage` |
+| `dryRun` | bool | no | Stage without setting `AXValue` |
+| `capture` | bool | no | Capture before/after artifacts. Defaults to `true` |
+| `source` | string | no | Calling surface label |
+
+```js
+const state = await daemonCall('computer.windowState', {
+  app: 'Notes',
+  maxDepth: 8
+})
+
+await daemonCall('computer.typeElement', {
+  snapshotId: state.snapshotId,
+  elementId: 'e12',
+  text: 'Draft note',
   treatment: 'execute'
 })
 ```

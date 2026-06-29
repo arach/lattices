@@ -1611,6 +1611,48 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
+            method: "computer.typeElement",
+            description: "Stage or execute AXValue text insertion against an element from a recent windowState snapshot.",
+            access: .mutate,
+            params: [
+                Param(name: "snapshotId", type: "string", required: true, description: "Snapshot id returned by computer.windowState"),
+                Param(name: "elementId", type: "string", required: true, description: "Snapshot-local element id, such as e4"),
+                Param(name: "text", type: "string", required: true, description: "Text to set or append to AXValue"),
+                Param(name: "append", type: "bool", required: false, description: "Append to the current AXValue instead of replacing it"),
+                Param(name: "typeIntervalMs", type: "double", required: false, description: "Optional per-character interval for typewriter-style AXValue updates"),
+                Param(name: "treatment", type: "string", required: false, description: "stage, present, or execute"),
+                Param(name: "dryRun", type: "bool", required: false, description: "Stage without setting AXValue"),
+                Param(name: "capture", type: "bool", required: false, description: "Capture before/after artifacts (default true)"),
+                Param(name: "source", type: "string", required: false, description: "Calling surface label"),
+            ],
+            returns: .custom("Object with ok, run, target, element, typed, focused, and optional result/artifacts"),
+            handler: { params in
+                try ComputerUseController.shared.typeElement(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "computer.setValue",
+            description: "Alias for computer.typeElement that accepts value or text for AXValue replacement.",
+            access: .mutate,
+            params: [
+                Param(name: "snapshotId", type: "string", required: true, description: "Snapshot id returned by computer.windowState"),
+                Param(name: "elementId", type: "string", required: true, description: "Snapshot-local element id, such as e4"),
+                Param(name: "value", type: "string", required: true, description: "Value to set on AXValue"),
+                Param(name: "append", type: "bool", required: false, description: "Append to the current AXValue instead of replacing it"),
+                Param(name: "typeIntervalMs", type: "double", required: false, description: "Optional per-character interval for typewriter-style AXValue updates"),
+                Param(name: "treatment", type: "string", required: false, description: "stage, present, or execute"),
+                Param(name: "dryRun", type: "bool", required: false, description: "Stage without setting AXValue"),
+                Param(name: "capture", type: "bool", required: false, description: "Capture before/after artifacts (default true)"),
+                Param(name: "source", type: "string", required: false, description: "Calling surface label"),
+            ],
+            returns: .custom("Object with ok, run, target, element, typed, focused, and optional result/artifacts"),
+            handler: { params in
+                try ComputerUseController.shared.setValue(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
             method: "computer.focusWindow",
             description: "Resolve, optionally capture, focus, and verify a target window.",
             access: .mutate,
