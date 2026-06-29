@@ -56,6 +56,7 @@ All tools use the `lattices_` prefix.
 | Tool | Daemon method | Safety note |
 | --- | --- | --- |
 | `lattices_computer_window_state` | `computer.windowState` | `mode: "ax"` inspects only; `both`, `screenshot`, or `capture: true` create run artifacts. |
+| `lattices_computer_element_action` | `computer.elementAction` | Defaults to `treatment: "stage"`; pass `execute` to perform AXPress/showMenu. |
 | `lattices_window_focus` | `computer.focusWindow` | Defaults to `treatment: "stage"`; pass `present` or `execute` to focus. |
 | `lattices_window_place` | `window.place` | Returns the daemon action receipt. |
 | `lattices_capture_window` | `capture.screenshotWindow` | Creates a run artifact. |
@@ -112,7 +113,7 @@ export LATTICES_DAEMON_TIMEOUT_MS=3000
 ## Phase 2 direction
 
 `computer.windowState` is now exposed as `lattices_computer_window_state` for
-AX inspection and optional run-backed screenshot artifacts. The next expansion
-should add element-id actions (`computer.elementAction`, `computer.typeElement`,
-`computer.setValue`) while keeping treatment/run/artifact semantics in the
-daemon.
+AX inspection and optional run-backed screenshot artifacts. `computer.elementAction`
+adds the first element-id mutation for AXPress/showMenu/focus. The next expansion
+should add text/value actions (`computer.typeElement`, `computer.setValue`) while
+keeping treatment/run/artifact semantics in the daemon.

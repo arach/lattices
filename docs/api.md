@@ -213,6 +213,7 @@ methods write into the Lattices run store under
 | `capture.screenshotWindow` | write | Capture a window screenshot as a run artifact |
 | `computer.prepare` | write | Resolve and optionally capture a terminal target without mutating it |
 | `computer.windowState` | write | Inspect a target window's AX tree and optionally write screenshot/run artifacts |
+| `computer.elementAction` | write | Stage or execute an AX action against a snapshot element id |
 | `computer.focusWindow` | write | Resolve, capture, focus, and verify a target window |
 | `computer.showCursor` | write | Show a visible cursor appearance and record it as a run |
 | `computer.launchApp` | write | Launch or focus a normal macOS app and record the run |
@@ -346,6 +347,38 @@ await daemonCall('computer.windowState', {
   wid: 7258,
   mode: 'both',
   source: 'agent'
+})
+```
+
+#### `computer.elementAction`
+
+Stage or execute an Accessibility action against an element returned by a recent
+`computer.windowState` call. Snapshot element ids are intentionally local to the
+daemon process and expire from the in-memory cache after a short window.
+
+**Params**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `snapshotId` | string | yes | Snapshot id returned by `computer.windowState` |
+| `elementId` | string | yes | Snapshot-local element id, such as `e4` |
+| `action` | string | no | `press` (default), `showMenu`, or `focus` |
+| `treatment` | string | no | `stage`, `present`, or `execute`. Defaults to `stage` |
+| `dryRun` | bool | no | Stage without performing the action |
+| `capture` | bool | no | Capture before/after artifacts. Defaults to `true` |
+| `source` | string | no | Calling surface label |
+
+```js
+const state = await daemonCall('computer.windowState', {
+  app: 'Calculator',
+  maxDepth: 6
+})
+
+await daemonCall('computer.elementAction', {
+  snapshotId: state.snapshotId,
+  elementId: 'e7',
+  action: 'press',
+  treatment: 'execute'
 })
 ```
 

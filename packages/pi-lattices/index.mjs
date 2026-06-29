@@ -36,6 +36,10 @@ const windowStateMode = optionalEnum(
   ["ax", "both", "screenshot"],
   "Snapshot mode. ax avoids Screen Recording; both includes AX plus screenshot capture; screenshot skips AX."
 );
+const elementAction = optionalEnum(
+  ["press", "showMenu", "focus"],
+  "Element action. press is the default and maps to AXPress."
+);
 
 const emptyParams = object();
 const runSourceParams = {
@@ -151,6 +155,19 @@ export const LATTICES_TOOLS = [
       ...targetParams,
       ...computerBaseParams,
     }),
+    defaultTreatment: "stage",
+    defaultSource: DEFAULT_SOURCE,
+  },
+  {
+    name: `${TOOL_PREFIX}computer_element_action`,
+    method: "computer.elementAction",
+    description: "Stage or execute an Accessibility action against an element id from lattices_computer_window_state.",
+    parameters: object({
+      snapshotId: string("Snapshot id returned by lattices_computer_window_state."),
+      elementId: string("Snapshot-local element id, such as e4."),
+      action: elementAction,
+      ...computerBaseParams,
+    }, ["snapshotId", "elementId"]),
     defaultTreatment: "stage",
     defaultSource: DEFAULT_SOURCE,
   },

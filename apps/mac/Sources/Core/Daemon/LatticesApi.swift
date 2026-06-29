@@ -1592,6 +1592,25 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
+            method: "computer.elementAction",
+            description: "Stage or execute an Accessibility action against an element from a recent windowState snapshot.",
+            access: .mutate,
+            params: [
+                Param(name: "snapshotId", type: "string", required: true, description: "Snapshot id returned by computer.windowState"),
+                Param(name: "elementId", type: "string", required: true, description: "Snapshot-local element id, such as e4"),
+                Param(name: "action", type: "string", required: false, description: "press (default), showMenu, or focus"),
+                Param(name: "treatment", type: "string", required: false, description: "stage, present, or execute"),
+                Param(name: "dryRun", type: "bool", required: false, description: "Stage without performing the action"),
+                Param(name: "capture", type: "bool", required: false, description: "Capture before/after artifacts (default true)"),
+                Param(name: "source", type: "string", required: false, description: "Calling surface label"),
+            ],
+            returns: .custom("Object with ok, run, target, element, requestedAction, performed, and optional artifacts"),
+            handler: { params in
+                try ComputerUseController.shared.elementAction(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
             method: "computer.focusWindow",
             description: "Resolve, optionally capture, focus, and verify a target window.",
             access: .mutate,

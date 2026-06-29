@@ -223,10 +223,19 @@ private struct AXSnapshotContext {
     let messagingTimeout: Float
     var nextElementIndex = 1
     var elements: [AXSnapshotElement] = []
+    var elementRefsById: [String: AXUIElement] = [:]
     var warnings: [String] = []
     var hitDepthLimit = false
     var hitElementLimit = false
     var hitTimeout = false
+}
+
+private struct AXWindowSnapshot {
+    let id: String
+    let window: WindowEntry
+    let createdAt: Date
+    let elementsById: [String: AXSnapshotElement]
+    let elementRefsById: [String: AXUIElement]
 }
 
 final class ComputerUseController {
@@ -237,6 +246,10 @@ final class ComputerUseController {
         "claude", "codex", "vim", "nvim", "emacs", "nano", "less", "more", "top",
         "ssh", "python", "python3", "node", "bun", "npm", "pnpm", "yarn", "swift",
     ]
+    private let axSnapshotLock = NSLock()
+    private let axSnapshotTTL: TimeInterval = 300
+    private let maxAXSnapshotCacheCount = 30
+    private var axSnapshotsById: [String: AXWindowSnapshot] = [:]
 
     private init() {}
 
@@ -303,6 +316,12 @@ final class ComputerUseController {
                     timeoutMs: timeoutMs
                 )
                 elements = context.elements
+                storeAXSnapshot(
+                    id: snapshotId,
+                    window: window,
+                    elements: context.elements,
+                    elementRefsById: context.elementRefsById
+                )
                 warnings.append(contentsOf: context.warnings)
                 if context.hitDepthLimit {
                     warnings.append("AX traversal reached maxDepth \(maxDepth)")
@@ -368,6 +387,139 @@ final class ComputerUseController {
                     ]
                 )
             }
+            throw error
+        }
+    }
+
+    func elementAction(params: JSON?) throws -> JSON {
+        let source = params?["source"]?.stringValue ?? "daemon"
+        let treatment = ComputerTreatment.resolve(params: params, defaultValue: .stage)
+        let shouldCapture = params?["capture"]?.boolValue ?? true
+        let snapshotId = try requiredString(params, keys: ["snapshotId", "snapshot-id", "snapshot"])
+        let elementId = try requiredString(params, keys: ["elementId", "element-id", "id"])
+        let requestedAction = try elementActionName(params)
+        let snapshot = try axSnapshot(id: snapshotId)
+        guard let element = snapshot.elementRefsById[elementId],
+              let elementInfo = snapshot.elementsById[elementId] else {
+            throw RouterError.notFound("element \(elementId) in snapshot \(snapshotId)")
+        }
+
+        let run = try RunStore.shared.createRun(
+            title: "Element action \(requestedAction)",
+            source: source,
+            surfaces: [.window(snapshot.window)]
+        )
+
+        do {
+            _ = try RunStore.shared.markRunning(
+                id: run.id,
+                summary: "Resolved AX element action",
+                data: [
+                    "action": .string("elementAction"),
+                    "treatment": .string(treatment.rawValue),
+                    "snapshotId": .string(snapshotId),
+                    "elementId": .string(elementId),
+                    "requestedAction": .string(requestedAction),
+                    "wid": .int(Int(snapshot.window.wid)),
+                    "app": .string(snapshot.window.app),
+                ]
+            )
+
+            let before = try maybeCaptureWindow(
+                shouldCapture: shouldCapture,
+                runId: run.id,
+                source: source,
+                wid: snapshot.window.wid,
+                prefix: "element-action-before"
+            )
+
+            var performed = false
+            var focused = false
+            var axAction: String?
+            if treatment.focusesWindow {
+                focused = try focus(window: snapshot.window)
+                _ = try RunStore.shared.appendTrace(
+                    id: run.id,
+                    kind: "computer.focused",
+                    summary: "Focused element target window",
+                    data: ["wid": .int(Int(snapshot.window.wid)), "focused": .bool(focused)]
+                )
+            }
+
+            if requestedAction == "focus" {
+                if treatment.focusesWindow {
+                    try focusAXElement(element)
+                    performed = true
+                    _ = try RunStore.shared.appendTrace(
+                        id: run.id,
+                        kind: "computer.axFocused",
+                        summary: "Focused AX element",
+                        data: [
+                            "snapshotId": .string(snapshotId),
+                            "elementId": .string(elementId),
+                        ]
+                    )
+                }
+            } else if treatment.performsPointerAction {
+                let action = try axActionName(for: requestedAction, elementInfo: elementInfo)
+                axAction = action
+                try performAXAction(element, action: action)
+                performed = true
+                _ = try RunStore.shared.appendTrace(
+                    id: run.id,
+                    kind: "computer.axElementAction",
+                    summary: "Performed AX element action",
+                    data: [
+                        "snapshotId": .string(snapshotId),
+                        "elementId": .string(elementId),
+                        "requestedAction": .string(requestedAction),
+                        "axAction": .string(action),
+                    ]
+                )
+                usleep(180_000)
+            }
+
+            let after = try maybeCaptureWindow(
+                shouldCapture: shouldCapture,
+                runId: run.id,
+                source: source,
+                wid: snapshot.window.wid,
+                prefix: "element-action-after"
+            )
+            let completed = try RunStore.shared.complete(
+                id: run.id,
+                summary: performed ? "Completed AX element action" : "Staged AX element action",
+                data: [
+                    "snapshotId": .string(snapshotId),
+                    "elementId": .string(elementId),
+                    "requestedAction": .string(requestedAction),
+                    "performed": .bool(performed),
+                    "focused": .bool(focused),
+                ]
+            )
+
+            return elementActionResponse(
+                run: completed,
+                snapshot: snapshot,
+                element: elementInfo,
+                before: before?["artifact"],
+                after: after?["artifact"],
+                treatment: treatment,
+                requestedAction: requestedAction,
+                axAction: axAction,
+                performed: performed,
+                focused: focused
+            )
+        } catch {
+            _ = try? RunStore.shared.fail(
+                id: run.id,
+                summary: "AX element action failed",
+                data: [
+                    "snapshotId": .string(snapshotId),
+                    "elementId": .string(elementId),
+                    "error": .string(error.localizedDescription),
+                ]
+            )
             throw error
         }
     }
@@ -2260,6 +2412,112 @@ final class ComputerUseController {
         }
     }
 
+    private func requiredString(_ params: JSON?, keys: [String]) throws -> String {
+        for key in keys {
+            if let value = params?[key]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !value.isEmpty {
+                return value
+            }
+        }
+        throw RouterError.missingParam(keys.first ?? "value")
+    }
+
+    private func elementActionName(_ params: JSON?) throws -> String {
+        let raw = params?["action"]?.stringValue
+            ?? params?["elementAction"]?.stringValue
+            ?? params?["element-action"]?.stringValue
+            ?? params?["axAction"]?.stringValue
+            ?? params?["ax-action"]?.stringValue
+            ?? "press"
+        switch raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "press", "click", "tap", "open", "confirm", "cancel", "default", "axpress":
+            return "press"
+        case "showmenu", "show-menu", "menu", "context", "contextmenu", "context-menu", "axshowmenu":
+            return "showMenu"
+        case "focus", "focused":
+            return "focus"
+        default:
+            throw RouterError.custom("Unsupported computer.elementAction action '\(raw)'; use press, showMenu, or focus")
+        }
+    }
+
+    private func storeAXSnapshot(
+        id: String,
+        window: WindowEntry,
+        elements: [AXSnapshotElement],
+        elementRefsById: [String: AXUIElement]
+    ) {
+        guard !elements.isEmpty, !elementRefsById.isEmpty else { return }
+        axSnapshotLock.lock()
+        defer { axSnapshotLock.unlock() }
+        pruneAXSnapshotsLocked()
+        axSnapshotsById[id] = AXWindowSnapshot(
+            id: id,
+            window: window,
+            createdAt: Date(),
+            elementsById: Dictionary(uniqueKeysWithValues: elements.map { ($0.id, $0) }),
+            elementRefsById: elementRefsById
+        )
+        if axSnapshotsById.count > maxAXSnapshotCacheCount {
+            let overflow = axSnapshotsById
+                .sorted { $0.value.createdAt < $1.value.createdAt }
+                .prefix(axSnapshotsById.count - maxAXSnapshotCacheCount)
+                .map(\.key)
+            for key in overflow {
+                axSnapshotsById.removeValue(forKey: key)
+            }
+        }
+    }
+
+    private func axSnapshot(id: String) throws -> AXWindowSnapshot {
+        axSnapshotLock.lock()
+        defer { axSnapshotLock.unlock() }
+        pruneAXSnapshotsLocked()
+        guard let snapshot = axSnapshotsById[id] else {
+            throw RouterError.notFound("AX snapshot \(id)")
+        }
+        return snapshot
+    }
+
+    private func pruneAXSnapshotsLocked() {
+        let cutoff = Date().addingTimeInterval(-axSnapshotTTL)
+        axSnapshotsById = axSnapshotsById.filter { $0.value.createdAt >= cutoff }
+    }
+
+    private func axActionName(for requestedAction: String, elementInfo: AXSnapshotElement) throws -> String {
+        let action: String
+        switch requestedAction {
+        case "showMenu":
+            action = kAXShowMenuAction as String
+        default:
+            action = kAXPressAction as String
+        }
+        guard elementInfo.actions.contains(action) else {
+            throw RouterError.custom("Element \(elementInfo.id) does not support \(action)")
+        }
+        return action
+    }
+
+    private func performAXAction(_ element: AXUIElement, action: String) throws {
+        guard AXIsProcessTrusted() else {
+            throw RouterError.custom("Accessibility permission is required for AX element actions")
+        }
+        let err = AXUIElementPerformAction(element, action as CFString)
+        guard err == .success else {
+            throw RouterError.custom("\(action) failed with \(err.rawValue)")
+        }
+    }
+
+    private func focusAXElement(_ element: AXUIElement) throws {
+        guard AXIsProcessTrusted() else {
+            throw RouterError.custom("Accessibility permission is required for AX element focus")
+        }
+        let err = AXUIElementSetAttributeValue(element, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+        guard err == .success else {
+            throw RouterError.custom("AX focus failed with \(err.rawValue)")
+        }
+    }
+
     private func axSnapshot(
         window: WindowEntry,
         maxDepth: Int,
@@ -2346,6 +2604,7 @@ final class ComputerUseController {
             depth: depth,
             childCount: children.count
         ))
+        context.elementRefsById[id] = element
         guard !context.hitTimeout else { return }
 
         guard depth < context.maxDepth else {
@@ -2930,6 +3189,37 @@ final class ComputerUseController {
         if let before { object["beforeArtifact"] = before }
         if let after { object["afterArtifact"] = after }
         if let axResult { object["ax"] = axResult.json }
+        return .object(object)
+    }
+
+    private func elementActionResponse(
+        run: RunSession,
+        snapshot: AXWindowSnapshot,
+        element: AXSnapshotElement,
+        before: JSON?,
+        after: JSON?,
+        treatment: ComputerTreatment,
+        requestedAction: String,
+        axAction: String?,
+        performed: Bool,
+        focused: Bool
+    ) -> JSON {
+        var object: [String: JSON] = [
+            "ok": .bool(true),
+            "action": .string("elementAction"),
+            "treatment": .string(treatment.rawValue),
+            "snapshotId": .string(snapshot.id),
+            "elementId": .string(element.id),
+            "requestedAction": .string(requestedAction),
+            "performed": .bool(performed),
+            "focused": .bool(focused),
+            "target": Encoders.window(snapshot.window),
+            "element": element.json,
+            "run": run.json,
+        ]
+        if let axAction { object["axAction"] = .string(axAction) }
+        if let before { object["beforeArtifact"] = before }
+        if let after { object["afterArtifact"] = after }
         return .object(object)
     }
 
