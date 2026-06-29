@@ -410,7 +410,7 @@ final class ScreenMapEditorState: ObservableObject {
             union = union.union(rect)
         }
 
-        let pad: CGFloat = focusedDisplayIndex == nil ? 180 : 120
+        let pad: CGFloat = focusedDisplayIndex == nil ? 96 : 72
         return union.insetBy(dx: -pad, dy: -pad)
     }
 

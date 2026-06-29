@@ -5,14 +5,14 @@ import AppKit
 
 struct ScreenMapView: View {
     private static let canvasPadding: CGFloat = 8
-    private static let canvasFitInsets = CGSize(width: 132, height: 112)
-    private static let canvasViewportInsets = CGSize(width: 16, height: 16)
+    private static let canvasFitInsets = CGSize(width: 96, height: 84)
+    private static let canvasViewportInsets = CGSize(width: 12, height: 12)
     private static let canvasPanMinVisiblePixels: CGFloat = 1
-    private static let canvasFitScaleMultiplier: CGFloat = 0.66
-    private static let canvasStageMaxWidth: CGFloat = 980
-    private static let canvasStageMaxHeight: CGFloat = 560
-    private static let canvasStageMinAspect: CGFloat = 1.25
-    private static let canvasStageMaxAspect: CGFloat = 2.45
+    private static let canvasFitScaleMultiplier: CGFloat = 0.78
+    private static let canvasStageMaxWidth: CGFloat = 1160
+    private static let canvasStageMaxHeight: CGFloat = 640
+    private static let canvasStageMinAspect: CGFloat = 1.35
+    private static let canvasStageMaxAspect: CGFloat = 2.35
     private static let sidebarWindowRowHeight: CGFloat = 28
     private static let sidebarWindowRowStride: CGFloat = 30
 
@@ -179,7 +179,7 @@ struct ScreenMapView: View {
     @State private var editingStudioLayerId: String?
     @State private var draftStudioLayerName = ""
     @State private var mouseMovedMonitor: Any?
-    @State private var sidebarWidth: CGFloat = 180
+    @State private var sidebarWidth: CGFloat = 204
     @State private var isDraggingSidebar: Bool = false
     @State private var inspectorWidth: CGFloat = 280
     @State private var isDraggingInspector: Bool = false
@@ -1752,6 +1752,14 @@ struct ScreenMapView: View {
     // MARK: - Layer Sidebar
 
     private func layerSidebar(editor: ScreenMapEditorState) -> some View {
+        let visibleWindows = scopedWindows(editor.renderedCanvasWindows).sorted { $0.zIndex < $1.zIndex }
+        let visibleRowSlots = visibleWindows.isEmpty && activeStudioLayer != nil ? 2 : visibleWindows.count + 1
+        let rowWidth = max(sidebarWidth - 16, 1)
+        let viewListHeight = min(
+            max(CGFloat(visibleRowSlots) * Self.sidebarWindowRowStride, Self.sidebarWindowRowStride),
+            170
+        )
+
         return VStack(spacing: 0) {
             HStack {
                 Text(activeStudioLayer == nil ? "VIEW" : "LAYER VIEW")
@@ -1778,10 +1786,6 @@ struct ScreenMapView: View {
 
             // Layer list
             ScrollView(.vertical, showsIndicators: false) {
-                let visibleWindows = scopedWindows(editor.renderedCanvasWindows).sorted { $0.zIndex < $1.zIndex }
-                let visibleRowSlots = visibleWindows.isEmpty && activeStudioLayer != nil ? 2 : visibleWindows.count + 1
-                let rowWidth = max(sidebarWidth - 16, 1)
-
                 ZStack(alignment: .topLeading) {
                     VStack(spacing: 2) {
                         layerTreeHeader(
@@ -1878,8 +1882,9 @@ struct ScreenMapView: View {
                 )
             }
             .coordinateSpace(name: "layerSidebar")
+            .frame(height: viewListHeight)
+            .padding(.bottom, 12)
 
-            Spacer(minLength: 8)
             collapsibleSection(title: "LAYERS", count: studioLayers.layers.count, isExpanded: $showStudioLayers) {
                 studioLayerExplorer(editor: editor)
             }
@@ -1889,7 +1894,7 @@ struct ScreenMapView: View {
             collapsibleSection(title: "EXPLORER", count: editor.canvasExplorerRegions.count, isExpanded: $showExplorer) {
                 canvasExplorer(editor: editor)
             }
-            Spacer(minLength: 8)
+            Spacer(minLength: 12)
             sidebarMiniMap(editor: editor)
         }
         .padding(.horizontal, 8)
