@@ -532,6 +532,14 @@ final class ComputerUseController {
         try typeElement(params: params, actionName: "setValue")
     }
 
+    func pressKey(params: JSON?) throws -> JSON {
+        try keyboardAction(params: params, actionName: "pressKey", requiresModifier: false)
+    }
+
+    func hotkey(params: JSON?) throws -> JSON {
+        try keyboardAction(params: params, actionName: "hotkey", requiresModifier: true)
+    }
+
     private func typeElement(params: JSON?, actionName: String) throws -> JSON {
         let source = params?["source"]?.stringValue ?? "daemon"
         let treatment = ComputerTreatment.resolve(params: params, defaultValue: .stage)
@@ -652,6 +660,146 @@ final class ComputerUseController {
                 data: [
                     "snapshotId": .string(snapshotId),
                     "elementId": .string(elementId),
+                    "error": .string(error.localizedDescription),
+                ]
+            )
+            throw error
+        }
+    }
+
+    private func keyboardAction(params: JSON?, actionName: String, requiresModifier: Bool) throws -> JSON {
+        let source = params?["source"]?.stringValue ?? "daemon"
+        let treatment = ComputerTreatment.resolve(params: params, defaultValue: .stage)
+        let allowGlobal = params?["allowGlobal"]?.boolValue == true
+            || params?["allow-global"]?.boolValue == true
+            || params?["global"]?.boolValue == true
+        let request = try keyboardRequest(params: params, requiresModifier: requiresModifier)
+        let count = max(1, min(params?["count"]?.intValue ?? 1, 20))
+        let delayMs = max(0, min(params?["delayMs"]?.numericDouble ?? params?["delay-ms"]?.numericDouble ?? 80, 1_000))
+        let hasExplicitTarget = hasKeyboardTarget(params)
+        let window = hasExplicitTarget ? try CaptureController.shared.resolveWindow(params: params) : nil
+
+        if treatment.focusesWindow, window == nil, !allowGlobal {
+            throw RouterError.custom("computer.\(actionName) requires wid, app, or session for present/execute; pass allowGlobal true to post to the focused system target")
+        }
+
+        let shouldCapture = params?["capture"]?.boolValue ?? (window != nil)
+        let surfaces: [RunSurface] = window.map { [.window($0)] } ?? []
+        let title = actionName == "hotkey" ? "Send hotkey" : "Press key"
+        let run = try RunStore.shared.createRun(title: title, source: source, surfaces: surfaces)
+
+        do {
+            _ = try RunStore.shared.markRunning(
+                id: run.id,
+                summary: "Resolved keyboard action",
+                data: [
+                    "action": .string(actionName),
+                    "treatment": .string(treatment.rawValue),
+                    "key": .string(request.key),
+                    "modifiers": .array(request.modifiers.map { .string($0) }),
+                    "count": .int(count),
+                    "allowGlobal": .bool(allowGlobal),
+                ]
+            )
+
+            let before = try window.flatMap { target in
+                try maybeCaptureWindow(
+                    shouldCapture: shouldCapture,
+                    runId: run.id,
+                    source: source,
+                    wid: target.wid,
+                    prefix: "key-before"
+                )
+            }
+
+            var focused = false
+            if treatment.focusesWindow, let window {
+                focused = try focus(window: window)
+                _ = try RunStore.shared.appendTrace(
+                    id: run.id,
+                    kind: "computer.focused",
+                    summary: "Focused keyboard target window",
+                    data: ["wid": .int(Int(window.wid)), "focused": .bool(focused)]
+                )
+                if treatment == .execute, !focused {
+                    throw RouterError.custom("failed to focus window \(window.wid)")
+                }
+            }
+
+            var sent = false
+            var displayName = (request.modifiers + [request.key]).joined(separator: "+")
+            if treatment == .execute {
+                for index in 0..<count {
+                    displayName = try CompanionKeyboardController.shared.send(
+                        key: request.key,
+                        modifiers: request.modifiers,
+                        targetPid: window?.pid
+                    )
+                    if index < count - 1, delayMs > 0 {
+                        usleep(UInt32(delayMs * 1_000))
+                    }
+                }
+                sent = true
+                _ = try RunStore.shared.appendTrace(
+                    id: run.id,
+                    kind: "computer.keySent",
+                    summary: "Sent keyboard action",
+                    data: [
+                        "key": .string(request.key),
+                        "modifiers": .array(request.modifiers.map { .string($0) }),
+                        "display": .string(displayName),
+                        "count": .int(count),
+                        "global": .bool(window == nil),
+                    ]
+                )
+                usleep(140_000)
+            }
+
+            let after = try window.flatMap { target in
+                try maybeCaptureWindow(
+                    shouldCapture: shouldCapture,
+                    runId: run.id,
+                    source: source,
+                    wid: target.wid,
+                    prefix: "key-after"
+                )
+            }
+            let completed = try RunStore.shared.complete(
+                id: run.id,
+                summary: sent ? "Completed keyboard action" : "Staged keyboard action without posting",
+                data: [
+                    "sent": .bool(sent),
+                    "focused": .bool(focused),
+                    "key": .string(request.key),
+                    "modifiers": .array(request.modifiers.map { .string($0) }),
+                    "count": .int(count),
+                    "global": .bool(window == nil && allowGlobal),
+                ]
+            )
+
+            return keyboardActionResponse(
+                action: actionName,
+                run: completed,
+                target: window,
+                before: before?["artifact"],
+                after: after?["artifact"],
+                treatment: treatment,
+                key: request.key,
+                modifiers: request.modifiers,
+                displayName: displayName,
+                count: count,
+                delayMs: delayMs,
+                sent: sent,
+                focused: focused,
+                global: window == nil && allowGlobal
+            )
+        } catch {
+            _ = try? RunStore.shared.fail(
+                id: run.id,
+                summary: "Keyboard action failed",
+                data: [
+                    "action": .string(actionName),
+                    "key": .string(request.key),
                     "error": .string(error.localizedDescription),
                 ]
             )
@@ -2566,6 +2714,116 @@ final class ComputerUseController {
         throw RouterError.missingParam(keys.first ?? "value")
     }
 
+    private func hasKeyboardTarget(_ params: JSON?) -> Bool {
+        if params?["wid"]?.uint32Value != nil { return true }
+        if params?["session"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false { return true }
+        if params?["app"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false { return true }
+        return false
+    }
+
+    private func keyboardRequest(params: JSON?, requiresModifier: Bool) throws -> (key: String, modifiers: [String]) {
+        var key = params?["key"]?.stringValue
+            ?? params?["code"]?.stringValue
+            ?? params?["shortcut"]?.stringValue
+        var modifiers = keyboardModifiers(params)
+
+        if let shortcut = params?["shortcut"]?.stringValue, !shortcut.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let parsed = parseKeyboardShortcut(shortcut)
+            if params?["key"]?.stringValue == nil && params?["code"]?.stringValue == nil {
+                key = parsed.key
+            }
+            modifiers.append(contentsOf: parsed.modifiers)
+        } else if let rawKey = key,
+                  rawKey.contains("+")
+                    || rawKey.contains("\u{2318}")
+                    || rawKey.contains("\u{2325}")
+                    || rawKey.contains("\u{2303}")
+                    || rawKey.contains("\u{21E7}") {
+            let parsed = parseKeyboardShortcut(rawKey)
+            key = parsed.key
+            modifiers.append(contentsOf: parsed.modifiers)
+        }
+
+        guard let rawKey = key?.trimmingCharacters(in: .whitespacesAndNewlines), !rawKey.isEmpty else {
+            throw RouterError.missingParam("key")
+        }
+
+        let normalizedModifiers = uniqueKeyboardModifiers(modifiers)
+        if requiresModifier, normalizedModifiers.isEmpty {
+            throw RouterError.custom("computer.hotkey requires at least one modifier or shortcut")
+        }
+
+        return (rawKey, normalizedModifiers)
+    }
+
+    private func keyboardModifiers(_ params: JSON?) -> [String] {
+        var modifiers: [String] = []
+        if let values = params?["modifiers"]?.arrayValue {
+            modifiers.append(contentsOf: values.compactMap(\.stringValue))
+        } else if let raw = params?["modifiers"]?.stringValue {
+            modifiers.append(contentsOf: raw.split { character in
+                character == "," || character == "+" || character == " "
+            }.map(String.init))
+        }
+
+        let boolAliases: [(String, String)] = [
+            ("cmd", "command"),
+            ("command", "command"),
+            ("meta", "command"),
+            ("opt", "option"),
+            ("option", "option"),
+            ("alt", "option"),
+            ("ctrl", "control"),
+            ("control", "control"),
+            ("shift", "shift"),
+        ]
+        for (key, modifier) in boolAliases where params?[key]?.boolValue == true {
+            modifiers.append(modifier)
+        }
+        return modifiers
+    }
+
+    private func parseKeyboardShortcut(_ value: String) -> (key: String, modifiers: [String]) {
+        let expanded = value
+            .replacingOccurrences(of: "\u{2318}", with: "command+")
+            .replacingOccurrences(of: "\u{2325}", with: "option+")
+            .replacingOccurrences(of: "\u{2303}", with: "control+")
+            .replacingOccurrences(of: "\u{21E7}", with: "shift+")
+        let parts = expanded
+            .split(separator: "+")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        guard parts.count > 1 else {
+            return (value.trimmingCharacters(in: .whitespacesAndNewlines), [])
+        }
+
+        return (
+            parts.last ?? value.trimmingCharacters(in: .whitespacesAndNewlines),
+            Array(parts.dropLast())
+        )
+    }
+
+    private func uniqueKeyboardModifiers(_ rawModifiers: [String]) -> [String] {
+        let normalized = Set(rawModifiers.compactMap(normalizeKeyboardModifier))
+        return ["control", "option", "shift", "command"].filter { normalized.contains($0) }
+    }
+
+    private func normalizeKeyboardModifier(_ modifier: String) -> String? {
+        switch modifier.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "cmd", "command", "meta", "\u{2318}":
+            return "command"
+        case "opt", "option", "alt", "\u{2325}":
+            return "option"
+        case "ctrl", "control", "\u{2303}":
+            return "control"
+        case "shift", "\u{21E7}":
+            return "shift"
+        default:
+            return nil
+        }
+    }
+
     private func elementActionName(_ params: JSON?) throws -> String {
         let raw = params?["action"]?.stringValue
             ?? params?["elementAction"]?.stringValue
@@ -3392,6 +3650,42 @@ final class ComputerUseController {
         if let before { object["beforeArtifact"] = before }
         if let after { object["afterArtifact"] = after }
         if let axResult { object["ax"] = axResult.json }
+        return .object(object)
+    }
+
+    private func keyboardActionResponse(
+        action: String,
+        run: RunSession,
+        target: WindowEntry?,
+        before: JSON?,
+        after: JSON?,
+        treatment: ComputerTreatment,
+        key: String,
+        modifiers: [String],
+        displayName: String,
+        count: Int,
+        delayMs: Double,
+        sent: Bool,
+        focused: Bool,
+        global: Bool
+    ) -> JSON {
+        var object: [String: JSON] = [
+            "ok": .bool(true),
+            "action": .string(action),
+            "treatment": .string(treatment.rawValue),
+            "key": .string(key),
+            "modifiers": .array(modifiers.map { .string($0) }),
+            "display": .string(displayName),
+            "count": .int(count),
+            "delayMs": .double(delayMs),
+            "sent": .bool(sent),
+            "focused": .bool(focused),
+            "global": .bool(global),
+            "run": run.json,
+        ]
+        if let target { object["target"] = Encoders.window(target) }
+        if let before { object["beforeArtifact"] = before }
+        if let after { object["afterArtifact"] = after }
         return .object(object)
     }
 

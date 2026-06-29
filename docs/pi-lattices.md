@@ -51,6 +51,8 @@ lattices app
 | `lattices_computer_element_action` | `computer.elementAction` |
 | `lattices_computer_type_element` | `computer.typeElement` |
 | `lattices_computer_set_value` | `computer.setValue` |
+| `lattices_computer_press_key` | `computer.pressKey` |
+| `lattices_computer_hotkey` | `computer.hotkey` |
 | `lattices_window_focus` | `computer.focusWindow` |
 | `lattices_window_place` | `window.place` |
 | `lattices_capture_window` | `capture.screenshotWindow` |

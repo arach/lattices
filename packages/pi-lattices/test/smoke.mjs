@@ -41,6 +41,8 @@ for (const required of [
   "lattices_computer_element_action",
   "lattices_computer_type_element",
   "lattices_computer_set_value",
+  "lattices_computer_press_key",
+  "lattices_computer_hotkey",
   "lattices_computer_launch_app",
   "lattices_computer_click",
   "lattices_call",

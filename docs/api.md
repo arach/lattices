@@ -216,6 +216,8 @@ methods write into the Lattices run store under
 | `computer.elementAction` | write | Stage or execute an AX action against a snapshot element id |
 | `computer.typeElement` | write | Stage or execute AXValue text insertion against a snapshot element id |
 | `computer.setValue` | write | Alias for replacing a snapshot element's AXValue |
+| `computer.pressKey` | write | Stage or execute one key press against an explicit target window |
+| `computer.hotkey` | write | Stage or execute a keyboard shortcut against an explicit target window |
 | `computer.focusWindow` | write | Resolve, capture, focus, and verify a target window |
 | `computer.showCursor` | write | Show a visible cursor appearance and record it as a run |
 | `computer.launchApp` | write | Launch or focus a normal macOS app and record the run |
@@ -261,6 +263,8 @@ lattices terminals
 lattices terminals --refresh
 lattices computer prepare --text "# hello" --treatment stage
 lattices call computer.windowState '{"app":"Finder","maxDepth":4}'
+lattices call computer.pressKey '{"app":"Finder","key":"escape","treatment":"stage"}'
+lattices call computer.hotkey '{"app":"Xcode","shortcut":"command+b","treatment":"stage"}'
 lattices computer focus-window --wid 7258 --treatment present
 lattices computer cursor --style marker --shape chevron --angle-deg -8 --label typing
 lattices computer launch-app Scout
@@ -416,6 +420,47 @@ await daemonCall('computer.typeElement', {
   snapshotId: state.snapshotId,
   elementId: 'e12',
   text: 'Draft note',
+  treatment: 'execute'
+})
+```
+
+#### `computer.pressKey` / `computer.hotkey`
+
+Stage or execute keyboard input. `computer.pressKey` sends one key, such as
+`escape`, `enter`, `tab`, an arrow key, or a single character. `computer.hotkey`
+sends a shortcut from either `shortcut: "command+shift+p"` or `key` plus
+`modifiers`. Both default to `stage`; `execute` requires an explicit `wid`,
+`app`, or `session` target unless `allowGlobal: true` is passed.
+
+**Params**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `wid` | uint32 | no | Target window id |
+| `session` | string | no | Target lattices session |
+| `app` | string | no | Target app name |
+| `title` | string | no | Optional title substring for app target |
+| `key` | string | yes for `pressKey` | Key name or single character |
+| `shortcut` | string | yes for `hotkey` without `key` | Shortcut shorthand, such as `command+shift+p` |
+| `modifiers` | array/string | no | `command`, `option`, `control`, `shift` |
+| `count` | int | no | Repeat count. Defaults to `1`, max `20` |
+| `delayMs` | double | no | Delay between repeats. Defaults to `80` |
+| `allowGlobal` | bool | no | Permit execute without target by posting to the focused system target |
+| `treatment` | string | no | `stage`, `present`, or `execute` |
+| `dryRun` | bool | no | Stage without posting keyboard input |
+| `capture` | bool | no | Capture before/after artifacts when targeting a window |
+| `source` | string | no | Calling surface label |
+
+```js
+await daemonCall('computer.pressKey', {
+  app: 'Finder',
+  key: 'escape',
+  treatment: 'stage'
+})
+
+await daemonCall('computer.hotkey', {
+  app: 'Xcode',
+  shortcut: 'command+b',
   treatment: 'execute'
 })
 ```

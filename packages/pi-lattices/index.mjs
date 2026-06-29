@@ -40,6 +40,16 @@ const elementAction = optionalEnum(
   ["press", "showMenu", "focus"],
   "Element action. press is the default and maps to AXPress."
 );
+const key = string("Keyboard key name, such as escape, enter, tab, left, right, or a single character.");
+const modifiers = {
+  anyOf: [
+    { type: "array", items: { type: "string" } },
+    { type: "string" },
+  ],
+  description: "Keyboard modifiers: command, option, control, shift. Array or +/comma/space-delimited string.",
+};
+const shortcut = string("Shortcut shorthand, such as command+shift+p, cmd+k, or shift+tab.");
+const allowGlobal = boolean("Allow treatment=execute without an explicit target by posting to the focused system target.");
 
 const emptyParams = object();
 const runSourceParams = {
@@ -198,6 +208,45 @@ export const LATTICES_TOOLS = [
       typeIntervalMs: number("Optional per-character interval for typewriter-style AXValue updates."),
       ...computerBaseParams,
     }, ["snapshotId", "elementId", "value"]),
+    defaultTreatment: "stage",
+    defaultSource: DEFAULT_SOURCE,
+  },
+  {
+    name: `${TOOL_PREFIX}computer_press_key`,
+    method: "computer.pressKey",
+    description: "Stage or execute one keyboard key press against an explicit target window. Defaults to treatment=stage; pass execute to press.",
+    parameters: object({
+      ...targetParams,
+      key,
+      modifiers,
+      count: integer("Number of times to press the key. Daemon default is 1, max 20."),
+      delayMs: number("Delay between repeated presses in milliseconds. Daemon default is 80."),
+      allowGlobal,
+      ...computerBaseParams,
+    }, ["key"]),
+    defaultTreatment: "stage",
+    defaultSource: DEFAULT_SOURCE,
+  },
+  {
+    name: `${TOOL_PREFIX}computer_hotkey`,
+    method: "computer.hotkey",
+    description: "Stage or execute a keyboard shortcut against an explicit target window. Defaults to treatment=stage; pass execute to send.",
+    parameters: {
+      ...object({
+        ...targetParams,
+        shortcut,
+        key,
+        modifiers,
+        count: integer("Number of times to send the shortcut. Daemon default is 1, max 20."),
+        delayMs: number("Delay between repeated sends in milliseconds. Daemon default is 80."),
+        allowGlobal,
+        ...computerBaseParams,
+      }),
+      anyOf: [
+        { required: ["shortcut"] },
+        { required: ["key"] },
+      ],
+    },
     defaultTreatment: "stage",
     defaultSource: DEFAULT_SOURCE,
   },

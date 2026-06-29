@@ -135,6 +135,8 @@ Mutations / computer use:
 - `lattices_capture_window` → `capture.screenshotWindow`
 - `lattices_computer_launch_app` → `computer.launchApp`
 - `lattices_computer_click` → `computer.click`
+- `lattices_computer_press_key` → `computer.pressKey`
+- `lattices_computer_hotkey` → `computer.hotkey`
 - `lattices_computer_type_window_text` → `computer.typeWindowText`
 - `lattices_computer_type_text` → `computer.typeText`
 
@@ -251,8 +253,8 @@ primitives. Each endpoint must preserve Lattices' treatment/capture/run model.
 
 Candidate endpoints:
 
-- `computer.pressKey`
-- `computer.hotkey`
+- `computer.pressKey` (first slice)
+- `computer.hotkey` (first slice)
 - `computer.scroll`
 - `computer.drag`
 - `computer.doubleClick`

@@ -1653,6 +1653,57 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
+            method: "computer.pressKey",
+            description: "Stage or execute one keyboard key press against an explicit target window, or globally when allowGlobal is true.",
+            access: .mutate,
+            params: [
+                Param(name: "wid", type: "uint32", required: false, description: "Target window id"),
+                Param(name: "session", type: "string", required: false, description: "Target lattices session"),
+                Param(name: "app", type: "string", required: false, description: "Target app name"),
+                Param(name: "title", type: "string", required: false, description: "Optional title substring for app target"),
+                Param(name: "key", type: "string", required: true, description: "Key name, such as escape, enter, tab, left, right, or a single character"),
+                Param(name: "modifiers", type: "array|string", required: false, description: "Optional modifier names: command, option, control, shift"),
+                Param(name: "count", type: "int", required: false, description: "Number of times to press the key (default 1, max 20)"),
+                Param(name: "delayMs", type: "double", required: false, description: "Delay between repeated presses in milliseconds (default 80)"),
+                Param(name: "allowGlobal", type: "bool", required: false, description: "Allow execute without an explicit target by posting to the focused system target"),
+                Param(name: "treatment", type: "string", required: false, description: "stage, present, or execute; execute is required to post the key"),
+                Param(name: "dryRun", type: "bool", required: false, description: "Stage without pressing the key"),
+                Param(name: "capture", type: "bool", required: false, description: "Capture before/after artifacts when targeting a window (default true)"),
+                Param(name: "source", type: "string", required: false, description: "Calling surface label"),
+            ],
+            returns: .custom("Object with ok, run, key, modifiers, sent, target, and optional artifacts"),
+            handler: { params in
+                try ComputerUseController.shared.pressKey(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "computer.hotkey",
+            description: "Stage or execute a keyboard shortcut against an explicit target window, or globally when allowGlobal is true.",
+            access: .mutate,
+            params: [
+                Param(name: "wid", type: "uint32", required: false, description: "Target window id"),
+                Param(name: "session", type: "string", required: false, description: "Target lattices session"),
+                Param(name: "app", type: "string", required: false, description: "Target app name"),
+                Param(name: "title", type: "string", required: false, description: "Optional title substring for app target"),
+                Param(name: "shortcut", type: "string", required: false, description: "Shortcut shorthand such as command+shift+p or cmd+k"),
+                Param(name: "key", type: "string", required: false, description: "Base key when modifiers are supplied separately"),
+                Param(name: "modifiers", type: "array|string", required: false, description: "Modifier names: command, option, control, shift"),
+                Param(name: "count", type: "int", required: false, description: "Number of times to send the shortcut (default 1, max 20)"),
+                Param(name: "delayMs", type: "double", required: false, description: "Delay between repeated sends in milliseconds (default 80)"),
+                Param(name: "allowGlobal", type: "bool", required: false, description: "Allow execute without an explicit target by posting to the focused system target"),
+                Param(name: "treatment", type: "string", required: false, description: "stage, present, or execute; execute is required to post the shortcut"),
+                Param(name: "dryRun", type: "bool", required: false, description: "Stage without pressing the shortcut"),
+                Param(name: "capture", type: "bool", required: false, description: "Capture before/after artifacts when targeting a window (default true)"),
+                Param(name: "source", type: "string", required: false, description: "Calling surface label"),
+            ],
+            returns: .custom("Object with ok, run, key, modifiers, display, sent, target, and optional artifacts"),
+            handler: { params in
+                try ComputerUseController.shared.hotkey(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
             method: "computer.focusWindow",
             description: "Resolve, optionally capture, focus, and verify a target window.",
             access: .mutate,
