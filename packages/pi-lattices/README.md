@@ -50,12 +50,12 @@ All tools use the `lattices_` prefix.
 | `lattices_runs_get` | `runs.get` |
 | `lattices_ocr_snapshot` | `ocr.snapshot` |
 | `lattices_ocr_search` | `ocr.search` |
-| `lattices_computer_window_state` | `computer.windowState` |
 
 ### Mutations / computer use
 
 | Tool | Daemon method | Safety note |
 | --- | --- | --- |
+| `lattices_computer_window_state` | `computer.windowState` | `mode: "ax"` inspects only; `both`, `screenshot`, or `capture: true` create run artifacts. |
 | `lattices_window_focus` | `computer.focusWindow` | Defaults to `treatment: "stage"`; pass `present` or `execute` to focus. |
 | `lattices_window_place` | `window.place` | Returns the daemon action receipt. |
 | `lattices_capture_window` | `capture.screenshotWindow` | Creates a run artifact. |
@@ -87,7 +87,7 @@ Graceful daemon-down behavior (uses an intentionally unreachable port):
 bun run --cwd packages/pi-lattices smoke:no-daemon
 ```
 
-Live read + safe staged action:
+Live status + safe staged action:
 
 ```bash
 lattices app
@@ -112,7 +112,7 @@ export LATTICES_DAEMON_TIMEOUT_MS=3000
 ## Phase 2 direction
 
 `computer.windowState` is now exposed as `lattices_computer_window_state` for
-read-only AX inspection and optional screenshot artifacts. The next expansion
+AX inspection and optional run-backed screenshot artifacts. The next expansion
 should add element-id actions (`computer.elementAction`, `computer.typeElement`,
 `computer.setValue`) while keeping treatment/run/artifact semantics in the
 daemon.

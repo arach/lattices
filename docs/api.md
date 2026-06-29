@@ -212,7 +212,7 @@ methods write into the Lattices run store under
 | `runs.artifacts` | read | List artifacts for one run |
 | `capture.screenshotWindow` | write | Capture a window screenshot as a run artifact |
 | `computer.prepare` | write | Resolve and optionally capture a terminal target without mutating it |
-| `computer.windowState` | read | Inspect a target window's AX tree and return snapshot-local element ids |
+| `computer.windowState` | write | Inspect a target window's AX tree and optionally write screenshot/run artifacts |
 | `computer.focusWindow` | write | Resolve, capture, focus, and verify a target window |
 | `computer.showCursor` | write | Show a visible cursor appearance and record it as a run |
 | `computer.launchApp` | write | Launch or focus a normal macOS app and record the run |
@@ -316,7 +316,9 @@ await daemonCall('computer.prepare', {
 Inspect a target window's Accessibility tree and return snapshot-local element
 ids (`e1`, `e2`, ...), a flat `elements` list, and a compact `treeMarkdown`
 view. `mode: "ax"` avoids Screen Recording. Use `mode: "both"` or
-`capture: true` when you also want a screenshot artifact linked to a run.
+`capture: true` when you also want a screenshot artifact linked to a run. The
+endpoint is classified as a write because those capture modes create run
+artifacts.
 
 **Params**:
 

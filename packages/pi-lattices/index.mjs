@@ -7,6 +7,7 @@ const string = (description) => ({ type: "string", description });
 const boolean = (description) => ({ type: "boolean", description });
 const number = (description) => ({ type: "number", description });
 const integer = (description) => ({ type: "integer", minimum: 1, description });
+const nonNegativeInteger = (description) => ({ type: "integer", minimum: 0, description });
 const optionalEnum = (values, description) => ({ type: "string", enum: values, description });
 const object = (properties = {}, required = []) => ({
   type: "object",
@@ -159,7 +160,7 @@ export const LATTICES_TOOLS = [
     description: "Place a target window/session using Lattices' typed placement runtime and return the action receipt.",
     parameters: object({
       ...targetParams,
-      display: integer("Target display index."),
+      display: nonNegativeInteger("Zero-based target display index."),
       placement: {
         description: "Placement shorthand (left, right, maximize, grid:3x2:0,0, etc.) or typed placement object.",
         anyOf: [

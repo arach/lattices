@@ -46,6 +46,13 @@ for (const required of [
 }
 assert.equal(names.length, LATTICES_TOOLS.length, "registered tool count matches metadata");
 
+const windowPlaceSchema = LATTICES_TOOLS.find((entry) => entry.name === "lattices_window_place")?.parameters;
+assert.equal(
+  windowPlaceSchema?.properties?.display?.minimum,
+  0,
+  "window_place display accepts zero-based display index"
+);
+
 if (!live && !noDaemon) {
   console.log(`Registered ${names.length} pi-lattices tools.`);
   console.log("Use --no-daemon to verify graceful daemon errors, or --live with `lattices app` running.");

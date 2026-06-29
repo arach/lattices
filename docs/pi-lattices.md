@@ -75,7 +75,7 @@ Daemon-down behavior:
 bun run --cwd packages/pi-lattices smoke:no-daemon
 ```
 
-Live read + safe staged call:
+Live status + safe staged call:
 
 ```bash
 lattices app

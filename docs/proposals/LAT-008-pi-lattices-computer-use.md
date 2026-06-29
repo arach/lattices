@@ -67,7 +67,8 @@ Confirmed in `docs/api.md` and
 - `windows.search` is the typed window search endpoint for the MVP. The richer
   `lattices.search` endpoint also exists and remains reachable through the
   `lattices_call` escape hatch.
-- `computer.windowState` is now present as the first Phase 2 read endpoint.
+- `computer.windowState` is now present as the first Phase 2 window-state
+  endpoint.
   Element mutation endpoints such as `computer.elementAction`,
   `computer.typeElement`, and `computer.setValue` are not yet present as public
   daemon methods.
@@ -352,7 +353,7 @@ Guardrails:
 ## Suggested implementation order
 
 1. Build `pi-lattices` MVP around current daemon methods.
-2. Add `computer.windowState` read endpoint. **Done.**
+2. Add `computer.windowState` window-state endpoint. **Done.**
 3. Add `computer.elementAction` and element-ID support in click/type/set value.
 4. Add keyboard/scroll/drag/double-click primitives.
 5. Add vision/zoom/verify.

@@ -2308,29 +2308,45 @@ final class ComputerUseController {
             return
         }
 
-        AXUIElementSetMessagingTimeout(element, context.messagingTimeout)
-        let children = axChildren(element)
+        let children = axSnapshotChildren(element, context: &context)
+        guard !context.hitTimeout else { return }
+
         let id = "e\(context.nextElementIndex)"
         context.nextElementIndex += 1
+        let role = axSnapshotString(element, attribute: kAXRoleAttribute, context: &context) ?? "unknown"
+        guard !context.hitTimeout else { return }
+        let roleDescription = axSnapshotString(element, attribute: kAXRoleDescriptionAttribute, context: &context)
+        let title = axSnapshotAttributeString(element, attribute: kAXTitleAttribute, context: &context)
+        let label = axSnapshotAttributeString(element, attribute: "AXLabel", context: &context)
+        let value = axSnapshotAttributeString(element, attribute: kAXValueAttribute, context: &context)
+        let description = axSnapshotAttributeString(element, attribute: kAXDescriptionAttribute, context: &context)
+        let help = axSnapshotAttributeString(element, attribute: kAXHelpAttribute, context: &context)
+        let identifier = axSnapshotAttributeString(element, attribute: kAXIdentifierAttribute, context: &context)
+        let frame = axSnapshotFrame(element, context: &context)
+        let enabled = axSnapshotBool(element, attribute: "AXEnabled", context: &context)
+        let selected = axSnapshotBool(element, attribute: "AXSelected", context: &context)
+        let focused = axSnapshotBool(element, attribute: "AXFocused", context: &context)
+        let actions = axSnapshotActions(element, context: &context)
         context.elements.append(AXSnapshotElement(
             id: id,
-            role: axString(element, attribute: kAXRoleAttribute) ?? "unknown",
-            roleDescription: axString(element, attribute: kAXRoleDescriptionAttribute),
-            title: axAttributeString(element, attribute: kAXTitleAttribute),
-            label: axAttributeString(element, attribute: "AXLabel"),
-            value: axAttributeString(element, attribute: kAXValueAttribute),
-            description: axAttributeString(element, attribute: kAXDescriptionAttribute),
-            help: axAttributeString(element, attribute: kAXHelpAttribute),
-            identifier: axAttributeString(element, attribute: kAXIdentifierAttribute),
-            frame: axFrame(element),
-            enabled: axBool(element, attribute: "AXEnabled"),
-            selected: axBool(element, attribute: "AXSelected"),
-            focused: axBool(element, attribute: "AXFocused"),
-            actions: axActions(element),
+            role: role,
+            roleDescription: roleDescription,
+            title: title,
+            label: label,
+            value: value,
+            description: description,
+            help: help,
+            identifier: identifier,
+            frame: frame,
+            enabled: enabled,
+            selected: selected,
+            focused: focused,
+            actions: actions,
             path: path,
             depth: depth,
             childCount: children.count
         ))
+        guard !context.hitTimeout else { return }
 
         guard depth < context.maxDepth else {
             if !children.isEmpty {
@@ -2354,6 +2370,134 @@ final class ComputerUseController {
                 return
             }
         }
+    }
+
+    private func prepareAXSnapshotCall(
+        _ element: AXUIElement,
+        context: inout AXSnapshotContext
+    ) -> Bool {
+        let remaining = context.deadline.timeIntervalSinceNow
+        guard remaining > 0 else {
+            context.hitTimeout = true
+            return false
+        }
+        AXUIElementSetMessagingTimeout(element, Float(min(Double(context.messagingTimeout), remaining)))
+        return true
+    }
+
+    private func axSnapshotChildren(
+        _ element: AXUIElement,
+        context: inout AXSnapshotContext
+    ) -> [AXUIElement] {
+        var childrenRef: CFTypeRef?
+        if prepareAXSnapshotCall(element, context: &context),
+           AXUIElementCopyAttributeValue(element, kAXVisibleChildrenAttribute as CFString, &childrenRef) == .success,
+           let visible = childrenRef as? [AXUIElement],
+           !visible.isEmpty {
+            return visible
+        }
+
+        childrenRef = nil
+        if prepareAXSnapshotCall(element, context: &context),
+           AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+           let children = childrenRef as? [AXUIElement] {
+            return children
+        }
+        return []
+    }
+
+    private func axSnapshotBool(
+        _ element: AXUIElement,
+        attribute: String,
+        context: inout AXSnapshotContext
+    ) -> Bool? {
+        var ref: CFTypeRef?
+        guard prepareAXSnapshotCall(element, context: &context),
+              AXUIElementCopyAttributeValue(element, attribute as CFString, &ref) == .success,
+              let ref else {
+            return nil
+        }
+        if CFGetTypeID(ref) == CFBooleanGetTypeID() {
+            return CFBooleanGetValue((ref as! CFBoolean))
+        }
+        return (ref as? NSNumber)?.boolValue ?? (ref as? Bool)
+    }
+
+    private func axSnapshotString(
+        _ element: AXUIElement,
+        attribute: String,
+        context: inout AXSnapshotContext
+    ) -> String? {
+        var ref: CFTypeRef?
+        guard prepareAXSnapshotCall(element, context: &context),
+              AXUIElementCopyAttributeValue(element, attribute as CFString, &ref) == .success else {
+            return nil
+        }
+        return ref as? String
+    }
+
+    private func axSnapshotAttributeString(
+        _ element: AXUIElement,
+        attribute: String,
+        context: inout AXSnapshotContext
+    ) -> String? {
+        var ref: CFTypeRef?
+        guard prepareAXSnapshotCall(element, context: &context),
+              AXUIElementCopyAttributeValue(element, attribute as CFString, &ref) == .success,
+              let ref else {
+            return nil
+        }
+        let value: String?
+        if let string = ref as? String {
+            value = string
+        } else if let number = ref as? NSNumber {
+            value = number.stringValue
+        } else if let url = ref as? URL {
+            value = url.absoluteString
+        } else {
+            value = nil
+        }
+        return value.flatMap(Self.truncatedAXString)
+    }
+
+    private func axSnapshotActions(
+        _ element: AXUIElement,
+        context: inout AXSnapshotContext
+    ) -> [String] {
+        var ref: CFArray?
+        guard prepareAXSnapshotCall(element, context: &context),
+              AXUIElementCopyActionNames(element, &ref) == .success,
+              let actions = ref as? [String] else {
+            return []
+        }
+        return actions
+    }
+
+    private func axSnapshotFrame(
+        _ element: AXUIElement,
+        context: inout AXSnapshotContext
+    ) -> CGRect? {
+        var posRef: CFTypeRef?
+        var sizeRef: CFTypeRef?
+        guard prepareAXSnapshotCall(element, context: &context),
+              AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &posRef) == .success,
+              prepareAXSnapshotCall(element, context: &context),
+              AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeRef) == .success,
+              let posRef,
+              let sizeRef,
+              CFGetTypeID(posRef) == AXValueGetTypeID(),
+              CFGetTypeID(sizeRef) == AXValueGetTypeID() else {
+            return nil
+        }
+        let posValue = posRef as! AXValue
+        let sizeValue = sizeRef as! AXValue
+        var point = CGPoint.zero
+        var size = CGSize.zero
+        guard AXValueGetValue(posValue, .cgPoint, &point),
+              AXValueGetValue(sizeValue, .cgSize, &size) else {
+            return nil
+        }
+        return CGRect(origin: point, size: size)
     }
 
     private func axChildren(_ element: AXUIElement) -> [AXUIElement] {

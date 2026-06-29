@@ -1572,7 +1572,7 @@ final class LatticesApi {
         api.register(Endpoint(
             method: "computer.windowState",
             description: "Inspect a target window's Accessibility tree and return snapshot-local element ids.",
-            access: .read,
+            access: .mutate,
             params: [
                 Param(name: "wid", type: "uint32", required: false, description: "Target window id"),
                 Param(name: "session", type: "string", required: false, description: "Target lattices session"),
