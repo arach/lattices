@@ -524,6 +524,141 @@ final class ComputerUseController {
         }
     }
 
+    func typeElement(params: JSON?) throws -> JSON {
+        try typeElement(params: params, actionName: "typeElement")
+    }
+
+    func setValue(params: JSON?) throws -> JSON {
+        try typeElement(params: params, actionName: "setValue")
+    }
+
+    private func typeElement(params: JSON?, actionName: String) throws -> JSON {
+        let source = params?["source"]?.stringValue ?? "daemon"
+        let treatment = ComputerTreatment.resolve(params: params, defaultValue: .stage)
+        let shouldCapture = params?["capture"]?.boolValue ?? true
+        let append = params?["append"]?.boolValue ?? false
+        let typeIntervalMs = axTypeIntervalMs(params: params)
+        let snapshotId = try requiredString(params, keys: ["snapshotId", "snapshot-id", "snapshot"])
+        let elementId = try requiredString(params, keys: ["elementId", "element-id", "id"])
+        let text = try requiredValueString(params, keys: ["text", "value"])
+        let snapshot = try axSnapshot(id: snapshotId)
+        guard let element = snapshot.elementRefsById[elementId],
+              let elementInfo = snapshot.elementsById[elementId] else {
+            throw RouterError.notFound("element \(elementId) in snapshot \(snapshotId)")
+        }
+
+        let run = try RunStore.shared.createRun(
+            title: actionName == "setValue" ? "Set element value" : "Type element text",
+            source: source,
+            surfaces: [.window(snapshot.window)]
+        )
+
+        do {
+            _ = try RunStore.shared.markRunning(
+                id: run.id,
+                summary: "Resolved AX text element",
+                data: [
+                    "action": .string(actionName),
+                    "treatment": .string(treatment.rawValue),
+                    "snapshotId": .string(snapshotId),
+                    "elementId": .string(elementId),
+                    "characters": .int(text.count),
+                    "append": .bool(append),
+                    "wid": .int(Int(snapshot.window.wid)),
+                    "app": .string(snapshot.window.app),
+                ]
+            )
+
+            let before = try maybeCaptureWindow(
+                shouldCapture: shouldCapture,
+                runId: run.id,
+                source: source,
+                wid: snapshot.window.wid,
+                prefix: "element-text-before"
+            )
+
+            var focused = false
+            var result: AXTextInsertionResult?
+            if treatment.focusesWindow {
+                focused = try focus(window: snapshot.window)
+                _ = try RunStore.shared.appendTrace(
+                    id: run.id,
+                    kind: "computer.focused",
+                    summary: "Focused element text target window",
+                    data: ["wid": .int(Int(snapshot.window.wid)), "focused": .bool(focused)]
+                )
+                try? focusAXElement(element)
+            }
+
+            if treatment.insertsText {
+                result = try setElementValueViaAX(
+                    text,
+                    element: element,
+                    elementInfo: elementInfo,
+                    append: append,
+                    typeIntervalMs: typeIntervalMs
+                )
+                _ = try RunStore.shared.appendTrace(
+                    id: run.id,
+                    kind: "computer.axElementTyped",
+                    summary: actionName == "setValue" ? "Set AX element value" : "Typed AX element text",
+                    data: [
+                        "snapshotId": .string(snapshotId),
+                        "elementId": .string(elementId),
+                        "characters": .int(text.count),
+                        "append": .bool(append),
+                        "result": result?.json ?? .null,
+                    ]
+                )
+                usleep(180_000)
+            }
+
+            let after = try maybeCaptureWindow(
+                shouldCapture: shouldCapture,
+                runId: run.id,
+                source: source,
+                wid: snapshot.window.wid,
+                prefix: "element-text-after"
+            )
+            let completed = try RunStore.shared.complete(
+                id: run.id,
+                summary: result == nil ? "Staged AX element text" : "Completed AX element text",
+                data: [
+                    "snapshotId": .string(snapshotId),
+                    "elementId": .string(elementId),
+                    "typed": .bool(result != nil),
+                    "focused": .bool(focused),
+                    "append": .bool(append),
+                ]
+            )
+
+            return elementTextResponse(
+                actionName: actionName,
+                run: completed,
+                snapshot: snapshot,
+                element: elementInfo,
+                before: before?["artifact"],
+                after: after?["artifact"],
+                treatment: treatment,
+                text: text,
+                append: append,
+                result: result,
+                focused: focused
+            )
+        } catch {
+            _ = try? RunStore.shared.fail(
+                id: run.id,
+                summary: "AX element text failed",
+                data: [
+                    "snapshotId": .string(snapshotId),
+                    "elementId": .string(elementId),
+                    "error": .string(error.localizedDescription),
+                ]
+            )
+            throw error
+        }
+    }
+
     func typeText(params: JSON?) throws -> JSON {
         try runTerminalText(
             params: params,
@@ -2422,6 +2557,15 @@ final class ComputerUseController {
         throw RouterError.missingParam(keys.first ?? "value")
     }
 
+    private func requiredValueString(_ params: JSON?, keys: [String]) throws -> String {
+        for key in keys {
+            if let value = params?[key]?.stringValue {
+                return value
+            }
+        }
+        throw RouterError.missingParam(keys.first ?? "value")
+    }
+
     private func elementActionName(_ params: JSON?) throws -> String {
         let raw = params?["action"]?.stringValue
             ?? params?["elementAction"]?.stringValue
@@ -2516,6 +2660,65 @@ final class ComputerUseController {
         guard err == .success else {
             throw RouterError.custom("AX focus failed with \(err.rawValue)")
         }
+    }
+
+    private func setElementValueViaAX(
+        _ text: String,
+        element: AXUIElement,
+        elementInfo: AXSnapshotElement,
+        append: Bool,
+        typeIntervalMs: Double?
+    ) throws -> AXTextInsertionResult {
+        guard AXIsProcessTrusted() else {
+            throw RouterError.custom("Accessibility permission is required for AX text insertion")
+        }
+        var settable = DarwinBoolean(false)
+        let settableErr = AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &settable)
+        guard settableErr == .success, settable.boolValue else {
+            throw RouterError.custom("Element \(elementInfo.id) does not support setting AXValue")
+        }
+
+        func setAXValue(_ value: String) throws {
+            let err = AXUIElementSetAttributeValue(
+                element,
+                kAXValueAttribute as CFString,
+                value as CFString
+            )
+            guard err == .success else {
+                throw RouterError.custom("AX value insertion failed with \(err.rawValue)")
+            }
+        }
+
+        let previousValue = axAttributeString(element, attribute: kAXValueAttribute)
+        let baseValue = append ? (previousValue ?? "") : ""
+        let insertedValue = append ? (baseValue + text) : text
+        let interval = typeIntervalMs.map { max(4, min($0, 160)) }
+        if let interval {
+            if !append, previousValue?.isEmpty == false {
+                try setAXValue("")
+                usleep(80_000)
+            }
+            var staged = baseValue
+            for character in text {
+                staged.append(character)
+                try setAXValue(staged)
+                usleep(UInt32(interval * 1_000))
+            }
+        } else {
+            try setAXValue(insertedValue)
+        }
+
+        let verified = axAttributeString(element, attribute: kAXValueAttribute)
+        return AXTextInsertionResult(
+            role: elementInfo.role,
+            roleDescription: elementInfo.roleDescription,
+            frame: elementInfo.frame,
+            previousValue: previousValue,
+            insertedValue: insertedValue,
+            verifiedValue: verified,
+            typedCharacters: interval == nil ? nil : text.count,
+            typeIntervalMs: interval
+        )
     }
 
     private func axSnapshot(
@@ -3218,6 +3421,42 @@ final class ComputerUseController {
             "run": run.json,
         ]
         if let axAction { object["axAction"] = .string(axAction) }
+        if let before { object["beforeArtifact"] = before }
+        if let after { object["afterArtifact"] = after }
+        return .object(object)
+    }
+
+    private func elementTextResponse(
+        actionName: String,
+        run: RunSession,
+        snapshot: AXWindowSnapshot,
+        element: AXSnapshotElement,
+        before: JSON?,
+        after: JSON?,
+        treatment: ComputerTreatment,
+        text: String,
+        append: Bool,
+        result: AXTextInsertionResult?,
+        focused: Bool
+    ) -> JSON {
+        var object: [String: JSON] = [
+            "ok": .bool(true),
+            "action": .string(actionName),
+            "treatment": .string(treatment.rawValue),
+            "snapshotId": .string(snapshot.id),
+            "elementId": .string(element.id),
+            "typed": .bool(result != nil),
+            "focused": .bool(focused),
+            "append": .bool(append),
+            "text": .string(text),
+            "target": Encoders.window(snapshot.window),
+            "element": element.json,
+            "run": run.json,
+        ]
+        if let result {
+            object["result"] = result.json
+            object["verified"] = result.json["verified"] ?? .bool(false)
+        }
         if let before { object["beforeArtifact"] = before }
         if let after { object["afterArtifact"] = after }
         return .object(object)
