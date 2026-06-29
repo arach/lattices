@@ -51,12 +51,18 @@ lattices app
 | `lattices_computer_element_action` | `computer.elementAction` |
 | `lattices_computer_type_element` | `computer.typeElement` |
 | `lattices_computer_set_value` | `computer.setValue` |
+| `lattices_computer_press_key` | `computer.pressKey` |
+| `lattices_computer_hotkey` | `computer.hotkey` |
 | `lattices_window_focus` | `computer.focusWindow` |
 | `lattices_window_place` | `window.place` |
 | `lattices_capture_window` | `capture.screenshotWindow` |
 | `lattices_computer_prepare` | `computer.prepare` |
 | `lattices_computer_launch_app` | `computer.launchApp` |
 | `lattices_computer_click` | `computer.click` |
+| `lattices_computer_double_click` | `computer.doubleClick` |
+| `lattices_computer_right_click` | `computer.rightClick` |
+| `lattices_computer_scroll` | `computer.scroll` |
+| `lattices_computer_drag` | `computer.drag` |
 | `lattices_computer_type_window_text` | `computer.typeWindowText` |
 | `lattices_computer_type_text` | `computer.typeText` |
 | `lattices_call` | caller-selected escape hatch |

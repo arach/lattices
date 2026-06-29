@@ -59,12 +59,18 @@ All tools use the `lattices_` prefix.
 | `lattices_computer_element_action` | `computer.elementAction` | Defaults to `treatment: "stage"`; pass `execute` to perform AXPress/showMenu. |
 | `lattices_computer_type_element` | `computer.typeElement` | Defaults to `treatment: "stage"`; pass `execute` to set or append AXValue text. |
 | `lattices_computer_set_value` | `computer.setValue` | Defaults to `treatment: "stage"`; pass `execute` to replace AXValue. |
+| `lattices_computer_press_key` | `computer.pressKey` | Defaults to `treatment: "stage"`; pass `execute` with an explicit target to press. |
+| `lattices_computer_hotkey` | `computer.hotkey` | Defaults to `treatment: "stage"`; pass `execute` with an explicit target to send. |
 | `lattices_window_focus` | `computer.focusWindow` | Defaults to `treatment: "stage"`; pass `present` or `execute` to focus. |
 | `lattices_window_place` | `window.place` | Returns the daemon action receipt. |
 | `lattices_capture_window` | `capture.screenshotWindow` | Creates a run artifact. |
 | `lattices_computer_prepare` | `computer.prepare` | Stages/observes a terminal target. |
 | `lattices_computer_launch_app` | `computer.launchApp` | Defaults to `treatment: "stage"`; pass `present` or `execute` to launch/focus. |
 | `lattices_computer_click` | `computer.click` | Defaults to `treatment: "stage"`; pass `execute` to click. |
+| `lattices_computer_double_click` | `computer.doubleClick` | Defaults to `treatment: "stage"`; pass `execute` to double-click. |
+| `lattices_computer_right_click` | `computer.rightClick` | Defaults to `treatment: "stage"`; pass `execute` to right-click. |
+| `lattices_computer_scroll` | `computer.scroll` | Defaults to `treatment: "stage"`; pass `execute` to scroll. |
+| `lattices_computer_drag` | `computer.drag` | Defaults to `treatment: "stage"`; pass `execute` to drag. |
 | `lattices_computer_type_window_text` | `computer.typeWindowText` | Defaults to `treatment: "stage"`; pass `execute` to insert text. |
 | `lattices_computer_type_text` | `computer.typeText` | Defaults to `treatment: "stage"`; pass `execute` to insert text. |
 | `lattices_call` | caller-selected | Escape hatch; prefer typed tools first. |
