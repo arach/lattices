@@ -95,6 +95,7 @@ const pointSchema = z.number().finite();
 
 const windowTargetSchema = z.object({
   wid: z.number().int().positive().optional(),
+  session: z.string().min(1).optional(),
   app: z.string().min(1).optional(),
   title: z.string().optional(),
 });
@@ -169,6 +170,8 @@ export const computerClickParamsSchema = windowTargetSchema
   .merge(cursorAppearanceSchema.pick({ label: true }))
   .extend({
     button: z.enum(["left", "right", "secondary", "context"]).optional(),
+    count: z.number().int().positive().max(8).optional(),
+    delayMs: z.number().finite().nonnegative().optional(),
     transport: computerClickTransportSchema.optional(),
     axLabel: z.string().min(1).optional(),
     targetText: z.string().min(1).optional(),
@@ -188,6 +191,208 @@ export const computerMagicCursorParamsSchema = windowTargetSchema
     fromYRatio: ratioSchema.optional(),
   });
 
+export const computerWindowStateParamsSchema = windowTargetSchema.extend({
+  mode: z.enum(["ax", "both", "screenshot"]).optional(),
+  capture: z.boolean().optional(),
+  maxDepth: z.number().int().positive().optional(),
+  maxElements: z.number().int().positive().optional(),
+  timeoutMs: z.number().int().positive().optional(),
+  source: z.string().optional(),
+});
+
+export const computerElementActionParamsSchema = actionBaseSchema.extend({
+  snapshotId: z.string().min(1),
+  elementId: z.string().min(1),
+  action: z.enum(["press", "showMenu", "focus"]).optional(),
+});
+
+export const computerTypeElementParamsSchema = actionBaseSchema.extend({
+  snapshotId: z.string().min(1),
+  elementId: z.string().min(1),
+  text: z.string(),
+  append: z.boolean().optional(),
+  typeIntervalMs: z.number().finite().positive().optional(),
+});
+
+export const computerSetValueParamsSchema = actionBaseSchema.extend({
+  snapshotId: z.string().min(1),
+  elementId: z.string().min(1),
+  value: z.string(),
+  append: z.boolean().optional(),
+  typeIntervalMs: z.number().finite().positive().optional(),
+});
+
+const keyboardParamsSchema = windowTargetSchema.merge(actionBaseSchema).extend({
+  key: z.string().min(1).optional(),
+  shortcut: z.string().min(1).optional(),
+  modifiers: z.union([z.array(z.string()), z.string()]).optional(),
+  count: z.number().int().positive().max(20).optional(),
+  delayMs: z.number().finite().nonnegative().optional(),
+  allowGlobal: z.boolean().optional(),
+});
+
+export const computerPressKeyParamsSchema = keyboardParamsSchema.extend({
+  key: z.string().min(1),
+});
+
+export const computerHotkeyParamsSchema = keyboardParamsSchema.refine(
+  (value) => Boolean(value.shortcut || value.key),
+  "computer.hotkey requires shortcut or key"
+);
+
+export const computerFocusWindowParamsSchema = windowTargetSchema.merge(actionBaseSchema);
+
+export const computerLaunchAppParamsSchema = actionBaseSchema.extend({
+  app: z.string().min(1),
+  bundleId: z.string().min(1).optional(),
+  path: z.string().min(1).optional(),
+  title: z.string().optional(),
+});
+
+export const computerTypeWindowTextParamsSchema = windowTargetSchema
+  .merge(pointTargetSchema)
+  .merge(actionBaseSchema)
+  .extend({
+    text: z.string(),
+    enter: z.boolean().optional(),
+    send: z.boolean().optional(),
+  });
+
+export const computerTypeTextParamsSchema = actionBaseSchema.extend({
+  wid: z.number().int().positive().optional(),
+  tty: z.string().min(1).optional(),
+  app: z.string().min(1).optional(),
+  text: z.string(),
+  enter: z.boolean().optional(),
+  transport: z.enum(["auto", "tmux", "iterm", "iterm2", "pasteboard"]).optional(),
+});
+
+export const computerDoubleClickParamsSchema = windowTargetSchema
+  .merge(pointTargetSchema)
+  .merge(actionBaseSchema)
+  .extend({
+    delayMs: z.number().finite().nonnegative().optional(),
+  });
+
+export const computerRightClickParamsSchema = windowTargetSchema
+  .merge(pointTargetSchema)
+  .merge(actionBaseSchema)
+  .extend({
+    count: z.number().int().positive().max(8).optional(),
+    delayMs: z.number().finite().nonnegative().optional(),
+  });
+
+export const computerScrollParamsSchema = windowTargetSchema
+  .merge(pointTargetSchema)
+  .merge(actionBaseSchema)
+  .extend({
+    direction: z.enum(["down", "up", "left", "right"]).optional(),
+    amount: z.number().finite().optional(),
+    deltaX: z.number().finite().optional(),
+    deltaY: z.number().finite().optional(),
+    count: z.number().int().positive().max(30).optional(),
+    delayMs: z.number().finite().nonnegative().optional(),
+  });
+
+export const computerDragParamsSchema = windowTargetSchema
+  .merge(pointTargetSchema)
+  .merge(actionBaseSchema)
+  .extend({
+    fromX: pointSchema.optional(),
+    fromY: pointSchema.optional(),
+    toX: pointSchema.optional(),
+    toY: pointSchema.optional(),
+    fromXRatio: ratioSchema.optional(),
+    fromYRatio: ratioSchema.optional(),
+    toXRatio: ratioSchema.optional(),
+    toYRatio: ratioSchema.optional(),
+    button: z.enum(["left", "right", "secondary", "context"]).optional(),
+    durationMs: z.number().finite().positive().optional(),
+    steps: z.number().int().positive().max(120).optional(),
+  });
+
+export const computerVerifyParamsSchema = windowTargetSchema.extend({
+  mode: z.enum(["ocr", "ax", "artifactChanged"]).optional(),
+  snapshotId: z.string().min(1).optional(),
+  elementId: z.string().min(1).optional(),
+  runId: z.string().min(1).optional(),
+  artifactId: z.string().min(1).optional(),
+  path: z.string().min(1).optional(),
+  contains: z.string().optional(),
+  expected: z.string().optional(),
+  notContains: z.string().optional(),
+  beforeArtifactId: z.string().min(1).optional(),
+  afterArtifactId: z.string().min(1).optional(),
+  beforePath: z.string().min(1).optional(),
+  afterPath: z.string().min(1).optional(),
+  source: z.string().optional(),
+});
+
+export const captureWindowParamsSchema = windowTargetSchema.extend({
+  runId: z.string().min(1).optional(),
+  filename: z.string().min(1).optional(),
+  source: z.string().optional(),
+});
+
+export const captureRegionParamsSchema = windowTargetSchema.extend({
+  x: pointSchema.optional(),
+  y: pointSchema.optional(),
+  width: z.number().finite().positive().optional(),
+  height: z.number().finite().positive().optional(),
+  w: z.number().finite().positive().optional(),
+  h: z.number().finite().positive().optional(),
+  runId: z.string().min(1).optional(),
+  filename: z.string().min(1).optional(),
+  source: z.string().optional(),
+});
+
+export const zoomArtifactParamsSchema = z.object({
+  runId: z.string().min(1).optional(),
+  artifactId: z.string().min(1).optional(),
+  path: z.string().min(1).optional(),
+  x: z.number().finite().optional(),
+  y: z.number().finite().optional(),
+  width: z.number().finite().positive().optional(),
+  height: z.number().finite().positive().optional(),
+  xRatio: ratioSchema.optional(),
+  yRatio: ratioSchema.optional(),
+  widthRatio: ratioSchema.optional(),
+  heightRatio: ratioSchema.optional(),
+  scale: z.number().finite().positive().optional(),
+  filename: z.string().min(1).optional(),
+  source: z.string().optional(),
+});
+
+const visionBaseSchema = z.object({
+  instruction: z.string().min(1),
+  contains: z.string().optional(),
+  notContains: z.string().optional(),
+  source: z.string().optional(),
+});
+
+export const visionAnalyzeWindowParamsSchema = windowTargetSchema.merge(visionBaseSchema);
+
+export const visionAnalyzeArtifactParamsSchema = visionBaseSchema.extend({
+  runId: z.string().min(1).optional(),
+  artifactId: z.string().min(1).optional(),
+  path: z.string().min(1).optional(),
+});
+
+export const browserGetTextParamsSchema = windowTargetSchema;
+
+export const browserQueryDomParamsSchema = windowTargetSchema.extend({
+  selector: z.string().min(1),
+  limit: z.number().int().positive().max(200).optional(),
+  allowAutomation: z.boolean(),
+});
+
+export const browserExecuteJavascriptParamsSchema = windowTargetSchema.extend({
+  script: z.string().min(1),
+  treatment: computerTreatmentSchema.optional(),
+  allowAutomation: z.boolean().optional(),
+  source: z.string().optional(),
+});
+
 export function createCuaClient(options = {}) {
   const defaultTimeoutMs = options.defaultTimeoutMs ?? 30_000;
 
@@ -196,8 +401,77 @@ export function createCuaClient(options = {}) {
   }
 
   return {
+    windowState(params) {
+      return call("computer.windowState", computerWindowStateParamsSchema.parse(params));
+    },
+    elementAction(params) {
+      return call("computer.elementAction", computerElementActionParamsSchema.parse(params));
+    },
+    typeElement(params) {
+      return call("computer.typeElement", computerTypeElementParamsSchema.parse(params));
+    },
+    setValue(params) {
+      return call("computer.setValue", computerSetValueParamsSchema.parse(params));
+    },
+    pressKey(params) {
+      return call("computer.pressKey", computerPressKeyParamsSchema.parse(params));
+    },
+    hotkey(params) {
+      return call("computer.hotkey", computerHotkeyParamsSchema.parse(params));
+    },
+    focusWindow(params) {
+      return call("computer.focusWindow", computerFocusWindowParamsSchema.parse(params));
+    },
+    launchApp(params) {
+      return call("computer.launchApp", computerLaunchAppParamsSchema.parse(params));
+    },
+    typeWindowText(params) {
+      return call("computer.typeWindowText", computerTypeWindowTextParamsSchema.parse(params));
+    },
+    typeText(params) {
+      return call("computer.typeText", computerTypeTextParamsSchema.parse(params));
+    },
     click(params) {
       return call("computer.click", computerClickParamsSchema.parse(params));
+    },
+    doubleClick(params) {
+      return call("computer.doubleClick", computerDoubleClickParamsSchema.parse(params));
+    },
+    rightClick(params) {
+      return call("computer.rightClick", computerRightClickParamsSchema.parse(params));
+    },
+    scroll(params) {
+      return call("computer.scroll", computerScrollParamsSchema.parse(params));
+    },
+    drag(params) {
+      return call("computer.drag", computerDragParamsSchema.parse(params));
+    },
+    verify(params) {
+      return call("computer.verify", computerVerifyParamsSchema.parse(params));
+    },
+    captureWindow(params) {
+      return call("capture.screenshotWindow", captureWindowParamsSchema.parse(params));
+    },
+    screenshotRegion(params) {
+      return call("capture.screenshotRegion", captureRegionParamsSchema.parse(params));
+    },
+    zoomArtifact(params) {
+      return call("capture.zoomArtifact", zoomArtifactParamsSchema.parse(params));
+    },
+    analyzeWindow(params) {
+      return call("vision.analyzeWindow", visionAnalyzeWindowParamsSchema.parse(params));
+    },
+    analyzeArtifact(params) {
+      return call("vision.analyzeArtifact", visionAnalyzeArtifactParamsSchema.parse(params));
+    },
+    browserGetText(params) {
+      return call("browser.getText", browserGetTextParamsSchema.parse(params));
+    },
+    browserQueryDom(params) {
+      return call("browser.queryDom", browserQueryDomParamsSchema.parse(params));
+    },
+    browserExecuteJavascript(params) {
+      return call("browser.executeJavascript", browserExecuteJavascriptParamsSchema.parse(params));
     },
     magicCursor(params) {
       return call("computer.magicCursor", computerMagicCursorParamsSchema.parse(params));
@@ -207,8 +481,100 @@ export function createCuaClient(options = {}) {
 
 export const cua = createCuaClient();
 
+export function windowState(params) {
+  return cua.windowState(params);
+}
+
+export function elementAction(params) {
+  return cua.elementAction(params);
+}
+
+export function typeElement(params) {
+  return cua.typeElement(params);
+}
+
+export function setValue(params) {
+  return cua.setValue(params);
+}
+
+export function pressKey(params) {
+  return cua.pressKey(params);
+}
+
+export function hotkey(params) {
+  return cua.hotkey(params);
+}
+
+export function focusWindow(params) {
+  return cua.focusWindow(params);
+}
+
+export function launchApp(params) {
+  return cua.launchApp(params);
+}
+
+export function typeWindowText(params) {
+  return cua.typeWindowText(params);
+}
+
+export function typeText(params) {
+  return cua.typeText(params);
+}
+
 export function click(params) {
   return cua.click(params);
+}
+
+export function doubleClick(params) {
+  return cua.doubleClick(params);
+}
+
+export function rightClick(params) {
+  return cua.rightClick(params);
+}
+
+export function scroll(params) {
+  return cua.scroll(params);
+}
+
+export function drag(params) {
+  return cua.drag(params);
+}
+
+export function verify(params) {
+  return cua.verify(params);
+}
+
+export function captureWindow(params) {
+  return cua.captureWindow(params);
+}
+
+export function screenshotRegion(params) {
+  return cua.screenshotRegion(params);
+}
+
+export function zoomArtifact(params) {
+  return cua.zoomArtifact(params);
+}
+
+export function analyzeWindow(params) {
+  return cua.analyzeWindow(params);
+}
+
+export function analyzeArtifact(params) {
+  return cua.analyzeArtifact(params);
+}
+
+export function browserGetText(params) {
+  return cua.browserGetText(params);
+}
+
+export function browserQueryDom(params) {
+  return cua.browserQueryDom(params);
+}
+
+export function browserExecuteJavascript(params) {
+  return cua.browserExecuteJavascript(params);
 }
 
 export function magicCursor(params) {

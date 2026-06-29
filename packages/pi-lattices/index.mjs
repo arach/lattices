@@ -28,10 +28,16 @@ const wid = integer("CGWindowID / kCGWindowNumber.");
 const session = string("Lattices tmux/session name, such as myapp-a1b2c3.");
 const app = string("macOS application name, such as Finder, Notes, Terminal, iTerm2, or Scout.");
 const title = string("Optional window title substring for target selection.");
+const path = string("Filesystem path.");
+const artifactId = string("Run artifact id.");
 const x = number("Absolute screen X coordinate.");
 const y = number("Absolute screen Y coordinate.");
 const ratio = (description) => ({ type: "number", minimum: 0, maximum: 1, description });
 const text = string("Text payload. Pass treatment=execute to actually insert it.");
+const instruction = string("Explicit analysis instruction or verification question.");
+const allowAutomation = boolean("Must be true for browser JavaScript automation.");
+const selector = string("CSS selector.");
+const script = string("JavaScript source.");
 const windowStateMode = optionalEnum(
   ["ax", "both", "screenshot"],
   "Snapshot mode. ax avoids Screen Recording; both includes AX plus screenshot capture; screenshot skips AX."
@@ -282,6 +288,73 @@ export const LATTICES_TOOLS = [
     defaultSource: DEFAULT_SOURCE,
   },
   {
+    name: `${TOOL_PREFIX}capture_region`,
+    method: "capture.screenshotRegion",
+    description: "Capture a screen region as a PNG run artifact. Falls back to the target window frame if x/y/width/height are omitted.",
+    parameters: object({
+      ...targetParams,
+      ...windowPointParams,
+      width: number("Region width in screen coordinates."),
+      height: number("Region height in screen coordinates."),
+      w: number("Alias for width."),
+      h: number("Alias for height."),
+      runId: string("Existing run id to append to."),
+      filename: string("Optional artifact filename."),
+      ...runSourceParams,
+    }),
+    defaultSource: DEFAULT_SOURCE,
+  },
+  {
+    name: `${TOOL_PREFIX}capture_zoom_artifact`,
+    method: "capture.zoomArtifact",
+    description: "Crop and zoom an image artifact into a new PNG artifact linked to the same run.",
+    parameters: object({
+      runId: string("Run id containing the source artifact."),
+      artifactId,
+      path,
+      x: number("Crop x in image pixels."),
+      y: number("Crop y in image pixels."),
+      width: number("Crop width in image pixels."),
+      height: number("Crop height in image pixels."),
+      xRatio: ratio("Crop x ratio within source image."),
+      yRatio: ratio("Crop y ratio within source image."),
+      widthRatio: ratio("Crop width ratio within source image."),
+      heightRatio: ratio("Crop height ratio within source image."),
+      scale: number("Zoom scale. Daemon default is 2, max 8."),
+      filename: string("Optional artifact filename."),
+      ...runSourceParams,
+    }),
+    defaultSource: DEFAULT_SOURCE,
+  },
+  {
+    name: `${TOOL_PREFIX}vision_analyze_window`,
+    method: "vision.analyzeWindow",
+    description: "Capture a window and run local OCR-based visual analysis with an explicit instruction.",
+    parameters: object({
+      ...targetParams,
+      instruction,
+      contains: string("Optional text that should be present."),
+      notContains: string("Optional text that should be absent."),
+      ...runSourceParams,
+    }, ["instruction"]),
+    defaultSource: DEFAULT_SOURCE,
+  },
+  {
+    name: `${TOOL_PREFIX}vision_analyze_artifact`,
+    method: "vision.analyzeArtifact",
+    description: "Run local OCR-based visual analysis against an existing image artifact or path.",
+    parameters: object({
+      runId: string("Run id containing the source artifact."),
+      artifactId,
+      path,
+      instruction,
+      contains: string("Optional text that should be present."),
+      notContains: string("Optional text that should be absent."),
+      ...runSourceParams,
+    }, ["instruction"]),
+    defaultSource: DEFAULT_SOURCE,
+  },
+  {
     name: `${TOOL_PREFIX}computer_prepare`,
     method: "computer.prepare",
     description: "Resolve and stage/observe a safe terminal target for later computer-use actions without typing by default.",
@@ -394,6 +467,68 @@ export const LATTICES_TOOLS = [
       steps: integer("Interpolated drag event count. Daemon default is 18, max 120."),
       ...computerBaseParams,
     }),
+    defaultTreatment: "stage",
+    defaultSource: DEFAULT_SOURCE,
+  },
+  {
+    name: `${TOOL_PREFIX}computer_verify`,
+    method: "computer.verify",
+    description: "Verify OCR, AX, or artifact-change expectations after a computer-use flow.",
+    parameters: object({
+      ...targetParams,
+      mode: optionalEnum(["ocr", "ax", "artifactChanged"], "Verification mode. Defaults to OCR."),
+      snapshotId: string("AX snapshot id from lattices_computer_window_state."),
+      elementId: string("AX element id within snapshotId."),
+      runId: string("Run id containing an image artifact."),
+      artifactId,
+      path,
+      contains: string("Text that should be present."),
+      expected: string("Alias for contains."),
+      notContains: string("Text that should be absent."),
+      beforeArtifactId: string("Before artifact id for artifactChanged mode."),
+      afterArtifactId: string("After artifact id for artifactChanged mode."),
+      beforePath: string("Before image path for artifactChanged mode."),
+      afterPath: string("After image path for artifactChanged mode."),
+      ...runSourceParams,
+    }),
+    defaultSource: DEFAULT_SOURCE,
+  },
+  {
+    name: `${TOOL_PREFIX}browser_get_text`,
+    method: "browser.getText",
+    description: "Read visible browser text through Accessibility without enabling browser JavaScript automation.",
+    parameters: object({
+      wid,
+      app: string("Browser app name, such as Safari, Google Chrome, Brave Browser, Microsoft Edge, or Arc."),
+      title,
+    }),
+  },
+  {
+    name: `${TOOL_PREFIX}browser_query_dom`,
+    method: "browser.queryDom",
+    description: "Read DOM element summaries from a supported browser. Requires allowAutomation=true.",
+    parameters: object({
+      wid,
+      app: string("Browser app name, such as Safari, Google Chrome, Brave Browser, Microsoft Edge, or Arc."),
+      title,
+      selector,
+      limit: integer("Maximum nodes to return. Daemon default is 20, max 200."),
+      allowAutomation,
+    }, ["selector", "allowAutomation"]),
+  },
+  {
+    name: `${TOOL_PREFIX}browser_execute_javascript`,
+    method: "browser.executeJavascript",
+    description: "Stage or execute JavaScript in a supported browser tab. Execute requires treatment=execute and allowAutomation=true.",
+    parameters: object({
+      wid,
+      app: string("Browser app name, such as Safari, Google Chrome, Brave Browser, Microsoft Edge, or Arc."),
+      title,
+      script,
+      treatment,
+      allowAutomation,
+      ...runSourceParams,
+    }, ["script"]),
     defaultTreatment: "stage",
     defaultSource: DEFAULT_SOURCE,
   },

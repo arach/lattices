@@ -1,6 +1,6 @@
 # LAT-008: pi-lattices and Safe Computer Use Expansion
 
-Status: Draft
+Status: Implemented through Phase 6
 Date: 2026-06-28
 Audience: Lattices implementers, Pi package implementers, agent integrations
 
@@ -14,6 +14,11 @@ methods, treatments, run receipts, artifacts, and traceability.
 
 The target is not to wrap `cua-driver` inside Lattices. The target is to bring
 its most useful low-level affordances into Lattices' safer action/runtime model.
+
+Implementation status: the daemon, SDK, Pi extension, and docs now cover the
+full planned LAT-008 surface. External npm publication remains a release
+operation; the package is installable from local/git paths and is ready for
+publish packaging.
 
 ## Context
 
@@ -47,8 +52,9 @@ Current Lattices strengths:
 
 ## Validation against current repo
 
-The Phase 1 package can be implemented as a wrapper around existing daemon
-methods; no Swift daemon endpoints are required for the MVP.
+The package and daemon implementation now cover Phase 1 through Phase 6. Phase
+1 was implemented as a wrapper around existing daemon methods; later phases add
+native Swift endpoints while keeping Lattices' treatment/run/artifact model.
 
 Confirmed in `docs/api.md` and
 `apps/mac/Sources/Core/Daemon/LatticesApi.swift`:
@@ -73,6 +79,19 @@ Confirmed in `docs/api.md` and
   actions.
 - `computer.typeElement` and `computer.setValue` are present for snapshot
   element-id AXValue insertion.
+- `computer.pressKey`, `computer.hotkey`, `computer.doubleClick`,
+  `computer.rightClick`, `computer.scroll`, and `computer.drag` are present for
+  rich input.
+- `capture.screenshotRegion` and `capture.zoomArtifact` are present for
+  region capture and derived zoom artifacts.
+- `vision.analyzeWindow` and `vision.analyzeArtifact` are present as explicit
+  local OCR-backed analysis endpoints.
+- `computer.verify` is present for AX, OCR, text containment, and artifact-change
+  verification.
+- `browser.getText`, `browser.queryDom`, and `browser.executeJavascript` are
+  present with explicit browser automation gates.
+- `packages/npm/sdk/cua.mjs`, `packages/npm/sdk/cua.d.ts`, `bin/cua.ts`, and
+  `packages/pi-lattices/index.mjs` expose the same supported CUA surface.
 
 MVP wrapper decision: `lattices_window_focus` maps to
 `computer.focusWindow`, not raw `window.focus`, so focus/present calls can stay
@@ -98,9 +117,8 @@ Phase 1 implementation lives in `packages/pi-lattices/` with package docs in
 
 ## Phase 1: `pi-lattices` MVP over existing daemon
 
-Create a Pi package, likely under a package path such as
-`packages/pi-lattices/` or a publishable package folder selected by the
-maintainer. It should be installable by Pi as an npm/git/local package.
+Implemented in `packages/pi-lattices/`. It is installable by Pi as a local/git
+package and structured for npm publication.
 
 ### Package goals
 
@@ -143,6 +161,14 @@ Mutations / computer use:
 - `lattices_computer_drag` → `computer.drag`
 - `lattices_computer_type_window_text` → `computer.typeWindowText`
 - `lattices_computer_type_text` → `computer.typeText`
+- `lattices_capture_region` → `capture.screenshotRegion`
+- `lattices_capture_zoom_artifact` → `capture.zoomArtifact`
+- `lattices_vision_analyze_window` → `vision.analyzeWindow`
+- `lattices_vision_analyze_artifact` → `vision.analyzeArtifact`
+- `lattices_computer_verify` → `computer.verify`
+- `lattices_browser_get_text` → `browser.getText`
+- `lattices_browser_query_dom` → `browser.queryDom`
+- `lattices_browser_execute_javascript` → `browser.executeJavascript`
 
 Escape hatch:
 
@@ -161,8 +187,8 @@ Escape hatch:
 
 ## Phase 2: AX window state and element IDs
 
-Add a Lattices-native endpoint to inspect a target window's AX tree and create
-an actionable snapshot.
+Implemented. Lattices can inspect a target window's AX tree and create an
+actionable snapshot.
 
 Candidate endpoint:
 
@@ -252,8 +278,8 @@ Acceptance:
 
 ## Phase 3: Rich input primitives
 
-Add Lattices-native computer-use endpoints analogous to the useful `cua-driver`
-primitives. Each endpoint must preserve Lattices' treatment/capture/run model.
+Implemented. The Lattices-native computer-use endpoints analogous to the useful
+`cua-driver` primitives preserve the treatment/capture/run model.
 
 Candidate endpoints:
 
@@ -283,18 +309,20 @@ Acceptance examples:
 
 ## Phase 4: Vision, zoom, and verification
 
-Add APIs that let agents reason about screenshots and prove outcomes.
+Implemented. Agents can reason about screenshots and prove outcomes through
+run-backed capture artifacts, local OCR analysis, and verification helpers.
 
 Candidate endpoints:
 
-- `capture.screenshotRegion`
-- `capture.zoomArtifact`
-- `vision.analyzeWindow`
-- `vision.analyzeArtifact`
-- `computer.verify`
+- `capture.screenshotRegion` (implemented)
+- `capture.zoomArtifact` (implemented)
+- `vision.analyzeWindow` (implemented with local OCR-backed analysis)
+- `vision.analyzeArtifact` (implemented with local OCR-backed analysis)
+- `computer.verify` (implemented)
 
-`vision.*` should be optional and explicit. It may use configured provider/model
-settings, but should not imply always-on cloud vision.
+`vision.*` is optional and explicit. The current implementation uses local
+Vision OCR and returns `provider: "local-ocr"`; it does not imply always-on
+cloud vision.
 
 Candidate `vision.analyzeWindow` params:
 
@@ -324,14 +352,15 @@ Acceptance:
 
 ## Phase 5: Browser/page primitives
 
-Consider browser-specific read and action endpoints once the core safe computer
-use surface is in place.
+Implemented. Browser-specific read and page endpoints are available once the
+core safe computer-use surface is in place.
 
 Candidate endpoints:
 
-- `browser.getText`
-- `browser.queryDom`
-- `browser.executeJavascript`
+- `browser.getText` (implemented)
+- `browser.queryDom` (implemented; requires `allowAutomation: true`)
+- `browser.executeJavascript` (implemented; requires `allowAutomation: true` and
+  `treatment: "execute"`)
 
 Guardrails:
 
@@ -342,11 +371,13 @@ Guardrails:
 
 ## Phase 6: Package polish and docs
 
-- Publish/package `pi-lattices` in a way Pi can install via npm/git/local path.
-- Add docs to Lattices and package README.
-- Add smoke test scripts and examples.
-- Add `lattices mcp` only if it complements the Pi extension or shares the same
-  implementation.
+- Package `pi-lattices` is structured for Pi install via local/git path and npm
+  publication. Actual npm publishing is a release operation outside this code
+  change.
+- Lattices docs, package README, SDK facade, TypeScript declarations, and Pi
+  smoke tests are updated.
+- `lattices mcp` was not added; the Pi extension and daemon API remain the
+  supported package surface.
 
 ## Things not to copy
 
@@ -362,9 +393,11 @@ Guardrails:
 2. Add `computer.windowState` window-state endpoint. **Done.**
 3. Add `computer.elementAction` and element-ID support in click/type/set value.
    **Done.**
-4. Add keyboard/scroll/drag/double-click primitives.
-5. Add vision/zoom/verify.
-6. Add browser primitives.
+4. Add keyboard/scroll/drag/double-click primitives. **Done.**
+5. Add vision/zoom/verify. **Done.**
+6. Add browser primitives. **Done.**
+7. Keep SDK, Pi, API docs, package README, and
+   `docs/agent/cua-implementation.md` in parity for future changes. **Done.**
 
 ## Validation commands
 
@@ -373,8 +406,9 @@ Run the narrowest checks for the touched area. Common commands from this repo:
 ```bash
 bun run check:types
 bun run check:app
-bun run check
-bun run test:cli
+node packages/pi-lattices/test/smoke.mjs
+bun run --cwd packages/pi-lattices smoke:no-daemon
+git diff --check
 ```
 
 Manual checks will also be necessary for macOS Accessibility and Screen
@@ -386,6 +420,11 @@ Recording behaviors.
 - `apps/mac/Sources/Core/Daemon/LatticesApi.swift` — endpoint registry.
 - `apps/mac/Sources/Core/Actions/ComputerUseController.swift` — existing
   computer-use implementation.
+- `apps/mac/Sources/Core/Capture/CaptureController.swift` — screenshot region,
+  zoom artifact, local OCR analysis, and visual verification implementation.
+- `apps/mac/Sources/Core/Actions/BrowserUseController.swift` — browser read,
+  DOM query, and explicit JavaScript execution implementation.
+- `docs/agent/cua-implementation.md` — future-agent implementation checklist.
 - `packages/npm/sdk/cua.mjs` and `packages/npm/sdk/cua.d.ts` — current SDK facade.
 - `docs/proposals/LAT-005-action-runtime-product-spine.md` — action runtime
   product direction.

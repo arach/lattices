@@ -54,6 +54,50 @@ enum WindowCapture {
         }
     }
 
+    static func region(
+        rect: CGRect,
+        imageOption: CGWindowImageOption = [.bestResolution]
+    ) async -> CGImage? {
+        guard !rect.isNull, !rect.isInfinite, !rect.isEmpty else {
+            return nil
+        }
+
+        do {
+            let content = try await SCShareableContent.excludingDesktopWindows(
+                true,
+                onScreenWindowsOnly: true
+            )
+            guard let selection = regionSelection(for: rect, displays: content.displays) else {
+                return nil
+            }
+
+            let filter = SCContentFilter(display: selection.display, excludingWindows: [])
+            let contentInfo = SCShareableContent.info(for: filter)
+            let scale = outputScale(for: imageOption, contentInfo: contentInfo)
+            let configuration = SCStreamConfiguration()
+            configuration.sourceRect = selection.sourceRect
+            configuration.width = max(1, Int((selection.sourceRect.width * scale).rounded(.up)))
+            configuration.height = max(1, Int((selection.sourceRect.height * scale).rounded(.up)))
+            configuration.captureResolution = captureResolution(for: imageOption)
+            configuration.scalesToFit = true
+            configuration.preservesAspectRatio = true
+            configuration.showsCursor = false
+            configuration.shouldBeOpaque = imageOption.contains(.shouldBeOpaque)
+
+            return try await SCScreenshotManager.captureImage(
+                contentFilter: filter,
+                configuration: configuration
+            )
+        } catch {
+            return nil
+        }
+    }
+
+    private struct RegionSelection {
+        let display: SCDisplay
+        let sourceRect: CGRect
+    }
+
     private static func sourceRect(from bounds: CGRect) -> CGRect? {
         guard !bounds.isNull, !bounds.isInfinite, !bounds.isEmpty else {
             return nil
@@ -95,5 +139,30 @@ enum WindowCapture {
             return 1
         }
         return max(CGFloat(contentInfo.pointPixelScale), 1)
+    }
+
+    private static func regionSelection(
+        for rect: CGRect,
+        displays: [SCDisplay]
+    ) -> RegionSelection? {
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        guard let display = displays.first(where: { $0.frame.contains(center) })
+                ?? displays.first(where: { $0.frame.intersects(rect) })
+                ?? displays.first else {
+            return nil
+        }
+        let clipped = rect.intersection(display.frame)
+        guard !clipped.isNull, !clipped.isEmpty else {
+            return nil
+        }
+        return RegionSelection(
+            display: display,
+            sourceRect: CGRect(
+                x: clipped.origin.x - display.frame.origin.x,
+                y: clipped.origin.y - display.frame.origin.y,
+                width: clipped.width,
+                height: clipped.height
+            )
+        )
     }
 }

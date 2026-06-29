@@ -2,8 +2,8 @@
 
 Pi extension that exposes the local Lattices macOS daemon as typed `lattices_*`
 tools. It wraps Lattices' existing WebSocket API at `ws://127.0.0.1:9399`; it
-does **not** bundle `cua-driver`, replace the Lattices daemon, or enable browser
-automation.
+does **not** bundle `cua-driver`, replace the Lattices daemon, or silently
+enable browser automation.
 
 ## Requirements
 
@@ -64,6 +64,11 @@ All tools use the `lattices_` prefix.
 | `lattices_window_focus` | `computer.focusWindow` | Defaults to `treatment: "stage"`; pass `present` or `execute` to focus. |
 | `lattices_window_place` | `window.place` | Returns the daemon action receipt. |
 | `lattices_capture_window` | `capture.screenshotWindow` | Creates a run artifact. |
+| `lattices_capture_region` | `capture.screenshotRegion` | Creates a run artifact for an explicit rect or target window frame. |
+| `lattices_capture_zoom_artifact` | `capture.zoomArtifact` | Crops/scales an existing image artifact and links the derived artifact. |
+| `lattices_vision_analyze_window` | `vision.analyzeWindow` | Captures a target window, then runs local OCR-backed analysis. |
+| `lattices_vision_analyze_artifact` | `vision.analyzeArtifact` | Runs local OCR-backed analysis over an existing image artifact. |
+| `lattices_computer_verify` | `computer.verify` | Verifies AX, OCR, text containment, or artifact-change expectations. |
 | `lattices_computer_prepare` | `computer.prepare` | Stages/observes a terminal target. |
 | `lattices_computer_launch_app` | `computer.launchApp` | Defaults to `treatment: "stage"`; pass `present` or `execute` to launch/focus. |
 | `lattices_computer_click` | `computer.click` | Defaults to `treatment: "stage"`; pass `execute` to click. |
@@ -73,6 +78,9 @@ All tools use the `lattices_` prefix.
 | `lattices_computer_drag` | `computer.drag` | Defaults to `treatment: "stage"`; pass `execute` to drag. |
 | `lattices_computer_type_window_text` | `computer.typeWindowText` | Defaults to `treatment: "stage"`; pass `execute` to insert text. |
 | `lattices_computer_type_text` | `computer.typeText` | Defaults to `treatment: "stage"`; pass `execute` to insert text. |
+| `lattices_browser_get_text` | `browser.getText` | Read-only AX text extraction for supported browser windows. |
+| `lattices_browser_query_dom` | `browser.queryDom` | Requires `allowAutomation: true`; returns selector summaries from the active page. |
+| `lattices_browser_execute_javascript` | `browser.executeJavascript` | Requires `allowAutomation: true` and `treatment: "execute"` before running script. |
 | `lattices_call` | caller-selected | Escape hatch; prefer typed tools first. |
 
 The default `source` for run-backed tools is `pi-lattices` unless the caller
@@ -118,10 +126,10 @@ export LATTICES_DAEMON_PORT=9399
 export LATTICES_DAEMON_TIMEOUT_MS=3000
 ```
 
-## Phase 2 direction
+## CUA implementation status
 
-`computer.windowState` is now exposed as `lattices_computer_window_state` for
-AX inspection and optional run-backed screenshot artifacts. `computer.elementAction`
-adds element-id AXPress/showMenu/focus, and `computer.typeElement` /
-`computer.setValue` add element-id AXValue insertion while keeping treatment,
-run, and artifact semantics in the daemon.
+The LAT-008 computer-use surface is exposed here as typed Pi tools through
+Phase 6: AX snapshots and element IDs, rich keyboard/mouse primitives,
+region/zoom/vision/verification helpers, and browser page read/automation
+primitives with explicit gates. Prefer the typed tools above; use
+`lattices_call` only for new daemon methods that have not yet been added here.

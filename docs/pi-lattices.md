@@ -56,6 +56,11 @@ lattices app
 | `lattices_window_focus` | `computer.focusWindow` |
 | `lattices_window_place` | `window.place` |
 | `lattices_capture_window` | `capture.screenshotWindow` |
+| `lattices_capture_region` | `capture.screenshotRegion` |
+| `lattices_capture_zoom_artifact` | `capture.zoomArtifact` |
+| `lattices_vision_analyze_window` | `vision.analyzeWindow` |
+| `lattices_vision_analyze_artifact` | `vision.analyzeArtifact` |
+| `lattices_computer_verify` | `computer.verify` |
 | `lattices_computer_prepare` | `computer.prepare` |
 | `lattices_computer_launch_app` | `computer.launchApp` |
 | `lattices_computer_click` | `computer.click` |
@@ -65,10 +70,16 @@ lattices app
 | `lattices_computer_drag` | `computer.drag` |
 | `lattices_computer_type_window_text` | `computer.typeWindowText` |
 | `lattices_computer_type_text` | `computer.typeText` |
+| `lattices_browser_get_text` | `browser.getText` |
+| `lattices_browser_query_dom` | `browser.queryDom` |
+| `lattices_browser_execute_javascript` | `browser.executeJavascript` |
 | `lattices_call` | caller-selected escape hatch |
 
 Use `lattices_call` only when a method is not typed yet. It passes through the
 requested daemon method and does not add an additional confirmation layer.
+Browser DOM/JavaScript tools are intentionally explicit: DOM queries require
+`allowAutomation: true`, and JavaScript execution also requires
+`treatment: "execute"`.
 
 ## Smoke/manual test path
 

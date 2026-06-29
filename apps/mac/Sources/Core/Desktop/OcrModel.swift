@@ -451,7 +451,7 @@ final class OcrModel: ObservableObject {
 
     // MARK: - Vision OCR
 
-    private func recognizeText(in image: CGImage) -> [OcrTextBlock] {
+    func recognizeText(in image: CGImage) -> [OcrTextBlock] {
         let handler = VNImageRequestHandler(cgImage: image, options: [:])
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = prefs.ocrAccuracy == "fast" ? .fast : .accurate

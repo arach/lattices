@@ -37,6 +37,10 @@ for (const required of [
   "lattices_api_schema",
   "lattices_windows_list",
   "lattices_window_place",
+  "lattices_capture_region",
+  "lattices_capture_zoom_artifact",
+  "lattices_vision_analyze_window",
+  "lattices_vision_analyze_artifact",
   "lattices_computer_window_state",
   "lattices_computer_element_action",
   "lattices_computer_type_element",
@@ -49,6 +53,10 @@ for (const required of [
   "lattices_computer_right_click",
   "lattices_computer_scroll",
   "lattices_computer_drag",
+  "lattices_computer_verify",
+  "lattices_browser_get_text",
+  "lattices_browser_query_dom",
+  "lattices_browser_execute_javascript",
   "lattices_call",
 ]) {
   assert.ok(names.includes(required), `registered ${required}`);

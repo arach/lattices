@@ -1,4 +1,5 @@
 import AppKit
+import CryptoKit
 import CoreGraphics
 import Foundation
 
@@ -129,6 +130,323 @@ final class CaptureController {
         }
     }
 
+    func screenshotRegion(params: JSON?) throws -> JSON {
+        let source = params?["source"]?.stringValue ?? "daemon"
+        let resolved = try resolveRegion(params: params)
+        let ownsRun = params?["runId"]?.stringValue?.isEmpty ?? true
+        let run = try resolveRun(
+            params: params,
+            title: params?["title"]?.stringValue ?? "Screenshot Region",
+            source: source,
+            surfaces: resolved.surfaces
+        )
+
+        if ownsRun {
+            _ = try RunStore.shared.markRunning(
+                id: run.id,
+                summary: "Capturing region screenshot",
+                data: ["region": regionJSON(resolved.rect)]
+            )
+        } else {
+            _ = try RunStore.shared.appendTrace(
+                id: run.id,
+                kind: "capture.screenshotRegion.started",
+                summary: "Capturing region screenshot",
+                data: ["region": regionJSON(resolved.rect)]
+            )
+        }
+
+        let filename = sanitizedFilename(
+            params?["filename"]?.stringValue
+                ?? "screenshot-region-\(Self.fileTimestamp()).png"
+        )
+        let outputURL = RunStore.shared.artifactURL(for: run, filename: filename)
+        let startedAt = Date()
+
+        do {
+            let cgImage = try captureRegionImage(rect: resolved.rect, timeoutSeconds: 15)
+            let data = try pngData(from: cgImage)
+            try data.write(to: outputURL, options: .atomic)
+
+            var metadata: [String: JSON] = [
+                "width": .int(cgImage.width),
+                "height": .int(cgImage.height),
+                "byteSize": .int(data.count),
+                "elapsedMs": .int(Int(Date().timeIntervalSince(startedAt) * 1000)),
+                "region": regionJSON(resolved.rect),
+            ]
+            if let target = resolved.target {
+                metadata["wid"] = .int(Int(target.wid))
+                metadata["app"] = .string(target.app)
+                metadata["title"] = .string(target.title)
+            }
+
+            let artifact = RunStore.shared.makeArtifact(
+                run: run,
+                kind: "screenshot-region",
+                url: outputURL,
+                mimeType: "image/png",
+                metadata: metadata
+            )
+            let updated = try RunStore.shared.appendArtifact(artifact)
+            let responseRun: RunSession
+            if ownsRun {
+                responseRun = try RunStore.shared.complete(
+                    id: updated.id,
+                    summary: "Saved region screenshot",
+                    data: ["artifactId": .string(artifact.id), "path": .string(artifact.path)]
+                )
+            } else {
+                responseRun = try RunStore.shared.appendTrace(
+                    id: updated.id,
+                    kind: "capture.screenshotRegion.saved",
+                    summary: "Saved region screenshot",
+                    data: ["artifactId": .string(artifact.id), "path": .string(artifact.path)]
+                )
+            }
+
+            var object: [String: JSON] = [
+                "ok": .bool(true),
+                "run": responseRun.json,
+                "artifact": artifact.json,
+                "region": regionJSON(resolved.rect),
+            ]
+            if let target = resolved.target {
+                object["target"] = Encoders.window(target)
+            }
+            return .object(object)
+        } catch {
+            let data: [String: JSON] = [
+                "region": regionJSON(resolved.rect),
+                "error": .string(error.localizedDescription),
+            ]
+            if ownsRun {
+                _ = try? RunStore.shared.fail(
+                    id: run.id,
+                    summary: "Region screenshot failed",
+                    data: data
+                )
+            } else {
+                _ = try? RunStore.shared.appendTrace(
+                    id: run.id,
+                    kind: "capture.screenshotRegion.failed",
+                    summary: "Region screenshot failed",
+                    data: data
+                )
+            }
+            throw error
+        }
+    }
+
+    func zoomArtifact(params: JSON?) throws -> JSON {
+        let source = params?["source"]?.stringValue ?? "daemon"
+        let resolved = try resolveArtifact(params: params, source: source, fallbackTitle: "Zoom artifact")
+        let sourceImage = try loadCGImage(path: resolved.path)
+        let crop = artifactCropRect(params: params, image: sourceImage)
+        guard let cropped = sourceImage.cropping(to: crop) else {
+            throw RouterError.custom("Unable to crop artifact image")
+        }
+        let scale = max(1, min(params?["scale"]?.numericDouble ?? params?["zoom"]?.numericDouble ?? 2, 8))
+        let zoomed = try scaledImage(cropped, scale: scale)
+        let data = try pngData(from: zoomed)
+        let filename = sanitizedFilename(
+            params?["filename"]?.stringValue
+                ?? "zoom-artifact-\(Self.fileTimestamp()).png"
+        )
+        let outputURL = RunStore.shared.artifactURL(for: resolved.run, filename: filename)
+        try data.write(to: outputURL, options: .atomic)
+
+        let artifact = RunStore.shared.makeArtifact(
+            run: resolved.run,
+            kind: "zoom",
+            url: outputURL,
+            mimeType: "image/png",
+            metadata: [
+                "sourceArtifactId": resolved.artifact.map { .string($0.id) } ?? .null,
+                "sourcePath": .string(resolved.path),
+                "crop": regionJSON(crop),
+                "scale": .double(scale),
+                "width": .int(zoomed.width),
+                "height": .int(zoomed.height),
+                "byteSize": .int(data.count),
+            ]
+        )
+        let updated = try RunStore.shared.appendArtifact(artifact)
+        let traced = try RunStore.shared.appendTrace(
+            id: updated.id,
+            kind: "capture.zoomArtifact.created",
+            summary: "Created zoomed artifact",
+            data: [
+                "artifactId": .string(artifact.id),
+                "sourcePath": .string(resolved.path),
+                "scale": .double(scale),
+            ]
+        )
+        let responseRun = resolved.createdRun
+            ? try RunStore.shared.complete(
+                id: traced.id,
+                summary: "Created zoomed artifact",
+                data: [
+                    "artifactId": .string(artifact.id),
+                    "sourcePath": .string(resolved.path),
+                ]
+            )
+            : traced
+
+        return .object([
+            "ok": .bool(true),
+            "run": responseRun.json,
+            "artifact": artifact.json,
+            "sourceArtifact": resolved.artifact?.json ?? .null,
+            "crop": regionJSON(crop),
+            "scale": .double(scale),
+        ])
+    }
+
+    func analyzeWindow(params: JSON?) throws -> JSON {
+        let source = params?["source"]?.stringValue ?? "daemon"
+        _ = try requiredInstruction(params)
+        let window = try resolveWindow(params: params)
+        let run = try RunStore.shared.createRun(
+            title: "Analyze window \(window.app)",
+            source: source,
+            surfaces: [.window(window)]
+        )
+        _ = try RunStore.shared.markRunning(
+            id: run.id,
+            summary: "Capturing window for local vision analysis",
+            data: ["wid": .int(Int(window.wid)), "app": .string(window.app)]
+        )
+
+        do {
+            let captured = try screenshotWindow(params: mergeParams(params, [
+                "runId": .string(run.id),
+                "source": .string(source),
+                "wid": .int(Int(window.wid)),
+                "filename": .string("vision-window-\(window.wid)-\(Self.fileTimestamp()).png"),
+            ]))
+            guard let artifact = captured["artifact"] else {
+                throw RouterError.custom("Window analysis did not produce an artifact")
+            }
+            return try analyzeArtifact(params: mergeParams(params, [
+                "runId": .string(run.id),
+                "artifactId": artifact["id"] ?? .null,
+                "path": artifact["path"] ?? .null,
+                "source": .string(source),
+                "completeRun": .bool(true),
+            ]))
+        } catch {
+            _ = try? RunStore.shared.fail(
+                id: run.id,
+                summary: "Window analysis failed",
+                data: ["error": .string(error.localizedDescription)]
+            )
+            throw error
+        }
+    }
+
+    func analyzeArtifact(params: JSON?) throws -> JSON {
+        let source = params?["source"]?.stringValue ?? "daemon"
+        let instruction = try requiredInstruction(params)
+        let resolved = try resolveArtifact(params: params, source: source, fallbackTitle: "Analyze artifact")
+        let shouldCompleteRun = resolved.createdRun || params?["completeRun"]?.boolValue == true
+
+        do {
+            let image = try loadCGImage(path: resolved.path)
+            let blocks = OcrModel.shared.recognizeText(in: image)
+            let fullText = blocks.map(\.text).joined(separator: "\n")
+            let answer = localVisionAnswer(instruction: instruction, fullText: fullText)
+            let verified = localVisionMatch(params: params, fullText: fullText)
+
+            let traced = try RunStore.shared.appendTrace(
+                id: resolved.run.id,
+                kind: "vision.analyzeArtifact.completed",
+                summary: "Completed local artifact analysis",
+                data: [
+                    "provider": .string("local-ocr"),
+                    "instruction": .string(instruction),
+                    "sourcePath": .string(resolved.path),
+                    "blockCount": .int(blocks.count),
+                    "verified": verified.map { .bool($0) } ?? .null,
+                ]
+            )
+            let responseRun = shouldCompleteRun
+                ? try RunStore.shared.complete(
+                    id: traced.id,
+                    summary: "Completed local artifact analysis",
+                    data: [
+                        "provider": .string("local-ocr"),
+                        "blockCount": .int(blocks.count),
+                    ]
+                )
+                : traced
+
+            var object: [String: JSON] = [
+                "ok": .bool(true),
+                "provider": .string("local-ocr"),
+                "model": .string("vision-text-recognition"),
+                "instruction": .string(instruction),
+                "answer": .string(answer),
+                "fullText": .string(fullText),
+                "blocks": .array(blocks.map(ocrBlockJSON)),
+                "run": responseRun.json,
+                "sourcePath": .string(resolved.path),
+            ]
+            if let artifact = resolved.artifact {
+                object["artifact"] = artifact.json
+            }
+            if let verified {
+                object["verified"] = .bool(verified)
+            }
+            return .object(object)
+        } catch {
+            if shouldCompleteRun {
+                _ = try? RunStore.shared.fail(
+                    id: resolved.run.id,
+                    summary: "Local artifact analysis failed",
+                    data: ["error": .string(error.localizedDescription)]
+                )
+            }
+            throw error
+        }
+    }
+
+    func verifyVisual(params: JSON?) throws -> JSON {
+        let mode = params?["mode"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            ?? params?["type"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            ?? "ocr"
+
+        if mode == "artifactchanged" || mode == "artifact-changed" || mode == "changed" {
+            return try verifyArtifactChanged(params: params)
+        }
+
+        guard let expectation = verificationExpectation(params: params) else {
+            throw RouterError.missingParam("contains, expected, or notContains")
+        }
+
+        let analysis: JSON
+        if hasArtifactTarget(params) {
+            analysis = try analyzeArtifact(params: mergeParams(params, [
+                "instruction": params?["instruction"] ?? .string("Verify OCR text expectation"),
+            ]))
+        } else {
+            analysis = try analyzeWindow(params: mergeParams(params, [
+                "instruction": params?["instruction"] ?? .string("Verify OCR text expectation"),
+            ]))
+        }
+        let fullText = analysis["fullText"]?.stringValue ?? ""
+        let verified = evaluateExpectation(expectation, fullText: fullText)
+
+        return .object([
+            "ok": .bool(true),
+            "verified": .bool(verified),
+            "mode": .string("ocr"),
+            "expectation": expectation.json,
+            "analysis": analysis,
+            "fullText": .string(fullText),
+        ])
+    }
+
     func resolveWindow(params: JSON?) throws -> WindowEntry {
         DesktopModel.shared.forcePoll()
 
@@ -177,6 +495,31 @@ final class CaptureController {
         return try RunStore.shared.createRun(title: title, source: source, surfaces: surfaces)
     }
 
+    private struct RegionResolution {
+        let rect: CGRect
+        let target: WindowEntry?
+        let surfaces: [RunSurface]
+    }
+
+    private struct ArtifactResolution {
+        let run: RunSession
+        let artifact: RunArtifact?
+        let path: String
+        let createdRun: Bool
+    }
+
+    private struct VerificationExpectation {
+        let kind: String
+        let value: String
+
+        var json: JSON {
+            .object([
+                "kind": .string(kind),
+                "value": .string(value),
+            ])
+        }
+    }
+
     private func captureWindowImage(wid: UInt32, timeoutSeconds: Int) throws -> CGImage {
         let semaphore = DispatchSemaphore(value: 0)
         let box = CaptureBox()
@@ -200,12 +543,328 @@ final class CaptureController {
         return captured
     }
 
+    private func captureRegionImage(rect: CGRect, timeoutSeconds: Int) throws -> CGImage {
+        let semaphore = DispatchSemaphore(value: 0)
+        let box = CaptureBox()
+
+        Task.detached(priority: .userInitiated) {
+            let captured = await WindowCapture.region(rect: rect, imageOption: [.bestResolution])
+            box.set(captured)
+            semaphore.signal()
+        }
+
+        if semaphore.wait(timeout: .now() + .seconds(timeoutSeconds)) == .timedOut {
+            throw RouterError.custom("Timed out capturing region \(Int(rect.origin.x)),\(Int(rect.origin.y)),\(Int(rect.width))x\(Int(rect.height))")
+        }
+        guard let captured = box.value() else {
+            throw RouterError.custom("Unable to capture screen region. Check Screen Recording permission.")
+        }
+        return captured
+    }
+
     private func pngData(from cgImage: CGImage) throws -> Data {
         let rep = NSBitmapImageRep(cgImage: cgImage)
         guard let data = rep.representation(using: .png, properties: [:]) else {
             throw RouterError.custom("Unable to encode screenshot as PNG")
         }
         return data
+    }
+
+    private func resolveRegion(params: JSON?) throws -> RegionResolution {
+        let x = params?["x"]?.numericDouble
+        let y = params?["y"]?.numericDouble
+        let width = params?["width"]?.numericDouble ?? params?["w"]?.numericDouble
+        let height = params?["height"]?.numericDouble ?? params?["h"]?.numericDouble
+
+        if let x, let y, let width, let height {
+            let rect = normalizedRect(CGRect(x: x, y: y, width: width, height: height))
+            return RegionResolution(
+                rect: rect,
+                target: nil,
+                surfaces: [
+                    RunSurface(
+                        id: "region-\(Int(rect.origin.x))-\(Int(rect.origin.y))-\(Int(rect.width))-\(Int(rect.height))",
+                        kind: "region",
+                        wid: nil,
+                        app: nil,
+                        title: "Screen region",
+                        frame: RunFrame(WindowFrame(
+                            x: Double(rect.origin.x),
+                            y: Double(rect.origin.y),
+                            w: Double(rect.width),
+                            h: Double(rect.height)
+                        )),
+                        latticesSession: nil,
+                        x: nil,
+                        y: nil
+                    )
+                ]
+            )
+        }
+
+        let target = try resolveWindow(params: params)
+        let rect = normalizedRect(CGRect(
+            x: target.frame.x,
+            y: target.frame.y,
+            width: target.frame.w,
+            height: target.frame.h
+        ))
+        return RegionResolution(rect: rect, target: target, surfaces: [.window(target)])
+    }
+
+    private func normalizedRect(_ rect: CGRect) -> CGRect {
+        CGRect(
+            x: rect.width >= 0 ? rect.origin.x : rect.origin.x + rect.width,
+            y: rect.height >= 0 ? rect.origin.y : rect.origin.y + rect.height,
+            width: abs(rect.width),
+            height: abs(rect.height)
+        )
+    }
+
+    private func regionJSON(_ rect: CGRect) -> JSON {
+        .object([
+            "x": .double(Double(rect.origin.x)),
+            "y": .double(Double(rect.origin.y)),
+            "w": .double(Double(rect.width)),
+            "h": .double(Double(rect.height)),
+        ])
+    }
+
+    private func resolveArtifact(
+        params: JSON?,
+        source: String,
+        fallbackTitle: String
+    ) throws -> ArtifactResolution {
+        let runId = params?["runId"]?.stringValue ?? params?["id"]?.stringValue
+        let artifactId = params?["artifactId"]?.stringValue
+            ?? params?["artifact-id"]?.stringValue
+            ?? params?["artifact"]?.stringValue
+        let explicitPath = params?["path"]?.stringValue
+            ?? params?["artifactPath"]?.stringValue
+            ?? params?["artifact-path"]?.stringValue
+
+        if let runId, !runId.isEmpty {
+            guard let run = RunStore.shared.get(id: runId) else {
+                throw RouterError.notFound("run \(runId)")
+            }
+            let artifact = try artifactId.flatMap { id -> RunArtifact? in
+                guard !id.isEmpty else { return nil }
+                guard let artifact = run.artifacts.first(where: { $0.id == id }) else {
+                    throw RouterError.notFound("artifact \(id) in run \(runId)")
+                }
+                return artifact
+            } ?? imageArtifact(in: run)
+            let path = explicitPath ?? artifact?.path
+            guard let path, !path.isEmpty else {
+                throw RouterError.missingParam("path or artifactId")
+            }
+            return ArtifactResolution(run: run, artifact: artifact, path: path, createdRun: false)
+        }
+
+        if let artifactId, !artifactId.isEmpty {
+            for run in RunStore.shared.list(limit: 500) {
+                if let artifact = run.artifacts.first(where: { $0.id == artifactId }) {
+                    return ArtifactResolution(run: run, artifact: artifact, path: artifact.path, createdRun: false)
+                }
+            }
+            throw RouterError.notFound("artifact \(artifactId)")
+        }
+
+        if let explicitPath, !explicitPath.isEmpty {
+            let run = try RunStore.shared.createRun(title: fallbackTitle, source: source, surfaces: [])
+            return ArtifactResolution(run: run, artifact: nil, path: explicitPath, createdRun: true)
+        }
+
+        throw RouterError.missingParam("runId, artifactId, or path")
+    }
+
+    private func imageArtifact(in run: RunSession) -> RunArtifact? {
+        run.artifacts.last(where: { artifact in
+            artifact.mimeType == "image/png" || artifact.kind.contains("screenshot") || artifact.kind == "zoom"
+        })
+    }
+
+    private func artifactCropRect(params: JSON?, image: CGImage) -> CGRect {
+        let imageRect = CGRect(x: 0, y: 0, width: image.width, height: image.height)
+        let ratioX = params?["xRatio"]?.numericDouble
+        let ratioY = params?["yRatio"]?.numericDouble
+        let ratioW = params?["widthRatio"]?.numericDouble ?? params?["wRatio"]?.numericDouble
+        let ratioH = params?["heightRatio"]?.numericDouble ?? params?["hRatio"]?.numericDouble
+        if ratioX != nil || ratioY != nil || ratioW != nil || ratioH != nil {
+            let x = max(0, min(1, ratioX ?? 0)) * Double(image.width)
+            let y = max(0, min(1, ratioY ?? 0)) * Double(image.height)
+            let w = max(0.01, min(1, ratioW ?? 1)) * Double(image.width)
+            let h = max(0.01, min(1, ratioH ?? 1)) * Double(image.height)
+            return normalizedRect(CGRect(x: x, y: y, width: w, height: h)).intersection(imageRect)
+        }
+
+        let x = params?["x"]?.numericDouble ?? 0
+        let y = params?["y"]?.numericDouble ?? 0
+        let width = params?["width"]?.numericDouble ?? params?["w"]?.numericDouble ?? Double(image.width)
+        let height = params?["height"]?.numericDouble ?? params?["h"]?.numericDouble ?? Double(image.height)
+        let crop = normalizedRect(CGRect(x: x, y: y, width: width, height: height)).intersection(imageRect)
+        return crop.isNull || crop.isEmpty ? imageRect : crop.integral
+    }
+
+    private func loadCGImage(path: String) throws -> CGImage {
+        let url = URL(fileURLWithPath: path)
+        let data = try Data(contentsOf: url)
+        guard let rep = NSBitmapImageRep(data: data), let image = rep.cgImage else {
+            throw RouterError.custom("Unable to decode image artifact at \(path)")
+        }
+        return image
+    }
+
+    private func scaledImage(_ image: CGImage, scale: Double) throws -> CGImage {
+        let width = max(1, Int((Double(image.width) * scale).rounded()))
+        let height = max(1, Int((Double(image.height) * scale).rounded()))
+        guard let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            throw RouterError.custom("Unable to create zoom image context")
+        }
+        context.interpolationQuality = .none
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        guard let scaled = context.makeImage() else {
+            throw RouterError.custom("Unable to render zoom image")
+        }
+        return scaled
+    }
+
+    private func ocrBlockJSON(_ block: OcrTextBlock) -> JSON {
+        .object([
+            "text": .string(block.text),
+            "confidence": .double(Double(block.confidence)),
+            "x": .double(Double(block.boundingBox.origin.x)),
+            "y": .double(Double(block.boundingBox.origin.y)),
+            "w": .double(Double(block.boundingBox.width)),
+            "h": .double(Double(block.boundingBox.height)),
+        ])
+    }
+
+    private func requiredInstruction(_ params: JSON?) throws -> String {
+        let instruction = params?["instruction"]?.stringValue
+            ?? params?["prompt"]?.stringValue
+            ?? params?["question"]?.stringValue
+            ?? params?["query"]?.stringValue
+        guard let instruction = instruction?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !instruction.isEmpty else {
+            throw RouterError.missingParam("instruction")
+        }
+        return instruction
+    }
+
+    private func localVisionAnswer(instruction: String, fullText: String) -> String {
+        let trimmed = fullText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return "No readable text was detected by local OCR for instruction: \(instruction)"
+        }
+        return "Local OCR detected \(trimmed.count) characters. Use fullText/blocks for exact evidence."
+    }
+
+    private func localVisionMatch(params: JSON?, fullText: String) -> Bool? {
+        verificationExpectation(params: params).map { evaluateExpectation($0, fullText: fullText) }
+    }
+
+    private func verificationExpectation(params: JSON?) -> VerificationExpectation? {
+        if let value = params?["contains"]?.stringValue
+            ?? params?["expected"]?.stringValue
+            ?? params?["text"]?.stringValue {
+            return VerificationExpectation(kind: "contains", value: value)
+        }
+        if let value = params?["notContains"]?.stringValue
+            ?? params?["not-contains"]?.stringValue
+            ?? params?["absent"]?.stringValue {
+            return VerificationExpectation(kind: "notContains", value: value)
+        }
+        return nil
+    }
+
+    private func evaluateExpectation(_ expectation: VerificationExpectation, fullText: String) -> Bool {
+        let haystack = fullText.lowercased()
+        let needle = expectation.value.lowercased()
+        switch expectation.kind {
+        case "notContains":
+            return !haystack.contains(needle)
+        default:
+            return haystack.contains(needle)
+        }
+    }
+
+    private func verifyArtifactChanged(params: JSON?) throws -> JSON {
+        let beforePath = try artifactPath(
+            params: params,
+            pathKeys: ["beforePath", "before-path"],
+            artifactKeys: ["beforeArtifactId", "before-artifact-id"]
+        )
+        let afterPath = try artifactPath(
+            params: params,
+            pathKeys: ["afterPath", "after-path"],
+            artifactKeys: ["afterArtifactId", "after-artifact-id"]
+        )
+        let beforeHash = try sha256Hex(Data(contentsOf: URL(fileURLWithPath: beforePath)))
+        let afterHash = try sha256Hex(Data(contentsOf: URL(fileURLWithPath: afterPath)))
+        let changed = beforeHash != afterHash
+        return .object([
+            "ok": .bool(true),
+            "verified": .bool(changed),
+            "mode": .string("artifactChanged"),
+            "beforePath": .string(beforePath),
+            "afterPath": .string(afterPath),
+            "beforeSha256": .string(beforeHash),
+            "afterSha256": .string(afterHash),
+        ])
+    }
+
+    private func artifactPath(
+        params: JSON?,
+        pathKeys: [String],
+        artifactKeys: [String]
+    ) throws -> String {
+        for key in pathKeys {
+            if let value = params?[key]?.stringValue, !value.isEmpty {
+                return value
+            }
+        }
+        for key in artifactKeys {
+            if let artifactId = params?[key]?.stringValue, !artifactId.isEmpty {
+                for run in RunStore.shared.list(limit: 500) {
+                    if let artifact = run.artifacts.first(where: { $0.id == artifactId }) {
+                        return artifact.path
+                    }
+                }
+                throw RouterError.notFound("artifact \(artifactId)")
+            }
+        }
+        throw RouterError.missingParam(pathKeys.first ?? "path")
+    }
+
+    private func sha256Hex(_ data: Data) -> String {
+        Data(SHA256.hash(data: data)).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private func hasArtifactTarget(_ params: JSON?) -> Bool {
+        params?["runId"]?.stringValue != nil
+            || params?["artifactId"]?.stringValue != nil
+            || params?["artifact-id"]?.stringValue != nil
+            || params?["path"]?.stringValue != nil
+    }
+
+    private func mergeParams(_ params: JSON?, _ overrides: [String: JSON]) -> JSON {
+        var object: [String: JSON] = [:]
+        if case .object(let existing) = params {
+            object = existing
+        }
+        for (key, value) in overrides where value != .null {
+            object[key] = value
+        }
+        return .object(object)
     }
 
     private func sanitizedFilename(_ raw: String) -> String {
