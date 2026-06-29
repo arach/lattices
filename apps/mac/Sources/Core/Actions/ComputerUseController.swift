@@ -145,6 +145,90 @@ private struct AXPressCandidate {
     let score: Double
 }
 
+private struct AXSnapshotElement {
+    let id: String
+    let role: String
+    let roleDescription: String?
+    let title: String?
+    let label: String?
+    let value: String?
+    let description: String?
+    let help: String?
+    let identifier: String?
+    let frame: CGRect?
+    let enabled: Bool?
+    let selected: Bool?
+    let focused: Bool?
+    let actions: [String]
+    let path: String
+    let depth: Int
+    let childCount: Int
+
+    var json: JSON {
+        var object: [String: JSON] = [
+            "id": .string(id),
+            "role": .string(role),
+            "path": .string(path),
+            "depth": .int(depth),
+            "childCount": .int(childCount),
+            "actions": .array(actions.map { .string($0) }),
+        ]
+        if let roleDescription {
+            object["roleDescription"] = .string(roleDescription)
+        }
+        if let title {
+            object["title"] = .string(title)
+        }
+        if let label {
+            object["label"] = .string(label)
+        }
+        if let value {
+            object["value"] = .string(value)
+        }
+        if let description {
+            object["description"] = .string(description)
+        }
+        if let help {
+            object["help"] = .string(help)
+        }
+        if let identifier {
+            object["identifier"] = .string(identifier)
+        }
+        if let frame {
+            object["frame"] = .object([
+                "x": .double(frame.origin.x),
+                "y": .double(frame.origin.y),
+                "w": .double(frame.width),
+                "h": .double(frame.height),
+            ])
+        }
+        if let enabled {
+            object["enabled"] = .bool(enabled)
+        }
+        if let selected {
+            object["selected"] = .bool(selected)
+        }
+        if let focused {
+            object["focused"] = .bool(focused)
+        }
+        return .object(object)
+    }
+}
+
+private struct AXSnapshotContext {
+    let maxDepth: Int
+    let maxElements: Int
+    let maxChildrenPerElement: Int
+    let deadline: Date
+    let messagingTimeout: Float
+    var nextElementIndex = 1
+    var elements: [AXSnapshotElement] = []
+    var warnings: [String] = []
+    var hitDepthLimit = false
+    var hitElementLimit = false
+    var hitTimeout = false
+}
+
 final class ComputerUseController {
     static let shared = ComputerUseController()
 
@@ -174,6 +258,118 @@ final class ComputerUseController {
             requireText: false,
             defaultTreatment: .observe
         )
+    }
+
+    func windowState(params: JSON?) throws -> JSON {
+        let source = params?["source"]?.stringValue ?? "daemon"
+        let mode = try windowStateMode(params)
+        let includeAX = mode == "ax" || mode == "both"
+        let shouldCapture = params?["capture"]?.boolValue ?? (mode == "both" || mode == "screenshot")
+        let maxDepth = max(1, min(params?["maxDepth"]?.intValue ?? 8, 14))
+        let maxElements = max(1, min(params?["maxElements"]?.intValue ?? 250, 1_000))
+        let timeoutMs = max(150, min(params?["timeoutMs"]?.intValue ?? 1_200, 5_000))
+        let window = try CaptureController.shared.resolveWindow(params: params)
+        let snapshotId = Self.snapshotId()
+        var run: RunSession?
+
+        do {
+            if shouldCapture {
+                let createdRun = try RunStore.shared.createRun(
+                    title: "Window state \(window.app)",
+                    source: source,
+                    surfaces: [.window(window)]
+                )
+                run = createdRun
+                _ = try RunStore.shared.markRunning(
+                    id: createdRun.id,
+                    summary: "Inspecting window state",
+                    data: [
+                        "action": .string("windowState"),
+                        "snapshotId": .string(snapshotId),
+                        "mode": .string(mode),
+                        "wid": .int(Int(window.wid)),
+                        "app": .string(window.app),
+                    ]
+                )
+            }
+
+            var elements: [AXSnapshotElement] = []
+            var warnings: [String] = []
+            if includeAX {
+                let context = try axSnapshot(
+                    window: window,
+                    maxDepth: maxDepth,
+                    maxElements: maxElements,
+                    timeoutMs: timeoutMs
+                )
+                elements = context.elements
+                warnings.append(contentsOf: context.warnings)
+                if context.hitDepthLimit {
+                    warnings.append("AX traversal reached maxDepth \(maxDepth)")
+                }
+                if context.hitElementLimit {
+                    warnings.append("AX traversal reached maxElements \(maxElements)")
+                }
+                if context.hitTimeout {
+                    warnings.append("AX traversal reached timeoutMs \(timeoutMs)")
+                }
+            } else {
+                warnings.append("AX traversal skipped for mode \(mode)")
+            }
+
+            var artifact: JSON?
+            if shouldCapture, let activeRun = run {
+                let captured = try CaptureController.shared.screenshotWindow(params: .object([
+                    "runId": .string(activeRun.id),
+                    "source": .string(source),
+                    "wid": .int(Int(window.wid)),
+                    "filename": .string("window-state-\(window.wid)-\(Self.fileTimestamp()).png"),
+                ]))
+                artifact = captured["artifact"]
+                let completed = try RunStore.shared.complete(
+                    id: activeRun.id,
+                    summary: "Captured window state",
+                    data: [
+                        "snapshotId": .string(snapshotId),
+                        "mode": .string(mode),
+                        "elementCount": .int(elements.count),
+                        "captured": .bool(artifact != nil),
+                    ]
+                )
+                run = completed
+            }
+
+            var object: [String: JSON] = [
+                "ok": .bool(true),
+                "snapshotId": .string(snapshotId),
+                "target": Encoders.window(window),
+                "mode": .string(mode),
+                "elements": .array(elements.map(\.json)),
+                "elementCount": .int(elements.count),
+                "treeMarkdown": .string(treeMarkdown(for: elements)),
+                "warnings": .array(warnings.map { .string($0) }),
+            ]
+            if let artifact {
+                object["artifact"] = artifact
+            }
+            if let run {
+                object["run"] = run.json
+            }
+            return .object(object)
+        } catch {
+            if let run {
+                _ = try? RunStore.shared.fail(
+                    id: run.id,
+                    summary: "Window state inspection failed",
+                    data: [
+                        "snapshotId": .string(snapshotId),
+                        "wid": .int(Int(window.wid)),
+                        "error": .string(error.localizedDescription),
+                    ]
+                )
+            }
+            throw error
+        }
     }
 
     func typeText(params: JSON?) throws -> JSON {
@@ -2047,6 +2243,337 @@ final class ComputerUseController {
         return nil
     }
 
+    private func windowStateMode(_ params: JSON?) throws -> String {
+        let raw = params?["mode"]?.stringValue
+            ?? params?["stateMode"]?.stringValue
+            ?? params?["state-mode"]?.stringValue
+            ?? "ax"
+        switch raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "ax", "accessibility":
+            return "ax"
+        case "both", "all", "ax+screenshot", "screenshot+ax":
+            return "both"
+        case "screenshot", "capture", "image":
+            return "screenshot"
+        default:
+            throw RouterError.custom("Unsupported computer.windowState mode '\(raw)'; use ax, both, or screenshot")
+        }
+    }
+
+    private func axSnapshot(
+        window: WindowEntry,
+        maxDepth: Int,
+        maxElements: Int,
+        timeoutMs: Int
+    ) throws -> AXSnapshotContext {
+        guard AXIsProcessTrusted() else {
+            throw RouterError.custom("Accessibility permission is required for computer.windowState")
+        }
+        guard let axWindow = axWindow(pid: window.pid, wid: window.wid) else {
+            throw RouterError.custom("Unable to resolve AX window \(window.wid)")
+        }
+
+        var context = AXSnapshotContext(
+            maxDepth: maxDepth,
+            maxElements: maxElements,
+            maxChildrenPerElement: 160,
+            deadline: Date().addingTimeInterval(Double(timeoutMs) / 1_000.0),
+            messagingTimeout: 0.25
+        )
+        collectAXSnapshotElements(
+            element: axWindow,
+            depth: 0,
+            path: "0",
+            context: &context
+        )
+        return context
+    }
+
+    private func collectAXSnapshotElements(
+        element: AXUIElement,
+        depth: Int,
+        path: String,
+        context: inout AXSnapshotContext
+    ) {
+        guard Date() < context.deadline else {
+            context.hitTimeout = true
+            return
+        }
+        guard context.elements.count < context.maxElements else {
+            context.hitElementLimit = true
+            return
+        }
+        guard depth <= context.maxDepth else {
+            context.hitDepthLimit = true
+            return
+        }
+
+        let children = axSnapshotChildren(element, context: &context)
+        guard !context.hitTimeout else { return }
+
+        let id = "e\(context.nextElementIndex)"
+        context.nextElementIndex += 1
+        let role = axSnapshotString(element, attribute: kAXRoleAttribute, context: &context) ?? "unknown"
+        guard !context.hitTimeout else { return }
+        let roleDescription = axSnapshotString(element, attribute: kAXRoleDescriptionAttribute, context: &context)
+        let title = axSnapshotAttributeString(element, attribute: kAXTitleAttribute, context: &context)
+        let label = axSnapshotAttributeString(element, attribute: "AXLabel", context: &context)
+        let value = axSnapshotAttributeString(element, attribute: kAXValueAttribute, context: &context)
+        let description = axSnapshotAttributeString(element, attribute: kAXDescriptionAttribute, context: &context)
+        let help = axSnapshotAttributeString(element, attribute: kAXHelpAttribute, context: &context)
+        let identifier = axSnapshotAttributeString(element, attribute: kAXIdentifierAttribute, context: &context)
+        let frame = axSnapshotFrame(element, context: &context)
+        let enabled = axSnapshotBool(element, attribute: "AXEnabled", context: &context)
+        let selected = axSnapshotBool(element, attribute: "AXSelected", context: &context)
+        let focused = axSnapshotBool(element, attribute: "AXFocused", context: &context)
+        let actions = axSnapshotActions(element, context: &context)
+        context.elements.append(AXSnapshotElement(
+            id: id,
+            role: role,
+            roleDescription: roleDescription,
+            title: title,
+            label: label,
+            value: value,
+            description: description,
+            help: help,
+            identifier: identifier,
+            frame: frame,
+            enabled: enabled,
+            selected: selected,
+            focused: focused,
+            actions: actions,
+            path: path,
+            depth: depth,
+            childCount: children.count
+        ))
+        guard !context.hitTimeout else { return }
+
+        guard depth < context.maxDepth else {
+            if !children.isEmpty {
+                context.hitDepthLimit = true
+            }
+            return
+        }
+
+        let visibleChildren = children.prefix(context.maxChildrenPerElement)
+        if children.count > context.maxChildrenPerElement {
+            context.warnings.append("Element \(id) had \(children.count) children; visited first \(context.maxChildrenPerElement)")
+        }
+        for (index, child) in visibleChildren.enumerated() {
+            collectAXSnapshotElements(
+                element: child,
+                depth: depth + 1,
+                path: "\(path).\(index)",
+                context: &context
+            )
+            if context.hitTimeout || context.hitElementLimit {
+                return
+            }
+        }
+    }
+
+    private func prepareAXSnapshotCall(
+        _ element: AXUIElement,
+        context: inout AXSnapshotContext
+    ) -> Bool {
+        let remaining = context.deadline.timeIntervalSinceNow
+        guard remaining > 0 else {
+            context.hitTimeout = true
+            return false
+        }
+        AXUIElementSetMessagingTimeout(element, Float(min(Double(context.messagingTimeout), remaining)))
+        return true
+    }
+
+    private func axSnapshotChildren(
+        _ element: AXUIElement,
+        context: inout AXSnapshotContext
+    ) -> [AXUIElement] {
+        var childrenRef: CFTypeRef?
+        if prepareAXSnapshotCall(element, context: &context),
+           AXUIElementCopyAttributeValue(element, kAXVisibleChildrenAttribute as CFString, &childrenRef) == .success,
+           let visible = childrenRef as? [AXUIElement],
+           !visible.isEmpty {
+            return visible
+        }
+
+        childrenRef = nil
+        if prepareAXSnapshotCall(element, context: &context),
+           AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+           let children = childrenRef as? [AXUIElement] {
+            return children
+        }
+        return []
+    }
+
+    private func axSnapshotBool(
+        _ element: AXUIElement,
+        attribute: String,
+        context: inout AXSnapshotContext
+    ) -> Bool? {
+        var ref: CFTypeRef?
+        guard prepareAXSnapshotCall(element, context: &context),
+              AXUIElementCopyAttributeValue(element, attribute as CFString, &ref) == .success,
+              let ref else {
+            return nil
+        }
+        if CFGetTypeID(ref) == CFBooleanGetTypeID() {
+            return CFBooleanGetValue((ref as! CFBoolean))
+        }
+        return (ref as? NSNumber)?.boolValue ?? (ref as? Bool)
+    }
+
+    private func axSnapshotString(
+        _ element: AXUIElement,
+        attribute: String,
+        context: inout AXSnapshotContext
+    ) -> String? {
+        var ref: CFTypeRef?
+        guard prepareAXSnapshotCall(element, context: &context),
+              AXUIElementCopyAttributeValue(element, attribute as CFString, &ref) == .success else {
+            return nil
+        }
+        return ref as? String
+    }
+
+    private func axSnapshotAttributeString(
+        _ element: AXUIElement,
+        attribute: String,
+        context: inout AXSnapshotContext
+    ) -> String? {
+        var ref: CFTypeRef?
+        guard prepareAXSnapshotCall(element, context: &context),
+              AXUIElementCopyAttributeValue(element, attribute as CFString, &ref) == .success,
+              let ref else {
+            return nil
+        }
+        let value: String?
+        if let string = ref as? String {
+            value = string
+        } else if let number = ref as? NSNumber {
+            value = number.stringValue
+        } else if let url = ref as? URL {
+            value = url.absoluteString
+        } else {
+            value = nil
+        }
+        return value.flatMap(Self.truncatedAXString)
+    }
+
+    private func axSnapshotActions(
+        _ element: AXUIElement,
+        context: inout AXSnapshotContext
+    ) -> [String] {
+        var ref: CFArray?
+        guard prepareAXSnapshotCall(element, context: &context),
+              AXUIElementCopyActionNames(element, &ref) == .success,
+              let actions = ref as? [String] else {
+            return []
+        }
+        return actions
+    }
+
+    private func axSnapshotFrame(
+        _ element: AXUIElement,
+        context: inout AXSnapshotContext
+    ) -> CGRect? {
+        var posRef: CFTypeRef?
+        var sizeRef: CFTypeRef?
+        guard prepareAXSnapshotCall(element, context: &context),
+              AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &posRef) == .success,
+              prepareAXSnapshotCall(element, context: &context),
+              AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeRef) == .success,
+              let posRef,
+              let sizeRef,
+              CFGetTypeID(posRef) == AXValueGetTypeID(),
+              CFGetTypeID(sizeRef) == AXValueGetTypeID() else {
+            return nil
+        }
+        let posValue = posRef as! AXValue
+        let sizeValue = sizeRef as! AXValue
+        var point = CGPoint.zero
+        var size = CGSize.zero
+        guard AXValueGetValue(posValue, .cgPoint, &point),
+              AXValueGetValue(sizeValue, .cgSize, &size) else {
+            return nil
+        }
+        return CGRect(origin: point, size: size)
+    }
+
+    private func axChildren(_ element: AXUIElement) -> [AXUIElement] {
+        var childrenRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(element, kAXVisibleChildrenAttribute as CFString, &childrenRef) == .success,
+           let visible = childrenRef as? [AXUIElement],
+           !visible.isEmpty {
+            return visible
+        }
+
+        childrenRef = nil
+        if AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+           let children = childrenRef as? [AXUIElement] {
+            return children
+        }
+        return []
+    }
+
+    private func axBool(_ element: AXUIElement, attribute: String) -> Bool? {
+        var ref: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &ref) == .success,
+              let ref else {
+            return nil
+        }
+        if CFGetTypeID(ref) == CFBooleanGetTypeID() {
+            return CFBooleanGetValue((ref as! CFBoolean))
+        }
+        return (ref as? NSNumber)?.boolValue ?? (ref as? Bool)
+    }
+
+    private func axAttributeString(_ element: AXUIElement, attribute: String) -> String? {
+        var ref: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &ref) == .success,
+              let ref else {
+            return nil
+        }
+        let value: String?
+        if let string = ref as? String {
+            value = string
+        } else if let number = ref as? NSNumber {
+            value = number.stringValue
+        } else if let url = ref as? URL {
+            value = url.absoluteString
+        } else {
+            value = nil
+        }
+        return value.flatMap(Self.truncatedAXString)
+    }
+
+    private func treeMarkdown(for elements: [AXSnapshotElement]) -> String {
+        guard !elements.isEmpty else { return "" }
+        return elements.map { element in
+            let indent = String(repeating: "  ", count: element.depth)
+            let label = [
+                element.title,
+                element.label,
+                element.value,
+                element.description,
+                element.identifier,
+            ]
+                .compactMap { $0 }
+                .first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            var line = "\(indent)- \(element.id) \(element.role)"
+            if let label {
+                line += " \"\(Self.singleLine(label))\""
+            }
+            if !element.actions.isEmpty {
+                line += " actions=\(element.actions.joined(separator: ","))"
+            }
+            if let frame = element.frame {
+                line += " frame=\(Self.compactFrame(frame))"
+            }
+            return line
+        }.joined(separator: "\n")
+    }
+
     private func axWindow(pid: Int32, wid: UInt32) -> AXUIElement? {
         let appRef = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(appRef, 0.5)
@@ -2601,6 +3128,39 @@ final class ComputerUseController {
 
     private static func defaultTypedText() -> String {
         "# lattices computer-use demo: observed, focused, typed; Enter intentionally not pressed"
+    }
+
+    private static func snapshotId() -> String {
+        let suffix = UUID().uuidString
+            .replacingOccurrences(of: "-", with: "")
+            .prefix(8)
+            .lowercased()
+        return "axs_\(fileTimestamp())_\(suffix)"
+    }
+
+    private static func truncatedAXString(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if trimmed.count <= 240 {
+            return trimmed
+        }
+        return String(trimmed.prefix(237)) + "..."
+    }
+
+    private static func singleLine(_ value: String) -> String {
+        let collapsed = value
+            .replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\"", with: "'")
+        return truncatedAXString(collapsed) ?? ""
+    }
+
+    private static func compactFrame(_ frame: CGRect) -> String {
+        let x = Int(frame.origin.x.rounded())
+        let y = Int(frame.origin.y.rounded())
+        let w = Int(frame.width.rounded())
+        let h = Int(frame.height.rounded())
+        return "\(x),\(y),\(w),\(h)"
     }
 
     private static func fileTimestamp() -> String {

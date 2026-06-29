@@ -350,6 +350,39 @@ final class LatticesApi {
             Field(name: "data", type: "object", required: true, description: "Structured event payload"),
         ]))
 
+        api.model(ApiModel(name: "AXElement", fields: [
+            Field(name: "id", type: "string", required: true, description: "Snapshot-local element id, such as e1"),
+            Field(name: "role", type: "string", required: true, description: "Accessibility role, such as AXButton or AXTextField"),
+            Field(name: "roleDescription", type: "string", required: false, description: "Localized role description"),
+            Field(name: "title", type: "string", required: false, description: "AX title"),
+            Field(name: "label", type: "string", required: false, description: "AX label when available"),
+            Field(name: "value", type: "string", required: false, description: "AX value converted to a short string"),
+            Field(name: "description", type: "string", required: false, description: "AX description"),
+            Field(name: "help", type: "string", required: false, description: "AX help text"),
+            Field(name: "identifier", type: "string", required: false, description: "AX identifier"),
+            Field(name: "frame", type: "Frame", required: false, description: "Screen-coordinate element frame"),
+            Field(name: "enabled", type: "bool", required: false, description: "Whether the element is enabled"),
+            Field(name: "selected", type: "bool", required: false, description: "Whether the element is selected"),
+            Field(name: "focused", type: "bool", required: false, description: "Whether the element is focused"),
+            Field(name: "actions", type: "[string]", required: true, description: "Supported AX action names"),
+            Field(name: "path", type: "string", required: true, description: "Snapshot-local tree path"),
+            Field(name: "depth", type: "int", required: true, description: "Tree depth from the target window"),
+            Field(name: "childCount", type: "int", required: true, description: "Number of AX children reported for the element"),
+        ]))
+
+        api.model(ApiModel(name: "ComputerWindowState", fields: [
+            Field(name: "ok", type: "bool", required: true, description: "Whether the snapshot completed"),
+            Field(name: "snapshotId", type: "string", required: true, description: "Snapshot id for this inspection"),
+            Field(name: "target", type: "Window", required: true, description: "Resolved target window"),
+            Field(name: "mode", type: "string", required: true, description: "ax, both, or screenshot"),
+            Field(name: "elements", type: "[AXElement]", required: true, description: "Accessibility elements in traversal order"),
+            Field(name: "elementCount", type: "int", required: true, description: "Number of returned elements"),
+            Field(name: "treeMarkdown", type: "string", required: true, description: "Compact tree view for humans and agents"),
+            Field(name: "warnings", type: "[string]", required: true, description: "Non-fatal traversal or capture warnings"),
+            Field(name: "artifact", type: "RunArtifact", required: false, description: "Optional screenshot artifact when capture is enabled"),
+            Field(name: "run", type: "RunSession", required: false, description: "Run record when capture is enabled"),
+        ]))
+
         api.model(ApiModel(name: "MouseShortcutConfig", fields: [
             Field(name: "version", type: "int", required: true, description: "Mouse shortcut config version"),
             Field(name: "tuning", type: "object", required: true, description: "Gesture recognition tuning values"),
@@ -1533,6 +1566,28 @@ final class LatticesApi {
             returns: .custom("Object with ok, run, selected target, candidates, and optional artifacts"),
             handler: { params in
                 try ComputerUseController.shared.prepare(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "computer.windowState",
+            description: "Inspect a target window's Accessibility tree and return snapshot-local element ids.",
+            access: .mutate,
+            params: [
+                Param(name: "wid", type: "uint32", required: false, description: "Target window id"),
+                Param(name: "session", type: "string", required: false, description: "Target lattices session"),
+                Param(name: "app", type: "string", required: false, description: "Target app name"),
+                Param(name: "title", type: "string", required: false, description: "Optional title substring for app target"),
+                Param(name: "mode", type: "string", required: false, description: "ax (default), both, or screenshot"),
+                Param(name: "capture", type: "bool", required: false, description: "Capture a screenshot artifact; defaults true for both/screenshot and false for ax"),
+                Param(name: "maxDepth", type: "int", required: false, description: "Maximum AX tree depth to traverse (default 8, max 14)"),
+                Param(name: "maxElements", type: "int", required: false, description: "Maximum elements to return (default 250, max 1000)"),
+                Param(name: "timeoutMs", type: "int", required: false, description: "Traversal timeout in milliseconds (default 1200, max 5000)"),
+                Param(name: "source", type: "string", required: false, description: "Calling surface label when capture creates a run"),
+            ],
+            returns: .object(model: "ComputerWindowState"),
+            handler: { params in
+                try ComputerUseController.shared.windowState(params: params)
             }
         ))
 
