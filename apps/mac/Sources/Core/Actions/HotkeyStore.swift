@@ -279,7 +279,6 @@ class HotkeyStore: ObservableObject {
         bind(.screenMap, 37, hyper)      // Hyper+L (Layout)
         bind(.bezel,     19, hyper)      // Hyper+2
         bind(.hud,       20, hyper)      // Hyper+3 (HUD overlay)
-        bind(.desktopInventory, 35, hyper) // Hyper+P
         bind(.omniSearch, 23, hyper)     // Hyper+5 (search command box)
         let cmdCtrl = UInt32(cmdKey | controlKey)
         bind(.handsOff, 46, cmdCtrl)          // Ctrl+Cmd+M
@@ -364,6 +363,18 @@ class HotkeyStore: ObservableObject {
                     }
                 }
             }
+        }
+
+        // Retire Hyper+P → Desktop Inventory; Studio is Hyper+L. Clear the old default
+        // for installs that still have it persisted without a custom remap.
+        let hyper = UInt32(cmdKey | controlKey | optionKey | shiftKey)
+        if let binding = merged[.desktopInventory],
+           binding.keyCode == 35,
+           binding.carbonModifiers == hyper,
+           !ud.bool(forKey: "hotkey.desktopInventory.hyperpRemoved.v1") {
+            merged.removeValue(forKey: .desktopInventory)
+            ud.set(true, forKey: Self.disabledKey(for: .desktopInventory))
+            ud.set(true, forKey: "hotkey.desktopInventory.hyperpRemoved.v1")
         }
 
         self.bindings = merged

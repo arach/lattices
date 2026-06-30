@@ -4,13 +4,11 @@ import AppKit
 // MARK: - Screen Map View (Standalone)
 
 struct ScreenMapView: View {
-    private static let canvasPadding: CGFloat = 8
-    private static let canvasFitInsets = CGSize(width: 96, height: 84)
-    private static let canvasViewportInsets = CGSize(width: 12, height: 12)
+    private static let canvasPadding: CGFloat = 6
+    private static let canvasFitInsets = CGSize(width: 28, height: 32)
+    private static let canvasViewportInsets = CGSize(width: 8, height: 8)
     private static let canvasPanMinVisiblePixels: CGFloat = 1
-    private static let canvasFitScaleMultiplier: CGFloat = 0.78
-    private static let canvasStageMaxWidth: CGFloat = 1160
-    private static let canvasStageMaxHeight: CGFloat = 640
+    private static let canvasFitScaleMultiplier: CGFloat = 0.96
     private static let canvasStageMinAspect: CGFloat = 1.35
     private static let canvasStageMaxAspect: CGFloat = 2.35
     private static let sidebarWindowRowHeight: CGFloat = 28
@@ -206,10 +204,9 @@ struct ScreenMapView: View {
                     VStack(spacing: 0) {
                         canvasHeaderBezel
                         screenMapCanvas(editor: controller.editor)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                            .padding(.horizontal, 14)
-                            .padding(.top, 16)
-                            .padding(.bottom, 12)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 8)
                     }
                     .offset(x: canvasTransitionOffset)
                     .opacity(canvasTransitionOpacity)
@@ -2388,8 +2385,8 @@ struct ScreenMapView: View {
                 syncCanvasGeometry(editor: editor, metrics: metrics)
             }
         }
-        .padding(8)
-        .frame(maxWidth: Self.canvasStageMaxWidth, maxHeight: Self.canvasStageMaxHeight)
+        .padding(Self.canvasPadding)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .aspectRatio(stageAspectRatio, contentMode: .fit)
         .contentShape(canvasShape)
         .clipShape(canvasShape)
