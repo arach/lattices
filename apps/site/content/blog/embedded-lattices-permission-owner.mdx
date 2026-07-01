@@ -1,0 +1,187 @@
+---
+title: "Embedded Lattices and the Permission Owner"
+description: "Embedding Lattices into Scout or HudsonKit is not only an SDK problem. On macOS, it is a question of which product the user is being asked to trust."
+date: "2026-07-01"
+tags: ["sdk", "macos", "accessibility", "scout", "architecture"]
+author: "Arach Tchoupani"
+---
+
+I started this thinking mostly about an SDK.
+
+Lattices already knows how to do the things I want available inside other apps:
+find the right tmux session, jump to its terminal window, tile it, switch Spaces,
+read Accessibility trees, and route controlled input. Scout wants some of that.
+HudsonKit probably wants some of that too. So the first version of the question
+was simple enough: can Lattices become an embeddable kit?
+
+But on macOS, "embeddable" is not just a packaging word. It is a trust-boundary
+word.
+
+The app that calls Accessibility is the app the user sees in Privacy & Security.
+The process that captures the screen is the process that owns Screen Recording.
+The thing listening to global input is the thing macOS lists under Input
+Monitoring. If we get that boundary wrong, then the SDK shape can be technically
+correct and still feel wrong.
+
+## The Wrong Default
+
+The tempting answer is to leave Lattices as a runner.
+
+Scout could talk to a local Lattices daemon. HudsonKit could call a Lattices
+client. The Lattices menu bar app could be the place where all the sensitive
+desktop powers live.
+
+That works as an integration, but it fails the embedded product story.
+
+If I am using Scout and Scout says it can manage my workspace, I expect to grant
+Scout the relevant permissions. I do not want a surprise second product in the
+middle. I do not want to install a separate Lattices runtime just so Scout can
+reach a terminal window. And I definitely do not want the System Settings story
+to say "grant Lattices" when the trust relationship I am making is with Scout.
+
+That is the part that matters. The problem is not that a helper or another
+process can never exist. The problem is who owns it.
+
+## The Orca Lesson
+
+Orca gave us a useful reference point.
+
+If you inspect an Orca install, you see a bunch of helpers. Some are just normal
+Electron machinery: renderer helpers, GPU helpers, framework bits, Chromium
+resources. Those are implementation details. They are not the interesting trust
+model.
+
+The interesting one is `Orca Computer Use.app`.
+
+That helper is product-branded. It has its own bundle identity. Its usage
+strings explain why it needs Accessibility and Screen Recording. When the user
+grants it permission, the thing in System Settings still looks like Orca, not
+some unrelated library.
+
+That is the useful pattern: a product-owned helper can own sensitive desktop
+capabilities without pretending the library underneath is the product.
+
+For Lattices, the translation is straightforward. Do not ship `Lattices
+Helper.app` as the thing Scout users must trust. Ship Scout-owned capability
+owners that embed LatticesKit.
+
+## Native Scout Makes This Cleaner
+
+Scout is native, so we do not have the Electron helper ambiguity.
+
+That means `Scout Helper` can be exactly what it sounds like: a deliberate
+Scout-owned helper, not a framework subprocess that happens to share the word
+"helper." It can be the menu bar lifetime. It can be the global shortcut owner.
+It can be the place where desktop capabilities live when they should outlast or
+sit beside the main app UI.
+
+There are two shapes worth supporting.
+
+The simplest is main-app ownership:
+
+```text
+Scout.app
+└── links LatticesKit
+```
+
+In that model, Scout itself owns Accessibility, Screen Recording, Input
+Monitoring, and whatever else the embedded capabilities require.
+
+The second shape is helper ownership:
+
+```text
+Scout.app
+└── Contents/Resources/Scout Workspace Helper.app
+    └── links LatticesKit
+```
+
+In that model, the helper owns the grants. The main app talks to it over an
+internal boundary, likely XPC or another authenticated local channel. If Scout
+is reachable over LAN, mesh, or a Tailscale-style network, that same helper can
+also become the capability owner for paired remote clients. The important part
+is that reachability is explicit: paired, authenticated, capability-scoped,
+visible, and revocable.
+
+From the user's perspective, this is still Scout. From the implementation's
+perspective, LatticesKit is just the library inside the helper.
+
+That gives us the flexibility we need without changing the trust story.
+
+## Naming The Owner
+
+The naming rule is simple:
+
+`Scout Helper` is Scout-owned general logic.
+
+`Scout <domain> Helper` is Scout-owned embedded capability logic.
+
+`Lattices Helper` is the name to avoid.
+
+If Scout wants one broad permission owner, `Scout Helper` is a good default. It
+is broad enough to cover menu bar lifecycle, window control, hotkeys, and
+workspace coordination.
+
+If we want the name to explain the capability more directly, `Scout Workspace
+Helper` is probably the best fit for LatticesKit. It says why the helper exists:
+sessions, windows, tmux, Spaces, and the local workspace.
+
+`Scout Computer Use Helper` is also valid, but I would reserve that for a more
+general "use apps on your behalf" surface. Lattices is more specific than that.
+It is workspace control.
+
+The deeper rule is more important than the exact name: split helpers by trust
+boundary and lifecycle, not by library boundary.
+
+One helper per embedded package is usually not the right model. It creates a
+messier permission story and asks the user to trust implementation details. A
+single Scout-owned workspace helper may be the right model. A separate audio or
+dictation helper may be right if microphone lifecycle and user expectations are
+different. But the split has to mean something in product terms.
+
+## What LatticesKit Becomes
+
+This is the embeddable shape I want:
+
+```swift
+import LatticesKit
+
+let lattices = Lattices()
+let readiness = lattices.readiness(for: [.sessionNavigation, .windowManagement])
+
+if let firstMissing = readiness.missing.first {
+    lattices.permissions.request(firstMissing)
+}
+```
+
+Under that top-level object, LatticesKit exposes capability namespaces:
+
+- permissions and readiness
+- tmux and session lifecycle
+- window discovery, focus, placement, and tiling
+- Accessibility snapshots
+- controlled input
+- eventually capture, OCR, and action receipts where the host needs them
+- paired LAN, mesh, or Tailscale-style transport when Scout wants remote reach
+
+The same code can run in `Scout.app` or in `Scout Workspace Helper.app`. The TCC
+owner changes because the process changes, not because the library changes.
+
+That is the point. LatticesKit is the capability implementation. Scout chooses
+the permission owner.
+
+## Why This Matters
+
+This is a small architecture decision with a large user-experience shadow.
+
+People do not grant permissions to modules. They grant permissions to products
+they understand. If Scout is the thing offering workspace intelligence, Scout
+should be the thing that appears in System Settings. If HudsonKit embeds the
+same capabilities for another app, that host should own the boundary instead.
+
+Lattices can still be powerful. It can still provide the hard parts: session
+naming, tmux orchestration, window lookup, Accessibility traversal, placement,
+and eventually richer action semantics. But it does not need to become a second
+product in the user's trust chain.
+
+That is the shape I want to ship: embedded capability, product-owned permission,
+and no surprise runtime in the middle.

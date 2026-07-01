@@ -49,7 +49,9 @@ Scout.app
 ```
 
 macOS permissions belong to the helper. The main app talks to it through an
-internal boundary such as XPC or an authenticated local channel.
+internal boundary such as XPC or an authenticated local channel. When the host
+product supports remote control, the same capability owner can also be exposed
+over a paired LAN, mesh, or Tailscale-style channel.
 
 This follows the useful part of Orca's `Orca Computer Use.app` pattern: a
 bundled helper owns sensitive desktop permissions. The difference is that the
@@ -126,13 +128,18 @@ Scout.app
     └── AX snapshots and controlled input
 ```
 
-The helper should expose a narrow command surface to Scout:
+The helper should expose a narrow command surface to Scout and to any paired
+mesh clients:
 
 - capability and permission readiness
 - session name, launch, sync, restart, detach, kill
 - window list, resolve, focus, tile, place
 - Accessibility snapshot
 - input actions that Scout explicitly requests
+
+LAN, mesh, and Tailscale-style reachability must be explicit product surfaces,
+not accidental daemon exposure. They should require pairing, authenticated
+requests, capability scoping, visible connection state, and revocation.
 
 The helper should not expose Lattices as a separate product identity. From the
 user's perspective this is Scout doing workspace control.
