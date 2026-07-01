@@ -74,11 +74,6 @@ export const ENG_DOC_GROUPS: EngDocGroup[] = [
         sourcePath: "docs/layers.md",
       },
       {
-        slug: "twins",
-        title: "Project twins",
-        sourcePath: "docs/twins.md",
-      },
-      {
         slug: "agents",
         title: "Agents",
         sourcePath: "docs/agents.md",

@@ -3,9 +3,9 @@ import { useEffect, useState } from "react";
 type PkgManager = "npm" | "pnpm" | "bun";
 
 const commands: Record<PkgManager, string> = {
-  npm: "npm install -g @lattices/cli",
-  pnpm: "pnpm add -g @lattices/cli",
-  bun: "bun add -g @lattices/cli",
+  npm: "npm install @lattices/sdk",
+  pnpm: "pnpm add @lattices/sdk",
+  bun: "bun add @lattices/sdk",
 };
 
 const pmOrder: PkgManager[] = ["npm", "pnpm", "bun"];
@@ -21,7 +21,14 @@ function LatticesLogo({ size = 20 }: { size?: number }) {
   const gap = 1.2;
   const cell = (size - 2 * pad - 2 * gap) / 3;
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} fill="none">
+    <svg
+      aria-hidden="true"
+      className="lattices-logo"
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      fill="none"
+    >
       {cells.map((bright, i) => {
         const row = Math.floor(i / 3);
         const col = i % 3;
@@ -33,7 +40,8 @@ function LatticesLogo({ size = 20 }: { size?: number }) {
             width={cell}
             height={cell}
             rx={1}
-            fill={bright ? "#f2f2f2" : "rgba(255,255,255,0.18)"}
+            className="lattices-logo-cell"
+            style={{ fill: bright ? "var(--logo-ink)" : "var(--logo-dim)" }}
           />
         );
       })}
@@ -97,7 +105,18 @@ function AppleIcon() {
   );
 }
 
+function DownloadIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} width="14" height="14">
+      <path d="M12 3v12" />
+      <path d="m7 10 5 5 5-5" />
+      <path d="M5 21h14" />
+    </svg>
+  );
+}
+
 type PaneLayout = 1 | 2 | 3;
+type CuaStepId = "observe" | "stage" | "execute" | "verify";
 
 const configExamples: Record<PaneLayout, string> = {
   1: `{
@@ -122,29 +141,94 @@ const configExamples: Record<PaneLayout, string> = {
 }`,
 };
 
-const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span class="hl-kw">from</span> <span class="hl-str">'@lattices/cli'</span>
+const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span class="hl-kw">from</span> <span class="hl-str">'@lattices/sdk'</span>
 
-<span class="hl-cmt">// Search windows by content</span>
-<span class="hl-kw">const</span> hits = <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'windows.search'</span>, {
+<span class="hl-cmt">// Search the live desktop</span>
+<span class="hl-kw">const</span> [match] = <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'windows.search'</span>, {
   query: <span class="hl-str">'myproject'</span>
 })
+<span class="hl-kw">await</span> daemonCall(<span class="hl-str">'window.focus'</span>, {
+  wid: match.wid
+})
 
-<span class="hl-cmt">// Launch and tile side-by-side</span>
-<span class="hl-kw">await</span> daemonCall(<span class="hl-str">'session.launch'</span>, {
-  path: <span class="hl-str">'/Users/you/dev/frontend'</span>
+<span class="hl-cmt">// Bring up a configured workspace</span>
+<span class="hl-kw">await</span> daemonCall(<span class="hl-str">'layer.activate'</span>, {
+  name: <span class="hl-str">'review'</span>,
+  mode: <span class="hl-str">'launch'</span>,
 })
-<span class="hl-kw">await</span> daemonCall(<span class="hl-str">'session.launch'</span>, {
-  path: <span class="hl-str">'/Users/you/dev/api'</span>
-})
-<span class="hl-kw">const</span> sessions = <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'tmux.sessions'</span>)
-<span class="hl-kw">await</span> daemonCall(<span class="hl-str">'window.tile'</span>, {
-  session: sessions[<span class="hl-num">0</span>].name,
-  position: <span class="hl-str">'left'</span>
-})
-<span class="hl-kw">await</span> daemonCall(<span class="hl-str">'window.tile'</span>, {
-  session: sessions[<span class="hl-num">1</span>].name,
-  position: <span class="hl-str">'right'</span>
+
+<span class="hl-cmt">// Balance whatever is now visible</span>
+<span class="hl-kw">await</span> daemonCall(<span class="hl-str">'space.optimize'</span>, {
+  scope: <span class="hl-str">'visible'</span>,
+  strategy: <span class="hl-str">'balanced'</span>,
 })`;
+
+const cuaSteps: Array<{
+  id: CuaStepId;
+  number: string;
+  title: string;
+  heading: string;
+  caption: string;
+  filename: string;
+  code: string;
+}> = [
+  {
+    id: "observe",
+    number: "01",
+    title: "Observe",
+    heading: "Read the app before acting",
+    caption: "Capture AX, OCR, screenshots, and window state so the agent chooses from stable targets.",
+    filename: "observe.ts",
+    code: `<span class="hl-kw">const</span> ui = <span class="hl-kw">await</span> windowState({
+  app: <span class="hl-str">'Calculator'</span>,
+  mode: <span class="hl-str">'ax'</span>,
+  capture: [<span class="hl-str">'tree'</span>, <span class="hl-str">'ocr'</span>, <span class="hl-str">'screen'</span>],
+})`,
+  },
+  {
+    id: "stage",
+    number: "02",
+    title: "Stage",
+    heading: "Prepare a reviewable action",
+    caption: "Bind the next move to an element, region, or coordinate while nothing has run yet.",
+    filename: "stage.ts",
+    code: `<span class="hl-kw">await</span> elementAction({
+  snapshotId: ui.snapshotId,
+  elementId: <span class="hl-str">'e7'</span>,
+  action: <span class="hl-str">'press'</span>,
+  treatment: <span class="hl-str">'stage'</span>,
+})`,
+  },
+  {
+    id: "execute",
+    number: "03",
+    title: "Execute",
+    heading: "Run the exact staged command",
+    caption: "Click, type, hotkey, scroll, drag, set values, or drive browser actions with recording on.",
+    filename: "execute.ts",
+    code: `<span class="hl-kw">await</span> elementAction({
+  snapshotId: ui.snapshotId,
+  elementId: <span class="hl-str">'e7'</span>,
+  action: <span class="hl-str">'press'</span>,
+  treatment: <span class="hl-str">'execute'</span>,
+  recording: <span class="hl-num">true</span>,
+})`,
+  },
+  {
+    id: "verify",
+    number: "04",
+    title: "Verify",
+    heading: "Check the result on-device",
+    caption: "Confirm the outcome with OCR, AX, or artifact diff, then feed that receipt into the next observation.",
+    filename: "verify.ts",
+    code: `<span class="hl-kw">const</span> receipt = <span class="hl-kw">await</span> verify({
+  app: <span class="hl-str">'Calculator'</span>,
+  mode: <span class="hl-str">'ocr'</span>,
+  contains: <span class="hl-str">'42'</span>,
+  attachArtifact: <span class="hl-num">true</span>,
+})`,
+  },
+];
 
 const showLatsDevTeaser = import.meta.env.PUBLIC_SHOW_LATS_DEV_TEASER === "true";
 
@@ -152,11 +236,13 @@ export default function App() {
   const [pm, setPm] = useState<PkgManager>("npm");
   const [copied, setCopied] = useState(false);
   const [paneLayout, setPaneLayout] = useState<PaneLayout>(2);
+  const [cuaStep, setCuaStep] = useState<CuaStepId>("observe");
   // Initial theme is set synchronously by the inline script in index.html
   // (saved choice → system preference → dark). This re-syncs on toggle.
   const [theme, setTheme] = useState<"light" | "dark">(
     () => (document.documentElement.getAttribute("data-theme") as "light" | "dark") || "dark",
   );
+  const activeCuaStep = cuaSteps.find((step) => step.id === cuaStep) ?? cuaSteps[0];
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -188,10 +274,13 @@ export default function App() {
             <a href="/docs/api" className="nav-link">
               API
             </a>
-            <a href="#config" className="nav-link">
+            <a href="#cua" className="nav-link">
+              CUA
+            </a>
+            <a href="#config" className="nav-link nav-optional-mobile">
               Config
             </a>
-            <a href="#app" className="nav-link">
+            <a href="#app" className="nav-link nav-optional-mobile">
               App
             </a>
             <button
@@ -220,48 +309,77 @@ export default function App() {
         <section className="hero fade-in">
           <div className="hero-badge">
             <LatticesLogo size={14} />
-            Open source · 100% free
+            Open source
           </div>
           <h1>
-            the agentic
+            agentic window
             <br />
-            <span className="accent">workspace manager</span>
+            <span className="accent">management</span>
           </h1>
+          <p className="hero-sub">
+            When your desktop is full of windows, terminals, and agents, Lattices gives you one place to arrange, launch, and control all of it — by hand or from code.
+          </p>
           <div className="hero-pillars">
             <div className="hero-pillar">
-              <h2>Desktop as an API</h2>
-              <p>35+ RPC methods expose windows, sessions, layouts, and live workspace state through one coherent interface.</p>
+              <h2>Window manager</h2>
+              <p>Resize, move, and switch windows with mouse or keyboard. Snap to grids, layers, and spaces across your Mac.</p>
             </div>
             <div className="hero-pillar">
-              <h2>Workspace assistant for you</h2>
-              <p>Ask for layouts, focus, screen search, mouse gestures, voice actions, and small on-screen animations.</p>
+              <h2>Managed terminal sessions</h2>
+              <p>Configurable terminal sessions powered by tmux today — panes, tabs, groups, and layouts that you control and restore.</p>
             </div>
             <div className="hero-pillar">
-              <h2>Managed tmux sessions</h2>
-              <p>We make tmux easy. Use your own terminal — panes and layouts just work.</p>
+              <h2>Computer use (CUA)</h2>
+              <p>Full mouse, keyboard, and screen actions with recording and verification so agents can act and confirm every step.</p>
+            </div>
+            <div className="hero-pillar">
+              <h2>API for your agents</h2>
+              <p>40+ typed methods over one connection so agents control windows, terminals, and your full desktop from code or AI.</p>
             </div>
           </div>
 
           <div className="install fade-in fade-in-delay-1">
-            <div className="install-tabs">
-              {pmOrder.map((p) => (
-                <button
-                  key={p}
-                  className={`install-tab ${pm === p ? "active" : ""}`}
-                  onClick={() => setPm(p)}
-                >
-                  {p}
+            <a
+              href="https://github.com/arach/lattices/releases/latest/download/Lattices.dmg"
+              className="install-app-download"
+              onClick={() => trackCta('download_dmg_hero', 'https://github.com/arach/lattices/releases/latest/download/Lattices.dmg')}
+            >
+              <span className="install-app-icon">
+                <AppleIcon />
+              </span>
+              <span className="install-app-copy">
+                <span>Native macOS app</span>
+                <span>Apple Silicon .dmg</span>
+              </span>
+              <span className="install-app-go" aria-hidden="true">
+                <DownloadIcon />
+              </span>
+            </a>
+            <div className="install-surface">
+              <div className="install-surface-head">
+                <span>SDK package</span>
+                <span>Agent API</span>
+              </div>
+              <div className="install-tabs">
+                {pmOrder.map((p) => (
+                  <button
+                    key={p}
+                    className={`install-tab ${pm === p ? "active" : ""}`}
+                    onClick={() => setPm(p)}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+              <div className="install-cmd">
+                <code>
+                  <span className="prompt">$</span>
+                  {commands[pm]}
+                </code>
+                <button className="install-copy" onClick={copy} aria-label="Copy install command">
+                  {copied ? <CheckIcon /> : <CopyIcon />}
                 </button>
-              ))}
-            </div>
-            <div className="install-cmd">
-              <code>
-                <span className="prompt">$</span>
-                {commands[pm]}
-              </code>
-              <button className="install-copy" onClick={copy}>
-                {copied ? <CheckIcon /> : <CopyIcon />}
-              </button>
+              </div>
             </div>
             <div className="hero-links">
               <a
@@ -285,6 +403,72 @@ export default function App() {
           </div>
         </section>
 
+        {/* Computer use (CUA) */}
+        <section className="section cua-section" id="cua">
+          <div className="cua-head fade-in">
+            <div className="cua-kicker">On-device automation</div>
+            <h2>Safe computer use, built for agents</h2>
+            <p>
+              Observe the screen, stage each action for review, execute on-device,
+              then verify the result — and loop.
+            </p>
+          </div>
+
+          <div className="cua-showcase fade-in fade-in-delay-1">
+            <div className="cua-loop-rail" aria-label="Computer use safety loop">
+              {cuaSteps.map((step) => (
+                <button
+                  key={step.id}
+                  type="button"
+                  className={`cua-stage-chip${cuaStep === step.id ? " active" : ""}`}
+                  onClick={() => setCuaStep(step.id)}
+                  aria-pressed={cuaStep === step.id}
+                >
+                  <span className="cua-stage-number">{step.number}</span>
+                  <span className="cua-stage-chip-copy">
+                    <span>{step.title}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            <div className="cua-stage-panel">
+              <div className="cua-stage-copy">
+                <p className="cua-stage-eyebrow">
+                  {activeCuaStep.number} / {activeCuaStep.title}
+                </p>
+                <h3>{activeCuaStep.heading}</h3>
+                <p>{activeCuaStep.caption}</p>
+              </div>
+
+              <div className="code-block">
+                <div className="code-header">
+                  <span className="code-dot code-dot-red" />
+                  <span className="code-dot code-dot-yellow" />
+                  <span className="code-dot code-dot-green" />
+                  <span className="code-filename">{activeCuaStep.filename}</span>
+                </div>
+                <pre
+                  className="code-pre"
+                  dangerouslySetInnerHTML={{ __html: activeCuaStep.code }}
+                />
+              </div>
+
+              <div className="cua-stage-footer">
+                <div className="cua-action-tags" aria-label="Supported computer use actions">
+                  <span>mouse</span>
+                  <span>keyboard</span>
+                  <span>browser</span>
+                  <span>local verify</span>
+                </div>
+                <a href="/docs/api" className="agent-api-link cua-stage-api-link">
+                  Computer-use API &rarr;
+                </a>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {showLatsDevTeaser && (
           <section className="next-section fade-in fade-in-delay-2">
             <div className="next-card">
@@ -292,9 +476,9 @@ export default function App() {
                 <div className="next-kicker">Opening for TestFlight</div>
                 <h2>Lats.dev for iPad</h2>
                 <p>
-                  A new companion app and domain for controlling your Mac workspace
-                  from beside the keyboard: trackpad gestures, window actions, live
-                  state, and shortcuts tuned for iPad. Early testing starts next.
+                  A new app and domain for controlling your Mac workspace from
+                  beside the keyboard: trackpad gestures, window actions, live state,
+                  and shortcuts tuned for iPad. Early testing starts next.
                 </p>
               </div>
               <div className="next-preview" aria-hidden="true">
@@ -317,49 +501,55 @@ export default function App() {
           </section>
         )}
 
-        {/* Menu bar app */}
+        {/* macOS app */}
         <section className="app-section" id="app">
-          <div className="app-grid">
+          <div className="app-heading-row">
             <div>
-              <h2 className="app-title">Native macOS menu bar app</h2>
+              <div className="app-title-row">
+                <h2 className="app-title">Native macOS app</h2>
+                <a
+                  href="https://github.com/arach/lattices/releases/latest/download/Lattices.dmg"
+                  className="app-download-icon"
+                  aria-label="Download Lattices for macOS"
+                  title="Download Lattices for macOS"
+                  onClick={() => trackCta('download_dmg', 'https://github.com/arach/lattices/releases/latest/download/Lattices.dmg')}
+                >
+                  <DownloadIcon />
+                </a>
+              </div>
               <p className="app-desc">
                 Built with SwiftUI. Manage your workspace — terminal
-                sessions, app windows, and layers — from the menu bar.
+                sessions, app windows, and layers — from an installed Mac app.
               </p>
+            </div>
+          </div>
+          <div className="app-grid">
+            <div className="app-copy">
               <ul className="app-features">
                 <li>See all projects and session status</li>
                 <li>Launch, attach, or detach with a click</li>
                 <li>
                   Command palette via <code>Cmd+Shift+M</code>
                 </li>
-                <li>Window tiling to halves, quarters, or full screen</li>
-                <li>Mouse gestures for window actions and shortcuts</li>
+                <li>Window tiling, layers, and tab groups</li>
                 <li>
-                  <a href="/docs/layers">Workspace layers</a> with <code>Cmd+Option+1/2/3</code>
+                  <a href="/docs/layers">Workspace layers</a> via <code>Cmd+Option+1/2/3</code>
                 </li>
-                <li>
-                  <a href="/docs/layers#tab-groups">Tab groups</a> — related projects as tabs in one session
-                </li>
-                <li>Cheat sheet HUD and omni search</li>
-                <li>Put little overlay animations on screen for gestures, status, and feedback</li>
-                <li>Voice commands via Vox integration <span className="beta-badge">beta</span></li>
+                <li>Gestures, overlays, and omni search</li>
+                <li>Voice commands for tiling, search, focus, and launch</li>
               </ul>
-              <a
-                href="https://github.com/arach/lattices/releases/latest/download/Lattices.dmg"
-                className="app-download"
-                onClick={() => trackCta('download_dmg', 'https://github.com/arach/lattices/releases/latest/download/Lattices.dmg')}
-              >
-                <AppleIcon />
-                Download for macOS
-                <span className="app-download-meta">Apple Silicon · Free · .dmg</span>
-              </a>
             </div>
-            <div className="app-screenshot-wrap">
+            <div className="app-demo-reel" aria-label="Animated preview of lattices arranging windows, layers, search, and voice commands">
               <img
                 src="/app-latest.png"
                 alt="lattices app showing screen map with dual displays, layers, and inspector"
                 className="app-screenshot"
               />
+              <div className="app-demo-cursor" aria-hidden="true" />
+              <div className="app-demo-focus app-demo-focus-one" aria-hidden="true" />
+              <div className="app-demo-focus app-demo-focus-two" aria-hidden="true" />
+              <div className="app-demo-tile app-demo-tile-left" aria-hidden="true" />
+              <div className="app-demo-tile app-demo-tile-right" aria-hidden="true" />
             </div>
           </div>
         </section>
@@ -377,6 +567,10 @@ export default function App() {
                 <h3>Persistent sessions</h3>
                 <p>Survives reboots. Reattach anytime.</p>
               </div>
+              <div className="feature">
+                <h3>Tab groups</h3>
+                <p>Related projects as tabs in one session.</p>
+              </div>
             </div>
           </div>
           <div className="bucket">
@@ -391,16 +585,8 @@ export default function App() {
                 <p>Draw shapes to tile, focus, launch, or run shortcuts with visible feedback.</p>
               </div>
               <div className="feature">
-                <h3>Screen text indexing</h3>
-                <p>AX + OCR. Search text across all windows.</p>
-              </div>
-              <div className="feature">
                 <h3>Screen animations</h3>
                 <p>Put little visuals on screen for gesture trails, status, and workspace cues.</p>
-              </div>
-              <div className="feature">
-                <h3>Voice commands <span className="beta-badge">beta</span></h3>
-                <p>Speak to tile, search, focus, and launch — via Vox.</p>
               </div>
             </div>
           </div>
@@ -408,12 +594,16 @@ export default function App() {
             <h3 className="bucket-label">Programmable Workspace</h3>
             <div className="bucket-cards">
               <div className="feature">
-                <h3>35+ RPC methods</h3>
+                <h3>40+ RPC methods</h3>
                 <p>WebSocket on localhost. Full workspace control.</p>
               </div>
               <div className="feature">
                 <h3>Agent automation</h3>
                 <p>AI agents and scripts drive your desktop.</p>
+              </div>
+              <div className="feature">
+                <h3>Screen text indexing</h3>
+                <p>AX + OCR. Search text across all windows.</p>
               </div>
             </div>
           </div>
@@ -421,15 +611,17 @@ export default function App() {
 
         {/* Config */}
         <section className="section" id="config">
+          <div className="config-head fade-in fade-in-delay-2">
+            <h2 className="config-title">
+              Managed terminal sessions
+            </h2>
+            <p className="config-desc">
+              tmux made easy today — configurable panes, tabs, and layouts that save, restore, and fit your workflow.
+            </p>
+          </div>
+
           <div className="config-grid fade-in fade-in-delay-2">
             <div>
-              <h2 className="config-title">
-                Managed tmux sessions
-              </h2>
-              <p className="config-desc">
-                We make tmux easy. Use your own terminal — define
-                panes and layouts in a single JSON file.
-              </p>
               <div className="layouts">
                 <div className={`layout-card${paneLayout === 1 ? " active" : ""}`} onClick={() => setPaneLayout(1)}>
                   <h3>1 pane</h3>
@@ -478,7 +670,7 @@ export default function App() {
           <div className="config-grid fade-in fade-in-delay-2">
             <div>
               <h2 className="config-title">
-                Your AI co-pilot needs to see what you see
+                Your agents need to see what you see
               </h2>
               <p className="config-desc">
                 Agents are limited to a terminal. Lattices gives them
@@ -489,9 +681,11 @@ export default function App() {
                 <li><code>windows.search</code> — find windows by title, app, session, OCR</li>
                 <li><code>terminals.search</code> — inspect terminal tabs, processes, cwds</li>
                 <li><code>ocr.search</code> — full-text search across all screen content</li>
-                <li><code>session.launch</code> — start a project session</li>
-                <li><code>window.tile</code> — snap windows to screen positions</li>
-                <li>35+ methods + 5 real-time events</li>
+                <li><code>computer.windowState</code> — AX snapshot with actionable element IDs</li>
+                <li><code>computer.verify</code> — confirm outcomes via OCR, AX, or artifact diff</li>
+                <li><code>layer.activate</code> — launch or focus a whole workspace</li>
+                <li><code>space.optimize</code> — balance visible windows after launch</li>
+                <li>40+ methods + live workspace updates pushed over WebSocket</li>
               </ul>
               <a href="/docs/api" className="agent-api-link">
                 Full API reference &rarr;
@@ -516,13 +710,31 @@ export default function App() {
         {/* CTA */}
         <section className="cta">
           <h2>Ready to lattices?</h2>
-          <p>Install globally. Your agent gets a control plane in seconds.</p>
+          <p>Install globally. Up and running in seconds.</p>
+          <div className="cta-download-row">
+            <a
+              href="https://github.com/arach/lattices/releases/latest/download/Lattices.dmg"
+              className="cta-download-button"
+              onClick={() => trackCta('download_dmg', 'https://github.com/arach/lattices/releases/latest/download/Lattices.dmg')}
+            >
+              <span className="cta-download-icon">
+                <AppleIcon />
+              </span>
+              <span className="cta-download-copy">
+                <span>Download for macOS</span>
+                <span className="cta-download-meta">Apple Silicon · .dmg</span>
+              </span>
+              <span className="cta-download-go" aria-hidden="true">
+                <DownloadIcon />
+              </span>
+            </a>
+          </div>
           <div className="cta-actions">
             <a
               href="https://github.com/arach/lattices"
               target="_blank"
               rel="noopener noreferrer"
-              className="btn btn-primary"
+              className="btn btn-secondary"
               onClick={() => trackCta('view_github', 'https://github.com/arach/lattices')}
             >
               View on GitHub
@@ -535,13 +747,6 @@ export default function App() {
               onClick={() => trackCta('view_npm', 'https://www.npmjs.com/package/lattices')}
             >
               npm package
-            </a>
-            <a
-              href="https://github.com/arach/lattices/releases/latest/download/Lattices.dmg"
-              className="btn btn-secondary"
-              onClick={() => trackCta('download_dmg', 'https://github.com/arach/lattices/releases/latest/download/Lattices.dmg')}
-            >
-              <AppleIcon /> Download .dmg
             </a>
             <a
               href="/docs/api"

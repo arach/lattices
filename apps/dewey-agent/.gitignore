@@ -1,0 +1,7 @@
+node_modules/
+.output/
+.eve/
+.workflow-data/
+.env
+.env.local
+.env.*.local

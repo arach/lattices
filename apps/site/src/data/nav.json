@@ -27,11 +27,6 @@
           "description": "Core ideas, glossary, and architecture of lattices"
         },
         {
-          "id": "twins",
-          "title": "Project Twins",
-          "description": "Pi-backed project twins for mediated, persistent agent execution"
-        },
-        {
           "id": "api",
           "title": "Agent API",
           "description": "WebSocket API reference for programmatic control of lattices"
@@ -40,6 +35,11 @@
           "id": "agents",
           "title": "Agent Guide",
           "description": "Canonical contracts for agents across docs, CLI, voice, and the daemon API"
+        },
+        {
+          "id": "embedded-sdk",
+          "title": "Embedded SDK",
+          "description": "Embed LatticesKit into host apps and product-owned helpers"
         }
       ]
     },

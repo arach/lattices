@@ -13,7 +13,14 @@ export function LatticesMark({ size = 20 }: { size?: number }) {
   const cell = (size - 2 * pad - 2 * gap) / 3
 
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} fill="none" aria-hidden="true">
+    <svg
+      className="site-mark"
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      fill="none"
+      aria-hidden="true"
+    >
       {cells.map((bright, index) => {
         const row = Math.floor(index / 3)
         const col = index % 3
@@ -25,7 +32,8 @@ export function LatticesMark({ size = 20 }: { size?: number }) {
             width={cell}
             height={cell}
             rx={1}
-            fill={bright ? '#f2f2f2' : 'rgba(255,255,255,0.18)'}
+            className="site-mark-cell"
+            style={{ fill: bright ? 'var(--logo-ink)' : 'var(--logo-dim)' }}
           />
         )
       })}

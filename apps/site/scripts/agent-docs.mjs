@@ -21,13 +21,14 @@ const primaryDocReadOrder = [
   'concepts',
   'config',
   'app',
+  'embedded-sdk',
   'layers',
   'api',
   'agent/cua-implementation',
+  'agent/dewey-agent-architecture',
   'agents',
   'voice',
   'ocr',
-  'twins',
 ]
 export async function readMarkdownDocs(options = {}) {
   const resolved = resolveOptions(options)

@@ -410,7 +410,7 @@ final class ScreenMapEditorState: ObservableObject {
             union = union.union(rect)
         }
 
-        let pad: CGFloat = focusedDisplayIndex == nil ? 180 : 120
+        let pad: CGFloat = focusedDisplayIndex == nil ? 96 : 72
         return union.insetBy(dx: -pad, dy: -pad)
     }
 
@@ -1847,15 +1847,8 @@ final class ScreenMapController: ObservableObject {
         }
 
         // Start monitor-first: focus the display under the cursor, or the first display.
-        if !displayGeometries.isEmpty {
-            let mouseLocation = NSEvent.mouseLocation
-            let mouseCG = CGPoint(x: mouseLocation.x, y: primaryHeight - mouseLocation.y)
-            if let display = displayGeometries.first(where: { $0.cgRect.contains(mouseCG) }) {
-                newEditor.focusedDisplayIndex = display.index
-            } else {
-                newEditor.focusedDisplayIndex = displayGeometries[0].index
-            }
-        }
+        // Open on all displays so the canvas fills the center panel on first load.
+        newEditor.focusedDisplayIndex = nil
 
         editor = newEditor
         let liveIds = Set(mapWindows.map(\.id))

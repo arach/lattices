@@ -25,9 +25,12 @@ final class ScreenMapWindowController: ObservableObject {
                                 width: screen.frame.width, height: screen.frame.height)
             bbox = i == 0 ? cgRect : bbox.union(cgRect)
         }
+        let mainVisibleSize = NSScreen.main?.visibleFrame.size ?? NSSize(width: 1440, height: 900)
         let aspectRatio = bbox.width / max(bbox.height, 1)
-        let width = min(max(860, CGFloat(620) * aspectRatio + 100), 1600)
-        return NSSize(width: width, height: 620)
+        let maxWidth = max(900, min(1760, mainVisibleSize.width * 0.92))
+        let width = min(max(1080, CGFloat(720) * aspectRatio + 220), maxWidth)
+        let height = min(max(680, mainVisibleSize.height * 0.78), 760)
+        return NSSize(width: width, height: height)
     }
 
     private func preferredWindowSize(for page: AppPage) -> NSSize {
