@@ -155,6 +155,14 @@ struct MainView: View {
                     .fill(Palette.border)
                     .frame(height: 0.5)
 
+                FrontWindowPlacementGrid {
+                    MenuBarController.shared.dismissPopover()
+                }
+
+                Rectangle()
+                    .fill(Palette.border)
+                    .frame(height: 0.5)
+
                 actionsSection
 
                 Rectangle()

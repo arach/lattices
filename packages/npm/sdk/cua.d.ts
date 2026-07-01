@@ -418,6 +418,12 @@ export declare const computerMagicCursorParamsSchema: z.ZodType<ComputerMagicCur
 export declare function createCuaClient(options?: CuaClientOptions): CuaClient;
 export declare const cua: CuaClient;
 
+export declare function daemonCall(
+  method: string,
+  params?: Record<string, unknown> | null,
+  timeoutMs?: number,
+): Promise<unknown>;
+
 export declare function windowState(params: ComputerWindowStateParams): Promise<unknown>;
 export declare function elementAction(params: ComputerElementActionParams): Promise<unknown>;
 export declare function typeElement(params: ComputerTypeElementParams): Promise<unknown>;

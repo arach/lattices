@@ -53,6 +53,7 @@ and you can reattach anytime.
 | **Agent API** | WebSocket server on `ws://127.0.0.1:9399`. 35+ methods, 5 real-time events |
 | **Screen scanner** | Reads text from visible windows using Accessibility API (60s) and Apple Vision OCR (2h), indexes with FTS5 |
 | **Node.js client** | Zero-dependency `daemonCall()` helper for scripting |
+| **Embedded SDK** | Swift package for embedding lattices capabilities into host apps or product-owned helpers |
 
 ## Example
 
@@ -96,3 +97,4 @@ await daemonCall('window.place', {
 - [Concepts](/docs/concepts): architecture, glossary, and how it all works
 - [Agent Guide](/docs/agents): canonical action contracts for voice, CLI, and daemon clients
 - [Agent API](/docs/api): RPC method reference for agents and scripts
+- [Embedded SDK](/docs/embedded-sdk): host-owned helper model for Scout, HudsonKit, and other embeddings

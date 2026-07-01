@@ -581,7 +581,7 @@ export function magicCursor(params) {
   return cua.magicCursor(params);
 }
 
-async function daemonCall(method, params = null, timeoutMs = 3000) {
+export async function daemonCall(method, params = null, timeoutMs = 3000) {
   const id = randomBytes(4).toString("hex");
   const request = JSON.stringify({ id, method, params: params ?? null });
 

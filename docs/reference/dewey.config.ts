@@ -38,10 +38,9 @@ export default {
       { pattern: 'api', instruction: 'Check docs/api.md for the daemon RPC reference' },
       { pattern: 'computer-use', instruction: 'Check docs/agent/cua-implementation.md and docs/proposals/LAT-008-pi-lattices-computer-use.md before changing CUA endpoints' },
       { pattern: 'cua', instruction: 'Check docs/agent/cua-implementation.md and docs/proposals/LAT-008-pi-lattices-computer-use.md before changing CUA endpoints' },
-      { pattern: 'twin', instruction: 'Check docs/twins.md and bin/project-twin.ts for the Pi-backed project twin runtime' },
     ],
 
-    sections: ['overview', 'quickstart', 'concepts', 'twins', 'config', 'app', 'api', 'agent/cua-implementation', 'layers'],
+    sections: ['overview', 'quickstart', 'concepts', 'config', 'app', 'api', 'agent/cua-implementation', 'agent/dewey-agent-architecture', 'layers'],
   },
 
   docs: {

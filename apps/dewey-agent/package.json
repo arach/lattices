@@ -1,0 +1,36 @@
+{
+  "name": "@lattices/dewey-agent",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Local Eve agent for Lattices Dewey-style agent docs.",
+  "type": "module",
+  "scripts": {
+    "dev": "eve dev --no-ui --host 127.0.0.1 --port 8787",
+    "build": "eve build",
+    "start": "eve start --host 0.0.0.0 --port ${PORT:-8787}",
+    "container:status": "node scripts/apple-container.mjs status",
+    "container:build": "node scripts/apple-container.mjs build",
+    "container:run": "node scripts/apple-container.mjs run",
+    "container:shell": "node scripts/apple-container.mjs shell",
+    "container:smoke": "node scripts/apple-container.mjs smoke",
+    "container:host-dns": "node scripts/apple-container.mjs host-dns",
+    "info": "eve info",
+    "smoke": "node scripts/smoke.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.2",
+    "@ai-sdk/openai-compatible": "^3.0.1",
+    "ai": "^7.0.7",
+    "eve": "0.17.1",
+    "just-bash": "^3.0.2",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.1",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

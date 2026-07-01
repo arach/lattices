@@ -66,7 +66,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         let popover = NSPopover()
         popover.contentViewController = NSHostingController(rootView: MainView(scanner: ProjectScanner.shared))
         popover.behavior = .transient
-        popover.contentSize = NSSize(width: 380, height: 300)
+        popover.contentSize = NSSize(width: 380, height: 430)
         popover.appearance = NSAppearance(named: .darkAqua)
         popover.delegate = self
         self.popover = popover
@@ -102,6 +102,10 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             }
             menu.addItem(item)
         }
+
+        menu.addItem(.separator())
+
+        FrontWindowPlacementMenu.attach(to: menu)
 
         menu.addItem(.separator())
 

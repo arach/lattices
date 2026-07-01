@@ -93,8 +93,8 @@ function resolveRoute(path: string): Route {
   if (path === '/') {
     return {
       kind: 'home',
-      title: 'lattices — the agentic workspace manager',
-      description: 'Turn your Mac workspace into a coherent, agent-accessible API, plus an assistant for windows, tmux sessions, screen text, and layout recovery.',
+      title: 'lattices — agentic window management',
+      description: 'When your desktop is full of windows, terminals, and agents, Lattices gives you one place to arrange, launch, and control all of it — by hand or from code.',
     }
   }
 

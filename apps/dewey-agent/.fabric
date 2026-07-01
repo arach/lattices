@@ -1,0 +1,12 @@
+# Fabric sandbox config for the Lattices Dewey Eve app.
+# The primary runner is scripts/apple-container.mjs. Fabric can use the same
+# Apple container base image for ad hoc local commands.
+image: node:24-bookworm-slim
+mount: .:/workspace/app:ro
+mount: ../..:/repo
+env: LATTICES_REPO=/repo
+env: DEWEY_AGENT_PROVIDER=local
+env: DEWEY_AGENT_BASE_URL=http://host.container.internal:11434/v1
+env: DEWEY_AGENT_MODEL=llama3.1:8b
+env: DEWEY_AGENT_API_KEY=local
+env: DEWEY_AGENT_CONTEXT_WINDOW_TOKENS=131072

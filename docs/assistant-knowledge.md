@@ -77,10 +77,6 @@ windows/projects, launch sessions, tile, switch layers, read screen text, and
 subscribe to events (`windows.changed`, `tmux.changed`, `layer.switched`).
 → [Agent Guide](/docs/agents), [Agent API](/docs/api).
 
-### Project twins
-Pi-backed project "twins" for mediated, persistent agent execution scoped to a
-project. → [Project Twins](/docs/twins).
-
 ## Key shortcuts
 
 | Shortcut | Action |
@@ -127,4 +123,3 @@ context — prefer those over the generic paths above when answering.
 | Mouse gestures | [Mouse Gestures](/docs/mouse-gestures) |
 | Agent contracts (voice/CLI/daemon) | [Agent Guide](/docs/agents) |
 | WebSocket RPC method reference | [Agent API](/docs/api) |
-| Project twins | [Project Twins](/docs/twins) |
