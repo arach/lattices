@@ -47,6 +47,7 @@ final class OcrModel: ObservableObject {
     private var lastOCRTextHashes: [UInt32: Data] = [:]
     private var lastScanned: [UInt32: Date] = [:]
     private var scanGeneration: Int = 0
+    private let maxInMemoryResults = 100
 
     private let myPid = ProcessInfo.processInfo.processIdentifier
 
@@ -124,7 +125,11 @@ final class OcrModel: ObservableObject {
                 )
                 OcrStore.shared.insert(results: [result])
                 DispatchQueue.main.async {
-                    self.results[wid] = result
+                    var merged = self.results
+                    merged[wid] = result
+                    let liveWids = Set(self.enumerateWindows().map(\.wid))
+                    merged = self.finalizeCache(merged, liveWids: liveWids)
+                    self.results = merged
                     DiagnosticLog.shared.info("OcrModel: single scan wid=\(wid) → \(axResult.texts.count) blocks")
                 }
             }
@@ -178,7 +183,10 @@ final class OcrModel: ObservableObject {
                 }
             }
 
-            DiagnosticLog.shared.info("OcrModel: quick scan (AX) \(windows.count)/\(self.enumerateWindows().count) windows, \(changed) changed")
+            let liveWids = Set(self.enumerateWindows().map(\.wid))
+            fresh = self.finalizeCache(fresh, liveWids: liveWids)
+
+            DiagnosticLog.shared.info("OcrModel: quick scan (AX) \(windows.count)/\(liveWids.count) windows, \(changed) changed, cache=\(fresh.count)")
 
             DispatchQueue.main.async {
                 self.results = fresh
@@ -304,15 +312,18 @@ final class OcrModel: ObservableObject {
                 OcrStore.shared.insert(results: changedResults)
             }
 
+            let liveWids = Set(self.enumerateWindows().map(\.wid))
+            let published = self.finalizeCache(fresh, liveWids: liveWids)
+
             DispatchQueue.main.async {
-                self.results = fresh
+                self.results = published
                 self.lastReviewedAt = Date()
                 self.lastReviewedWindowCount = windows.count
                 self.isScanning = false
             }
 
             EventBus.shared.post(.ocrScanComplete(
-                windowCount: fresh.count,
+                windowCount: published.count,
                 totalBlocks: totalBlocks
             ))
             return
@@ -386,6 +397,54 @@ final class OcrModel: ObservableObject {
             changedResults: changedResults,
             updateLastScanned: updateLastScanned
         )
+    }
+
+    // MARK: - Cache pruning
+
+    /// Drop closed windows, cap to the hottest entries, and sync hash side tables.
+    private func finalizeCache(
+        _ results: [UInt32: OcrWindowResult],
+        liveWids: Set<UInt32>
+    ) -> [UInt32: OcrWindowResult] {
+        var pruned = pruneResults(results, keeping: liveWids)
+        let beforeCap = pruned.count
+        if beforeCap > maxInMemoryResults {
+            let keepWids = Set(
+                pruned.values
+                    .sorted { $0.timestamp > $1.timestamp }
+                    .prefix(maxInMemoryResults)
+                    .map(\.wid)
+            )
+            for wid in pruned.keys where !keepWids.contains(wid) {
+                pruned.removeValue(forKey: wid)
+            }
+            let evicted = beforeCap - pruned.count
+            if evicted > 0 {
+                DiagnosticLog.shared.info("OcrModel: LRU evicted \(evicted) in-memory entries (cap=\(maxInMemoryResults))")
+            }
+        }
+        pruneHashMaps(keeping: Set(pruned.keys))
+        return pruned
+    }
+
+    /// Drop in-memory OCR entries for windows that closed.
+    private func pruneResults(
+        _ results: [UInt32: OcrWindowResult],
+        keeping liveWids: Set<UInt32>
+    ) -> [UInt32: OcrWindowResult] {
+        guard !results.isEmpty else { return results }
+        var pruned = results
+        for wid in pruned.keys where !liveWids.contains(wid) {
+            pruned.removeValue(forKey: wid)
+        }
+        return pruned
+    }
+
+    private func pruneHashMaps(keeping liveWids: Set<UInt32>) {
+        for wid in imageHashes.keys where !liveWids.contains(wid) { imageHashes.removeValue(forKey: wid) }
+        for wid in lastAXHashes.keys where !liveWids.contains(wid) { lastAXHashes.removeValue(forKey: wid) }
+        for wid in lastOCRTextHashes.keys where !liveWids.contains(wid) { lastOCRTextHashes.removeValue(forKey: wid) }
+        for wid in lastScanned.keys where !liveWids.contains(wid) { lastScanned.removeValue(forKey: wid) }
     }
 
     // MARK: - Window Enumeration

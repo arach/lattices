@@ -644,6 +644,11 @@ private final class MotionPanel: NSPanel {
         commandPanel?.close()
         commandPanel = nil
         animators.values.forEach { $0.cancel() }
+        thumbs.removeAll()
+        captureFrame.removeAll()
+        thumbInFlight.removeAll()
+        captureRebuildWorkItemsByScreenID.values.forEach { $0.cancel() }
+        captureRebuildWorkItemsByScreenID.removeAll()
         WindowSelectionOverlay.shared.clear()
         removeExposeHost()
         orderOut(nil)
@@ -3322,9 +3327,13 @@ private final class MotionPanel: NSPanel {
             self.thumbInFlight.remove(wid)
             self.loadTrace?.record("capture#\(wid)", ms: (CACurrentMediaTime() - captureT0) * 1000, warnAbove: 120)
             guard let cg else { self.checkCapturesSettled(); return }
-            self.thumbs[wid] = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
-            self.captureFrame[wid] = self.liveFrame(for: entry)   // remember the size this shot represents
-            WindowPreviewStore.shared.ingest(cgImage: cg, for: wid, frame: entry.frame)  // write back to the shared cache
+            WindowPreviewStore.shared.ingest(cgImage: cg, for: wid, frame: entry.frame)
+            guard let preview = WindowPreviewStore.shared.image(for: wid) else {
+                self.checkCapturesSettled()
+                return
+            }
+            self.thumbs[wid] = preview
+            self.captureFrame[wid] = self.liveFrame(for: entry)
             self.updateStack()
             self.scheduleCaptureRebuild(for: entry)               // a survey tile's capture just landed
             self.checkCapturesSettled()

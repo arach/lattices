@@ -129,6 +129,10 @@ class Preferences: ObservableObject {
         didSet { UserDefaults.standard.set(ocrAccuracy, forKey: "ocr.accuracy") }
     }
 
+    @Published var ocrRetentionDays: Int {
+        didSet { UserDefaults.standard.set(ocrRetentionDays, forKey: "ocr.retentionDays") }
+    }
+
     // MARK: - Permissions Assistant
 
     /// Capabilities the user has explicitly snoozed. Cleared per-capability when
@@ -275,6 +279,9 @@ class Preferences: ObservableObject {
 
         let savedAcc = UserDefaults.standard.string(forKey: "ocr.accuracy") ?? "accurate"
         self.ocrAccuracy = savedAcc
+
+        let savedRetention = UserDefaults.standard.integer(forKey: "ocr.retentionDays")
+        self.ocrRetentionDays = savedRetention > 0 ? savedRetention : 7
 
         let dismissed = UserDefaults.standard.stringArray(forKey: Self.dismissedCapabilitiesKey) ?? []
         self.dismissedCapabilities = Set(dismissed)

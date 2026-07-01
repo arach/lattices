@@ -26,8 +26,16 @@ final class OcrStore {
     // Cached prepared statements
     private var insertStmt: OpaquePointer?
     private var cleanupStmt: OpaquePointer?
+    private var cleanupTimer: Timer?
+    private let dbPath: String
+    private let maxEntriesPerWindow = 3
+    private let maintenanceInterval: TimeInterval = 6 * 3600
 
     private let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+
+    private init() {
+        dbPath = NSHomeDirectory() + "/.lattices/ocr.db"
+    }
 
     // MARK: - Open / Schema
 
@@ -37,10 +45,8 @@ final class OcrStore {
 
             let dir = NSHomeDirectory() + "/.lattices"
             try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-            let path = dir + "/ocr.db"
-
-            guard sqlite3_open_v2(path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK else {
-                DiagnosticLog.shared.error("OcrStore: failed to open \(path)")
+            guard sqlite3_open_v2(self.dbPath, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK else {
+                DiagnosticLog.shared.error("OcrStore: failed to open \(self.dbPath)")
                 return
             }
 
@@ -103,10 +109,10 @@ final class OcrStore {
             prepareInsert()
             prepareCleanup()
 
-            // Run cleanup on open
-            cleanupSync(olderThanDays: 3)
+            runMaintenanceSync(reason: "open")
 
-            DiagnosticLog.shared.info("OcrStore: opened \(path)")
+            DiagnosticLog.shared.info("OcrStore: opened \(self.dbPath)")
+            schedulePeriodicMaintenance()
         }
     }
 
@@ -233,18 +239,80 @@ final class OcrStore {
 
     // MARK: - Cleanup
 
-    private func cleanupSync(olderThanDays days: Int) {
-        guard let db, let stmt = cleanupStmt else { return }
+    private func schedulePeriodicMaintenance() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.cleanupTimer?.invalidate()
+            self.cleanupTimer = Timer.scheduledTimer(withTimeInterval: self.maintenanceInterval, repeats: true) { [weak self] _ in
+                self?.queue.async { self?.runMaintenanceSync(reason: "timer") }
+            }
+        }
+    }
+
+    private func runMaintenanceSync(reason: String) {
+        let days = Preferences.shared.ocrRetentionDays
+        let ageDeleted = cleanupByAge(days: days)
+        let widDeleted = pruneExcessPerWindow(maxPerWid: maxEntriesPerWindow)
+        let totalDeleted = ageDeleted + widDeleted
+        if totalDeleted > 0 {
+            exec("PRAGMA incremental_vacuum")
+        }
+        logMaintenance(reason: reason, retentionDays: days, ageDeleted: ageDeleted, widDeleted: widDeleted)
+    }
+
+    @discardableResult
+    private func cleanupByAge(days: Int) -> Int {
+        guard let db, let stmt = cleanupStmt else { return 0 }
         let cutoff = Date().timeIntervalSince1970 - Double(days * 86400)
         sqlite3_bind_double(stmt, 1, cutoff)
         sqlite3_step(stmt)
         sqlite3_reset(stmt)
         sqlite3_clear_bindings(stmt)
+        return Int(sqlite3_changes(db))
+    }
 
-        let deleted = sqlite3_changes(db)
-        if deleted > 0 {
-            DiagnosticLog.shared.info("OcrStore: cleaned up \(deleted) entries older than \(days) days")
-        }
+    @discardableResult
+    private func pruneExcessPerWindow(maxPerWid: Int) -> Int {
+        guard let db else { return 0 }
+        let sql = """
+            DELETE FROM ocr_entry WHERE id IN (
+                SELECT id FROM (
+                    SELECT id,
+                           ROW_NUMBER() OVER (PARTITION BY wid ORDER BY timestamp DESC) AS rn
+                    FROM ocr_entry
+                ) ranked
+                WHERE rn > ?1
+            )
+        """
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return 0 }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_int(stmt!, 1, Int32(maxPerWid))
+        sqlite3_step(stmt!)
+        return Int(sqlite3_changes(db))
+    }
+
+    private func logMaintenance(reason: String, retentionDays: Int, ageDeleted: Int, widDeleted: Int) {
+        let rowCount = countRows()
+        let sizeMB = fileSizeMB()
+        DiagnosticLog.shared.info(
+            "OcrStore: maintenance (\(reason)) retention=\(retentionDays)d ageDeleted=\(ageDeleted) widPruned=\(widDeleted) rows=\(rowCount) size=\(String(format: "%.1f", sizeMB))MB"
+        )
+    }
+
+    private func countRows() -> Int {
+        guard let db else { return 0 }
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM ocr_entry", -1, &stmt, nil) == SQLITE_OK else { return 0 }
+        defer { sqlite3_finalize(stmt) }
+        guard sqlite3_step(stmt!) == SQLITE_ROW else { return 0 }
+        return Int(sqlite3_column_int(stmt!, 0))
+    }
+
+    private func fileSizeMB() -> Double {
+        let attrs = try? FileManager.default.attributesOfItem(atPath: dbPath)
+        let bytes = (attrs?[.size] as? NSNumber)?.int64Value ?? 0
+        return Double(bytes) / 1_048_576.0
     }
 
     // MARK: - Helpers
