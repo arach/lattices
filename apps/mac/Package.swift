@@ -15,6 +15,7 @@ let voiceEnabled = Context.environment["HUDSONKIT_WITH_VOICE"] == "1"
 
 var latticesDependencies: [Target.Dependency] = [
     .product(name: "DeckKit", package: "swift"),
+    .product(name: "HudsonObservability", package: "hudson"),
     .product(name: "HudsonUI", package: "hudson"),
     .product(name: "HudsonAI", package: "hudson"),
     .product(name: "HudsonShell", package: "hudson"),

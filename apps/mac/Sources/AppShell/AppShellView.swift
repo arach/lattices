@@ -1,4 +1,5 @@
 import AppKit
+import HudsonObservability
 import SwiftUI
 import HudsonShell
 import HudsonUI
@@ -60,6 +61,8 @@ struct AppShellView: View {
 
     /// Sidebar starts minimized (icon-only rail); tapping the logo expands it.
     @State private var sidebarCompact = true
+    @State private var showingActivityLog = false
+    @ObservedObject private var activityLog = HudLogStore.shared
 
     private var manifest: HudAppManifest {
         HudAppManifest(name: "Lattices", accent: Palette.running, targetLabel: "Machine")
@@ -111,6 +114,11 @@ struct AppShellView: View {
             syncPageState(page)
             clearRelevantDismissals(for: page)
         }
+        .hudEdgeSheet(isPresented: $showingActivityLog, edge: .trailing) {
+            HudLoggerPanel(title: "Activity Log") {
+                showingActivityLog = false
+            }
+        }
     }
 
     // MARK: - Navigation Rail
@@ -154,6 +162,29 @@ struct AppShellView: View {
     private var statusBar: some View {
         HStack(spacing: 14) {
             statusBarItems
+
+            if let preview = activityPreviewMessage {
+                Button {
+                    showingActivityLog = true
+                } label: {
+                    Text(preview)
+                        .font(Typo.geistMonoBold(9))
+                        .foregroundColor(Palette.kill)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                .buttonStyle(.plain)
+                .help("Open activity log")
+            }
+
+            Button {
+                showingActivityLog = true
+            } label: {
+                HudLoggerStatusItem(store: activityLog, label: "Logs", showCounts: true)
+            }
+            .buttonStyle(.plain)
+            .help("Open activity log")
+
             Spacer()
             Text(statusContextLabel)
                 .font(Typo.geistMonoBold(9))
@@ -163,6 +194,13 @@ struct AppShellView: View {
         .padding(.horizontal, 14)
         .frame(height: 26)
         .background(Palette.bg)
+    }
+
+    private var activityPreviewMessage: String? {
+        guard let entry = activityLog.summary.lastEntry else { return nil }
+        guard entry.level == .warning || entry.level == .error || entry.level == .fault else { return nil }
+        let trimmed = entry.message.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     @ViewBuilder

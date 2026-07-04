@@ -1,5 +1,6 @@
 import AppKit
 import Carbon
+import HudsonObservability
 
 extension Notification.Name {
     static let latticesPopoverWillShow = Notification.Name("latticesPopoverWillShow")
@@ -20,6 +21,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if LatticesRecordingProbeAppRunner.startFromCommandLineIfNeeded() {
             return
         }
+
+        HudLoggerSinks.install(HudLogStore.shared)
+        HudLoggerSinks.install(LatticesLogDiskSink.shared)
+        HudLogger(category: "lattices").info("Lattices booted", metadata: ["state": "ready"])
 
         AppFocusRingSuppressor.install()
         NSApp.setActivationPolicy(.accessory)
