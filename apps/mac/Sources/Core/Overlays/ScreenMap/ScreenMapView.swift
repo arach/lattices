@@ -2453,6 +2453,11 @@ struct ScreenMapView: View {
                                             .strokeBorder(stroke, lineWidth: isSelected ? 0.9 : 0.7)
                                     )
                                     .overlay {
+                                        if let status = controller.applySequence?.status(for: win.id) {
+                                            ScreenMapApplyTileOverlay(status: status)
+                                        }
+                                    }
+                                    .overlay {
                                         if projectionLabelIds.contains(win.id) {
                                             projectionWindowLabel(win: win, rect: rect, isSelected: isSelected)
                                         }
@@ -2512,6 +2517,21 @@ struct ScreenMapView: View {
             canvasContextBadge
                 .padding(.leading, 12)
                 .padding(.bottom, 12)
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if let sequence = controller.applySequence {
+                ScreenMapApplySequenceRail(sequence: sequence)
+                    .padding(.trailing, 12)
+                    .padding(.bottom, 12)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
+        }
+        .overlay {
+            if controller.isApplyingEdits {
+                canvasShape
+                    .fill(Palette.running.opacity(0.04))
+                    .allowsHitTesting(true)
+            }
         }
         .overlay(
             GeometryReader { geo in
@@ -2748,6 +2768,11 @@ struct ScreenMapView: View {
                 RoundedRectangle(cornerRadius: 2)
                     .strokeBorder(borderColor, lineWidth: isSearchHighlighted ? 2 : isSelected ? 1.5 : 0.5)
             )
+            .overlay {
+                if let status = controller.applySequence?.status(for: win.id) {
+                    ScreenMapApplyTileOverlay(status: status)
+                }
+            }
             .overlay(alignment: .leading) {
                 if !usesFlatStyle {
                     Rectangle()

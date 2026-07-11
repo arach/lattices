@@ -58,6 +58,13 @@ this guide must all expose the same supported surface.
 - Preserve Lattices' treatment model: read-only calls observe, risky actions
   default to `treatment: "stage"`, and mutation requires explicit
   `treatment: "execute"` unless the endpoint documents a different safe mode.
+- Every computer-use action response should expose `backgroundSafety` plus the
+  compatibility fields `background_safe`, `cursor_moved`, and
+  `foreground_changed`. Agents must rely on `background_safe: true`, not just
+  `ok: true`, before assuming a call did not disturb the foreground session.
+- For semantic AX execution, support `backgroundSafe: true` / `noFocus: true`
+  where the action can run without focus; never treat focus actions, pointer
+  events, or global keyboard input as background-safe.
 - Keep mutating actions receipt-backed through runs or action receipts whenever
   practical. Include `source` in traceable calls.
 - Prefer semantic targets (`snapshotId` + `elementId`, AX path, `wid`, `app`,

@@ -38,8 +38,10 @@ enum HotkeyAction: String, CaseIterable, Codable {
     case tileTopLeft, tileTopRight, tileBottomLeft, tileBottomRight
     case tileTop, tileBottom, tileDistribute, tileTypeGrid, tileOrganize
     case tileLeftThird, tileCenterThird, tileRightThird
+    case tileOpenCell
     case motionMode
     case inPlaceMode
+    case chordHints
 
     var label: String {
         switch self {
@@ -87,14 +89,16 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .tileLeftThird:   return "Left Third"
         case .tileCenterThird: return "Center Third"
         case .tileRightThird:  return "Right Third"
+        case .tileOpenCell:    return "Fill Open Cell"
         case .motionMode:      return "Hyperspace"
         case .inPlaceMode:     return "In-Place Tools"
+        case .chordHints:      return "Window Nav Hints"
         }
     }
 
     var group: HotkeyGroup {
         switch self {
-        case .palette, .screenMap, .bezel, .cheatSheet, .desktopInventory, .omniSearch, .voiceCommand, .handsOff, .unifiedWindow, .hud, .mouseFinder, .overlayActors, .workspaceAssistant, .activityLog, .gridPlacement, .commandBar, .inPlaceMode: return .app
+        case .palette, .screenMap, .bezel, .cheatSheet, .desktopInventory, .omniSearch, .voiceCommand, .handsOff, .unifiedWindow, .hud, .mouseFinder, .overlayActors, .workspaceAssistant, .activityLog, .gridPlacement, .commandBar, .inPlaceMode, .chordHints: return .app
         case .layer1, .layer2, .layer3, .layer4, .layer5,
              .layer6, .layer7, .layer8, .layer9,
              .layerNext, .layerPrev, .layerTag: return .layers
@@ -150,6 +154,8 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .tileOrganize:    return 315
         case .motionMode:      return 316
         case .inPlaceMode:     return 317
+        case .tileOpenCell:    return 318
+        case .chordHints:      return 319
         }
     }
 
@@ -316,8 +322,10 @@ class HotkeyStore: ObservableObject {
         bind(.tileCenterThird,  19, ctrlOpt)  // Ctrl+Opt+2
         bind(.tileRightThird,   20, ctrlOpt)  // Ctrl+Opt+3
         bind(.tileOrganize,     31, ctrlOpt)  // Ctrl+Opt+O
+        bind(.tileOpenCell,      9, ctrlOpt)  // Ctrl+Opt+V
         bind(.motionMode,       49, hyper)    // Hyper+Space — Hyperspace (full survey)
         bind(.inPlaceMode,       5, hyper)    // Hyper+G — in-place window tools
+        bind(.chordHints,        4, hyper)    // Hyper+H — jump-letter badges on windows
 
         return d
     }()

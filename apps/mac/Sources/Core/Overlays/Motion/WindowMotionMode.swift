@@ -14,14 +14,60 @@ final class WindowMotionMode {
 
     enum Entry { case hyperspace, inPlace }
 
+    struct PickOutcome {
+        let status: String
+        let window: WindowEntry?
+        let error: String?
+
+        static func selected(_ window: WindowEntry) -> PickOutcome {
+            PickOutcome(status: "selected", window: window, error: nil)
+        }
+
+        static func cancelled() -> PickOutcome {
+            PickOutcome(status: "cancelled", window: nil, error: nil)
+        }
+
+        static func unavailable(_ error: String) -> PickOutcome {
+            PickOutcome(status: "unavailable", window: nil, error: error)
+        }
+    }
+
     private var panel: MotionPanel?
     private var activeEntry: Entry?
     private var lastToggle: CFTimeInterval = 0
+    private var pickCompletion: ((PickOutcome) -> Void)?
+    private var pickCompleted = false
 
     var isActive: Bool { panel != nil }
 
     func toggleHyperspace() { toggle(entry: .hyperspace) }
     func toggleInPlace() { toggle(entry: .inPlace) }
+
+    func startWindowPick(prompt: String? = nil,
+                         currentWid: UInt32? = nil,
+                         completion: @escaping (PickOutcome) -> Void) {
+        DispatchQueue.main.async {
+            guard self.pickCompletion == nil else {
+                completion(.unavailable("window pick already active"))
+                return
+            }
+            if self.isActive { self.deactivate() }
+            self.pickCompletion = completion
+            self.pickCompleted = false
+            self.activate(entry: .hyperspace,
+                          selectionPrompt: prompt,
+                          selectionCurrentWid: currentWid)
+        }
+    }
+
+    private var isPickingWindow: Bool { pickCompletion != nil }
+
+    private func finishWindowPick(_ outcome: PickOutcome) {
+        guard let completion = pickCompletion, !pickCompleted else { return }
+        pickCompleted = true
+        pickCompletion = nil
+        completion(outcome)
+    }
 
     private func toggle(entry: Entry) {
         // Debounce machine-gun re-fire. The Hyper trigger rides the Caps Lock
@@ -39,7 +85,9 @@ final class WindowMotionMode {
         }
     }
 
-    private func activate(entry: Entry = .hyperspace) {
+    private func activate(entry: Entry = .hyperspace,
+                          selectionPrompt: String? = nil,
+                          selectionCurrentWid: UInt32? = nil) {
         guard panel == nil else { return }
         // Defensive: clear any overlay panels orphaned by a prior race before we
         // open a fresh one, so we never stack a new survey on top of a stuck one.
@@ -50,21 +98,34 @@ final class WindowMotionMode {
         // Eligible = real app windows (never our own), frontmost first.
         let myPid = ProcessInfo.processInfo.processIdentifier
         let eligible = DesktopModel.shared.allWindows()
-            .filter { $0.pid != myPid && $0.isOnScreen && !$0.title.isEmpty }
+            .filter { $0.pid != myPid && $0.isOnScreen && (isPickingWindow || !$0.title.isEmpty) }
             .sorted { $0.zIndex < $1.zIndex }
         guard !eligible.isEmpty else {
             DiagnosticLog.shared.warn("MotionMode: no eligible app window to act on")
             NSSound.beep()
+            if isPickingWindow { finishWindowPick(.unavailable("no eligible app window to pick")) }
             return
         }
         let tEligible = CACurrentMediaTime()
         let inPlace = entry == .inPlace
+        let selectingWindow = isPickingWindow
         AppFeedback.shared.warmUp()
-        let p = MotionPanel(eligible: eligible, inPlace: inPlace)
+        let p = MotionPanel(eligible: eligible,
+                            inPlace: inPlace,
+                            selectionPrompt: selectionPrompt,
+                            selectionCurrentWid: selectionCurrentWid)
         p.loadStart = t0
         p.beginLoadTrace()
         let tInit = CACurrentMediaTime()
-        p.onExit = { [weak self] in self?.deactivate() }
+        p.onSelection = { [weak self] entry in
+            self?.finishWindowPick(.selected(entry))
+            self?.deactivate()
+        }
+        p.onExit = { [weak self] in
+            guard let self else { return }
+            if selectingWindow { self.finishWindowPick(.cancelled()) }
+            self.deactivate()
+        }
         panel = p
         activeEntry = entry
         p.present()
@@ -83,6 +144,7 @@ final class WindowMotionMode {
         panel?.dismiss()
         panel = nil
         activeEntry = nil
+        if pickCompletion != nil { finishWindowPick(.cancelled()) }
         // Belt-and-suspenders: sweep up any Hyperspace overlay panel still on screen
         // even if we lost the reference to it. Guarantees the toggle hotkey always
         // clears the spread — the recovery path for the "stuck on top" trap.
@@ -340,6 +402,7 @@ final class HyperspaceDrag: ObservableObject {
 
 private final class MotionPanel: NSPanel {
     var onExit: (() -> Void)?
+    var onSelection: ((WindowEntry) -> Void)?
     var loadStart: CFTimeInterval = 0          // set by activate(); base for load-profile marks
     private var loadTrace: HyperspaceLoadTrace?
 
@@ -387,6 +450,8 @@ private final class MotionPanel: NSPanel {
     /// In-place tools (Hyper+G): float Current View + inventory over the live desktop.
     /// Hyperspace (Hyper+Space) keeps the full scrim + screenshot survey.
     private let inPlaceMode: Bool
+    private let selectionPrompt: String?
+    private let selectionCurrentWid: UInt32?
     private var scrollMonitor: Any?
     private var mouseUpMonitor: Any?    // re-claims key focus after a survey click/drag
     private var keyMonitor: Any?        // catches Enter/Esc even when a survey panel holds key
@@ -446,6 +511,7 @@ private final class MotionPanel: NSPanel {
     private var exposeFrames: [UInt32: CGRect] = [:]   // tile wid → laid-out frame (survey space)
     private lazy var handKeysMode = UserDefaults.standard.bool(forKey: "hyperspace.handKeys")
 
+    private var selectionOnly: Bool { onSelection != nil }
     private var activeEntry: WindowEntry { eligible[reticle] }
     private var activeSurveyScreen: NSScreen? {
         if let activeScreenID,
@@ -460,9 +526,14 @@ private final class MotionPanel: NSPanel {
         return eligible.filter { entry($0, isOn: screen) }
     }
 
-    init(eligible: [WindowEntry], inPlace: Bool = false) {
+    init(eligible: [WindowEntry],
+         inPlace: Bool = false,
+         selectionPrompt: String? = nil,
+         selectionCurrentWid: UInt32? = nil) {
         self.eligible = eligible
         self.inPlaceMode = inPlace
+        self.selectionPrompt = selectionPrompt
+        self.selectionCurrentWid = selectionCurrentWid
 
         let union = MotionPanel.screensUnion()
         super.init(contentRect: union, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -527,6 +598,11 @@ private final class MotionPanel: NSPanel {
             reticle = bestIdx
             fillAimWid = eligible[bestIdx].wid
             resolved[eligible[bestIdx].wid] = focused
+        }
+        if let selectionCurrentWid,
+           let idx = eligible.firstIndex(where: { $0.wid == selectionCurrentWid }) {
+            reticle = idx
+            fillAimWid = selectionCurrentWid
         }
     }
 
@@ -775,7 +851,12 @@ private final class MotionPanel: NSPanel {
             undoAndExit(); return
         }
         if code == 36 || code == 76 {                       // Return / keypad Enter — confirm: keep + leave
-            if exposed && inPlaceMode {
+            if selectionOnly {
+                let screen = validSurveyScreen(screenForPointer())
+                    ?? validSurveyScreen(screenForEvent(event))
+                    ?? activeSurveyScreen
+                completeWindowPickFromAim(on: screen)
+            } else if exposed && inPlaceMode {
                 let screen = validSurveyScreen(screenForPointer())
                     ?? validSurveyScreen(screenForEvent(event))
                     ?? activeSurveyScreen
@@ -811,6 +892,21 @@ private final class MotionPanel: NSPanel {
         }
         let mods = event.modifierFlags
 
+        // A daemon window pick is a read-only selection session. `expose()` can
+        // legitimately stay collapsed when only one window is eligible, so gate
+        // the plain motion key map as well as the survey actions below.
+        if selectionOnly && !exposed {
+            switch code {
+            case 48:
+                moveReticle(mods.contains(.shift) ? -1 : 1)
+            case 49:
+                completeWindowPick(activeEntry.wid)
+            default:
+                NSSound.beep()
+            }
+            return
+        }
+
         // In the screenshot Exposé survey the keyboard drives a clustered lattice:
         // Tab/Space move & pluck the highlighted tile, a–z pluck by hint letter,
         // G gathers in place, E collapses back. Nothing here moves a real window
@@ -831,11 +927,18 @@ private final class MotionPanel: NSPanel {
             case 49:                                                         // Space — pluck highlighted
                 if let eventScreen, let id = screenID {
                     let aim = exposeAimByScreen[id] ?? 0
-                    if let wid = exposeOrderByScreen[id]?[safe: aim] { exposeToggle(wid, on: eventScreen) }
+                    if let wid = exposeOrderByScreen[id]?[safe: aim] {
+                        if selectionOnly { completeWindowPick(wid) }
+                        else { exposeToggle(wid, on: eventScreen) }
+                    }
                 }
                 return
-            case 14 where !mods.contains(.shift) && !inPlaceMode: collapseExpose(); return  // E — collapse survey
+            case 14 where !mods.contains(.shift) && !inPlaceMode:             // E — collapse survey
+                if selectionOnly { NSSound.beep() }
+                else { collapseExpose() }
+                return
             case 5  where !mods.contains(.shift):                            // G — grid selection (stay in mode)
+                if selectionOnly { NSSound.beep(); return }
                 AppFeedback.shared.commitTactile()
                 if let eventScreen { gatherInPlace(on: eventScreen) }
                 return
@@ -855,16 +958,19 @@ private final class MotionPanel: NSPanel {
                 if let eventScreen { canvasForScreen(eventScreen).reset() }  // 0      — reset to fit
                 return
             case 44:                                                         // / — curated command bar
-                if let eventScreen { presentCommandBar(on: eventScreen) }
+                if selectionOnly { NSSound.beep() }
+                else if let eventScreen { presentCommandBar(on: eventScreen) }
                 return
             default:
                 let ch = event.charactersIgnoringModifiers?.lowercased()
                 if let eventScreen, let id = screenID,
                    mods.contains(.shift), let ch, let cid = clusterHintMapByScreen[id]?[ch] {
-                    exposeToggleCluster(cid, on: eventScreen)                // ⇧a–z — pluck a whole group
+                    if selectionOnly { NSSound.beep() }
+                    else { exposeToggleCluster(cid, on: eventScreen) }        // ⇧a–z — pluck a whole group
                 } else if let eventScreen, let id = screenID,
                           let ch, let wid = hintMapByScreen[id]?[ch] {
-                    exposeToggle(wid, on: eventScreen)                       // a–z — pluck by hint
+                    if selectionOnly { completeWindowPick(wid) }
+                    else { exposeToggle(wid, on: eventScreen) }              // a–z — pluck by hint
                 } else {
                     NSSound.beep()
                 }
@@ -907,6 +1013,7 @@ private final class MotionPanel: NSPanel {
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
            event.keyCode == 37 {                                // ⌘L — save the pluck as a layer
+            guard !selectionOnly else { NSSound.beep(); return true }
             saveGroupAsLayer()
             return true
         }
@@ -914,6 +1021,30 @@ private final class MotionPanel: NSPanel {
     }
 
     // MARK: - Selection
+
+    private func completeWindowPick(_ wid: UInt32) {
+        guard let entry = eligible.first(where: { $0.wid == wid }) else {
+            NSSound.beep()
+            return
+        }
+        DiagnosticLog.shared.info("Window pick — selected \(entry.app) #\(entry.wid)")
+        AppFeedback.shared.commitTactile()
+        onSelection?(entry)
+    }
+
+    private func completeWindowPickFromAim(on screen: NSScreen?) {
+        guard let screen else {
+            completeWindowPick(activeEntry.wid)
+            return
+        }
+        let id = MotionPanel.screenID(screen)
+        let aim = exposeAimByScreen[id] ?? 0
+        if let wid = exposeOrderByScreen[id]?[safe: aim] {
+            completeWindowPick(wid)
+        } else {
+            completeWindowPick(activeEntry.wid)
+        }
+    }
 
     private func moveReticle(_ delta: Int) {
         let members = activeSurveyMembers
@@ -2291,26 +2422,63 @@ private final class MotionPanel: NSPanel {
                 inPlace: inPlaceMode,
                 screenAspect: screen.visibleFrame.width / max(1, screen.visibleFrame.height),
                 usableInset: MotionPanel.usableInset(of: screen),
-                onPick: { [weak self] wid in self?.exposeToggle(wid, on: screen) },
-                onDrop: { [weak self] wid, spec in self?.handleDrop(wid, spec) },
-                onDropGridGroup: { [weak self] wids, res, anchor in
-                    self?.handleGridGroupDrop(wids, res: res, anchor: anchor)
+                onPick: { [weak self] wid in
+                    guard let self else { return }
+                    if self.selectionOnly { self.completeWindowPick(wid) }
+                    else { self.exposeToggle(wid, on: screen) }
                 },
-                onDropLayer: { [weak self] wid, key in self?.handleLayerDrop(wid, key) },
-                onDropLayers: { [weak self] wids, key in self?.handleLayerDrops(wids, key) },
-                onSwap: { [weak self] a, b in self?.swapWindows(widA: a, widB: b, on: screen) },
-                onGridSelection: { [weak self] in self?.gatherInPlace(on: screen) },
+                onDrop: { [weak self] wid, spec in
+                    guard let self, !self.selectionOnly else { return }
+                    self.handleDrop(wid, spec)
+                },
+                onDropGridGroup: { [weak self] wids, res, anchor in
+                    guard let self, !self.selectionOnly else { return }
+                    self.handleGridGroupDrop(wids, res: res, anchor: anchor)
+                },
+                onDropLayer: { [weak self] wid, key in
+                    guard let self, !self.selectionOnly else { return }
+                    self.handleLayerDrop(wid, key)
+                },
+                onDropLayers: { [weak self] wids, key in
+                    guard let self, !self.selectionOnly else { return }
+                    self.handleLayerDrops(wids, key)
+                },
+                onSwap: { [weak self] a, b in
+                    guard let self, !self.selectionOnly else { return }
+                    self.swapWindows(widA: a, widB: b, on: screen)
+                },
+                onGridSelection: { [weak self] in
+                    guard let self, !self.selectionOnly else { return }
+                    self.gatherInPlace(on: screen)
+                },
                 onSwapFirstTwo: { [weak self] in
-                    guard let self, let a = self.pickOrderByScreen[id]?[safe: 0],
+                    guard let self, !self.selectionOnly, let a = self.pickOrderByScreen[id]?[safe: 0],
                           let b = self.pickOrderByScreen[id]?[safe: 1] else { NSSound.beep(); return }
                     self.swapWindows(widA: a, widB: b, on: screen)
                 },
-                onSwapWith: { [weak self] a, b in self?.swapWindows(widA: a, widB: b, on: screen) },
-                onFocusWindow: { [weak self] wid in self?.focusWindow(wid, on: screen) },
-                onClearSelection: { [weak self] in self?.clearPicks(on: screen) },
-                onApplyPlacement: { [weak self] wid, spec in self?.applyPlacementNow(wid, spec, on: screen) },
-                onFillAvailable: { [weak self] wid in self?.fillAvailableSpace(for: wid) },
-                onOpenHyperspace: {
+                onSwapWith: { [weak self] a, b in
+                    guard let self, !self.selectionOnly else { return }
+                    self.swapWindows(widA: a, widB: b, on: screen)
+                },
+                onFocusWindow: { [weak self] wid in
+                    guard let self else { return }
+                    if self.selectionOnly { self.completeWindowPick(wid) }
+                    else { self.focusWindow(wid, on: screen) }
+                },
+                onClearSelection: { [weak self] in
+                    guard let self, !self.selectionOnly else { return }
+                    self.clearPicks(on: screen)
+                },
+                onApplyPlacement: { [weak self] wid, spec in
+                    guard let self, !self.selectionOnly else { return }
+                    self.applyPlacementNow(wid, spec, on: screen)
+                },
+                onFillAvailable: { [weak self] wid in
+                    guard let self, !self.selectionOnly else { return }
+                    self.fillAvailableSpace(for: wid)
+                },
+                onOpenHyperspace: { [weak self] in
+                    guard self?.selectionOnly != true else { NSSound.beep(); return }
                     WindowMotionMode.shared.deactivate()
                     WindowMotionMode.shared.toggleHyperspace()
                 },
@@ -2329,7 +2497,7 @@ private final class MotionPanel: NSPanel {
                     }
                 },
                 onHandKeys: { [weak self] on in
-                    guard let self else { return }
+                    guard let self, !self.selectionOnly else { NSSound.beep(); return }
                     self.handKeysMode = on
                     let changed = self.surveyScreens().filter {
                         self.reassignHandHints(on: $0, rebuild: false)
@@ -2342,13 +2510,25 @@ private final class MotionPanel: NSPanel {
                     }
                 },
                 onExit: { [weak self] in self?.onExit?() },   // ✕ — leave, keep what's on screen
-                onNewLayer: { [weak self] in self?.presentNewLayer() },
+                onNewLayer: { [weak self] in
+                    guard let self, !self.selectionOnly else { NSSound.beep(); return }
+                    self.presentNewLayer()
+                },
                 onRecallLayer: { [weak self] id in self?.pluckLayer(id, on: screen) },
                 onBeginClusterSearch: { [weak self] cid in self?.activateClusterSearch(cid, on: screen) },
                 onClearClusterSearch: { [weak self] cid in self?.clearClusterSearch(cid, on: screen) },
-                onEditClause: { [weak self] id, idx, clause in self?.presentLayerRuleEditor(id, idx, clause, on: screen) },
-                onRemoveClause: { [weak self] id, idx in self?.removeLayerClause(id, idx) },
-                onDeleteLayer: { [weak self] id in self?.deleteLayer(id) },
+                onEditClause: { [weak self] id, idx, clause in
+                    guard let self, !self.selectionOnly else { NSSound.beep(); return }
+                    self.presentLayerRuleEditor(id, idx, clause, on: screen)
+                },
+                onRemoveClause: { [weak self] id, idx in
+                    guard let self, !self.selectionOnly else { NSSound.beep(); return }
+                    self.removeLayerClause(id, idx)
+                },
+                onDeleteLayer: { [weak self] id in
+                    guard let self, !self.selectionOnly else { NSSound.beep(); return }
+                    self.deleteLayer(id)
+                },
                 loadSummary: loadSummaryText())
     }
 
@@ -3223,11 +3403,21 @@ private final class MotionPanel: NSPanel {
     }
 
     private func legendModel() -> MotionLegend {
-        MotionLegend(app: activeEntry.app,
+        let prompt = selectionPrompt?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title: String
+        if selectionOnly, let prompt, !prompt.isEmpty {
+            title = String(prompt.prefix(64))
+        } else if selectionOnly {
+            title = "Choose a window"
+        } else {
+            title = activeEntry.app
+        }
+        return MotionLegend(app: title,
                      tint: Color(nsColor: MotionPanel.tint(for: activeEntry.app)),
                      groupCount: group.count,
                      exposed: exposed,
                      inPlace: inPlaceMode,
+                     selectionOnly: selectionOnly,
                      displayCount: surveyScreens().count)
     }
 
@@ -3386,6 +3576,7 @@ private struct MotionLegend: View {
     let groupCount: Int
     var exposed: Bool = false
     var inPlace: Bool = false
+    var selectionOnly: Bool = false
     var displayCount: Int = 1
 
     var body: some View {
@@ -3405,7 +3596,12 @@ private struct MotionLegend: View {
 
             Rectangle().fill(Palette.border).frame(width: 1, height: 13)
 
-            if exposed {
+            if selectionOnly {
+                keyHint("a–z", "choose")
+                keyHint("Tab", "aim")
+                keyHint("⏎", "choose")
+                keyHint("esc", "cancel")
+            } else if exposed {
                 if inPlace {
                     keyHint("click", "select")
                     keyHint("a–z", "select")

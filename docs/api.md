@@ -389,6 +389,31 @@ the action may be:
 
 The legacy `dryRun: true` flag maps to `stage`.
 
+#### Background-Safety Receipts
+
+Computer-use action responses include a `backgroundSafety` receipt plus
+top-level compatibility fields:
+
+```json
+{
+  "backgroundSafety": {
+    "route": "ax.press",
+    "lane": "same_session",
+    "session": "parent",
+    "background_safe": true,
+    "backgroundSafe": true,
+    "cursor_moved": false,
+    "foreground_changed": false
+  }
+}
+```
+
+Agents should treat `background_safe: true` as the signal that the call stayed
+out of the user's foreground session. AX, tmux, iTerm session, overlay, staged,
+and observe routes can be background-safe. Pointer input, app activation,
+window focus, global keyboard input, and foreground typing report
+`background_safe: false`.
+
 #### `computer.prepare`
 
 Resolve and score terminal candidates for a future computer-use action. This is
@@ -466,6 +491,7 @@ daemon process and expire from the in-memory cache after a short window.
 | `elementId` | string | yes | Snapshot-local element id, such as `e4` |
 | `action` | string | no | `press` (default), `showMenu`, or `focus` |
 | `treatment` | string | no | `stage`, `present`, or `execute`. Defaults to `stage` |
+| `backgroundSafe` / `noFocus` | bool | no | With `execute`, perform AX actions without focusing the app when the requested action can run in the background |
 | `dryRun` | bool | no | Stage without performing the action |
 | `capture` | bool | no | Capture before/after artifacts. Defaults to `true` |
 | `source` | string | no | Calling surface label |
@@ -480,7 +506,8 @@ await daemonCall('computer.elementAction', {
   snapshotId: state.snapshotId,
   elementId: 'e7',
   action: 'press',
-  treatment: 'execute'
+  treatment: 'execute',
+  backgroundSafe: true
 })
 ```
 
@@ -502,6 +529,7 @@ Stage or execute text/value insertion against an element returned by a recent
 | `append` | bool | no | Append to current `AXValue` instead of replacing it |
 | `typeIntervalMs` | double | no | Per-character interval for typewriter-style AXValue updates |
 | `treatment` | string | no | `stage`, `present`, or `execute`. Defaults to `stage` |
+| `backgroundSafe` / `noFocus` | bool | no | With `execute`, set `AXValue` without focusing the app or AX element |
 | `dryRun` | bool | no | Stage without setting `AXValue` |
 | `capture` | bool | no | Capture before/after artifacts. Defaults to `true` |
 | `source` | string | no | Calling surface label |
@@ -516,7 +544,8 @@ await daemonCall('computer.typeElement', {
   snapshotId: state.snapshotId,
   elementId: 'e12',
   text: 'Draft note',
-  treatment: 'execute'
+  treatment: 'execute',
+  backgroundSafe: true
 })
 ```
 
@@ -1394,8 +1423,10 @@ Supported action types:
 |--------|------|-------------|
 | `windows.list` | read | All visible windows |
 | `windows.get` | read | Single window by ID |
+| `windows.preview` | read | Cached PNG preview for a window |
 | `windows.search` | read | Search windows by query |
 | `spaces.list` | read | macOS display spaces |
+| `window.pick.start` | read | Ask the user to choose one visible window in a read-only Hyperspace survey |
 | `window.place` | write | Place a window or session using a typed placement spec |
 | `window.tile` | write | Compatibility wrapper for session tiling |
 | `window.focus` | write | Focus a window / switch Spaces |
@@ -1499,6 +1530,19 @@ lattices search vox --json
 lattices place vox right
 ```
 
+#### `windows.preview`
+
+Return a cached PNG preview for a tracked window. When the cache is cold,
+`load` starts an asynchronous warmup and the caller can poll until `ok` is true.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `wid` | number | yes | CGWindowID from `windows.list` |
+| `load` | boolean | no | Warm the cache when missing; defaults to `true` |
+
+The response includes `cached` and `loading`. A ready preview also includes
+`mimeType: "image/png"`, base64 image data, and pixel dimensions.
+
 #### `spaces.list`
 
 List macOS display spaces (virtual desktops).
@@ -1555,6 +1599,25 @@ compact `CxR:C,R`. The canonical `grid:` form is 0-indexed; the compact form is
 ```
 
 **Returns**: execution receipt including resolved target, placement, and trace.
+
+#### `window.pick.start`
+
+Open Hyperspace in a read-only selection mode and wait for the user to choose
+one visible window. Letter hints, Tab/Return, and clicking a survey tile select;
+Escape cancels. Placement, layer editing, and normal motion commands are disabled
+for the duration of the pick.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `client` | string | no | Calling client label |
+| `requestId` | string | no | Caller correlation id |
+| `prompt` | string | no | Prompt shown in the selection HUD |
+| `mode` | string | no | `single-window` (default and currently supported mode) |
+| `currentWid` | number | no | Visible window to preselect |
+| `timeoutMs` | number | no | Wait time, clamped to 5–300 seconds; default 120 seconds |
+
+Returns `status: "selected"` with a window, or `cancelled`, `timeout`, or
+`unavailable` without one.
 
 #### `window.tile`
 

@@ -15,6 +15,11 @@ final class DaemonServer: ObservableObject {
     private var clients: [UUID: WebSocketClient] = [:]
     private let lock = NSLock()
     private let queue = DispatchQueue(label: "lattices.daemon", qos: .userInitiated)
+    private let blockingRequestQueue = DispatchQueue(
+        label: "lattices.daemon.blocking-requests",
+        qos: .userInitiated,
+        attributes: .concurrent
+    )
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private var acceptSource: DispatchSourceRead?
@@ -325,8 +330,28 @@ final class DaemonServer: ObservableObject {
             return
         }
 
+        // Interactive window picking can wait for user input for up to five
+        // minutes. Keep that wait off the daemon's serial socket queue so other
+        // clients, events, handshakes, and RPCs continue flowing.
+        if request.method == "window.pick.start" {
+            blockingRequestQueue.async { [weak self] in
+                let response = LatticesApi.shared.handle(request)
+                self?.queue.async { [weak self] in
+                    guard let self, self.isConnected(client) else { return }
+                    self.sendResponse(response, to: client)
+                }
+            }
+            return
+        }
+
         let response = LatticesApi.shared.handle(request)
         sendResponse(response, to: client)
+    }
+
+    private func isConnected(_ client: WebSocketClient) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return clients[client.id] === client
     }
 
     private func sendResponse(_ response: DaemonResponse, to client: WebSocketClient) {

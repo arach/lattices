@@ -161,6 +161,24 @@ final class LatticesApi {
             Field(name: "latticesSession", type: "string", required: false, description: "Associated lattices session name"),
         ]))
 
+        api.model(ApiModel(name: "WindowPreview", fields: [
+            Field(name: "ok", type: "bool", required: true, description: "Whether preview image data is included"),
+            Field(name: "wid", type: "int", required: true, description: "CGWindowID"),
+            Field(name: "cached", type: "bool", required: true, description: "Whether the image came from the warm preview cache"),
+            Field(name: "loading", type: "bool", required: true, description: "Whether Lattices is currently warming this preview"),
+            Field(name: "mimeType", type: "string", required: false, description: "Image MIME type when data is present"),
+            Field(name: "base64", type: "string", required: false, description: "Base64-encoded PNG preview"),
+            Field(name: "width", type: "int", required: false, description: "Preview pixel width"),
+            Field(name: "height", type: "int", required: false, description: "Preview pixel height"),
+        ]))
+
+        api.model(ApiModel(name: "WindowPickResult", fields: [
+            Field(name: "ok", type: "bool", required: true, description: "Whether a window was selected"),
+            Field(name: "status", type: "string", required: true, description: "selected, cancelled, timeout, or unavailable"),
+            Field(name: "window", type: "Window", required: false, description: "Selected window when status is selected"),
+            Field(name: "error", type: "string", required: false, description: "Error detail when unavailable"),
+        ]))
+
         api.model(ApiModel(name: "TmuxSession", fields: [
             Field(name: "name", type: "string", required: true, description: "Session name"),
             Field(name: "windowCount", type: "int", required: true, description: "Number of tmux windows"),
@@ -427,6 +445,20 @@ final class LatticesApi {
                     throw RouterError.notFound("window \(wid)")
                 }
                 return Encoders.window(entry)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "windows.preview",
+            description: "Return a cached Lattices window preview image, optionally triggering cache warmup.",
+            access: .read,
+            params: [
+                Param(name: "wid", type: "uint32", required: true, description: "Window ID"),
+                Param(name: "load", type: "bool", required: false, description: "Trigger preview warmup when missing (default true)"),
+            ],
+            returns: .object(model: "WindowPreview"),
+            handler: { params in
+                try Self.windowPreview(params)
             }
         ))
 
@@ -2442,6 +2474,25 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
+            method: "window.pick.start",
+            description: "Open Lattices Hyperspace in read-only single-window grab mode and return the selected window",
+            access: .read,
+            params: [
+                Param(name: "client", type: "string", required: false, description: "Calling client, e.g. scope"),
+                Param(name: "requestId", type: "string", required: false, description: "Client-provided correlation id"),
+                Param(name: "prompt", type: "string", required: false, description: "User-visible prompt for the grab"),
+                Param(name: "mode", type: "string", required: false, description: "single-window (default)"),
+                Param(name: "allowOffscreen", type: "bool", required: false, description: "Reserved; current implementation selects onscreen windows"),
+                Param(name: "currentWid", type: "uint32", required: false, description: "Currently bound window to preselect when visible"),
+                Param(name: "timeoutMs", type: "int", required: false, description: "How long to wait for user selection, default 120000"),
+            ],
+            returns: .object(model: "WindowPickResult"),
+            handler: { params in
+                try Self.windowPickStart(params)
+            }
+        ))
+
+        api.register(Endpoint(
             method: "window.move",
             description: "Move a session's window to a different space",
             access: .mutate,
@@ -4047,6 +4098,117 @@ private extension LatticesApi {
             return nil
         }
         return (UInt32(wid), app.processIdentifier)
+    }
+
+    static func windowPreview(_ params: JSON?) throws -> JSON {
+        guard let wid = params?["wid"]?.uint32Value else {
+            throw RouterError.missingParam("wid")
+        }
+        let shouldLoad = params?["load"]?.boolValue ?? true
+        guard let entry = DesktopModel.shared.windows[wid] else {
+            throw RouterError.notFound("window \(wid)")
+        }
+
+        return syncOnMain {
+            let store = WindowPreviewStore.shared
+            if let image = store.image(for: wid),
+               let preview = pngPreviewPayload(image: image) {
+                return .object([
+                    "ok": .bool(true),
+                    "wid": .int(Int(wid)),
+                    "cached": .bool(true),
+                    "loading": .bool(false),
+                    "mimeType": .string("image/png"),
+                    "base64": .string(preview.base64),
+                    "width": .int(preview.width),
+                    "height": .int(preview.height),
+                ])
+            }
+
+            if shouldLoad {
+                store.load(window: entry)
+            }
+
+            return .object([
+                "ok": .bool(false),
+                "wid": .int(Int(wid)),
+                "cached": .bool(false),
+                "loading": .bool(store.isLoading(wid)),
+            ])
+        }
+    }
+
+    static func pngPreviewPayload(image: NSImage) -> (base64: String, width: Int, height: Int)? {
+        guard let tiff = image.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff),
+              let png = rep.representation(using: .png, properties: [:]) else {
+            return nil
+        }
+        return (png.base64EncodedString(), rep.pixelsWide, rep.pixelsHigh)
+    }
+
+    static func windowPickStart(_ params: JSON?) throws -> JSON {
+        let mode = params?["mode"]?.stringValue ?? "single-window"
+        guard mode == "single-window" else {
+            throw RouterError.custom("Unsupported window pick mode: \(mode)")
+        }
+        let prompt = params?["prompt"]?.stringValue
+        let currentWid = params?["currentWid"]?.uint32Value
+        let timeoutMs = max(5_000, min(params?["timeoutMs"]?.intValue ?? 120_000, 300_000))
+
+        let semaphore = DispatchSemaphore(value: 0)
+        let lock = NSLock()
+        var outcome: WindowMotionMode.PickOutcome?
+
+        WindowMotionMode.shared.startWindowPick(prompt: prompt, currentWid: currentWid) { result in
+            lock.lock()
+            outcome = result
+            lock.unlock()
+            semaphore.signal()
+        }
+
+        let timeout = DispatchTime.now() + .milliseconds(timeoutMs)
+        guard semaphore.wait(timeout: timeout) == .success else {
+            DispatchQueue.main.async {
+                WindowMotionMode.shared.deactivate()
+            }
+            return .object([
+                "ok": .bool(false),
+                "status": .string("timeout"),
+                "error": .string("window pick timed out"),
+            ])
+        }
+
+        lock.lock()
+        let result = outcome
+        lock.unlock()
+
+        guard let result else {
+            return .object([
+                "ok": .bool(false),
+                "status": .string("unavailable"),
+                "error": .string("window pick returned no result"),
+            ])
+        }
+
+        var response: [String: JSON] = [
+            "ok": .bool(result.status == "selected"),
+            "status": .string(result.status),
+        ]
+        if let window = result.window {
+            response["window"] = Encoders.window(window)
+        }
+        if let error = result.error {
+            response["error"] = .string(error)
+        }
+        return .object(response)
+    }
+
+    static func syncOnMain<T>(_ work: () throws -> T) rethrows -> T {
+        if Thread.isMainThread {
+            return try work()
+        }
+        return try DispatchQueue.main.sync(execute: work)
     }
 
     static func windowEntry(forSession session: String) -> WindowEntry? {
