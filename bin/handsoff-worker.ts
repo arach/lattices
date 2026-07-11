@@ -72,19 +72,10 @@ const OPENAI_TTS_URL = "https://api.openai.com/v1/audio/speech";
 const ttsConfig = loadTTSConfig();
 
 function loadTTSConfig() {
-  // Load API key from speakeasy config or env
-  let apiKey = process.env.OPENAI_API_KEY || "";
-  let voice = "nova";
-
-  try {
-    const cfg = JSON.parse(
-      readFileSync(join(process.env.HOME || "", ".config/speakeasy/settings.json"), "utf-8")
-    );
-    if (!apiKey && cfg.providers?.openai?.apiKey) apiKey = cfg.providers.openai.apiKey;
-    if (cfg.providers?.openai?.voice) voice = cfg.providers.openai.voice;
-  } catch {}
-
-  return { apiKey, voice };
+  return {
+    apiKey: process.env.OPENAI_API_KEY || "",
+    voice: "nova",
+  };
 }
 
 /** Stream TTS: fetch audio from OpenAI and pipe directly to ffplay. Playback starts immediately. */

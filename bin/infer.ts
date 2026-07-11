@@ -3,7 +3,7 @@
  *
  * Features:
  *  - Multi-provider: groq, openai, anthropic, google, xai
- *  - Credential loading: env vars → .env.local/.env → ~/.lattices/inference.json → ~/.config/speakeasy/settings.json
+ *  - Credential loading: env vars → .env.local/.env → ~/.lattices/inference.json → macOS Keychain
  *  - Instrumented: every call logged with timing, model, token usage
  *  - Simple API: `await infer("do something", { provider: "groq" })`
  */
@@ -196,22 +196,7 @@ function loadCredentials(): CredentialStore {
     } catch {}
   }
 
-  // Layer 3: ~/.config/speakeasy/settings.json (fallback)
-  const speakeasyConfig = join(homedir(), ".config", "speakeasy", "settings.json");
-  if (existsSync(speakeasyConfig)) {
-    try {
-      const cfg = JSON.parse(readFileSync(speakeasyConfig, "utf-8"));
-      const p = cfg.providers || {};
-      if (!creds.groq && p.groq?.apiKey) creds.groq = p.groq.apiKey;
-      if (!creds.openai && p.openai?.apiKey) creds.openai = p.openai.apiKey;
-      if (!creds.anthropic && p.anthropic?.apiKey) creds.anthropic = p.anthropic.apiKey;
-      if (!creds.google && p.gemini?.apiKey) creds.google = p.gemini.apiKey;
-      if (!creds.xai && p.xai?.apiKey) creds.xai = p.xai.apiKey;
-      if (!creds.minimax && p.minimax?.apiKey) creds.minimax = p.minimax.apiKey;
-    } catch {}
-  }
-
-  // Layer 4 — macOS keychain via built-in `/usr/bin/security` under the
+  // Layer 3 — macOS keychain via built-in `/usr/bin/security` under the
   // `lattices.inference` service. One read per missing provider, cached
   // in `_cachedCreds` for the process lifetime. Keys never touch disk.
   // Portable across machines (no external CLI dep).
@@ -344,7 +329,7 @@ export async function infer(
   const creds = loadCredentials();
   if (!creds[provider]) {
     throw new Error(
-      `No API key for provider "${provider}". Set it in env, .env.local, ~/.lattices/inference.json, or ~/.config/speakeasy/settings.json`
+      `No API key for provider "${provider}". Set it in env, .env.local, ~/.lattices/inference.json, or the macOS Keychain`
     );
   }
 
