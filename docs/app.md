@@ -239,19 +239,27 @@ authentication state.
 
 ### Shortcuts
 
-Shows keyboard shortcut reference:
+Shows keyboard shortcut reference. These are defaults; you can change them
+from Settings > Shortcuts.
 
 | Shortcut          | Action              |
 |-------------------|----------------------|
 | Cmd+Shift+M       | Open command palette |
-| Hyper+1            | Screen map           |
+| Hyper+1            | Workspace home       |
+| Hyper+L            | Studio / screen map  |
 | Hyper+2            | Window bezel         |
 | Hyper+3            | HUD                  |
-| Hyper+D            | Voice commands       |
-| Hyper+G            | Desktop inventory    |
+| Ctrl+Cmd+M         | Hands-off mode       |
+| Hyper+Space        | Hyperspace window survey |
+| Hyper+G            | In-place window tools |
+| Hyper+H            | Window navigation hints |
 | Hyper+5            | Omni search          |
 | Hyper+6            | Cheat sheet          |
-| Hyper+B            | Hide/show persistent overlay actors |
+| Ctrl+Option+Space  | Command bar          |
+| Ctrl+Option+G      | 4x4 grid placement   |
+| Ctrl+Option+V      | Fill open 3x2 cell   |
+| Ctrl+Option+arrows | Tile halves          |
+| Ctrl+Option+1/2/3  | Tile thirds          |
 | Cmd+Option+1/2/3  | Switch workspace layer |
 | Ctrl+B  D         | Detach from session  |
 | Ctrl+B  X         | Kill current pane    |

@@ -72,6 +72,17 @@ For arbitrary grids: compact `CxR:C,R` or canonical `grid:CxR:C,R`
 
 Parsed by `PlacementSpec` / `parseGridString()` into fractional `(x, y, w, h)`.
 
+### App Shortcut Defaults
+
+The menu bar app exposes tiling shortcuts in Settings > Shortcuts. Useful
+defaults include:
+
+- `Ctrl+Option+G`: show the 4x4 grid placement target for the frontmost window.
+- `Ctrl+Option+V`: move the frontmost window into the least-occupied cell of a
+  3x2 grid on its current screen.
+- `Ctrl+Option+Space`: open the command bar; type `/tile 3x2:3,2` or another
+  placement string to place the captured frontmost window precisely.
+
 ### Placement Contract
 
 Placement strings are convenient at the boundary, but the daemon uses a

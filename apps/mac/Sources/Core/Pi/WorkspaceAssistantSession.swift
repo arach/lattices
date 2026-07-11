@@ -1327,11 +1327,48 @@ final class WorkspaceAssistantSession: ObservableObject {
     private func buildProcessEnvironment(for provider: PiProvider) -> [String: String] {
         var env = ProcessInfo.processInfo.environment
         env.removeValue(forKey: "CLAUDECODE")
+        hydrateProviderRuntimePath(in: &env)
         if provider.id == "github-copilot", storedCredentialKinds[provider.id] == nil {
             env.removeValue(forKey: "COPILOT_GITHUB_TOKEN")
         }
         Self.sanitizeEnvironment(&env, for: provider.id, hasStoredCredential: storedCredentialKinds[provider.id] != nil)
         return env
+    }
+
+    private func hydrateProviderRuntimePath(in env: inout [String: String]) {
+        let home = NSHomeDirectory()
+        var pathEntries: [String] = []
+        var seen: Set<String> = []
+
+        func appendDirectory(_ path: String?) {
+            guard let rawPath = path?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !rawPath.isEmpty else {
+                return
+            }
+            let path = (rawPath as NSString).expandingTildeInPath
+            guard seen.insert(path).inserted else { return }
+            pathEntries.append(path)
+        }
+
+        appendDirectory(nodeBinaryPath.map { URL(fileURLWithPath: $0).deletingLastPathComponent().path })
+        appendDirectory(piBinaryPath.map { URL(fileURLWithPath: $0).deletingLastPathComponent().path })
+        appendDirectory("\(home)/.local/bin")
+        appendDirectory("\(home)/.bun/bin")
+        appendDirectory("\(home)/.npm-global/bin")
+        appendDirectory("\(home)/Library/pnpm")
+        appendDirectory("/opt/homebrew/bin")
+        appendDirectory("/usr/local/bin")
+
+        for entry in (env["PATH"] ?? "").split(separator: ":") {
+            appendDirectory(String(entry))
+        }
+
+        appendDirectory("/usr/bin")
+        appendDirectory("/bin")
+        appendDirectory("/usr/sbin")
+        appendDirectory("/sbin")
+
+        env["PATH"] = pathEntries.joined(separator: ":")
     }
 
     func startSelectedAuthFlow() {

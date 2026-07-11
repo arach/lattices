@@ -253,6 +253,7 @@ struct CheatSheetView: View {
 
             // Center + Distribute
             shortcutRow(action: .tileCenter)
+            shortcutRow(action: .tileOpenCell)
             shortcutRow(action: .tileDistribute)
             shortcutRow(action: .tileTypeGrid)
             shortcutRow(action: .tileOrganize)
@@ -375,6 +376,7 @@ struct CheatSheetView: View {
             columnHeader("Workspace")
             shortcutRow(action: .motionMode)
             shortcutRow(action: .inPlaceMode)
+            shortcutRow(action: .chordHints)
             shortcutRow(action: .desktopInventory)
         }
     }

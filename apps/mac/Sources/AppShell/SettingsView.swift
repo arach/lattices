@@ -4055,7 +4055,7 @@ struct SettingsContentView: View {
             VStack(alignment: .leading, spacing: 8) {
                 ForEach([
                     HotkeyAction.tileLeftThird, .tileCenterThird, .tileRightThird,
-                    .tileCenter, .tileMaximize, .tileDistribute, .tileTypeGrid
+                    .tileCenter, .tileMaximize, .tileOpenCell, .tileDistribute, .tileTypeGrid
                 ], id: \.rawValue) { action in
                     compactKeyRecorder(action: action)
                 }

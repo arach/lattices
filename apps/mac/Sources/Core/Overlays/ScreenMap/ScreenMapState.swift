@@ -1399,12 +1399,17 @@ final class ScreenMapController: ObservableObject {
     @Published var savedPositions: [UInt32: (pid: Int32, frame: WindowFrame)]? = nil
     @Published var isSearchActive: Bool = false
     @Published var searchHighlightIndex: Int = 0
+    @Published var applySequence: ScreenMapApplySequence?
+    @Published var isApplyingEdits: Bool = false
+
+    private static let progressiveApplyThreshold = 4
 
     enum DisplayTransitionDirection {
         case left, right, none
     }
     @Published var displayTransition: DisplayTransitionDirection = .none
     private var editorObserver: AnyCancellable?
+    private var applySequenceObserver: AnyCancellable?
 
     var previewWindow: NSWindow? = nil
     private var previewGlobalMonitor: Any? = nil
@@ -2346,6 +2351,7 @@ final class ScreenMapController: ObservableObject {
 
     func applyEdits(showFlash: Bool = true) {
         guard let ed = editor else { return }
+        guard !isApplyingEdits else { return }
         let pendingEdits = ed.windows.filter(\.hasEdits)
         guard !pendingEdits.isEmpty else {
             if showFlash { flash("No changes to apply") }
@@ -2365,32 +2371,115 @@ final class ScreenMapController: ObservableObject {
         let allMoves = sorted.map { (wid: $0.id, pid: $0.pid, frame: $0.editedFrame) }
         NSLog("[ScreenMap] Applying %d edits", allMoves.count)
 
+        if allMoves.count >= Self.progressiveApplyThreshold {
+            applyEditsProgressively(
+                pendingEdits: pendingEdits,
+                allMoves: allMoves,
+                showFlash: showFlash
+            )
+            return
+        }
+
+        finishApplyEdits(allMoves: allMoves, pendingCount: pendingEdits.count, showFlash: showFlash)
+    }
+
+    private func applyEditsProgressively(
+        pendingEdits: [ScreenMapWindowEntry],
+        allMoves: [(wid: UInt32, pid: Int32, frame: CGRect)],
+        showFlash: Bool
+    ) {
+        guard let ed = editor else { return }
         let actionLog = ed.actionLog
+        let label = "Placing \(allMoves.count) windows"
+        let sequence = ScreenMapApplySequence(
+            label: label,
+            windows: pendingEdits.map { (wid: $0.id, app: $0.app, title: $0.title) }
+        )
 
-        // Apply AX changes (no hide/show — Screen Map stays visible)
+        isApplyingEdits = true
+        applySequence = sequence
+        applySequenceObserver = sequence.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
+
+        // Paint the rail before any AX work so the UI responds immediately.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            WindowTiler.batchMoveWindowsProgressive(
+                moves: allMoves,
+                onReady: { [weak self] in
+                    self?.applySequence?.setPhase("Connecting to windows…")
+                },
+                onStep: { [weak self] _, wid in
+                    self?.applySequence?.begin(wid: wid)
+                },
+                onComplete: { [weak self] _, _ in
+                    guard let self, let ed = self.editor else { return }
+                    self.applySequence?.finishAll()
+                    self.commitAppliedFrames(in: ed)
+                    self.objectWillChange.send()
+
+                    let moves = allMoves
+                    DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.2) {
+                        let drifted = WindowTiler.verifyMoves(moves)
+                        if !drifted.isEmpty {
+                            NSLog("[ScreenMap] %d/%d windows drifted, retrying", drifted.count, moves.count)
+                            WindowTiler.batchMoveWindows(drifted)
+                        }
+                        DispatchQueue.main.async {
+                            actionLog.verify()
+                        }
+                    }
+
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                        self.applySequenceObserver = nil
+                        self.applySequence = nil
+                        self.isApplyingEdits = false
+                    }
+
+                    if showFlash {
+                        let noun = pendingEdits.count == 1 ? "window" : "windows"
+                        self.flash("Placed \(pendingEdits.count) \(noun)")
+                    }
+                }
+            )
+        }
+    }
+
+    private func finishApplyEdits(
+        allMoves: [(wid: UInt32, pid: Int32, frame: CGRect)],
+        pendingCount: Int,
+        showFlash: Bool
+    ) {
+        guard let ed = editor else { return }
+        let actionLog = ed.actionLog
         WindowTiler.batchMoveWindows(allMoves)
+        commitAppliedFrames(in: ed)
+        objectWillChange.send()
 
-        // Commit edited frames as new originals so the map doesn't reload
+        let moves = allMoves
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.2) {
+            let drifted = WindowTiler.verifyMoves(moves)
+            if !drifted.isEmpty {
+                NSLog("[ScreenMap] %d/%d windows drifted, retrying", drifted.count, moves.count)
+                WindowTiler.batchMoveWindows(drifted)
+            }
+            DispatchQueue.main.async {
+                actionLog.verify()
+            }
+        }
+
+        if showFlash {
+            let noun = pendingCount == 1 ? "edit" : "edits"
+            flash("Applied \(pendingCount) \(noun)")
+        }
+    }
+
+    private func commitAppliedFrames(in ed: ScreenMapEditorState) {
         for i in ed.windows.indices {
             ed.windows[i].originalFrame = ed.windows[i].editedFrame
         }
         ed.objectWillChange.send()
-        objectWillChange.send()
-
-        // Verify in background — if anything drifted, retry once then refresh
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            let drifted = WindowTiler.verifyMoves(allMoves)
-            if !drifted.isEmpty {
-                NSLog("[ScreenMap] %d/%d windows drifted, retrying", drifted.count, allMoves.count)
-                WindowTiler.batchMoveWindows(drifted)
-            }
-            actionLog.verify()
-        }
-
-        if showFlash {
-            let noun = pendingEdits.count == 1 ? "edit" : "edits"
-            flash("Applied \(pendingEdits.count) \(noun)")
-        }
     }
 
     func applyEditsFromButton() {

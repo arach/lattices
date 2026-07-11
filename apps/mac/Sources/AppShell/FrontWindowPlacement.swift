@@ -30,6 +30,81 @@ enum FrontWindowPlacer {
         WindowTiler.tileFrontmostViaAX(to: position)
         DiagnosticLog.shared.success("Placed front window → \(position.label) (\(source))")
     }
+
+    static func fillOpenGridCell(columns: Int = 3, rows: Int = 2, source: String = "hotkey") {
+        guard canPlace() else {
+            NSSound.beep()
+            return
+        }
+
+        DesktopModel.shared.forcePoll()
+
+        guard let target = DesktopModel.shared.frontmostWindow(),
+              target.app != "Lattices" else {
+            NSSound.beep()
+            DiagnosticLog.shared.warn("Fill open cell: no frontmost target window")
+            return
+        }
+
+        let screen = WindowTiler.screenForWindowFrame(target.frame)
+        guard let placement = bestOpenGridCell(columns: columns, rows: rows, target: target, screen: screen) else {
+            NSSound.beep()
+            DiagnosticLog.shared.warn("Fill open cell: no valid \(columns)x\(rows) placement")
+            return
+        }
+
+        AppFeedback.shared.commitTactile()
+        WindowTiler.tileWindowById(wid: target.wid, pid: target.pid, to: placement, on: screen)
+        WindowTiler.highlightWindowById(wid: target.wid)
+        DiagnosticLog.shared.success("Filled open \(columns)x\(rows) cell → \(placement.wireValue) (\(source))")
+    }
+
+    private static func bestOpenGridCell(columns: Int, rows: Int, target: WindowEntry, screen: NSScreen) -> PlacementSpec? {
+        let windows = DesktopModel.shared.allWindows().filter { entry in
+            entry.wid != target.wid &&
+            entry.isOnScreen &&
+            entry.app != "Lattices" &&
+            entry.frame.w > 50 &&
+            entry.frame.h > 50 &&
+            WindowTiler.screenForWindowFrame(entry.frame) === screen
+        }
+        let targetRect = rect(for: target.frame)
+        let targetCenter = CGPoint(x: targetRect.midX, y: targetRect.midY)
+
+        var best: (placement: PlacementSpec, occupied: CGFloat, distance: CGFloat, order: Int)?
+        for row in 0..<rows {
+            for column in 0..<columns {
+                guard let grid = GridPlacement(columns: columns, rows: rows, column: column, row: row) else { continue }
+                let placement = PlacementSpec.grid(grid)
+                let cellFrame = WindowTiler.tileFrame(for: placement, on: screen)
+                let occupied = windows.reduce(CGFloat.zero) { total, entry in
+                    total + overlapRatio(rect(for: entry.frame), cellFrame)
+                }
+                let distance = hypot(targetCenter.x - cellFrame.midX, targetCenter.y - cellFrame.midY)
+                let candidate = (placement: placement, occupied: occupied, distance: distance, order: row * columns + column)
+                if let current = best {
+                    if candidate.occupied < current.occupied - 0.01 ||
+                        (abs(candidate.occupied - current.occupied) <= 0.01 && candidate.distance < current.distance - 1) ||
+                        (abs(candidate.occupied - current.occupied) <= 0.01 && abs(candidate.distance - current.distance) <= 1 && candidate.order < current.order) {
+                        best = candidate
+                    }
+                } else {
+                    best = candidate
+                }
+            }
+        }
+        return best?.placement
+    }
+
+    private static func rect(for frame: WindowFrame) -> CGRect {
+        CGRect(x: frame.x, y: frame.y, width: frame.w, height: frame.h)
+    }
+
+    private static func overlapRatio(_ lhs: CGRect, _ rhs: CGRect) -> CGFloat {
+        let intersection = lhs.intersection(rhs)
+        guard !intersection.isNull, rhs.width > 0, rhs.height > 0 else { return 0 }
+        return max(0, intersection.width * intersection.height) / (rhs.width * rhs.height)
+    }
 }
 
 /// Compact 3×3 grid — tap a cell to snap the frontmost window there.

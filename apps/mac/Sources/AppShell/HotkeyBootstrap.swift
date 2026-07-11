@@ -11,7 +11,7 @@ enum HotkeyBootstrap {
         store.register(action: .unifiedWindow) { ScreenMapWindowController.shared.toggle() }
         store.register(action: .screenMap) { ScreenMapWindowController.shared.showPage(.screenMap) }
         store.register(action: .bezel) { WorkspaceInspectorPresenter.show() }
-        store.register(action: .cheatSheet) { SettingsWindowController.shared.show() }
+        store.register(action: .cheatSheet) { SettingsWindowController.shared.show(section: "shortcuts") }
         store.register(action: .desktopInventory) {
             DiagnosticLog.shared.info("Hotkey: desktopInventory triggered")
             ScreenMapWindowController.shared.showPage(.desktopInventory)
@@ -91,11 +91,17 @@ enum HotkeyBootstrap {
                 ?? NSWorkspace.shared.frontmostApplication?.localizedName
             CommandModeWindow.shared.show(launchMode: .organize(appName: appName))
         }
+        store.register(action: .tileOpenCell) {
+            FrontWindowPlacer.fillOpenGridCell()
+        }
         store.register(action: .motionMode) {
             WindowMotionMode.shared.toggleHyperspace()
         }
         store.register(action: .inPlaceMode) {
             WindowMotionMode.shared.toggleInPlace()
+        }
+        store.register(action: .chordHints) {
+            InPlaceChordHintOverlay.shared.toggle()
         }
     }
 }

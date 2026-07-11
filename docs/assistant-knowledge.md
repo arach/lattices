@@ -82,12 +82,16 @@ subscribe to events (`windows.changed`, `tmux.changed`, `layer.switched`).
 | Shortcut | Action |
 |----------|--------|
 | **Cmd+Shift+M** | Open the command palette |
+| **Ctrl+Option+Space** | Open the command bar for captured-front-window actions |
+| **Ctrl+Option+G** | Show the 4x4 grid placement target |
+| **Ctrl+Option+V** | Fill the least-occupied 3x2 grid cell with the frontmost window |
 | `lattices tile <position>` | Tile the focused window (CLI) |
 | `lattices layer [name\|index]` | Switch workspace layer (CLI) |
 | **Ctrl+B** then `D` / `Z` / arrows | tmux: detach / zoom / move pane (inside a session) |
 
 Tiling and grid hotkeys are user-configurable — for the live set, point the user to
-Settings or the [Tiling reference](/docs/tiling-reference) rather than asserting one.
+Settings or the [Tiling reference](/docs/tiling-reference) rather than treating
+the defaults as guaranteed.
 
 ## CLI quick reference
 

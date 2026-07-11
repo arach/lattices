@@ -1727,6 +1727,96 @@ enum WindowTiler {
         diag.success("batchMoveWindows: moved \(moved)/\(moves.count) windows")
     }
 
+    /// Move windows one at a time so the UI can show placement progress. AX targets are
+    /// resolved off the main thread; each step is separated by a short yield.
+    static func batchMoveWindowsProgressive(
+        moves: [(wid: UInt32, pid: Int32, frame: CGRect)],
+        stepDelay: TimeInterval = 0.028,
+        onReady: (() -> Void)? = nil,
+        onStep: @escaping (_ index: Int, _ wid: UInt32) -> Void,
+        onComplete: @escaping (_ moved: Int, _ failed: Int) -> Void
+    ) {
+        guard !moves.isEmpty else {
+            onComplete(0, 0)
+            return
+        }
+
+        let diag = DiagnosticLog.shared
+        let queue = DispatchQueue(label: "dev.lattices.app.window-move-progressive", qos: .userInitiated)
+
+        queue.async {
+            let resolved = resolveBatchMoveTargets(moves)
+            diag.info("batchMoveWindowsProgressive: \(resolved.count) windows")
+
+            func runStep(_ index: Int, moved: Int, failed: Int) {
+                guard index < resolved.count else {
+                    diag.success("batchMoveWindowsProgressive: moved \(moved)/\(resolved.count) windows")
+                    DispatchQueue.main.async {
+                        onComplete(moved, failed)
+                    }
+                    return
+                }
+
+                let item = resolved[index]
+                DispatchQueue.main.async {
+                    onStep(index, item.wid)
+                }
+
+                if let axWin = item.axWindow {
+                    applyFrameToAXWindow(axWin, wid: item.wid, target: item.frame)
+                }
+
+                let nextMoved = moved + (item.axWindow != nil ? 1 : 0)
+                let nextFailed = failed + (item.axWindow == nil ? 1 : 0)
+                queue.asyncAfter(deadline: .now() + stepDelay) {
+                    runStep(index + 1, moved: nextMoved, failed: nextFailed)
+                }
+            }
+
+            DispatchQueue.main.async {
+                onReady?()
+            }
+            runStep(0, moved: 0, failed: 0)
+        }
+    }
+
+    private struct ProgressiveBatchTarget {
+        let wid: UInt32
+        let pid: Int32
+        let frame: CGRect
+        let axWindow: AXUIElement?
+    }
+
+    private static func resolveBatchMoveTargets(
+        _ moves: [(wid: UInt32, pid: Int32, frame: CGRect)]
+    ) -> [ProgressiveBatchTarget] {
+        var byPid: Set<Int32> = []
+        for move in moves { byPid.insert(move.pid) }
+
+        var axByWid: [UInt32: AXUIElement] = [:]
+        for pid in byPid {
+            let appRef = AXUIElementCreateApplication(pid)
+            var windowsRef: CFTypeRef?
+            let err = AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &windowsRef)
+            guard err == .success, let axWindows = windowsRef as? [AXUIElement] else { continue }
+            for axWin in axWindows {
+                var windowId: CGWindowID = 0
+                if _AXUIElementGetWindow(axWin, &windowId) == .success {
+                    axByWid[windowId] = axWin
+                }
+            }
+        }
+
+        return moves.map {
+            ProgressiveBatchTarget(
+                wid: $0.wid,
+                pid: $0.pid,
+                frame: $0.frame,
+                axWindow: axByWid[$0.wid]
+            )
+        }
+    }
+
     /// Apply position+size to a single AX window. No delays, no retries — just set and go.
     private static func applyFrameToAXWindow(_ axWin: AXUIElement, wid: UInt32, target: CGRect) {
         var newPos = CGPoint(x: target.origin.x, y: target.origin.y)

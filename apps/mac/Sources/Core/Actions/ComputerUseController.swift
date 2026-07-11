@@ -42,6 +42,29 @@ enum ComputerTreatment: String {
     }
 }
 
+private struct ComputerBackgroundSafetyReceipt {
+    let route: String
+    let lane: String
+    let session: String
+    let backgroundSafe: Bool
+    let cursorMoved: Bool
+    let foregroundChanged: Bool
+
+    var json: JSON {
+        .object([
+            "route": .string(route),
+            "lane": .string(lane),
+            "session": .string(session),
+            "background_safe": .bool(backgroundSafe),
+            "backgroundSafe": .bool(backgroundSafe),
+            "cursor_moved": .bool(cursorMoved),
+            "cursorMoved": .bool(cursorMoved),
+            "foreground_changed": .bool(foregroundChanged),
+            "foregroundChanged": .bool(foregroundChanged),
+        ])
+    }
+}
+
 private struct AXTextInsertionResult {
     let role: String
     let roleDescription: String?
@@ -395,6 +418,7 @@ final class ComputerUseController {
         let source = params?["source"]?.stringValue ?? "daemon"
         let treatment = ComputerTreatment.resolve(params: params, defaultValue: .stage)
         let shouldCapture = params?["capture"]?.boolValue ?? true
+        let wantsBackgroundSafe = backgroundSafeRequested(params)
         let snapshotId = try requiredString(params, keys: ["snapshotId", "snapshot-id", "snapshot"])
         let elementId = try requiredString(params, keys: ["elementId", "element-id", "id"])
         let requestedAction = try elementActionName(params)
@@ -420,6 +444,7 @@ final class ComputerUseController {
                     "snapshotId": .string(snapshotId),
                     "elementId": .string(elementId),
                     "requestedAction": .string(requestedAction),
+                    "backgroundSafe": .bool(wantsBackgroundSafe),
                     "wid": .int(Int(snapshot.window.wid)),
                     "app": .string(snapshot.window.app),
                 ]
@@ -436,7 +461,7 @@ final class ComputerUseController {
             var performed = false
             var focused = false
             var axAction: String?
-            if treatment.focusesWindow {
+            if treatment.focusesWindow && !wantsBackgroundSafe {
                 focused = try focus(window: snapshot.window)
                 _ = try RunStore.shared.appendTrace(
                     id: run.id,
@@ -447,6 +472,9 @@ final class ComputerUseController {
             }
 
             if requestedAction == "focus" {
+                if wantsBackgroundSafe && treatment.focusesWindow {
+                    throw RouterError.custom("AX focus is not background-safe; omit backgroundSafe/noFocus to focus the element")
+                }
                 if treatment.focusesWindow {
                     try focusAXElement(element)
                     performed = true
@@ -495,6 +523,7 @@ final class ComputerUseController {
                     "requestedAction": .string(requestedAction),
                     "performed": .bool(performed),
                     "focused": .bool(focused),
+                    "backgroundSafe": .bool(wantsBackgroundSafe),
                 ]
             )
 
@@ -554,6 +583,7 @@ final class ComputerUseController {
         let source = params?["source"]?.stringValue ?? "daemon"
         let treatment = ComputerTreatment.resolve(params: params, defaultValue: .stage)
         let shouldCapture = params?["capture"]?.boolValue ?? true
+        let wantsBackgroundSafe = backgroundSafeRequested(params)
         let append = params?["append"]?.boolValue ?? false
         let typeIntervalMs = axTypeIntervalMs(params: params)
         let snapshotId = try requiredString(params, keys: ["snapshotId", "snapshot-id", "snapshot"])
@@ -582,6 +612,7 @@ final class ComputerUseController {
                     "elementId": .string(elementId),
                     "characters": .int(text.count),
                     "append": .bool(append),
+                    "backgroundSafe": .bool(wantsBackgroundSafe),
                     "wid": .int(Int(snapshot.window.wid)),
                     "app": .string(snapshot.window.app),
                 ]
@@ -597,7 +628,7 @@ final class ComputerUseController {
 
             var focused = false
             var result: AXTextInsertionResult?
-            if treatment.focusesWindow {
+            if treatment.focusesWindow && !wantsBackgroundSafe {
                 focused = try focus(window: snapshot.window)
                 _ = try RunStore.shared.appendTrace(
                     id: run.id,
@@ -647,6 +678,7 @@ final class ComputerUseController {
                     "typed": .bool(result != nil),
                     "focused": .bool(focused),
                     "append": .bool(append),
+                    "backgroundSafe": .bool(wantsBackgroundSafe),
                 ]
             )
 
@@ -1119,7 +1151,7 @@ final class ComputerUseController {
                 ]
             )
 
-            return .object([
+            var object: [String: JSON] = [
                 "ok": .bool(true),
                 "action": .string("showCursor"),
                 "treatment": .string(treatment.rawValue),
@@ -1127,7 +1159,15 @@ final class ComputerUseController {
                 "run": completed.json,
                 "cursor": cursorJSON(point),
                 "appearance": appearance.json,
-            ])
+            ]
+            attachBackgroundSafety(
+                backgroundSafetyReceipt(
+                    route: shouldShow ? "overlay.cursor" : stagedRoute(for: treatment),
+                    backgroundEligible: true
+                ),
+                to: &object
+            )
+            return .object(object)
         } catch {
             _ = try? RunStore.shared.fail(
                 id: run.id,
@@ -1256,6 +1296,16 @@ final class ComputerUseController {
             if let axResult {
                 object["ax"] = axResult.json
             }
+            let route = typedText == nil
+                ? (shouldShow ? "overlay.cursor" : stagedRoute(for: treatment))
+                : "ax.setValue"
+            attachBackgroundSafety(
+                backgroundSafetyReceipt(
+                    route: route,
+                    backgroundEligible: true
+                ),
+                to: &object
+            )
             return .object(object)
         } catch {
             _ = try? RunStore.shared.fail(
@@ -4315,6 +4365,50 @@ final class ComputerUseController {
         return CGRect(origin: point, size: size)
     }
 
+    private func attachBackgroundSafety(
+        _ receipt: ComputerBackgroundSafetyReceipt,
+        to object: inout [String: JSON]
+    ) {
+        object["backgroundSafety"] = receipt.json
+        object["background_safe"] = .bool(receipt.backgroundSafe)
+        object["backgroundSafe"] = .bool(receipt.backgroundSafe)
+        object["route"] = .string(receipt.route)
+        object["lane"] = .string(receipt.lane)
+        object["session"] = .string(receipt.session)
+        object["cursor_moved"] = .bool(receipt.cursorMoved)
+        object["cursorMoved"] = .bool(receipt.cursorMoved)
+        object["foreground_changed"] = .bool(receipt.foregroundChanged)
+        object["foregroundChanged"] = .bool(receipt.foregroundChanged)
+    }
+
+    private func backgroundSafetyReceipt(
+        route: String,
+        cursorMoved: Bool = false,
+        foregroundChanged: Bool = false,
+        backgroundEligible: Bool
+    ) -> ComputerBackgroundSafetyReceipt {
+        ComputerBackgroundSafetyReceipt(
+            route: route,
+            lane: "same_session",
+            session: "parent",
+            backgroundSafe: backgroundEligible && !cursorMoved && !foregroundChanged,
+            cursorMoved: cursorMoved,
+            foregroundChanged: foregroundChanged
+        )
+    }
+
+    private func stagedRoute(for treatment: ComputerTreatment) -> String {
+        treatment == .observe ? "observe" : "stage"
+    }
+
+    private func backgroundSafeRequested(_ params: JSON?) -> Bool {
+        params?["backgroundSafe"]?.boolValue == true
+            || params?["background-safe"]?.boolValue == true
+            || params?["background"]?.boolValue == true
+            || params?["noFocus"]?.boolValue == true
+            || params?["no-focus"]?.boolValue == true
+    }
+
     private func appResponse(
         action: String,
         run: RunSession,
@@ -4342,6 +4436,38 @@ final class ComputerUseController {
         if let after { object["afterArtifact"] = after }
         if let typedText { object["typedText"] = .string(typedText) }
         if let clicked { object["clicked"] = .bool(clicked) }
+        let route: String
+        let cursorMoved = clicked == true && treatment.performsPointerAction
+        let foregroundChanged = launched || focused
+        let backgroundEligible: Bool
+        if treatment == .observe || treatment == .stage {
+            route = stagedRoute(for: treatment)
+            backgroundEligible = true
+        } else if launched {
+            route = "app.launch"
+            backgroundEligible = false
+        } else if cursorMoved {
+            route = "pointer.click"
+            backgroundEligible = false
+        } else if typedText != nil && treatment.insertsText {
+            route = "keyboard.typeText"
+            backgroundEligible = false
+        } else if focused {
+            route = "window.focus"
+            backgroundEligible = false
+        } else {
+            route = "app.\(action)"
+            backgroundEligible = false
+        }
+        attachBackgroundSafety(
+            backgroundSafetyReceipt(
+                route: route,
+                cursorMoved: cursorMoved,
+                foregroundChanged: foregroundChanged,
+                backgroundEligible: backgroundEligible
+            ),
+            to: &object
+        )
         return .object(object)
     }
 
@@ -4376,6 +4502,19 @@ final class ComputerUseController {
         if let before { object["beforeArtifact"] = before }
         if let after { object["afterArtifact"] = after }
         if let axResult { object["ax"] = axResult.json }
+        let isStaged = !clicked || treatment == .observe || treatment == .stage
+        let route = isStaged
+            ? stagedRoute(for: treatment)
+            : (transport == "ax" ? "ax.press" : "pointer.click")
+        attachBackgroundSafety(
+            backgroundSafetyReceipt(
+                route: route,
+                cursorMoved: clicked && transport == "pointer",
+                foregroundChanged: focused,
+                backgroundEligible: isStaged || transport == "ax"
+            ),
+            to: &object
+        )
         return .object(object)
     }
 
@@ -4415,6 +4554,16 @@ final class ComputerUseController {
         if let delta { object["delta"] = scrollJSON(delta) }
         if let button { object["button"] = .string(normalizedMouseButton(button)) }
         if let count { object["count"] = .int(count) }
+        let isStaged = !performed || treatment == .observe || treatment == .stage
+        attachBackgroundSafety(
+            backgroundSafetyReceipt(
+                route: isStaged ? stagedRoute(for: treatment) : "pointer.\(action)",
+                cursorMoved: performed && transport == "pointer",
+                foregroundChanged: focused,
+                backgroundEligible: isStaged
+            ),
+            to: &object
+        )
         return .object(object)
     }
 
@@ -4451,6 +4600,18 @@ final class ComputerUseController {
         if let target { object["target"] = Encoders.window(target) }
         if let before { object["beforeArtifact"] = before }
         if let after { object["afterArtifact"] = after }
+        let isStaged = !sent || treatment == .observe || treatment == .stage
+        let route = isStaged
+            ? stagedRoute(for: treatment)
+            : (global ? "keyboard.global" : "keyboard.target")
+        attachBackgroundSafety(
+            backgroundSafetyReceipt(
+                route: route,
+                foregroundChanged: focused,
+                backgroundEligible: isStaged
+            ),
+            to: &object
+        )
         return .object(object)
     }
 
@@ -4482,6 +4643,15 @@ final class ComputerUseController {
         if let axAction { object["axAction"] = .string(axAction) }
         if let before { object["beforeArtifact"] = before }
         if let after { object["afterArtifact"] = after }
+        let isStaged = !performed || treatment == .observe || treatment == .stage
+        attachBackgroundSafety(
+            backgroundSafetyReceipt(
+                route: isStaged ? stagedRoute(for: treatment) : "ax.\(axAction ?? requestedAction)",
+                foregroundChanged: focused,
+                backgroundEligible: true
+            ),
+            to: &object
+        )
         return .object(object)
     }
 
@@ -4518,6 +4688,16 @@ final class ComputerUseController {
         }
         if let before { object["beforeArtifact"] = before }
         if let after { object["afterArtifact"] = after }
+        let typed = result != nil
+        let isStaged = !typed || treatment == .observe || treatment == .stage
+        attachBackgroundSafety(
+            backgroundSafetyReceipt(
+                route: isStaged ? stagedRoute(for: treatment) : "ax.setValue",
+                foregroundChanged: focused,
+                backgroundEligible: true
+            ),
+            to: &object
+        )
         return .object(object)
     }
 
@@ -4680,6 +4860,14 @@ final class ComputerUseController {
         ]
         if let before { object["beforeArtifact"] = before["artifact"] ?? before }
         if let after { object["afterArtifact"] = after["artifact"] ?? after }
+        attachBackgroundSafety(
+            backgroundSafetyReceipt(
+                route: focused ? "window.focus" : stagedRoute(for: treatment),
+                foregroundChanged: focused,
+                backgroundEligible: !focused
+            ),
+            to: &object
+        )
         return .object(object)
     }
 
@@ -4711,6 +4899,26 @@ final class ComputerUseController {
         }
         if let before { object["beforeArtifact"] = before }
         if let after { object["afterArtifact"] = after }
+        let route: String
+        let backgroundEligible: Bool
+        if !treatment.insertsText {
+            route = stagedRoute(for: treatment)
+            backgroundEligible = true
+        } else if let transport {
+            route = "terminal.\(transport)"
+            backgroundEligible = transport == "tmux" || transport == "iterm-session"
+        } else {
+            route = "terminal.focused"
+            backgroundEligible = false
+        }
+        attachBackgroundSafety(
+            backgroundSafetyReceipt(
+                route: route,
+                foregroundChanged: treatment.focusesWindow && !backgroundEligible,
+                backgroundEligible: backgroundEligible
+            ),
+            to: &object
+        )
         return .object(object)
     }
 
