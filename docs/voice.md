@@ -133,7 +133,7 @@ By default it chooses the lowest-latency configured provider and, when
 Groq credentials are present, uses `groq/llama-3.1-8b-instant`.
 
 Credentials are read from process env, `.env.local`, `.env`,
-`~/.lattices/inference.json`, then `~/.config/speakeasy/settings.json`.
+`~/.lattices/inference.json`, then the macOS Keychain.
 For Groq, either `GROQ_API_KEY` or the common typo `GROK_API_KEY` works
 when the key has Groq's `gsk_` prefix.
 

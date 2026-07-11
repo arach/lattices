@@ -1,6 +1,6 @@
 {
   "name": "@arach/lattices",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "description": "Tile windows, search your screen, keep tmux sessions alive, and let AI agents control your Mac — CLI + daemon API",
   "homepage": "https://lattices.dev",
   "bugs": {
@@ -88,7 +88,6 @@
     "@ai-sdk/google": "^3.0.43",
     "@ai-sdk/openai": "^3.0.41",
     "@ai-sdk/xai": "^3.0.67",
-    "@arach/speakeasy": "^0.2.8",
     "ai": "^6.0.116",
     "zod": "^3.25.76"
   }
