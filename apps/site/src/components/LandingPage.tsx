@@ -1,14 +1,6 @@
-import { useEffect, useState } from "react";
-
-type PkgManager = "npm" | "pnpm" | "bun";
-
-const commands: Record<PkgManager, string> = {
-  npm: "npm install @lattices/sdk",
-  pnpm: "pnpm add @lattices/sdk",
-  bun: "bun add @lattices/sdk",
-};
-
-const pmOrder: PkgManager[] = ["npm", "pnpm", "bun"];
+import { useEffect, useRef, useState } from "react";
+import type { CSSProperties, ReactNode } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
 function LatticesLogo({ size = 20 }: { size?: number }) {
   // 3×3 grid with L-shape pattern (left column + bottom row bright, rest dim)
@@ -68,31 +60,6 @@ function GitHubIcon() {
   return (
     <svg viewBox="0 0 16 16" fill="currentColor">
       <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
-    </svg>
-  );
-}
-
-function StarIcon() {
-  return (
-    <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
-      <path d="M8 .25a.75.75 0 01.673.418l1.882 3.815 4.21.612a.75.75 0 01.416 1.279l-3.046 2.97.719 4.192a.75.75 0 01-1.088.791L8 12.347l-3.766 1.98a.75.75 0 01-1.088-.79l.72-4.194L.818 6.374a.75.75 0 01.416-1.28l4.21-.611L7.327.668A.75.75 0 018 .25z" />
-    </svg>
-  );
-}
-
-function CopyIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-      <rect x="9" y="9" width="13" height="13" rx="2" />
-      <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-    </svg>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-      <polyline points="20 6 9 17 4 12" />
     </svg>
   );
 }
@@ -232,9 +199,327 @@ const cuaSteps: Array<{
 
 const showLatsDevTeaser = import.meta.env.PUBLIC_SHOW_LATS_DEV_TEASER === "true";
 
+type HeroDesktopPhase = "messy" | "organized";
+type HeroWindowId = "agent" | "editor" | "browser" | "terminal";
+
+type HeroWindowLayout = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  z: number;
+};
+
+const heroWindowLayouts: Record<HeroWindowId, Record<HeroDesktopPhase, HeroWindowLayout>> = {
+  agent: {
+    messy: { left: 18, top: 22, width: 49, height: 56, z: 6 },
+    organized: { left: 1.6, top: 10.5, width: 58, height: 86, z: 6 },
+  },
+  editor: {
+    messy: { left: 6, top: 14, width: 35, height: 29, z: 3 },
+    organized: { left: 61, top: 10.5, width: 37.4, height: 28, z: 3 },
+  },
+  browser: {
+    messy: { left: 54, top: 11, width: 41, height: 42, z: 2 },
+    organized: { left: 61, top: 41.5, width: 37.4, height: 32, z: 2 },
+  },
+  terminal: {
+    messy: { left: 46, top: 55, width: 38, height: 29, z: 4 },
+    organized: { left: 61, top: 76.5, width: 37.4, height: 20, z: 4 },
+  },
+};
+
+const heroWindowMeta: Record<HeroWindowId, { app: string; title: string; tint: string; focused?: boolean }> = {
+  agent: { app: "Terminal", title: "atlas — codex", tint: "#d277ff", focused: true },
+  editor: { app: "Code", title: "session.ts — atlas", tint: "#62a0ff" },
+  browser: { app: "Browser", title: "localhost:5173", tint: "#f3c969" },
+  terminal: { app: "Terminal", title: "atlas — bun dev", tint: "#34d399" },
+};
+
+function HeroWindowContent({ id }: { id: HeroWindowId }) {
+  if (id === "agent") {
+    return (
+      <div className="desktop-terminal-lines desktop-agent-lines">
+        <span><b>~/dev/atlas</b> codex</span>
+        <span className="agent-prompt">› fix the flaky session test</span>
+        <span className="terminal-dim">• reading src/auth/session.ts</span>
+        <span className="terminal-dim">• editing refreshSession()</span>
+        <span>$ bun test auth</span>
+        <span className="terminal-ready">✓ 12 passed, 0 failed</span>
+      </div>
+    );
+  }
+
+  if (id === "editor") {
+    return (
+      <div className="desktop-editor">
+        <div className="desktop-editor-sidebar">
+          <strong>ATLAS</strong>
+          <span>src</span>
+          <span className="is-active">session.ts</span>
+          <span>auth.ts</span>
+          <span>routes.ts</span>
+        </div>
+        <div className="desktop-code-lines" aria-hidden="true">
+          <span><i>export async function</i> refreshSession() {'{'}</span>
+          <span className="indent"><i>const</i> s = <i>await</i> sessions.get(token)</span>
+          <span className="indent"><i>if</i> (s.expired) <i>return</i> renew(s)</span>
+          <span className="indent"><i>return</i> s</span>
+          <span>{'}'}</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (id === "browser") {
+    return (
+      <div className="desktop-browser-view">
+        <div className="desktop-browser-mark">atlas · localhost:5173</div>
+        <div className="desktop-browser-ready"><i /> Ready</div>
+        <span>vite preview</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="desktop-terminal-lines">
+      <span><b>~/dev/atlas</b> bun dev</span>
+      <span className="terminal-dim">VITE v7.3.3</span>
+      <span><i>➜</i> Local: http://localhost:5173</span>
+      <span className="terminal-ready">✓ Ready in 612ms</span>
+    </div>
+  );
+}
+
+function HeroDesktopWindow({
+  id,
+  phase,
+  reducedMotion,
+  children,
+}: {
+  id: HeroWindowId;
+  phase: HeroDesktopPhase;
+  reducedMotion: boolean;
+  children: ReactNode;
+}) {
+  const layout = heroWindowLayouts[id][phase];
+  const meta = heroWindowMeta[id];
+
+  return (
+    <motion.div
+      className={`hero-desktop-window hero-window-${id}${meta.focused ? " is-focused" : ""}`}
+      style={{ "--window-tint": meta.tint, zIndex: layout.z } as CSSProperties}
+      animate={{
+        left: `${layout.left}%`,
+        top: `${layout.top}%`,
+        width: `${layout.width}%`,
+        height: `${layout.height}%`,
+      }}
+      transition={{ duration: reducedMotion ? 0 : 0.74, ease: [0.16, 1, 0.3, 1] }}
+    >
+      <div className="hero-window-bar">
+        <span className="hero-window-lights"><i /><i /><i /></span>
+        <span className="hero-window-title">{meta.title}</span>
+        <span className="hero-window-app">{meta.app}</span>
+      </div>
+      <div className="hero-window-body">{children}</div>
+    </motion.div>
+  );
+}
+
+function HeroWorkspaceStage() {
+  const prefersReducedMotion = useReducedMotion() ?? false;
+  const [phaseChoice, setPhaseChoice] = useState<HeroDesktopPhase>("messy");
+  // The loop alternates who organizes the mess: your keycast, then the agent.
+  const [driver, setDriver] = useState<"you" | "agent">("you");
+  const [autoPlay, setAutoPlay] = useState(true);
+  const [inView, setInView] = useState(true);
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  // Reduced-motion visitors land on the organized result instead of the loop.
+  const phase = prefersReducedMotion && autoPlay ? "organized" : phaseChoice;
+  const organized = phase === "organized";
+
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setInView(entry.isIntersecting),
+      { threshold: 0.35 },
+    );
+    observer.observe(stage);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!autoPlay || prefersReducedMotion || !inView) return;
+    // Linger on the organized result — longest after the agent's turn, so
+    // the tiled desktop and the full two-command transcript sit together.
+    // The messy beat holds long enough to read the scatter; longer on agent
+    // turns, where the request and tool call appear before the snap.
+    const delay = organized
+      ? driver === "agent" ? 7200 : 4600
+      : driver === "you" ? 3000 : 4200;
+    const timer = window.setTimeout(() => {
+      if (organized) {
+        setDriver(driver === "you" ? "agent" : "you");
+        setPhaseChoice("messy");
+      } else {
+        setPhaseChoice("organized");
+      }
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [autoPlay, organized, driver, prefersReducedMotion, inView]);
+
+  const selectPhase = (next: HeroDesktopPhase) => {
+    setAutoPlay(false);
+    setPhaseChoice(next);
+  };
+
+  return (
+    <div className="hero-desktop-demo" id="workspace-demo">
+      <div className="hero-desktop-comparison" role="group" aria-label="Compare the desktop without and with Lattices">
+        <button
+          type="button"
+          className={!organized ? "is-active" : ""}
+          aria-pressed={!organized}
+          onClick={() => selectPhase("messy")}
+        >
+          <span aria-hidden="true">○</span>
+          Without Lattices
+        </button>
+        <button
+          type="button"
+          className={organized ? "is-active" : ""}
+          aria-pressed={organized}
+          onClick={() => selectPhase("organized")}
+        >
+          <span aria-hidden="true">●</span>
+          With Lattices
+        </button>
+      </div>
+
+      <div
+        ref={stageRef}
+        className={`hero-workspace-stage is-${phase}`}
+        role="img"
+        aria-label={organized
+          ? "A simulated Mac desktop with four windows tiled by Lattices, an agent terminal in focus"
+          : "A simulated Mac desktop with four overlapping, scattered windows"}
+      >
+        <div className="hero-laptop-camera" aria-hidden="true"><i /></div>
+        <div className="hero-desktop-screen">
+          <div className="hero-macos-bar">
+            <span className="hero-macos-brand"><span className="hero-macos-apple" aria-hidden="true"><AppleIcon /></span> Terminal</span>
+            <span className="hero-macos-menu">File&nbsp;&nbsp; Edit&nbsp;&nbsp; View&nbsp;&nbsp; Window</span>
+            <span className="hero-macos-status"><span className="hero-macos-lattices">⌁ lattices</span>&nbsp;&nbsp; 9:41 AM</span>
+          </div>
+
+          {(Object.keys(heroWindowMeta) as HeroWindowId[]).map((id) => (
+            <HeroDesktopWindow
+              key={id}
+              id={id}
+              phase={phase}
+              reducedMotion={prefersReducedMotion}
+            >
+              <HeroWindowContent id={id} />
+            </HeroDesktopWindow>
+          ))}
+
+          <motion.div
+            className="hero-keycast"
+            aria-hidden="true"
+            initial={false}
+            animate={{ opacity: !organized && autoPlay && driver === "you" ? 1 : 0 }}
+            transition={
+              !organized && autoPlay && driver === "you"
+                ? { duration: 0.26, delay: 1.4 }
+                : { duration: 0.18 }
+            }
+          >
+            <kbd>⌃</kbd>
+            <kbd>⌥</kbd>
+            <kbd>G</kbd>
+            <span>organize</span>
+          </motion.div>
+
+          <motion.div
+            className="hero-desktop-result"
+            animate={{ opacity: organized ? 1 : 0, y: organized ? 0 : 6 }}
+            transition={{ duration: prefersReducedMotion ? 0 : 0.24, delay: organized ? 0.5 : 0 }}
+            aria-hidden={!organized}
+          >
+            <i /> 4 windows organized
+          </motion.div>
+        </div>
+      </div>
+
+      <div className="hero-agent-harness" role="group" aria-label="A coding agent reading the same desktop over the local API">
+        <div className="hero-harness-head">
+          <span className="hero-harness-dot" aria-hidden="true" />
+          <span>claude · agent session</span>
+          <span className="hero-harness-transport">ws://localhost · live</span>
+        </div>
+        <div className="hero-harness-body">
+          <span className="hero-harness-user">
+            <b>&gt;</b> what&apos;s on my screen?
+          </span>
+          <span className="hero-harness-tool">
+            <i aria-hidden="true">⏺</i> lattices — windows.list
+          </span>
+          <motion.span
+            key={driver === "agent" ? "agent" : phase}
+            className="hero-harness-result"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: prefersReducedMotion ? 0 : 0.3, delay: prefersReducedMotion ? 0 : 0.6 }}
+          >
+            <b aria-hidden="true">⎿</b> 4 windows · {driver === "agent" || !organized ? "3 overlapping" : "tiled main-left"} · focused: atlas — codex
+          </motion.span>
+          <AnimatePresence>
+            {driver === "agent" && (
+              <motion.span
+                key="turn2-user"
+                className="hero-harness-user"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0, transition: { duration: 0.25, delay: 0 } }}
+                transition={{ duration: 0.3, delay: 0.9 }}
+              >
+                <b>&gt;</b> put codex on the left half, stack the rest on the right
+              </motion.span>
+            )}
+            {driver === "agent" && (
+              <motion.span
+                key="turn2-tool"
+                className="hero-harness-tool"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0, transition: { duration: 0.25, delay: 0 } }}
+                transition={{ duration: 0.3, delay: 2.1 }}
+              >
+                <i aria-hidden="true">⏺</i> lattices — layout.distribute
+              </motion.span>
+            )}
+            {driver === "agent" && organized && (
+              <motion.span
+                key="turn2-result"
+                className="hero-harness-result"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0, transition: { duration: 0.25, delay: 0 } }}
+                transition={{ duration: 0.3, delay: 0.9 }}
+              >
+                <b aria-hidden="true">⎿</b> codex left half · 3 stacked right · done
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
-  const [pm, setPm] = useState<PkgManager>("npm");
-  const [copied, setCopied] = useState(false);
   const [paneLayout, setPaneLayout] = useState<PaneLayout>(2);
   const [cuaStep, setCuaStep] = useState<CuaStepId>("observe");
   // Initial theme is set synchronously by the inline script in index.html
@@ -248,12 +533,6 @@ export default function App() {
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem("theme", theme);
   }, [theme]);
-
-  const copy = async () => {
-    await navigator.clipboard.writeText(commands[pm]);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
 
   return (
     <>
@@ -305,101 +584,60 @@ export default function App() {
       </nav>
 
       {/* Hero */}
-      <div className="shell">
+      <main className="shell">
         <section className="hero fade-in">
-          <div className="hero-badge">
-            <LatticesLogo size={14} />
-            Open source
-          </div>
-          <h1>
-            agentic window
-            <br />
-            <span className="accent">management</span>
-          </h1>
-          <p className="hero-sub">
-            When your desktop is full of windows, terminals, and agents, Lattices gives you one place to arrange, launch, and control all of it — by hand or from code.
-          </p>
-          <div className="hero-pillars">
-            <div className="hero-pillar">
-              <h2>Window manager</h2>
-              <p>Resize, move, and switch windows with mouse or keyboard. Snap to grids, layers, and spaces across your Mac.</p>
-            </div>
-            <div className="hero-pillar">
-              <h2>Managed terminal sessions</h2>
-              <p>Configurable terminal sessions powered by tmux today — panes, tabs, groups, and layouts that you control and restore.</p>
-            </div>
-            <div className="hero-pillar">
-              <h2>Computer use (CUA)</h2>
-              <p>Full mouse, keyboard, and screen actions with recording and verification so agents can act and confirm every step.</p>
-            </div>
-            <div className="hero-pillar">
-              <h2>API for your agents</h2>
-              <p>40+ typed methods over one connection so agents control windows, terminals, and your full desktop from code or AI.</p>
-            </div>
-          </div>
-
-          <div className="install fade-in fade-in-delay-1">
-            <a
-              href="https://github.com/arach/lattices/releases/latest/download/Lattices.dmg"
-              className="install-app-download"
-              onClick={() => trackCta('download_dmg_hero', 'https://github.com/arach/lattices/releases/latest/download/Lattices.dmg')}
-            >
-              <span className="install-app-icon">
-                <AppleIcon />
-              </span>
-              <span className="install-app-copy">
-                <span>Native macOS app</span>
-                <span>Apple Silicon .dmg</span>
-              </span>
-              <span className="install-app-go" aria-hidden="true">
+          <div className="hero-copy">
+            <h1>The workspace manager<br /><span className="accent">for you and your agents.</span></h1>
+            <p className="hero-sub">
+              Every window, terminal, and layout on your Mac<br />
+              organized and accessible, by hand, keystroke, or API.
+            </p>
+            <div className="hero-actions">
+              <a
+                href="https://github.com/arach/lattices/releases/latest/download/Lattices.dmg"
+                className="hero-primary-cta"
+                onClick={() => trackCta('download_dmg_hero', 'https://github.com/arach/lattices/releases/latest/download/Lattices.dmg')}
+              >
                 <DownloadIcon />
-              </span>
-            </a>
-            <div className="install-surface">
-              <div className="install-surface-head">
-                <span>SDK package</span>
-                <span>Agent API</span>
-              </div>
-              <div className="install-tabs">
-                {pmOrder.map((p) => (
-                  <button
-                    key={p}
-                    className={`install-tab ${pm === p ? "active" : ""}`}
-                    onClick={() => setPm(p)}
-                  >
-                    {p}
-                  </button>
-                ))}
-              </div>
-              <div className="install-cmd">
-                <code>
-                  <span className="prompt">$</span>
-                  {commands[pm]}
-                </code>
-                <button className="install-copy" onClick={copy} aria-label="Copy install command">
-                  {copied ? <CheckIcon /> : <CopyIcon />}
-                </button>
-              </div>
-            </div>
-            <div className="hero-links">
-              <a
-                href="https://github.com/arach/lattices"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="star-link"
-                onClick={() => trackCta('star_github', 'https://github.com/arach/lattices')}
-              >
-                <StarIcon />
-                Star us on GitHub
+                Download for macOS
               </a>
-              <a
-                href="/docs/overview"
-                className="docs-link"
-                onClick={() => trackCta('read_docs', '/docs/overview')}
-              >
+              <a href="/docs/overview" className="hero-secondary-cta">
                 Read the docs
               </a>
             </div>
+          </div>
+
+          <HeroWorkspaceStage />
+        </section>
+
+        <section className="section shared-state-section" id="shared-state">
+          <div className="shared-state-copy fade-in">
+            <div className="cua-kicker">One state, two operators</div>
+            <h2>Same desktop, whether you drive or your agent does.</h2>
+            <p>
+              Agents can write your code and run your tests, but they can&apos;t
+              organize where you actually work: your screen. Lattices gives
+              them that — the same live state as you. You move a window, your
+              agent sees it; your agent stages an action, you watch it land.
+            </p>
+          </div>
+          <div className="operator-rows fade-in fade-in-delay-1" aria-label="The same action, by hand and by API">
+            <div className="operator-row">
+              <span className="operator-row-label">You</span>
+              <span className="operator-row-action">
+                <kbd>⌃</kbd><kbd>⌥</kbd><kbd>G</kbd>
+                <span>— snap the editor to the left half</span>
+              </span>
+            </div>
+            <div className="operator-row">
+              <span className="operator-row-label">Your agent</span>
+              <span className="operator-row-action">
+                <code>window.place {'{'} query: &apos;editor&apos;, at: &apos;left&apos; {'}'}</code>
+              </span>
+            </div>
+            <p className="operator-result">
+              <i aria-hidden="true" /> Same window, same spot — one live state.
+            </p>
           </div>
         </section>
 
@@ -503,10 +741,10 @@ export default function App() {
 
         {/* macOS app */}
         <section className="app-section" id="app">
-          <div className="app-heading-row">
-            <div>
-              <div className="app-title-row">
-                <h2 className="app-title">Native macOS app</h2>
+          <div className="app-grid">
+            <div className="app-copy">
+              <div className="app-kicker-row">
+                <span>Native macOS app</span>
                 <a
                   href="https://github.com/arach/lattices/releases/latest/download/Lattices.dmg"
                   className="app-download-icon"
@@ -517,26 +755,17 @@ export default function App() {
                   <DownloadIcon />
                 </a>
               </div>
+              <h2 className="app-title">The whole workspace, visible.</h2>
               <p className="app-desc">
-                Built with SwiftUI. Manage your workspace — terminal
-                sessions, app windows, and layers — from an installed Mac app.
+                See every project, session, window, and layer in one native
+                SwiftUI control surface.
               </p>
-            </div>
-          </div>
-          <div className="app-grid">
-            <div className="app-copy">
               <ul className="app-features">
-                <li>See all projects and session status</li>
+                <li>See every project and live session</li>
                 <li>Launch, attach, or detach with a click</li>
-                <li>
-                  Command palette via <code>Cmd+Shift+M</code>
-                </li>
-                <li>Window tiling, layers, and tab groups</li>
-                <li>
-                  <a href="/docs/layers">Workspace layers</a> via <code>Cmd+Option+1/2/3</code>
-                </li>
-                <li>Gestures, overlays, and omni search</li>
-                <li>Voice commands for tiling, search, focus, and launch</li>
+                <li>Tile windows and switch workspace layers</li>
+                <li>Search windows, terminals, and screen text</li>
+                <li>Work by keyboard, mouse gesture, or voice</li>
               </ul>
             </div>
             <div className="app-demo-reel" aria-label="Animated preview of lattices arranging windows, layers, search, and voice commands">
@@ -544,6 +773,9 @@ export default function App() {
                 src="/app-latest.png"
                 alt="lattices app showing screen map with dual displays, layers, and inspector"
                 className="app-screenshot"
+                width="1172"
+                height="764"
+                loading="lazy"
               />
               <div className="app-demo-cursor" aria-hidden="true" />
               <div className="app-demo-focus app-demo-focus-one" aria-hidden="true" />
@@ -554,59 +786,44 @@ export default function App() {
           </div>
         </section>
 
-        {/* Features */}
-        <section className="feature-buckets fade-in fade-in-delay-2" id="features">
-          <div className="bucket">
-            <h3 className="bucket-label">Durable Terminal Sessions</h3>
-            <div className="bucket-cards">
-              <div className="feature">
-                <h3>One command, zero config</h3>
-                <p>Run <code>lattices start</code> — session created, dev server running.</p>
-              </div>
-              <div className="feature">
-                <h3>Persistent sessions</h3>
-                <p>Survives reboots. Reattach anytime.</p>
-              </div>
-              <div className="feature">
-                <h3>Tab groups</h3>
-                <p>Related projects as tabs in one session.</p>
-              </div>
+        {/* Product spine */}
+        <section className="workflow-spine fade-in fade-in-delay-2" id="features">
+          <article>
+            <span className="workflow-number">01</span>
+            <div>
+              <h3>Launch</h3>
+              <h2>Bring a whole project up with one command.</h2>
+              <p>
+                Define its terminals, dev servers, and layout once. Lattices
+                launches the entire environment — panes running, windows placed,
+                ready to work. Durable, so it reattaches when you come back.
+              </p>
             </div>
-          </div>
-          <div className="bucket">
-            <h3 className="bucket-label">Smart Layout Manager</h3>
-            <div className="bucket-cards">
-              <div className="feature">
-                <h3>Tiling + layers</h3>
-                <p>Hotkeys, snap to grids, switchable window groups.</p>
-              </div>
-              <div className="feature">
-                <h3>Mouse gestures</h3>
-                <p>Draw shapes to tile, focus, launch, or run shortcuts with visible feedback.</p>
-              </div>
-              <div className="feature">
-                <h3>Screen animations</h3>
-                <p>Put little visuals on screen for gesture trails, status, and workspace cues.</p>
-              </div>
+          </article>
+          <article>
+            <span className="workflow-number">02</span>
+            <div>
+              <h3>Arrange</h3>
+              <h2>Tile, layer, and switch — by hand or by keystroke.</h2>
+              <p>
+                Snap windows to grids, group them into layers and spaces, and
+                move across your desktop with the keyboard, mouse gestures, or
+                voice. When things drift, one command rebalances the screen.
+              </p>
             </div>
-          </div>
-          <div className="bucket">
-            <h3 className="bucket-label">Programmable Workspace</h3>
-            <div className="bucket-cards">
-              <div className="feature">
-                <h3>40+ RPC methods</h3>
-                <p>WebSocket on localhost. Full workspace control.</p>
-              </div>
-              <div className="feature">
-                <h3>Agent automation</h3>
-                <p>AI agents and scripts drive your desktop.</p>
-              </div>
-              <div className="feature">
-                <h3>Screen text indexing</h3>
-                <p>AX + OCR. Search text across all windows.</p>
-              </div>
+          </article>
+          <article>
+            <span className="workflow-number">03</span>
+            <div>
+              <h3>Automate</h3>
+              <h2>Let agents see the screen and act on it, safely.</h2>
+              <p>
+                Agents read any window through AX and OCR, then work in a loop
+                you can trust: observe, stage, execute on-device, and verify the
+                result before moving on.
+              </p>
             </div>
-          </div>
+          </article>
         </section>
 
         {/* Config */}
@@ -623,22 +840,22 @@ export default function App() {
           <div className="config-grid fade-in fade-in-delay-2">
             <div>
               <div className="layouts">
-                <div className={`layout-card${paneLayout === 1 ? " active" : ""}`} onClick={() => setPaneLayout(1)}>
+                <button type="button" className={`layout-card${paneLayout === 1 ? " active" : ""}`} onClick={() => setPaneLayout(1)} aria-pressed={paneLayout === 1}>
                   <h3>1 pane</h3>
                   <p>Single focus</p>
                   <div className="layout-diagram layout-1">
                     <div className="layout-pane main">claude</div>
                   </div>
-                </div>
-                <div className={`layout-card${paneLayout === 2 ? " active" : ""}`} onClick={() => setPaneLayout(2)}>
+                </button>
+                <button type="button" className={`layout-card${paneLayout === 2 ? " active" : ""}`} onClick={() => setPaneLayout(2)} aria-pressed={paneLayout === 2}>
                   <h3>2 panes</h3>
                   <p>Side-by-side</p>
                   <div className="layout-diagram layout-2">
                     <div className="layout-pane main">claude</div>
                     <div className="layout-pane">server</div>
                   </div>
-                </div>
-                <div className={`layout-card${paneLayout === 3 ? " active" : ""}`} onClick={() => setPaneLayout(3)}>
+                </button>
+                <button type="button" className={`layout-card${paneLayout === 3 ? " active" : ""}`} onClick={() => setPaneLayout(3)} aria-pressed={paneLayout === 3}>
                   <h3>3+ panes</h3>
                   <p>Main-vertical</p>
                   <div className="layout-diagram layout-3">
@@ -646,7 +863,7 @@ export default function App() {
                     <div className="layout-pane">server</div>
                     <div className="layout-pane">tests</div>
                   </div>
-                </div>
+                </button>
               </div>
             </div>
 
@@ -707,10 +924,60 @@ export default function App() {
           </div>
         </section>
 
+        <section className="local-trust fade-in" id="local-first">
+          <div>
+            <div className="cua-kicker">Local-first, and open</div>
+            <h2>It all runs on your machine, in the open.</h2>
+          </div>
+          <p>
+            Lattices runs as a local service on your Mac — no cloud in the
+            loop, nothing leaves the device unless you send it. It speaks a
+            typed API over localhost, the source is open, and agent actions are
+            recorded and verifiable.
+          </p>
+        </section>
+
+        <section className="install-chooser fade-in" id="install">
+          <div className="install-chooser-head">
+            <div className="cua-kicker">Three ways in. One workspace.</div>
+            <h2>Start where you work.</h2>
+          </div>
+          <div className="install-chooser-grid">
+            <article>
+              <span className="install-chooser-label">App</span>
+              <h3>Native macOS app</h3>
+              <p>Manage projects, windows, and layers with a click.</p>
+              <a href="https://github.com/arach/lattices/releases/latest/download/Lattices.dmg">
+                Download for macOS <span aria-hidden="true">↗</span>
+              </a>
+              <small>Apple Silicon · .dmg</small>
+            </article>
+            <article>
+              <span className="install-chooser-label">CLI</span>
+              <h3>Command line</h3>
+              <p>Launch, search, place, and script the same workspace.</p>
+              <a href="/docs/quickstart">
+                Get the CLI <span aria-hidden="true">→</span>
+              </a>
+              <small><code>npm i -g @arach/lattices</code></small>
+            </article>
+            <article>
+              <span className="install-chooser-label">SDK</span>
+              <h3>Typed agent SDK</h3>
+              <p>Build agents and scripts against the whole desktop.</p>
+              <a href="/docs/api">
+                Read the API <span aria-hidden="true">→</span>
+              </a>
+              <small><code>npm i @lattices/sdk</code></small>
+            </article>
+          </div>
+          <p className="install-chooser-footnote">Same service, same live state — pick the surface that fits.</p>
+        </section>
+
         {/* CTA */}
         <section className="cta">
-          <h2>Ready to lattices?</h2>
-          <p>Install globally. Up and running in seconds.</p>
+          <h2>Give your windows a system.</h2>
+          <p>Free and open source. Running on your Mac in seconds.</p>
           <div className="cta-download-row">
             <a
               href="https://github.com/arach/lattices/releases/latest/download/Lattices.dmg"
@@ -740,13 +1007,13 @@ export default function App() {
               View on GitHub
             </a>
             <a
-              href="https://www.npmjs.com/package/lattices"
+              href="https://www.npmjs.com/package/@arach/lattices"
               target="_blank"
               rel="noopener noreferrer"
               className="btn btn-secondary"
               onClick={() => trackCta('view_npm', 'https://www.npmjs.com/package/lattices')}
             >
-              npm package
+              CLI package
             </a>
             <a
               href="/docs/api"
@@ -786,7 +1053,7 @@ export default function App() {
               GitHub
             </a>
             <a
-              href="https://www.npmjs.com/package/lattices"
+                href="https://www.npmjs.com/package/@arach/lattices"
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -794,7 +1061,7 @@ export default function App() {
             </a>
           </nav>
         </footer>
-      </div>
+      </main>
     </>
   );
 }
