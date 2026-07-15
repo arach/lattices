@@ -1092,57 +1092,66 @@ struct CompactActivityLogPanel: View {
                 }
                 Spacer(minLength: 0)
             } else {
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(sortedEntries) { entry in
-                            HStack(spacing: 9) {
-                                Circle()
-                                    .fill(LatsTint.from(token: entry.tint).color)
-                                    .frame(width: 6, height: 6)
-                                Text(entry.text)
-                                    .font(LatsFont.mono(9.5))
-                                    .foregroundStyle(LatsPalette.textDim)
-                                    .lineLimit(1)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                Text(relativeTime(entry.createdAt))
-                                    .font(LatsFont.mono(8.5))
-                                    .monospacedDigit()
-                                    .foregroundStyle(LatsPalette.textGhost)
-                            }
-                            .padding(.vertical, 5)
-                            .overlay(alignment: .bottom) {
-                                DottedRule(color: Color.white.opacity(0.07))
+                // Drive the relative ages off a periodic clock so "2s / 1m / …"
+                // actually advance during an idle session instead of freezing at
+                // their first-render value.
+                TimelineView(.periodic(from: .now, by: 10)) { ctx in
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(sortedEntries) { entry in
+                                HStack(spacing: 9) {
+                                    Circle()
+                                        .fill(LatsTint.from(token: entry.tint).color)
+                                        .frame(width: 6, height: 6)
+                                    Text(entry.text)
+                                        .font(LatsFont.mono(9.5))
+                                        .foregroundStyle(LatsPalette.textDim)
+                                        .lineLimit(1)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                    Text(relativeTime(entry.createdAt, now: ctx.date))
+                                        .font(LatsFont.mono(8.5))
+                                        .monospacedDigit()
+                                        .foregroundStyle(LatsPalette.textGhost)
+                                }
+                                .padding(.vertical, 5)
+                                .overlay(alignment: .bottom) {
+                                    DottedRule(color: Color.white.opacity(0.07))
+                                }
                             }
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .frame(maxHeight: .infinity)
-                .mask(
-                    LinearGradient(
-                        stops: [
-                            .init(color: .clear, location: 0),
-                            .init(color: .black, location: 0.04),
-                            .init(color: .black, location: 0.92),
-                            .init(color: .clear, location: 1)
-                        ],
-                        startPoint: .top, endPoint: .bottom
+                    .frame(maxHeight: .infinity)
+                    .mask(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .clear, location: 0),
+                                .init(color: .black, location: 0.04),
+                                .init(color: .black, location: 0.92),
+                                .init(color: .clear, location: 1)
+                            ],
+                            startPoint: .top, endPoint: .bottom
+                        )
                     )
-                )
+                }
             }
         }
         .frame(maxHeight: .infinity)
     }
 
-    /// Compact relative age ("2s", "1m", "3h", "2d") for an activity entry.
-    private func relativeTime(_ date: Date) -> String {
-        let s = max(0, Int(Date().timeIntervalSince(date)))
+    /// Compact relative age ("2s", "1m", "3h", "2d", "1w") for an activity entry,
+    /// evaluated against `now` so a driving clock can keep it current. Matches the
+    /// buckets used by the Home feed's ago-label.
+    private func relativeTime(_ date: Date, now: Date = Date()) -> String {
+        let s = max(0, Int(now.timeIntervalSince(date)))
         if s < 60 { return "\(s)s" }
         let m = s / 60
         if m < 60 { return "\(m)m" }
         let h = m / 60
         if h < 24 { return "\(h)h" }
-        return "\(h / 24)d"
+        let d = h / 24
+        if d < 7 { return "\(d)d" }
+        return "\(d / 7)w"
     }
 }
 
@@ -1596,36 +1605,62 @@ struct LatsShortcutGrid: View {
 
     @State private var recentlyPressed: UUID?
 
-    /// Chunk the flat shortcut list into rows of `columns` so the rows can each
-    /// take an equal share of the vertical space (like the reference's `1fr`
-    /// rows) — the tiles fill the deck area and sit flush at the bottom, no gap.
+    private let rowSpacing: CGFloat = 9
+    /// Slightly above LatsShortcutTile's minHeight (90) so a "fits" decision
+    /// always leaves each stretched row taller than a tile can't-shrink-below.
+    private let minRowHeight: CGFloat = 96
+
+    private var effectiveColumns: Int { max(1, columns) }
+
+    /// Chunk the flat shortcut list into rows of `columns`.
     private var rows: [[LatsShortcut]] {
-        guard columns > 0 else { return [shortcuts] }
-        return stride(from: 0, to: shortcuts.count, by: columns).map {
-            Array(shortcuts[$0..<min($0 + columns, shortcuts.count)])
+        let cols = effectiveColumns
+        return stride(from: 0, to: shortcuts.count, by: cols).map {
+            Array(shortcuts[$0..<min($0 + cols, shortcuts.count)])
         }
     }
 
     var body: some View {
-        VStack(spacing: 9) {
-            ForEach(Array(rows.enumerated()), id: \.offset) { rowIdx, row in
-                HStack(spacing: 9) {
-                    ForEach(Array(row.enumerated()), id: \.element.id) { colIdx, s in
-                        tile(s, index: rowIdx * columns + colIdx + 1)
-                    }
-                    // Keep tile widths uniform when the last row is short.
-                    if row.count < columns {
-                        ForEach(0..<(columns - row.count), id: \.self) { _ in
-                            Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity)
-                        }
-                    }
+        GeometryReader { geo in
+            let needed = CGFloat(rows.count) * minRowHeight
+                + CGFloat(max(0, rows.count - 1)) * rowSpacing
+            if needed <= geo.size.height {
+                // Fits: stretch rows to an equal share of the height so the tiles
+                // sit flush at the bottom with no gap (like the reference's 1fr rows).
+                grid(fill: true)
+                    .frame(width: geo.size.width, height: geo.size.height)
+            } else {
+                // Too many rows for the available height (compact device / dense
+                // deck): scroll instead of clipping unreachable tiles.
+                ScrollView(showsIndicators: false) {
+                    grid(fill: false)
+                        .frame(width: geo.size.width)
                 }
-                .frame(maxHeight: .infinity)
+                .frame(width: geo.size.width, height: geo.size.height)
             }
         }
     }
 
-    private func tile(_ s: LatsShortcut, index: Int) -> some View {
+    private func grid(fill: Bool) -> some View {
+        VStack(spacing: rowSpacing) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { rowIdx, row in
+                HStack(spacing: 9) {
+                    ForEach(Array(row.enumerated()), id: \.element.id) { colIdx, s in
+                        tile(s, index: rowIdx * effectiveColumns + colIdx + 1, fill: fill)
+                    }
+                    // Keep tile widths uniform when the last row is short.
+                    if row.count < effectiveColumns {
+                        ForEach(0..<(effectiveColumns - row.count), id: \.self) { _ in
+                            Color.clear.frame(maxWidth: .infinity, maxHeight: fill ? .infinity : nil)
+                        }
+                    }
+                }
+                .frame(maxHeight: fill ? .infinity : nil)
+            }
+        }
+    }
+
+    private func tile(_ s: LatsShortcut, index: Int, fill: Bool) -> some View {
         LatsShortcutTile(
             shortcut: s,
             index: index,
@@ -1639,7 +1674,7 @@ struct LatsShortcutGrid: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: fill ? .infinity : nil)
     }
 }
 
@@ -1981,7 +2016,9 @@ struct LatsDeckScreen: View {
 
     private var gridColumns: Int {
         if let columns = activeCockpitPage()?.columns {
-            return hSize == .compact ? min(3, columns) : columns
+            // Guard against a page reporting 0 columns, which would collapse the
+            // grid into one overflowing row.
+            return max(1, hSize == .compact ? min(3, columns) : columns)
         }
         // Default to the design's 4-up grid on regular width so each keycap has
         // room for its icon chip, title, and meta; 3-up when compact.
@@ -2090,6 +2127,9 @@ struct LatsDeckScreen: View {
 
     private var shortcuts: [LatsShortcut] {
         if let live = liveShortcuts(), !live.isEmpty { return live }
+        // Connected but this page has no tiles yet: show nothing rather than the
+        // mock command deck mislabeled under the live page's name.
+        if isConnected { return [] }
         return MockDecks.shortcuts(for: effectiveDeckID)
     }
 
