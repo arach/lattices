@@ -1864,9 +1864,9 @@ struct SettingsContentView: View {
     private var companionContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
+                companionCockpitCard
                 companionBridgeOverviewCard
                 companionTrustedDevicesCard
-                companionCockpitCard
             }
             .padding(16)
             .frame(maxWidth: 760, alignment: .leading)
