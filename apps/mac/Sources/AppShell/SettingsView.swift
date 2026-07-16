@@ -19,6 +19,7 @@ struct SettingsContentView: View {
         case ai
         case search
         case companion
+        case deck
 
         var id: String { rawValue }
 
@@ -33,6 +34,7 @@ struct SettingsContentView: View {
             case .ai: return "AI"
             case .search: return "Search & OCR"
             case .companion: return "Companion"
+            case .deck: return "Command Deck"
             }
         }
 
@@ -47,6 +49,7 @@ struct SettingsContentView: View {
             case .ai: return "sparkles"
             case .search: return "text.viewfinder"
             case .companion: return "ipad.and.iphone"
+            case .deck: return "square.grid.2x2"
             }
         }
 
@@ -61,6 +64,7 @@ struct SettingsContentView: View {
             case .ai: return "Agents"
             case .search: return "Indexing"
             case .companion: return "LATS iOS Bridge"
+            case .deck: return "Companion"
             }
         }
 
@@ -84,6 +88,8 @@ struct SettingsContentView: View {
                 return "OCR cadence, quality, and recent capture visibility."
             case .companion:
                 return "Local-network pairing, trusted iPad devices, and bridge security."
+            case .deck:
+                return "Design the companion command deck — the grid, keys, and spans the iPad renders."
             }
         }
 
@@ -95,7 +101,7 @@ struct SettingsContentView: View {
                 return "Control"
             case .ai, .search:
                 return "Intelligence"
-            case .companion:
+            case .companion, .deck:
                 return "Devices"
             }
         }
@@ -358,7 +364,19 @@ struct SettingsContentView: View {
             searchOcrContent
         case .companion:
             companionContent
+        case .deck:
+            deckContent
         }
+    }
+
+    /// Full-page companion deck builder (its own sidebar page). The WKWebView
+    /// hosts the studio editor; edits persist to the companion draft.
+    private var deckContent: some View {
+        CompanionDeckBuilderView(onChange: { data in
+            persistCompanionDeckDraft(data)
+        })
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(16)
     }
 
     // MARK: - Sticky section header
@@ -1864,9 +1882,9 @@ struct SettingsContentView: View {
     private var companionContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                companionCockpitCard
                 companionBridgeOverviewCard
                 companionTrustedDevicesCard
+                companionCockpitCard
             }
             .padding(16)
             .frame(maxWidth: 760, alignment: .leading)
@@ -3826,22 +3844,29 @@ struct SettingsContentView: View {
             summary: "Define the Mac-authored command deck here, then let the companion app render it. Trackpad proxy runs through the same bridge."
         ) {
             VStack(alignment: .leading, spacing: 14) {
-                // The deck builder is the headline of this card — embedded web
-                // editor; edits persist to the companion draft.
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Design the deck visually — tap an empty cell to add, drag to move, pull the corner to span. Switch decks with the tabs.")
-                        .font(Typo.caption(10.5))
-                        .foregroundColor(Palette.textMuted)
-
-                    CompanionDeckBuilderView(onChange: { data in
-                        persistCompanionDeckDraft(data)
-                    })
-                    .frame(height: 560)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.borderLit, lineWidth: 0.5))
+                // The deck layout lives on its own page now.
+                Button { selectedTab = .deck } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "square.grid.2x2")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Palette.text)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Command Deck")
+                                .font(Typo.monoBold(11))
+                                .foregroundColor(Palette.text)
+                            Text("Design the grid, keys, and spans the companion renders.")
+                                .font(Typo.caption(10.5))
+                                .foregroundColor(Palette.textMuted)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(Palette.textDim)
+                    }
+                    .padding(12)
+                    .background(shortcutsInsetPanel)
                 }
-                .padding(12)
-                .background(shortcutsInsetPanel)
+                .buttonStyle(.plain)
 
                 HStack(alignment: .top, spacing: 12) {
                     VStack(alignment: .leading, spacing: 5) {
