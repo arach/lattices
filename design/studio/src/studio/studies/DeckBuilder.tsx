@@ -11,7 +11,7 @@
  * real editor is built on the Mac (see docs/companion-deck-builder-spec.md).
  */
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Mic, X, CornerDownLeft, ArrowLeft, ArrowRight, ArrowUp, ArrowDown,
   ChevronLeft, ChevronRight, Search, Command, LayoutGrid, Crosshair,
@@ -107,11 +107,11 @@ const CATALOG: { group: string; items: CatalogItem[] }[] = [
 const CATALOG_BY_ID = new Map(CATALOG.flatMap((g) => g.items).map((i) => [i.id, i]));
 
 // ── model ────────────────────────────────────────────────────────────────
-type Key = {
+export type Key = {
   id: string; label: string; icon: IconName; tint: Tint; category: string;
   actionID: string; col: number; row: number; colSpan: number; rowSpan: number;
 };
-type Deck = { id: string; name: string; tint: Tint; columns: number; rows: number; keys: Key[] };
+export type Deck = { id: string; name: string; tint: Tint; columns: number; rows: number; keys: Key[] };
 
 let uid = 0;
 const nid = () => `k${++uid}`;
@@ -247,14 +247,32 @@ type Drag =
   | { mode: "move"; id: string; col: number; row: number; ok: boolean; preview: Key[] | null }
   | { mode: "resize"; id: string; colSpan: number; rowSpan: number; ok: boolean; preview: Key[] | null };
 
-export function DeckBuilderStudy({ page }: { page: LatticesPage }) {
-  const [decks, setDecks] = useState<Deck[]>(SEED);
-  const [activeId, setActiveId] = useState("command");
+/**
+ * Reusable deck editor core. In the studio it's wrapped by `DeckBuilderStudy`;
+ * in the Mac app it's loaded chrome-free at `/embed/deck-builder`, seeded with
+ * `initialDecks` (the Mac's current layout) and reporting every change through
+ * `onChange` → the JS↔Swift bridge, which persists to `companionCockpitLayout`.
+ */
+export function DeckBuilder({ initialDecks, onChange, className }: {
+  initialDecks?: Deck[];
+  onChange?: (decks: Deck[]) => void;
+  className?: string;
+}) {
+  const [decks, setDecks] = useState<Deck[]>(initialDecks && initialDecks.length ? initialDecks : SEED);
+  const [activeId, setActiveId] = useState(() => (initialDecks?.[0]?.id ?? "command"));
   const [selId, setSelId] = useState<string | null>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
 
-  const deck = decks.find((d) => d.id === activeId)!;
+  // Report layout changes to the host bridge; skip the initial mount so we don't
+  // echo the seed/injected layout straight back to the Mac.
+  const firstEmit = useRef(true);
+  useEffect(() => {
+    if (firstEmit.current) { firstEmit.current = false; return; }
+    onChange?.(decks);
+  }, [decks, onChange]);
+
+  const deck = decks.find((d) => d.id === activeId) ?? decks[0];
   const sel = deck.keys.find((k) => k.id === selId) ?? null;
 
   const patchDeck = useCallback((fn: (d: Deck) => Deck) => {
@@ -371,11 +389,9 @@ export function DeckBuilderStudy({ page }: { page: LatticesPage }) {
   const keyCount = deck.keys.length;
 
   return (
-    <main className="w-full px-6 py-9 lg:px-7">
-      <PageHeader page={page} />
-
+    <div className={className}>
       {/* deck tabs + grid shape */}
-      <div className="mt-6 flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-1.5">
           {decks.map((d) => (
             <button
@@ -502,6 +518,16 @@ export function DeckBuilderStudy({ page }: { page: LatticesPage }) {
         material, and reticle framing match the live Lats deck so this doubles as the visual spec.
         See <code>docs/companion-deck-builder-spec.md</code>.
       </p>
+    </div>
+  );
+}
+
+/** Studio wrapper — the deck builder under the studio page chrome. */
+export function DeckBuilderStudy({ page }: { page: LatticesPage }) {
+  return (
+    <main className="w-full px-6 py-9 lg:px-7">
+      <PageHeader page={page} />
+      <DeckBuilder className="mt-6" />
     </main>
   );
 }
