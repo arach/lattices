@@ -2,25 +2,54 @@ import DeckKit
 import Foundation
 
 struct LatticesCompanionCockpitLayout: Codable, Equatable {
+    /// Span-aware placement for a single key. `shortcutID == ""` marks an empty
+    /// cell (a gap).
+    struct Slot: Codable, Equatable {
+        var shortcutID: String
+        var col: Int
+        var row: Int
+        var colSpan: Int
+        var rowSpan: Int
+
+        init(shortcutID: String, col: Int, row: Int, colSpan: Int = 1, rowSpan: Int = 1) {
+            self.shortcutID = shortcutID
+            self.col = col
+            self.row = row
+            self.colSpan = colSpan
+            self.rowSpan = rowSpan
+        }
+    }
+
     struct Page: Codable, Equatable, Identifiable {
         var id: String
         var title: String
         var subtitle: String?
         var columns: Int
+        /// Explicit row count for span-aware pages; `nil` for legacy flat pages.
+        var rows: Int?
+        /// Legacy flat 16-slot layout (row-major into `columns`). Retained for
+        /// back-compat and used as the fallback when `slots` is nil.
         var slotIDs: [String]
+        /// Span-aware placement. When present it is authoritative — the deck
+        /// renders keys by (col,row,colSpan,rowSpan); the web builder writes this.
+        var slots: [Slot]?
 
         init(
             id: String,
             title: String,
             subtitle: String? = nil,
             columns: Int = 4,
-            slotIDs: [String]
+            rows: Int? = nil,
+            slotIDs: [String] = [],
+            slots: [Slot]? = nil
         ) {
             self.id = id
             self.title = title
             self.subtitle = subtitle
             self.columns = columns
+            self.rows = rows
             self.slotIDs = slotIDs
+            self.slots = slots
         }
     }
 
@@ -245,13 +274,15 @@ enum LatticesCompanionCockpitCatalog {
         return LatticesCompanionCockpitLayout(
             pages: blueprintPages.map { blueprint in
                 let current = existing[blueprint.id]
-                let slots = normalizedSlots(current?.slotIDs ?? blueprint.slotIDs)
+                let flatSlots = normalizedSlots(current?.slotIDs ?? blueprint.slotIDs)
                 return .init(
                     id: blueprint.id,
                     title: current?.title ?? blueprint.title,
                     subtitle: current?.subtitle ?? blueprint.subtitle,
                     columns: max(2, current?.columns ?? blueprint.columns),
-                    slotIDs: slots
+                    rows: current?.rows ?? blueprint.rows,
+                    slotIDs: flatSlots,
+                    slots: current?.slots
                 )
             }
         )
@@ -272,12 +303,28 @@ enum LatticesCompanionCockpitCatalog {
             title: focusName,
             detail: detail,
             pages: normalizedLayout.pages.map { page in
-                DeckCockpitPage(
-                    id: page.id,
-                    title: page.title,
-                    subtitle: page.subtitle,
-                    columns: page.columns,
-                    tiles: page.slotIDs.enumerated().map { index, shortcutID in
+                let tiles: [DeckCockpitTile]
+                if let slots = page.slots {
+                    // Span-aware page (authored in the web builder): render each
+                    // non-empty slot at its explicit placement.
+                    tiles = slots.enumerated().compactMap { index, slot in
+                        slot.shortcutID.isEmpty ? nil : renderedTile(
+                            shortcutID: slot.shortcutID,
+                            pageID: page.id,
+                            slotIndex: index,
+                            col: slot.col,
+                            row: slot.row,
+                            colSpan: slot.colSpan,
+                            rowSpan: slot.rowSpan,
+                            voice: voice,
+                            desktop: desktop,
+                            layoutState: layoutState,
+                            talkie: talkie
+                        )
+                    }
+                } else {
+                    // Legacy flat page: row-major flow into `columns` (unchanged).
+                    tiles = page.slotIDs.enumerated().map { index, shortcutID in
                         renderedTile(
                             shortcutID: shortcutID,
                             pageID: page.id,
@@ -288,6 +335,14 @@ enum LatticesCompanionCockpitCatalog {
                             talkie: talkie
                         )
                     }
+                }
+                return DeckCockpitPage(
+                    id: page.id,
+                    title: page.title,
+                    subtitle: page.subtitle,
+                    columns: page.columns,
+                    rows: page.rows,
+                    tiles: tiles
                 )
             }
         )
@@ -305,6 +360,10 @@ enum LatticesCompanionCockpitCatalog {
         shortcutID: String,
         pageID: String,
         slotIndex: Int,
+        col: Int? = nil,
+        row: Int? = nil,
+        colSpan: Int? = nil,
+        rowSpan: Int? = nil,
         voice: DeckVoiceState?,
         desktop: DeckDesktopSummary?,
         layoutState: DeckLayoutState?,
@@ -318,8 +377,12 @@ enum LatticesCompanionCockpitCatalog {
             talkie: talkie
         )
 
+        // Stable id: position-based for span slots (indices can shift when empty
+        // slots are dropped), slot-index-based for legacy flat pages.
+        let id = (col != nil && row != nil) ? "\(pageID)-\(col!)-\(row!)" : "\(pageID)-\(slotIndex)"
+
         return DeckCockpitTile(
-            id: "\(pageID)-\(slotIndex)",
+            id: id,
             shortcutID: shortcutID,
             title: rendered.title,
             subtitle: rendered.subtitle,
@@ -330,7 +393,11 @@ enum LatticesCompanionCockpitCatalog {
             actionID: rendered.actionID,
             payload: rendered.payload,
             isEnabled: rendered.isEnabled,
-            isActive: rendered.isActive
+            isActive: rendered.isActive,
+            col: col,
+            row: row,
+            colSpan: colSpan,
+            rowSpan: rowSpan
         )
     }
 
