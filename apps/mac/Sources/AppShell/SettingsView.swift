@@ -3818,9 +3818,6 @@ struct SettingsContentView: View {
     // MARK: - Shortcuts: Overview
 
     private var companionCockpitCard: some View {
-        let layout = LatticesCompanionCockpitCatalog.normalized(prefs.companionCockpitLayout)
-        let selectedPage = layout.pages.first(where: { $0.id == selectedCompanionCockpitPageID }) ?? layout.pages.first
-        let categories = LatticesCompanionShortcutCategory.allCases
         let trustedDeviceCount = companionTrustedDevices(revision: companionTrustRevision).count
 
         return shortcutSectionCard(
@@ -3829,6 +3826,23 @@ struct SettingsContentView: View {
             summary: "Define the Mac-authored command deck here, then let the companion app render it. Trackpad proxy runs through the same bridge."
         ) {
             VStack(alignment: .leading, spacing: 14) {
+                // The deck builder is the headline of this card — embedded web
+                // editor; edits persist to the companion draft.
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Design the deck visually — tap an empty cell to add, drag to move, pull the corner to span. Switch decks with the tabs.")
+                        .font(Typo.caption(10.5))
+                        .foregroundColor(Palette.textMuted)
+
+                    CompanionDeckBuilderView(onChange: { data in
+                        persistCompanionDeckDraft(data)
+                    })
+                    .frame(height: 560)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.borderLit, lineWidth: 0.5))
+                }
+                .padding(12)
+                .background(shortcutsInsetPanel)
+
                 HStack(alignment: .top, spacing: 12) {
                     VStack(alignment: .leading, spacing: 5) {
                         Text("Trackpad Proxy")
@@ -3884,43 +3898,6 @@ struct SettingsContentView: View {
                 }
                 .padding(12)
                 .background(shortcutsInsetPanel)
-
-                if let selectedPage {
-                    Picker("Companion page", selection: $selectedCompanionCockpitPageID) {
-                        ForEach(layout.pages) { page in
-                            Text(page.title).tag(page.id)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        if let subtitle = selectedPage.subtitle, !subtitle.isEmpty {
-                            Text(subtitle)
-                                .font(Typo.caption(10.5))
-                                .foregroundColor(Palette.textMuted)
-                        }
-
-                        LazyVGrid(
-                            columns: Array(
-                                repeating: GridItem(.flexible(minimum: 120, maximum: 220), spacing: 8, alignment: .top),
-                                count: max(2, selectedPage.columns)
-                            ),
-                            alignment: .leading,
-                            spacing: 8
-                        ) {
-                            ForEach(Array(selectedPage.slotIDs.enumerated()), id: \.offset) { index, shortcutID in
-                                companionCockpitSlotMenu(
-                                    pageID: selectedPage.id,
-                                    index: index,
-                                    shortcutID: shortcutID,
-                                    categories: categories
-                                )
-                            }
-                        }
-                    }
-                    .padding(12)
-                    .background(shortcutsInsetPanel)
-                }
 
                 HStack(spacing: 10) {
                     Text("Changes appear in the iPad companion on the next snapshot refresh.")
