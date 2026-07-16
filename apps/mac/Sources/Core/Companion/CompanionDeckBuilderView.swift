@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+import AppKit
 import Foundation
 
 /// Embeds the web deck builder (`design/studio` → `/embed/deck-builder`) inside
@@ -23,6 +24,14 @@ struct CompanionDeckBuilderView: NSViewRepresentable {
         config.userContentController = controller
 
         let web = WKWebView(frame: .zero, configuration: config)
+        // Dark, non-white background so entering the page doesn't flash white
+        // before the (dark) editor paints. `drawsBackground` is transparent so
+        // the surrounding panel shows through; underPageBackgroundColor kills the
+        // white overscroll/rubber-band edge on macOS 12+.
+        web.setValue(false, forKey: "drawsBackground")
+        if #available(macOS 12.0, *) {
+            web.underPageBackgroundColor = NSColor(red: 6.0 / 255, green: 6.0 / 255, blue: 7.0 / 255, alpha: 1)
+        }
         web.navigationDelegate = context.coordinator
         context.coordinator.web = web
         web.load(URLRequest(url: url))
