@@ -11,6 +11,11 @@ on:
         required: false
         default: false
         type: boolean
+      build_app:
+        description: 'Rebuild the bundled macOS app before publishing'
+        required: false
+        default: true
+        type: boolean
 
 jobs:
   publish:
@@ -87,11 +92,18 @@ jobs:
         if: ${{ github.event_name == 'push' || inputs.publish }}
         run: |
           set -euo pipefail
+          # Build once for normal releases. CLI-only releases may deliberately
+          # reuse the committed app bundle, avoiding an unrelated Swift rebuild.
+          if [[ "${{ github.event_name }}" == "push" || "${{ inputs.build_app }}" == "true" ]]; then
+            npm run prepack
+          else
+            echo "Reusing committed apps/mac/Lattices.app for this CLI-only release."
+          fi
           # Primary package (@arach/lattices) — updates the public npm page.
-          npm publish --provenance --access public
+          npm publish --ignore-scripts --provenance --access public
           # Back-compat alias for existing @lattices/cli installs/imports.
           npm pkg set name=@lattices/cli
-          npm publish --provenance --access public
+          npm publish --ignore-scripts --provenance --access public
           npm pkg set name=@arach/lattices
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
