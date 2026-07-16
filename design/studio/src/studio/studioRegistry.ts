@@ -33,6 +33,19 @@ export const pages: readonly LatticesPage[] = [
       "One slim bar: search · /commands · voice → act inline or hand off to the assistant. Six states on the registration grid.",
     source: ["apps/mac/Sources/Core/Overlays/Nexus/"],
   },
+  {
+    href: "/studio/studies/deck-builder",
+    label: "Deck Builder — companion cockpit",
+    bucket: "studies",
+    surface: "macos",
+    status: "in-flight",
+    blurb:
+      "Span-aware grid editor for the companion deck: tap an empty cell to add, drag to move, pull the corner to span 2×1 / 2×2. Interactive prototype for the Mac-side builder — the iPad just receives the layout and renders it.",
+    source: [
+      "docs/companion-deck-builder-spec.md",
+      "apps/mac/Sources/Core/Companion/LatticesCompanionCockpit.swift",
+    ],
+  },
 ];
 
 const defined = defineStudio({
