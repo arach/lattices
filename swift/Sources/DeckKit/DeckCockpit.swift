@@ -1,5 +1,10 @@
 import Foundation
 
+public enum DeckCockpitControlKind: String, Codable, Equatable, Sendable {
+    case button
+    case joystick
+}
+
 public struct DeckCockpitState: Codable, Equatable, Sendable {
     public var title: String?
     public var detail: String?
@@ -56,6 +61,9 @@ public struct DeckCockpitTile: Codable, Equatable, Identifiable, Sendable {
     public var payload: [String: DeckValue]
     public var isEnabled: Bool
     public var isActive: Bool
+    /// Interactive surface rendered by the companion. Absent values decode as
+    /// a regular button for compatibility with older Mac snapshots.
+    public var controlKind: DeckCockpitControlKind?
     /// Grid placement for span-aware layouts (0-based anchor + span). All `nil`
     /// ⇒ legacy row-major flow into `columns`. Codable decodes absent keys as
     /// `nil`, so existing Mac/iPad payloads are unaffected.
@@ -77,6 +85,7 @@ public struct DeckCockpitTile: Codable, Equatable, Identifiable, Sendable {
         payload: [String: DeckValue] = [:],
         isEnabled: Bool = true,
         isActive: Bool = false,
+        controlKind: DeckCockpitControlKind? = nil,
         col: Int? = nil,
         row: Int? = nil,
         colSpan: Int? = nil,
@@ -94,6 +103,7 @@ public struct DeckCockpitTile: Codable, Equatable, Identifiable, Sendable {
         self.payload = payload
         self.isEnabled = isEnabled
         self.isActive = isActive
+        self.controlKind = controlKind
         self.col = col
         self.row = row
         self.colSpan = colSpan

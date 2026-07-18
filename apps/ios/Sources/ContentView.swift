@@ -5,7 +5,9 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var store = DeckStore()
+    @StateObject private var fleetStore = DeckFleetStore()
     @State private var showLatsDeck = false
+    @State private var requestedMachineID: String?
     @State private var showSettings = false
     @State private var trustedBridges: [StoredBridgeTrust] = []
 
@@ -58,10 +60,22 @@ struct ContentView: View {
                     bottomTelemetry: liveBottomTelemetry,
 
                     onEnterDeck: { machine in
-                        // Only the currently-active machine has a live bridge.
-                        // Tapping an offline / online-but-not-active card must
-                        // not silently open the active machine's deck.
-                        guard machine.status == .active else { return }
+                        guard machine.status != .offline else { return }
+                        if machine.status != .active,
+                           let endpoint = store.discoveredBridges.first(where: { $0.id == machine.id }) {
+                            let isTrusted = endpoint.bridgeFingerprint.map { fingerprint in
+                                DeckBridgeSecurityStore.shared.trustedBridgeList().contains {
+                                    $0.bridgeFingerprint.caseInsensitiveCompare(fingerprint) == .orderedSame
+                                }
+                            } ?? false
+                            if !isTrusted {
+                                // Keep first-time pairing explicit and scoped to
+                                // the Mac the user actually tapped.
+                                store.connect(to: endpoint)
+                            }
+                        }
+                        fleetStore.synchronize(with: store)
+                        requestedMachineID = machine.id
                         showLatsDeck = true
                     },
                     onPair:      { showSettings = true },
@@ -83,20 +97,10 @@ struct ContentView: View {
             .navigationBarHidden(true)
             .toolbar(.hidden, for: .navigationBar)
             .fullScreenCover(isPresented: $showLatsDeck) {
-                LatsDeckScreen(
-                    liveSnapshot: store.snapshot,
-                    connectionLabel: store.connectionLabel,
-                    onAction: { actionID, payload, label in
-                        store.perform(
-                            actionID: actionID,
-                            pageID: "cockpit",
-                            payload: payload,
-                            label: label
-                        )
-                    },
-                    onTrackpadEvent: { event, dx, dy in
-                        store.sendTrackpad(event: event, dx: dx, dy: dy)
-                    }
+                FleetDeckScreen(
+                    primaryStore: store,
+                    fleetStore: fleetStore,
+                    initialMachineID: requestedMachineID
                 )
             }
             .sheet(isPresented: $showSettings) {
@@ -107,12 +111,19 @@ struct ContentView: View {
             // (Deck or settings) — Home alone runs in ambient mode.
             .onChange(of: showLatsDeck) { _, isOpen in
                 store.setUIPriority(isOpen ? .fast : .ambient)
+                fleetStore.setUIPriority(isOpen ? .fast : .ambient, primaryStore: store)
             }
             .onChange(of: showSettings) { _, isOpen in
                 store.setUIPriority(isOpen ? .fast : .ambient)
             }
         }
         .preferredColorScheme(.dark)
+        .onChange(of: store.discoveredBridges) { _, _ in
+            fleetStore.synchronize(with: store)
+        }
+        .onChange(of: store.activeEndpoint) { _, _ in
+            fleetStore.synchronize(with: store)
+        }
     }
 }
 
