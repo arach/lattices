@@ -118,7 +118,12 @@ final class DeckKitTests: XCTestCase {
                                 iconSystemName: "mic.fill",
                                 accentToken: "voice",
                                 actionID: "voice.toggle",
-                                isActive: true
+                                isActive: true,
+                                controlKind: .joystick,
+                                col: 0,
+                                row: 0,
+                                colSpan: 2,
+                                rowSpan: 2
                             )
                         ]
                     )
@@ -271,6 +276,7 @@ final class DeckKitTests: XCTestCase {
         let decoded = try JSONDecoder().decode(DeckRuntimeSnapshot.self, from: data)
 
         XCTAssertEqual(decoded, snapshot)
+        XCTAssertEqual(decoded.cockpit?.pages.first?.tiles.first?.controlKind, .joystick)
         XCTAssertEqual(decoded.cockpit?.pages.first?.tiles.first?.shortcutID, "voice-toggle")
         XCTAssertEqual(decoded.trackpad?.statusTitle, "Trackpad Ready")
         XCTAssertEqual(decoded.voice?.provider, "vox")
