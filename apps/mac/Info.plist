@@ -39,5 +39,12 @@
     <string>Lattices uses the microphone for Hudson Voice dictation and voice commands.</string>
     <key>NSSupportsAutomaticTermination</key>
     <true/>
+    <!-- Allow the Settings deck-builder WKWebView to load the local studio dev
+         server (http://localhost:3050) over the loopback interface. -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
 </dict>
 </plist>

@@ -19,6 +19,7 @@ struct SettingsContentView: View {
         case ai
         case search
         case companion
+        case deck
 
         var id: String { rawValue }
 
@@ -33,6 +34,7 @@ struct SettingsContentView: View {
             case .ai: return "AI"
             case .search: return "Search & OCR"
             case .companion: return "Companion"
+            case .deck: return "Command Deck"
             }
         }
 
@@ -47,6 +49,7 @@ struct SettingsContentView: View {
             case .ai: return "sparkles"
             case .search: return "text.viewfinder"
             case .companion: return "ipad.and.iphone"
+            case .deck: return "square.grid.2x2"
             }
         }
 
@@ -61,6 +64,7 @@ struct SettingsContentView: View {
             case .ai: return "Agents"
             case .search: return "Indexing"
             case .companion: return "LATS iOS Bridge"
+            case .deck: return "Companion"
             }
         }
 
@@ -84,6 +88,8 @@ struct SettingsContentView: View {
                 return "OCR cadence, quality, and recent capture visibility."
             case .companion:
                 return "Local-network pairing, trusted iPad devices, and bridge security."
+            case .deck:
+                return "Design the companion command deck — the grid, keys, and spans the iPad renders."
             }
         }
 
@@ -95,7 +101,7 @@ struct SettingsContentView: View {
                 return "Control"
             case .ai, .search:
                 return "Intelligence"
-            case .companion:
+            case .companion, .deck:
                 return "Devices"
             }
         }
@@ -358,7 +364,19 @@ struct SettingsContentView: View {
             searchOcrContent
         case .companion:
             companionContent
+        case .deck:
+            deckContent
         }
+    }
+
+    /// Full-page companion deck builder (its own sidebar page). The WKWebView
+    /// hosts the studio editor; edits persist to the companion draft.
+    private var deckContent: some View {
+        CompanionDeckBuilderView(onChange: { data in
+            persistCompanionDeckDraft(data)
+        })
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(16)
     }
 
     // MARK: - Sticky section header
@@ -3818,9 +3836,6 @@ struct SettingsContentView: View {
     // MARK: - Shortcuts: Overview
 
     private var companionCockpitCard: some View {
-        let layout = LatticesCompanionCockpitCatalog.normalized(prefs.companionCockpitLayout)
-        let selectedPage = layout.pages.first(where: { $0.id == selectedCompanionCockpitPageID }) ?? layout.pages.first
-        let categories = LatticesCompanionShortcutCategory.allCases
         let trustedDeviceCount = companionTrustedDevices(revision: companionTrustRevision).count
 
         return shortcutSectionCard(
@@ -3829,6 +3844,30 @@ struct SettingsContentView: View {
             summary: "Define the Mac-authored command deck here, then let the companion app render it. Trackpad proxy runs through the same bridge."
         ) {
             VStack(alignment: .leading, spacing: 14) {
+                // The deck layout lives on its own page now.
+                Button { selectedTab = .deck } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "square.grid.2x2")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Palette.text)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Command Deck")
+                                .font(Typo.monoBold(11))
+                                .foregroundColor(Palette.text)
+                            Text("Design the grid, keys, and spans the companion renders.")
+                                .font(Typo.caption(10.5))
+                                .foregroundColor(Palette.textMuted)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(Palette.textDim)
+                    }
+                    .padding(12)
+                    .background(shortcutsInsetPanel)
+                }
+                .buttonStyle(.plain)
+
                 HStack(alignment: .top, spacing: 12) {
                     VStack(alignment: .leading, spacing: 5) {
                         Text("Trackpad Proxy")
@@ -3884,43 +3923,6 @@ struct SettingsContentView: View {
                 }
                 .padding(12)
                 .background(shortcutsInsetPanel)
-
-                if let selectedPage {
-                    Picker("Companion page", selection: $selectedCompanionCockpitPageID) {
-                        ForEach(layout.pages) { page in
-                            Text(page.title).tag(page.id)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        if let subtitle = selectedPage.subtitle, !subtitle.isEmpty {
-                            Text(subtitle)
-                                .font(Typo.caption(10.5))
-                                .foregroundColor(Palette.textMuted)
-                        }
-
-                        LazyVGrid(
-                            columns: Array(
-                                repeating: GridItem(.flexible(minimum: 120, maximum: 220), spacing: 8, alignment: .top),
-                                count: max(2, selectedPage.columns)
-                            ),
-                            alignment: .leading,
-                            spacing: 8
-                        ) {
-                            ForEach(Array(selectedPage.slotIDs.enumerated()), id: \.offset) { index, shortcutID in
-                                companionCockpitSlotMenu(
-                                    pageID: selectedPage.id,
-                                    index: index,
-                                    shortcutID: shortcutID,
-                                    categories: categories
-                                )
-                            }
-                        }
-                    }
-                    .padding(12)
-                    .background(shortcutsInsetPanel)
-                }
 
                 HStack(spacing: 10) {
                     Text("Changes appear in the iPad companion on the next snapshot refresh.")
