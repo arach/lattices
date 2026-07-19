@@ -120,9 +120,6 @@ struct SettingsContentView: View {
     @ObservedObject var mouseGestureController: MouseGestureController = .shared
     @ObservedObject var keyboardRemapController: KeyboardRemapController = .shared
     @ObservedObject var assistantSession: WorkspaceAssistantSession = .shared
-    @ObservedObject var audioLayer: AudioLayer = .shared
-    @ObservedObject var handsOffSession: HandsOffSession = .shared
-    @ObservedObject var desktopModel: DesktopModel = .shared
     var onBack: (() -> Void)? = nil
 
     @State private var selectedTab: SettingsSection = .general
@@ -2217,7 +2214,7 @@ struct SettingsContentView: View {
                             spacing: 8
                         ) {
                             ForEach(Array(NSScreen.screens.enumerated()), id: \.offset) { index, screen in
-                                hyperspaceDisplayTile(index: index, screen: screen)
+                                HyperspaceDisplayTile(index: index, screen: screen)
                             }
                         }
                     }
@@ -2317,56 +2314,6 @@ struct SettingsContentView: View {
             }
             .padding(16)
         }
-    }
-
-    private func hyperspaceDisplayTile(index: Int, screen: NSScreen) -> some View {
-        let windows = hyperspaceWindowCount(on: screen)
-        let name = index == 0 ? "Main display" : "Display \(index + 1)"
-        let size = "\(Int(screen.frame.width))×\(Int(screen.frame.height))"
-
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 7) {
-                Image(systemName: index == 0 ? "display" : "rectangle.on.rectangle")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(windows > 0 ? Palette.running : Palette.textMuted)
-                    .frame(width: 16)
-
-                Text(name)
-                    .font(Typo.monoBold(10.5))
-                    .foregroundColor(Palette.text)
-                    .lineLimit(1)
-
-                Spacer(minLength: 0)
-            }
-
-            HStack(spacing: 6) {
-                Text(size)
-                    .font(Typo.caption(9.5))
-                    .foregroundColor(Palette.textMuted)
-                Spacer(minLength: 0)
-                Text("\(windows)")
-                    .font(Typo.monoBold(11))
-                    .foregroundColor(windows > 0 ? Palette.running : Palette.textMuted)
-                Text(windows == 1 ? "window" : "windows")
-                    .font(Typo.caption(9.5))
-                    .foregroundColor(Palette.textMuted)
-            }
-        }
-        .padding(10)
-        .background(shortcutsInsetPanel)
-    }
-
-    private func hyperspaceWindowCount(on screen: NSScreen) -> Int {
-        desktopModel.allWindows().filter { entry in
-            entry.pid != ProcessInfo.processInfo.processIdentifier &&
-            entry.isOnScreen &&
-            !entry.title.isEmpty &&
-            hyperspaceEntry(entry, isOn: screen)
-        }.count
-    }
-
-    private func hyperspaceEntry(_ entry: WindowEntry, isOn screen: NSScreen) -> Bool {
-        ObjectIdentifier(WindowTiler.screenForWindowFrame(entry.frame)) == ObjectIdentifier(screen)
     }
 
     // A labeled lighting slider (0…1) with a right-aligned readout.
@@ -4509,6 +4456,68 @@ struct SettingsContentView: View {
                             .strokeBorder(Palette.border, lineWidth: 0.5)
                     )
             )
+    }
+}
+
+/// Keeps the 1.5-second desktop inventory publisher local to the Hyperspace
+/// display tiles instead of invalidating the entire Settings hierarchy.
+private struct HyperspaceDisplayTile: View {
+    let index: Int
+    let screen: NSScreen
+
+    @ObservedObject private var desktopModel = DesktopModel.shared
+
+    private var windowCount: Int {
+        desktopModel.allWindows().filter { entry in
+            entry.pid != ProcessInfo.processInfo.processIdentifier &&
+            entry.isOnScreen &&
+            !entry.title.isEmpty &&
+            ObjectIdentifier(WindowTiler.screenForWindowFrame(entry.frame)) == ObjectIdentifier(screen)
+        }.count
+    }
+
+    var body: some View {
+        let windows = windowCount
+        let name = index == 0 ? "Main display" : "Display \(index + 1)"
+        let size = "\(Int(screen.frame.width))×\(Int(screen.frame.height))"
+
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 7) {
+                Image(systemName: index == 0 ? "display" : "rectangle.on.rectangle")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(windows > 0 ? Palette.running : Palette.textMuted)
+                    .frame(width: 16)
+
+                Text(name)
+                    .font(Typo.monoBold(10.5))
+                    .foregroundColor(Palette.text)
+                    .lineLimit(1)
+
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: 6) {
+                Text(size)
+                    .font(Typo.caption(9.5))
+                    .foregroundColor(Palette.textMuted)
+                Spacer(minLength: 0)
+                Text("\(windows)")
+                    .font(Typo.monoBold(11))
+                    .foregroundColor(windows > 0 ? Palette.running : Palette.textMuted)
+                Text(windows == 1 ? "window" : "windows")
+                    .font(Typo.caption(9.5))
+                    .foregroundColor(Palette.textMuted)
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.black.opacity(0.22))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(Palette.border, lineWidth: 0.5)
+                )
+        )
     }
 }
 
