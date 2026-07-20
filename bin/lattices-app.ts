@@ -2,7 +2,7 @@
 
 import { execFileSync, execSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, chmodSync, createWriteStream, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { get } from "node:https";
 import type { IncomingMessage } from "node:http";
@@ -18,6 +18,9 @@ const entitlementsPath = resolve(__dirname, "../apps/mac/Lattices.entitlements")
 const resourcesDir = resolve(bundlePath, "Contents/Resources");
 const iconPath = resolve(__dirname, "../assets/AppIcon.icns");
 const tapSoundPath = resolve(__dirname, "../apps/mac/Resources/tap.wav");
+const launchAgentLabel = "dev.lattices.app.login";
+const launchAgentPath = resolve(homedir(), "Library/LaunchAgents", `${launchAgentLabel}.plist`);
+const launchAgentLogPath = resolve(homedir(), ".lattices", "lattices-launchagent.log");
 
 const REPO = "arach/lattices";
 const RELEASE_APP_ASSET_NAMES = ["Lattices.dmg"];
@@ -237,6 +240,114 @@ function launch(extraArgs: string[] = []): void {
   if (appArgs.length) args.push("--args", ...appArgs);
   spawn("open", args, { detached: true, stdio: "ignore" }).unref();
   console.log("lattices app launched.");
+}
+
+function launchctlDomain(): string {
+  if (typeof process.getuid === "function") return `gui/${process.getuid()}`;
+  const uid = execFileSync("/usr/bin/id", ["-u"], { encoding: "utf8" }).trim();
+  return `gui/${uid}`;
+}
+
+function plistString(value: string, indent = "        "): string {
+  return `${indent}<string>${xmlEscape(value)}</string>`;
+}
+
+function writeLaunchAgent(extraArgs: string[] = []): void {
+  mkdirSync(resolve(homedir(), "Library/LaunchAgents"), { recursive: true });
+  mkdirSync(resolve(homedir(), ".lattices"), { recursive: true });
+
+  const args = [
+    "/usr/bin/open",
+    bundlePath,
+    "--args",
+    "--lattices-cli-root",
+    cliRoot,
+    ...extraArgs,
+  ];
+  const plistArgs = args.map((arg) => plistString(arg)).join("\n");
+  const escapedLogPath = xmlEscape(launchAgentLogPath);
+  const plist = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>${xmlEscape(launchAgentLabel)}</string>
+    <key>ProgramArguments</key>
+    <array>
+${plistArgs}
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
+    <key>StandardOutPath</key>
+    <string>${escapedLogPath}</string>
+    <key>StandardErrorPath</key>
+    <string>${escapedLogPath}</string>
+</dict>
+</plist>
+`;
+  writeFileSync(launchAgentPath, plist);
+}
+
+function isLaunchAgentLoaded(): boolean {
+  try {
+    execFileSync("/bin/launchctl", ["print", `${launchctlDomain()}/${launchAgentLabel}`], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function unloadLaunchAgent(): void {
+  const domain = launchctlDomain();
+  try {
+    execFileSync("/bin/launchctl", ["bootout", domain, launchAgentPath], { stdio: "ignore" });
+  } catch {}
+  try {
+    execFileSync("/bin/launchctl", ["bootout", `${domain}/${launchAgentLabel}`], { stdio: "ignore" });
+  } catch {}
+}
+
+function loadLaunchAgent(): void {
+  const domain = launchctlDomain();
+  unloadLaunchAgent();
+  execFileSync("/bin/launchctl", ["bootstrap", domain, launchAgentPath], { stdio: "inherit" });
+  try {
+    execFileSync("/bin/launchctl", ["enable", `${domain}/${launchAgentLabel}`], { stdio: "ignore" });
+  } catch {}
+}
+
+function filterStartupArgs(args: string[]): { extraArgs: string[]; shouldLaunch: boolean } {
+  return {
+    extraArgs: args.filter((arg) => arg !== "--no-launch"),
+    shouldLaunch: !args.includes("--no-launch"),
+  };
+}
+
+async function installLaunchAgent(args: string[] = []): Promise<void> {
+  const { extraArgs, shouldLaunch } = filterStartupArgs(args);
+  await ensureBinary();
+  writeLaunchAgent(extraArgs);
+  loadLaunchAgent();
+  console.log(`lattices app will open at login.`);
+  console.log(`LaunchAgent: ${launchAgentPath}`);
+  if (shouldLaunch) launch(extraArgs);
+}
+
+function uninstallLaunchAgent(): void {
+  unloadLaunchAgent();
+  if (existsSync(launchAgentPath)) {
+    rmSync(launchAgentPath, { force: true });
+  }
+  console.log("lattices app startup registration removed.");
+}
+
+function printAppStatus(): void {
+  console.log(`App running: ${isRunning() ? "yes" : "no"}`);
+  console.log(`Startup installed: ${existsSync(launchAgentPath) ? "yes" : "no"}`);
+  console.log(`LaunchAgent loaded: ${isLaunchAgentLoaded() ? "yes" : "no"}`);
+  console.log(`LaunchAgent: ${launchAgentPath}`);
 }
 
 function relaunchIfNeeded(shouldLaunch: boolean, extraArgs: string[] = []): void {
@@ -605,14 +716,18 @@ async function updateApp(extraArgs: string[] = [], shouldLaunch = false): Promis
   relaunchIfNeeded(shouldLaunch || wasRunning || extraArgs.length > 0, extraArgs);
 }
 
-const cmd = process.argv[2];
-const flags = process.argv.slice(3);
+const rawArgs = process.argv.slice(2);
+const firstArg = rawArgs[0];
+const cmd = firstArg && !firstArg.startsWith("-") ? firstArg : "launch";
+const flags = firstArg && !firstArg.startsWith("-") ? rawArgs.slice(1) : rawArgs;
 const launchFlags: string[] = [];
 if (flags.includes("--diagnostics") || flags.includes("-d")) launchFlags.push("--diagnostics");
 if (flags.includes("--screen-map") || flags.includes("-m")) launchFlags.push("--screen-map");
+const startupFlags = [...launchFlags, ...(flags.includes("--no-launch") ? ["--no-launch"] : [])];
 const shouldLaunchAfterUpdate = flags.includes("--launch") || launchFlags.length > 0;
 const shouldDetachUpdate = flags.includes("--detach");
 const isUpdateWorker = flags.includes("--worker");
+const loginAction = flags.find((flag) => !flag.startsWith("-")) ?? "status";
 
 if (cmd === "build") {
   requireBundleNotRunningForBuild();
@@ -642,6 +757,22 @@ if (cmd === "build") {
     process.exit(1);
   }
   launch(launchFlags);
+} else if (cmd === "install") {
+  await installLaunchAgent(startupFlags);
+} else if (cmd === "uninstall") {
+  uninstallLaunchAgent();
+} else if (cmd === "login" || cmd === "startup") {
+  if (["enable", "install", "on"].includes(loginAction)) {
+    await installLaunchAgent(startupFlags);
+  } else if (["disable", "remove", "uninstall", "off"].includes(loginAction)) {
+    uninstallLaunchAgent();
+  } else if (loginAction === "status") {
+    printAppStatus();
+  } else {
+    console.log("Usage: lattices app login [enable|disable|status]");
+  }
+} else if (cmd === "status") {
+  printAppStatus();
 } else if (cmd === "update") {
   if (shouldDetachUpdate && !isUpdateWorker) {
     spawnDetachedUpdateWorker(launchFlags, shouldLaunchAfterUpdate);
