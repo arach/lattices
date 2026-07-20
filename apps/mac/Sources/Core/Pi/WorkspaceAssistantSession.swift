@@ -237,6 +237,9 @@ final class WorkspaceAssistantSession: ObservableObject {
     @Published private(set) var authErrorText: String?
     @Published private(set) var storedCredentialKinds: [String: String] = [:]
     @Published private(set) var piBinaryPath: String?
+    @Published private(set) var runtimeRefreshInFlight: Bool = false
+    @Published private(set) var runtimeRefreshMessage: String?
+    @Published private(set) var runtimeRefreshSucceeded: Bool = false
     @Published private(set) var latestAuthURL: URL?
     @Published private(set) var latestAuthInstructions: String?
     @Published private(set) var authVerificationCodeCopied: Bool = false
@@ -585,6 +588,26 @@ final class WorkspaceAssistantSession: ObservableObject {
             }
         } else if statusText == "missing pi" {
             statusText = "idle"
+        }
+    }
+
+    func refreshRuntimeOnDemand() {
+        runtimeRefreshInFlight = true
+        runtimeRefreshSucceeded = false
+        runtimeRefreshMessage = "Checking Pi runtime..."
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            guard let self else { return }
+            self.prepareForDisplay()
+            self.runtimeRefreshInFlight = false
+
+            if let piBinaryPath = self.piBinaryPath {
+                self.runtimeRefreshSucceeded = true
+                self.runtimeRefreshMessage = "Pi found at \(piBinaryPath)"
+            } else {
+                self.runtimeRefreshSucceeded = false
+                self.runtimeRefreshMessage = "Still missing. Install Pi, then refresh again."
+            }
         }
     }
 

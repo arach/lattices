@@ -50,9 +50,23 @@ struct PiInstallCallout: View {
                     session.installPiInTerminal()
                 }
 
-                actionButton("REFRESH", tint: Palette.textMuted) {
-                    session.refreshBinaryAvailability()
+                actionButton(
+                    session.runtimeRefreshInFlight ? "CHECKING" : "REFRESH",
+                    tint: session.runtimeRefreshInFlight ? Palette.detach : Palette.textMuted,
+                    disabled: session.runtimeRefreshInFlight
+                ) {
+                    session.refreshRuntimeOnDemand()
                 }
+            }
+
+            if let message = session.runtimeRefreshMessage {
+                Text(message)
+                    .font(Typo.mono(compact ? 9 : 10))
+                    .foregroundColor(runtimeRefreshTint)
+                    .lineLimit(compact ? 1 : 2)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .transition(.opacity)
             }
         }
         .padding(.horizontal, compact ? 10 : 16)
@@ -67,11 +81,17 @@ struct PiInstallCallout: View {
         )
     }
 
-    private func actionButton(_ label: String, tint: Color, action: @escaping () -> Void) -> some View {
+    private var runtimeRefreshTint: Color {
+        if session.runtimeRefreshInFlight { return Palette.detach }
+        if session.runtimeRefreshSucceeded { return Palette.running }
+        return Palette.textMuted
+    }
+
+    private func actionButton(_ label: String, tint: Color, disabled: Bool = false, action: @escaping () -> Void) -> some View {
         Button(label, action: action)
             .buttonStyle(.plain)
             .font(Typo.geistMonoBold(compact ? 9 : 10))
-            .foregroundColor(tint)
+            .foregroundColor(disabled ? tint.opacity(0.55) : tint)
             .padding(.horizontal, compact ? 8 : 10)
             .padding(.vertical, compact ? 5 : 6)
             .background(
@@ -82,5 +102,6 @@ struct PiInstallCallout: View {
                             .strokeBorder(Palette.border, lineWidth: 0.5)
                     )
             )
+            .disabled(disabled)
     }
 }
