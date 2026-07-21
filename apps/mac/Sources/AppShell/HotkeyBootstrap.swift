@@ -35,6 +35,7 @@ enum HotkeyBootstrap {
         store.register(action: .omniSearch) { UnifiedCommandBarWindow.shared.toggle(mode: .search) }
         store.register(action: .gridPlacement) { GridPlacementWindow.shared.toggle() }
         store.register(action: .commandBar) { UnifiedCommandBarWindow.shared.toggle(mode: .command) }
+        store.register(action: .focusMode) { FocusModeController.shared.toggle() }
         store.register(action: .activityLog) {
             DiagnosticLog.shared.info("Hotkey: activityLog triggered")
             ScreenMapWindowController.shared.showPage(.activity)
