@@ -3079,7 +3079,10 @@ switch (command) {
     const first = args[1];
     const appSubcommand = first && !first.startsWith("-") ? first : "launch";
     const appFlags = first && !first.startsWith("-") ? args.slice(2) : args.slice(1);
-    const devAppCommands = new Set(["launch", "start", "build", "restart", "quit", "stop"]);
+    const devAppCommands = new Set([
+      "launch", "start", "build", "restart", "quit", "stop",
+      "install", "uninstall", "login", "startup", "status",
+    ]);
 
     if (detectProjectType(dir) === "lattices-app" && devAppCommands.has(appSubcommand)) {
       console.log("Using local dev app bundle so macOS permissions stay attached across rebuilds.");

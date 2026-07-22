@@ -11,6 +11,7 @@ workspace from there.
 
 ```bash
 lattices app          # Build (or download) and launch
+lattices app install  # Register launch-at-login and launch now
 lattices app update   # Download the latest release and relaunch
 lattices app build    # Rebuild from source
 lattices app restart  # Quit, rebuild, relaunch
@@ -19,6 +20,11 @@ lattices app quit     # Stop the app
 
 The first run builds from source if Swift is available, otherwise
 downloads a pre-built binary from GitHub releases.
+
+Use `lattices app install` when you want the companion to start now and
+open automatically at login. It installs a user LaunchAgent in
+`~/Library/LaunchAgents`; inspect it with `lattices app login status`
+and remove it with `lattices app login disable`.
 
 ## Command palette
 

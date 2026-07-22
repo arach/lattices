@@ -25,6 +25,12 @@ This builds (or downloads) and launches the native macOS companion.
 Open the command palette with **Cmd+Shift+M** to search and launch
 any project, tile windows, or switch workspace layers.
 
+To also open Lattices automatically when you log in:
+
+```bash
+lattices app install
+```
+
 ## 3. Add a project config
 
 Drop a `.lattices.json` in your project root:

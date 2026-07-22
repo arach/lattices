@@ -16,6 +16,9 @@ BUNDLE_BIN="$BUNDLE/Contents/MacOS/Lattices"
 RESOURCES_DIR="$BUNDLE/Contents/Resources"
 ENTITLEMENTS="$APP_DIR/Lattices.entitlements"
 BUNDLE_ID="${LATTICES_DEV_BUNDLE_ID:-dev.lattices.app.dev}"
+LAUNCH_AGENT_LABEL="$BUNDLE_ID.login"
+LAUNCH_AGENT_PLIST="$HOME/Library/LaunchAgents/$LAUNCH_AGENT_LABEL.plist"
+LAUNCH_AGENT_LOG="$HOME/.lattices/lattices-dev-launchagent.log"
 ICON="$ROOT/assets/AppIcon.icns"
 TAP_SOUND="$APP_DIR/Resources/tap.wav"
 VERSION="$(node -p "require('$ROOT/package.json').version" 2>/dev/null || echo '0.1.0')"
@@ -141,6 +144,64 @@ require_build_targets_not_running() {
     fi
 }
 
+xml_escape() {
+    local value="$1"
+    value="${value//&/&amp;}"
+    value="${value//</&lt;}"
+    value="${value//>/&gt;}"
+    printf '%s' "$value"
+}
+
+launchctl_domain() {
+    printf 'gui/%s' "$(id -u)"
+}
+
+is_launch_agent_loaded() {
+    launchctl print "$(launchctl_domain)/$LAUNCH_AGENT_LABEL" >/dev/null 2>&1
+}
+
+unload_launch_agent() {
+    launchctl bootout "$(launchctl_domain)" "$LAUNCH_AGENT_PLIST" >/dev/null 2>&1 || true
+    launchctl bootout "$(launchctl_domain)/$LAUNCH_AGENT_LABEL" >/dev/null 2>&1 || true
+}
+
+write_launch_agent() {
+    ensure_install_bundle
+    mkdir -p "$HOME/Library/LaunchAgents" "$HOME/.lattices"
+
+    {
+        printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>'
+        printf '%s\n' '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
+        printf '%s\n' '<plist version="1.0">'
+        printf '%s\n' '<dict>'
+        printf '%s\n' '    <key>Label</key>'
+        printf '    <string>%s</string>\n' "$(xml_escape "$LAUNCH_AGENT_LABEL")"
+        printf '%s\n' '    <key>ProgramArguments</key>'
+        printf '%s\n' '    <array>'
+        local arg
+        for arg in "/usr/bin/open" "$INSTALL_BUNDLE" "--args" "--lattices-cli-root" "$ROOT" "$@"; do
+            printf '        <string>%s</string>\n' "$(xml_escape "$arg")"
+        done
+        printf '%s\n' '    </array>'
+        printf '%s\n' '    <key>RunAtLoad</key>'
+        printf '%s\n' '    <true/>'
+        printf '%s\n' '    <key>LimitLoadToSessionType</key>'
+        printf '%s\n' '    <string>Aqua</string>'
+        printf '%s\n' '    <key>StandardOutPath</key>'
+        printf '    <string>%s</string>\n' "$(xml_escape "$LAUNCH_AGENT_LOG")"
+        printf '%s\n' '    <key>StandardErrorPath</key>'
+        printf '    <string>%s</string>\n' "$(xml_escape "$LAUNCH_AGENT_LOG")"
+        printf '%s\n' '</dict>'
+        printf '%s\n' '</plist>'
+    } > "$LAUNCH_AGENT_PLIST"
+}
+
+load_launch_agent() {
+    unload_launch_agent
+    launchctl bootstrap "$(launchctl_domain)" "$LAUNCH_AGENT_PLIST"
+    launchctl enable "$(launchctl_domain)/$LAUNCH_AGENT_LABEL" >/dev/null 2>&1 || true
+}
+
 write_info_plist() {
     mkdir -p "$BUNDLE/Contents"
     cat > "$BUNDLE/Contents/Info.plist" <<PLIST
@@ -260,6 +321,47 @@ cmd_launch() {
     fi
 }
 
+cmd_install() {
+    local launch_now=1
+    local app_args=()
+    local arg
+
+    for arg in "$@"; do
+        case "$arg" in
+            --no-launch) launch_now=0 ;;
+            *) app_args+=("$arg") ;;
+        esac
+    done
+
+    write_launch_agent "${app_args[@]}"
+    load_launch_agent
+    green "Lattices dev app will open at login."
+    dim "LaunchAgent: $LAUNCH_AGENT_PLIST"
+    if [ "$launch_now" -eq 1 ]; then
+        cmd_launch "${app_args[@]}"
+    fi
+}
+
+cmd_uninstall() {
+    unload_launch_agent
+    rm -f "$LAUNCH_AGENT_PLIST"
+    green "Lattices dev app startup registration removed."
+}
+
+cmd_login() {
+    local action="${1:-status}"
+    if [ "$#" -gt 0 ]; then
+        shift
+    fi
+
+    case "$action" in
+        enable|install|on) cmd_install "$@" ;;
+        disable|remove|uninstall|off) cmd_uninstall ;;
+        status) cmd_status ;;
+        *) red "Usage: lattices-dev login [enable|disable|status]"; exit 1 ;;
+    esac
+}
+
 cmd_logs() {
     if [ -f "$LOG_FILE" ]; then
         tail -f "$LOG_FILE"
@@ -328,6 +430,17 @@ cmd_status() {
         local entries=$(wc -l < "$HOME/.lattices/advisor-learning.jsonl" | tr -d ' ')
         dim "Advisor learning: $entries entries"
     fi
+    if [ -f "$LAUNCH_AGENT_PLIST" ]; then
+        green "Startup installed: yes"
+    else
+        dim "Startup installed: no"
+    fi
+    if is_launch_agent_loaded; then
+        green "LaunchAgent loaded: yes"
+    else
+        dim "LaunchAgent loaded: no"
+    fi
+    dim "LaunchAgent: $LAUNCH_AGENT_PLIST"
 }
 
 cmd_help() {
@@ -339,6 +452,8 @@ cmd_help() {
     echo "  build        Build release binary"
     echo "  quit         Stop the running app"
     echo "  launch       Start the app (if not running)"
+    echo "  install      Register launch-at-login and start now"
+    echo "  login        Manage launch-at-login (enable|disable|status)"
     echo "  logs         Tail the log file (live)"
     echo "  log [N]      Show last N log lines (default 30)"
     echo "  clear-logs   Clear the log file"
@@ -353,6 +468,9 @@ case "${1:-help}" in
     build)      cmd_build ;;
     quit|stop)  cmd_quit ;;
     launch|start) cmd_launch "${@:2}" ;;
+    install)    cmd_install "${@:2}" ;;
+    uninstall)  cmd_uninstall ;;
+    login|startup) cmd_login "${@:2}" ;;
     logs)       cmd_logs ;;
     log)        cmd_log "${2:-30}" ;;
     clear-logs) cmd_clear_logs ;;

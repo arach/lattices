@@ -136,11 +136,92 @@ struct WorkspaceAssistantView: View {
     private var setupPlaceholder: some View {
         VStack {
             Spacer()
-            PiInstallCallout(session: session, compact: false)
-                .padding(.horizontal, 28)
+
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .center, spacing: 10) {
+                    Circle()
+                        .fill(Palette.detach)
+                        .frame(width: 7, height: 7)
+
+                    Text("PROVIDER REQUIRED")
+                        .font(Typo.geistMonoBold(10))
+                        .foregroundColor(Palette.detach.opacity(0.95))
+
+                    Text(session.currentProvider.name)
+                        .font(Typo.mono(10))
+                        .foregroundColor(Palette.textMuted)
+                }
+
+                Text("Pi is installed. Connect \(session.currentProvider.name) in Settings to start chatting.")
+                    .font(Typo.mono(11))
+                    .foregroundColor(Palette.textDim)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let path = session.piBinaryPath {
+                    Text(path)
+                        .font(Typo.mono(10))
+                        .foregroundColor(Palette.running.opacity(0.82))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(Color.black.opacity(0.28))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .strokeBorder(Palette.border, lineWidth: 0.5)
+                                )
+                        )
+                }
+
+                HStack(spacing: 8) {
+                    headerTextButton("Settings", tint: Palette.running) {
+                        SettingsWindowController.shared.showAssistant()
+                    }
+
+                    headerTextButton(
+                        session.runtimeRefreshInFlight ? "Checking" : "Refresh",
+                        tint: session.runtimeRefreshInFlight ? Palette.detach : Palette.textMuted
+                    ) {
+                        session.refreshRuntimeOnDemand()
+                    }
+                    .disabled(session.runtimeRefreshInFlight)
+                }
+
+                if let message = session.runtimeRefreshMessage {
+                    Text(message)
+                        .font(Typo.mono(10))
+                        .foregroundColor(runtimeRefreshTint)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .transition(.opacity)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Palette.detach.opacity(0.06))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .strokeBorder(Palette.detach.opacity(0.22), lineWidth: 0.5)
+                    )
+            )
+            .padding(.horizontal, 28)
+
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var runtimeRefreshTint: Color {
+        if session.runtimeRefreshInFlight { return Palette.detach }
+        if session.runtimeRefreshSucceeded { return Palette.running }
+        return Palette.textMuted
     }
 
     private var providerSettingsPrompt: some View {
