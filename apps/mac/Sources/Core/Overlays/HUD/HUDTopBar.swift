@@ -44,17 +44,10 @@ struct HUDTopBar: View {
                     }
                 }
 
-                quickAction(icon: "magnifyingglass", label: "Search", shortcut: "⌃⌥⇧⌘5") {
+                quickAction(icon: "command", label: "Command Bar", shortcut: "⌃⌥Space") {
                     onDismiss()
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                         UnifiedCommandBarWindow.shared.toggle(mode: .search)
-                    }
-                }
-
-                quickAction(icon: "text.justify.left", label: "Palette", shortcut: "⇧⌘M") {
-                    onDismiss()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        CommandPaletteWindow.shared.toggle()
                     }
                 }
             }

@@ -98,7 +98,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let coordinator = AppActivationCoordinator.shared
         coordinator.registerSurface(id: "menuBarPopover") { MenuBarController.shared.isPopoverShown }
         coordinator.registerSurface(id: "commandMode") { CommandModeWindow.shared.isVisible }
-        coordinator.registerSurface(id: "commandPalette") { CommandPaletteWindow.shared.isVisible }
         coordinator.registerSurface(id: "mainWindow") { MainWindow.shared.isVisible }
         coordinator.registerSurface(id: "onboarding") { OnboardingWindowController.shared.isVisible }
         coordinator.registerSurface(id: "permissionsAssistant") { PermissionsAssistantWindowController.shared.isVisible }

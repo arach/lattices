@@ -366,7 +366,7 @@ struct CheatSheetView: View {
         VStack(alignment: .leading, spacing: 8) {
             columnHeader("App")
 
-            shortcutRow(action: .palette)
+            shortcutRow(action: .commandBar)
             shortcutRow(action: .unifiedWindow)
             shortcutRow(action: .bezel)
             shortcutRow(action: .hud)

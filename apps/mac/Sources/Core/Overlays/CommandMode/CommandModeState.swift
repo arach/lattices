@@ -1731,9 +1731,9 @@ final class CommandModeState: ObservableObject {
             InventoryManager.shared.refresh()
         })
 
-        // [p] palette
-        chords.append(Chord(key: "p", keyCode: 35, label: "palette") {
-            CommandPaletteWindow.shared.show()
+        // [p] command bar
+        chords.append(Chord(key: "p", keyCode: 35, label: "bar") {
+            UnifiedCommandBarWindow.shared.show(mode: .search)
         })
 
         return chords

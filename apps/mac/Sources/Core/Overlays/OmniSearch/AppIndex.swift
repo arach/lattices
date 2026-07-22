@@ -1,9 +1,11 @@
 import AppKit
 
-/// Installed-app index backing the command bar's launch results. Lazily scans
-/// the standard Applications folders once, then serves fuzzy name matches;
-/// running apps are flagged so callers can activate instead of relaunch.
-final class AppIndex {
+/// Installed-app index backing the command bar's launch results. A shallow scan
+/// of the standard Applications folders gives an immediate baseline; a live
+/// NSMetadataQuery (Spotlight's system-wide app index) then merges in nested
+/// and relocated apps and keeps the index fresh as apps come and go — no
+/// restart needed, and no synchronous query on the search keystroke path.
+final class AppIndex: NSObject {
     static let shared = AppIndex()
 
     struct Entry {
@@ -17,14 +19,30 @@ final class AppIndex {
         let isRunning: Bool
     }
 
-    private var cached: [Entry]?
+    /// Keyed by lowercased name for dedup across sources.
+    private var entries: [String: Entry] = [:]
+    /// Names currently sourced from Spotlight — replaced wholesale on updates.
+    private var spotlightNames: Set<String> = []
+    private var metadataQuery: NSMetadataQuery?
+    private var started = false
+
+    private override init() {
+        super.init()
+    }
 
     private var apps: [Entry] {
-        if let cached { return cached }
-        let scanned = Self.scan()
-        cached = scanned
-        return scanned
+        startIfNeeded()
+        return Array(entries.values)
     }
+
+    private func startIfNeeded() {
+        guard !started else { return }
+        started = true
+        for root in Self.roots { scanFolder(root) }
+        startSpotlight()
+    }
+
+    // MARK: - Baseline folder scan
 
     private static let roots = [
         "/Applications",
@@ -32,44 +50,53 @@ final class AppIndex {
         NSHomeDirectory() + "/Applications",
     ]
 
-    private static func scan() -> [Entry] {
-        var out: [Entry] = []
-        var seen = Set<String>()
-        func add(_ path: String) {
-            guard path.hasSuffix(".app") else { return }
-            let name = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
-            guard !name.isEmpty, seen.insert(name.lowercased()).inserted else { return }
-            out.append(Entry(name: name, url: URL(fileURLWithPath: path)))
-        }
-        let fm = FileManager.default
-        for root in roots {
-            guard let items = try? fm.contentsOfDirectory(atPath: root) else { continue }
-            for item in items { add(root + "/" + item) }
-        }
-        // Spotlight is the system-wide app index — it covers nested and
-        // relocated apps (Xcode's bundled tools, ~/Applications elsewhere)
-        // that the shallow folder scan misses. Skipped silently when
-        // indexing is unavailable.
-        for path in spotlightApps() { add(path) }
-        return out
+    private func scanFolder(_ root: String) {
+        guard let items = try? FileManager.default.contentsOfDirectory(atPath: root) else { return }
+        for item in items { add(root + "/" + item, spotlight: false) }
     }
 
-    private static func spotlightApps() -> [String] {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
-        process.arguments = ["kMDItemKind == 'Application'"]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        guard (try? process.run()) != nil else { return [] }
-        // Drain fully before waiting so a large index can't fill the pipe.
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else { return [] }
-        return String(decoding: data, as: UTF8.self)
-            .split(separator: "\n")
-            .map(String.init)
+    private func add(_ path: String, spotlight: Bool) {
+        guard path.hasSuffix(".app") else { return }
+        let name = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
+        guard !name.isEmpty else { return }
+        let key = name.lowercased()
+        if entries[key] == nil {
+            entries[key] = Entry(name: name, url: URL(fileURLWithPath: path))
+        }
+        if spotlight { spotlightNames.insert(key) }
     }
+
+    // MARK: - Live Spotlight index
+
+    private func startSpotlight() {
+        let query = NSMetadataQuery()
+        query.predicate = NSPredicate(format: "kMDItemKind == 'Application'")
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(spotlightResultsChanged(_:)),
+            name: .NSMetadataQueryDidFinishGathering, object: query)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(spotlightResultsChanged(_:)),
+            name: .NSMetadataQueryDidUpdate, object: query)
+        query.start()
+        metadataQuery = query
+    }
+
+    @objc private func spotlightResultsChanged(_ note: Notification) {
+        guard let query = note.object as? NSMetadataQuery else { return }
+        query.disableUpdates()
+        defer { query.enableUpdates() }
+        // Spotlight reports adds/removes/renames through the same note; the
+        // result set is small (~hundreds), so rebuild its share of the index.
+        for key in spotlightNames { entries.removeValue(forKey: key) }
+        spotlightNames.removeAll()
+        for i in 0..<query.resultCount {
+            guard let item = query.result(at: i) as? NSMetadataItem,
+                  let path = item.value(forAttribute: NSMetadataItemPathKey) as? String else { continue }
+            add(path, spotlight: true)
+        }
+    }
+
+    // MARK: - Query
 
     func match(_ query: String, limit: Int = 5) -> [Match] {
         let running = Set(NSWorkspace.shared.runningApplications.compactMap {

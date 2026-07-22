@@ -279,20 +279,18 @@ class HotkeyStore: ObservableObject {
         }
 
         // App
-        bind(.palette,   46, cmdShift)   // Cmd+Shift+M
         bind(.workspaceAssistant, 0, cmdShift) // Cmd+Shift+A
         bind(.unifiedWindow, 18, hyper)  // Hyper+1 (Workspace Home)
         bind(.screenMap, 37, hyper)      // Hyper+L (Layout)
         bind(.bezel,     19, hyper)      // Hyper+2
         bind(.hud,       20, hyper)      // Hyper+3 (HUD overlay)
-        bind(.omniSearch, 23, hyper)     // Hyper+5 (search command box)
         let cmdCtrl = UInt32(cmdKey | controlKey)
         bind(.handsOff, 46, cmdCtrl)          // Ctrl+Cmd+M
         bind(.activityLog, 37, cmdShift)   // Cmd+Shift+L
         bind(.cheatSheet, 22, hyper)       // Hyper+6
         bind(.mouseFinder, 26, hyper)      // Hyper+7
         bind(.gridPlacement, 5, ctrlOpt)   // Ctrl+Opt+G (4x4 placement target)
-        bind(.commandBar, 49, ctrlOpt)     // Ctrl+Opt+Space (precise placement command bar)
+        bind(.commandBar, 49, ctrlOpt)     // Ctrl+Opt+Space (THE command bar — browse/search/commands)
 
         // Layers: Cmd+Option+1-9
         let layerKeyCodes: [UInt32] = [18, 19, 20, 21, 23, 22, 26, 28, 25]
@@ -383,6 +381,26 @@ class HotkeyStore: ObservableObject {
             merged.removeValue(forKey: .desktopInventory)
             ud.set(true, forKey: Self.disabledKey(for: .desktopInventory))
             ud.set(true, forKey: "hotkey.desktopInventory.hyperpRemoved.v1")
+        }
+
+        // Retire Cmd+Shift+M (palette) and Hyper+5 (omniSearch): the unified
+        // command bar (Ctrl+Opt+Space) is the single command surface. Only
+        // clears bindings that still match the old defaults — custom remaps
+        // are left alone.
+        let cmdShift = UInt32(cmdKey | shiftKey)
+        let retired: [(HotkeyAction, UInt32, UInt32, String)] = [
+            (.palette, 46, cmdShift, "hotkey.palette.retired.v1"),
+            (.omniSearch, 23, hyper, "hotkey.omniSearch.retired.v1"),
+        ]
+        for (action, keyCode, mods, flag) in retired {
+            if let binding = merged[action],
+               binding.keyCode == keyCode,
+               binding.carbonModifiers == mods,
+               !ud.bool(forKey: flag) {
+                merged.removeValue(forKey: action)
+                ud.set(true, forKey: Self.disabledKey(for: action))
+                ud.set(true, forKey: flag)
+            }
         }
 
         self.bindings = merged

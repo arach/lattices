@@ -9,6 +9,9 @@ enum OmniResultKind: String {
     case project
     case app
     case session
+    case layer
+    case group
+    case action
     case process
     case ocrContent
 }
@@ -29,6 +32,9 @@ struct OmniResult: Identifiable {
         case .project:    return "Projects"
         case .app:        return "Applications"
         case .session:    return "Sessions"
+        case .layer:      return "Layers"
+        case .group:      return "Groups"
+        case .action:     return "App"
         case .process:    return "Processes"
         case .ocrContent: return "Screen Text"
         }
@@ -89,7 +95,7 @@ final class OmniSearchState: ObservableObject {
                     return
                 }
                 if q.isEmpty {
-                    self.results = []
+                    self.results = BrowseMenu.build()   // no-typing browse menu (was the palette)
                     self.refreshSummary()
                 } else if q.count == 1 {
                     self.quickSearch(q)        // single char: window index only, no debounce
@@ -324,7 +330,7 @@ final class OmniSearchState: ObservableObject {
     /// Grouped results for display
     var groupedResults: [(String, [OmniResult])] {
         let groups = Dictionary(grouping: results) { $0.groupLabel }
-        let order: [String] = ["Windows", "Projects", "Applications", "Sessions", "Processes", "Screen Text"]
+        let order: [String] = ["Windows", "Projects", "Applications", "Sessions", "Layers", "Groups", "App", "Processes", "Screen Text"]
         return order.compactMap { key in
             guard let items = groups[key], !items.isEmpty else { return nil }
             return (key, items)

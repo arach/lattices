@@ -54,7 +54,7 @@ scripts/build.sh package        # npm/package app bundle
 - Working with **app**? → Check apps/mac/Sources/ for Swift menu bar app code
 - Working with **config**? → Check docs/config.md for .lattices.json format and CLI reference
 - Working with **tiling**? → Check apps/mac/Sources/Core/Desktop/WindowTiler.swift and apps/mac/Sources/Core/Desktop/PlacementSpec.swift
-- Working with **palette**? → Check apps/mac/Sources/Core/Actions/PaletteCommand.swift for command palette actions
+- Working with **command bar**? → Check apps/mac/Sources/Core/Overlays/UnifiedCommandBar/ for the unified command bar (browse, search, slash-commands, voice)
 - Working with **terminal**? → Check apps/mac/Sources/Core/Workspace/Terminal/Terminal.swift for supported terminals and launch logic
 - Working with **daemon**? → Check apps/mac/Sources/Core/Daemon/DaemonServer.swift and apps/mac/Sources/Core/Daemon/LatticesApi.swift for WebSocket API
 - Working with **api**? → Check docs/api.md for the daemon RPC reference

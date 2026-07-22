@@ -60,9 +60,9 @@ final class CommandModeWindow {
         dismiss()
         isOpen = true
 
-        // Dismiss palette if visible
-        if CommandPaletteWindow.shared.isVisible {
-            CommandPaletteWindow.shared.dismiss()
+        // Dismiss the command bar if visible
+        if UnifiedCommandBarWindow.shared.isVisible {
+            UnifiedCommandBarWindow.shared.dismiss()
         }
 
         let state = CommandModeState(launchMode: launchMode)

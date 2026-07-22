@@ -39,6 +39,11 @@ struct UnifiedCommandBarView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
             focused = true
         }
+        // After voice hands the bar back (type-to-exit, cancel), the text field
+        // re-renders — re-assert focus so typing continues without a click.
+        .onChange(of: state.voice.phase) { _, phase in
+            if phase == .idle { DispatchQueue.main.async { focused = true } }
+        }
     }
 
     // The visible surface — bar plus optional expansion. Everything below it in
@@ -313,9 +318,15 @@ struct UnifiedCommandBarView: View {
     @ViewBuilder private var expansion: some View {
         switch state.detail {
         case .command:   commandList
-        case .search:    searchList
+        case .search:    searchList(maxHeight: 400)
         case .voice:     voiceList
         case .welcome:   welcome
+        case .browse:
+            VStack(spacing: 0) {
+                welcome
+                HUDHairline()
+                searchList(maxHeight: 280)
+            }
         case .nlCommand: nlCommandPanel
         case .none:      EmptyView()
         }
@@ -610,7 +621,7 @@ struct UnifiedCommandBarView: View {
         }
     }
 
-    private var searchList: some View {
+    private func searchList(maxHeight: CGFloat) -> some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 1) {
                 ForEach(searchRows) { section in
@@ -622,7 +633,7 @@ struct UnifiedCommandBarView: View {
             }
             .padding(.vertical, 4)
         }
-        .frame(maxHeight: 400)
+        .frame(maxHeight: maxHeight)
     }
 
     private func searchRow(_ item: OmniResult, idx: Int) -> some View {
