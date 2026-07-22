@@ -584,16 +584,39 @@ struct UnifiedCommandBarView: View {
         }
     }
 
+    /// Flat selection indices computed OUTSIDE view rendering — mutating a
+    /// captured counter inside `ForEach` (the old approach) mis-numbered rows
+    /// because `LazyVStack` evaluates content lazily, out of order.
+    private struct IndexedRow: Identifiable {
+        let idx: Int
+        let item: OmniResult
+        var id: UUID { item.id }
+    }
+
+    private struct IndexedSection: Identifiable {
+        let group: String
+        let rows: [IndexedRow]
+        var id: String { group }
+    }
+
+    private var searchRows: [IndexedSection] {
+        var flat = 0
+        return state.search.groupedResults.map { group, items in
+            let rows = items.map { item -> IndexedRow in
+                defer { flat += 1 }
+                return IndexedRow(idx: flat, item: item)
+            }
+            return IndexedSection(group: group, rows: rows)
+        }
+    }
+
     private var searchList: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 1) {
-                var flat = 0
-                ForEach(state.search.groupedResults, id: \.0) { group, items in
-                    sectionLabel(group)
-                    ForEach(items) { item in
-                        let idx = flat
-                        let _ = { flat += 1 }()
-                        searchRow(item, idx: idx)
+                ForEach(searchRows) { section in
+                    sectionLabel(section.group)
+                    ForEach(section.rows) { row in
+                        searchRow(row.item, idx: row.idx)
                     }
                 }
             }

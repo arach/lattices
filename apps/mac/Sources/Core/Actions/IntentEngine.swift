@@ -398,7 +398,14 @@ final class IntentEngine {
                         }
                     }
                 }
-                throw IntentError.targetNotFound("No project matching '\(project)'")
+                // Fall back to an installed/running app of that name. Require a
+                // strong match (word-prefix or better) so a weak fuzzy hit never
+                // auto-launches the wrong app.
+                if let app = AppIndex.shared.match(project, limit: 1).first, app.score >= 85 {
+                    AppIndex.shared.launch(app.entry)
+                    return .object(["ok": .bool(true), "launched": .string(app.entry.name)])
+                }
+                throw IntentError.targetNotFound("No project or app matching '\(project)'")
             }
         ))
 

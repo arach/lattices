@@ -32,6 +32,11 @@ final class UnifiedCommandBarWindow {
     private var voicePhaseObserver: AnyCancellable?
     private var optionKeyDown = false
     private var optionPushToTalkActive = false
+    /// Push-to-talk may only arm after ⌥ has been seen UP since the bar opened.
+    /// Opening via a hotkey that contains ⌥ (Ctrl+Opt+Space) otherwise triggers
+    /// listening on chord release: Space/Ctrl come up a few ms before ⌥, and
+    /// that flagsChanged reads as a fresh ⌥ press.
+    private var optionSeenReleased = false
 
     private var capturedTarget: (wid: UInt32, pid: Int32)?
     private var capturedScreen: NSScreen?
@@ -212,6 +217,20 @@ final class UnifiedCommandBarWindow {
                 if cmd { self.complete(); return nil }
                 return event
             default:
+                // Type-to-exit: a printable keypress while voice owns the bar
+                // (listening, transcribing, or showing a result) cancels voice
+                // and drops back to the text field with the keystroke kept —
+                // the transcript view is read-only, so without this the only
+                // way back to typing was dismissing the whole bar.
+                if let st = self.state, st.voiceActive,
+                   let chars = event.characters, !chars.isEmpty,
+                   event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+                       .isDisjoint(with: [.command, .option, .control]) {
+                    self.resetOptionVoiceTracking()
+                    st.voice.cancelListening()
+                    st.query += chars
+                    return nil
+                }
                 return event
             }
         }
@@ -242,7 +261,8 @@ final class UnifiedCommandBarWindow {
             if voice.phase == .listening && !optionPushToTalkActive {
                 optionPushToTalkActive = false
                 voice.stopListening()
-            } else if voice.armed && (voice.phase == .idle || voice.phase == .result)
+            } else if voice.armed && optionSeenReleased
+                        && (voice.phase == .idle || voice.phase == .result)
                         && panel?.isKeyWindow == true {
                 // Only START push-to-talk while the bar is key. The global flags
                 // monitor exists to catch the RELEASE after focus shifts; without
@@ -253,6 +273,7 @@ final class UnifiedCommandBarWindow {
             return
         }
 
+        optionSeenReleased = true
         guard optionKeyDown else { return }
         optionKeyDown = false
         if optionPushToTalkActive {
@@ -271,6 +292,7 @@ final class UnifiedCommandBarWindow {
     private func resetOptionVoiceTracking() {
         optionKeyDown = false
         optionPushToTalkActive = false
+        optionSeenReleased = false
     }
 
     // MARK: - Commit / drill-in
