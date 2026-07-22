@@ -1108,6 +1108,63 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
+            method: "focus.status",
+            description: "Check whether Focus Mode is active",
+            access: .read,
+            params: [],
+            returns: .custom("Object with active state"),
+            handler: { _ in
+                var active = false
+                Self.runOnMain { active = FocusModeController.shared.isActive }
+                return .object(["active": .bool(active)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "focus.enter",
+            description: "Enter Focus Mode for the frontmost window",
+            access: .mutate,
+            params: [],
+            returns: .custom("Object with ok and active state"),
+            handler: { _ in
+                var active = false
+                Self.runOnMain {
+                    FocusModeController.shared.enter()
+                    active = FocusModeController.shared.isActive
+                }
+                return .object(["ok": .bool(active), "active": .bool(active)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "focus.exit",
+            description: "Exit Focus Mode and restore the original window frame",
+            access: .mutate,
+            params: [],
+            returns: .custom("Object with ok and active state"),
+            handler: { _ in
+                Self.runOnMain { FocusModeController.shared.exit() }
+                return .object(["ok": .bool(true), "active": .bool(false)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "focus.toggle",
+            description: "Toggle Focus Mode for the frontmost window",
+            access: .mutate,
+            params: [],
+            returns: .custom("Object with ok and active state"),
+            handler: { _ in
+                var active = false
+                Self.runOnMain {
+                    FocusModeController.shared.toggle()
+                    active = FocusModeController.shared.isActive
+                }
+                return .object(["ok": .bool(true), "active": .bool(active)])
+            }
+        ))
+
+        api.register(Endpoint(
             method: "daemon.status",
             description: "Get daemon status including uptime and counts",
             access: .read,

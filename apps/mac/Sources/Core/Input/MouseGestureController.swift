@@ -143,6 +143,10 @@ final class MouseGestureController: ObservableObject {
     private var subscriptions: Set<AnyCancellable> = []
     private var installedObservers = false
     private var frontmostApplicationObserver: NSObjectProtocol?
+    private var healthTimer: Timer?
+    private var lastObservedTapHealth: TapHealth?
+    private let eventActivityLock = NSLock()
+    private var lastEventReceivedAt: CFAbsoluteTime?
     private let shapeRecognizer = ShapeRecognizer()
     private let breaker = EventTapBreaker(label: "MouseGesture")
     private let budgetMeter = TapBudgetMeter(label: "MouseGesture")
@@ -158,6 +162,16 @@ final class MouseGestureController: ObservableObject {
         "company.thebrowser.Browser",
         "org.mozilla.firefox",
     ]
+
+    private struct TapHealth: Equatable {
+        let installed: Bool
+        let valid: Bool
+        let enabled: Bool
+
+        var summary: String {
+            "installed=\(installed) valid=\(valid) enabled=\(enabled)"
+        }
+    }
 
     private struct TapTrackingState {
         let buttonNumber: Int64
@@ -246,15 +260,19 @@ final class MouseGestureController: ObservableObject {
     func start() {
         installObserversIfNeeded()
         refresh()
+        startHealthMonitoring()
     }
 
     func stop() {
+        healthTimer?.invalidate()
+        healthTimer = nil
         clearSession()
         removeEventTap()
     }
 
     func resetForSystemInputBoundary(reason: String) {
         dispatchPrecondition(condition: .onQueue(.main))
+        let healthBeforeReset = currentTapHealth()
         clearSession()
         breaker.reset()
         if let eventTap {
@@ -262,7 +280,10 @@ final class MouseGestureController: ObservableObject {
         } else {
             refresh()
         }
-        DiagnosticLog.shared.warn("MouseGesture: reset for \(reason)")
+        let healthAfterReset = currentTapHealth()
+        DiagnosticLog.shared.warn(
+            "MouseGesture: reset for \(reason) (before: \(healthBeforeReset.summary); after: \(healthAfterReset.summary))"
+        )
     }
 
     static func resolveDirection(
@@ -334,6 +355,44 @@ final class MouseGestureController: ObservableObject {
                 CGEvent.tapEnable(tap: eventTap, enable: true)
             }
         }
+    }
+
+    private func startHealthMonitoring() {
+        guard healthTimer == nil else { return }
+        lastObservedTapHealth = currentTapHealth()
+        healthTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
+            self?.recordTapHealthIfChanged()
+        }
+    }
+
+    private func currentTapHealth() -> TapHealth {
+        guard let eventTap else {
+            return TapHealth(installed: false, valid: false, enabled: false)
+        }
+        return TapHealth(
+            installed: true,
+            valid: CFMachPortIsValid(eventTap),
+            enabled: CGEvent.tapIsEnabled(tap: eventTap)
+        )
+    }
+
+    private func recordTapHealthIfChanged() {
+        dispatchPrecondition(condition: .onQueue(.main))
+        let health = currentTapHealth()
+        guard health != lastObservedTapHealth else { return }
+        let idleDescription: String
+        eventActivityLock.lock()
+        let lastEventReceivedAt = lastEventReceivedAt
+        eventActivityLock.unlock()
+        if let lastEventReceivedAt {
+            idleDescription = String(format: "%.1fs", CFAbsoluteTimeGetCurrent() - lastEventReceivedAt)
+        } else {
+            idleDescription = "no events observed"
+        }
+        DiagnosticLog.shared.warn(
+            "MouseGesture: tap health changed -> \(health.summary); last event \(idleDescription) ago; breaker=\(breakerState)"
+        )
+        lastObservedTapHealth = health
     }
 
     /// Re-enable the tap after a breaker trip, clearing trip history.
@@ -413,6 +472,9 @@ final class MouseGestureController: ObservableObject {
 
     private func handleEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         let started = CFAbsoluteTimeGetCurrent()
+        eventActivityLock.lock()
+        lastEventReceivedAt = started
+        eventActivityLock.unlock()
         defer {
             let elapsedMs = (CFAbsoluteTimeGetCurrent() - started) * 1000
             budgetMeter.record(durationMs: elapsedMs)

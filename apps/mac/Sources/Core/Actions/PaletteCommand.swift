@@ -443,6 +443,17 @@ enum CommandBuilder {
         ))
 
         commands.append(PaletteCommand(
+            id: "app-focus-mode",
+            title: "Toggle Focus Mode",
+            subtitle: "Spotlight the frontmost window (Hyper+Z)",
+            icon: "viewfinder",
+            category: .app,
+            badge: nil,
+            keywords: ["zen", "spotlight", "blackout", "distraction free", "window focus"],
+            action: { FocusModeController.shared.toggle() }
+        ))
+
+        commands.append(PaletteCommand(
             id: "app-settings",
             title: "Settings",
             subtitle: "Terminal, scan root, keyboard, shortcuts, voice, and OCR",
