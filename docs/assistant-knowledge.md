@@ -44,7 +44,10 @@ Group projects into named **layers** you can switch between, and tab-group relat
 windows. `workspace.json` layers launch/focus/tile projects. Studio layers are
 rule-backed live window sets persisted in `~/.lattices/layers.json`; their clauses
 support app/title/session exact, substring, regex, Space, visibility, and exclusion
-matches. → [Layers](/docs/layers).
+matches. For an ephemeral cross-app stack, select windows in Hyperspace and press
+Cmd+T or say “stack these as tabs” / “add these up”; use the HUD grid button to fan
+them out. Agents call `tabStacks.create`, `tabStacks.add`, `tabStacks.select`, and
+`tabStacks.layout`. → [Layers](/docs/layers).
 
 ### Command palette & menu bar app
 The palette (**Cmd+Shift+M**) is the app's primary surface: launch projects, tile,

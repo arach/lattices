@@ -1860,6 +1860,12 @@ Restart a specific pane's process within a session.
 | `layer.switch` | write | Compatibility wrapper for launch-style layer activation |
 | `group.launch` | write | Launch a tab group |
 | `group.kill` | write | Kill a tab group |
+| `tabStacks.list` | read | List ephemeral cross-app tab stacks |
+| `tabStacks.create` | write | Create a stack from selected or explicit windows |
+| `tabStacks.add` | write | Add windows to a live stack |
+| `tabStacks.select` | write | Focus a member tab |
+| `tabStacks.layout` | write | Toggle or set tabs/grid layout |
+| `tabStacks.delete` | write | Ungroup without closing windows |
 
 #### `projects.list`
 
@@ -1963,6 +1969,25 @@ Kill a tab group session.
 | Field | Type   | Required | Description      |
 |-------|--------|----------|------------------|
 | `id`  | string | yes      | Group ID         |
+
+#### Live tab stacks
+
+Live stacks operate on windows that are already open and last for the current
+Lattices run. If `windowIds` is omitted, create/add uses the latest multi-window
+selection from Hyperspace.
+
+```bash
+lattices call tabStacks.create '{"name":"Research","placement":"top-left"}'
+lattices call tabStacks.layout '{"mode":"grid"}'
+lattices call tabStacks.select '{"index":1}'
+lattices call tabStacks.layout '{"mode":"tabs"}'
+lattices call tabStacks.delete '{}'
+```
+
+`tabStacks.create` needs at least two live windows. You may instead pass
+`{"windowIds":[123,456]}`. The optional `id` on add/select/layout/delete defaults
+to the active group. Layout mode is `tabs`, `grid`, or `toggle`; selecting uses a
+zero-based `index` or `windowId`.
 
 ---
 

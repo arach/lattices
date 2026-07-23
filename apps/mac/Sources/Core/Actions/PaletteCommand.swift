@@ -295,17 +295,16 @@ enum CommandBuilder {
                         category: .project,
                         badge: "group",
                         action: {
-                            if let firstTab = group.tabs.first {
-                                let session = WorkspaceManager.sessionName(for: firstTab.path)
-                                let terminal = Preferences.shared.terminal
-                                terminal.focusOrAttach(session: session)
-                            }
+                            workspace.focusTab(
+                                group: group,
+                                tabIndex: workspace.selectedTabIndex(in: group)
+                            )
                         }
                     ))
 
                     // Per-tab focus commands
                     for (idx, tab) in group.tabs.enumerated() {
-                        let tabLabel = tab.label ?? (tab.path as NSString).lastPathComponent
+                        let tabLabel = tab.displayLabel
                         let tabIndex = idx
                         commands.append(PaletteCommand(
                             id: "group-tab-\(group.id)-\(idx)",
@@ -338,7 +337,7 @@ enum CommandBuilder {
                     commands.append(PaletteCommand(
                         id: "group-launch-\(group.id)",
                         title: "Launch \(group.label)",
-                        subtitle: "\(group.tabs.count) tabs \u{2014} \(group.tabs.map { $0.label ?? ($0.path as NSString).lastPathComponent }.joined(separator: ", "))",
+                        subtitle: "\(group.tabs.count) tabs \u{2014} \(group.tabs.map(\.displayLabel).joined(separator: ", "))",
                         icon: "rectangle.stack",
                         category: .project,
                         badge: "group",

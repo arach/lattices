@@ -117,9 +117,11 @@ final class WindowMotionMode {
         p.loadStart = t0
         p.beginLoadTrace()
         let tInit = CACurrentMediaTime()
-        p.onSelection = { [weak self] entry in
-            self?.finishWindowPick(.selected(entry))
-            self?.deactivate()
+        if selectingWindow {
+            p.onSelection = { [weak self] entry in
+                self?.finishWindowPick(.selected(entry))
+                self?.deactivate()
+            }
         }
         p.onExit = { [weak self] in
             guard let self else { return }
@@ -1007,14 +1009,20 @@ private final class MotionPanel: NSPanel {
     }
 
     /// Command-modified keys arrive here, not in `keyDown`. ⌘L remembers the
-    /// current plucked set as a rule-backed Studio layer — the one ⌘-combo we
-    /// claim while the survey is up (every letter is a pluck hint in Exposé, so
-    /// a bare key won't do).
+    /// current plucked set as a rule-backed Studio layer; ⌘T turns it into a
+    /// live cross-app tab stack.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
-           event.keyCode == 37 {                                // ⌘L — save the pluck as a layer
+        guard event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command else {
+            return super.performKeyEquivalent(with: event)
+        }
+        if event.keyCode == 37 {                                // ⌘L — save the pluck as a layer
             guard !selectionOnly else { NSSound.beep(); return true }
             saveGroupAsLayer()
+            return true
+        }
+        if event.keyCode == 17 {                                // ⌘T — stack the pluck as tabs
+            guard !selectionOnly else { NSSound.beep(); return true }
+            createLiveTabsFromSelection()
             return true
         }
         return super.performKeyEquivalent(with: event)
@@ -1115,6 +1123,35 @@ private final class MotionPanel: NSPanel {
         let layer = StudioLayerStore.shared.saveFromPluck(picked)
         DiagnosticLog.shared.info("Motion — saved \(picked.count) selected windows as layer '\(layer.name)' [\(layer.summary)]")
         LayerBezel.shared.show(label: "Saved · \(layer.name)", index: 0, total: 1, allLabels: ["Saved · \(layer.name)"])
+    }
+
+    /// Turn the current per-display pluck into an ephemeral tab stack. The same
+    /// selection is published to `LiveTabGroupStore` continuously, so the
+    /// assistant and daemon agents can perform this exact action too.
+    private func createLiveTabsFromSelection(on targetScreen: NSScreen? = nil) {
+        let picked: [WindowEntry]
+        if let targetScreen {
+            let id = MotionPanel.screenID(targetScreen)
+            let ids = pickOrderByScreen[id] ?? []
+            picked = ids.compactMap { wid in eligible.first(where: { $0.wid == wid }) }
+        } else {
+            picked = orderedGroup()
+        }
+        guard picked.count >= 2 else { NSSound.beep(); return }
+        LiveTabGroupStore.shared.captureCandidateSelection(picked.map(\.wid))
+        guard let tabs = LiveTabGroupStore.shared.create(
+            windowIDs: picked.map(\.wid),
+            placement: .tile(.topLeft),
+            screen: targetScreen ?? activeSurveyScreen ?? screen(for: picked[0])
+        ) else { NSSound.beep(); return }
+        AppFeedback.shared.commitTactile()
+        LayerBezel.shared.show(
+            label: "Tabs · \(tabs.name)",
+            index: 0,
+            total: 1,
+            allLabels: ["Tabs · \(tabs.name)"]
+        )
+        onExit?()
     }
 
     // MARK: - Single-window operations (on the active window)
@@ -2451,6 +2488,10 @@ private final class MotionPanel: NSPanel {
                     guard let self, !self.selectionOnly else { return }
                     self.gatherInPlace(on: screen)
                 },
+                onStackSelection: { [weak self] in
+                    guard let self, !self.selectionOnly else { return }
+                    self.createLiveTabsFromSelection(on: screen)
+                },
                 onSwapFirstTwo: { [weak self] in
                     guard let self, !self.selectionOnly, let a = self.pickOrderByScreen[id]?[safe: 0],
                           let b = self.pickOrderByScreen[id]?[safe: 1] else { NSSound.beep(); return }
@@ -3441,6 +3482,10 @@ private final class MotionPanel: NSPanel {
     }
 
     private func updateStack() {
+        let groupMembers = orderedGroup()
+        if !selectionOnly {
+            LiveTabGroupStore.shared.captureCandidateSelection(groupMembers.map(\.wid))
+        }
         guard let stackHost else { return }
         if inPlaceMode {
             stackHost.isHidden = true
@@ -3448,8 +3493,6 @@ private final class MotionPanel: NSPanel {
         }
         stackHost.isHidden = false
         let activeWid = activeEntry.wid
-        let groupMembers = orderedGroup()                                   // picked set, in pick order
-
         // The minimap mirrors the gather plan: the picked windows in the exact
         // balanced grid they'll snap to. Shown only once you've picked something —
         // while you're just browsing there's nothing to plan, so it stays hidden.
@@ -3619,6 +3662,7 @@ private struct MotionLegend: View {
                     keyHint("⌘scroll", "zoom")
                     keyHint("⏎", "gather")
                     if groupCount > 0 { keyHint("⌘L", "save layer") }
+                    if groupCount > 1 { keyHint("⌘T", "tabs") }
                     keyHint("E", "collapse")
                     keyHint("esc", "cancel")
                     keyHint("Hyper+G", "in-place")
@@ -3630,6 +3674,7 @@ private struct MotionLegend: View {
                 keyHint("G", "grid")
                 keyHint("F", "fill")
                 if groupCount > 0 { keyHint("⌘L", "save layer") }
+                if groupCount > 1 { keyHint("⌘T", "tabs") }
                 keyHint("←↑→↓", "half · gap")
                 keyHint("⇧/⌥", "nudge/size")
                 keyHint("⏎", "confirm")
@@ -4059,6 +4104,7 @@ struct ExposeView: View {
     var onDropLayers: ([UInt32], String) -> Void = { _, _ in }
     var onSwap: (UInt32, UInt32) -> Void = { _, _ in }
     var onGridSelection: () -> Void = {}
+    var onStackSelection: () -> Void = {}
     var onSwapFirstTwo: () -> Void = {}
     var onSwapWith: (UInt32, UInt32) -> Void = { _, _ in }
     var onFocusWindow: (UInt32) -> Void = { _ in }
@@ -6567,6 +6613,9 @@ struct ExposeView: View {
             }
             .disabled(pickCount < 2)
             if pickCount >= 2 {
+                Button { onStackSelection() } label: {
+                    Label("Stack \(pickCount) as Tabs (⌘T)", systemImage: "rectangle.stack")
+                }
                 Button { onSwapFirstTwo() } label: {
                     Label("Swap First Two (S)", systemImage: "arrow.left.arrow.right")
                 }

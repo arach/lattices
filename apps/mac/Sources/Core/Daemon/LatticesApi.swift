@@ -231,6 +231,22 @@ final class LatticesApi {
             Field(name: "projectCount", type: "int", required: true, description: "Number of projects in layer"),
         ]))
 
+        api.model(ApiModel(name: "LiveTabGroup", fields: [
+            Field(name: "id", type: "string", required: true, description: "Runtime tab group identifier"),
+            Field(name: "name", type: "string", required: true, description: "Display name"),
+            Field(name: "mode", type: "string", required: true, description: "tabs or grid"),
+            Field(name: "placement", type: "string", required: true, description: "Collapsed stack placement"),
+            Field(name: "selectedIndex", type: "int", required: true, description: "Selected member index"),
+            Field(name: "members", type: "[LiveTabMember]", required: true, description: "Cross-app windows in tab order"),
+        ]))
+
+        api.model(ApiModel(name: "LiveTabMember", fields: [
+            Field(name: "wid", type: "int", required: true, description: "CGWindowID"),
+            Field(name: "pid", type: "int", required: true, description: "Process ID"),
+            Field(name: "app", type: "string", required: true, description: "Application name"),
+            Field(name: "title", type: "string", required: true, description: "Window title"),
+        ]))
+
         api.model(ApiModel(name: "Process", fields: [
             Field(name: "pid", type: "int", required: true, description: "Process ID"),
             Field(name: "ppid", type: "int", required: true, description: "Parent process ID"),
@@ -2679,6 +2695,135 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
+            method: "tabStacks.list",
+            description: "List runtime cross-app tab stacks",
+            access: .read,
+            params: [],
+            returns: .array(model: "LiveTabGroup"),
+            handler: { _ in
+                Self.onMain { .array(LiveTabGroupStore.shared.groups.map(Self.liveTabGroup)) }
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "tabStacks.create",
+            description: "Stack selected or explicit windows as live cross-app tabs",
+            access: .mutate,
+            params: [
+                Param(name: "windowIds", type: "[int]", required: false, description: "Window IDs; defaults to the current Hyperspace selection"),
+                Param(name: "name", type: "string", required: false, description: "Tab group name"),
+                Param(name: "placement", type: "string", required: false, description: "Collapsed placement, defaults to top-left"),
+            ],
+            returns: .object(model: "LiveTabGroup"),
+            handler: { params in
+                let explicit = Self.selectedWindowIds(from: params?["windowIds"])
+                let name = params?["name"]?.stringValue
+                let placement = PlacementSpec(json: params?["placement"]) ?? .tile(.topLeft)
+                return try Self.onMain {
+                    let ids = explicit.isEmpty ? LiveTabGroupStore.shared.candidateWindowIDs : explicit
+                    guard let group = LiveTabGroupStore.shared.create(
+                        windowIDs: ids,
+                        name: name,
+                        placement: placement
+                    ) else {
+                        throw RouterError.custom("Invalid windowIds: select or provide at least two live windows")
+                    }
+                    return Self.liveTabGroup(group)
+                }
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "tabStacks.add",
+            description: "Add selected or explicit windows to a live tab stack",
+            access: .mutate,
+            params: [
+                Param(name: "id", type: "string", required: false, description: "Group id; defaults to the active group"),
+                Param(name: "windowIds", type: "[int]", required: false, description: "Window IDs; defaults to the current Hyperspace selection"),
+            ],
+            returns: .ok,
+            handler: { params in
+                let explicit = Self.selectedWindowIds(from: params?["windowIds"])
+                let groupID = params?["id"]?.stringValue
+                return Self.onMain {
+                    let ids = explicit.isEmpty ? LiveTabGroupStore.shared.candidateWindowIDs : explicit
+                    let added = LiveTabGroupStore.shared.add(windowIDs: ids, to: groupID)
+                    return .object(["ok": .bool(added > 0), "added": .int(added)])
+                }
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "tabStacks.select",
+            description: "Select a tab by member index or window id",
+            access: .mutate,
+            params: [
+                Param(name: "id", type: "string", required: false, description: "Group id; defaults to the active group"),
+                Param(name: "index", type: "int", required: false, description: "Zero-based tab index"),
+                Param(name: "windowId", type: "int", required: false, description: "Window ID to select"),
+            ],
+            returns: .ok,
+            handler: { params in
+                try Self.onMain {
+                    guard let id = params?["id"]?.stringValue ?? LiveTabGroupStore.shared.activeGroupID else {
+                        throw RouterError.notFound("active tab stack")
+                    }
+                    if let wid = params?["windowId"]?.uint32Value {
+                        LiveTabGroupStore.shared.select(groupID: id, windowID: wid)
+                    } else if let index = params?["index"]?.intValue {
+                        LiveTabGroupStore.shared.select(groupID: id, index: index)
+                    } else {
+                        throw RouterError.missingParam("index or windowId")
+                    }
+                    return .object(["ok": .bool(true)])
+                }
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "tabStacks.layout",
+            description: "Switch a live tab stack between collapsed tabs and an expanded grid",
+            access: .mutate,
+            params: [
+                Param(name: "id", type: "string", required: false, description: "Group id; defaults to the active group"),
+                Param(name: "mode", type: "string", required: false, description: "tabs, grid, or toggle"),
+            ],
+            returns: .ok,
+            handler: { params in
+                try Self.onMain {
+                    let store = LiveTabGroupStore.shared
+                    guard let id = params?["id"]?.stringValue ?? store.activeGroupID else {
+                        throw RouterError.notFound("active tab stack")
+                    }
+                    switch params?["mode"]?.stringValue?.lowercased() ?? "toggle" {
+                    case "tabs", "stack", "collapsed": store.collapse(id: id)
+                    case "grid", "expanded": store.expand(id: id)
+                    case "toggle": store.toggleLayout(id: id)
+                    default: throw RouterError.custom("Invalid mode: expected tabs, grid, or toggle")
+                    }
+                    return .object(["ok": .bool(true)])
+                }
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "tabStacks.delete",
+            description: "Remove a runtime tab stack without closing its windows",
+            access: .mutate,
+            params: [Param(name: "id", type: "string", required: false, description: "Group id; defaults to the active group")],
+            returns: .ok,
+            handler: { params in
+                try Self.onMain {
+                    guard let id = params?["id"]?.stringValue ?? LiveTabGroupStore.shared.activeGroupID else {
+                        throw RouterError.notFound("active tab stack")
+                    }
+                    LiveTabGroupStore.shared.delete(id: id)
+                    return .object(["ok": .bool(true)])
+                }
+            }
+        ))
+
+        api.register(Endpoint(
             method: "projects.scan",
             description: "Trigger a rescan of project directories",
             access: .mutate,
@@ -4494,6 +4639,29 @@ private extension LatticesApi {
             return app
         }
         return distributableWindows().first?.app
+    }
+
+    static func onMain<T>(_ body: () throws -> T) rethrows -> T {
+        if Thread.isMainThread { return try body() }
+        return try DispatchQueue.main.sync(execute: body)
+    }
+
+    static func liveTabGroup(_ group: LiveTabGroup) -> JSON {
+        .object([
+            "id": .string(group.id),
+            "name": .string(group.name),
+            "mode": .string(group.isExpanded ? "grid" : "tabs"),
+            "placement": .string(group.placement.wireValue),
+            "selectedIndex": .int(group.selectedIndex),
+            "members": .array(group.members.map { member in
+                .object([
+                    "wid": .int(Int(member.id)),
+                    "pid": .int(Int(member.pid)),
+                    "app": .string(member.app),
+                    "title": .string(member.title),
+                ])
+            }),
+        ])
     }
 
     static func normalizeToken(_ raw: String) -> String {
