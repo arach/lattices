@@ -1,18 +1,13 @@
 /**
- * Lattices inference wrapper — thin layer over Vercel AI SDK.
+ * Lattices inference wrapper — dependency-free HTTP clients for text models.
  *
  * Features:
- *  - Multi-provider: groq, openai, anthropic, google, xai
+ *  - Multi-provider: groq, openai, anthropic, google, xai, minimax
  *  - Credential loading: env vars → .env.local/.env → ~/.lattices/inference.json → macOS Keychain
  *  - Instrumented: every call logged with timing, model, token usage
  *  - Simple API: `await infer("do something", { provider: "groq" })`
  */
 
-import { generateText, type ModelMessage } from "ai";
-import { createOpenAI } from "@ai-sdk/openai";
-import { createAnthropic } from "@ai-sdk/anthropic";
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { createXai } from "@ai-sdk/xai";
 import { readFileSync, existsSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
@@ -22,11 +17,16 @@ import { getKeychainSecret } from "./keychain";
 
 export type ProviderName = "groq" | "openai" | "anthropic" | "google" | "xai" | "minimax";
 
+export interface InferenceMessage {
+  role: "system" | "user" | "assistant";
+  content: string | Array<{ type?: string; text?: string }>;
+}
+
 export interface InferOptions {
   provider?: ProviderName;
   model?: string;
   system?: string;
-  messages?: ModelMessage[];
+  messages?: InferenceMessage[];
   temperature?: number;
   maxTokens?: number;
   /** Tag for logging — e.g. "hands-off", "voice-fallback" */
@@ -245,44 +245,218 @@ export function resolveVoiceInferenceOptions(): { provider: ProviderName; model:
   return { provider, model };
 }
 
-// ── Provider factory ───────────────────────────────────────────────
+// ── Provider HTTP clients ─────────────────────────────────────────
 
-function getModel(provider: ProviderName, modelId: string) {
-  const creds = loadCredentials();
+interface ProviderResponse {
+  text: string;
+  usage?: InferResult["usage"];
+}
 
-  switch (provider) {
-    case "groq": {
-      const groq = createOpenAI({
-        baseURL: "https://api.groq.com/openai/v1",
-        apiKey: creds.groq,
-      });
-      return groq(modelId);
-    }
-    case "openai": {
-      const openai = createOpenAI({ apiKey: creds.openai });
-      return openai(modelId);
-    }
-    case "anthropic": {
-      const anthropic = createAnthropic({ apiKey: creds.anthropic });
-      return anthropic(modelId);
-    }
-    case "google": {
-      const google = createGoogleGenerativeAI({ apiKey: creds.google });
-      return google(modelId);
-    }
-    case "xai": {
-      const xai = createXai({ apiKey: creds.xai });
-      return xai(modelId);
-    }
-    case "minimax": {
-      // MiniMax uses OpenAI-compatible chat completions API
-      const minimax = createOpenAI({
-        baseURL: "https://api.minimax.io/v1",
-        apiKey: creds.minimax,
-      });
-      return minimax.chat(modelId);
-    }
+interface NormalizedMessage {
+  role: InferenceMessage["role"];
+  content: string;
+}
+
+function contentText(content: InferenceMessage["content"]): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return String(content ?? "");
+  return content
+    .map((part) => typeof part?.text === "string" ? part.text : "")
+    .filter(Boolean)
+    .join("\n");
+}
+
+function normalizeMessages(
+  prompt: string,
+  messages: InferenceMessage[] = []
+): NormalizedMessage[] {
+  return [
+    ...messages.map((message) => ({
+      role: message.role,
+      content: contentText(message.content),
+    })),
+    { role: "user" as const, content: prompt },
+  ];
+}
+
+async function postJSON(
+  url: string,
+  headers: Record<string, string>,
+  body: Record<string, unknown>,
+  abortSignal?: AbortSignal
+): Promise<any> {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...headers },
+    body: JSON.stringify(body),
+    signal: abortSignal,
+  });
+  const raw = await response.text();
+  let data: any;
+  try {
+    data = raw ? JSON.parse(raw) : {};
+  } catch {
+    data = { message: raw };
   }
+
+  if (!response.ok) {
+    const detail = data?.error?.message ?? data?.error ?? data?.message ?? raw;
+    throw new Error(`HTTP ${response.status}: ${String(detail || response.statusText)}`);
+  }
+  return data;
+}
+
+function responseText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => typeof part === "string" ? part : part?.text ?? "")
+      .filter(Boolean)
+      .join("\n");
+  }
+  return "";
+}
+
+async function inferOpenAICompatible(
+  provider: "groq" | "openai" | "xai" | "minimax",
+  apiKey: string,
+  model: string,
+  messages: NormalizedMessage[],
+  options: InferOptions
+): Promise<ProviderResponse> {
+  const baseURLs = {
+    groq: "https://api.groq.com/openai/v1",
+    openai: "https://api.openai.com/v1",
+    xai: "https://api.x.ai/v1",
+    minimax: "https://api.minimax.io/v1",
+  } as const;
+  const maxTokens = options.maxTokens ?? 1024;
+  const data = await postJSON(
+    `${baseURLs[provider]}/chat/completions`,
+    { authorization: `Bearer ${apiKey}` },
+    {
+      model,
+      messages: [
+        ...(options.system ? [{ role: "system", content: options.system }] : []),
+        ...messages,
+      ],
+      temperature: options.temperature ?? 0.3,
+      ...(provider === "xai"
+        ? { max_tokens: maxTokens }
+        : { max_completion_tokens: maxTokens }),
+    },
+    options.abortSignal
+  );
+  const usage = data?.usage;
+  const text = responseText(data?.choices?.[0]?.message?.content);
+  if (!text) throw new Error(`${provider} returned no text`);
+  return {
+    text,
+    usage: usage ? {
+      promptTokens: usage.prompt_tokens,
+      completionTokens: usage.completion_tokens,
+      totalTokens: usage.total_tokens,
+    } : undefined,
+  };
+}
+
+async function inferAnthropic(
+  apiKey: string,
+  model: string,
+  messages: NormalizedMessage[],
+  options: InferOptions
+): Promise<ProviderResponse> {
+  const systemMessages = messages.filter((message) => message.role === "system");
+  const system = [options.system, ...systemMessages.map((message) => message.content)]
+    .filter(Boolean)
+    .join("\n\n");
+  const data = await postJSON(
+    "https://api.anthropic.com/v1/messages",
+    {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    {
+      model,
+      max_tokens: options.maxTokens ?? 1024,
+      temperature: options.temperature ?? 0.3,
+      ...(system ? { system } : {}),
+      messages: messages.filter((message) => message.role !== "system"),
+    },
+    options.abortSignal
+  );
+  const text = responseText(data?.content);
+  if (!text) throw new Error("anthropic returned no text");
+  const promptTokens = data?.usage?.input_tokens;
+  const completionTokens = data?.usage?.output_tokens;
+  return {
+    text,
+    usage: data?.usage ? {
+      promptTokens,
+      completionTokens,
+      totalTokens: typeof promptTokens === "number" && typeof completionTokens === "number"
+        ? promptTokens + completionTokens
+        : undefined,
+    } : undefined,
+  };
+}
+
+async function inferGoogle(
+  apiKey: string,
+  model: string,
+  messages: NormalizedMessage[],
+  options: InferOptions
+): Promise<ProviderResponse> {
+  const modelId = model.replace(/^models\//, "");
+  const systemMessages = messages.filter((message) => message.role === "system");
+  const system = [options.system, ...systemMessages.map((message) => message.content)]
+    .filter(Boolean)
+    .join("\n\n");
+  const data = await postJSON(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelId)}:generateContent`,
+    { "x-goog-api-key": apiKey },
+    {
+      ...(system ? { systemInstruction: { parts: [{ text: system }] } } : {}),
+      contents: messages
+        .filter((message) => message.role !== "system")
+        .map((message) => ({
+          role: message.role === "assistant" ? "model" : "user",
+          parts: [{ text: message.content }],
+        })),
+      generationConfig: {
+        temperature: options.temperature ?? 0.3,
+        maxOutputTokens: options.maxTokens ?? 1024,
+      },
+    },
+    options.abortSignal
+  );
+  const text = responseText(data?.candidates?.[0]?.content?.parts);
+  if (!text) throw new Error("google returned no text");
+  const usage = data?.usageMetadata;
+  return {
+    text,
+    usage: usage ? {
+      promptTokens: usage.promptTokenCount,
+      completionTokens: usage.candidatesTokenCount,
+      totalTokens: usage.totalTokenCount,
+    } : undefined,
+  };
+}
+
+async function callProvider(
+  provider: ProviderName,
+  apiKey: string,
+  model: string,
+  messages: NormalizedMessage[],
+  options: InferOptions
+): Promise<ProviderResponse> {
+  if (provider === "anthropic") {
+    return inferAnthropic(apiKey, model, messages, options);
+  }
+  if (provider === "google") {
+    return inferGoogle(apiKey, model, messages, options);
+  }
+  return inferOpenAICompatible(provider, apiKey, model, messages, options);
 }
 
 // ── Logging ────────────────────────────────────────────────────────
@@ -333,36 +507,18 @@ export async function infer(
     );
   }
 
-  const model = getModel(provider, modelId);
-
-  // Build messages
-  const messages: ModelMessage[] = [
-    ...(options.messages ?? []),
-    { role: "user", content: prompt },
-  ];
+  const apiKey = creds[provider];
+  const messages = normalizeMessages(prompt, options.messages);
 
   log(tag, `→ ${provider}/${modelId} (${prompt.length} chars)`);
   const start = performance.now();
 
   try {
-    const result = await generateText({
-      model,
-      system: options.system,
-      messages,
-      temperature: options.temperature ?? 0.3,
-      maxOutputTokens: options.maxTokens ?? 1024,
-      abortSignal: options.abortSignal,
-    });
+    const result = await callProvider(provider, apiKey, modelId, messages, options);
 
     const durationMs = Math.round(performance.now() - start);
 
-    const usage = result.usage
-      ? {
-          promptTokens: result.usage.inputTokens,
-          completionTokens: result.usage.outputTokens,
-          totalTokens: result.usage.totalTokens,
-        }
-      : undefined;
+    const usage = result.usage;
 
     log(
       tag,

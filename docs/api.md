@@ -141,8 +141,8 @@ Returns `true` if `daemon.status` responds within 1 second.
 ## TypeScript SDK facade
 
 The CLI is a human/debug surface. Product code and agents should prefer the
-typed SDK facade, which validates params with Zod and calls the same daemon
-methods directly.
+typed SDK facade, which validates params with dependency-free schemas and calls
+the same daemon methods directly.
 
 ```ts
 import { cua } from '@lattices/sdk'

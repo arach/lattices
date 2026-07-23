@@ -1,7 +1,134 @@
 import { randomBytes } from "node:crypto";
 import { createConnection } from "node:net";
 
-import { z } from "zod";
+// This SDK only needs a small, synchronous subset of Zod. Keeping that subset
+// here avoids making every CLI install pull in a general-purpose schema library
+// while preserving the public schemas' parse/safeParse interface.
+function validationError(path, message) {
+  const location = path.length ? ` at ${path.join(".")}` : "";
+  const error = new Error(`${message}${location}`);
+  error.name = "ValidationError";
+  error.issues = [{ path, message }];
+  return error;
+}
+
+function schema(parser) {
+  const value = {
+    _parse: parser,
+    parse(input) {
+      return parser(input, []);
+    },
+    safeParse(input) {
+      try {
+        return { success: true, data: value.parse(input) };
+      } catch (error) {
+        return { success: false, error };
+      }
+    },
+    optional() {
+      const optionalSchema = schema((input, path) =>
+        input === undefined ? undefined : parser(input, path)
+      );
+      optionalSchema._optional = true;
+      return optionalSchema;
+    },
+    refine(check, message = "Invalid value") {
+      return schema((input, path) => {
+        const parsed = parser(input, path);
+        if (!check(parsed)) throw validationError(path, message);
+        return parsed;
+      });
+    },
+  };
+  return value;
+}
+
+function withChecks(kind, initialChecks = []) {
+  const build = (checks) => {
+    const value = schema((input, path) => {
+      if (typeof input !== kind) {
+        throw validationError(path, `Expected ${kind}`);
+      }
+      for (const { check, message } of checks) {
+        if (!check(input)) throw validationError(path, message);
+      }
+      return input;
+    });
+    const add = (check, message) => build([...checks, { check, message }]);
+    if (kind === "string") {
+      value.min = (minimum) => add(
+        (input) => input.length >= minimum,
+        `Expected string length to be at least ${minimum}`
+      );
+    } else {
+      value.min = (minimum) => add(
+        (input) => input >= minimum,
+        `Expected number to be at least ${minimum}`
+      );
+      value.max = (maximum) => add(
+        (input) => input <= maximum,
+        `Expected number to be at most ${maximum}`
+      );
+      value.int = () => add(Number.isInteger, "Expected integer");
+      value.finite = () => add(Number.isFinite, "Expected finite number");
+      value.positive = () => add((input) => input > 0, "Expected positive number");
+      value.nonnegative = () => add((input) => input >= 0, "Expected nonnegative number");
+    }
+    return value;
+  };
+  return build(initialChecks);
+}
+
+function objectSchema(shape) {
+  const value = schema((input, path) => {
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+      throw validationError(path, "Expected object");
+    }
+    const output = {};
+    for (const [key, child] of Object.entries(shape)) {
+      const parsed = child._parse(input[key], [...path, key]);
+      if (parsed !== undefined || Object.hasOwn(input, key)) output[key] = parsed;
+    }
+    return output;
+  });
+  value._shape = shape;
+  value.extend = (extension) => objectSchema({ ...shape, ...extension });
+  value.merge = (other) => objectSchema({ ...shape, ...other._shape });
+  value.pick = (selection) => objectSchema(Object.fromEntries(
+    Object.keys(selection)
+      .filter((key) => selection[key] && key in shape)
+      .map((key) => [key, shape[key]])
+  ));
+  return value;
+}
+
+const z = {
+  string: () => withChecks("string"),
+  number: () => withChecks("number"),
+  boolean: () => schema((input, path) => {
+    if (typeof input !== "boolean") throw validationError(path, "Expected boolean");
+    return input;
+  }),
+  enum: (values) => schema((input, path) => {
+    if (!values.includes(input)) {
+      throw validationError(path, `Expected one of: ${values.join(", ")}`);
+    }
+    return input;
+  }),
+  array: (item) => schema((input, path) => {
+    if (!Array.isArray(input)) throw validationError(path, "Expected array");
+    return input.map((entry, index) => item._parse(entry, [...path, index]));
+  }),
+  union: (schemas) => schema((input, path) => {
+    for (const candidate of schemas) {
+      try {
+        return candidate._parse(input, path);
+      } catch {}
+    }
+    throw validationError(path, "Value did not match any allowed type");
+  }),
+  object: objectSchema,
+};
 
 const DAEMON_HOST = "127.0.0.1";
 const DAEMON_PORT = 9399;
