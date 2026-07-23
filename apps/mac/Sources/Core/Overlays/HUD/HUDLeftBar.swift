@@ -7,6 +7,7 @@ struct HUDLeftBar: View {
     @ObservedObject private var scanner = ProjectScanner.shared
     @ObservedObject private var desktop = DesktopModel.shared
     @ObservedObject private var workspace = WorkspaceManager.shared
+    @ObservedObject private var liveTabs = LiveTabGroupStore.shared
     @ObservedObject private var xp = HUDExperienceStore.shared
     @FocusState private var searchFieldFocused: Bool
     @State private var resizeStartWidth: CGFloat?
@@ -92,6 +93,11 @@ struct HUDLeftBar: View {
             searchBar
 
             HUDHairline(opacity: 0.85)
+
+            if let group = liveTabs.activeGroup {
+                liveTabDeck(group)
+                HUDHairline(opacity: 0.85)
+            }
 
             // Tile mode banner
             if state.tileMode {
@@ -198,6 +204,196 @@ struct HUDLeftBar: View {
                 searchFieldFocused = state.focus == .search
             }
         }
+    }
+
+    // MARK: - Live tab deck
+
+    /// The HUD sidebar is always present, even in freeform/no-chrome presets.
+    /// Give live cross-app tabs a proper home here instead of relying on the
+    /// compact top strip, which is intentionally hidden by some HUD experiences.
+    private func liveTabDeck(_ group: LiveTabGroup) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                ZStack {
+                    Circle()
+                        .fill(HUDChrome.cyan.opacity(0.16))
+                        .frame(width: 24, height: 24)
+                    Image(systemName: "rectangle.stack.fill")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(HUDChrome.cyan)
+                }
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("LIVE TAB STACK")
+                        .font(Typo.monoBold(8))
+                        .tracking(1.1)
+                        .foregroundStyle(HUDChrome.cyan.opacity(0.82))
+                    Text(group.name)
+                        .font(Typo.heading(12))
+                        .foregroundStyle(Palette.text)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 4)
+
+                Text("\(group.members.count) TABS")
+                    .font(Typo.monoBold(8))
+                    .foregroundStyle(Palette.textDim)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(Color.white.opacity(0.06)))
+                    .overlay(Capsule().strokeBorder(HUDChrome.glassStrokeSoft, lineWidth: 0.5))
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 7) {
+                    ForEach(Array(group.members.enumerated()), id: \.element.id) { index, member in
+                        liveTabCard(member, index: index, group: group)
+                    }
+                }
+                .padding(.horizontal, 1)
+                .padding(.vertical, 2)
+            }
+
+            HStack(spacing: 7) {
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(group.isExpanded ? Palette.detach : Palette.running)
+                        .frame(width: 5, height: 5)
+                        .shadow(color: (group.isExpanded ? Palette.detach : Palette.running).opacity(0.65), radius: 4)
+                    Text(group.isExpanded ? "GRID VIEW" : "STACKED · TOP LEFT")
+                        .font(Typo.monoBold(8))
+                        .foregroundStyle(Palette.textDim)
+                }
+
+                Spacer()
+
+                liveTabControl(
+                    icon: group.isExpanded ? "rectangle.stack.fill" : "square.grid.2x2",
+                    label: group.isExpanded ? "STACK" : "GRID",
+                    active: group.isExpanded
+                ) {
+                    liveTabs.toggleLayout(id: group.id)
+                }
+
+                liveTabControl(icon: "xmark", label: "UNGROUP", destructive: true) {
+                    liveTabs.delete(id: group.id)
+                }
+            }
+        }
+        .padding(11)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [HUDChrome.cyan.opacity(0.10), Color.white.opacity(0.035)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [HUDChrome.cyan.opacity(0.46), HUDChrome.glassStrokeSoft],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 0.75
+                        )
+                )
+        )
+        .shadow(color: HUDChrome.cyan.opacity(0.08), radius: 14, y: 4)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .transition(.move(edge: .top).combined(with: .opacity))
+        .animation(.easeOut(duration: 0.18), value: group.id)
+    }
+
+    private func liveTabCard(_ member: LiveTabMember, index: Int, group: LiveTabGroup) -> some View {
+        let selected = group.selectedIndex == index
+        return Button {
+            liveTabs.select(groupID: group.id, index: index)
+        } label: {
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 6) {
+                    Image(systemName: liveTabIcon(for: member.app))
+                        .font(.system(size: 11, weight: .semibold))
+                    Text(member.app)
+                        .font(Typo.monoBold(9))
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    if selected {
+                        Circle()
+                            .fill(HUDChrome.onSignal)
+                            .frame(width: 5, height: 5)
+                    }
+                }
+
+                Text(member.label)
+                    .font(Typo.caption(9))
+                    .lineLimit(1)
+                    .foregroundStyle(selected ? HUDChrome.onSignal.opacity(0.70) : Palette.textMuted)
+            }
+            .foregroundStyle(selected ? HUDChrome.onSignal : Palette.text)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
+            .frame(width: 132, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(selected ? AnyShapeStyle(HUDChrome.activeGradient) : AnyShapeStyle(Color.white.opacity(0.045)))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .strokeBorder(selected ? Color.white.opacity(0.28) : HUDChrome.glassStrokeSoft, lineWidth: 0.6)
+                    )
+            )
+            .shadow(color: selected ? HUDChrome.cyan.opacity(0.20) : .clear, radius: 8, y: 3)
+        }
+        .buttonStyle(.plain)
+        .help("Show \(member.app): \(member.label)")
+    }
+
+    private func liveTabControl(
+        icon: String,
+        label: String,
+        active: Bool = false,
+        destructive: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 8, weight: .bold))
+                Text(label)
+                    .font(Typo.monoBold(8))
+            }
+            .foregroundStyle(destructive ? Palette.kill.opacity(0.86) : (active ? HUDChrome.onSignal : Palette.textDim))
+            .padding(.horizontal, 7)
+            .frame(height: 23)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(active ? HUDChrome.cyan : Color.white.opacity(0.045))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .strokeBorder(destructive ? Palette.kill.opacity(0.18) : HUDChrome.glassStrokeSoft, lineWidth: 0.5)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func liveTabIcon(for app: String) -> String {
+        let value = app.lowercased()
+        if value.contains("terminal") || value.contains("iterm") || value.contains("warp") {
+            return "terminal.fill"
+        }
+        if value.contains("chrome") || value.contains("safari") || value.contains("firefox") || value.contains("arc") {
+            return "globe"
+        }
+        if value.contains("xcode") || value.contains("code") || value.contains("cursor") || value.contains("zed") {
+            return "chevron.left.forwardslash.chevron.right"
+        }
+        return "macwindow"
     }
 
     /// Push flat items + section offsets to state so HUDController's key handler can use them

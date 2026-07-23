@@ -1897,6 +1897,44 @@ final class WorkspaceAssistantSession: ObservableObject {
     private func handleImmediateLocalCommand(_ text: String) -> String? {
         let lower = text.lowercased()
 
+        // Window actions are resolved locally so "these" means the windows the
+        // user has just plucked in Hyperspace. No provider round-trip is needed.
+        let liveTabs = LiveTabGroupStore.shared
+        let createTabPhrases = [
+            "stack these as tabs", "make these tabs", "group these as tabs",
+            "turn these into tabs", "add these up",
+        ]
+        if createTabPhrases.contains(where: lower.contains) {
+            guard liveTabs.candidateWindowIDs.count >= 2 else {
+                return "Select at least two windows in Hyperspace first, then say “stack these as tabs.”"
+            }
+            let requestedName = liveTabGroupName(from: text)
+            guard let group = liveTabs.createFromCandidate(name: requestedName) else {
+                return "I couldn’t turn that selection into tabs because fewer than two selected windows are still available."
+            }
+            return "Stacked \(group.members.count) windows as “\(group.name)” in the top-left. Use the grid button to fan them out."
+        }
+
+        if lower.contains("add these to tabs") || lower.contains("add these to the tab group") {
+            guard liveTabs.activeGroup != nil else { return "Create a live tab group first." }
+            let count = liveTabs.addCandidate()
+            return count > 0
+                ? "Added \(count) window\(count == 1 ? "" : "s") to the active tab group."
+                : "Those windows are already in the active tab group, or are no longer available."
+        }
+
+        if lower.contains("grid these tabs") || lower.contains("fan out these tabs") || lower.contains("expand these tabs") {
+            guard liveTabs.activeGroup != nil else { return "There isn’t an active live tab group yet." }
+            liveTabs.expand()
+            return "Expanded the active tabs into a grid."
+        }
+
+        if lower.contains("collapse these tabs") || lower.contains("stack these tabs") || lower.contains("restack these tabs") {
+            guard liveTabs.activeGroup != nil else { return "There isn’t an active live tab group yet." }
+            liveTabs.collapse()
+            return "Collapsed the active group back into tabs."
+        }
+
         if lower.contains("open assistant settings") || lower.contains("show assistant settings") {
             SettingsWindowController.shared.showAssistant()
             return "Opened Assistant settings."
@@ -1907,6 +1945,19 @@ final class WorkspaceAssistantSession: ObservableObject {
             return "Opened Settings."
         }
 
+        return nil
+    }
+
+    private func liveTabGroupName(from text: String) -> String? {
+        let lower = text.lowercased()
+        for marker in [" called ", " named "] {
+            guard let range = lower.range(of: marker) else { continue }
+            let offset = lower.distance(from: lower.startIndex, to: range.upperBound)
+            let start = text.index(text.startIndex, offsetBy: offset)
+            let name = text[start...].trimmingCharacters(in: .whitespacesAndNewlines)
+                .trimmingCharacters(in: CharacterSet(charactersIn: ".!?\"'"))
+            if !name.isEmpty { return name }
+        }
         return nil
     }
 
@@ -2155,6 +2206,7 @@ final class WorkspaceAssistantSession: ObservableObject {
                 ],
                 "mouseShortcuts": mouseShortcutContextPayload(),
                 "studioLayers": StudioLayerStore.shared.assistantContextPayload(),
+                "liveTabGroups": LiveTabGroupStore.shared.assistantContextPayload(),
             ],
             "settingsCatalog": [
                 [

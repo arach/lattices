@@ -173,8 +173,12 @@ function createWindowForProject(sessionName: string, windowIndex: number, dir: s
 }
 
 interface TabConfig {
-  path: string;
+  path?: string;
   label?: string;
+  app?: string;
+  title?: string;
+  url?: string;
+  launch?: string;
 }
 
 interface GroupConfig {
@@ -183,10 +187,27 @@ interface GroupConfig {
   tabs?: TabConfig[];
 }
 
+function projectTabs(tabs: TabConfig[]): Array<TabConfig & { path: string }> {
+  return tabs.filter((tab): tab is TabConfig & { path: string } => Boolean(tab.path));
+}
+
+function tabLabel(tab: TabConfig): string {
+  return tab.label || (tab.path ? basename(tab.path) : tab.app || tab.title || "Tab");
+}
+
+function openExternalTab(tab: TabConfig): void {
+  if (tab.url) {
+    run(`open '${esc(tab.url)}'`);
+    return;
+  }
+  const app = tab.launch || tab.app;
+  if (app) run(`open -a '${esc(app)}'`);
+}
+
 /** Create a group session with one tmux window per tab */
 function createGroupSession(group: GroupConfig): string | null {
   const name = toGroupSessionName(group.id);
-  const tabs = group.tabs || [];
+  const tabs = projectTabs(group.tabs || []);
 
   if (!tabs.length) {
     console.log(`Group "${group.id}" has no tabs.`);
@@ -233,12 +254,17 @@ function listGroups(): void {
   console.log("Tab Groups:\n");
   for (const group of ws.groups) {
     const tabs = group.tabs || [];
-    const runningCount = tabs.filter((t: TabConfig) => sessionExists(toSessionName(resolve(t.path)))).length;
+    const terminalTabs = projectTabs(tabs);
+    const runningCount = terminalTabs.filter(
+      (t) => sessionExists(toSessionName(resolve(t.path)))
+    ).length;
     const running = runningCount > 0;
-    const status = running
-      ? `\x1b[32m● ${runningCount}/${tabs.length} running\x1b[0m`
+    const status = terminalTabs.length === 0
+      ? "\x1b[36m◆ app tabs\x1b[0m"
+      : running
+      ? `\x1b[32m● ${runningCount}/${terminalTabs.length} terminal tabs running\x1b[0m`
       : "\x1b[90m○ stopped\x1b[0m";
-    const tabLabels = tabs.map((t: TabConfig) => t.label || basename(t.path)).join(", ");
+    const tabLabels = tabs.map(tabLabel).join(", ");
     console.log(`  ${group.label || group.id}  ${status}`);
     console.log(`    id: ${group.id}`);
     console.log(`    tabs: ${tabLabels}`);
@@ -270,24 +296,31 @@ function groupCommand(id?: string): void {
     return;
   }
 
-  // Each tab gets its own lattices session (individual project sessions)
-  const firstDir = resolve(tabs[0].path);
+  const terminalTabs = projectTabs(tabs);
+  for (const tab of tabs.filter((tab: TabConfig) => !tab.path)) openExternalTab(tab);
+  if (!terminalTabs.length) {
+    console.log(`Opened "${group.label || group.id}" app tabs.`);
+    return;
+  }
+
+  // Each project tab gets its own lattices session.
+  const firstDir = resolve(terminalTabs[0].path);
   const firstName = toSessionName(firstDir);
 
   // If the first tab's session already exists, just attach
   if (sessionExists(firstName)) {
-    console.log(`Reattaching to "${group.label || group.id}" (${tabs[0].label || basename(firstDir)})...`);
+    console.log(`Reattaching to "${group.label || group.id}" (${tabLabel(terminalTabs[0])})...`);
     attach(firstName);
     return;
   }
 
   // Create a detached session for each tab
   console.log(`Launching group "${group.label || group.id}" (${tabs.length} tabs)...`);
-  for (const tab of tabs) {
+  for (const tab of terminalTabs) {
     const dir = resolve(tab.path);
     const name = toSessionName(dir);
     if (!sessionExists(name)) {
-      console.log(`  Creating session: ${tab.label || basename(dir)}`);
+      console.log(`  Creating session: ${tabLabel(tab)}`);
       createSession(dir);
     }
   }
@@ -320,11 +353,16 @@ function tabCommand(groupId?: string, tabName?: string): void {
     // List tabs with their session status
     console.log(`Tabs in "${group.label || group.id}":\n`);
     for (let i = 0; i < tabs.length; i++) {
-      const label = tabs[i].label || basename(tabs[i].path);
-      const tabSession = toSessionName(resolve(tabs[i].path));
-      const running = sessionExists(tabSession);
-      const status = running ? "\x1b[32m●\x1b[0m" : "\x1b[90m○\x1b[0m";
-      console.log(`  ${status} ${i}: ${label}  (session: ${tabSession})`);
+      const tab = tabs[i];
+      const label = tabLabel(tab);
+      if (tab.path) {
+        const tabSession = toSessionName(resolve(tab.path));
+        const running = sessionExists(tabSession);
+        const status = running ? "\x1b[32m●\x1b[0m" : "\x1b[90m○\x1b[0m";
+        console.log(`  ${status} ${i}: ${label}  (session: ${tabSession})`);
+      } else {
+        console.log(`  \x1b[36m◆\x1b[0m ${i}: ${label}  (app tab)`);
+      }
     }
     return;
   }
@@ -335,10 +373,10 @@ function tabCommand(groupId?: string, tabName?: string): void {
     tabIdx = parseInt(tabName, 10);
   } else {
     tabIdx = tabs.findIndex(
-      (t) => (t.label || basename(t.path)).toLowerCase() === tabName.toLowerCase()
+      (t) => tabLabel(t).toLowerCase() === tabName.toLowerCase()
     );
     if (tabIdx === -1) {
-      const available = tabs.map((t) => t.label || basename(t.path)).join(", ");
+      const available = tabs.map(tabLabel).join(", ");
       console.log(`No tab "${tabName}". Available: ${available}`);
       return;
     }
@@ -349,10 +387,17 @@ function tabCommand(groupId?: string, tabName?: string): void {
     return;
   }
 
-  // Each tab is its own lattices session — attach to it
-  const dir = resolve(tabs[tabIdx].path);
+  const selectedTab = tabs[tabIdx];
+  if (!selectedTab.path) {
+    console.log(`Opening app tab: ${tabLabel(selectedTab)}`);
+    openExternalTab(selectedTab);
+    return;
+  }
+
+  // Each project tab is its own lattices session — attach to it.
+  const dir = resolve(selectedTab.path);
   const tabSession = toSessionName(dir);
-  const label = tabs[tabIdx].label || basename(dir);
+  const label = tabLabel(selectedTab);
 
   if (sessionExists(tabSession)) {
     console.log(`Attaching to tab: ${label}`);
@@ -2273,10 +2318,11 @@ async function daemonLsCommand(): Promise<boolean> {
     if (ws?.groups) {
       for (const g of ws.groups) {
         for (const tab of g.tabs || []) {
+          if (!tab.path) continue;
           const tabSession = toSessionName(resolve(tab.path));
           sessionGroupMap.set(tabSession, {
             group: g.label || g.id,
-            tab: tab.label || basename(tab.path),
+            tab: tabLabel(tab),
           });
         }
       }
@@ -2303,8 +2349,9 @@ async function daemonStatusInventory(): Promise<boolean> {
     if (ws?.groups) {
       for (const g of ws.groups) {
         for (const tab of g.tabs || []) {
+          if (!tab.path) continue;
           const name = toSessionName(resolve(tab.path));
-          const label = `${g.label || g.id}: ${tab.label || basename(tab.path)}`;
+          const label = `${g.label || g.id}: ${tabLabel(tab)}`;
           managed.set(name, label);
         }
       }
@@ -2570,10 +2617,11 @@ function listSessions(): void {
   if (ws?.groups) {
     for (const g of ws.groups) {
       for (const tab of g.tabs || []) {
+        if (!tab.path) continue;
         const tabSession = toSessionName(resolve(tab.path));
         sessionGroupMap.set(tabSession, {
           group: g.label || g.id,
-          tab: tab.label || basename(tab.path),
+          tab: tabLabel(tab),
         });
       }
     }
@@ -2837,8 +2885,9 @@ function statusInventory(): void {
   if (ws?.groups) {
     for (const g of ws.groups) {
       for (const tab of g.tabs || []) {
+        if (!tab.path) continue;
         const name = toSessionName(resolve(tab.path));
-        const label = `${g.label || g.id}: ${tab.label || basename(tab.path)}`;
+        const label = `${g.label || g.id}: ${tabLabel(tab)}`;
         managed.set(name, label);
       }
     }

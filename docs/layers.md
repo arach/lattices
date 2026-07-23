@@ -14,10 +14,10 @@ work together.
 
 ## Tab Groups
 
-Tab groups let you bundle related projects as tabs within a single
-terminal session (requires tmux). This is useful when you have a family
-of projects — like an iOS app, macOS app, website, and API — that
-you think of as one logical unit.
+Tab groups let you bundle related work into one Lattices tab stack.
+A tab can be a terminal project or a native application window such as
+Chrome, an editor, Notes, or a design tool. This is useful when several
+windows belong to one topic and should share one screen position.
 
 ### Configuration
 
@@ -31,24 +31,28 @@ Add `groups` to `~/.lattices/workspace.json`:
       "id": "vox",
       "label": "Vox",
       "tabs": [
-        { "path": "/Users/you/dev/vox-ios", "label": "iOS" },
-        { "path": "/Users/you/dev/vox-macos", "label": "macOS" },
-        { "path": "/Users/you/dev/vox-web", "label": "Website" },
-        { "path": "/Users/you/dev/vox-api", "label": "API" }
+        { "path": "/Users/you/dev/vox", "label": "Terminal" },
+        { "app": "Google Chrome", "title": "Vox", "url": "https://github.com/example/vox", "label": "Web" },
+        { "app": "Visual Studio Code", "title": "vox", "launch": "Visual Studio Code", "label": "Editor" }
       ]
     }
   ]
 }
 ```
 
-Each tab's pane layout comes from its own `.lattices.json` — no changes
-to per-project configs.
+Project tabs get their pane layout from their own `.lattices.json`.
+App tabs are matched by app name and optional window-title substring.
+`url` or `launch` tells Lattices how to open a missing app tab.
 
 ### How it works
 
-- Session name follows the pattern `lattices-group-<id>` (e.g. `lattices-group-vox`)
-- 1 group = 1 tmux session. Each tab is a tmux window, and each window
-  gets its own panes from that project's `.lattices.json`
+- Each project tab keeps its normal `<basename>-<hash>` tmux session
+- Native app tabs are tracked by `app` and optional `title`
+- When a layer references the group with a `tile`, all matched windows
+  collapse into that slot as a cross-app tab stack
+- The HUD shows a Lattices tab strip for the active layer's first group
+- The grid button fans the group out across the display; press it again
+  to collapse the windows back into their shared slot
 - You can still launch projects independently: `cd vox-ios && lattices start`
   creates its own standalone session as before
 
@@ -59,8 +63,14 @@ to per-project configs.
 | `id`           | string   | Unique identifier for the group      |
 | `label`        | string   | Display name shown in the UI         |
 | `tabs`         | array    | List of tab definitions              |
-| `tabs[].path`  | string   | Absolute path to project directory   |
-| `tabs[].label` | string?  | Tab name (defaults to directory name) |
+| `tabs[].path`  | string?  | Absolute path for a terminal project tab |
+| `tabs[].app`   | string?  | Application name for a native app tab |
+| `tabs[].title` | string?  | Window-title substring used to select the right app window |
+| `tabs[].url`   | string?  | URL to open when an app tab is missing |
+| `tabs[].launch`| string?  | Application name passed to `open -a` when missing |
+| `tabs[].label` | string?  | Tab name (defaults to directory or app name) |
+
+Each tab needs either `path` or `app`.
 
 ### CLI commands
 
@@ -73,8 +83,8 @@ lattices tab <group> [tab]  # Switch tab by label or index
 Examples:
 
 ```bash
-lattices group vox       # Launch all Vox tabs
-lattices tab vox iOS     # Switch to the iOS tab
+lattices group vox       # Launch all Vox terminal and app tabs
+lattices tab vox Editor  # Open the editor tab
 lattices tab vox 0       # Switch to first tab (by index)
 ```
 
@@ -88,6 +98,7 @@ Each group row shows:
 - Expand/collapse to see individual tabs
 - Launch/Attach and Kill buttons
 - Per-tab "Go" buttons to switch and focus a specific tab
+- A grid/collapse button for changing between stack and overview
 
 The command palette also includes group commands:
 
@@ -97,6 +108,24 @@ The command palette also includes group commands:
 | Attach *group*             | Focus the running group session        |
 | *Group*: *Tab*             | Switch to a specific tab in a group    |
 | Kill *group* Group         | Terminate the group session            |
+
+### Live tab stacks
+
+You do not need to edit `workspace.json` for an ad-hoc group. Open
+Hyperspace, select two or more windows, and press **⌘T** (or choose
+**Stack N as Tabs** from a selected window's menu). Lattices immediately
+stacks those existing terminal, browser, editor, or other app windows in
+the top-left and shows their switcher in the HUD.
+
+Use a tab button to bring that member forward. Use the grid button to fan
+the group out, then press it again to collapse back to the shared slot.
+The × button ungroups the windows without closing them. Live stacks are
+runtime-only; use the configured groups above when the group should return
+after Lattices restarts.
+
+The Workspace Assistant understands the same selection. With windows still
+selected, say **“stack these as tabs”** or **“add these up.”** Agents can use
+the `tabStacks.*` daemon methods described in the Agent API.
 
 ## Layers
 
@@ -203,9 +232,11 @@ This lets you tile a whole group into a screen position:
 }
 ```
 
-When switching to this layer, lattices launches (or focuses) the
-"vox" group session and tiles it to the top-left quarter, alongside
-the design-system project on the right.
+When switching to this layer, Lattices launches or focuses the "vox"
+group and stacks all of its terminal and app windows in the top-left
+quarter, alongside the design-system project on the right. Use the HUD
+tab strip to change the visible member, or its grid button to fan out
+the whole topic.
 
 ### Layer fields
 

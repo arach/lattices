@@ -6,6 +6,7 @@ struct HUDTopBar: View {
     @ObservedObject var state: HUDState
     @ObservedObject private var handsOff = HandsOffSession.shared
     @ObservedObject private var workspace = WorkspaceManager.shared
+    @ObservedObject private var liveTabs = LiveTabGroupStore.shared
     @ObservedObject private var xp = HUDExperienceStore.shared
     var onDismiss: () -> Void
 
@@ -24,6 +25,14 @@ struct HUDTopBar: View {
             // Voice status (when active)
             if state.voiceActive {
                 voiceStatus
+                    .padding(.leading, 12)
+            }
+
+            if let group = liveTabs.activeGroup {
+                liveTabStrip(group)
+                    .padding(.leading, 12)
+            } else if let group = workspace.activeLayerGroups.first {
+                mixedTabStrip(group)
                     .padding(.leading, 12)
             }
 
@@ -64,6 +73,139 @@ struct HUDTopBar: View {
         .frame(height: 44)
         .background(HUDPanelBackground())
         .hudEdgeGlow()
+    }
+
+    // MARK: - Cross-app tabs
+
+    private func liveTabStrip(_ group: LiveTabGroup) -> some View {
+        HStack(spacing: 3) {
+            Text(group.name)
+                .font(Typo.monoBold(8))
+                .foregroundColor(Palette.textMuted)
+                .padding(.horizontal, 5)
+
+            ForEach(Array(group.members.enumerated()), id: \.element.id) { index, member in
+                let isSelected = group.selectedIndex == index
+                Button {
+                    liveTabs.select(groupID: group.id, index: index)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "macwindow")
+                            .font(.system(size: 8, weight: .semibold))
+                        Text(member.app)
+                            .lineLimit(1)
+                    }
+                    .font(Typo.monoBold(8))
+                    .foregroundColor(isSelected ? Palette.bg : Palette.textMuted)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(isSelected ? Palette.running : Color.white.opacity(0.04))
+                    )
+                }
+                .buttonStyle(.plain)
+                .help("Show \(member.app): \(member.label)")
+            }
+
+            Button {
+                liveTabs.toggleLayout(id: group.id)
+            } label: {
+                Image(systemName: group.isExpanded ? "rectangle.stack.fill" : "square.grid.2x2")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(group.isExpanded ? Palette.running : Palette.textMuted)
+                    .frame(width: 24, height: 22)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color.white.opacity(0.04))
+                    )
+            }
+            .buttonStyle(.plain)
+            .help(group.isExpanded ? "Collapse to tabs" : "Expand to grid")
+
+            Button {
+                liveTabs.delete(id: group.id)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundColor(Palette.textMuted)
+                    .frame(width: 20, height: 22)
+            }
+            .buttonStyle(.plain)
+            .help("Ungroup live tabs")
+        }
+        .padding(3)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.black.opacity(0.28))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(Palette.running.opacity(0.45), lineWidth: 0.5)
+                )
+        )
+    }
+
+    /// A layer group can mix terminal projects and native app windows. All tabs
+    /// occupy the group's configured tile until the grid button fans them out.
+    private func mixedTabStrip(_ group: TabGroup) -> some View {
+        HStack(spacing: 3) {
+            Text(group.label)
+                .font(Typo.monoBold(8))
+                .foregroundColor(Palette.textMuted)
+                .padding(.horizontal, 5)
+
+            ForEach(Array(group.tabs.enumerated()), id: \.offset) { index, tab in
+                let isSelected = workspace.selectedTabIndex(in: group) == index
+                let isRunning = workspace.isTabRunning(tab)
+                Button {
+                    workspace.focusTab(group: group, tabIndex: index)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: tab.isTerminal ? "terminal" : "macwindow")
+                            .font(.system(size: 8, weight: .semibold))
+                        Text(tab.displayLabel)
+                            .lineLimit(1)
+                    }
+                    .font(Typo.monoBold(8))
+                    .foregroundColor(isSelected ? Palette.bg : Palette.textMuted)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(isSelected ? Palette.running : Color.white.opacity(0.04))
+                    )
+                }
+                .buttonStyle(.plain)
+                .opacity(isRunning ? 1 : 0.55)
+                .help(isRunning ? "Show \(tab.displayLabel)" : "Open \(tab.displayLabel)")
+            }
+
+            Button {
+                workspace.toggleGroupLayout(group)
+            } label: {
+                Image(systemName: workspace.isGroupExpanded(group)
+                    ? "rectangle.stack.fill"
+                    : "square.grid.2x2")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(workspace.isGroupExpanded(group) ? Palette.running : Palette.textMuted)
+                    .frame(width: 24, height: 22)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color.white.opacity(0.04))
+                    )
+            }
+            .buttonStyle(.plain)
+            .help(workspace.isGroupExpanded(group) ? "Collapse to tabs" : "Expand to grid")
+        }
+        .padding(3)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.black.opacity(0.28))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(Palette.border, lineWidth: 0.5)
+                )
+        )
     }
 
     // MARK: - Experience badge
