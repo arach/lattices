@@ -10,6 +10,20 @@ struct LatsBackground<Content: View>: View {
     var body: some View {
         ZStack {
             LatsPalette.bgEdge.ignoresSafeArea()
+            RadialGradient(
+                colors: [LatsPalette.green.opacity(0.08), .clear],
+                center: .topLeading,
+                startRadius: 0,
+                endRadius: 560
+            )
+            .ignoresSafeArea()
+            RadialGradient(
+                colors: [LatsPalette.amber.opacity(0.045), .clear],
+                center: .bottomTrailing,
+                startRadius: 0,
+                endRadius: 620
+            )
+            .ignoresSafeArea()
             if grid {
                 LatsGridBackground().opacity(0.7).ignoresSafeArea()
             }

@@ -3,26 +3,55 @@ import SwiftUI
 
 // MARK: - Design System
 
+/// Cockpit palette, tuned to the `Lats Cockpit — iPad` design system (system.css).
+/// Backgrounds are near-neutral ink; text is a warm four-step grey ramp
+/// (fg → fg-4); accents are the quiet, desaturated "tactical HUD" tints the
+/// design uses for icon chips and category dots — no neon.
 enum LatsPalette {
-    static let bgEdge   = Color(hue: 0.62, saturation: 0.05, brightness: 0.08)
-    static let bg       = Color(hue: 0.62, saturation: 0.05, brightness: 0.13)
-    static let surface  = Color(hue: 0.62, saturation: 0.06, brightness: 0.18)
-    static let surface2 = Color(hue: 0.62, saturation: 0.07, brightness: 0.22)
+    // Ink — deepest → raised. Neutral, a whisper cooler than pure black.
+    static let bgEdge   = Color(hex: 0x060607)   // ink-0, device/pad ground
+    static let bg       = Color(hex: 0x0B0B0C)   // ink-1, page
+    static let surface  = Color(hex: 0x141416)   // ink-2, card / raised
+    static let surface2 = Color(hex: 0x1C1C20)   // ink-3, higher raised
+    static let card     = Color(hex: 0x0C0C0E)   // recessed card ground
 
-    static let hairline  = Color.white.opacity(0.06)
-    static let hairline2 = Color.white.opacity(0.10)
+    // Hairlines. `hairline`/`hairline2` are the faint white edges used broadly;
+    // `hairlineCard` is the design's --brk (#202024) card border.
+    static let hairline     = Color.white.opacity(0.06)
+    static let hairline2    = Color.white.opacity(0.10)
+    static let hairlineCard = Color(hex: 0x202024)
 
-    static let text      = Color(white: 0.96)
-    static let textDim   = Color(white: 0.96).opacity(0.55)
-    static let textFaint = Color(white: 0.96).opacity(0.32)
+    // Text ramp — fg / fg-2 / fg-3 / fg-4, warm grey. Legible-but-quiet, matching
+    // the screenshot where meta/labels read clearly rather than barely-there.
+    static let text      = Color(hex: 0xE2E2DF)  // fg   — primary
+    static let text2     = Color(hex: 0xA0A09B)  // fg-2 — secondary (bright)
+    static let textDim   = Color(hex: 0xA0A09B)  // fg-2 — secondary
+    static let textFaint = Color(hex: 0x71716C)  // fg-3 — tertiary / labels
+    static let textGhost = Color(hex: 0x4A4A4D)  // fg-4 — quietest
 
-    static let red    = Color(red: 0.95, green: 0.40, blue: 0.42)
-    static let amber  = Color(red: 0.96, green: 0.74, blue: 0.36)
-    static let green  = Color(red: 0.43, green: 0.86, blue: 0.55)
+    // Accents — desaturated. Green is the phosphor accent (oklch 0.82/0.15/145);
+    // red/amber/blue/green are the muted icon-chip tints (ic-*).
+    static let red    = Color(red: 0.88, green: 0.45, blue: 0.42)  // ic-red, terracotta
+    static let amber  = Color(red: 0.90, green: 0.74, blue: 0.42)  // --amber
+    static let green  = Color(red: 0.51, green: 0.87, blue: 0.52)  // --acc phosphor
     static let teal   = Color(red: 0.43, green: 0.83, blue: 0.84)
-    static let blue   = Color(red: 0.49, green: 0.71, blue: 0.97)
+    static let blue   = Color(red: 0.50, green: 0.69, blue: 0.87)  // ic-blue, steel
     static let violet = Color(red: 0.74, green: 0.59, blue: 0.99)
     static let pink   = Color(red: 0.97, green: 0.58, blue: 0.81)
+}
+
+extension Color {
+    /// Build an sRGB color from a 0xRRGGBB literal — keeps the palette legible
+    /// against the design's hex tokens.
+    init(hex: UInt32) {
+        self.init(
+            .sRGB,
+            red: Double((hex >> 16) & 0xFF) / 255,
+            green: Double((hex >> 8) & 0xFF) / 255,
+            blue: Double(hex & 0xFF) / 255,
+            opacity: 1
+        )
+    }
 }
 
 enum LatsTint: String, CaseIterable {
@@ -160,8 +189,7 @@ struct CommandDeck {
         .init(label: "Tile 4-up",   icon: "rectangle.split.2x2",       tint: .blue,   category: .window, hint: "⌘2",  sim: .tile),
         .init(label: "L Monitor",   icon: "display",                   tint: .blue,   category: .window, hint: "⌘3",  sim: .move),
         .init(label: "R Monitor",   icon: "display",                   tint: .blue,   category: .window, hint: "⌘4",  sim: .move),
-        .init(label: "Desktop Pv",  icon: "macwindow.on.rectangle",    tint: .blue,   category: .window, hint: "⌘5",  sim: .none),
-        .init(label: "Memos",       icon: "note.text",                 tint: .amber,  category: .voice,  hint: "⌘M",  sim: .none),
+        // Trimmed to a clean 4×4 (16 tiles) on a 4-up grid.
     ]
 
     static let stage: [[LatsWindow]] = [
@@ -181,6 +209,69 @@ struct CommandDeck {
         "move all terminals to the left monitor",
         "open shell in the lats project",
         "tile chrome two up on the right",
+    ]
+}
+
+/// Offline preview decks. With no Mac connected the cockpit runs these so the
+/// deck switcher (pill / swipe) has several real pages to move between; once
+/// paired the live decks come from the Mac's own cockpit pages.
+enum MockDecks {
+    static let order = ["command", "dev", "media", "windows", "voice"]
+
+    static func shortcuts(for id: String) -> [LatsShortcut] {
+        all[id] ?? CommandDeck.shortcuts
+    }
+
+    static let all: [String: [LatsShortcut]] = [
+        "command": CommandDeck.shortcuts,
+        "dev": dev,
+        "media": media,
+        "windows": windows,
+        "voice": voice,
+    ]
+
+    static let dev: [LatsShortcut] = [
+        .init(label: "Terminal",   icon: "terminal.fill",                 tint: .green,  category: .dev,    hint: "⌘T",  sim: .none),
+        .init(label: "Split",      icon: "rectangle.split.2x1",           tint: .green,  category: .dev,    hint: "⌘D",  sim: .tile),
+        .init(label: "Run",        icon: "play.fill",                     tint: .green,  category: .dev,    hint: "⌘R",  sim: .none),
+        .init(label: "Build",      icon: "hammer.fill",                   tint: .amber,  category: .dev,    hint: "⌘B",  sim: .none),
+        .init(label: "Test",       icon: "checkmark.seal.fill",           tint: .teal,   category: .dev,    hint: "⌘U",  sim: .none),
+        .init(label: "Git",        icon: "arrow.triangle.branch",         tint: .amber,  category: .dev,    hint: "⌘G",  sim: .none),
+        .init(label: "Commit",     icon: "checkmark.circle.fill",         tint: .green,  category: .dev,    hint: "⌘↵",  sim: .none),
+        .init(label: "Logs",       icon: "list.bullet.rectangle.fill",    tint: .blue,   category: .dev,    hint: "⌘L",  sim: .none),
+    ]
+
+    static let media: [LatsShortcut] = [
+        .init(label: "Play",       icon: "playpause.fill",                tint: .violet, category: .system, hint: "F8",  sim: .none),
+        .init(label: "Prev",       icon: "backward.fill",                 tint: .violet, category: .system, hint: "F7",  sim: .none),
+        .init(label: "Next",       icon: "forward.fill",                  tint: .violet, category: .system, hint: "F9",  sim: .none),
+        .init(label: "Vol Up",     icon: "speaker.wave.3.fill",           tint: .teal,   category: .system, hint: "F12", sim: .none),
+        .init(label: "Vol Down",   icon: "speaker.wave.1.fill",           tint: .teal,   category: .system, hint: "F11", sim: .none),
+        .init(label: "Mute",       icon: "speaker.slash.fill",            tint: .red,    category: .system, hint: "F10", sim: .none),
+        .init(label: "Brightness", icon: "sun.max.fill",                  tint: .amber,  category: .system, hint: "F2",  sim: .none),
+        .init(label: "Screenshot", icon: "camera.viewfinder",             tint: .pink,   category: .system, hint: "⌘⇧4", sim: .none),
+    ]
+
+    static let windows: [LatsShortcut] = [
+        .init(label: "Tile 2-up",  icon: "rectangle.split.2x1",           tint: .blue,   category: .window, hint: "⌘1",  sim: .tile),
+        .init(label: "Tile 4-up",  icon: "rectangle.split.2x2",           tint: .blue,   category: .window, hint: "⌘2",  sim: .tile),
+        .init(label: "Left",       icon: "rectangle.lefthalf.filled",     tint: .blue,   category: .window, hint: "⌃←",  sim: .move),
+        .init(label: "Right",      icon: "rectangle.righthalf.filled",    tint: .blue,   category: .window, hint: "⌃→",  sim: .move),
+        .init(label: "Center",     icon: "rectangle.center.inset.filled", tint: .blue,   category: .window, hint: "⌃C",  sim: .move),
+        .init(label: "Maximize",   icon: "rectangle.fill",                tint: .blue,   category: .window, hint: "⌃↵",  sim: .move),
+        .init(label: "L Monitor",  icon: "display",                       tint: .teal,   category: .window, hint: "⌘3",  sim: .move),
+        .init(label: "R Monitor",  icon: "display",                       tint: .teal,   category: .window, hint: "⌘4",  sim: .move),
+    ]
+
+    static let voice: [LatsShortcut] = [
+        .init(label: "Dictate",    icon: "mic.fill",                      tint: .red,    category: .voice,  hint: "F1",  sim: .rec),
+        .init(label: "Voice Cmd",  icon: "waveform",                      tint: .red,    category: .voice,  hint: "F2",  sim: .voice),
+        .init(label: "Cancel",     icon: "xmark.circle.fill",             tint: .red,    category: .voice,  hint: "esc", sim: .none),
+        .init(label: "Memos",      icon: "note.text",                     tint: .amber,  category: .voice,  hint: "⌘M",  sim: .none),
+        .init(label: "Claude",     icon: "sparkles",                      tint: .violet, category: .agent,  hint: "F7",  sim: .agent),
+        .init(label: "Pi",         icon: "sparkle",                       tint: .teal,   category: .agent,  hint: "F8",  sim: .agent),
+        .init(label: "Read Aloud", icon: "speaker.wave.2.fill",           tint: .green,  category: .voice,  hint: "⌘P",  sim: .none),
+        .init(label: "Transcribe", icon: "text.viewfinder",               tint: .blue,   category: .voice,  hint: "⌘J",  sim: .none),
     ]
 }
 
@@ -204,50 +295,75 @@ struct LatsTopChrome: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            HStack(spacing: 12) {
-                Text("LATS · DECK")
-                    .font(LatsFont.mono(11, weight: .bold))
-                    .foregroundStyle(LatsPalette.text)
-                    .tracking(1.5)
-                Text("·").foregroundStyle(LatsPalette.textFaint)
+            HStack(spacing: 14) {
+                // Brand — LATS · DECK, both words solid, the dot quiet between them.
+                HStack(spacing: 7) {
+                    Text("LATS")
+                        .font(LatsFont.mono(11, weight: .bold))
+                        .tracking(1.8)
+                        .foregroundStyle(LatsPalette.text)
+                    Text("·").font(LatsFont.mono(11)).foregroundStyle(LatsPalette.textFaint)
+                    Text("DECK")
+                        .font(LatsFont.mono(11, weight: .bold))
+                        .tracking(1.8)
+                        .foregroundStyle(LatsPalette.text)
+                }
+
+                // Deck pill — current deck, a steel-blue chip that opens the switcher.
                 Button(action: onSwitcher) {
-                    HStack(spacing: 6) {
-                        ForEach(Array(deckNames.enumerated()), id: \.offset) { index, name in
-                            if index > 0 {
-                                Text("/").font(LatsFont.mono(11)).foregroundStyle(LatsPalette.textFaint)
-                            }
-                            Text(name)
-                                .font(LatsFont.mono(11, weight: name == deckName ? .bold : .regular))
-                                .foregroundStyle(name == deckName ? accent : LatsPalette.textDim)
-                        }
+                    HStack(spacing: 8) {
+                        Circle().fill(LatsPalette.blue).frame(width: 6, height: 6)
+                        Text(deckName)
+                            .font(LatsFont.mono(11))
+                            .tracking(0.4)
+                            .foregroundStyle(LatsPalette.blue)
                         Image(systemName: "chevron.down")
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundStyle(LatsPalette.textFaint)
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundStyle(LatsPalette.blue.opacity(0.7))
                     }
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(LatsPalette.blue.opacity(0.10))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(LatsPalette.blue.opacity(0.30), lineWidth: 1)
+                    )
                 }
                 .buttonStyle(.plain)
             }
 
             Spacer()
 
-            HStack(spacing: 14) {
+            HStack(spacing: 16) {
                 Image(systemName: "gearshape")
-                    .font(.system(size: 13))
-                    .foregroundStyle(LatsPalette.textDim)
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundStyle(LatsPalette.textFaint)
                 Button(action: onClose) {
                     Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(LatsPalette.textDim)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(LatsPalette.textFaint)
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 14)
-        .frame(height: 38)
-        .background(Color.black.opacity(0.25))
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(LatsPalette.hairline).frame(height: 1)
+        .padding(.horizontal, 16)
+        .frame(height: 44)
+        // Black top ledge — same material as the bottom status strip. A top
+        // highlight + bottom shadow hairline plus a soft drop shadow give it a
+        // little relief, so it reads as a raised black frame over the full-bleed
+        // trackpad rather than a flat fill.
+        .background(Color(hex: 0x0C0C0E))
+        .overlay(alignment: .top) {
+            Rectangle().fill(Color.white.opacity(0.05)).frame(height: 0.5)
         }
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Color.black.opacity(0.6)).frame(height: 0.5)
+        }
+        .shadow(color: Color.black.opacity(0.5), radius: 6, x: 0, y: 3)
+        .zIndex(1)
     }
 }
 
@@ -300,13 +416,27 @@ struct LatsTrackpadSurface: View {
 
     var body: some View {
         ZStack {
-            Rectangle()
-                .fill(LatsPalette.bgEdge)
-                .overlay(LatsGridBackground())
-                .contentShape(Rectangle())
-                .gesture(trackpadDragGesture)
-                .simultaneousGesture(trackpadTapGesture)
-                .allowsHitTesting(isTrackpadReady)
+            // Recessed matte trackpad well: a faint diagonal gradient ground, the
+            // registration grid, and a soft directional sheen up top — so the pad
+            // reads as a lit physical surface the HUD cards float over.
+            ZStack {
+                LinearGradient(
+                    colors: [Color(hex: 0x0A0B0D), Color(hex: 0x08090B), Color(hex: 0x090A0C)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                LatsGridBackground()
+                RadialGradient(
+                    colors: [Color.white.opacity(0.03), .clear],
+                    center: UnitPoint(x: 0.5, y: 0.24),
+                    startRadius: 0,
+                    endRadius: 460
+                )
+            }
+            .contentShape(Rectangle())
+            .gesture(trackpadDragGesture)
+            .simultaneousGesture(trackpadTapGesture)
+            .allowsHitTesting(isTrackpadReady)
 
             // Top bezel: useful state — Mac name (left), live mode (center), frontmost app/title (right).
             // Symmetric with the bottom action bezel; together they frame the touch surface.
@@ -336,12 +466,12 @@ struct LatsTrackpadSurface: View {
             )
             .allowsHitTesting(mode == .replay && onReplayUndo != nil)
 
-            // LEFT column — system on top, displays bottom; equal share of vertical space
-            VStack(alignment: .leading, spacing: 8) {
+            // LEFT column — system stats (natural height) over the displays panel
+            // (grows to fill), matching the design's left stack.
+            VStack(alignment: .leading, spacing: 14) {
                 LatsInsetSlice {
                     CompactSystemPanel(hostLabel: hostLabel, telemetry: telemetry)
                 }
-                .frame(maxHeight: .infinity)
                 LatsInsetSlice {
                     CompactDisplaysPanel(
                         stage: stage,
@@ -355,27 +485,24 @@ struct LatsTrackpadSurface: View {
                 }
                 .frame(maxHeight: .infinity)
             }
-            .frame(width: 240)
-            .padding(.top, 30)
-            .padding(.bottom, 56)
-            .padding(.leading, 12)
+            .frame(width: 250)
+            .padding(.top, 32)
+            .padding(.bottom, 64)
+            .padding(.leading, 14)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
 
-            // RIGHT column — transcript on top, activity bottom; equal share of vertical space
+            // RIGHT column — activity, full height (the design puts the transcript
+            // into the activity feed's `vox` rows rather than a separate panel).
             VStack(alignment: .leading, spacing: 8) {
-                LatsInsetSlice {
-                    CompactTranscriptPanel(items: transcript)
-                }
-                .frame(maxHeight: .infinity)
                 LatsInsetSlice {
                     CompactActivityLogPanel(entries: activityLog)
                 }
                 .frame(maxHeight: .infinity)
             }
-            .frame(width: 240)
-            .padding(.top, 30)
-            .padding(.bottom, 56)
-            .padding(.trailing, 12)
+            .frame(width: 250)
+            .padding(.top, 32)
+            .padding(.bottom, 64)
+            .padding(.trailing, 14)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
 
             // Bottom bezel: keyboard buttons sit on a quiet ledge that mirrors the top bezel.
@@ -383,12 +510,10 @@ struct LatsTrackpadSurface: View {
                 Spacer()
                 LatsActionKeyboardRow(onSendKey: onSendKey)
                     .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
+                    .padding(.vertical, 8)
                     .frame(maxWidth: .infinity)
-                    .background(Color.black.opacity(0.32))
-                    .overlay(alignment: .top) {
-                        Rectangle().fill(LatsPalette.hairline).frame(height: 1)
-                    }
+                    // Machined bottom bezel — mirrors the top, milled edge up top.
+                    .machinedBezel(isTop: false)
             }
         }
         .background(LatsPalette.bgEdge)
@@ -458,8 +583,8 @@ struct LatsTrackpadTopBezel: View {
 
             // CENTER — live mode (replaces the floating modeBadge)
             modeText
-                .font(LatsFont.mono(9, weight: .semibold))
-                .tracking(1.2)
+                .font(LatsFont.mono(9.5, weight: .semibold))
+                .tracking(2.6)
                 .textCase(.uppercase)
 
             // RIGHT — what the user is controlling on the Mac
@@ -487,13 +612,11 @@ struct LatsTrackpadTopBezel: View {
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 9)
         .frame(maxWidth: .infinity)
-        .background(Color.black.opacity(0.32))
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(LatsPalette.hairline).frame(height: 1)
-        }
+        // Machined top bezel — a milled device edge meeting the full-bleed trackpad.
+        .machinedBezel(isTop: true)
     }
 
     private var shortHost: String {
@@ -529,8 +652,8 @@ struct LatsTrackpadTopBezel: View {
 struct LatsGridBackground: View {
     var body: some View {
         Canvas { context, size in
-            let step: CGFloat = 20
-            let lineColor = Color.white.opacity(0.025)
+            let step: CGFloat = 28
+            let lineColor = Color.white.opacity(0.022)
             var path = Path()
             var x: CGFloat = 0
             while x < size.width {
@@ -549,22 +672,144 @@ struct LatsGridBackground: View {
     }
 }
 
+/// A floating HUD card in the design's "technical instrument" language: a dark
+/// translucent panel with square corners (the trackpad grid whispers through), a
+/// hair-thin white edge, bright reticle registration ticks at each corner, and a
+/// soft drop shadow lifting it off the pad.
 struct LatsInsetSlice<Content: View>: View {
     @ViewBuilder var content: () -> Content
     var body: some View {
         content()
-            .padding(.horizontal, 9)
-            .padding(.vertical, 7)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color(hue: 0.62, saturation: 0.05, brightness: 0.14))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(LatsPalette.hairline2, lineWidth: 1)
-            )
-            .shadow(color: Color.black.opacity(0.4), radius: 8, x: 0, y: 4)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(Color(hex: 0x060709).opacity(0.74))
+            .overlay(Rectangle().stroke(Color.white.opacity(0.07), lineWidth: 1))
+            .overlay(ReticleCorners())
+            .shadow(color: Color.black.opacity(0.45), radius: 10, x: 0, y: 6)
     }
+}
+
+/// Bright L-shaped registration ticks flush to each corner — the reticle detail
+/// that frames every HUD card in the instrument aesthetic.
+struct ReticleCorners: View {
+    var length: CGFloat = 11
+    var thickness: CGFloat = 1
+    var color: Color = Color.white.opacity(0.34)
+
+    var body: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            let t = thickness
+            let l = length
+            Path { p in
+                p.addRect(CGRect(x: 0, y: 0, width: l, height: t))           // TL —
+                p.addRect(CGRect(x: 0, y: 0, width: t, height: l))           // TL |
+                p.addRect(CGRect(x: w - l, y: 0, width: l, height: t))       // TR —
+                p.addRect(CGRect(x: w - t, y: 0, width: t, height: l))       // TR |
+                p.addRect(CGRect(x: 0, y: h - t, width: l, height: t))       // BL —
+                p.addRect(CGRect(x: 0, y: h - l, width: t, height: l))       // BL |
+                p.addRect(CGRect(x: w - l, y: h - t, width: l, height: t))   // BR —
+                p.addRect(CGRect(x: w - t, y: h - l, width: t, height: l))   // BR |
+            }
+            .fill(color)
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// A single-pixel horizontal rule, drawn dotted — the separator the instrument
+/// HUD uses under section headers and between activity rows.
+struct HLine: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: 0, y: rect.midY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+        return p
+    }
+}
+
+struct DottedRule: View {
+    var color: Color = Color.white.opacity(0.14)
+    var body: some View {
+        HLine()
+            .stroke(color, style: StrokeStyle(lineWidth: 1, dash: [1, 3]))
+            .frame(height: 1)
+    }
+}
+
+/// Uppercase, tracked section header with a dotted underline — the header block
+/// shared by every HUD card (system / displays / activity).
+struct HudSectionHeader<Trailing: View>: View {
+    let title: String
+    @ViewBuilder var trailing: () -> Trailing
+
+    var body: some View {
+        VStack(spacing: 7) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(title.uppercased())
+                    .font(LatsFont.mono(10, weight: .medium))
+                    .tracking(1.1)
+                    .foregroundStyle(LatsPalette.text)
+                    .lineLimit(1)
+                Spacer(minLength: 6)
+                trailing()
+            }
+            DottedRule()
+        }
+    }
+}
+
+extension HudSectionHeader where Trailing == EmptyView {
+    init(title: String) {
+        self.title = title
+        self.trailing = { EmptyView() }
+    }
+}
+
+/// A machined-aluminium bezel for the top/bottom edges of the trackpad area: a
+/// very dark anodized gradient, a soft outer edge highlight, and a crisp bright
+/// chamfer + dark groove where it meets the recessed trackpad — so the cockpit's
+/// top and bottom read like precisely milled device edges, not flat fills.
+struct MachinedBezel: ViewModifier {
+    /// True for the top bezel (chamfer on its bottom edge, meeting the trackpad);
+    /// false for the bottom bezel (chamfer on its top edge).
+    var isTop: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .background(
+                LinearGradient(
+                    colors: isTop
+                        ? [Color(hex: 0x161619), Color(hex: 0x0B0B0D)]
+                        : [Color(hex: 0x0B0B0D), Color(hex: 0x161619)],
+                    startPoint: .top, endPoint: .bottom
+                )
+            )
+            // Outer edge toward the device frame — a soft anodized highlight.
+            .overlay(alignment: isTop ? .top : .bottom) {
+                Rectangle().fill(Color.white.opacity(0.06)).frame(height: 0.75)
+            }
+            // Machined chamfer meeting the recessed trackpad: bright milled edge
+            // plus a dark groove that sells the depth.
+            .overlay(alignment: isTop ? .bottom : .top) {
+                if isTop {
+                    VStack(spacing: 0) {
+                        Rectangle().fill(Color.white.opacity(0.16)).frame(height: 1)
+                        Rectangle().fill(Color.black.opacity(0.5)).frame(height: 1)
+                    }
+                } else {
+                    VStack(spacing: 0) {
+                        Rectangle().fill(Color.black.opacity(0.5)).frame(height: 1)
+                        Rectangle().fill(Color.white.opacity(0.16)).frame(height: 1)
+                    }
+                }
+            }
+    }
+}
+
+extension View {
+    func machinedBezel(isTop: Bool) -> some View { modifier(MachinedBezel(isTop: isTop)) }
 }
 
 // MARK: - Compact Inset Modules
@@ -574,31 +819,33 @@ struct CompactSystemPanel: View {
     let telemetry: LatsTelemetry
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(hostLabel)
-                    .font(LatsFont.mono(10, weight: .semibold))
-                    .foregroundStyle(LatsPalette.text)
-                Spacer()
-                Text("● 14ms")
-                    .font(LatsFont.mono(8.5))
-                    .foregroundStyle(LatsPalette.green)
+        VStack(alignment: .leading, spacing: 8) {
+            HudSectionHeader(title: hostLabel) {
+                HStack(spacing: 5) {
+                    Circle().fill(LatsPalette.green).frame(width: 5, height: 5)
+                    Text("14ms")
+                        .font(LatsFont.mono(9))
+                        .monospacedDigit()
+                        .foregroundStyle(LatsPalette.green)
+                }
             }
-            telemetryRow("cpu", value: telemetry.cpu, color: LatsPalette.green)
-            telemetryRow("mem", value: telemetry.mem, color: LatsPalette.amber)
-            telemetryRow("gpu", value: telemetry.gpu, color: LatsPalette.violet)
-            HStack {
-                Text("batt \(Int(telemetry.batt))%")
-                Spacer()
-                Text("\(Int(telemetry.therm))°C")
-                Spacer()
-                Text("\(telemetry.windows)w")
+            VStack(alignment: .leading, spacing: 6) {
+                telemetryRow("cpu", value: telemetry.cpu, color: LatsPalette.green)
+                telemetryRow("mem", value: telemetry.mem, color: LatsPalette.amber)
+                telemetryRow("gpu", value: telemetry.gpu, color: LatsPalette.violet)
             }
-            .font(LatsFont.mono(8.5))
-            .foregroundStyle(LatsPalette.textFaint)
-            .padding(.top, 2)
-            .overlay(alignment: .top) {
-                Rectangle().fill(LatsPalette.hairline).frame(height: 1)
+            VStack(spacing: 7) {
+                DottedRule(color: Color.white.opacity(0.10))
+                HStack {
+                    Text("batt \(Int(telemetry.batt))%")
+                    Spacer()
+                    Text("\(Int(telemetry.therm))°C")
+                    Spacer()
+                    Text("\(telemetry.windows)w")
+                }
+                .font(LatsFont.mono(8.5))
+                .monospacedDigit()
+                .foregroundStyle(LatsPalette.textGhost)
             }
         }
     }
@@ -611,17 +858,18 @@ struct CompactSystemPanel: View {
                 .frame(width: 24, alignment: .leading)
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 1.5)
-                        .fill(Color.white.opacity(0.06))
-                        .frame(height: 3)
-                    RoundedRectangle(cornerRadius: 1.5)
+                    Rectangle()
+                        .fill(Color.white.opacity(0.07))
+                        .frame(height: 4)
+                    Rectangle()
                         .fill(color)
-                        .frame(width: geo.size.width * value / 100, height: 3)
+                        .frame(width: geo.size.width * value / 100, height: 4)
                 }
             }
-            .frame(height: 3)
+            .frame(height: 4)
             Text("\(Int(value))%")
                 .font(LatsFont.mono(9))
+                .monospacedDigit()
                 .foregroundStyle(LatsPalette.text)
                 .frame(width: 26, alignment: .trailing)
         }
@@ -663,12 +911,8 @@ struct CompactDisplaysPanel: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("displays")
-                    .font(LatsFont.mono(10, weight: .semibold))
-                    .foregroundStyle(LatsPalette.text)
-                Spacer()
+        VStack(alignment: .leading, spacing: 8) {
+            HudSectionHeader(title: "displays") {
                 if monitorCount > 1 {
                     HStack(spacing: 3) {
                         ForEach(0..<monitorCount, id: \.self) { d in
@@ -712,11 +956,11 @@ struct CompactDisplaysPanel: View {
                 .padding(.horizontal, 5)
                 .padding(.vertical, 2)
                 .background(
-                    RoundedRectangle(cornerRadius: 2)
+                    Rectangle()
                         .fill(isActive ? LatsPalette.green.opacity(0.2) : Color.clear)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 2)
+                    Rectangle()
                         .stroke(isActive ? LatsPalette.green : LatsPalette.hairline, lineWidth: 1)
                 )
         }
@@ -737,17 +981,17 @@ struct CompactDisplaysPanel: View {
     private func miniDisplay(windows: [LatsWindow]) -> some View {
         GeometryReader { geo in
             ZStack {
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(LatsPalette.bgEdge)
+                Rectangle()
+                    .fill(Color(hex: 0x080B09))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 3)
-                            .stroke(LatsPalette.hairline, lineWidth: 1)
+                        Rectangle()
+                            .stroke(Color.white.opacity(0.06), lineWidth: 1)
                     )
                 ForEach(windows) { w in
-                    RoundedRectangle(cornerRadius: 1)
+                    Rectangle()
                         .fill(w.tint.color.opacity(0.3))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 1)
+                            Rectangle()
                                 .stroke(w.tint.color.opacity(0.6), lineWidth: 1)
                         )
                         .frame(
@@ -770,11 +1014,11 @@ struct CompactDisplaysPanel: View {
             .foregroundStyle(isActive ? LatsPalette.green : LatsPalette.textDim)
             .frame(maxWidth: .infinity, maxHeight: 14)
             .background(
-                RoundedRectangle(cornerRadius: 2)
+                Rectangle()
                     .fill(isActive ? LatsPalette.green.opacity(0.25) : Color.white.opacity(0.04))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 2)
+                Rectangle()
                     .stroke(isActive ? LatsPalette.green : LatsPalette.hairline, lineWidth: 1)
             )
             .contentShape(Rectangle())
@@ -830,23 +1074,17 @@ struct CompactActivityLogPanel: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text("activity")
-                    .font(LatsFont.mono(10, weight: .semibold))
-                    .foregroundStyle(LatsPalette.text)
-                Spacer()
+        VStack(alignment: .leading, spacing: 8) {
+            HudSectionHeader(title: "activity") {
                 Text("\(entries.count)")
-                    .font(LatsFont.mono(8.5))
-                    .foregroundStyle(LatsPalette.textFaint)
+                    .font(LatsFont.mono(9))
+                    .monospacedDigit()
+                    .foregroundStyle(LatsPalette.text2)
             }
 
             if sortedEntries.isEmpty {
-                HStack(spacing: 4) {
-                    Text("IDLE")
-                        .font(LatsFont.mono(8.5, weight: .semibold))
-                        .foregroundStyle(LatsPalette.textFaint)
-                        .frame(width: 44, alignment: .leading)
+                HStack(spacing: 9) {
+                    Circle().fill(LatsPalette.textGhost).frame(width: 6, height: 6)
                     Text("waiting for bridge events")
                         .font(LatsFont.mono(9))
                         .foregroundStyle(LatsPalette.textFaint)
@@ -854,38 +1092,66 @@ struct CompactActivityLogPanel: View {
                 }
                 Spacer(minLength: 0)
             } else {
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        ForEach(sortedEntries) { entry in
-                            HStack(alignment: .top, spacing: 4) {
-                                Text(entry.tag.uppercased())
-                                    .font(LatsFont.mono(8.5, weight: .semibold))
-                                    .foregroundStyle(LatsTint.from(token: entry.tint).color)
-                                    .frame(width: 44, alignment: .leading)
-                                Text(entry.text)
-                                    .font(LatsFont.mono(9))
-                                    .foregroundStyle(LatsPalette.textDim)
-                                    .lineLimit(1)
+                // Drive the relative ages off a periodic clock so "2s / 1m / …"
+                // actually advance during an idle session instead of freezing at
+                // their first-render value.
+                TimelineView(.periodic(from: .now, by: 10)) { ctx in
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(sortedEntries) { entry in
+                                HStack(spacing: 9) {
+                                    Circle()
+                                        .fill(LatsTint.from(token: entry.tint).color)
+                                        .frame(width: 6, height: 6)
+                                    Text(entry.text)
+                                        .font(LatsFont.mono(9.5))
+                                        .foregroundStyle(LatsPalette.textDim)
+                                        .lineLimit(1)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                    Text(relativeTime(entry.createdAt, now: ctx.date))
+                                        .font(LatsFont.mono(8.5))
+                                        .monospacedDigit()
+                                        .foregroundStyle(LatsPalette.textGhost)
+                                }
+                                .padding(.vertical, 5)
+                                .overlay(alignment: .bottom) {
+                                    DottedRule(color: Color.white.opacity(0.07))
+                                }
                             }
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .frame(maxHeight: .infinity)
-                .mask(
-                    LinearGradient(
-                        stops: [
-                            .init(color: .clear, location: 0),
-                            .init(color: .black, location: 0.04),
-                            .init(color: .black, location: 0.92),
-                            .init(color: .clear, location: 1)
-                        ],
-                        startPoint: .top, endPoint: .bottom
+                    .frame(maxHeight: .infinity)
+                    .mask(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .clear, location: 0),
+                                .init(color: .black, location: 0.04),
+                                .init(color: .black, location: 0.92),
+                                .init(color: .clear, location: 1)
+                            ],
+                            startPoint: .top, endPoint: .bottom
+                        )
                     )
-                )
+                }
             }
         }
         .frame(maxHeight: .infinity)
+    }
+
+    /// Compact relative age ("2s", "1m", "3h", "2d", "1w") for an activity entry,
+    /// evaluated against `now` so a driving clock can keep it current. Matches the
+    /// buckets used by the Home feed's ago-label.
+    private func relativeTime(_ date: Date, now: Date = Date()) -> String {
+        let s = max(0, Int(now.timeIntervalSince(date)))
+        if s < 60 { return "\(s)s" }
+        let m = s / 60
+        if m < 60 { return "\(m)m" }
+        let h = m / 60
+        if h < 24 { return "\(h)h" }
+        let d = h / 24
+        if d < 7 { return "\(d)d" }
+        return "\(d / 7)w"
     }
 }
 
@@ -912,14 +1178,15 @@ struct LatsTrackpadModeVisual: View {
     }
 
     private var idleView: some View {
-        VStack(spacing: 4) {
-            Image(systemName: "cursorarrow.motionlines")
-                .font(.system(size: 13, weight: .light))
-                .foregroundColor(.white.opacity(0.18))
+        VStack(spacing: 9) {
             Text("TRACKPAD")
-                .font(.system(size: 8, weight: .regular, design: .monospaced))
-                .foregroundColor(.white.opacity(0.12))
-                .tracking(1.5)
+                .font(LatsFont.mono(10, weight: .regular))
+                .tracking(4)
+                .foregroundStyle(LatsPalette.textGhost)
+            Text("tap · drag · pinch")
+                .font(LatsFont.mono(8.5))
+                .tracking(2)
+                .foregroundStyle(LatsPalette.textGhost.opacity(0.7))
         }
     }
 
@@ -1162,27 +1429,7 @@ struct ModifierKey: View {
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            Text(label)
-                .font(LatsFont.mono(10, weight: state == .off ? .medium : .semibold))
-                .foregroundStyle(foreground)
-                .frame(minWidth: 26)
-                .padding(.horizontal, 8)
-                .frame(height: 26)
-                .background(
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(background)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(border, lineWidth: state == .off ? 1 : 1.25)
-                )
-                .shadow(
-                    color: state == .off ? .clear : LatsPalette.green.opacity(state == .locked ? 0.35 : 0.22),
-                    radius: state == .off ? 0 : 4,
-                    x: 0,
-                    y: 0
-                )
-
+            cap
             if state == .locked {
                 Image(systemName: "lock.fill")
                     .font(.system(size: 6, weight: .bold))
@@ -1203,27 +1450,42 @@ struct ModifierKey: View {
         .accessibilityHint(Text("Tap to arm for next key, double-tap to lock"))
     }
 
+    /// The keycap itself. Off/armed ride the shared keycap material (armed adds a
+    /// green accent wash); locked flips to a solid green cap so the held state is
+    /// unmistakable against the row of dark caps.
+    @ViewBuilder
+    private var cap: some View {
+        let label = Text(label)
+            .font(LatsFont.mono(11, weight: state == .off ? .medium : .semibold))
+            .foregroundStyle(foreground)
+            .frame(minWidth: 28)
+            .padding(.horizontal, 10)
+            .frame(height: 32)
+
+        switch state {
+        case .off:
+            label.keycapSurface(radius: 7)
+        case .armed:
+            label.keycapSurface(radius: 7, accent: LatsPalette.green)
+        case .locked:
+            label
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(LatsPalette.green.opacity(0.95))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .stroke(Color.black.opacity(0.5), lineWidth: 0.5)
+                )
+                .shadow(color: LatsPalette.green.opacity(0.35), radius: 5, x: 0, y: 1)
+        }
+    }
+
     private var foreground: Color {
         switch state {
-        case .off:    return LatsPalette.textDim
+        case .off:    return LatsPalette.text2
         case .armed:  return LatsPalette.green
         case .locked: return LatsPalette.bgEdge
-        }
-    }
-
-    private var background: Color {
-        switch state {
-        case .off:    return Color.white.opacity(0.04)
-        case .armed:  return LatsPalette.green.opacity(0.18)
-        case .locked: return LatsPalette.green.opacity(0.95)
-        }
-    }
-
-    private var border: Color {
-        switch state {
-        case .off:    return LatsPalette.hairline
-        case .armed:  return LatsPalette.green.opacity(0.7)
-        case .locked: return LatsPalette.green
         }
     }
 
@@ -1242,26 +1504,25 @@ struct ActionKey: View {
     var accent: Color? = nil
     var onTap: (() -> Void)? = nil
 
+    @State private var isPressed = false
+
     var body: some View {
-        let label = Text(label)
-            .font(LatsFont.mono(10, weight: .medium))
-            .foregroundStyle(accent ?? LatsPalette.textDim)
+        let cap = Text(label)
+            .font(LatsFont.mono(11, weight: .medium))
+            .foregroundStyle(accent ?? LatsPalette.text2)
             .frame(minWidth: width)
-            .padding(.horizontal, 8)
-            .frame(height: 26)
-            .background(
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(accent.map { $0.opacity(0.16) } ?? Color.white.opacity(0.04))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 4)
-                    .stroke(accent ?? LatsPalette.hairline, lineWidth: 1)
-            )
+            .padding(.horizontal, 10)
+            .frame(height: 32)
+            .keycapSurface(radius: 7, accent: accent, pressed: isPressed)
 
         if let onTap {
-            Button(action: onTap) { label }.buttonStyle(.plain)
+            Button(action: onTap) { cap }
+                .buttonStyle(.plain)
+                .onLongPressGesture(minimumDuration: 0, maximumDistance: .infinity, perform: {}, onPressingChanged: { p in
+                    withAnimation(.easeOut(duration: 0.06)) { isPressed = p }
+                })
         } else {
-            label
+            cap
         }
     }
 }
@@ -1270,7 +1531,7 @@ struct ArrowCluster: View {
     var onTap: ((String) -> Void)? = nil
 
     var body: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 6) {
             arrow("arrow.left", key: "left")
             arrow("arrow.up", key: "up")
             arrow("arrow.down", key: "down")
@@ -1279,55 +1540,58 @@ struct ArrowCluster: View {
     }
 
     private func arrow(_ icon: String, key: String) -> some View {
-        let label = Image(systemName: icon)
-            .font(.system(size: 10, weight: .medium))
-            .foregroundStyle(LatsPalette.textDim)
-            .frame(width: 24, height: 26)
-            .background(
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(Color.white.opacity(0.04))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 3)
-                    .stroke(LatsPalette.hairline, lineWidth: 1)
-            )
+        ArrowKey(icon: icon) { onTap?(key) }
+    }
+}
 
-        return Group {
-            if let onTap {
-                Button { onTap(key) } label: { label }.buttonStyle(.plain)
-            } else {
-                label
-            }
+private struct ArrowKey: View {
+    let icon: String
+    var onTap: (() -> Void)? = nil
+    @State private var isPressed = false
+
+    var body: some View {
+        let cap = Image(systemName: icon)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(LatsPalette.text2)
+            .frame(width: 30, height: 32)
+            .keycapSurface(radius: 7, pressed: isPressed)
+
+        if let onTap {
+            Button(action: onTap) { cap }
+                .buttonStyle(.plain)
+                .onLongPressGesture(minimumDuration: 0, maximumDistance: .infinity, perform: {}, onPressingChanged: { p in
+                    withAnimation(.easeOut(duration: 0.06)) { isPressed = p }
+                })
+        } else {
+            cap
         }
     }
 }
 
 struct EnterPill: View {
     var onTap: (() -> Void)? = nil
+    @State private var isPressed = false
 
     var body: some View {
-        let label = HStack(spacing: 4) {
+        let cap = HStack(spacing: 5) {
             Image(systemName: "return")
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: 11, weight: .semibold))
             Text("enter")
-                .font(LatsFont.mono(10, weight: .semibold))
+                .font(LatsFont.mono(11, weight: .semibold))
         }
         .foregroundStyle(LatsPalette.green)
-        .padding(.horizontal, 10)
-        .frame(height: 26)
-        .background(
-            RoundedRectangle(cornerRadius: 4)
-                .fill(LatsPalette.green.opacity(0.18))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 4)
-                .stroke(LatsPalette.green.opacity(0.5), lineWidth: 1)
-        )
+        .padding(.horizontal, 12)
+        .frame(height: 32)
+        .keycapSurface(radius: 7, accent: LatsPalette.green, pressed: isPressed)
 
         if let onTap {
-            Button(action: onTap) { label }.buttonStyle(.plain)
+            Button(action: onTap) { cap }
+                .buttonStyle(.plain)
+                .onLongPressGesture(minimumDuration: 0, maximumDistance: .infinity, perform: {}, onPressingChanged: { p in
+                    withAnimation(.easeOut(duration: 0.06)) { isPressed = p }
+                })
         } else {
-            label
+            cap
         }
     }
 }
@@ -1341,25 +1605,143 @@ struct LatsShortcutGrid: View {
 
     @State private var recentlyPressed: UUID?
 
+    private let rowSpacing: CGFloat = 9
+    /// Slightly above LatsShortcutTile's minHeight (90) so a "fits" decision
+    /// always leaves each stretched row taller than a tile can't-shrink-below.
+    private let minRowHeight: CGFloat = 96
+
+    private var effectiveColumns: Int { max(1, columns) }
+
+    /// Chunk the flat shortcut list into rows of `columns`.
+    private var rows: [[LatsShortcut]] {
+        let cols = effectiveColumns
+        return stride(from: 0, to: shortcuts.count, by: cols).map {
+            Array(shortcuts[$0..<min($0 + cols, shortcuts.count)])
+        }
+    }
+
     var body: some View {
-        let cols = Array(repeating: GridItem(.flexible(), spacing: 10), count: columns)
-        LazyVGrid(columns: cols, spacing: 10) {
-            ForEach(Array(shortcuts.enumerated()), id: \.element.id) { idx, s in
-                LatsShortcutTile(
-                    shortcut: s,
-                    index: idx + 1,
-                    isRecent: recentlyPressed == s.id
-                ) {
-                    onTap(s)
-                    withAnimation { recentlyPressed = s.id }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
-                        if recentlyPressed == s.id {
-                            withAnimation { recentlyPressed = nil }
+        GeometryReader { geo in
+            let needed = CGFloat(rows.count) * minRowHeight
+                + CGFloat(max(0, rows.count - 1)) * rowSpacing
+            if needed <= geo.size.height {
+                // Fits: stretch rows to an equal share of the height so the tiles
+                // sit flush at the bottom with no gap (like the reference's 1fr rows).
+                grid(fill: true)
+                    .frame(width: geo.size.width, height: geo.size.height)
+            } else {
+                // Too many rows for the available height (compact device / dense
+                // deck): scroll instead of clipping unreachable tiles.
+                ScrollView(showsIndicators: false) {
+                    grid(fill: false)
+                        .frame(width: geo.size.width)
+                }
+                .frame(width: geo.size.width, height: geo.size.height)
+            }
+        }
+    }
+
+    private func grid(fill: Bool) -> some View {
+        VStack(spacing: rowSpacing) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { rowIdx, row in
+                HStack(spacing: 9) {
+                    ForEach(Array(row.enumerated()), id: \.element.id) { colIdx, s in
+                        tile(s, index: rowIdx * effectiveColumns + colIdx + 1, fill: fill)
+                    }
+                    // Keep tile widths uniform when the last row is short.
+                    if row.count < effectiveColumns {
+                        ForEach(0..<(effectiveColumns - row.count), id: \.self) { _ in
+                            Color.clear.frame(maxWidth: .infinity, maxHeight: fill ? .infinity : nil)
                         }
                     }
                 }
+                .frame(maxHeight: fill ? .infinity : nil)
             }
         }
+    }
+
+    private func tile(_ s: LatsShortcut, index: Int, fill: Bool) -> some View {
+        LatsShortcutTile(
+            shortcut: s,
+            index: index,
+            isRecent: recentlyPressed == s.id
+        ) {
+            onTap(s)
+            withAnimation { recentlyPressed = s.id }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+                if recentlyPressed == s.id {
+                    withAnimation { recentlyPressed = nil }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: fill ? .infinity : nil)
+    }
+}
+
+/// The design's tactile keycap / tile material: a top-lit vertical gradient, a
+/// crisp black outer edge, a beveled inner highlight (light top → dark bottom),
+/// and a soft drop shadow. `pressed` flattens the bevel and sinks the cap;
+/// `accent` tints the cap for special keys (e.g. enter).
+struct KeycapSurface: ViewModifier {
+    var radius: CGFloat = 8
+    var accent: Color? = nil
+    var pressed: Bool = false
+    var elevation: CGFloat = 1
+
+    func body(content: Content) -> some View {
+        content
+            .background(shape.fill(fill))
+            .overlay(shape.stroke(bevel, lineWidth: 1))                        // inner bevel
+            .overlay(shape.stroke(Color.black.opacity(0.85), lineWidth: 0.5))  // crisp outer edge
+            .shadow(
+                color: .black.opacity(pressed ? 0 : 0.5),
+                radius: pressed ? 0.5 : 5 * elevation,
+                x: 0, y: pressed ? 0 : 3 * elevation
+            )
+    }
+
+    private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: radius, style: .continuous) }
+
+    private var fill: LinearGradient {
+        if pressed {
+            return LinearGradient(
+                colors: [Color(hex: 0x0C0C0E), Color(hex: 0x090909)],
+                startPoint: .top, endPoint: .bottom
+            )
+        }
+        if let accent {
+            return LinearGradient(
+                stops: [
+                    .init(color: accent.opacity(0.22), location: 0),
+                    .init(color: Color(hex: 0x121712), location: 0.72),
+                    .init(color: Color(hex: 0x0F0F11), location: 1)
+                ],
+                startPoint: .top, endPoint: .bottom
+            )
+        }
+        return LinearGradient(
+            stops: [
+                .init(color: Color(hex: 0x1A1A1E), location: 0),
+                .init(color: Color(hex: 0x0F0F11), location: 0.74),
+                .init(color: Color(hex: 0x0C0C0E), location: 1)
+            ],
+            startPoint: .top, endPoint: .bottom
+        )
+    }
+
+    private var bevel: LinearGradient {
+        let top = accent?.opacity(0.32) ?? Color.white.opacity(pressed ? 0.03 : 0.09)
+        return LinearGradient(
+            colors: [top, .clear, Color.black.opacity(0.45)],
+            startPoint: .top, endPoint: .bottom
+        )
+    }
+}
+
+extension View {
+    /// Convenience for `.modifier(KeycapSurface(...))`.
+    func keycapSurface(radius: CGFloat = 8, accent: Color? = nil, pressed: Bool = false, elevation: CGFloat = 1) -> some View {
+        modifier(KeycapSurface(radius: radius, accent: accent, pressed: pressed, elevation: elevation))
     }
 }
 
@@ -1374,41 +1756,57 @@ struct LatsShortcutTile: View {
     var body: some View {
         Button(action: onTap) {
             VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .top) {
+                HStack(alignment: .top, spacing: 10) {
                     iconBadge
-                    Spacer()
-                    Text(shortcut.hint)
-                        .font(LatsFont.mono(9))
-                        .tracking(0.8)
-                        .foregroundStyle(LatsPalette.textFaint)
+                    if !shortcut.hint.isEmpty {
+                        Text(shortcut.hint)
+                            .font(LatsFont.mono(9.5))
+                            .foregroundStyle(LatsPalette.textGhost)
+                            .multilineTextAlignment(.trailing)
+                            .lineLimit(2)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                    }
                 }
-                Spacer(minLength: 0)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(shortcut.label)
-                        .font(LatsFont.ui(12, weight: .medium))
-                        .foregroundStyle(LatsPalette.text)
+                Spacer(minLength: 8)
+                Text(shortcut.label)
+                    .font(LatsFont.ui(14, weight: .medium))
+                    .foregroundStyle(LatsPalette.text)
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(shortcut.tint.color)
+                        .frame(width: 5, height: 5)
+                        .opacity(0.85)
                     Text("act.\(String(format: "%02d", index)) · \(shortcut.category.rawValue)")
-                        .font(LatsFont.mono(9))
-                        .tracking(0.5)
-                        .foregroundStyle(LatsPalette.textFaint)
+                        .font(LatsFont.mono(9.5))
+                        .tracking(0.3)
+                        .foregroundStyle(LatsPalette.textGhost)
+                }
+                .padding(.top, 3)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .frame(maxWidth: .infinity, minHeight: 90, alignment: .topLeading)
+            .keycapSurface(radius: 11, pressed: isPressed)
+            .overlay {
+                // Recent-press wash: a whisper of the tile's own tint, like the
+                // design's radial hover glow but keyed to the touch feedback.
+                if isRecent {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(shortcut.tint.color.opacity(0.12))
+                        .blendMode(.plusLighter)
+                        .allowsHitTesting(false)
                 }
             }
-            .padding(.horizontal, 13)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, minHeight: 80, alignment: .topLeading)
-            .background(tileBackground)
-            .overlay(tileBorder)
             .overlay(alignment: .topTrailing) {
                 if isRecent {
                     Circle()
                         .fill(shortcut.tint.color)
                         .frame(width: 6, height: 6)
-                        .padding(8)
+                        .padding(9)
                         .shadow(color: shortcut.tint.color, radius: 4)
                 }
             }
             .scaleEffect(isPressed ? 0.985 : 1.0)
-            .offset(y: isPressed ? 1 : 0)
         }
         .buttonStyle(.plain)
         .onLongPressGesture(minimumDuration: 0, maximumDistance: .infinity, perform: {}, onPressingChanged: { pressing in
@@ -1418,36 +1816,28 @@ struct LatsShortcutTile: View {
 
     private var iconBadge: some View {
         Image(systemName: shortcut.icon)
-            .font(.system(size: 13, weight: .medium))
+            .font(.system(size: 14, weight: .medium))
             .foregroundStyle(shortcut.tint.color)
-            .frame(width: 24, height: 24)
+            .frame(width: 28, height: 28)
             .background(
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(shortcut.tint.color.opacity(0.18))
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(shortcut.tint.color.opacity(0.14))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 4)
-                    .stroke(shortcut.tint.color.opacity(0.28), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .stroke(
+                        LinearGradient(
+                            colors: [shortcut.tint.color.opacity(0.55), shortcut.tint.color.opacity(0.28)],
+                            startPoint: .top, endPoint: .bottom
+                        ),
+                        lineWidth: 1
+                    )
             )
-    }
-
-    @ViewBuilder
-    private var tileBackground: some View {
-        let base = RoundedRectangle(cornerRadius: 4)
-        if isPressed {
-            base.fill(Color.white.opacity(0.06))
-        } else if isRecent {
-            base.fill(shortcut.tint.color.opacity(0.12).blendMode(.plusLighter))
-                .background(base.fill(LatsPalette.surface))
-        } else {
-            base.fill(LatsPalette.surface)
-        }
-    }
-
-    private var tileBorder: some View {
-        RoundedRectangle(cornerRadius: 4)
-            .stroke(isRecent ? shortcut.tint.color : LatsPalette.hairline, lineWidth: 1)
-            .shadow(color: isRecent ? shortcut.tint.color.opacity(0.14) : .clear, radius: 3)
+            .overlay(   // top gloss on the chip
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .stroke(Color.white.opacity(0.14), lineWidth: 1)
+                    .mask(LinearGradient(colors: [.white, .clear], startPoint: .top, endPoint: .center))
+            )
     }
 }
 
@@ -1477,9 +1867,10 @@ struct LatsStatusBar: View {
 
     var body: some View {
         HStack(spacing: 0) {
+            // LEFT — READY status (the mode) + the paired Mac's name.
             modePill
-            StatusItem(icon: "mic", label: "hold·space", tint: LatsPalette.text, onTap: onModeTap)
-            StatusItem(icon: "laptopcomputer.and.iphone", label: "\(shortHostLabel) ↔ deck", tint: LatsPalette.green)
+            StatusItem(label: shortHostLabel, tint: LatsPalette.text)
+
             StatusItem(label: "◉ \(telemetry.windows)w")
             StatusItem(label: "▢ \(space + 1)/\(spaceCount)", onTap: onSpaceTap)
             StatusItem(label: "cpu \(Int(telemetry.cpu))%", tint: telemetry.cpu > 70 ? LatsPalette.amber : LatsPalette.textDim)
@@ -1488,38 +1879,32 @@ struct LatsStatusBar: View {
 
             Spacer(minLength: 0)
 
+            // RIGHT — agent state only. Dropped ⌘K / ⌘⇧P / the orange ●3;
+            // those are Mac-side shortcuts that don't apply on the companion.
             StatusItem(icon: "sparkles", label: "agent · \(mode == .agent ? "thinking" : "ready")", tint: mode == .agent ? LatsPalette.violet : LatsPalette.textDim)
             StatusItem(label: "claude", tint: LatsPalette.violet)
             StatusItem(label: spaceName ?? "main", tint: LatsPalette.amber)
-            StatusItem(label: "●3", tint: LatsPalette.amber)
-            StatusItem(label: "⌘K", tint: LatsPalette.text, onTap: onPaletteTap)
-            StatusItem(label: "⌘⇧P", tint: LatsPalette.text, onTap: onSwitcherTap)
         }
         .frame(maxWidth: .infinity)
-        // Bar is placed via `safeAreaInset(edge: .bottom)` on the parent. With
-        // spacing now under control, narrow it down: ~24pt total. Top padding
-        // gives a touch of breathing room; bottom is a tiny clearance from the
-        // rounded corner / home indicator.
-        .padding(.top, 14)
-        .padding(.bottom, 4)
-        .background {
-            // Liquid Glass — same trick Talkie's BottomTrayBackground uses.
-            // Glass blurs the cockpit content behind it and reflects light, so
-            // the bar reads as a quiet floating ledge instead of a dark slab.
-            // Falls back to the previous flat fill on older iOS.
-            if #available(iOS 26.0, *) {
-                Color.clear
-                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 0))
-            } else {
-                Color.black.opacity(0.32)
-            }
-        }
+        // Inset the content from the corners so READY isn't jammed into the
+        // bottom-left; the background still rides full width to the edges.
+        .padding(.horizontal, 12)
+        .padding(.top, 13)
+        .padding(.bottom, 12)
+        // Black bottom ledge — the same #0C0C0E material and relief as the top
+        // chrome, so top and bottom read as one framing component. One thin top
+        // hairline is the only distinction from the trackpad; a soft upward
+        // shadow lifts it. Fill rides into the home-indicator zone.
+        .background(Color(hex: 0x0C0C0E))
         .overlay(alignment: .top) {
-            // Hairline gives the glass a defined edge against the cockpit above.
+            // A clean, clearly-visible thin line marking the status strip off
+            // from the deck above it.
             Rectangle()
-                .fill(Color.white.opacity(0.08))
-                .frame(height: 0.5)
+                .fill(Color.white.opacity(0.11))
+                .frame(height: 1)
         }
+        .shadow(color: Color.black.opacity(0.45), radius: 6, x: 0, y: -3)
+        .zIndex(1)
     }
 
     private var modePill: some View {
@@ -1539,7 +1924,6 @@ struct LatsStatusBar: View {
             .foregroundStyle(mode.color)
             .padding(.horizontal, 8)
             .frame(height: 12)
-            .background(mode.color.opacity(0.24))
             .overlay(alignment: .trailing) {
                 Rectangle().fill(LatsPalette.hairline).frame(width: 1)
             }
@@ -1632,9 +2016,13 @@ struct LatsDeckScreen: View {
 
     private var gridColumns: Int {
         if let columns = activeCockpitPage()?.columns {
-            return hSize == .compact ? min(3, columns) : columns
+            // Guard against a page reporting 0 columns, which would collapse the
+            // grid into one overflowing row.
+            return max(1, hSize == .compact ? min(3, columns) : columns)
         }
-        return hSize == .compact ? 3 : 6
+        // Default to the design's 4-up grid on regular width so each keycap has
+        // room for its icon chip, title, and meta; 3-up when compact.
+        return hSize == .compact ? 3 : 4
     }
 
     // ── Resolved values: prefer live, fall back to mock ──
@@ -1739,7 +2127,10 @@ struct LatsDeckScreen: View {
 
     private var shortcuts: [LatsShortcut] {
         if let live = liveShortcuts(), !live.isEmpty { return live }
-        return CommandDeck.shortcuts
+        // Connected but this page has no tiles yet: show nothing rather than the
+        // mock command deck mislabeled under the live page's name.
+        if isConnected { return [] }
+        return MockDecks.shortcuts(for: effectiveDeckID)
     }
 
     private var deckAccent: Color {
@@ -1752,14 +2143,14 @@ struct LatsDeckScreen: View {
     }
 
     private var deckName: String {
-        activeCockpitPage()?.title.lowercased() ?? CommandDeck.name
+        activeCockpitPage()?.title.lowercased() ?? effectiveDeckID
     }
 
     private var deckNames: [String] {
         let liveNames = liveSnapshot?.cockpit?.pages
             .map { $0.title.lowercased() }
             .filter { !$0.isEmpty } ?? []
-        return liveNames.isEmpty ? ["command", "dev", "media", "windows", "voice"] : liveNames
+        return liveNames.isEmpty ? MockDecks.order : liveNames
     }
 
     var body: some View {
@@ -1780,82 +2171,99 @@ struct LatsDeckScreen: View {
                     let cockpitH: CGFloat = isPad ? max(380, geo.size.height * 0.50) : max(320, geo.size.height * 0.44)
 
                     VStack(spacing: 0) {
-                        // Cockpit
-                        ZStack {
-                            LatsCockpitShell {
-                                LatsTrackpadSurface(
-                                    mode: mode,
-                                    recTime: recTime,
-                                    agentProgress: agentProgress,
-                                    replayMessage: replayMessage,
-                                    replayUndoLabel: replayUndoLabel,
-                                    agentRows: agentRows,
-                                    telemetry: telemetry,
-                                    stage: stage,
-                                    space: space,
-                                    spaceCount: spaceCount,
-                                    spaceName: spaceName,
-                                    transcript: transcript,
-                                    activityLog: activityLog,
-                                    hostLabel: hostLabel,
-                                    trackpadState: liveSnapshot?.trackpad,
-                                    spaceDisplays: spaceDisplays,
-                                    frontmostApp: liveSnapshot?.layout?.frontmostWindow?.appName
-                                        ?? liveSnapshot?.desktop?.activeAppName,
-                                    frontmostTitle: liveSnapshot?.layout?.frontmostWindow?.title,
-                                    onSendKey: handleSendKey,
-                                    onReplayUndo: handleReplayUndo,
-                                    onTrackpadEvent: onTrackpadEvent,
-                                    onSpaceTap: handleSpaceTap,
-                                    onMonitorSwipe: handleMonitorSwipe
+                        // Cockpit — full-bleed trackpad, edge to edge. The HUD
+                        // cards float over it with their own insets; the black
+                        // top/bottom ledges frame it.
+                        LatsTrackpadSurface(
+                            mode: mode,
+                            recTime: recTime,
+                            agentProgress: agentProgress,
+                            replayMessage: replayMessage,
+                            replayUndoLabel: replayUndoLabel,
+                            agentRows: agentRows,
+                            telemetry: telemetry,
+                            stage: stage,
+                            space: space,
+                            spaceCount: spaceCount,
+                            spaceName: spaceName,
+                            transcript: transcript,
+                            activityLog: activityLog,
+                            hostLabel: hostLabel,
+                            trackpadState: liveSnapshot?.trackpad,
+                            spaceDisplays: spaceDisplays,
+                            frontmostApp: liveSnapshot?.layout?.frontmostWindow?.appName
+                                ?? liveSnapshot?.desktop?.activeAppName,
+                            frontmostTitle: liveSnapshot?.layout?.frontmostWindow?.title,
+                            onSendKey: handleSendKey,
+                            onReplayUndo: handleReplayUndo,
+                            onTrackpadEvent: onTrackpadEvent,
+                            onSpaceTap: handleSpaceTap,
+                            onMonitorSwipe: handleMonitorSwipe
+                        )
+                        .frame(height: cockpitH)
+                        // Round the whole bezeled cockpit into a distinct floating
+                        // surface (per the reference's .pad-screen): a monitor-style
+                        // rounded frame — hairline edge + top glass highlight + a
+                        // drop shadow that lifts it off the device so it clearly
+                        // reads as another surface.
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.11), lineWidth: 1)
+                        )
+                        .overlay(
+                            // Brighter machined catch-light along the top edge so the
+                            // rounded surface reads as raised without graying it.
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .strokeBorder(
+                                    LinearGradient(
+                                        colors: [Color.white.opacity(0.20), .clear],
+                                        startPoint: .top, endPoint: .center
+                                    ),
+                                    lineWidth: 1.5
                                 )
-                            }
-                        }
+                        )
+                        .shadow(color: Color.black.opacity(0.7), radius: 22, x: 0, y: 12)
+                        .padding(.horizontal, 14)
+                        .padding(.top, 10)
+                        .padding(.bottom, 12)
+
+                        // Shortcut grid (deck keys) — fills the remaining height so
+                        // the tiles sit flush at the bottom with no gap above the
+                        // status bar; horizontal swipe cycles decks.
+                        LatsShortcutGrid(
+                            shortcuts: shortcuts,
+                            columns: gridColumns,
+                            onTap: handleTilePress
+                        )
                         .padding(.horizontal, 14)
                         .padding(.top, 12)
-                        .padding(.bottom, 8)
-                        .frame(height: cockpitH)
-                        .background(Color.black.opacity(0.18))
-                        .overlay(alignment: .bottom) {
-                            Rectangle().fill(LatsPalette.hairline).frame(height: 1)
-                        }
-
-                        // Shortcut grid (deck keys) — horizontal swipe cycles decks
-                        ScrollView {
-                            LatsShortcutGrid(
-                                shortcuts: shortcuts,
-                                columns: gridColumns,
-                                onTap: handleTilePress
-                            )
-                            .padding(14)
-                            .id(effectiveDeckID)
-                            .transition(.opacity.combined(with: .move(edge: .leading)))
-                        }
-                        .frame(maxHeight: .infinity)
+                        .padding(.bottom, 12)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .id(effectiveDeckID)
+                        .transition(.opacity.combined(with: .move(edge: .leading)))
                         .contentShape(Rectangle())
-                        // simultaneousGesture so the ScrollView's vertical scroll
-                        // and the horizontal deck-cycle swipe can both recognize.
                         .simultaneousGesture(deckSwipeGesture)
                     }
                 }
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    // Anchor the bar inside the bottom safe-area inset so the
-                    // chips can ride right up to the rounded corner.
-                    LatsStatusBar(
-                        mode: mode,
-                        recTime: recTime,
-                        telemetry: telemetry,
-                        space: space,
-                        spaceCount: spaceCount,
-                        spaceName: spaceName,
-                        hostLabel: hostLabel,
-                        onModeTap: { toggleVoice() },
-                        onSpaceTap: { if !isConnected { mockSpace = (mockSpace + 1) % 6 } },
-                        onPaletteTap: {},
-                        onSwitcherTap: { cycleDeck() }
-                    )
-                }
+                // Status strip — rides flush to the physical bottom edge (into
+                // the home-indicator zone) so it anchors the very bottom of the
+                // cockpit, mirroring the top chrome.
+                LatsStatusBar(
+                    mode: mode,
+                    recTime: recTime,
+                    telemetry: telemetry,
+                    space: space,
+                    spaceCount: spaceCount,
+                    spaceName: spaceName,
+                    hostLabel: hostLabel,
+                    onModeTap: { toggleVoice() },
+                    onSpaceTap: { if !isConnected { mockSpace = (mockSpace + 1) % 6 } },
+                    onPaletteTap: {},
+                    onSwitcherTap: { cycleDeck() }
+                )
             }
+            .ignoresSafeArea(.container, edges: .bottom)
         }
         .preferredColorScheme(.dark)
         .statusBarHidden(true)
@@ -2021,7 +2429,7 @@ struct LatsDeckScreen: View {
 
     private func cycleDeck(forward: Bool = true) {
         let liveIDs = liveSnapshot?.cockpit?.pages.map(\.id).filter { !$0.isEmpty } ?? []
-        let ids = liveIDs.isEmpty ? ["command", "dev", "media", "windows", "voice"] : liveIDs
+        let ids = liveIDs.isEmpty ? MockDecks.order : liveIDs
         guard !ids.isEmpty else { return }
         guard let currentIndex = ids.firstIndex(of: effectiveDeckID) else {
             withAnimation(.easeOut(duration: 0.22)) { selectedDeckID = ids.first }

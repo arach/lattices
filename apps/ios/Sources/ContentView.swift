@@ -645,7 +645,6 @@ struct LatsSettingsView: View {
                         macsCard
                         if store.activeEndpoint != nil {
                             activeDetailCard
-                            disconnectCard
                         }
                         aboutCard
                     }
@@ -737,7 +736,7 @@ struct LatsSettingsView: View {
     private var macsCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                LatsSectionLabel(text: "macs")
+                LatsSectionLabel(text: "macs", tint: LatsPalette.blue)
                 Spacer()
                 LatsButton(title: "Refresh", icon: "arrow.clockwise", style: .ghost) {
                     store.refreshDiscovery()
@@ -763,10 +762,16 @@ struct LatsSettingsView: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 10).fill(LatsPalette.surface)
+            RoundedRectangle(cornerRadius: 10).fill(
+                LinearGradient(
+                    colors: [LatsPalette.blue.opacity(0.075), LatsPalette.surface],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 10).stroke(LatsPalette.hairline2, lineWidth: 1)
+            RoundedRectangle(cornerRadius: 10).stroke(LatsPalette.blue.opacity(0.2), lineWidth: 1)
         )
     }
 
@@ -858,7 +863,11 @@ struct LatsSettingsView: View {
 
     private var activeDetailCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            LatsSectionLabel(text: "active session")
+            HStack {
+                LatsSectionLabel(text: "active session", tint: LatsPalette.green)
+                Spacer()
+                LatsBadge(text: "connected", tint: LatsPalette.green, dot: true)
+            }
             if let endpoint = store.activeEndpoint {
                 LatsKVRow(key: "host", value: endpoint.host, valueColor: LatsPalette.green)
                 LatsKVRow(key: "port", value: "\(endpoint.port)")
@@ -873,42 +882,42 @@ struct LatsSettingsView: View {
                           valueColor: LatsPalette.textDim)
                 LatsKVRow(key: "version", value: h.version, valueColor: LatsPalette.textDim)
             }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 10).fill(LatsPalette.surface)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10).stroke(LatsPalette.hairline2, lineWidth: 1)
-        )
-    }
-
-    private var disconnectCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            LatsSectionLabel(text: "device")
-            Text("Disconnecting clears the active session. Re-pair to re-encrypt this device with the Mac.")
-                .font(LatsFont.mono(10))
-                .foregroundStyle(LatsPalette.textDim)
-                .fixedSize(horizontal: false, vertical: true)
-            LatsButton(title: "Disconnect", icon: "xmark.circle", style: .primary(.red)) {
+            Divider()
+                .overlay(LatsPalette.hairline)
+                .padding(.vertical, 4)
+            Button {
                 store.disconnect()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "xmark.circle")
+                    Text("Disconnect")
+                }
+                .font(LatsFont.mono(10, weight: .medium))
+                .foregroundStyle(LatsPalette.textFaint)
+                .padding(.vertical, 4)
             }
-            .frame(maxWidth: .infinity)
+            .buttonStyle(.plain)
+            .accessibilityHint("Clears the active session. Pair with the Mac again to reconnect.")
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 10).fill(LatsPalette.surface)
+            RoundedRectangle(cornerRadius: 10).fill(
+                LinearGradient(
+                    colors: [LatsPalette.green.opacity(0.10), LatsPalette.surface],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 10).stroke(LatsPalette.hairline2, lineWidth: 1)
+            RoundedRectangle(cornerRadius: 10).stroke(LatsPalette.green.opacity(0.3), lineWidth: 1)
         )
     }
 
     private var aboutCard: some View {
         VStack(alignment: .leading, spacing: 6) {
-            LatsSectionLabel(text: "about")
+            LatsSectionLabel(text: "about", tint: LatsPalette.violet)
             LatsKVRow(key: "build", value: "lats deck · v0.1")
             LatsKVRow(key: "device", value: UIDevice.current.model)
             LatsKVRow(key: "system", value: "iOS \(UIDevice.current.systemVersion)")
@@ -916,10 +925,16 @@ struct LatsSettingsView: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 10).fill(LatsPalette.surface)
+            RoundedRectangle(cornerRadius: 10).fill(
+                LinearGradient(
+                    colors: [LatsPalette.violet.opacity(0.055), LatsPalette.surface],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 10).stroke(LatsPalette.hairline2, lineWidth: 1)
+            RoundedRectangle(cornerRadius: 10).stroke(LatsPalette.violet.opacity(0.16), lineWidth: 1)
         )
     }
 }
