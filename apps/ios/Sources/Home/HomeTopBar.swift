@@ -6,6 +6,8 @@ import SwiftUI
 ///
 /// Size budget: ~40pt collapsed, ~120pt expanded.
 struct HomeTopBar: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
     let machines: [HomeMachine]
     var agentsRunning: Int = 0
     var onSettings: (() -> Void)? = nil
@@ -41,6 +43,16 @@ struct HomeTopBar: View {
     // MARK: - Collapsed row
 
     private var collapsedBar: some View {
+        Group {
+            if horizontalSizeClass == .compact {
+                compactCollapsedBar
+            } else {
+                regularCollapsedBar
+            }
+        }
+    }
+
+    private var regularCollapsedBar: some View {
         HStack(spacing: 12) {
             productMark
 
@@ -60,6 +72,63 @@ struct HomeTopBar: View {
         }
         .padding(.horizontal, 14)
         .frame(height: 40)
+    }
+
+    private var compactCollapsedBar: some View {
+        HStack(spacing: 8) {
+            Text("LATS")
+                .font(LatsFont.mono(11, weight: .bold))
+                .tracking(1.4)
+                .foregroundStyle(LatsPalette.text)
+                .fixedSize()
+
+            if let primary = orderedMachines.first {
+                Button { onPillTap?(primary) } label: {
+                    HStack(spacing: 6) {
+                        Circle().fill(primary.status.tint).frame(width: 6, height: 6)
+                        Text(primary.name)
+                            .font(LatsFont.mono(10, weight: .semibold))
+                            .foregroundStyle(LatsPalette.text)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                    .padding(.horizontal, 8)
+                    .frame(height: 28)
+                    .background(RoundedRectangle(cornerRadius: 5).fill(primary.status.tint.opacity(0.10)))
+                    .overlay(RoundedRectangle(cornerRadius: 5).stroke(primary.status.tint.opacity(0.32), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+
+                if orderedMachines.count > 1 {
+                    Text("+\(orderedMachines.count - 1)")
+                        .font(LatsFont.mono(9, weight: .bold))
+                        .foregroundStyle(LatsPalette.textDim)
+                        .fixedSize()
+                }
+            } else {
+                Text("HOME")
+                    .font(LatsFont.mono(9, weight: .semibold))
+                    .tracking(1)
+                    .foregroundStyle(LatsPalette.textDim)
+            }
+
+            Spacer(minLength: 0)
+
+            if agentsRunning > 0 {
+                HStack(spacing: 4) {
+                    Circle().fill(LatsPalette.violet).frame(width: 5, height: 5)
+                    Text("\(agentsRunning)")
+                        .font(LatsFont.mono(9, weight: .bold))
+                }
+                .foregroundStyle(LatsPalette.violet)
+                .fixedSize()
+            }
+
+            disclosure
+            settingsButton
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 46)
     }
 
     private var productMark: some View {

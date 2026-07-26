@@ -3,7 +3,9 @@ import SwiftUI
 
 // MARK: - Layer Switch HUD
 
-/// A notch-style pill that briefly shows the active layer name when switching.
+/// Brief interaction acknowledgement shared by layer and tab-group actions.
+/// It uses the same restrained glass-and-signal language as Hyperspace instead
+/// of introducing a separate editorial/serif treatment.
 final class LayerBezel {
     static let shared = LayerBezel()
 
@@ -21,7 +23,7 @@ final class LayerBezel {
         let screenFrame = screen.frame
 
         let pillWidth = stableWidth(for: allLabels, total: total)
-        let pillHeight: CGFloat = 64
+        let pillHeight: CGFloat = 52
 
         // Position: centered on screen, upper third
         let x = screenFrame.origin.x + (screenFrame.width - pillWidth) / 2
@@ -95,8 +97,7 @@ final class LayerBezel {
         }
 
         // Measure the widest label using the actual font
-        let font = NSFont(name: "NewYork-RegularItalic", size: 24)
-            ?? NSFont.systemFont(ofSize: 24, weight: .medium)
+        let font = NSFont.systemFont(ofSize: 13, weight: .semibold)
         let attrs: [NSAttributedString.Key: Any] = [.font: font]
 
         var maxTextWidth: CGFloat = 0
@@ -106,16 +107,17 @@ final class LayerBezel {
         }
 
         // dots width: 7px per dot + 5px spacing
-        let dotsWidth = CGFloat(total) * 7 + CGFloat(max(0, total - 1)) * 5
+        let dotsWidth = CGFloat(total) * 6 + CGFloat(max(0, total - 1)) * 4
         // divider + spacing
-        let dividerWidth: CGFloat = 1 + 14 * 2
+        let dividerWidth: CGFloat = 1 + 10 * 2
         // horizontal padding
-        let hPadding: CGFloat = 36 * 2
+        let hPadding: CGFloat = 18 * 2
 
         let contentWidth = dotsWidth + dividerWidth + maxTextWidth + hPadding
 
-        // Minimum 360, round up to nearest 20 for visual stability
-        let rawWidth = max(360, contentWidth)
+        // Keep acknowledgements compact while avoiding width changes between
+        // adjacent layers in the same workspace.
+        let rawWidth = max(240, contentWidth)
         let width = ceil(rawWidth / 20) * 20
 
         cachedWidth = width
@@ -131,73 +133,57 @@ struct LayerBezelView: View {
     let index: Int
     let total: Int
 
-    private var layerFont: Font {
-        // New York Italic — Apple's serif font
-        if let descriptor = NSFontDescriptor(fontAttributes: [
-            .family: "New York",
-            .traits: [NSFontDescriptor.TraitKey.symbolic: NSFontDescriptor.SymbolicTraits.italic.rawValue]
-        ]).withDesign(.serif) {
-            return Font(NSFont(descriptor: descriptor, size: 24) ?? .systemFont(ofSize: 24))
-        }
-        return .system(size: 24, weight: .medium, design: .serif).italic()
-    }
-
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 10) {
+            Image(systemName: label.localizedCaseInsensitiveContains("tab") ? "rectangle.stack.fill" : "square.stack.3d.up.fill")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(HUDChrome.cyan)
+
             // Layer index dots
-            HStack(spacing: 5) {
+            HStack(spacing: 4) {
                 ForEach(0..<total, id: \.self) { i in
                     Circle()
-                        .fill(i == index ? Color.white : Color.white.opacity(0.25))
-                        .frame(width: 7, height: 7)
+                        .fill(i == index ? HUDChrome.cyan : Color.white.opacity(0.20))
+                        .frame(width: 6, height: 6)
                 }
             }
 
             // Divider
             Rectangle()
                 .fill(Color.white.opacity(0.15))
-                .frame(width: 1, height: 20)
+                .frame(width: 1, height: 16)
 
             // Layer name
             Text(label)
-                .font(layerFont)
-                .foregroundStyle(
-                    .linearGradient(
-                        colors: [.white, .white.opacity(0.85)],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
+                .font(Typo.heading(13))
+                .foregroundStyle(Palette.text)
+                .lineLimit(1)
+
+            Spacer(minLength: 4)
+
+            Text("LATTICES")
+                .font(Typo.monoBold(7))
+                .tracking(1.0)
+                .foregroundStyle(Palette.textDim)
         }
-        .padding(.horizontal, 36)
-        .padding(.vertical, 16)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 12)
         .frame(maxWidth: .infinity)
         .background(
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .fill(Color.black)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .strokeBorder(
-                    .linearGradient(
-                        colors: [.white.opacity(0.9), .white.opacity(0.22)],
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [HUDChrome.baseTop, HUDChrome.baseBottom],
                         startPoint: .top,
                         endPoint: .bottom
-                    ),
-                    lineWidth: 0.5
-                )
-        )
-        // Inner glow — top edge highlight
-        .overlay(
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .fill(
-                    .linearGradient(
-                        colors: [.white.opacity(0.08), .clear],
-                        startPoint: .top,
-                        endPoint: .center
                     )
                 )
-                .allowsHitTesting(false)
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .strokeBorder(HUDChrome.cyan.opacity(0.32), lineWidth: 0.75)
+        )
+        .shadow(color: Color.black.opacity(0.42), radius: 14, y: 7)
+        .shadow(color: HUDChrome.cyan.opacity(0.10), radius: 10)
     }
 }

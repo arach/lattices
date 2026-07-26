@@ -12,7 +12,7 @@ enum AppPage: String, CaseIterable {
     case desktopInventory
     case activity
     case runs
-    case pi
+    case assistant
     case settings
     case companionSettings
     case docs
@@ -24,7 +24,7 @@ enum AppPage: String, CaseIterable {
         case .desktopInventory: return "Desktop Inventory"
         case .activity:         return "Activity"
         case .runs:             return "Runs"
-        case .pi:               return "Assistant"
+        case .assistant:        return "Assistant"
         case .settings:         return "Settings"
         case .companionSettings:return "Settings"
         case .docs:             return "Docs"
@@ -38,7 +38,7 @@ enum AppPage: String, CaseIterable {
         case .desktopInventory: return "macwindow.on.rectangle"
         case .activity:         return "list.bullet.rectangle"
         case .runs:             return "record.circle"
-        case .pi:               return "bubble.left.and.bubble.right"
+        case .assistant:        return "bubble.left.and.bubble.right"
         case .settings:         return "gearshape"
         case .companionSettings:return "ipad.and.iphone"
         case .docs:             return "book"
@@ -46,7 +46,7 @@ enum AppPage: String, CaseIterable {
     }
 
     /// Pages shown as primary tabs in the unified window
-    static var primaryTabs: [AppPage] { [.home, .pi, .screenMap, .desktopInventory, .runs, .activity] }
+    static var primaryTabs: [AppPage] { [.home, .assistant, .screenMap, .desktopInventory, .runs, .activity] }
 }
 
 // MARK: - App Shell View
@@ -358,7 +358,7 @@ struct AppShellView: View {
             ActivityPageView()
         case .runs:
             RunsReviewView()
-        case .pi:
+        case .assistant:
             WorkspaceAssistantView()
         case .settings:
             SettingsContentView(

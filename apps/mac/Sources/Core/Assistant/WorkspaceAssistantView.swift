@@ -4,7 +4,6 @@ import SwiftUI
 struct WorkspaceAssistantView: View {
     @StateObject private var session = WorkspaceAssistantSession.shared
     @FocusState private var composerFocused: Bool
-    @FocusState private var authFieldFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -14,31 +13,15 @@ struct WorkspaceAssistantView: View {
                 .fill(Palette.border)
                 .frame(height: 0.5)
 
-            if session.hasPiBinary && !session.needsProviderSetup {
-                WorkspaceAssistantTranscript(session: session, style: .workspace)
-            } else if session.needsProviderSetup {
-                setupPlaceholder
-            } else {
-                PiInstallCallout(session: session, compact: false)
-                    .padding(.horizontal, 28)
-                    .padding(.vertical, 20)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            }
-
-            if session.hasPiBinary && !session.needsProviderSetup {
-                WorkspaceAssistantComposer(session: session, style: .workspace, focus: $composerFocused)
-            } else if session.needsProviderSetup {
-                providerSettingsPrompt
-            }
+            WorkspaceAssistantTranscript(session: session, style: .workspace)
+            WorkspaceAssistantComposer(session: session, style: .workspace, focus: $composerFocused)
         }
         .background(Palette.bg)
         .background(WorkspaceFocusActivator())
         .onReceive(NotificationCenter.default.publisher(for: .workspaceComposerFocus)) { _ in
             // Fired exactly when the hosting window becomes key, so setting the
             // caret here actually renders it — no timed guessing.
-            if session.hasPiBinary && !session.needsProviderSetup {
-                composerFocused = true
-            }
+            composerFocused = true
         }
         .onAppear {
             session.prepareForDisplay()
@@ -86,23 +69,14 @@ struct WorkspaceAssistantView: View {
     }
 
     private var headerSubtitle: String {
-        if !session.hasPiBinary {
-            return "Install the Pi runtime to unlock provider-backed chat."
-        }
-        if session.isAuthenticating {
-            return session.authStepDescription
-        }
-        if session.needsProviderSetup {
-            return "Connect a provider in Settings to start chatting."
-        }
-        return "Settings, layout help, planning, and debugging in one thread."
+        "Scout-backed chat for settings, layout help, planning, and debugging."
     }
 
     private var statusPill: some View {
         let tint: Color = {
             switch session.statusText {
-            case "missing pi", "error": return Palette.kill
-            case "setup ai", "connecting...", "streaming...": return Palette.detach
+            case "error": return Palette.kill
+            case "setup ai", "streaming...": return Palette.detach
             default:
                 if session.statusText.hasPrefix("tool:") { return Palette.detach }
                 return session.isSending ? Palette.detach : Palette.running
@@ -131,44 +105,6 @@ struct WorkspaceAssistantView: View {
                     .fill(tint.opacity(0.12))
                     .overlay(Capsule().strokeBorder(tint.opacity(0.24), lineWidth: 0.5))
             )
-    }
-
-    private var setupPlaceholder: some View {
-        VStack {
-            Spacer()
-            PiInstallCallout(session: session, compact: false)
-                .padding(.horizontal, 28)
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private var providerSettingsPrompt: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Circle()
-                .fill(Palette.detach)
-                .frame(width: 7, height: 7)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Connect a provider")
-                    .font(Typo.heading(12))
-                    .foregroundColor(Palette.text)
-
-                Text("Open Settings to add OpenAI, Anthropic, Groq, or another provider.")
-                    .font(Typo.caption(11))
-                    .foregroundColor(Palette.textDim)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer()
-
-            headerTextButton("Settings", tint: Palette.running) {
-                SettingsWindowController.shared.showAssistant()
-            }
-        }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 14)
-        .background(Palette.surface.opacity(0.22))
     }
 
     private func headerIconButton(symbol: String, help: String, action: @escaping () -> Void) -> some View {

@@ -437,7 +437,7 @@ final class UnifiedCommandBarWindow {
         return IntentHeuristics.assistantPromptText(q)
     }
 
-    /// Open the `.pi` assistant and stream the prompt; the bar steps aside.
+    /// Open the workspace assistant and stream the prompt; the bar steps aside.
     private func handToAssistant(_ prompt: String) {
         let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }

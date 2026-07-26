@@ -164,13 +164,13 @@ enum LatticesCompanionCockpitCatalog {
             .init(
                 id: "dev",
                 title: "Dev",
-                subtitle: "Terminal, agent, and edit shortcuts",
+                subtitle: "Clipboard, terminal, navigation, and edit shortcuts",
                 columns: 4,
                 slotIDs: [
-                    "key-copy", "key-paste", "key-undo", "key-shift-tab",
-                    "place-left", "place-right", "resize-wider", "resize-narrower",
+                    "paste-device", "key-copy", "key-paste", "key-undo",
+                    "key-escape", "key-enter", "key-up", "key-down",
                     "switch-window-prev", "switch-window-next", "switch-app-prev", "switch-app-next",
-                    "layout-optimize", "mouse-find", "key-up", "key-down"
+                    "layout-optimize", "mouse-joystick", "place-left", "place-right"
                 ]
             ),
             .init(
@@ -250,6 +250,8 @@ enum LatticesCompanionCockpitCatalog {
         .init(id: "resize-shrink", title: "Shrink", subtitle: "Reduce both dimensions", iconSystemName: "minus.rectangle", accentToken: "layout", category: .layout),
         .init(id: "mouse-find", title: "Find Mouse", subtitle: "Pulse the current cursor position", iconSystemName: "scope", accentToken: "mouse", category: .mouse),
         .init(id: "mouse-summon", title: "Summon Mouse", subtitle: "Bring the cursor to center screen", iconSystemName: "dot.scope", accentToken: "mouse", category: .mouse),
+        .init(id: "mouse-joystick", title: "Joystick", subtitle: "Continuously steer the Mac pointer", iconSystemName: "circle.circle.fill", accentToken: "mouse", category: .mouse),
+        .init(id: "paste-device", title: "Paste from iPhone", subtitle: "Send the phone clipboard through the secure bridge", iconSystemName: "rectangle.portrait.and.arrow.forward", accentToken: "dev", category: .dev),
         .init(id: "key-escape", title: "Escape", subtitle: "Send Escape", iconSystemName: "escape", accentToken: "system", category: .system),
         .init(id: "key-copy", title: "Copy", subtitle: "Send Command-C", iconSystemName: "doc.on.doc", accentToken: "system", category: .system),
         .init(id: "key-paste", title: "Paste", subtitle: "Send Command-V", iconSystemName: "doc.on.clipboard", accentToken: "system", category: .system),
@@ -394,6 +396,7 @@ enum LatticesCompanionCockpitCatalog {
             payload: rendered.payload,
             isEnabled: rendered.isEnabled,
             isActive: rendered.isActive,
+            controlKind: shortcutID == "mouse-joystick" ? .joystick : nil,
             col: col,
             row: row,
             colSpan: colSpan,
@@ -420,6 +423,19 @@ enum LatticesCompanionCockpitCatalog {
         }
 
         switch shortcutID {
+        case "paste-device":
+            return RenderedShortcut(
+                title: "Paste Phone",
+                subtitle: "Send this device's clipboard to the Mac",
+                iconSystemName: "rectangle.portrait.and.arrow.forward",
+                accentToken: "dev",
+                categoryTint: LatticesCompanionShortcutCategory.dev.tintToken,
+                actionID: "clipboard.pasteFromDevice",
+                payload: [:],
+                isEnabled: true,
+                isActive: false
+            )
+
         case "voice-toggle":
             let listening = voice?.phase == .listening
             return RenderedShortcut(
@@ -560,6 +576,18 @@ enum LatticesCompanionCockpitCatalog {
                 iconSystemName: "dot.scope",
                 accentToken: "mouse",
                 actionID: "mouse.summon",
+                payload: [:],
+                isEnabled: true,
+                isActive: false
+            )
+
+        case "mouse-joystick":
+            return RenderedShortcut(
+                title: "Joystick",
+                subtitle: "Steer the Mac pointer",
+                iconSystemName: "circle.circle.fill",
+                accentToken: "mouse",
+                actionID: nil,
                 payload: [:],
                 isEnabled: true,
                 isActive: false

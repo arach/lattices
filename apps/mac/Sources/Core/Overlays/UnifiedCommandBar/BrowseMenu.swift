@@ -132,10 +132,7 @@ enum BrowseMenu {
                     icon: "rectangle.stack",
                     score: 0
                 ) {
-                    if let firstTab = group.tabs.first {
-                        let session = WorkspaceManager.sessionName(for: firstTab.path)
-                        Preferences.shared.terminal.focusOrAttach(session: session)
-                    }
+                    workspace.focusTab(group: group, tabIndex: workspace.selectedTabIndex(in: group))
                 })
             } else {
                 out.append(OmniResult(

@@ -46,6 +46,19 @@ export const pages: readonly LatticesPage[] = [
       "apps/mac/Sources/Core/Companion/LatticesCompanionCockpit.swift",
     ],
   },
+  {
+    href: "/studio/studies/cross-app-tabs",
+    label: "Cross-app tabs — one topic, many tools",
+    bucket: "studies",
+    surface: "cross",
+    status: "in-flight",
+    blurb:
+      "A native-window tab rail for grouping Chrome, terminal, and editor surfaces around one topic. Tabs preserve real app identity; Grid temporarily fans the same windows out for comparison.",
+    source: [
+      "apps/mac/Sources/Core/Workspace/LiveTabGroupStore.swift",
+      "apps/mac/Sources/Core/Overlays/HUD/HUDWindowHints.swift",
+    ],
+  },
 ];
 
 const defined = defineStudio({

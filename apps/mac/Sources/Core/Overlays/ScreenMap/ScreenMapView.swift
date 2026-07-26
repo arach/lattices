@@ -152,7 +152,7 @@ struct ScreenMapView: View {
     @ObservedObject private var diagnosticLog = DiagnosticLog.shared
     @ObservedObject private var studioLayers = StudioLayerStore.shared
     @ObservedObject private var desktop = DesktopModel.shared
-    @StateObject private var piChat = WorkspaceAssistantSession.shared
+    @StateObject private var assistantChat = WorkspaceAssistantSession.shared
     @State private var eventMonitor: Any?
     @State private var mouseDownMonitor: Any?
     @State private var mouseDragMonitor: Any?
@@ -232,8 +232,8 @@ struct ScreenMapView: View {
                     inspectorPane(editor: editor)
                 }
             }
-            if piChat.isVisible {
-                WorkspaceAssistantDock(session: piChat)
+            if assistantChat.isVisible {
+                WorkspaceAssistantDock(session: assistantChat)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             footerBar
@@ -3112,9 +3112,9 @@ struct ScreenMapView: View {
 
                 // Right: docs + logs
                 HStack(spacing: 10) {
-                    statusBarButton(icon: "terminal", label: piChat.isVisible ? "Hide Pi" : "Pi") {
+                    statusBarButton(icon: "bubble.left.and.bubble.right", label: assistantChat.isVisible ? "Hide Assistant" : "Assistant") {
                         withAnimation(.easeOut(duration: 0.16)) {
-                            piChat.toggleVisibility()
+                            assistantChat.toggleVisibility()
                         }
                     }
                     statusBarButton(icon: "book", label: "Docs") {

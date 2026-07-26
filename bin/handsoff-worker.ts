@@ -70,6 +70,7 @@ import { spawn } from "child_process";
 
 const OPENAI_TTS_URL = "https://api.openai.com/v1/audio/speech";
 const ttsConfig = loadTTSConfig();
+let remoteTTSDisabledReason: string | null = ttsConfig.apiKey ? null : "OPENAI_API_KEY is not configured";
 
 function loadTTSConfig() {
   return {
@@ -78,9 +79,23 @@ function loadTTSConfig() {
   };
 }
 
-/** Stream TTS: fetch audio from OpenAI and pipe directly to ffplay. Playback starts immediately. */
-async function streamSpeak(text: string): Promise<number> {
-  const start = performance.now();
+class RemoteTTSUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RemoteTTSUnavailableError";
+  }
+}
+
+function disableRemoteTTS(reason: string) {
+  if (remoteTTSDisabledReason) return;
+  remoteTTSDisabledReason = reason;
+  log(`remote TTS disabled for this worker: ${reason}; using macOS speech`);
+}
+
+async function requestRemoteSpeech(text: string): Promise<Response> {
+  if (remoteTTSDisabledReason) {
+    throw new RemoteTTSUnavailableError(remoteTTSDisabledReason);
+  }
 
   const res = await fetch(OPENAI_TTS_URL, {
     method: "POST",
@@ -98,8 +113,47 @@ async function streamSpeak(text: string): Promise<number> {
   });
 
   if (!res.ok) {
-    throw new Error(`OpenAI TTS error: ${res.status} ${res.statusText}`);
+    const reason = `OpenAI TTS error: ${res.status} ${res.statusText}`;
+    if (res.status === 401 || res.status === 403) disableRemoteTTS(reason);
+    throw new RemoteTTSUnavailableError(reason);
   }
+
+  return res;
+}
+
+/** On-device fallback that keeps voice useful when cloud TTS is unavailable. */
+async function localSpeak(text: string): Promise<number> {
+  const start = performance.now();
+  return new Promise((resolve, reject) => {
+    const speaker = spawn("/usr/bin/say", ["-r", "210", text], {
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    let stderr = "";
+    speaker.stderr?.on("data", (data: Buffer) => { stderr += data.toString(); });
+    speaker.on("close", (code: number | null) => {
+      const ms = Math.round(performance.now() - start);
+      if (code === 0) resolve(ms);
+      else reject(new Error(`macOS speech failed (${code ?? "unknown"}): ${stderr.slice(0, 160)}`));
+    });
+    speaker.on("error", reject);
+  });
+}
+
+async function speak(text: string): Promise<number> {
+  if (!remoteTTSDisabledReason) {
+    try {
+      return await streamSpeak(text);
+    } catch (error: any) {
+      log(`remote TTS unavailable: ${error.message}; falling back to macOS speech`);
+    }
+  }
+  return localSpeak(text);
+}
+
+/** Stream TTS: fetch audio from OpenAI and pipe directly to ffplay. Playback starts immediately. */
+async function streamSpeak(text: string): Promise<number> {
+  const start = performance.now();
+  const res = await requestRemoteSpeech(text);
 
   const ttfb = Math.round(performance.now() - start);
   log(`TTS first byte in ${ttfb}ms`);
@@ -189,32 +243,18 @@ async function ensureVoiceCache() {
       continue;
     }
 
-    // Generate and cache
+    // Generate and cache. Authentication failures disable remote TTS once for
+    // this worker instead of retrying the same credential for every cue.
     try {
-      const res = await fetch(OPENAI_TTS_URL, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${ttsConfig.apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "tts-1",
-          voice: ttsConfig.voice,
-          input: phrase,
-          response_format: "pcm",
-          speed: 1.1,
-        }),
-      });
-
-      if (res.ok) {
-        const buf = Buffer.from(await res.arrayBuffer());
-        writeFileSync(filePath, buf);
-        ackCache.set(phrase, filePath);
-        generated++;
-        log(`cached: "${phrase}"`);
-      }
+      const res = await requestRemoteSpeech(phrase);
+      const buf = Buffer.from(await res.arrayBuffer());
+      writeFileSync(filePath, buf);
+      ackCache.set(phrase, filePath);
+      generated++;
+      log(`cached: "${phrase}"`);
     } catch (e: any) {
       log(`cache failed for "${phrase}": ${e.message}`);
+      if (remoteTTSDisabledReason) break;
     }
   }
   log(`voice cache: ${cached} hit, ${generated} generated, ${allPhrases.length} total`);
@@ -226,8 +266,8 @@ async function playCached(phrase: string): Promise<number> {
   const filePath = ackCache.get(phrase);
 
   if (!filePath) {
-    log(`playCached: cache miss for "${phrase}", falling back to TTS`);
-    return streamSpeak(phrase);
+    log(`playCached: cache miss for "${phrase}", using live speech`);
+    return speak(phrase);
   }
 
   log(`playing cached: "${phrase}"`);
@@ -277,7 +317,7 @@ function playConfirm(intent: string): Promise<number> {
 // Warm up cache on startup
 ensureVoiceCache().then(() => log("voice cache ready"));
 
-log("worker started, streaming TTS ready");
+log(`worker started, TTS=${remoteTTSDisabledReason ? "macOS local" : "OpenAI with macOS fallback"}`);
 
 // ── Load system prompt once ────────────────────────────────────────
 
@@ -335,7 +375,7 @@ async function processLine(line: string) {
 
     case "speak":
       try {
-        const ms = await streamSpeak(cmd.text);
+        const ms = await speak(cmd.text);
         log(`spoke "${cmd.text.slice(0, 40)}" in ${ms}ms`);
         respond({ ok: true, data: { durationMs: ms } });
       } catch (err: any) {
@@ -347,7 +387,7 @@ async function processLine(line: string) {
     case "ack":
       // Fire and forget — respond immediately, speak in background
       respond({ ok: true, data: { queued: true } });
-      streamSpeak(cmd.text).catch((e) => log(`ack TTS error: ${e.message}`));
+      speak(cmd.text).catch((e) => log(`ack TTS error: ${e.message}`));
       break;
 
     case "play_cached":
@@ -467,7 +507,7 @@ async function processLine(line: string) {
       if (hasActions && spokenText) {
         // SPEAK FIRST — user must hear what's about to happen before windows move
         log(`⏱ narrating: "${spokenText.slice(0, 50)}"`);
-        await streamSpeak(spokenText).catch((e) => log(`narrate error: ${e.message}`));
+        await speak(spokenText).catch((e) => log(`narrate error: ${e.message}`));
 
         // NOW respond with actions — Swift executes after user heard the plan
         const turnMs = Math.round(performance.now() - turnStart);
@@ -478,7 +518,7 @@ async function processLine(line: string) {
         await playCached("Done.").catch(() => {});
       } else if (spokenText) {
         // Conversation only — speak and respond
-        await streamSpeak(spokenText).catch((e) => log(`speak error: ${e.message}`));
+        await speak(spokenText).catch((e) => log(`speak error: ${e.message}`));
         const turnMs = Math.round(performance.now() - turnStart);
         respond({ ok: true, data: inferResult, turnMs });
       } else {

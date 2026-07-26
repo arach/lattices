@@ -7,8 +7,8 @@
  * tap an empty cell to add a key, drag to move (cell-snapped, valid/invalid
  * ghost), drag the corner handle to span multiple cells, and edit the selected
  * key in the inspector (label / icon / tint / action / size). Grid shape is
- * 2–5 columns × 1–4 rows, ≤ 16 keys, gaps allowed. Pure design prototype — the
- * real editor is built on the Mac (see docs/companion-deck-builder-spec.md).
+ * 2–5 columns × 1–4 rows, ≤ 16 controls, gaps allowed. This surface is shared
+ * by the studio study and the live Mac Settings embed.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -18,6 +18,7 @@ import {
   MousePointer2, Space as SpaceIcon, PanelLeft, PanelRight,
   SquareDashed, Maximize2, Monitor, Terminal, Play, Hammer, GitBranch,
   Volume2, Sun, Camera, Sparkles, Home, Clock, Plus, Trash2, Rows3, Columns3,
+  Joystick, ClipboardPaste,
 } from "lucide-react";
 import type { LatticesPage } from "@/studio/studioRegistry";
 
@@ -40,7 +41,7 @@ const ICONS = {
   ChevronLeft, ChevronRight, Search, Command, LayoutGrid, Crosshair,
   MousePointer2, SpaceIcon, PanelLeft, PanelRight, SquareDashed, Maximize2,
   Monitor, Terminal, Play, Hammer, GitBranch, Volume2, Sun, Camera, Sparkles,
-  Home, Clock,
+  Home, Clock, Joystick, ClipboardPaste,
 } as const;
 type IconName = keyof typeof ICONS;
 const ICON_PICKER: IconName[] = [
@@ -49,6 +50,7 @@ const ICON_PICKER: IconName[] = [
   "MousePointer2", "SpaceIcon", "PanelLeft", "PanelRight", "Maximize2", "Monitor",
   "Terminal", "Play", "Hammer", "GitBranch", "Volume2", "Sun", "Camera",
   "Sparkles", "Home", "Clock", "SquareDashed",
+  "Joystick", "ClipboardPaste",
 ];
 function Icon({ name, size = 15, color }: { name: IconName; size?: number; color?: string }) {
   const C = ICONS[name] ?? SquareDashed;
@@ -59,49 +61,40 @@ function Icon({ name, size = 15, color }: { name: IconName; size?: number; color
 type CatalogItem = { id: string; label: string; icon: IconName; tint: Tint; category: string };
 const CATALOG: { group: string; items: CatalogItem[] }[] = [
   { group: "Voice", items: [
-    { id: "voice.toggle", label: "Start Voice", icon: "Mic", tint: "red", category: "voice" },
-    { id: "voice.cancel", label: "Cancel Voice", icon: "X", tint: "red", category: "voice" },
+    { id: "voice-toggle", label: "Start Voice", icon: "Mic", tint: "red", category: "voice" },
+    { id: "voice-cancel", label: "Cancel Voice", icon: "X", tint: "red", category: "voice" },
   ]},
   { group: "System", items: [
-    { id: "key.escape", label: "Escape", icon: "CornerDownLeft", tint: "amber", category: "system" },
-    { id: "key.enter", label: "Enter", icon: "CornerDownLeft", tint: "amber", category: "system" },
-    { id: "key.space", label: "Space", icon: "SpaceIcon", tint: "amber", category: "system" },
-  ]},
-  { group: "Switching", items: [
-    { id: "switch.appPrev", label: "Prev App", icon: "ChevronLeft", tint: "blue", category: "system" },
-    { id: "switch.appNext", label: "Next App", icon: "ChevronRight", tint: "blue", category: "system" },
-    { id: "switch.winPrev", label: "Prev Window", icon: "ArrowLeft", tint: "blue", category: "window" },
-    { id: "switch.winNext", label: "Next Window", icon: "ArrowRight", tint: "blue", category: "window" },
-  ]},
-  { group: "Layout", items: [
-    { id: "layout.optimize", label: "Optimize", icon: "LayoutGrid", tint: "blue", category: "window" },
-    { id: "layout.left", label: "Left", icon: "PanelLeft", tint: "blue", category: "window" },
-    { id: "layout.right", label: "Right", icon: "PanelRight", tint: "blue", category: "window" },
-    { id: "layout.center", label: "Center", icon: "SquareDashed", tint: "blue", category: "window" },
-    { id: "layout.maximize", label: "Maximize", icon: "Maximize2", tint: "blue", category: "window" },
-    { id: "layout.monitorL", label: "L Monitor", icon: "Monitor", tint: "teal", category: "window" },
-    { id: "layout.monitorR", label: "R Monitor", icon: "Monitor", tint: "teal", category: "window" },
-  ]},
-  { group: "Mouse", items: [
-    { id: "mouse.find", label: "Find Mouse", icon: "Crosshair", tint: "green", category: "system" },
-    { id: "mouse.summon", label: "Summon Mouse", icon: "MousePointer2", tint: "green", category: "system" },
+    { id: "key-escape", label: "Escape", icon: "CornerDownLeft", tint: "amber", category: "system" },
+    { id: "key-enter", label: "Enter", icon: "CornerDownLeft", tint: "amber", category: "system" },
+    { id: "key-space", label: "Space", icon: "SpaceIcon", tint: "amber", category: "system" },
+    { id: "key-copy", label: "Copy", icon: "Command", tint: "amber", category: "system" },
+    { id: "key-paste", label: "Paste", icon: "Command", tint: "amber", category: "system" },
+    { id: "key-undo", label: "Undo", icon: "CornerDownLeft", tint: "amber", category: "system" },
+    { id: "key-shift-tab", label: "Back Tab", icon: "ArrowLeft", tint: "amber", category: "system" },
+    { id: "key-left", label: "Left Arrow", icon: "ArrowLeft", tint: "amber", category: "system" },
+    { id: "key-right", label: "Right Arrow", icon: "ArrowRight", tint: "amber", category: "system" },
   ]},
   { group: "Dev", items: [
-    { id: "dev.terminal", label: "Terminal", icon: "Terminal", tint: "green", category: "dev" },
-    { id: "dev.run", label: "Run", icon: "Play", tint: "green", category: "dev" },
-    { id: "dev.build", label: "Build", icon: "Hammer", tint: "amber", category: "dev" },
-    { id: "dev.git", label: "Git", icon: "GitBranch", tint: "amber", category: "dev" },
+    { id: "paste-device", label: "Paste Phone", icon: "ClipboardPaste", tint: "green", category: "dev" },
   ]},
-  { group: "Media", items: [
-    { id: "media.play", label: "Play", icon: "Play", tint: "violet", category: "system" },
-    { id: "media.vol", label: "Volume", icon: "Volume2", tint: "teal", category: "system" },
-    { id: "media.bright", label: "Brightness", icon: "Sun", tint: "amber", category: "system" },
-    { id: "media.shot", label: "Screenshot", icon: "Camera", tint: "pink", category: "system" },
+  { group: "Switching", items: [
+    { id: "switch-app-prev", label: "Prev App", icon: "ChevronLeft", tint: "blue", category: "system" },
+    { id: "switch-app-next", label: "Next App", icon: "ChevronRight", tint: "blue", category: "system" },
+    { id: "switch-window-prev", label: "Prev Window", icon: "ArrowLeft", tint: "blue", category: "window" },
+    { id: "switch-window-next", label: "Next Window", icon: "ArrowRight", tint: "blue", category: "window" },
   ]},
-  { group: "Agent", items: [
-    { id: "agent.claude", label: "Claude", icon: "Sparkles", tint: "violet", category: "agent" },
-    { id: "agent.home", label: "Home", icon: "Home", tint: "pink", category: "system" },
-    { id: "agent.recents", label: "Recents", icon: "Clock", tint: "violet", category: "system" },
+  { group: "Layout", items: [
+    { id: "layout-optimize", label: "Optimize", icon: "LayoutGrid", tint: "blue", category: "window" },
+    { id: "place-left", label: "Left", icon: "PanelLeft", tint: "blue", category: "window" },
+    { id: "place-right", label: "Right", icon: "PanelRight", tint: "blue", category: "window" },
+    { id: "place-center", label: "Center", icon: "SquareDashed", tint: "blue", category: "window" },
+    { id: "place-maximize", label: "Maximize", icon: "Maximize2", tint: "blue", category: "window" },
+  ]},
+  { group: "Mouse", items: [
+    { id: "mouse-find", label: "Find Mouse", icon: "Crosshair", tint: "teal", category: "system" },
+    { id: "mouse-summon", label: "Summon Mouse", icon: "MousePointer2", tint: "teal", category: "system" },
+    { id: "mouse-joystick", label: "Joystick", icon: "Joystick", tint: "teal", category: "system" },
   ]},
 ];
 const CATALOG_BY_ID = new Map(CATALOG.flatMap((g) => g.items).map((i) => [i.id, i]));
@@ -123,37 +116,39 @@ const c = (id: string) => CATALOG_BY_ID.get(id)!;
 
 const SEED: Deck[] = [
   { id: "command", name: "Command", tint: "green", columns: 4, rows: 4, keys: [
-    { ...keyFrom(c("voice.toggle"), 0, 0, 2, 2) },
-    keyFrom(c("key.escape"), 2, 0), keyFrom(c("key.enter"), 3, 0),
-    keyFrom(c("voice.cancel"), 2, 1), keyFrom(c("key.space"), 3, 1),
-    { ...keyFrom(c("layout.optimize"), 0, 2, 2, 1) },
-    keyFrom(c("mouse.find"), 2, 2), keyFrom(c("mouse.summon"), 3, 2),
-    keyFrom(c("layout.left"), 0, 3), keyFrom(c("layout.right"), 1, 3),
-    keyFrom(c("layout.center"), 2, 3), keyFrom(c("layout.maximize"), 3, 3),
+    { ...keyFrom(c("voice-toggle"), 0, 0, 2, 2) },
+    keyFrom(c("key-escape"), 2, 0), keyFrom(c("key-enter"), 3, 0),
+    keyFrom(c("voice-cancel"), 2, 1), keyFrom(c("key-space"), 3, 1),
+    { ...keyFrom(c("layout-optimize"), 0, 2, 2, 1) },
+    keyFrom(c("mouse-find"), 2, 2), keyFrom(c("mouse-summon"), 3, 2),
+    keyFrom(c("place-left"), 0, 3), keyFrom(c("place-right"), 1, 3),
+    keyFrom(c("place-center"), 2, 3), keyFrom(c("place-maximize"), 3, 3),
   ]},
   { id: "windows", name: "Windows", tint: "blue", columns: 4, rows: 3, keys: [
-    { ...keyFrom(c("layout.optimize"), 0, 0, 4, 1) },
-    keyFrom(c("layout.left"), 0, 1), keyFrom(c("layout.right"), 1, 1),
-    keyFrom(c("layout.center"), 2, 1), keyFrom(c("layout.maximize"), 3, 1),
-    { ...keyFrom(c("layout.monitorL"), 0, 2, 2, 1) },
-    { ...keyFrom(c("layout.monitorR"), 2, 2, 2, 1) },
+    { ...keyFrom(c("layout-optimize"), 0, 0, 4, 1) },
+    keyFrom(c("place-left"), 0, 1), keyFrom(c("place-right"), 1, 1),
+    keyFrom(c("place-center"), 2, 1), keyFrom(c("place-maximize"), 3, 1),
+    { ...keyFrom(c("place-left"), 0, 2, 2, 1) },
+    { ...keyFrom(c("place-right"), 2, 2, 2, 1) },
   ]},
-  { id: "dev", name: "Dev", tint: "green", columns: 4, rows: 2, keys: [
-    keyFrom(c("dev.terminal"), 0, 0), keyFrom(c("dev.run"), 1, 0),
-    keyFrom(c("dev.build"), 2, 0), keyFrom(c("dev.git"), 3, 0),
-    { ...keyFrom(c("layout.optimize"), 0, 1, 2, 1) },
-    keyFrom(c("switch.winPrev"), 2, 1), keyFrom(c("switch.winNext"), 3, 1),
+  { id: "dev", name: "Dev", tint: "green", columns: 4, rows: 3, keys: [
+    { ...keyFrom(c("paste-device"), 0, 0, 2, 1) },
+    keyFrom(c("key-copy"), 2, 0), keyFrom(c("key-paste"), 3, 0),
+    keyFrom(c("key-escape"), 0, 1), keyFrom(c("key-enter"), 1, 1),
+    keyFrom(c("key-undo"), 2, 1), keyFrom(c("key-shift-tab"), 3, 1),
+    { ...keyFrom(c("layout-optimize"), 0, 2, 2, 1) },
+    keyFrom(c("switch-window-prev"), 2, 2), keyFrom(c("switch-window-next"), 3, 2),
   ]},
   { id: "media", name: "Media", tint: "violet", columns: 3, rows: 2, keys: [
-    { ...keyFrom(c("media.play"), 0, 0, 1, 2) },
-    keyFrom(c("media.vol"), 1, 0), keyFrom(c("media.bright"), 2, 0),
-    keyFrom(c("media.shot"), 1, 1), keyFrom(c("agent.home"), 2, 1),
+    { ...keyFrom(c("key-space"), 0, 0, 1, 2) },
+    keyFrom(c("key-left"), 1, 0), keyFrom(c("key-right"), 2, 0),
+    keyFrom(c("place-center"), 1, 1), keyFrom(c("place-maximize"), 2, 1),
   ]},
   { id: "voice", name: "Voice", tint: "red", columns: 3, rows: 2, keys: [
-    { ...keyFrom(c("voice.toggle"), 0, 0, 2, 1) },
-    keyFrom(c("voice.cancel"), 2, 0),
-    keyFrom(c("agent.claude"), 0, 1), keyFrom(c("agent.recents"), 1, 1),
-    keyFrom(c("mouse.summon"), 2, 1),
+    { ...keyFrom(c("voice-toggle"), 0, 0, 2, 1) },
+    keyFrom(c("voice-cancel"), 2, 0),
+    keyFrom(c("switch-app-prev"), 0, 1), keyFrom(c("switch-app-next"), 1, 1),
+    keyFrom(c("mouse-summon"), 2, 1),
   ]},
 ];
 
@@ -357,7 +352,7 @@ export function DeckBuilder({ initialDecks, onChange, className }: {
 
   const addAt = (col: number, row: number) => {
     if (deck.keys.length >= 16) return;
-    const item = c("layout.optimize");
+    const item = c("layout-optimize");
     const k = keyFrom(item, col, row);
     patchDeck((d) => ({ ...d, keys: [...d.keys, k] }));
     setSelId(k.id);
@@ -425,6 +420,8 @@ export function DeckBuilder({ initialDecks, onChange, className }: {
         <div
           className="relative shrink-0 rounded-[14px] p-5"
           style={{
+            width: canvasSize(deck.columns) + 40,
+            boxSizing: "border-box",
             background: `linear-gradient(160deg, ${INK.well0}, ${INK.well1} 60%, #090a0c)`,
             border: `1px solid rgba(255,255,255,0.07)`,
             boxShadow: "0 22px 60px -30px rgba(0,0,0,0.9)",
@@ -487,6 +484,7 @@ export function DeckBuilder({ initialDecks, onChange, className }: {
               );
             })}
           </div>
+          <CompanionGateway compact={deck.columns === 2} />
           <div className="mt-3 font-mono text-[10px]" style={{ color: INK.fg4 }}>
             tap empty cell to add · drag to move · pull the corner to span
           </div>
@@ -541,6 +539,7 @@ function KeyBlock({ k, rect, selected, dragging, dragOk, animate, onPointerDownM
   onSelect: () => void;
 }) {
   const tint = TINTS[k.tint];
+  const isJoystick = k.actionID === "mouse-joystick";
   const ring = dragging ? (dragOk ? TINTS.green : TINTS.red) : selected ? tint : "rgba(0,0,0,0.85)";
   return (
     <div
@@ -561,19 +560,40 @@ function KeyBlock({ k, rect, selected, dragging, dragOk, animate, onPointerDownM
         transition: animate ? "left 0.14s ease, top 0.14s ease, width 0.14s ease, height 0.14s ease" : undefined,
       }}
     >
-      <span
-        className="flex items-center justify-center rounded-[7px]"
-        style={{ width: 26, height: 26, color: tint, background: `${tint}22`, border: `0.5px solid ${tint}66` }}
-      >
-        <Icon name={k.icon} />
-      </span>
-      <div className="mt-auto">
+      {!isJoystick ? (
+        <span
+          className="flex items-center justify-center rounded-[7px]"
+          style={{ width: 26, height: 26, color: tint, background: `${tint}22`, border: `0.5px solid ${tint}66` }}
+        >
+          <Icon name={k.icon} />
+        </span>
+      ) : null}
+      {isJoystick ? (
+        <>
+          <span className="pointer-events-none absolute inset-x-2 top-2 bottom-11 flex items-center justify-center">
+            <span className="flex h-full max-h-[132px] aspect-square items-center justify-center rounded-full"
+              style={{ border: `1px solid ${tint}55`, background: `${tint}0d`, boxShadow: `inset 0 0 22px ${tint}12` }}>
+              <span className="absolute h-[58%] aspect-square rounded-full opacity-60"
+                style={{ border: `1px dashed ${tint}44` }} />
+            <span className="h-[42%] aspect-square rounded-full"
+              style={{ background: `radial-gradient(circle at 38% 32%, ${tint}, ${tint}88 52%, #111 55%)`, boxShadow: `0 8px 16px -5px #000` }} />
+            </span>
+          </span>
+          <div className={`pointer-events-none absolute inset-x-3 bottom-3 flex items-center gap-2 ${k.colSpan === 1 ? "justify-center" : "justify-between"}`}>
+            <span className={`truncate text-[11px] font-medium ${k.colSpan === 1 ? "text-center" : ""}`} style={{ color: INK.fg }}>{k.label}</span>
+            {k.colSpan > 1 ? (
+              <span className="shrink-0 font-mono text-[8px] uppercase tracking-[0.12em]" style={{ color: tint }}>hold · steer</span>
+            ) : null}
+          </div>
+        </>
+      ) : null}
+      {!isJoystick ? <div className="mt-auto">
         <div className="text-[14px] font-medium" style={{ color: INK.fg }}>{k.label}</div>
         <div className="mt-1 flex items-center gap-1.5 font-mono text-[10px]" style={{ color: INK.fg4 }}>
           <span style={{ width: 5, height: 5, borderRadius: 999, background: tint, display: "inline-block" }} />
           {k.colSpan}×{k.rowSpan} · {k.category}
         </div>
-      </div>
+      </div> : null}
       {/* resize handle */}
       <span
         onPointerDown={onPointerDownResize}
@@ -584,6 +604,138 @@ function KeyBlock({ k, rect, selected, dragging, dragOk, animate, onPointerDownM
           width: 7, height: 7, borderRight: `1.5px solid ${INK.fg3}`, borderBottom: `1.5px solid ${INK.fg3}`,
         }} />
       </span>
+    </div>
+  );
+}
+
+type GatewayState = "resting" | "expanded" | "listening";
+
+/**
+ * Persistent companion chrome, deliberately outside the configurable grid.
+ * Talkie's pivot pattern gives one quiet anchor a progressive second state;
+ * Paste is treated as a first-class gateway action rather than another key.
+ */
+function CompanionGateway({ compact }: { compact: boolean }) {
+  const [state, setState] = useState<GatewayState>("resting");
+  const [feedback, setFeedback] = useState("voice · paste · command");
+  const expanded = state !== "resting";
+
+  const act = (message: string) => {
+    setState("expanded");
+    setFeedback(message);
+  };
+
+  const statusText = state === "listening"
+    ? compact ? "listening" : "listening · tap to finish"
+    : compact
+      ? feedback === "gateway open" ? "open"
+        : feedback === "paste sent through gateway" ? "pasted to Mac"
+          : feedback === "command palette ready" ? "command ready"
+            : "ready"
+      : feedback;
+
+  return (
+    <div
+      className="relative mt-4 h-[82px] overflow-hidden rounded-b-[10px]"
+      style={{
+        borderTop: `1px solid ${INK.brk}`,
+        background: "linear-gradient(180deg, rgba(255,255,255,0.012), rgba(0,0,0,0.32))",
+      }}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <div className="flex items-center justify-between px-2 pt-2 font-mono text-[8px] uppercase tracking-[0.16em]">
+        <span style={{ color: INK.fg4 }}>{compact ? "fixed gateway" : "fixed companion gateway"}</span>
+        <span aria-live="polite" style={{ color: state === "listening" ? TINTS.red : INK.fg3 }}>
+          {statusText}
+        </span>
+      </div>
+
+      <div className="absolute inset-x-1 bottom-0 flex justify-center">
+        <div
+          className="grid h-[54px] items-center gap-1 rounded-t-[15px] px-1.5 transition-[width,background-color,border-color] duration-300"
+          style={{
+            width: expanded ? "min(100%, 410px)" : 62,
+            gridTemplateColumns: expanded
+              ? compact ? "minmax(90px,1fr) 42px 34px 28px" : "minmax(58px,1.35fr) 42px minmax(44px,.9fr) 28px"
+              : "1fr",
+            background: expanded ? "rgba(10,11,13,0.96)" : "rgba(10,11,13,0.88)",
+            borderTop: `1px solid ${expanded ? "rgba(225,114,107,0.28)" : INK.brk}`,
+            borderLeft: `1px solid ${expanded ? "rgba(225,114,107,0.28)" : INK.brk}`,
+            borderRight: `1px solid ${expanded ? "rgba(225,114,107,0.28)" : INK.brk}`,
+            boxShadow: expanded ? "0 -14px 36px -22px rgba(225,114,107,0.7)" : "0 -10px 28px -22px rgba(0,0,0,0.9)",
+          }}
+        >
+          {expanded ? (
+            <button
+              type="button"
+              onClick={() => act("paste sent through gateway")}
+              className="flex h-[40px] min-w-0 items-center gap-2 rounded-[10px] px-2.5 text-left transition-transform active:scale-[0.98]"
+              style={{ color: "#17120a", background: TINTS.amber, boxShadow: `0 0 18px -8px ${TINTS.amber}` }}
+              aria-label="Paste through gateway to Mac"
+              title="Paste through gateway to Mac"
+            >
+              <ClipboardPaste size={16} strokeWidth={2.1} className="shrink-0" />
+              <span className="min-w-0">
+                <span className="block truncate font-mono text-[10px] font-bold uppercase tracking-[0.12em]">Paste</span>
+                <span className="block truncate font-mono text-[7px] uppercase tracking-[0.12em] opacity-65">{compact ? "gateway" : "through gateway"}</span>
+              </span>
+            </button>
+          ) : null}
+
+          <button
+            type="button"
+            onClick={() => {
+              if (state === "resting") {
+                setState("expanded");
+                setFeedback("gateway open");
+              } else {
+                setState(state === "listening" ? "expanded" : "listening");
+              }
+            }}
+            className="relative mx-auto flex h-[44px] w-[44px] items-center justify-center rounded-full transition-transform duration-200 hover:scale-105 active:scale-95"
+            style={{
+              color: state === "listening" ? INK.pad : INK.fg,
+              background: state === "listening" ? TINTS.red : "#211416",
+              border: `1px solid ${TINTS.red}88`,
+              boxShadow: state === "listening" ? `0 0 0 4px ${TINTS.red}1f, 0 0 22px -4px ${TINTS.red}` : `0 0 18px -9px ${TINTS.red}`,
+            }}
+            aria-label={state === "resting" ? "Open voice gateway" : state === "listening" ? "Finish listening" : "Start listening"}
+            title={state === "resting" ? "Open voice gateway" : state === "listening" ? "Finish listening" : "Start listening"}
+          >
+            <Mic size={17} fill={state === "listening" ? "currentColor" : "none"} />
+            {state === "listening" ? (
+              <span className="absolute -inset-1 animate-ping rounded-full border" style={{ borderColor: `${TINTS.red}66` }} />
+            ) : null}
+          </button>
+
+          {expanded ? (
+            <button
+              type="button"
+              onClick={() => act("command palette ready")}
+              className="flex h-[38px] min-w-0 items-center justify-center gap-1.5 rounded-[9px] px-2 transition-colors"
+              style={{ color: TINTS.violet, background: `${TINTS.violet}12`, border: `1px solid ${TINTS.violet}35` }}
+              aria-label="Open command palette"
+              title="Open command palette"
+            >
+              <Sparkles size={14} className="shrink-0" />
+              {!compact ? <span className="truncate font-mono text-[8px] font-bold uppercase tracking-[0.12em]">Command</span> : null}
+            </button>
+          ) : null}
+
+          {expanded ? (
+            <button
+              type="button"
+              onClick={() => { setState("resting"); setFeedback("voice · paste · command"); }}
+              className="flex h-[30px] w-[30px] items-center justify-center rounded-full"
+              style={{ color: INK.fg3, background: "rgba(255,255,255,0.035)" }}
+              aria-label="Close voice gateway"
+              title="Close voice gateway"
+            >
+              <X size={13} />
+            </button>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }

@@ -29,7 +29,10 @@ class Preferences: ObservableObject {
         static let bridgeEnabled = "companion.bridge.enabled"
         static let trackpadEnabled = "companion.trackpad.enabled"
         static let cockpitLayout = "companion.cockpit.layout"
+        static let cockpitLayoutVersion = "companion.cockpit.layoutVersion"
     }
+
+    private static let currentCockpitLayoutVersion = 2
 
     private static let dismissedCapabilitiesKey = "permissions.dismissed"
 
@@ -306,11 +309,126 @@ class Preferences: ObservableObject {
     }
 
     private static func loadCompanionCockpitLayout() -> LatticesCompanionCockpitLayout {
-        guard let data = UserDefaults.standard.data(forKey: CompanionDefaultsKey.cockpitLayout),
-              let decoded = try? JSONDecoder().decode(LatticesCompanionCockpitLayout.self, from: data) else {
-            return LatticesCompanionCockpitCatalog.defaultLayout
+        if let data = UserDefaults.standard.data(forKey: CompanionDefaultsKey.cockpitLayout),
+           let decoded = try? JSONDecoder().decode(LatticesCompanionCockpitLayout.self, from: data) {
+            let normalized = LatticesCompanionCockpitCatalog.normalized(decoded)
+            guard UserDefaults.standard.integer(forKey: CompanionDefaultsKey.cockpitLayoutVersion)
+                    < currentCockpitLayoutVersion else {
+                return normalized
+            }
+
+            let migrated = migrateCompanionCockpitLayout(normalized)
+            if let encoded = try? JSONEncoder().encode(migrated) {
+                UserDefaults.standard.set(encoded, forKey: CompanionDefaultsKey.cockpitLayout)
+            }
+            UserDefaults.standard.set(
+                currentCockpitLayoutVersion,
+                forKey: CompanionDefaultsKey.cockpitLayoutVersion
+            )
+            return migrated
         }
-        return LatticesCompanionCockpitCatalog.normalized(decoded)
+
+        // One-time migration from the original web-builder draft. Early builds
+        // wrote the editor JSON but did not promote it to the live cockpit
+        // preference, so companions continued to receive the default deck.
+        let draftURL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".lattices/companion-deck-draft.json")
+        if let draft = try? Data(contentsOf: draftURL),
+           let imported = CompanionDeckBuilderView.importedLayout(fromBuilderDraft: draft) {
+            let normalized = LatticesCompanionCockpitCatalog.normalized(imported)
+            if let encoded = try? JSONEncoder().encode(normalized) {
+                UserDefaults.standard.set(encoded, forKey: CompanionDefaultsKey.cockpitLayout)
+            }
+            UserDefaults.standard.set(
+                currentCockpitLayoutVersion,
+                forKey: CompanionDefaultsKey.cockpitLayoutVersion
+            )
+            return normalized
+        }
+
+        UserDefaults.standard.set(
+            currentCockpitLayoutVersion,
+            forKey: CompanionDefaultsKey.cockpitLayoutVersion
+        )
+        return LatticesCompanionCockpitCatalog.defaultLayout
+    }
+
+    /// Adds the phone-to-Mac gateway paste action to existing starter decks
+    /// without replacing the user's other placements. The schema version makes
+    /// this a one-time migration, so removing the tile later remains respected.
+    private static func migrateCompanionCockpitLayout(
+        _ layout: LatticesCompanionCockpitLayout
+    ) -> LatticesCompanionCockpitLayout {
+        var migrated = layout
+        guard let index = migrated.pages.firstIndex(where: { $0.id == "dev" }) else {
+            return migrated
+        }
+
+        var page = migrated.pages[index]
+        let alreadyPresent = page.slotIDs.contains("paste-device")
+            || page.slots?.contains(where: { $0.shortcutID == "paste-device" }) == true
+        guard !alreadyPresent else { return migrated }
+
+        if var slots = page.slots {
+            let columns = max(2, page.columns)
+            var rows = min(4, max(1, page.rows ?? 1))
+
+            func intersects(_ candidate: LatticesCompanionCockpitLayout.Slot) -> Bool {
+                slots.contains { slot in
+                    candidate.col < slot.col + slot.colSpan
+                        && candidate.col + candidate.colSpan > slot.col
+                        && candidate.row < slot.row + slot.rowSpan
+                        && candidate.row + candidate.rowSpan > slot.row
+                }
+            }
+
+            var placement: LatticesCompanionCockpitLayout.Slot?
+            while placement == nil && rows <= 4 {
+                for span in [2, 1] where span <= columns {
+                    for row in 0..<rows {
+                        for col in 0...(columns - span) {
+                            let candidate = LatticesCompanionCockpitLayout.Slot(
+                                shortcutID: "paste-device",
+                                col: col,
+                                row: row,
+                                colSpan: span
+                            )
+                            if !intersects(candidate) {
+                                placement = candidate
+                                break
+                            }
+                        }
+                        if placement != nil { break }
+                    }
+                    if placement != nil { break }
+                }
+                if placement == nil && rows < 4 { rows += 1 } else { break }
+            }
+
+            if let placement {
+                slots.append(placement)
+                page.slots = slots
+                page.rows = rows
+            }
+        } else {
+            // The original flat starter occupied all 16 cells. Upgrade that
+            // exact legacy page to today's starter; leave custom flat decks alone.
+            let legacyStarter = [
+                "key-copy", "key-paste", "key-undo", "key-shift-tab",
+                "place-left", "place-right", "resize-wider", "resize-narrower",
+                "switch-window-prev", "switch-window-next", "switch-app-prev", "switch-app-next",
+                "layout-optimize", "mouse-find", "key-up", "key-down"
+            ]
+            if page.slotIDs == legacyStarter,
+               let starter = LatticesCompanionCockpitCatalog.defaultLayout.pages.first(where: { $0.id == "dev" }) {
+                page = starter
+            }
+        }
+
+        page.subtitle = LatticesCompanionCockpitCatalog.defaultLayout.pages
+            .first(where: { $0.id == "dev" })?.subtitle ?? page.subtitle
+        migrated.pages[index] = page
+        return migrated
     }
 
     private func persistCompanionCockpitLayout() {

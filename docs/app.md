@@ -176,7 +176,7 @@ intent, and executes. Built-in commands: find, show, open, tile, kill, scan.
 
 The provider-backed assistant can run in parallel, offering follow-up
 suggestions in the AI corner. Configure the provider and credentials in
-Settings > AI.
+Settings > Voice. Workspace chat itself uses Scout and needs no separate key.
 
 ## Settings
 
@@ -230,12 +230,11 @@ The trackpad proxy toggle lives here. Paired devices still need the
 
 | Setting              | Default        | Description                              |
 |----------------------|----------------|------------------------------------------|
-| Assistant provider   | OpenAI Codex   | Provider used by in-app chat and provider-backed voice advice |
-| Pi runtime           | Auto-detected  | Runtime install/refresh controls for provider chat |
-| Provider credentials | Not set        | OAuth sign-in or local API-key storage for the selected provider |
+| Workspace chat       | Scout          | Uses the existing local Scout broker and keeps a persistent Scout ref; no separate Lattices chat credential |
+| Voice provider       | OpenAI         | Optional voice-only HudsonAI provider for interpretation and speech services |
+| Provider credentials | Not set        | API-key storage in the macOS Keychain for the selected provider |
 
-Shows assistant readiness, runtime availability, and selected-provider
-authentication state.
+Shows assistant readiness and the selected provider's authentication state.
 
 ### Shortcuts
 

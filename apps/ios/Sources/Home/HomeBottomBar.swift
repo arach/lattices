@@ -69,6 +69,8 @@ extension HomeBottomMachineTelemetry {
 ///
 /// Size budget: ~40pt collapsed, ~96pt expanded (excluding safe-area extension).
 struct HomeBottomBar: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
     var statusLabel: String = "READY"
     var versionLabel: String = "v0.4.2"
     var holdHint: String = "hold·space"
@@ -112,6 +114,16 @@ struct HomeBottomBar: View {
     // MARK: - Collapsed row
 
     private var collapsedBar: some View {
+        Group {
+            if horizontalSizeClass == .compact {
+                compactCollapsedBar
+            } else {
+                regularCollapsedBar
+            }
+        }
+    }
+
+    private var regularCollapsedBar: some View {
         HStack(spacing: 10) {
             statusSegment
             holdHintSegment
@@ -141,6 +153,57 @@ struct HomeBottomBar: View {
         .padding(.bottom, 16)   // lift content above home indicator
         .frame(height: 54, alignment: .top)
         .padding(.top, 0)
+    }
+
+    private var compactCollapsedBar: some View {
+        HStack(spacing: 9) {
+            statusSegment
+
+            if hasTelemetry {
+                Text(telemetry.contextLabel)
+                    .font(LatsFont.mono(9))
+                    .foregroundStyle(LatsPalette.textDim)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            } else {
+                Text(holdHint)
+                    .font(LatsFont.mono(8))
+                    .foregroundStyle(LatsPalette.textFaint)
+            }
+
+            Spacer(minLength: 2)
+
+            HStack(spacing: 6) {
+                Circle().fill(agentDotTint).frame(width: 5, height: 5)
+                Text(agentLabel)
+                    .font(LatsFont.mono(9, weight: .semibold))
+                    .foregroundStyle(agentTextTint)
+                    .lineLimit(1)
+            }
+
+            if let onVoice {
+                compactAction(icon: "mic.fill", label: "Voice", action: onVoice)
+            }
+            if let onCommand {
+                compactAction(icon: "square.grid.2x2.fill", label: "Command Deck", action: onCommand)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.bottom, 15)
+        .frame(height: 58, alignment: .top)
+    }
+
+    private func compactAction(icon: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(LatsPalette.text)
+                .frame(width: 30, height: 30)
+                .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.055)))
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(LatsPalette.hairline2, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
     }
 
     // MARK: - Segments

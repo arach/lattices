@@ -1,8 +1,8 @@
 # AI Chat Assistant — UI/UX Review (review-only)
 
-Surface reviewed: `apps/mac/Sources/Core/Pi/`
-(PiChatUI.swift, PiChatDock.swift, PiWorkspaceView.swift, PiAuthPromptCard.swift,
-PiInstallCallout.swift, PiProviderSetupCallout.swift, PiChatSession.swift)
+Surface reviewed: `apps/mac/Sources/Core/Assistant/`
+(WorkspaceAssistantUI.swift, WorkspaceAssistantDock.swift, WorkspaceAssistantView.swift, AssistantAuthPromptCard.swift,
+RuntimeInstallCallout.swift, ProviderSetupCallout.swift, WorkspaceAssistantSession.swift)
 
 Date: 2026-06-02
 Scope: visual hierarchy, spacing, transcript readability, composer ergonomics,
@@ -15,9 +15,9 @@ Severity scale: HIGH (blocks goals) · MEDIUM (visible friction) · LOW (polish)
 ## HIGH
 
 ### 1. User and assistant share the same avatar glyph → speaker confusion
-**Evidence.** `PiChatUI.swift:35–55` defines `LatticesMark`; `LatticesMarkAvatar`
-is reused for the assistant header (`PiWorkspaceView.swift:52`), the assistant
-bubble (`PiChatUI.swift:487`), and the user's bubble (`PiChatUI.swift:463`).
+**Evidence.** `WorkspaceAssistantUI.swift:35–55` defines `LatticesMark`; `LatticesMarkAvatar`
+is reused for the assistant header (`WorkspaceAssistantView.swift:52`), the assistant
+bubble (`WorkspaceAssistantUI.swift:487`), and the user's bubble (`WorkspaceAssistantUI.swift:463`).
 The user message row shows the Lattices brand mark on the right at 28pt with a
 muted tint — visually the same family as the assistant avatar. Header text
 literally reads "Assistant" on the assistant side, but the user side has no
@@ -29,12 +29,12 @@ at lower opacity. Keep `LatticesMarkAvatar` for assistant + header + empty state
 hero only — that is its semantic role.
 
 ### 2. Composer send key is wrong for multi-line input
-**Evidence.** `PiChatUI.swift:1246–1261` binds `.onSubmit` directly to
+**Evidence.** `WorkspaceAssistantUI.swift:1246–1261` binds `.onSubmit` directly to
 `session.sendDraft()` with no modifier check. The composer uses
 `TextField(axis: .vertical)` with `lineLimit(1...style.composerLineLimit)`.
-The footer hint reads "↩ send" (`PiChatUI.swift:1218`). There is **no
+The footer hint reads "↩ send" (`WorkspaceAssistantUI.swift:1218`). There is **no
 `keyboardShortcut`** anywhere in the chat surface (verified by grep across
-`Core/Pi/*.swift`).
+`Core/Assistant/*.swift`).
 
 **Direction.** Bind the send button to `.keyboardShortcut(.return, modifiers: .command)`,
 change the hint to "⌘↩ send", and gate plain-Enter to single-line case only.
@@ -42,16 +42,16 @@ Add `Esc` to clear the draft or cancel an in-flight send.
 
 ### 3. Accessibility is largely absent
 **Evidence.** Across the entire chat surface, there is exactly **one**
-`accessibilityLabel` (`PiChatUI.swift:1397` on `PiChatWorkingIndicator`) and
+`accessibilityLabel` (`WorkspaceAssistantUI.swift:1397` on `WorkspaceAssistantWorkingIndicator`) and
 **one** `accessibilityHidden(true)` (on the Lattices mark). No icon buttons
-have labels: the dock close (`PiChatDock.swift:103`), the gear in
-`PiWorkspaceView.swift:130`, the code-block copy button (`PiChatUI.swift:872`),
-and the footer gear (`PiChatDock.swift:386`) all read as "button" only to
-VoiceOver. Hit targets: the 6pt traffic-light dots in `PiChatCodeBlock`
-(`PiChatUI.swift:855–859`), the 6pt status pulses, the 22×22 footer icon
-button (`PiChatDock.swift:444`), and the 22×22 send button are all below the
+have labels: the dock close (`WorkspaceAssistantDock.swift:103`), the gear in
+`WorkspaceAssistantView.swift:130`, the code-block copy button (`WorkspaceAssistantUI.swift:872`),
+and the footer gear (`WorkspaceAssistantDock.swift:386`) all read as "button" only to
+VoiceOver. Hit targets: the 6pt traffic-light dots in `WorkspaceAssistantCodeBlock`
+(`WorkspaceAssistantUI.swift:855–859`), the 6pt status pulses, the 22×22 footer icon
+button (`WorkspaceAssistantDock.swift:444`), and the 22×22 send button are all below the
 24pt minimum. Dynamic Type is not supported — fonts are hardcoded point
-sizes via `Typo.body(13.5)`, `Typo.body(14)` (`PiChatStyle`).
+sizes via `Typo.body(13.5)`, `Typo.body(14)` (`WorkspaceAssistantStyle`).
 
 **Direction.** Add `accessibilityLabel` to every icon-only button. Group the
 empty-state starters under a labelled header (`.accessibilityElement(children: .combine)`).
@@ -60,11 +60,11 @@ Bump minimum hit target to 24×24. Replace hardcoded point sizes with
 `.dynamicTypeSize(.medium ... .accessibility3)` at the root.
 
 ### 4. Usefulness is opaque — header copy is vague, no capability surface
-**Evidence.** `PiWorkspaceView.swift:60` says "Settings, layout help, planning,
-and debugging in one thread." The empty state at `PiChatUI.swift:256–263`
+**Evidence.** `WorkspaceAssistantView.swift:60` says "Settings, layout help, planning,
+and debugging in one thread." The empty state at `WorkspaceAssistantUI.swift:256–263`
 shows four starter cards, which is good, but the running state offers no
 indication of: which model is active, which tools are available, rate limits,
-cost, or how to attach files/screenshots. The status pill (`PiWorkspaceView.swift:75`)
+cost, or how to attach files/screenshots. The status pill (`WorkspaceAssistantView.swift:75`)
 flips between "Ready / Streaming / Thinking / Tool · read" but the user cannot
 act on it. The four starter prompts hint at gesture/file/screen/planning but
 don't reveal tool inventory.
@@ -79,26 +79,26 @@ counter. Add a "What can I do?" prompt to the empty state as a 5th card.
 ## MEDIUM
 
 ### 5. Three parallel setup states compete visually
-**Evidence.** `PiInstallCallout.swift` (install) uses `Palette.kill` red border.
-`PiProviderSetupCallout.swift` (provider) uses its own card layout. `PiAuthPromptCard.swift`
+**Evidence.** `RuntimeInstallCallout.swift` (install) uses `Palette.kill` red border.
+`ProviderSetupCallout.swift` (provider) uses its own card layout. `AssistantAuthPromptCard.swift`
 (auth) uses `Palette.detach` yellow. All three render in roughly the same slot
 (transcript area or composer slot) but with different border treatments,
 padding, and copy tone. The user sees: red install card → yellow provider card
 → yellow auth card → composer. Three different visual languages for "you need
 to do something."
 
-**Direction.** Consolidate into a single `PiSetupCard` with `Kind: .install | .provider | .auth`
+**Direction.** Consolidate into a single `AssistantSetupCard` with `Kind: .install | .provider | .auth`
 and a shared layout: status dot · eyebrow label · body · primary action · secondary
 action. Use `Palette.kill` for install, `Palette.detach` for both provider and
 auth, and unify spacing/padding to `compact` and `expanded` modes only.
 
 ### 6. Streaming state is over-decorated
-**Evidence.** `PiChatUI.swift:498–541` (assistant bubble) stacks: pulsing
-avatar (1.18× stroke), `LIVE` badge, `PiChatStreamCursor`, left-edge 2pt
+**Evidence.** `WorkspaceAssistantUI.swift:498–541` (assistant bubble) stacks: pulsing
+avatar (1.18× stroke), `LIVE` badge, `WorkspaceAssistantStreamCursor`, left-edge 2pt
 gradient bar, inner radial gradient overlay, and a 0.28s background
-animation. Concurrently: `PiChatToolChip` pulses (1.4s),
-`PiChatStreamCursor` pulses (0.85s), `PiChatWaveDots` animates
-(30fps TimelineView), `PiChatWorkingIndicator` has its own dot pattern.
+animation. Concurrently: `WorkspaceAssistantToolChip` pulses (1.4s),
+`WorkspaceAssistantStreamCursor` pulses (0.85s), `WorkspaceAssistantWaveDots` animates
+(30fps TimelineView), `WorkspaceAssistantWorkingIndicator` has its own dot pattern.
 That's 4+ simultaneous animations per streaming turn. On a 60Hz display the
 bubble never settles.
 
@@ -108,18 +108,18 @@ drop the inner radial gradient. Keep the cursor and one pulse. Document
 "max 1 ambient animation per scene" in the chat style guide.
 
 ### 7. Provider/auth flow triplicated across Dock, Workspace, and auth card
-**Evidence.** `PiChatDock.swift:205–325` (authPanel) and `PiChatDock.swift:429–458`
-(providerSettingsBar) and `PiWorkspaceView.swift:125–158` (providerSettingsPrompt)
-and `PiAuthPromptCard.swift` are four overlapping implementations of "tell
+**Evidence.** `WorkspaceAssistantDock.swift:205–325` (authPanel) and `WorkspaceAssistantDock.swift:429–458`
+(providerSettingsBar) and `WorkspaceAssistantView.swift:125–158` (providerSettingsPrompt)
+and `AssistantAuthPromptCard.swift` are four overlapping implementations of "tell
 the user to connect a provider / drive the auth flow." Adding a field
 (provider description, secondary CTA, warning) requires touching all four.
 
-**Direction.** Extract a `PiAuthPanel` with `style: .workspace | .dock` and
+**Direction.** Extract an `AssistantAuthPanel` with `style: .workspace | .dock` and
 the existing `compact: Bool` flag, used in all three call sites. Keep
-`PiAuthPromptCard` as a child when a `pendingAuthPrompt` is present.
+`AssistantAuthPromptCard` as a child when a `pendingAuthPrompt` is present.
 
 ### 8. Transcript background reduces text contrast at the bottom
-**Evidence.** `PiChatUI.swift:148–172` layers four backgrounds: base
+**Evidence.** `WorkspaceAssistantUI.swift:148–172` layers four backgrounds: base
 `Palette.bg`, dot grid with `+Lighter` blend, top-left linear tint, and a
 bottom-left radial gradient. The radial hits the assistant bubble's bottom
 half — the area where long responses accumulate. On a low-contrast theme
@@ -134,14 +134,14 @@ zone. Drop the dot grid in compact mode. Test on a real Mac with
 ## LOW
 
 ### 9. Code block copy has no feedback
-**Evidence.** `PiChatUI.swift:872–885` writes to `NSPasteboard` silently. No
+**Evidence.** `WorkspaceAssistantUI.swift:872–885` writes to `NSPasteboard` silently. No
 icon swap, no toast, no animation. The button looks identical before/after.
 
 **Direction.** Add `@State private var copied = false`, swap the icon to
 `"checkmark"` for 1.2s, reset on a `Task.sleep`.
 
 ### 10. Dock resize gesture does not follow macOS conventions
-**Evidence.** `PiChatDock.swift:85–100` uses a custom `DragGesture` on the
+**Evidence.** `WorkspaceAssistantDock.swift:85–100` uses a custom `DragGesture` on the
 top handle. No cursor change, no snap-to-default, no visual ruler. macOS
 users expect a divider with `NSCursor.resizeUpDown` and snap points
 (230/400/600).
@@ -160,7 +160,7 @@ Light Mode gets dark-on-dark chat inside a light chrome — jarring.
 value at the chat root.
 
 ### 12. ScrollView fires multiple `scrollToEnd` per token
-**Evidence.** `PiChatUI.swift:181–195` registers three `onChange` handlers
+**Evidence.** `WorkspaceAssistantUI.swift:181–195` registers three `onChange` handlers
 (messages.count, last text, isSending). During a streaming response the
 text handler fires per token, producing janky scroll on slower Macs and
 fighting the user's manual scroll position if they scrolled up to read
@@ -171,14 +171,14 @@ debounce to ~50ms, and pause auto-scroll when the user is scrolled up by
 more than 80pt from the bottom (and show a "↓ New messages" pill — common
 chat pattern).
 
-### 13. `PiChatFormat.markdownText` is not loaded here but the empty state
+### 13. `WorkspaceAssistantFormat.markdownText` is not loaded here but the empty state
 injects a string for `Connected to \(session.currentProvider.name)` — the
 provider name should also drive a per-provider brand tint on the empty
 state hero, not just the streaming accent.
-**Evidence.** `PiChatUI.swift:332–336`. Empty state uses `Palette.running`
+**Evidence.** `WorkspaceAssistantUI.swift:332–336`. Empty state uses `Palette.running`
 unconditionally.
 
-**Direction.** Pass `theme: PiChatTheme` from the session so the empty state,
+**Direction.** Pass `theme: WorkspaceAssistantTheme` from the session so the empty state,
 composer accent, and live chip all shift subtly per provider.
 
 ---
@@ -186,19 +186,19 @@ composer accent, and live chip all shift subtly per provider.
 ## What is already good
 
 - Empty state starter grid is well-scoped and inviting
-  (`PiChatUI.swift:256–305`).
+  (`WorkspaceAssistantUI.swift:256–305`).
 - Code block chrome with traffic-light header and copy button is a nice
-  macOS-y detail (`PiChatUI.swift:835–895`).
+  macOS-y detail (`WorkspaceAssistantUI.swift:835–895`).
 - Custom hand-rolled syntax highlighter covers `swift`, `json`, `bash`, and
-  generic with consistent palette tokens (`PiChatUI.swift:900–1190`).
+  generic with consistent palette tokens (`WorkspaceAssistantUI.swift:900–1190`).
 - Auth prompt card is calm and uses mono consistently
-  (`PiAuthPromptCard.swift:1–90`).
+  (`AssistantAuthPromptCard.swift:1–90`).
 - Status pill is a thoughtful, dense read of session state
-  (`PiWorkspaceView.swift:75–105`).
+  (`WorkspaceAssistantView.swift:75–105`).
 - Footer `↩ send` hint shows attention to discoverability
-  (`PiChatUI.swift:1218`).
-- All four top-level surfaces (PiChatDock, PiWorkspaceView, PiChatTranscript,
-  PiChatComposer) share typography and palette tokens, so the language is
+  (`WorkspaceAssistantUI.swift:1218`).
+- All four top-level surfaces (WorkspaceAssistantDock, WorkspaceAssistantView, WorkspaceAssistantTranscript,
+  WorkspaceAssistantComposer) share typography and palette tokens, so the language is
   consistent — the issues are about depth, not vocabulary.
 
 ---
@@ -212,7 +212,7 @@ composer accent, and live chip all shift subtly per provider.
 5. **One-sheet "what this assistant can do"** triggered from the header (HIGH #4).
 
 These five changes will resolve all four HIGH findings and the most visible
-MEDIUM, and they cluster naturally because they all touch `PiChatUI.swift`
+MEDIUM, and they cluster naturally because they all touch `WorkspaceAssistantUI.swift`
 + the header/composer chrome.
 
 ---
@@ -223,24 +223,24 @@ MEDIUM, and they cluster naturally because they all touch `PiChatUI.swift`
 
 In a single PR, in this order:
 
-1. **Composer send-key correctness** (`PiChatUI.swift:1246–1261`).
+1. **Composer send-key correctness** (`WorkspaceAssistantUI.swift:1246–1261`).
    Highest leverage: one well-placed `.keyboardShortcut(.return, modifiers: .command)`,
    one `.onExitCommand { session.draft = "" }` (or `cancelSend`),
    and the footer hint text changed from "↩ send" to "⌘↩ send  ·  esc clear".
    No new components. No state model changes. Removes the single most
    surprising behavior for anyone who has used any other chat app.
-   The `composerLineLimit: 4` (dock) / `8` (workspace) in `PiChatStyle`
+   The `composerLineLimit: 4` (dock) / `8` (workspace) in `WorkspaceAssistantStyle`
    confirms the field is multi-line by design — `TextField.onSubmit` on
    plain Return is unambiguously wrong here.
 
-2. **Drop the user-bubble avatar** (`PiChatUI.swift:463`).
+2. **Drop the user-bubble avatar** (`WorkspaceAssistantUI.swift:463`).
    Five lines of code removed, one line of bubble padding adjusted.
    Immediately disambiguates speaker identity without introducing a new
    component. Cheap A/B candidate: leave a tiny initial circle if you want
    something on the right, but the brand mark has to go.
 
-3. **Accessibility sweep on icon buttons** (`PiChatDock.swift:103`,
-   `PiWorkspaceView.swift:130`, `PiChatUI.swift:872`, `PiChatDock.swift:386`).
+3. **Accessibility sweep on icon buttons** (`WorkspaceAssistantDock.swift:103`,
+   `WorkspaceAssistantView.swift:130`, `WorkspaceAssistantUI.swift:872`, `WorkspaceAssistantDock.swift:386`).
    Mechanical: add `accessibilityLabel("Close chat", "Open assistant settings",
    "Copy code", "Settings")` to four buttons. Bump `footerIconButton`'s
    hit area from 24×22 to 28×24. Highest a11y ROI in the file.
@@ -248,7 +248,7 @@ In a single PR, in this order:
 4. **Add a `?` tools sheet** in the header, starting with just a hardcoded
    provider/model list. Stub it with a `Text` of the current provider name,
    a one-paragraph capability blurb, and a list of the seven tool names
-   already mapped in `PiChatToolChip` (`PiChatUI.swift:600–650`). Becomes
+   already mapped in `WorkspaceAssistantToolChip` (`WorkspaceAssistantUI.swift:600–650`). Becomes
    the natural home for cost/token telemetry later.
 
 This order: (1) and (2) unblock anyone trying to actually use the surface.
@@ -264,7 +264,7 @@ less opaque, which is the largest gap the first pass identified.
   streaming response on a real Mac and reports it feels busy. Don't pre-emptively
   cut signals that may carry useful liveness.
 
-- **Full Dynamic Type pass.** Real, but big. `PiChatStyle.bodySize` is
+- **Full Dynamic Type pass.** Real, but big. `WorkspaceAssistantStyle.bodySize` is
   referenced in ~6 sites; the right call is probably to introduce
   `@ScaledMetric(relativeTo: .body) private var bodySize: CGFloat = 13.5`
   and let the system drive it. But until there's a user report, ship (3)
@@ -280,7 +280,7 @@ less opaque, which is the largest gap the first pass identified.
   implementations is cheaper than risking a regression in a critical
   onboarding path.
 
-- **`PiSetupCard` unification (MEDIUM #5).** Same reasoning — defer until
+- **`AssistantSetupCard` unification (MEDIUM #5).** Same reasoning — defer until
   you are touching setup copy for product reasons.
 
 - **Per-provider brand tint.** Speculative. Lattices has a clear visual
@@ -305,8 +305,8 @@ less opaque, which is the largest gap the first pass identified.
   project-wide token migration, not a chat-surface change.
 
 - **"Three parallel auth/setup states compete visually"** — partially
-  overreach. `PiChatDock` and `PiWorkspaceView` are intentionally two
-  different products (compact bottom drawer vs. full pane). `PiChatStyle`
+  overreach. `WorkspaceAssistantDock` and `WorkspaceAssistantView` are intentionally two
+  different products (compact bottom drawer vs. full pane). `WorkspaceAssistantStyle`
   enforces that with `composerLineLimit: 4` vs. `8`, `bodySize: 12` vs.
   `13.5`, `horizontalPadding: 12` vs. `28`. Some of the "triplication"
   is appropriate. The auth flow within each is duplicated, not the
@@ -315,7 +315,7 @@ less opaque, which is the largest gap the first pass identified.
 
 - **Missing in the first pass:** I never opened `UI/Theme.swift` until
   this follow-up. The Dynamic Type claim was based on hardcoded `Typo`
-  calls in `PiChatStyle`, which is still true, but I should have flagged
+  calls in `WorkspaceAssistantStyle`, which is still true, but I should have flagged
   the file once for the whole surface, not enumerated sites.
 
 - **Missing in the first pass:** I didn't look at the dock resize gesture
@@ -325,7 +325,7 @@ less opaque, which is the largest gap the first pass identified.
   rework if it feels wrong."
 
 - **Missing in the first pass:** I didn't note that the empty-state
-  starter cards auto-send on click (`PiChatUI.swift:268–275`). That is a
+  starter cards auto-send on click (`WorkspaceAssistantUI.swift:268–275`). That is a
   real ergonomic call: should the click fill the composer (so the user
   can edit) or auto-send? Currently it auto-sends. Worth a single
   decision: fill-only, with a separate "send" affordance, matches the
@@ -334,10 +334,10 @@ less opaque, which is the largest gap the first pass identified.
 
 ## 4. Smallest coherent implementation slice
 
-**One PR, one developer, half a day. Files touched: `PiChatUI.swift` only.**
+**One PR, one developer, half a day. Files touched: `WorkspaceAssistantUI.swift` only.**
 
 ```swift
-// In PiChatComposer (PiChatUI.swift ~1246)
+// In WorkspaceAssistantComposer (WorkspaceAssistantUI.swift ~1246)
 Button {
     session.sendDraft()
 } label: {
@@ -361,14 +361,14 @@ TextField(
 .onSubmit { /* no-op for multi-line; Cmd+Return handles send */ }
 .onExitCommand { session.draft = "" }              // NEW
 
-// Footer hint (PiChatUI.swift ~1218):
+// Footer hint (WorkspaceAssistantUI.swift ~1218):
 Text("⌘↩ send · esc clear")
 ```
 
 **Plus one PR, separate reviewer, half a day: drop the user-bubble avatar.**
 
 ```swift
-// In userRow (PiChatUI.swift ~432):
+// In userRow (WorkspaceAssistantUI.swift ~432):
 // Remove the trailing LatticesMarkAvatar(size: 28, ...)
 // Add a 4pt right padding to the user bubble for visual breathing.
 ```

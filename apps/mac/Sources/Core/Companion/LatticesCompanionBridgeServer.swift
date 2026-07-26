@@ -210,6 +210,18 @@ private extension LatticesCompanionBridgeServer {
         case ("GET", "/deck/manifest"):
             try sendJSON(status: 200, value: LatticesDeckHost.shared.manifestSync(), to: fd)
 
+        case ("GET", "/deck-builder"):
+            guard sendDeckBuilderAsset(path: "index.html", to: fd) else {
+                sendError(status: 404, message: "Deck Builder asset is unavailable", to: fd)
+                return
+            }
+
+        case ("GET", let path) where path.hasPrefix("/_next/static/"):
+            guard sendDeckBuilderAsset(path: String(path.dropFirst()), to: fd) else {
+                sendError(status: 404, message: "Deck Builder asset is unavailable", to: fd)
+                return
+            }
+
         case ("POST", "/pairing/request"):
             let pairingRequest = try decoder.decode(DeckPairingRequest.self, from: request.body)
             let response = LatticesCompanionSecurityCoordinator.shared.handlePairingRequest(pairingRequest)
@@ -382,6 +394,41 @@ private extension LatticesCompanionBridgeServer {
     func sendJSON<T: Encodable>(status: Int, value: T, to fd: Int32) throws {
         let body = try encoder.encode(value)
         sendResponse(status: status, contentType: "application/json; charset=utf-8", body: body, to: fd)
+    }
+
+    @discardableResult
+    func sendDeckBuilderAsset(path: String, to fd: Int32) -> Bool {
+        guard !path.contains(".."), !path.hasPrefix("/") else { return false }
+
+        let roots = [
+            Bundle.main.resourceURL?.appendingPathComponent("DeckBuilder", isDirectory: true),
+            Bundle.module.resourceURL?.appendingPathComponent("DeckBuilder", isDirectory: true),
+        ].compactMap { $0 }
+
+        for root in roots {
+            let url = root.appendingPathComponent(path)
+            guard FileManager.default.fileExists(atPath: url.path),
+                  let data = try? Data(contentsOf: url) else { continue }
+            sendResponse(status: 200, contentType: contentType(for: url.pathExtension), body: data, to: fd)
+            return true
+        }
+        return false
+    }
+
+    func contentType(for pathExtension: String) -> String {
+        switch pathExtension.lowercased() {
+        case "html": return "text/html; charset=utf-8"
+        case "css": return "text/css; charset=utf-8"
+        case "js", "mjs": return "text/javascript; charset=utf-8"
+        case "json", "map": return "application/json; charset=utf-8"
+        case "svg": return "image/svg+xml"
+        case "png": return "image/png"
+        case "jpg", "jpeg": return "image/jpeg"
+        case "webp": return "image/webp"
+        case "woff": return "font/woff"
+        case "woff2": return "font/woff2"
+        default: return "application/octet-stream"
+        }
     }
 
     func sendError(status: Int, message: String, to fd: Int32) {

@@ -280,32 +280,73 @@ final class InPlaceChordHintOverlay {
             if let keyEventTap { CGEvent.tapEnable(tap: keyEventTap, enable: true) }
             return Unmanaged.passUnretained(event)
         }
-        guard isVisible, type == .keyDown || type == .keyUp,
-              let nsEvent = NSEvent(cgEvent: event) else {
+        guard isVisible, type == .keyDown || type == .keyUp else {
             return Unmanaged.passUnretained(event)
         }
 
-        let flags = nsEvent.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        guard flags.isEmpty || flags == .capsLock else {
+        // This callback runs on EventTapThread. AppKit's
+        // `charactersIgnoringModifiers` consults the current input source and
+        // asserts when invoked off its expected queue (which was the source of
+        // the SIGTRAP that took down the menu-bar app). Stay in CGEvent here:
+        // the overlay's labels are intentionally the fixed QWERTY home-row
+        // letters, so physical key codes are the correct match as well.
+        let disallowedModifiers: CGEventFlags = [
+            .maskShift, .maskControl, .maskAlternate, .maskCommand,
+            .maskSecondaryFn,
+        ]
+        guard event.flags.intersection(disallowedModifiers).isEmpty else {
             return Unmanaged.passUnretained(event)
         }
 
-        if nsEvent.keyCode == 53 {
+        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+        if keyCode == 53 { // Escape
             if type == .keyDown {
                 DispatchQueue.main.async { [weak self] in self?.dismiss() }
             }
             return nil
         }
 
-        guard let key = nsEvent.charactersIgnoringModifiers?.lowercased(),
-              key.count == 1,
-              key.first?.isLetter == true else {
+        guard let key = Self.qwertyLetter(for: keyCode) else {
             return Unmanaged.passUnretained(event)
         }
         if type == .keyDown {
             DispatchQueue.main.async { [weak self] in self?.jump(to: key) }
         }
         return nil
+    }
+
+    /// US-QWERTY virtual-key-code mapping. These codes are layout-independent
+    /// and therefore safe to use from the event-tap run loop.
+    private static func qwertyLetter(for keyCode: Int64) -> String? {
+        switch keyCode {
+        case 0: return "a"
+        case 1: return "s"
+        case 2: return "d"
+        case 3: return "f"
+        case 4: return "h"
+        case 5: return "g"
+        case 6: return "z"
+        case 7: return "x"
+        case 8: return "c"
+        case 9: return "v"
+        case 11: return "b"
+        case 12: return "q"
+        case 13: return "w"
+        case 14: return "e"
+        case 15: return "r"
+        case 16: return "y"
+        case 17: return "t"
+        case 31: return "o"
+        case 32: return "u"
+        case 34: return "i"
+        case 35: return "p"
+        case 37: return "l"
+        case 38: return "j"
+        case 40: return "k"
+        case 45: return "n"
+        case 46: return "m"
+        default: return nil
+        }
     }
 
     private func startPolling() {

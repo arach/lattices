@@ -5,8 +5,20 @@ import Foundation
 // MARK: - Data Model
 
 struct TabGroupTab: Codable {
-    let path: String
+    let path: String?
     let label: String?
+    let app: String?
+    let title: String?
+    let url: String?
+    let launch: String?
+
+    var displayLabel: String {
+        if let label, !label.isEmpty { return label }
+        if let path { return (path as NSString).lastPathComponent }
+        return app ?? title ?? "Tab"
+    }
+
+    var isTerminal: Bool { path != nil }
 }
 
 struct TabGroup: Codable, Identifiable {
@@ -368,6 +380,8 @@ class WorkspaceManager: ObservableObject {
     @Published var gridPresets: [String: GridPreset] = [:]
     @Published var gridLayouts: [String: LayoutConfig] = [:]
     @Published var snapZonesConfig: SnapZonesConfig = .defaults
+    @Published private(set) var selectedGroupTabIndices: [String: Int] = [:]
+    @Published private(set) var expandedGroupIDs: Set<String> = []
 
     private let configPath: String
     private let gridConfigPath: String
@@ -533,35 +547,64 @@ class WorkspaceManager: ObservableObject {
         config?.groups?.first(where: { $0.id == id })
     }
 
-    func isGroupRunning(_ group: TabGroup) -> Bool {
-        group.tabs.contains { tab in
-            let name = Self.sessionName(for: tab.path)
+    var activeLayerGroups: [TabGroup] {
+        guard let layer = activeLayer else { return [] }
+        return layer.projects.compactMap { project in
+            project.group.flatMap(group(byId:))
+        }
+    }
+
+    func selectedTabIndex(in group: TabGroup) -> Int {
+        min(selectedGroupTabIndices[group.id] ?? 0, max(0, group.tabs.count - 1))
+    }
+
+    func isGroupExpanded(_ group: TabGroup) -> Bool {
+        expandedGroupIDs.contains(group.id)
+    }
+
+    func isTabRunning(_ tab: TabGroupTab) -> Bool {
+        if let path = tab.path {
+            let name = Self.sessionName(for: path)
             return shell([tmuxPath, "has-session", "-t", name]) == 0
         }
+        guard let app = tab.app else { return false }
+        return DesktopModel.shared.windowForApp(app: app, title: tab.title) != nil
+            || Self.findAppWindow(app: app, title: tab.title) != nil
+    }
+
+    func isGroupRunning(_ group: TabGroup) -> Bool {
+        group.tabs.contains(where: isTabRunning)
     }
 
     /// Count how many tabs in the group have running sessions
     func runningTabCount(_ group: TabGroup) -> Int {
-        group.tabs.filter { tab in
-            let name = Self.sessionName(for: tab.path)
-            return shell([tmuxPath, "has-session", "-t", name]) == 0
-        }.count
+        group.tabs.filter(isTabRunning).count
     }
 
-    /// Launch a group by opening each tab as a separate iTerm/Terminal tab
+    /// Launch a mixed group. Project tabs open in the terminal; app/URL tabs
+    /// open as native application windows.
     func launchGroup(_ group: TabGroup) {
         let terminal = Preferences.shared.terminal
         let latticesCommand = LatticesRuntime.cliShellCommand
         for (i, tab) in group.tabs.enumerated() {
-            let label = tab.label ?? (tab.path as NSString).lastPathComponent
+            guard !isTabRunning(tab) else { continue }
             DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.4) {
-                if i == 0 {
-                    terminal.launch(command: "\(latticesCommand) start", in: tab.path)
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        terminal.nameTab(label)
+                if let path = tab.path {
+                    let earlierTerminalTabs = group.tabs[..<i].contains(where: \.isTerminal)
+                    if !earlierTerminalTabs {
+                        terminal.launch(command: "\(latticesCommand) start", in: path)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            terminal.nameTab(tab.displayLabel)
+                        }
+                    } else {
+                        terminal.launchTab(
+                            command: "\(latticesCommand) start",
+                            in: path,
+                            tabName: tab.displayLabel
+                        )
                     }
                 } else {
-                    terminal.launchTab(command: "\(latticesCommand) start", in: tab.path, tabName: label)
+                    self.launch(tab)
                 }
             }
         }
@@ -570,7 +613,8 @@ class WorkspaceManager: ObservableObject {
     /// Kill all individual tab sessions for a group
     func killGroup(_ group: TabGroup) {
         for tab in group.tabs {
-            let name = Self.sessionName(for: tab.path)
+            guard let path = tab.path else { continue }
+            let name = Self.sessionName(for: path)
             let task = Process()
             task.executableURL = URL(fileURLWithPath: tmuxPath)
             task.arguments = ["kill-session", "-t", name]
@@ -581,13 +625,118 @@ class WorkspaceManager: ObservableObject {
         }
     }
 
-    /// Focus a specific tab's session in the terminal
+    /// Focus a specific terminal or application window in a mixed tab group.
+    /// When the group is collapsed, switching tabs keeps every member in the
+    /// group's configured layer slot.
     func focusTab(group: TabGroup, tabIndex: Int) {
         guard tabIndex >= 0, tabIndex < group.tabs.count else { return }
+        selectedGroupTabIndices[group.id] = tabIndex
         let tab = group.tabs[tabIndex]
-        let sessionName = Self.sessionName(for: tab.path)
-        let terminal = Preferences.shared.terminal
-        terminal.focusOrAttach(session: sessionName)
+        if !isGroupExpanded(group) {
+            collapseGroup(group)
+        }
+
+        if let entry = window(for: tab) {
+            _ = WindowTiler.focusWindow(wid: entry.wid, pid: entry.pid)
+            WindowTiler.highlightWindowById(wid: entry.wid)
+        } else if let path = tab.path {
+            Preferences.shared.terminal.focusOrAttach(session: Self.sessionName(for: path))
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                self.collapseGroup(group)
+            }
+        } else {
+            launch(tab)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                self.collapseGroup(group)
+            }
+        }
+    }
+
+    /// Toggle between a single-slot cross-app tab stack and a full smart grid.
+    func toggleGroupLayout(_ group: TabGroup) {
+        if isGroupExpanded(group) {
+            collapseGroup(group)
+        } else {
+            expandGroupToGrid(group)
+        }
+    }
+
+    func expandGroupToGrid(_ group: TabGroup) {
+        DesktopModel.shared.poll()
+        let windows = orderedWindows(for: group)
+        guard !windows.isEmpty else { return }
+        expandedGroupIDs.insert(group.id)
+        WindowTiler.batchRaiseAndDistribute(
+            windows: windows.map { (wid: $0.wid, pid: $0.pid) },
+            reactivateLattices: false
+        )
+        DiagnosticLog.shared.info("WorkspaceManager: expanded mixed group '\(group.label)' to grid")
+    }
+
+    func collapseGroup(_ group: TabGroup) {
+        DesktopModel.shared.poll()
+        let windows = orderedWindows(for: group)
+        guard !windows.isEmpty,
+              let (placement, targetScreen) = groupPlacement(group) else { return }
+
+        let frame = WindowTiler.tileFrame(for: placement, on: targetScreen)
+        WindowTiler.batchMoveAndRaiseWindows(
+            windows.map { (wid: $0.wid, pid: $0.pid, frame: frame) }
+        )
+        expandedGroupIDs.remove(group.id)
+
+        let selected = selectedTabIndex(in: group)
+        if selected < group.tabs.count, let entry = window(for: group.tabs[selected]) {
+            _ = WindowTiler.focusWindow(wid: entry.wid, pid: entry.pid)
+        }
+        DiagnosticLog.shared.info("WorkspaceManager: collapsed mixed group '\(group.label)' to \(placement.wireValue)")
+    }
+
+    private func window(for tab: TabGroupTab) -> WindowEntry? {
+        if let path = tab.path {
+            return windowForSession(Self.sessionName(for: path))
+        }
+        guard let app = tab.app else { return nil }
+        return DesktopModel.shared.windowForApp(app: app, title: tab.title)
+    }
+
+    private func orderedWindows(for group: TabGroup) -> [WindowEntry] {
+        let selected = selectedTabIndex(in: group)
+        var result: [WindowEntry] = []
+        for (index, tab) in group.tabs.enumerated() where index != selected {
+            if let entry = window(for: tab), !result.contains(where: { $0.wid == entry.wid }) {
+                result.append(entry)
+            }
+        }
+        if selected < group.tabs.count,
+           let entry = window(for: group.tabs[selected]),
+           !result.contains(where: { $0.wid == entry.wid }) {
+            result.append(entry)
+        }
+        return result
+    }
+
+    private func groupPlacement(_ group: TabGroup) -> (PlacementSpec, NSScreen)? {
+        let project = activeLayer?.projects.first(where: { $0.group == group.id })
+            ?? config?.layers?.lazy.compactMap { layer in
+                layer.projects.first(where: { $0.group == group.id })
+            }.first
+        let placement = project?.tile.flatMap(resolvePlacement) ?? .tile(.topLeft)
+        guard let targetScreen = screen(for: project?.display) else { return nil }
+        return (placement, targetScreen)
+    }
+
+    private func launch(_ tab: TabGroupTab) {
+        if let urlString = tab.url, let url = URL(string: urlString) {
+            NSWorkspace.shared.open(url)
+        } else if let appName = tab.launch ?? tab.app {
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+            task.arguments = ["-a", appName]
+            task.standardOutput = FileHandle.nullDevice
+            task.standardError = FileHandle.nullDevice
+            try? task.run()
+        }
     }
 
     /// Run a command and return exit code
@@ -675,8 +824,7 @@ class WorkspaceManager: ObservableObject {
             if let groupId = lp.group, let grp = group(byId: groupId) {
                 // Raise all tab windows in the group
                 for tab in grp.tabs {
-                    let sessionName = Self.sessionName(for: tab.path)
-                    if let entry = windowForSession(sessionName) {
+                    if let entry = window(for: tab) {
                         windowsToRaise.append((entry.wid, entry.pid))
                     }
                 }
@@ -764,22 +912,34 @@ class WorkspaceManager: ObservableObject {
             guard let lpScreen = screen(for: lp.display) else { continue }
 
             if let groupId = lp.group, let grp = group(byId: groupId) {
-                let firstTabSession = grp.tabs.first.map { Self.sessionName(for: $0.path) } ?? ""
                 let position = lp.tile.flatMap { resolvePlacement($0) }
+                let groupWindows = orderedWindows(for: grp)
                 let groupRunning = isGroupRunning(grp)
 
-                if groupRunning, let pos = position,
-                   let target = batchTarget(session: firstTabSession, position: pos, screen: lpScreen) {
-                    batchMoves.append(target)
+                if !groupWindows.isEmpty, let pos = position {
+                    let frame = WindowTiler.tileFrame(for: pos, on: lpScreen)
+                    batchMoves.append(contentsOf: groupWindows.map {
+                        (wid: $0.wid, pid: $0.pid, frame: frame)
+                    })
+                    expandedGroupIDs.remove(grp.id)
+                    if launch, runningTabCount(grp) < grp.tabs.count {
+                        launchGroup(grp)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                            self.collapseGroup(grp)
+                        }
+                    }
                 } else if !groupRunning && launch {
                     diag.info("  launch group: \(grp.label)")
-                    launchQueue.append((firstTabSession, position, lpScreen, { [weak self] in
-                        self?.launchGroup(grp)
+                    launchQueue.append(("group:\(grp.id)", nil, lpScreen, { [weak self] in
+                        guard let self else { return }
+                        self.launchGroup(grp)
+                        if position != nil {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                                self.collapseGroup(grp)
+                            }
+                        }
                     }))
-                } else if groupRunning, let pos = position {
-                    // Running but not in DesktopModel — fallback
-                    fallbacks.append((firstTabSession, pos, lpScreen))
-                } else if !groupRunning {
+                } else if groupWindows.isEmpty {
                     diag.info("  skip (not running): \(grp.label)")
                 }
                 continue

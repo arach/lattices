@@ -24,6 +24,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         HudLoggerSinks.install(HudLogStore.shared)
         HudLoggerSinks.install(LatticesLogDiskSink.shared)
+        traceBuildIdentity()
         HudLogger(category: "lattices").info("Lattices booted", metadata: ["state": "ready"])
 
         AppFocusRingSuppressor.install()
@@ -76,6 +77,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 PermissionsAssistantWindowController.shared.show()
             }
         }
+    }
+
+    /// Leave an unmistakable identity line in the persistent log for every
+    /// launch. This is especially useful when a local dev bundle and an older
+    /// installed copy are both present on the machine.
+    private func traceBuildIdentity() {
+        let info = Bundle.main.infoDictionary ?? [:]
+        let version = (info["CFBundleShortVersionString"] as? String) ?? "unknown"
+        let build = (info["CFBundleVersion"] as? String) ?? "unknown"
+        let revision = LatticesRuntime.buildRevision ?? "unknown"
+        let timestamp = LatticesRuntime.buildTimestamp ?? "unknown"
+        let bundleID = Bundle.main.bundleIdentifier ?? "unknown"
+        let bundlePath = Bundle.main.bundleURL.path
+        let executablePath = Bundle.main.executableURL?.path ?? "unknown"
+
+        let trace = "BUILD TRACE | channel=\(LatticesRuntime.buildChannel) version=\(version) build=\(build) revision=\(revision) builtAt=\(timestamp) pid=\(ProcessInfo.processInfo.processIdentifier) bundleID=\(bundleID) bundle=\(bundlePath) executable=\(executablePath)"
+        HudLogger(category: "build").info(trace)
+        NSLog("%@", trace)
     }
 
     func applicationWillTerminate(_ notification: Notification) {

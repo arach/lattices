@@ -69,6 +69,11 @@ if [ -d "$PETS_DIR" ]; then
     cp -R "$PETS_DIR" "$BUNDLE/Contents/Resources/Pets"
 fi
 
+DECK_BUILDER_RESOURCES="$APP_DIR/Resources/DeckBuilder"
+if [ -d "$DECK_BUILDER_RESOURCES" ]; then
+    cp -R "$DECK_BUILDER_RESOURCES" "$BUNDLE/Contents/Resources/DeckBuilder"
+fi
+
 # Info.plist — based on existing, with version injected
 cat > "$BUNDLE/Contents/Info.plist" << PLIST
 <?xml version="1.0" encoding="UTF-8"?>

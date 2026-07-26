@@ -4,6 +4,7 @@ import { ArrowRight, Command } from "lucide-react";
 import type { StudioHudsonRenderContext } from "studio/app-shell";
 import { useStudioRouter } from "studio/router";
 import { DeckBuilderStudy } from "@/studio/studies/DeckBuilder";
+import { CrossAppTabsStudy } from "@/studio/studies/CrossAppTabs";
 import {
   HOME_HREF,
   pages,
@@ -19,6 +20,7 @@ export function renderStudioPage({ pathname, page }: RenderContext) {
   if (pathname === HOME_HREF) return <HomePage />;
   if (page?.href === "/studio/studies/nexus") return <NexusStudy page={page} />;
   if (page?.href === "/studio/studies/deck-builder") return <DeckBuilderStudy page={page} />;
+  if (page?.href === "/studio/studies/cross-app-tabs") return <CrossAppTabsStudy page={page} />;
   if (page) return <PlaceholderPage page={page} />;
   return <NotFoundPage />;
 }

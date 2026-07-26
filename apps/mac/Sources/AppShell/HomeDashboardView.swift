@@ -4,7 +4,7 @@ import SwiftUI
 struct HomeDashboardView: View {
     var onNavigate: ((AppPage) -> Void)? = nil
 
-    @ObservedObject private var piSession = WorkspaceAssistantSession.shared
+    @ObservedObject private var assistantSession = WorkspaceAssistantSession.shared
     @ObservedObject private var desktop = DesktopModel.shared
 
     var body: some View {
@@ -20,7 +20,7 @@ struct HomeDashboardView: View {
         .background(Palette.bg)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onAppear {
-            piSession.refreshBinaryAvailability()
+            assistantSession.prepareForDisplay()
             desktop.start()        // guarded — no-op if already polling
             desktop.forcePoll()    // fresh snapshot on open
         }
@@ -44,15 +44,11 @@ struct HomeDashboardView: View {
             HStack(spacing: 10) {
                 homeActionCard(
                     title: "Chat",
-                    subtitle: piSession.hasPiBinary
-                        ? (piSession.needsProviderSetup || piSession.isAuthenticating
-                            ? piSession.setupStatusSummary
-                            : "Workspace assistant")
-                        : "Install Pi to enable the assistant",
+                    subtitle: "Scout workspace assistant",
                     icon: "bubble.left.and.bubble.right",
-                    tint: piSession.hasPiBinary ? Palette.textDim : Palette.kill
+                    tint: assistantSession.isScoutAvailable == false ? Palette.detach : Palette.textDim
                 ) {
-                    if let onNavigate { onNavigate(.pi) } else { AssistantAccess.show() }
+                    if let onNavigate { onNavigate(.assistant) } else { AssistantAccess.show() }
                 }
 
                 homeActionCard(

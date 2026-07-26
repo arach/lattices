@@ -149,13 +149,9 @@ struct WorkspaceAssistantTranscript: View {
     }
 
     private var showsEmptyState: Bool {
-        // Render the rich empty state when there's no real conversation yet
-        // and the runtime is ready to chat. Provider-setup and install
-        // states render their own callouts, so they're handled elsewhere.
+        // Scout chat has no provider-auth setup wall, so the rich empty state
+        // is always the first conversation surface.
         !session.hasConversationHistory
-            && session.hasPiBinary
-            && !session.needsProviderSetup
-            && !session.isAuthenticating
     }
 
     private var scrollTranscript: some View {
@@ -346,7 +342,7 @@ private struct WorkspaceAssistantEmptyState: View {
     }
 
     private var headerSubtitle: String {
-        "Connected to \(session.currentProvider.name). Ask about layouts, gestures, settings, or anything on screen."
+        "Connected through Scout. Ask about layouts, gestures, settings, or anything on screen."
     }
 
     private func starterRow(_ starter: WorkspaceAssistantStarterPrompt) -> some View {
@@ -506,8 +502,8 @@ struct WorkspaceAssistantComposer: View {
 
             // Turn lifecycle + layout live in HudsonKit's HudComposer (.stacked):
             // the field spans the top; a control row sits beneath with a `+`
-            // attach affordance on the left and model · effort + the bespoke mic
-            // grouped with the morphing send/stop on the right. Queued messages
+            // attach affordance on the left and the bespoke mic grouped with the
+            // morphing send/stop on the right. Scout owns model selection. Queued messages
             // stack as full-width rows above the field.
             HudComposer(
                 text: $session.draft,
@@ -519,8 +515,7 @@ struct WorkspaceAssistantComposer: View {
                 trailingAccessory: { micAccessory },
                 onAction: handle(_:),
                 onRemoveQueued: { session.removeQueuedPrompt(id: $0.id) },
-                onEditQueued: { session.editQueuedPrompt(id: $0.id) },
-                model: HudComposerModelInfo(model: session.currentProvider.name.lowercased(), effort: "auto")
+                onEditQueued: { session.editQueuedPrompt(id: $0.id) }
             )
         }
         .padding(.horizontal, style.horizontalPadding)
@@ -553,9 +548,8 @@ struct WorkspaceAssistantComposer: View {
 
     // MARK: Control-row accessories
 
-    /// The model · effort label is first-class in HudComposer, so Lattices only
-    /// supplies the bespoke mic here. Effort is a placeholder until a real setting
-    /// exists; attachments stay hidden until the chat path wires them.
+    /// Scout owns model/effort selection, so Lattices only supplies the bespoke
+    /// mic here. Attachments stay hidden until the chat path wires them.
     @ViewBuilder
     private var micAccessory: some View {
         #if LATTICES_VOICE && canImport(HudsonVoice)
@@ -722,8 +716,8 @@ private struct WorkspaceAssistantWaveform: View {
 
 // MARK: - Model chip (header)
 
-/// Compact provider/status indicator, now living in the header next to the
-/// gear instead of under the composer. A live status dot + provider name;
+/// Compact Scout/status indicator, now living in the header next to the
+/// gear instead of under the composer. A live status dot + broker name;
 /// shows the streaming/tool phase while a turn is in flight.
 struct WorkspaceAssistantModelChip: View {
     @ObservedObject var session: WorkspaceAssistantSession
@@ -737,7 +731,7 @@ struct WorkspaceAssistantModelChip: View {
                     .fill(statusColor)
                     .frame(width: 5, height: 5)
             }
-            Text(session.currentProvider.name)
+            Text("Scout")
                 .font(Typo.mono(10))
                 .foregroundColor(Palette.textDim)
             if let detail = providerStatusDetail {
@@ -752,12 +746,12 @@ struct WorkspaceAssistantModelChip: View {
             Capsule(style: .continuous)
                 .strokeBorder(Palette.border, lineWidth: 0.5)
         )
-        .help("Provider: \(session.currentProvider.name)")
+        .help("Chat is routed through the local Scout broker")
     }
 
     private var statusColor: Color {
         if session.isSending { return Palette.detach }
-        if session.needsProviderSetup || !session.hasPiBinary { return Palette.kill }
+        if session.isScoutAvailable == false { return Palette.kill }
         return Palette.running
     }
 
