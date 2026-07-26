@@ -23,6 +23,8 @@ These are the preferred action identifiers:
 | `window.place` | Place a window or session using a typed placement spec | `actions.execute` |
 | `layer.activate` | Bring up a workspace layer with explicit activation mode | Daemon API |
 | `space.optimize` | Rebalance a set of windows using an explicit scope and strategy | Daemon API |
+| `tabStacks.create` | Turn explicit or Hyperspace-selected windows into ephemeral cross-app tabs | Daemon API |
+| `tabStacks.layout` | Expand a live tab stack to grid or collapse it back to tabs | Daemon API |
 
 Compatibility wrappers still exist:
 

@@ -12,6 +12,8 @@ enum DeckPollPriority {
 
 @MainActor
 final class DeckStore: ObservableObject {
+    let sessionID = UUID()
+
     @Published private(set) var discoveredBridges: [BridgeEndpoint] = []
     @Published private(set) var activeEndpoint: BridgeEndpoint?
     @Published private(set) var health: BridgeHealthResponse?
@@ -89,13 +91,19 @@ final class DeckStore: ObservableObject {
         return s.count >= 16 && s.unicodeScalars.allSatisfy { hex.contains($0) }
     }
 
-    init() {
-        discovery.onUpdate = { [weak self] bridges in
-            Task { @MainActor [weak self] in
-                self?.handleDiscoveryUpdate(bridges)
+    init(endpoint: BridgeEndpoint? = nil, discoversBridges: Bool = true) {
+        if discoversBridges {
+            discovery.onUpdate = { [weak self] bridges in
+                Task { @MainActor [weak self] in
+                    self?.handleDiscoveryUpdate(bridges)
+                }
             }
+            discovery.start()
         }
-        discovery.start()
+
+        if let endpoint {
+            connect(to: endpoint)
+        }
     }
 
     deinit {
@@ -108,7 +116,12 @@ final class DeckStore: ObservableObject {
     }
 
     func connect(to endpoint: BridgeEndpoint) {
+        pollingTask?.cancel()
+        pollingTask = nil
         activeEndpoint = endpoint
+        health = nil
+        manifest = nil
+        snapshot = nil
         manualHost = endpoint.host
         manualPort = String(endpoint.port)
         errorMessage = nil
@@ -391,7 +404,10 @@ private extension DeckStore {
             name: healthName.isEmpty ? endpoint.name : healthName,
             host: endpointHost.isEmpty ? endpoint.host : endpointHost,
             port: Int(health.port),
-            source: endpoint.source
+            source: endpoint.source,
+            bridgeFingerprint: endpoint.bridgeFingerprint ?? health.bridgeFingerprint,
+            securityMode: endpoint.securityMode ?? health.mode,
+            capabilities: endpoint.capabilities.isEmpty ? (health.capabilities ?? []) : endpoint.capabilities
         )
     }
 
@@ -403,7 +419,10 @@ private extension DeckStore {
             name: healthName.isEmpty ? endpoint.name : healthName,
             host: host,
             port: Int(health.port),
-            source: "Health"
+            source: "Health",
+            bridgeFingerprint: endpoint.bridgeFingerprint ?? health.bridgeFingerprint,
+            securityMode: endpoint.securityMode ?? health.mode,
+            capabilities: endpoint.capabilities.isEmpty ? (health.capabilities ?? []) : endpoint.capabilities
         )
     }
 
@@ -468,3 +487,227 @@ private extension DeckStore {
         }
     }
 }
+
+// MARK: - Fleet connections
+
+/// Owns the additional live bridge sessions used by Fleet Deck. The primary
+/// `DeckStore` remains responsible for Bonjour discovery and Home; every other
+/// reachable Mac gets an isolated store so actions can never leak across hosts.
+@MainActor
+final class DeckFleetStore: ObservableObject {
+    @Published private(set) var secondaryStores: [DeckStore] = []
+
+    private var storesByEndpointKey: [String: DeckStore] = [:]
+
+    func synchronize(with primaryStore: DeckStore) {
+        let primaryKey = primaryStore.activeEndpoint.map(Self.endpointKey)
+        var desiredKeys = Set<String>()
+        var orderedStores: [DeckStore] = []
+
+        for endpoint in primaryStore.discoveredBridges {
+            // Secondary sessions are created only for Macs this device has
+            // already paired with. This prevents Fleet Deck from spraying
+            // approval prompts across every Bonjour peer on the network.
+            let isTrusted = endpoint.bridgeFingerprint.map { fingerprint in
+                DeckBridgeSecurityStore.shared.trustedBridgeList().contains {
+                    $0.bridgeFingerprint.caseInsensitiveCompare(fingerprint) == .orderedSame
+                }
+            } ?? false
+            guard isTrusted else { continue }
+
+            let key = Self.endpointKey(endpoint)
+            guard key != primaryKey else { continue }
+            guard desiredKeys.insert(key).inserted else { continue }
+
+            let store: DeckStore
+            if let existing = storesByEndpointKey[key] {
+                store = existing
+                if existing.activeEndpoint != endpoint && existing.health == nil {
+                    existing.connect(to: endpoint)
+                }
+            } else {
+                store = DeckStore(endpoint: endpoint, discoversBridges: false)
+                storesByEndpointKey[key] = store
+            }
+            orderedStores.append(store)
+        }
+
+        let staleKeys = storesByEndpointKey.keys.filter { !desiredKeys.contains($0) }
+        for key in staleKeys {
+            storesByEndpointKey.removeValue(forKey: key)?.disconnect()
+        }
+
+        secondaryStores = orderedStores
+    }
+
+    func stores(including primaryStore: DeckStore) -> [DeckStore] {
+        var result: [DeckStore] = []
+        if primaryStore.activeEndpoint != nil {
+            result.append(primaryStore)
+        }
+        result.append(contentsOf: secondaryStores)
+        return result
+    }
+
+    func setUIPriority(_ priority: DeckPollPriority, primaryStore: DeckStore) {
+        for store in stores(including: primaryStore) {
+            store.setUIPriority(priority)
+        }
+    }
+
+    private static func endpointKey(_ endpoint: BridgeEndpoint) -> String {
+        if let fingerprint = endpoint.bridgeFingerprint, !fingerprint.isEmpty {
+            return "fingerprint:\(fingerprint.lowercased())"
+        }
+        let name = endpoint.name
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        if !name.isEmpty {
+            return "service:\(name):\(endpoint.port)"
+        }
+        return "host:\(endpoint.host.lowercased()):\(endpoint.port)"
+    }
+}
+
+#if DEBUG
+extension DeckStore {
+    /// Deterministic live-looking store for Fleet Deck previews and simulator
+    /// screenshot passes. It never starts discovery or sends network traffic.
+    static func fleetPreview(name: String, index: Int) -> DeckStore {
+        let store = DeckStore(discoversBridges: false)
+        store.activeEndpoint = BridgeEndpoint(
+            name: name,
+            host: "preview-\(index).local",
+            port: 5287,
+            source: "Preview"
+        )
+
+        let accents = ["green", "blue", "violet", "amber"]
+        let apps = ["Xcode", "iTerm2", "Figma", "Safari"]
+        let accent = accents[index % accents.count]
+        let app = apps[index % apps.count]
+
+        func tile(_ id: String, _ title: String, _ icon: String, _ action: String, tint: String? = nil) -> DeckCockpitTile {
+            DeckCockpitTile(
+                id: "\(index)-\(id)",
+                shortcutID: id,
+                title: title,
+                subtitle: nil,
+                iconSystemName: icon,
+                accentToken: tint ?? accent,
+                actionID: action
+            )
+        }
+
+        let command = DeckCockpitPage(
+            id: "command",
+            title: "Command",
+            columns: 3,
+            tiles: [
+                tile("voice", "Voice", "waveform", "voice.command.toggle", tint: "red"),
+                tile("focus", "Focus", "scope", "windows.focusFrontmost"),
+                tile("paste", "Paste", "doc.on.clipboard", "clipboard.pasteFromDevice"),
+                tile("left", "Tile Left", "rectangle.lefthalf.inset.filled", "window.tile.left", tint: "blue"),
+                tile("right", "Tile Right", "rectangle.righthalf.inset.filled", "window.tile.right", tint: "blue"),
+                tile("agent", "Run Agent", "sparkles", "agent.run", tint: "violet")
+            ]
+        )
+        let windows = DeckCockpitPage(
+            id: "windows",
+            title: "Windows",
+            columns: 3,
+            tiles: [
+                tile("maximize", "Maximize", "rectangle.inset.filled", "window.maximize", tint: "blue"),
+                tile("center", "Center", "rectangle.center.inset.filled", "window.center", tint: "blue"),
+                tile("next", "Next Space", "arrow.right.square", "spaces.next", tint: "teal"),
+                tile("prev", "Prev Space", "arrow.left.square", "spaces.previous", tint: "teal")
+            ]
+        )
+
+        store.snapshot = DeckRuntimeSnapshot(
+            cockpit: DeckCockpitState(title: "Fleet", pages: [command, windows]),
+            trackpad: DeckTrackpadState(
+                isEnabled: true,
+                isAvailable: true,
+                statusTitle: "Ready",
+                pointerScale: 1.6
+            ),
+            voice: DeckVoiceState(
+                phase: .idle,
+                transcript: [
+                    "route this Mac to the common deck",
+                    "keep tests visible while the agent runs",
+                    "show the current design pass",
+                    "hold this build in standby"
+                ][index]
+            ),
+            desktop: DeckDesktopSummary(
+                activeLayerName: "Deep Work",
+                activeAppName: app,
+                screenCount: 2,
+                visibleWindowCount: 8 + index,
+                sessionCount: 3,
+                currentSpaceIndex: 1,
+                currentSpaceName: index.isMultiple(of: 2) ? "Code" : "Review"
+            ),
+            layout: DeckLayoutState(
+                frontmostWindow: DeckLayoutFocusWindow(
+                    id: "preview-window-\(index)",
+                    itemID: "preview-item-\(index)",
+                    appName: app,
+                    title: index.isMultiple(of: 2) ? "FleetDeckScreen.swift" : "Design review",
+                    frame: DeckRect(x: 80, y: 70, w: 1100, h: 720)
+                )
+            ),
+            telemetry: DeckSystemTelemetry(
+                cpuLoadPercent: Double(24 + index * 11),
+                memoryUsedPercent: Double(52 + index * 7),
+                gpuLoadPercent: Double(8 + index * 5),
+                windowCount: 8 + index,
+                sessionCount: 3
+            ),
+            cockpitMode: DeckCockpitModeState(
+                mode: index == 3 ? .idle : .agent,
+                elapsedSeconds: Double(42 + index * 19),
+                agentProgress: Double(36 + index * 14) / 100,
+                agentRows: [
+                    DeckAgentPlanRow(
+                        id: "agent-live-\(index)",
+                        state: index == 3 ? .done : .live,
+                        text: ["refining fleet controls", "running iPad checks", "reviewing visual system", "build queue clear"][index]
+                    ),
+                    DeckAgentPlanRow(
+                        id: "agent-next-\(index)",
+                        state: .next,
+                        text: ["verify channel routing", "inspect simulator logs", "prepare design notes", "waiting for work"][index]
+                    )
+                ]
+            ),
+            activityLog: [
+                DeckActivityLogEntry(
+                    id: "activity-primary-\(index)",
+                    createdAt: .now.addingTimeInterval(Double(-18 - index * 12)),
+                    tag: ["CODEX", "TEST", "SCOUT", "BUILD"][index],
+                    tint: ["violet", "green", "blue", "amber"][index],
+                    text: ["polishing common deck", "simulator suite running", "reviewing lane model", "standing by"][index]
+                ),
+                DeckActivityLogEntry(
+                    id: "activity-secondary-\(index)",
+                    createdAt: .now.addingTimeInterval(Double(-86 - index * 21)),
+                    tag: ["SCOUT", "XCODE", "DESIGN", "AGENT"][index],
+                    tint: ["blue", "green", "violet", "amber"][index],
+                    text: ["checked interaction map", "build succeeded", "tuning control lighting", "queue empty"][index]
+                ),
+                DeckActivityLogEntry(
+                    id: "activity-tertiary-\(index)",
+                    createdAt: .now.addingTimeInterval(Double(-154 - index * 27)),
+                    tag: ["BUILD", "CODEX", "REVIEW", "SYSTEM"][index],
+                    tint: ["green", "violet", "blue", "green"][index],
+                    text: ["fixture data refreshed", "checking shared controls", "spacing pass complete", "all services nominal"][index]
+                )
+            ]
+        )
+        return store
+    }
+}
+#endif

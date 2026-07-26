@@ -2,25 +2,54 @@ import DeckKit
 import Foundation
 
 struct LatticesCompanionCockpitLayout: Codable, Equatable {
+    /// Span-aware placement for a single key. `shortcutID == ""` marks an empty
+    /// cell (a gap).
+    struct Slot: Codable, Equatable {
+        var shortcutID: String
+        var col: Int
+        var row: Int
+        var colSpan: Int
+        var rowSpan: Int
+
+        init(shortcutID: String, col: Int, row: Int, colSpan: Int = 1, rowSpan: Int = 1) {
+            self.shortcutID = shortcutID
+            self.col = col
+            self.row = row
+            self.colSpan = colSpan
+            self.rowSpan = rowSpan
+        }
+    }
+
     struct Page: Codable, Equatable, Identifiable {
         var id: String
         var title: String
         var subtitle: String?
         var columns: Int
+        /// Explicit row count for span-aware pages; `nil` for legacy flat pages.
+        var rows: Int?
+        /// Legacy flat 16-slot layout (row-major into `columns`). Retained for
+        /// back-compat and used as the fallback when `slots` is nil.
         var slotIDs: [String]
+        /// Span-aware placement. When present it is authoritative — the deck
+        /// renders keys by (col,row,colSpan,rowSpan); the web builder writes this.
+        var slots: [Slot]?
 
         init(
             id: String,
             title: String,
             subtitle: String? = nil,
             columns: Int = 4,
-            slotIDs: [String]
+            rows: Int? = nil,
+            slotIDs: [String] = [],
+            slots: [Slot]? = nil
         ) {
             self.id = id
             self.title = title
             self.subtitle = subtitle
             self.columns = columns
+            self.rows = rows
             self.slotIDs = slotIDs
+            self.slots = slots
         }
     }
 
@@ -135,13 +164,13 @@ enum LatticesCompanionCockpitCatalog {
             .init(
                 id: "dev",
                 title: "Dev",
-                subtitle: "Terminal, agent, and edit shortcuts",
+                subtitle: "Clipboard, terminal, navigation, and edit shortcuts",
                 columns: 4,
                 slotIDs: [
-                    "key-copy", "key-paste", "key-undo", "key-shift-tab",
-                    "place-left", "place-right", "resize-wider", "resize-narrower",
+                    "paste-device", "key-copy", "key-paste", "key-undo",
+                    "key-escape", "key-enter", "key-up", "key-down",
                     "switch-window-prev", "switch-window-next", "switch-app-prev", "switch-app-next",
-                    "layout-optimize", "mouse-find", "key-up", "key-down"
+                    "layout-optimize", "mouse-joystick", "place-left", "place-right"
                 ]
             ),
             .init(
@@ -221,6 +250,8 @@ enum LatticesCompanionCockpitCatalog {
         .init(id: "resize-shrink", title: "Shrink", subtitle: "Reduce both dimensions", iconSystemName: "minus.rectangle", accentToken: "layout", category: .layout),
         .init(id: "mouse-find", title: "Find Mouse", subtitle: "Pulse the current cursor position", iconSystemName: "scope", accentToken: "mouse", category: .mouse),
         .init(id: "mouse-summon", title: "Summon Mouse", subtitle: "Bring the cursor to center screen", iconSystemName: "dot.scope", accentToken: "mouse", category: .mouse),
+        .init(id: "mouse-joystick", title: "Joystick", subtitle: "Continuously steer the Mac pointer", iconSystemName: "circle.circle.fill", accentToken: "mouse", category: .mouse),
+        .init(id: "paste-device", title: "Paste from iPhone", subtitle: "Send the phone clipboard through the secure bridge", iconSystemName: "rectangle.portrait.and.arrow.forward", accentToken: "dev", category: .dev),
         .init(id: "key-escape", title: "Escape", subtitle: "Send Escape", iconSystemName: "escape", accentToken: "system", category: .system),
         .init(id: "key-copy", title: "Copy", subtitle: "Send Command-C", iconSystemName: "doc.on.doc", accentToken: "system", category: .system),
         .init(id: "key-paste", title: "Paste", subtitle: "Send Command-V", iconSystemName: "doc.on.clipboard", accentToken: "system", category: .system),
@@ -245,13 +276,15 @@ enum LatticesCompanionCockpitCatalog {
         return LatticesCompanionCockpitLayout(
             pages: blueprintPages.map { blueprint in
                 let current = existing[blueprint.id]
-                let slots = normalizedSlots(current?.slotIDs ?? blueprint.slotIDs)
+                let flatSlots = normalizedSlots(current?.slotIDs ?? blueprint.slotIDs)
                 return .init(
                     id: blueprint.id,
                     title: current?.title ?? blueprint.title,
                     subtitle: current?.subtitle ?? blueprint.subtitle,
                     columns: max(2, current?.columns ?? blueprint.columns),
-                    slotIDs: slots
+                    rows: current?.rows ?? blueprint.rows,
+                    slotIDs: flatSlots,
+                    slots: current?.slots
                 )
             }
         )
@@ -272,12 +305,28 @@ enum LatticesCompanionCockpitCatalog {
             title: focusName,
             detail: detail,
             pages: normalizedLayout.pages.map { page in
-                DeckCockpitPage(
-                    id: page.id,
-                    title: page.title,
-                    subtitle: page.subtitle,
-                    columns: page.columns,
-                    tiles: page.slotIDs.enumerated().map { index, shortcutID in
+                let tiles: [DeckCockpitTile]
+                if let slots = page.slots {
+                    // Span-aware page (authored in the web builder): render each
+                    // non-empty slot at its explicit placement.
+                    tiles = slots.enumerated().compactMap { index, slot in
+                        slot.shortcutID.isEmpty ? nil : renderedTile(
+                            shortcutID: slot.shortcutID,
+                            pageID: page.id,
+                            slotIndex: index,
+                            col: slot.col,
+                            row: slot.row,
+                            colSpan: slot.colSpan,
+                            rowSpan: slot.rowSpan,
+                            voice: voice,
+                            desktop: desktop,
+                            layoutState: layoutState,
+                            talkie: talkie
+                        )
+                    }
+                } else {
+                    // Legacy flat page: row-major flow into `columns` (unchanged).
+                    tiles = page.slotIDs.enumerated().map { index, shortcutID in
                         renderedTile(
                             shortcutID: shortcutID,
                             pageID: page.id,
@@ -288,6 +337,14 @@ enum LatticesCompanionCockpitCatalog {
                             talkie: talkie
                         )
                     }
+                }
+                return DeckCockpitPage(
+                    id: page.id,
+                    title: page.title,
+                    subtitle: page.subtitle,
+                    columns: page.columns,
+                    rows: page.rows,
+                    tiles: tiles
                 )
             }
         )
@@ -305,6 +362,10 @@ enum LatticesCompanionCockpitCatalog {
         shortcutID: String,
         pageID: String,
         slotIndex: Int,
+        col: Int? = nil,
+        row: Int? = nil,
+        colSpan: Int? = nil,
+        rowSpan: Int? = nil,
         voice: DeckVoiceState?,
         desktop: DeckDesktopSummary?,
         layoutState: DeckLayoutState?,
@@ -318,8 +379,12 @@ enum LatticesCompanionCockpitCatalog {
             talkie: talkie
         )
 
+        // Stable id: position-based for span slots (indices can shift when empty
+        // slots are dropped), slot-index-based for legacy flat pages.
+        let id = (col != nil && row != nil) ? "\(pageID)-\(col!)-\(row!)" : "\(pageID)-\(slotIndex)"
+
         return DeckCockpitTile(
-            id: "\(pageID)-\(slotIndex)",
+            id: id,
             shortcutID: shortcutID,
             title: rendered.title,
             subtitle: rendered.subtitle,
@@ -330,7 +395,12 @@ enum LatticesCompanionCockpitCatalog {
             actionID: rendered.actionID,
             payload: rendered.payload,
             isEnabled: rendered.isEnabled,
-            isActive: rendered.isActive
+            isActive: rendered.isActive,
+            controlKind: shortcutID == "mouse-joystick" ? .joystick : nil,
+            col: col,
+            row: row,
+            colSpan: colSpan,
+            rowSpan: rowSpan
         )
     }
 
@@ -353,6 +423,19 @@ enum LatticesCompanionCockpitCatalog {
         }
 
         switch shortcutID {
+        case "paste-device":
+            return RenderedShortcut(
+                title: "Paste Phone",
+                subtitle: "Send this device's clipboard to the Mac",
+                iconSystemName: "rectangle.portrait.and.arrow.forward",
+                accentToken: "dev",
+                categoryTint: LatticesCompanionShortcutCategory.dev.tintToken,
+                actionID: "clipboard.pasteFromDevice",
+                payload: [:],
+                isEnabled: true,
+                isActive: false
+            )
+
         case "voice-toggle":
             let listening = voice?.phase == .listening
             return RenderedShortcut(
@@ -493,6 +576,18 @@ enum LatticesCompanionCockpitCatalog {
                 iconSystemName: "dot.scope",
                 accentToken: "mouse",
                 actionID: "mouse.summon",
+                payload: [:],
+                isEnabled: true,
+                isActive: false
+            )
+
+        case "mouse-joystick":
+            return RenderedShortcut(
+                title: "Joystick",
+                subtitle: "Steer the Mac pointer",
+                iconSystemName: "circle.circle.fill",
+                accentToken: "mouse",
+                actionID: nil,
                 payload: [:],
                 isEnabled: true,
                 isActive: false

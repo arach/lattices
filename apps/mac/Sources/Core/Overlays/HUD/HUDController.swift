@@ -35,7 +35,13 @@ final class HUDController {
     private var previewPanel: NSPanel?
     private var minimapPanels: [NSPanel] = []
     private let hintBezels = HUDWindowHintBezels()
+    private let liveTabChromes = HUDLiveTabChromes()
     private var windowHintObserver: AnyCancellable?
+    private var liveTabObserver: AnyCancellable?
+    private var liveTabGeometryObserver: AnyCancellable?
+    private var pendingLiveTabGeometryRefresh: DispatchWorkItem?
+    private var liveTabFocusObserver: AnyCancellable?
+    private var focusedWindowObserver: AnyCancellable?
     private var keyMonitor: Any?
     private var clickMonitor: Any?
     private var mouseMovedMonitor: Any?
@@ -47,6 +53,7 @@ final class HUDController {
     private var experienceObserver: AnyCancellable?
     private var panelMoveObservers: [Any] = []
     private var lastMouseUpdate: Date = .distantPast
+    private var suppressOutsideDismissUntil: Date = .distantPast
     private let state = HUDState()
     private let previewModel = WindowPreviewStore.shared
 
@@ -170,7 +177,6 @@ final class HUDController {
         DesktopModel.shared.poll()
         precomputeTileGrid(on: screen)
         prewarmLikelyPreviews()
-
         // ── INSTANT SHOW ── alphaValue flip, zero animation
         let isExpanded = state.minimapMode == .expanded
         let showChrome = HUDExperienceStore.shared.showChrome
@@ -197,6 +203,15 @@ final class HUDController {
         installMonitors()
         applyExperienceToAllPanels()
         refreshHintBezels()
+        refreshLiveTabChromes()
+        // Window managers may report the old bounds for a few frames after the
+        // native apps make room for the rail. Re-anchor the composite once the
+        // content rect has settled so its outer frame never jumps on selection.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
+            guard self?.isVisible == true else { return }
+            DesktopModel.shared.forcePoll()
+            self?.refreshLiveTabChromes()
+        }
 
         let xp = HUDExperienceStore.shared
         if xp.has(.mouseSpecular) || xp.has(.meshLight) {
@@ -216,6 +231,12 @@ final class HUDController {
         removeMonitors()
         removeMouseMovedMonitor()
         hintBezels.setRevealed(false)
+        // Live tab groups are persistent composite windows. Dismissing Hyper-3
+        // removes only the HUD; their enclosure and reserved rail stay put.
+        refreshLiveTabChromes()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            self?.refreshLiveTabChromes()
+        }
 
         // Restore untiled windows only if user actually tiled something
         if !state.tiledWindows.isEmpty {
@@ -310,6 +331,7 @@ final class HUDController {
         positionMinimapPanels()
         positionedScreen = screen
         refreshHintBezels()
+        refreshLiveTabChromes()
     }
 
     private func buildMinimapPanels(dismiss: @escaping () -> Void) {
@@ -460,11 +482,55 @@ final class HUDController {
                 }
             }
 
+        // A grouped app may need a synthetic click to become key. Treat that
+        // click as part of the tab action instead of as a click outside HUD.
+        liveTabFocusObserver = NotificationCenter.default.publisher(for: .liveTabGroupWillFocusWindow)
+            .sink { [weak self] _ in
+                // AX/AppleScript focus can synthesize its click noticeably after
+                // the request on a busy desktop. Keep that owned click from
+                // dismissing the stable composite during a tab swap.
+                self?.suppressOutsideDismissUntil = Date().addingTimeInterval(3.0)
+            }
+
+        // If the user focuses a grouped app directly, reflect the real window
+        // on top so the selected tab never lies about what is being shown.
+        focusedWindowObserver = DesktopModel.shared.$focusedWindowID
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] windowID in
+                LiveTabGroupStore.shared.syncSelection(toFocusedWindow: windowID)
+                self?.refreshLiveTabChromes()
+            }
+
         // Rebuild on-window jump badges whenever the hint assignment changes
         windowHintObserver = state.$windowHints
             .removeDuplicates()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.refreshHintBezels() }
+
+        // Live stacks can be edited from Hyperspace, the HUD, the CLI, or an
+        // agent. Keep their spatial chrome in sync regardless of entry point.
+        liveTabObserver = LiveTabGroupStore.shared.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                DispatchQueue.main.async { self?.refreshLiveTabChromes() }
+            }
+
+        // Native layout changes settle asynchronously in some apps. Coalesce
+        // their follow-up inventory/positioning into one refresh; selection-only
+        // tab swaps intentionally stay on the immediate path above.
+        liveTabGeometryObserver = NotificationCenter.default.publisher(for: .liveTabGroupGeometryDidChange)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                self.pendingLiveTabGeometryRefresh?.cancel()
+                let work = DispatchWorkItem { [weak self] in
+                    DesktopModel.shared.forcePoll()
+                    self?.refreshLiveTabChromes()
+                }
+                self.pendingLiveTabGeometryRefresh = work
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
+            }
 
         // Re-apply experience settings when preset changes
         experienceObserver = HUDExperienceStore.shared.$presetIndex
@@ -1304,8 +1370,9 @@ final class HUDController {
             let loc = NSEvent.mouseLocation
             let inAny = self.allPanels
                 .compactMap { $0 }
-                .contains { $0.frame.contains(loc) }
-            if !inAny { self.dismiss() }
+                .contains { $0.frame.contains(loc) } || self.liveTabChromes.contains(loc)
+            let isOwnedLiveTabFocus = Date() < self.suppressOutsideDismissUntil
+            if !inAny && !isOwnedLiveTabFocus { self.dismiss() }
         }
     }
 
@@ -1328,6 +1395,24 @@ final class HUDController {
             obscuredBy: obscured
         )
         hintBezels.setRevealed(true)
+    }
+
+    /// Position browser-like tab bars on the actual grouped windows. This is
+    /// intentionally Hyper-3-only for now; the runtime group itself persists
+    /// after dismissal, ready for a future always-on chrome mode.
+    private func refreshLiveTabChromes() {
+        LiveTabGroupStore.shared.syncSelection(toFocusedWindow: DesktopModel.shared.focusedWindowID)
+        let obscured = (isVisible ? [topPanel, leftPanel, rightPanel] : [])
+            .compactMap { panel -> NSRect? in
+                guard let panel, panel.alphaValue > 0.5 else { return nil }
+                return panel.frame
+            }
+        liveTabChromes.update(
+            groups: LiveTabGroupStore.shared.groups,
+            windows: DesktopModel.shared.windows,
+            obscuredBy: obscured
+        )
+        liveTabChromes.setRevealed(true)
     }
 
     private func mouseScreen() -> NSScreen {

@@ -1,4 +1,9 @@
-import type { z } from "zod";
+export interface Schema<T> {
+  parse(value: unknown): T;
+  safeParse(value: unknown):
+    | { success: true; data: T }
+    | { success: false; error: Error & { issues?: Array<{ path: Array<string | number>; message: string }> } };
+}
 
 export type ComputerTreatment = "observe" | "stage" | "present" | "execute";
 export type ComputerClickTransport =
@@ -376,44 +381,44 @@ export interface CuaClient {
   magicCursor(params: ComputerMagicCursorParams): Promise<unknown>;
 }
 
-export declare const computerTreatmentSchema: z.ZodType<ComputerTreatment>;
-export declare const computerClickTransportSchema: z.ZodType<ComputerClickTransport>;
-export declare const cursorStyleSchema: z.ZodType<CursorStyle>;
-export declare const cursorShapeSchema: z.ZodType<CursorShape>;
-export declare const cursorSizeSchema: z.ZodType<CursorSize>;
-export declare const cursorTrailSchema: z.ZodType<CursorTrail>;
-export declare const cursorMotionSchema: z.ZodType<CursorMotion>;
-export declare const cursorTrajectorySchema: z.ZodType<CursorTrajectory>;
-export declare const cursorGlowSchema: z.ZodType<CursorGlow>;
-export declare const cursorIdleSchema: z.ZodType<CursorIdle>;
-export declare const cursorEdgeSchema: z.ZodType<CursorEdge>;
-export declare const cursorSoundSchema: z.ZodType<CursorSound>;
-export declare const captionPlacementSchema: z.ZodType<CaptionPlacement>;
-export declare const computerWindowStateParamsSchema: z.ZodType<ComputerWindowStateParams>;
-export declare const computerElementActionParamsSchema: z.ZodType<ComputerElementActionParams>;
-export declare const computerTypeElementParamsSchema: z.ZodType<ComputerTypeElementParams>;
-export declare const computerSetValueParamsSchema: z.ZodType<ComputerSetValueParams>;
-export declare const computerPressKeyParamsSchema: z.ZodType<ComputerPressKeyParams>;
-export declare const computerHotkeyParamsSchema: z.ZodType<ComputerHotkeyParams>;
-export declare const computerFocusWindowParamsSchema: z.ZodType<ComputerFocusWindowParams>;
-export declare const computerLaunchAppParamsSchema: z.ZodType<ComputerLaunchAppParams>;
-export declare const computerTypeWindowTextParamsSchema: z.ZodType<ComputerTypeWindowTextParams>;
-export declare const computerTypeTextParamsSchema: z.ZodType<ComputerTypeTextParams>;
-export declare const computerClickParamsSchema: z.ZodType<ComputerClickParams>;
-export declare const computerDoubleClickParamsSchema: z.ZodType<ComputerDoubleClickParams>;
-export declare const computerRightClickParamsSchema: z.ZodType<ComputerRightClickParams>;
-export declare const computerScrollParamsSchema: z.ZodType<ComputerScrollParams>;
-export declare const computerDragParamsSchema: z.ZodType<ComputerDragParams>;
-export declare const computerVerifyParamsSchema: z.ZodType<ComputerVerifyParams>;
-export declare const captureWindowParamsSchema: z.ZodType<CaptureWindowParams>;
-export declare const captureRegionParamsSchema: z.ZodType<CaptureRegionParams>;
-export declare const zoomArtifactParamsSchema: z.ZodType<ZoomArtifactParams>;
-export declare const visionAnalyzeWindowParamsSchema: z.ZodType<VisionAnalyzeWindowParams>;
-export declare const visionAnalyzeArtifactParamsSchema: z.ZodType<VisionAnalyzeArtifactParams>;
-export declare const browserGetTextParamsSchema: z.ZodType<BrowserGetTextParams>;
-export declare const browserQueryDomParamsSchema: z.ZodType<BrowserQueryDomParams>;
-export declare const browserExecuteJavascriptParamsSchema: z.ZodType<BrowserExecuteJavascriptParams>;
-export declare const computerMagicCursorParamsSchema: z.ZodType<ComputerMagicCursorParams>;
+export declare const computerTreatmentSchema: Schema<ComputerTreatment>;
+export declare const computerClickTransportSchema: Schema<ComputerClickTransport>;
+export declare const cursorStyleSchema: Schema<CursorStyle>;
+export declare const cursorShapeSchema: Schema<CursorShape>;
+export declare const cursorSizeSchema: Schema<CursorSize>;
+export declare const cursorTrailSchema: Schema<CursorTrail>;
+export declare const cursorMotionSchema: Schema<CursorMotion>;
+export declare const cursorTrajectorySchema: Schema<CursorTrajectory>;
+export declare const cursorGlowSchema: Schema<CursorGlow>;
+export declare const cursorIdleSchema: Schema<CursorIdle>;
+export declare const cursorEdgeSchema: Schema<CursorEdge>;
+export declare const cursorSoundSchema: Schema<CursorSound>;
+export declare const captionPlacementSchema: Schema<CaptionPlacement>;
+export declare const computerWindowStateParamsSchema: Schema<ComputerWindowStateParams>;
+export declare const computerElementActionParamsSchema: Schema<ComputerElementActionParams>;
+export declare const computerTypeElementParamsSchema: Schema<ComputerTypeElementParams>;
+export declare const computerSetValueParamsSchema: Schema<ComputerSetValueParams>;
+export declare const computerPressKeyParamsSchema: Schema<ComputerPressKeyParams>;
+export declare const computerHotkeyParamsSchema: Schema<ComputerHotkeyParams>;
+export declare const computerFocusWindowParamsSchema: Schema<ComputerFocusWindowParams>;
+export declare const computerLaunchAppParamsSchema: Schema<ComputerLaunchAppParams>;
+export declare const computerTypeWindowTextParamsSchema: Schema<ComputerTypeWindowTextParams>;
+export declare const computerTypeTextParamsSchema: Schema<ComputerTypeTextParams>;
+export declare const computerClickParamsSchema: Schema<ComputerClickParams>;
+export declare const computerDoubleClickParamsSchema: Schema<ComputerDoubleClickParams>;
+export declare const computerRightClickParamsSchema: Schema<ComputerRightClickParams>;
+export declare const computerScrollParamsSchema: Schema<ComputerScrollParams>;
+export declare const computerDragParamsSchema: Schema<ComputerDragParams>;
+export declare const computerVerifyParamsSchema: Schema<ComputerVerifyParams>;
+export declare const captureWindowParamsSchema: Schema<CaptureWindowParams>;
+export declare const captureRegionParamsSchema: Schema<CaptureRegionParams>;
+export declare const zoomArtifactParamsSchema: Schema<ZoomArtifactParams>;
+export declare const visionAnalyzeWindowParamsSchema: Schema<VisionAnalyzeWindowParams>;
+export declare const visionAnalyzeArtifactParamsSchema: Schema<VisionAnalyzeArtifactParams>;
+export declare const browserGetTextParamsSchema: Schema<BrowserGetTextParams>;
+export declare const browserQueryDomParamsSchema: Schema<BrowserQueryDomParams>;
+export declare const browserExecuteJavascriptParamsSchema: Schema<BrowserExecuteJavascriptParams>;
+export declare const computerMagicCursorParamsSchema: Schema<ComputerMagicCursorParams>;
 
 export declare function createCuaClient(options?: CuaClientOptions): CuaClient;
 export declare const cua: CuaClient;

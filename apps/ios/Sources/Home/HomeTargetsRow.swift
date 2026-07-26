@@ -9,6 +9,8 @@ import SwiftUI
 ///
 /// Size budget: ~150-220pt depending on machine count.
 struct HomeTargetsRow: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
     let machines: [HomeMachine]
     var onEnterDeck: ((HomeMachine) -> Void)? = nil
     var onAttention: ((HomeMachine) -> Void)? = nil
@@ -49,14 +51,13 @@ struct HomeTargetsRow: View {
                 onAttention: onAttention
             )
         case 2:
-            HStack(spacing: 12) {
-                ForEach(machines) { m in
-                    HomeTargetCard(
-                        machine: m,
-                        emphasis: m.isForeground ? .deemphasized : .full,
-                        onEnterDeck: onEnterDeck,
-                        onAttention: onAttention
-                    )
+            if horizontalSizeClass == .compact {
+                VStack(spacing: 10) {
+                    targetCards
+                }
+            } else {
+                HStack(spacing: 12) {
+                    targetCards
                 }
             }
         default:
@@ -73,6 +74,18 @@ struct HomeTargetsRow: View {
                     )
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var targetCards: some View {
+        ForEach(machines) { machine in
+            HomeTargetCard(
+                machine: machine,
+                emphasis: machine.isForeground ? .deemphasized : .full,
+                onEnterDeck: onEnterDeck,
+                onAttention: onAttention
+            )
         }
     }
 }

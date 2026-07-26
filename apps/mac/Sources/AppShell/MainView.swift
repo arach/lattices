@@ -125,7 +125,7 @@ struct MainView: View {
                     }
                     headerButton(icon: "command") {
                         MenuBarController.shared.dismissPopover()
-                        CommandPaletteWindow.shared.toggle()
+                        UnifiedCommandBarWindow.shared.toggle(mode: .search)
                     }
                     headerButton(icon: "arrow.clockwise") { scanner.scan(); inventory.refresh() }
                 }
@@ -383,33 +383,14 @@ struct MainView: View {
                 ScreenMapWindowController.shared.showPage(.screenMap)
             }
             ActionRow(
-                label: "Command Box",
-                detail: "Type slash commands and workspace actions",
+                label: "Command Bar",
+                detail: "Browse, search, and run slash commands",
                 hotkeyTokens: hotkeyTokens(.commandBar),
                 icon: "text.cursor",
                 accentColor: Palette.textDim
             ) {
                 MenuBarController.shared.dismissPopover()
-                UnifiedCommandBarWindow.shared.toggle(mode: .command)
-            }
-            ActionRow(
-                label: "Search",
-                detail: "Windows, projects, sessions, processes, and OCR",
-                hotkeyTokens: hotkeyTokens(.omniSearch),
-                icon: "magnifyingglass",
-                accentColor: Palette.textDim
-            ) {
-                MenuBarController.shared.dismissPopover()
                 UnifiedCommandBarWindow.shared.toggle(mode: .search)
-            }
-            ActionRow(
-                label: "Command Palette",
-                detail: "Launch, attach, and control projects",
-                hotkeyTokens: hotkeyTokens(.palette),
-                icon: "command",
-                accentColor: Palette.textDim
-            ) {
-                CommandPaletteWindow.shared.toggle()
             }
         }
         .padding(.vertical, 4)

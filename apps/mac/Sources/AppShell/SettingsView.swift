@@ -19,6 +19,7 @@ struct SettingsContentView: View {
         case ai
         case search
         case companion
+        case deck
 
         var id: String { rawValue }
 
@@ -33,6 +34,7 @@ struct SettingsContentView: View {
             case .ai: return "AI"
             case .search: return "Search & OCR"
             case .companion: return "Companion"
+            case .deck: return "Command Deck"
             }
         }
 
@@ -47,6 +49,7 @@ struct SettingsContentView: View {
             case .ai: return "sparkles"
             case .search: return "text.viewfinder"
             case .companion: return "ipad.and.iphone"
+            case .deck: return "square.grid.2x2"
             }
         }
 
@@ -61,6 +64,7 @@ struct SettingsContentView: View {
             case .ai: return "Agents"
             case .search: return "Indexing"
             case .companion: return "LATS iOS Bridge"
+            case .deck: return "Companion"
             }
         }
 
@@ -84,6 +88,8 @@ struct SettingsContentView: View {
                 return "OCR cadence, quality, and recent capture visibility."
             case .companion:
                 return "Local-network pairing, trusted iPad devices, and bridge security."
+            case .deck:
+                return "Design the companion command deck — the grid, keys, and spans the iPad renders."
             }
         }
 
@@ -95,7 +101,7 @@ struct SettingsContentView: View {
                 return "Control"
             case .ai, .search:
                 return "Intelligence"
-            case .companion:
+            case .companion, .deck:
                 return "Devices"
             }
         }
@@ -355,7 +361,19 @@ struct SettingsContentView: View {
             searchOcrContent
         case .companion:
             companionContent
+        case .deck:
+            deckContent
         }
+    }
+
+    /// Full-page companion deck builder. Mac-owned edits persist immediately
+    /// and flow through the next cockpit snapshot to connected companions.
+    private var deckContent: some View {
+        CompanionDeckBuilderView(layout: prefs.companionCockpitLayout, onChange: { layout in
+            prefs.companionCockpitLayout = layout
+        })
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(16)
     }
 
     // MARK: - Sticky section header
@@ -2468,11 +2486,11 @@ struct SettingsContentView: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .center, spacing: 10) {
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(assistantTint.opacity(0.13))
+                        .fill(voiceProviderTint.opacity(0.13))
                         .overlay(
                             Image(systemName: "brain.head.profile")
                                 .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(assistantTint)
+                                .foregroundColor(voiceProviderTint)
                         )
                         .frame(width: 30, height: 30)
 
@@ -2480,18 +2498,18 @@ struct SettingsContentView: View {
                         Text("Voice model")
                             .font(Typo.mono(12))
                             .foregroundColor(Palette.text)
-                        Text("Local resolver first, Assistant provider when language needs interpretation.")
+                        Text("Local resolver first; an optional voice-only provider handles language interpretation and speech services.")
                             .font(Typo.caption(9.5))
                             .foregroundColor(Palette.textMuted)
                     }
 
                     Spacer()
 
-                    aiStatusPill(assistantStatusLabel, tint: assistantTint)
+                    aiStatusPill(voiceProviderStatusLabel, tint: voiceProviderTint)
                 }
 
                 HStack(spacing: 8) {
-                    Text("Assistant provider")
+                    Text("Voice provider")
                         .font(Typo.mono(10))
                         .foregroundColor(Palette.textDim)
 
@@ -2505,8 +2523,8 @@ struct SettingsContentView: View {
                     .frame(minWidth: 190)
 
                     aiStatusPill(
-                        assistantSession.currentProvider.authMode == .oauth ? "OAUTH" : "API KEY",
-                        tint: assistantSession.currentProvider.authMode == .oauth ? Palette.detach : Palette.running
+                        "API KEY",
+                        tint: Palette.running
                     )
 
                     Spacer()
@@ -2519,21 +2537,23 @@ struct SettingsContentView: View {
 
                 cardDivider
 
+                assistantCredentialControls
+
+                assistantAuthMessage
+
+                cardDivider
+
                 VStack(alignment: .leading, spacing: 8) {
                     voiceFactRow("Command path", value: "Local intents", detail: "Fast phrase matching handles common tiling, focus, launch, and search commands.")
-                    voiceFactRow("Fallback path", value: assistantSession.currentProvider.name, detail: "Advisor, resolver, repair, and voice questions use the selected Assistant provider.")
-                    voiceFactRow("Runtime", value: assistantSession.hasPiBinary ? "Pi installed" : "Pi missing", detail: assistantSession.piBinaryPath ?? "Install Pi to enable provider-backed voice.")
+                    voiceFactRow("Fallback path", value: assistantSession.currentProvider.name, detail: "Advisor, resolver, repair, and voice questions use the selected voice provider.")
+                    voiceFactRow("Runtime", value: "HudsonAI direct", detail: "Voice interpretation uses the native provider adapter with no intermediary process.")
                 }
                 .padding(10)
                 .background(shortcutsInsetPanel)
 
                 HStack(spacing: 8) {
-                    aiActionButton("Manage Auth", tint: Palette.running) {
-                        selectedTab = .ai
-                    }
-
-                    aiActionButton("Refresh Runtime", tint: Palette.textMuted) {
-                        assistantSession.refreshBinaryAvailability()
+                    aiActionButton("Refresh Credentials", tint: Palette.textMuted) {
+                        assistantSession.refreshCredentialAvailability()
                     }
 
                     Spacer()
@@ -2813,11 +2833,11 @@ struct SettingsContentView: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .center, spacing: 10) {
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(assistantTint.opacity(0.13))
+                        .fill(scoutTint.opacity(0.13))
                         .overlay(
-                            Image(systemName: assistantIcon)
+                            Image(systemName: "point.3.connected.trianglepath.dotted")
                                 .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(assistantTint)
+                                .foregroundColor(scoutTint)
                         )
                         .frame(width: 30, height: 30)
 
@@ -2833,87 +2853,37 @@ struct SettingsContentView: View {
 
                     Spacer()
 
-                    aiStatusPill(assistantStatusLabel, tint: assistantTint)
+                    aiStatusPill(scoutStatusLabel, tint: scoutTint)
                 }
 
-                Text("The in-app chat and voice advisor use the selected provider once the Pi runtime is installed and authenticated.")
+                Text("In-app chat uses your existing local Scout broker and Scout session. Lattices does not ask for or store a separate model credential for chat.")
                     .font(Typo.caption(10))
                     .foregroundColor(Palette.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
 
-                HStack(spacing: 8) {
-                    Text("Provider")
-                        .font(Typo.mono(10))
-                        .foregroundColor(Palette.textDim)
-
-                    Picker("", selection: $assistantSession.authProviderID) {
-                        ForEach(assistantSession.providerOptions) { provider in
-                            Text(provider.name).tag(provider.id)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                    .frame(minWidth: 190)
-
-                    aiStatusPill(
-                        assistantSession.currentProvider.authMode == .oauth ? "OAUTH" : "API KEY",
-                        tint: assistantSession.currentProvider.authMode == .oauth ? Palette.detach : Palette.running
-                    )
-
-                    Spacer()
-
-                    aiActionButton("Refresh", tint: Palette.textMuted) {
-                        assistantSession.refreshBinaryAvailability()
-                    }
-                }
-
-                Text(assistantSession.currentProvider.helpText)
-                    .font(Typo.caption(9.5))
-                    .foregroundColor(Palette.textMuted.opacity(0.8))
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if let path = assistantSession.piBinaryPath {
-                    Text("Runtime: \(path)")
-                        .font(Typo.caption(9))
-                        .foregroundColor(Palette.running.opacity(0.78))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-
                 cardDivider
 
-                if assistantSession.hasPiBinary {
-                    assistantCredentialControls
-                } else {
-                    PiInstallCallout(session: assistantSession, compact: false)
+                VStack(alignment: .leading, spacing: 8) {
+                    voiceFactRow("Transport", value: "Scout local broker", detail: "Scout owns model routing, authorization, and the concrete harness session.")
+                    voiceFactRow("Conversation", value: "Persistent ref", detail: "Follow-up turns reuse the same Scout session until you clear the chat.")
+                    voiceFactRow("Chat credential", value: "None in Lattices", detail: "Any provider authentication remains owned by Scout.")
                 }
+                .padding(10)
+                .background(shortcutsInsetPanel)
 
-                assistantAuthMessage
+                HStack {
+                    aiActionButton("Refresh Scout", tint: Palette.running) {
+                        assistantSession.refreshScoutAvailability()
+                    }
+                    Spacer()
+                }
             }
         }
     }
 
     @ViewBuilder
     private var assistantCredentialControls: some View {
-        if assistantSession.isAuthenticating {
-            if let prompt = assistantSession.pendingAuthPrompt {
-                PiAuthPromptCard(
-                    session: assistantSession,
-                    prompt: prompt,
-                    compact: false,
-                    focus: $assistantAuthFieldFocused
-                )
-            } else {
-                PiAuthNextStepCard(session: assistantSession, compact: false)
-            }
-        } else {
-            switch assistantSession.currentProvider.authMode {
-            case .apiKey:
-                assistantApiKeyControls
-            case .oauth:
-                assistantOAuthControls
-            }
-        }
+        assistantApiKeyControls
     }
 
     private var assistantApiKeyControls: some View {
@@ -2973,42 +2943,6 @@ struct SettingsContentView: View {
         }
     }
 
-    private var assistantOAuthControls: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .center, spacing: 8) {
-                Circle()
-                    .fill(assistantSession.hasSelectedCredential ? Palette.running : Palette.detach)
-                    .frame(width: 6, height: 6)
-
-                Text(assistantSession.hasSelectedCredential ? "signed in" : "sign-in required")
-                    .font(Typo.mono(10))
-                    .foregroundColor(Palette.textMuted)
-
-                Spacer()
-
-                aiActionButton(
-                    assistantSession.hasSelectedCredential ? "Reconnect" : "Sign In",
-                    tint: Palette.running
-                ) {
-                    assistantSession.startSelectedAuthFlow()
-                }
-
-                if assistantSession.hasSelectedCredential {
-                    aiActionButton("Clear", tint: Palette.textMuted) {
-                        assistantSession.removeSelectedCredential()
-                    }
-                }
-            }
-
-            Text(assistantSession.hasSelectedCredential
-                ? "\(assistantSession.currentProvider.name) is connected for provider-backed chat."
-                : "Sign in once in the browser; Lattices stores the returned OAuth credential locally.")
-                .font(Typo.caption(9.5))
-                .foregroundColor(Palette.textMuted.opacity(0.78))
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
     @ViewBuilder
     private var assistantAuthMessage: some View {
         if let error = assistantSession.authErrorText {
@@ -3024,23 +2958,26 @@ struct SettingsContentView: View {
         }
     }
 
-    private var assistantTint: Color {
-        if !assistantSession.hasPiBinary { return Palette.kill }
-        if assistantSession.isAuthenticating || assistantSession.needsProviderSetup { return Palette.detach }
+    private var voiceProviderTint: Color {
+        if assistantSession.needsProviderSetup { return Palette.detach }
         return Palette.running
     }
 
-    private var assistantIcon: String {
-        if !assistantSession.hasPiBinary { return "exclamationmark.triangle.fill" }
-        if assistantSession.isAuthenticating || assistantSession.needsProviderSetup { return "person.crop.circle.badge.questionmark" }
-        return "sparkles"
+    private var voiceProviderStatusLabel: String {
+        if assistantSession.needsProviderSetup { return "VOICE KEY NEEDED" }
+        return "VOICE READY"
     }
 
-    private var assistantStatusLabel: String {
-        if !assistantSession.hasPiBinary { return "INSTALL PI" }
-        if assistantSession.isAuthenticating { return "CONNECTING" }
-        if assistantSession.needsProviderSetup { return "SETUP NEEDED" }
-        return "READY"
+    private var scoutTint: Color {
+        assistantSession.isScoutAvailable == false ? Palette.detach : Palette.running
+    }
+
+    private var scoutStatusLabel: String {
+        switch assistantSession.isScoutAvailable {
+        case true: return "SCOUT READY"
+        case false: return "SCOUT OFFLINE"
+        case nil: return "CHECKING"
+        }
     }
 
     private var assistantTokenPlaceholder: String {
@@ -3765,9 +3702,6 @@ struct SettingsContentView: View {
     // MARK: - Shortcuts: Overview
 
     private var companionCockpitCard: some View {
-        let layout = LatticesCompanionCockpitCatalog.normalized(prefs.companionCockpitLayout)
-        let selectedPage = layout.pages.first(where: { $0.id == selectedCompanionCockpitPageID }) ?? layout.pages.first
-        let categories = LatticesCompanionShortcutCategory.allCases
         let trustedDeviceCount = companionTrustedDevices(revision: companionTrustRevision).count
 
         return shortcutSectionCard(
@@ -3776,6 +3710,30 @@ struct SettingsContentView: View {
             summary: "Define the Mac-authored command deck here, then let the companion app render it. Trackpad proxy runs through the same bridge."
         ) {
             VStack(alignment: .leading, spacing: 14) {
+                // The deck layout lives on its own page now.
+                Button { selectedTab = .deck } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "square.grid.2x2")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Palette.text)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Command Deck")
+                                .font(Typo.monoBold(11))
+                                .foregroundColor(Palette.text)
+                            Text("Design the grid, keys, and spans the companion renders.")
+                                .font(Typo.caption(10.5))
+                                .foregroundColor(Palette.textMuted)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(Palette.textDim)
+                    }
+                    .padding(12)
+                    .background(shortcutsInsetPanel)
+                }
+                .buttonStyle(.plain)
+
                 HStack(alignment: .top, spacing: 12) {
                     VStack(alignment: .leading, spacing: 5) {
                         Text("Trackpad Proxy")
@@ -3831,43 +3789,6 @@ struct SettingsContentView: View {
                 }
                 .padding(12)
                 .background(shortcutsInsetPanel)
-
-                if let selectedPage {
-                    Picker("Companion page", selection: $selectedCompanionCockpitPageID) {
-                        ForEach(layout.pages) { page in
-                            Text(page.title).tag(page.id)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        if let subtitle = selectedPage.subtitle, !subtitle.isEmpty {
-                            Text(subtitle)
-                                .font(Typo.caption(10.5))
-                                .foregroundColor(Palette.textMuted)
-                        }
-
-                        LazyVGrid(
-                            columns: Array(
-                                repeating: GridItem(.flexible(minimum: 120, maximum: 220), spacing: 8, alignment: .top),
-                                count: max(2, selectedPage.columns)
-                            ),
-                            alignment: .leading,
-                            spacing: 8
-                        ) {
-                            ForEach(Array(selectedPage.slotIDs.enumerated()), id: \.offset) { index, shortcutID in
-                                companionCockpitSlotMenu(
-                                    pageID: selectedPage.id,
-                                    index: index,
-                                    shortcutID: shortcutID,
-                                    categories: categories
-                                )
-                            }
-                        }
-                    }
-                    .padding(12)
-                    .background(shortcutsInsetPanel)
-                }
 
                 HStack(spacing: 10) {
                     Text("Changes appear in the iPad companion on the next snapshot refresh.")
@@ -4323,7 +4244,7 @@ struct SettingsContentView: View {
                             .foregroundColor(Palette.textMuted)
                             .padding(.top, 4)
 
-                        Text("When local matching fails, the selected Assistant provider can advise with follow-up suggestions. Configure capture in Settings → Voice and provider auth in Settings → AI.")
+                        Text("When local matching fails, the optional voice provider can advise with follow-up suggestions. Chat uses Scout; voice capture and any voice-only provider credential live in Settings → Voice.")
                             .font(Typo.caption(10.5))
                             .foregroundColor(Palette.textMuted)
                             .lineSpacing(2)

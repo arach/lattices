@@ -10,6 +10,7 @@ enum LatticesDeckHostError: LocalizedError {
     case invalidResizeDimension(String)
     case invalidResizeDirection(String)
     case noVisibleTargets(String)
+    case clipboardPayloadTooLarge(Int)
 
     var errorDescription: String? {
         switch self {
@@ -27,6 +28,8 @@ enum LatticesDeckHostError: LocalizedError {
             return "Unsupported resize direction: \(value)"
         case .noVisibleTargets(let label):
             return "There are no visible \(label) to switch to right now."
+        case .clipboardPayloadTooLarge(let byteCount):
+            return "The phone clipboard is \(byteCount) bytes; gateway paste supports up to 200 KB."
         }
     }
 }
@@ -407,6 +410,20 @@ private extension LatticesDeckHost {
             return ActionOutcome(
                 summary: "Sent \(sent)",
                 detail: "Forwarded the key chord to the active macOS application.",
+                suggestedActions: []
+            )
+
+        case "clipboard.pasteFromDevice":
+            guard let text = request.payload["text"]?.stringValue, !text.isEmpty else {
+                throw LatticesDeckHostError.missingPayload("text (copy text on the phone first)")
+            }
+            guard text.utf8.count <= 200_000 else {
+                throw LatticesDeckHostError.clipboardPayloadTooLarge(text.utf8.count)
+            }
+            let count = try CompanionKeyboardController.shared.typeText(text)
+            return ActionOutcome(
+                summary: "Pasted from the phone",
+                detail: "Sent \(count) characters through the secure companion bridge and restored the Mac clipboard.",
                 suggestedActions: []
             )
 

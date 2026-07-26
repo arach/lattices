@@ -5,6 +5,7 @@ import SwiftUI
 struct HUDBottomBar: View {
     @ObservedObject var state: HUDState
     @ObservedObject private var handsOff = HandsOffSession.shared
+    @ObservedObject private var liveTabs = LiveTabGroupStore.shared
     var onDismiss: () -> Void
 
     var body: some View {
@@ -25,6 +26,100 @@ struct HUDBottomBar: View {
         .frame(height: 48)
         .background(HUDPanelBackground())
         .hudEdgeGlow()
+        .overlay(alignment: .trailing) {
+            if !liveTabs.groups.isEmpty {
+                liveTabGroupingStrip
+                    .padding(.trailing, 12)
+            }
+        }
+    }
+
+    private var liveTabGroupingStrip: some View {
+        HStack(spacing: 6) {
+            HStack(spacing: 5) {
+                Image(systemName: "rectangle.stack.fill")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(HUDChrome.cyan)
+                Text("GROUPINGS")
+                    .font(Typo.monoBold(8))
+                    .tracking(0.8)
+                    .foregroundStyle(Palette.textDim)
+            }
+
+            ForEach(liveTabs.groups.prefix(3)) { group in
+                liveTabGroupingMenu(group)
+            }
+
+            if liveTabs.groups.count > 3 {
+                Text("+\(liveTabs.groups.count - 3)")
+                    .font(Typo.monoBold(8))
+                    .foregroundStyle(Palette.textDim)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.black.opacity(0.34))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(HUDChrome.glassStrokeSoft, lineWidth: 0.6)
+                )
+        )
+    }
+
+    private func liveTabGroupingMenu(_ group: LiveTabGroup) -> some View {
+        Menu {
+            Button {
+                liveTabs.activate(id: group.id)
+                liveTabs.setGuideVisible(true, id: group.id)
+            } label: {
+                Label("Show Floating Tab Tools", systemImage: "pin.fill")
+            }
+
+            Button {
+                liveTabs.toggleLayout(id: group.id)
+            } label: {
+                Label(group.isExpanded ? "Return to Tabs" : "Split Inside Group Bounds",
+                      systemImage: group.isExpanded ? "rectangle.stack.fill" : "rectangle.split.2x1")
+            }
+
+            Button {
+                liveTabs.toggleGuideVisibility(id: group.id)
+            } label: {
+                Label(group.isGuideVisible ? "Hide Floating Tools" : "Keep Floating Tools Visible",
+                      systemImage: group.isGuideVisible ? "pin.slash" : "pin.fill")
+            }
+
+            Divider()
+
+            Button(role: .destructive) {
+                liveTabs.delete(id: group.id)
+            } label: {
+                Label("Ungroup", systemImage: "minus.circle")
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(group.id == liveTabs.activeGroupID ? HUDChrome.cyan : Palette.textMuted)
+                    .frame(width: 5, height: 5)
+                Text(group.name)
+                    .font(Typo.heading(10))
+                    .foregroundStyle(Palette.text)
+                    .lineLimit(1)
+                Text("\(group.members.count)")
+                    .font(Typo.monoBold(8))
+                    .foregroundStyle(Palette.textMuted)
+            }
+            .padding(.horizontal, 7)
+            .frame(height: 22)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(group.id == liveTabs.activeGroupID ? HUDChrome.cyan.opacity(0.10) : Color.white.opacity(0.045))
+            )
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
     }
 
     // MARK: - Action playback (what just happened)

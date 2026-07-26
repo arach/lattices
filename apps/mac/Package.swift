@@ -39,11 +39,13 @@ let package = Package(
             resources: [
                 .copy("../Resources/tap.wav"),
                 .copy("../Resources/Pets"),
+                .copy("../Resources/DeckBuilder"),
             ],
             swiftSettings: voiceEnabled ? [.define("LATTICES_VOICE")] : []
         ),
         .testTarget(
             name: "LatticesTests",
+            dependencies: ["Lattices"],
             path: "Tests"
         )
     ],

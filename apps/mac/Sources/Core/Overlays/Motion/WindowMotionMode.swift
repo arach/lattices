@@ -117,9 +117,11 @@ final class WindowMotionMode {
         p.loadStart = t0
         p.beginLoadTrace()
         let tInit = CACurrentMediaTime()
-        p.onSelection = { [weak self] entry in
-            self?.finishWindowPick(.selected(entry))
-            self?.deactivate()
+        if selectingWindow {
+            p.onSelection = { [weak self] entry in
+                self?.finishWindowPick(.selected(entry))
+                self?.deactivate()
+            }
         }
         p.onExit = { [weak self] in
             guard let self else { return }
@@ -1007,14 +1009,20 @@ private final class MotionPanel: NSPanel {
     }
 
     /// Command-modified keys arrive here, not in `keyDown`. ⌘L remembers the
-    /// current plucked set as a rule-backed Studio layer — the one ⌘-combo we
-    /// claim while the survey is up (every letter is a pluck hint in Exposé, so
-    /// a bare key won't do).
+    /// current plucked set as a rule-backed Studio layer; ⌘T turns it into a
+    /// live cross-app tab stack.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
-           event.keyCode == 37 {                                // ⌘L — save the pluck as a layer
+        guard event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command else {
+            return super.performKeyEquivalent(with: event)
+        }
+        if event.keyCode == 37 {                                // ⌘L — save the pluck as a layer
             guard !selectionOnly else { NSSound.beep(); return true }
             saveGroupAsLayer()
+            return true
+        }
+        if event.keyCode == 17 {                                // ⌘T — stack the pluck as tabs
+            guard !selectionOnly else { NSSound.beep(); return true }
+            createLiveTabsFromSelection()
             return true
         }
         return super.performKeyEquivalent(with: event)
@@ -1115,6 +1123,35 @@ private final class MotionPanel: NSPanel {
         let layer = StudioLayerStore.shared.saveFromPluck(picked)
         DiagnosticLog.shared.info("Motion — saved \(picked.count) selected windows as layer '\(layer.name)' [\(layer.summary)]")
         LayerBezel.shared.show(label: "Saved · \(layer.name)", index: 0, total: 1, allLabels: ["Saved · \(layer.name)"])
+    }
+
+    /// Turn the current per-display pluck into an ephemeral tab stack. The same
+    /// selection is published to `LiveTabGroupStore` continuously, so the
+    /// assistant and daemon agents can perform this exact action too.
+    private func createLiveTabsFromSelection(on targetScreen: NSScreen? = nil) {
+        let picked: [WindowEntry]
+        if let targetScreen {
+            let id = MotionPanel.screenID(targetScreen)
+            let ids = pickOrderByScreen[id] ?? []
+            picked = ids.compactMap { wid in eligible.first(where: { $0.wid == wid }) }
+        } else {
+            picked = orderedGroup()
+        }
+        guard picked.count >= 2 else { NSSound.beep(); return }
+        LiveTabGroupStore.shared.captureCandidateSelection(picked.map(\.wid))
+        guard let tabs = LiveTabGroupStore.shared.create(
+            windowIDs: picked.map(\.wid),
+            placement: .tile(.topLeft),
+            screen: targetScreen ?? activeSurveyScreen ?? screen(for: picked[0])
+        ) else { NSSound.beep(); return }
+        AppFeedback.shared.commitTactile()
+        LayerBezel.shared.show(
+            label: "Tabs · \(tabs.name)",
+            index: 0,
+            total: 1,
+            allLabels: ["Tabs · \(tabs.name)"]
+        )
+        onExit?()
     }
 
     // MARK: - Single-window operations (on the active window)
@@ -2451,6 +2488,10 @@ private final class MotionPanel: NSPanel {
                     guard let self, !self.selectionOnly else { return }
                     self.gatherInPlace(on: screen)
                 },
+                onStackSelection: { [weak self] in
+                    guard let self, !self.selectionOnly else { return }
+                    self.createLiveTabsFromSelection(on: screen)
+                },
                 onSwapFirstTwo: { [weak self] in
                     guard let self, !self.selectionOnly, let a = self.pickOrderByScreen[id]?[safe: 0],
                           let b = self.pickOrderByScreen[id]?[safe: 1] else { NSSound.beep(); return }
@@ -3441,6 +3482,10 @@ private final class MotionPanel: NSPanel {
     }
 
     private func updateStack() {
+        let groupMembers = orderedGroup()
+        if !selectionOnly {
+            LiveTabGroupStore.shared.captureCandidateSelection(groupMembers.map(\.wid))
+        }
         guard let stackHost else { return }
         if inPlaceMode {
             stackHost.isHidden = true
@@ -3448,8 +3493,6 @@ private final class MotionPanel: NSPanel {
         }
         stackHost.isHidden = false
         let activeWid = activeEntry.wid
-        let groupMembers = orderedGroup()                                   // picked set, in pick order
-
         // The minimap mirrors the gather plan: the picked windows in the exact
         // balanced grid they'll snap to. Shown only once you've picked something —
         // while you're just browsing there's nothing to plan, so it stays hidden.
@@ -3619,6 +3662,7 @@ private struct MotionLegend: View {
                     keyHint("⌘scroll", "zoom")
                     keyHint("⏎", "gather")
                     if groupCount > 0 { keyHint("⌘L", "save layer") }
+                    if groupCount > 1 { keyHint("⌘T", "tabs") }
                     keyHint("E", "collapse")
                     keyHint("esc", "cancel")
                     keyHint("Hyper+G", "in-place")
@@ -3630,6 +3674,7 @@ private struct MotionLegend: View {
                 keyHint("G", "grid")
                 keyHint("F", "fill")
                 if groupCount > 0 { keyHint("⌘L", "save layer") }
+                if groupCount > 1 { keyHint("⌘T", "tabs") }
                 keyHint("←↑→↓", "half · gap")
                 keyHint("⇧/⌥", "nudge/size")
                 keyHint("⏎", "confirm")
@@ -4047,6 +4092,7 @@ struct ExposeView: View {
     let tileWidth: CGFloat
     @ObservedObject var canvas: ExposeCanvas
     @ObservedObject var drag: HyperspaceDrag
+    @ObservedObject private var liveTabs = LiveTabGroupStore.shared
     var screenID: String = ""
     var bandHeight: CGFloat = 200
     var inPlace: Bool = false
@@ -4059,6 +4105,7 @@ struct ExposeView: View {
     var onDropLayers: ([UInt32], String) -> Void = { _, _ in }
     var onSwap: (UInt32, UInt32) -> Void = { _, _ in }
     var onGridSelection: () -> Void = {}
+    var onStackSelection: () -> Void = {}
     var onSwapFirstTwo: () -> Void = {}
     var onSwapWith: (UInt32, UInt32) -> Void = { _, _ in }
     var onFocusWindow: (UInt32) -> Void = { _ in }
@@ -4157,6 +4204,13 @@ struct ExposeView: View {
                 LatticesOverlayWatermarkPlacement()
             }
         }
+        .overlay(alignment: .bottomTrailing) {
+            if !inPlace, !drag.isPlacing, !liveTabGroupsOnScreen.isEmpty {
+                liveTabGroupShelf
+                    .padding(.trailing, 20)
+                    .padding(.bottom, 20)
+            }
+        }
         .overlay(alignment: .topTrailing) {
             if !drag.isPlacing {                            // the Place stage owns the screen
                 VStack(alignment: .trailing, spacing: 8) {
@@ -4184,6 +4238,135 @@ struct ExposeView: View {
         }
         .animation(HyperspaceMotion.inspector, value: drag.selectedLayer)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var liveTabGroupsOnScreen: [LiveTabGroup] {
+        let visibleWindowIDs = Set(clusters.flatMap(\.tiles).map(\.id))
+        return liveTabs.groups.filter { group in
+            group.members.contains { visibleWindowIDs.contains($0.id) }
+        }
+    }
+
+    private var liveTabGroupShelf: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 7) {
+                Image(systemName: "rectangle.stack.fill")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(HUDChrome.cyan)
+                Text("GROUPINGS")
+                    .font(Typo.monoBold(9))
+                    .tracking(1.05)
+                    .foregroundStyle(Palette.text)
+                Spacer(minLength: 8)
+                Text("\(liveTabGroupsOnScreen.count)")
+                    .font(Typo.monoBold(8))
+                    .foregroundStyle(Palette.textDim)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Color.white.opacity(0.06)))
+            }
+
+            ForEach(liveTabGroupsOnScreen) { group in
+                liveTabGroupShelfRow(group)
+            }
+        }
+        .padding(10)
+        .frame(width: 318)
+        .background(
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [HUDChrome.baseTop.opacity(0.96), HUDChrome.baseBottom.opacity(0.96)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 13, style: .continuous)
+                        .strokeBorder(HUDChrome.glassStrokeSoft, lineWidth: 0.75)
+                )
+        )
+        .shadow(color: Color.black.opacity(0.44), radius: 18, y: 8)
+    }
+
+    private func liveTabGroupShelfRow(_ group: LiveTabGroup) -> some View {
+        HStack(spacing: 8) {
+            Button {
+                liveTabs.activate(id: group.id)
+            } label: {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(group.id == liveTabs.activeGroupID ? HUDChrome.cyan : Palette.textMuted)
+                            .frame(width: 5, height: 5)
+                        Text(group.name)
+                            .font(Typo.heading(11))
+                            .foregroundStyle(Palette.text)
+                            .lineLimit(1)
+                        Text("\(group.members.count)")
+                            .font(Typo.monoBold(8))
+                            .foregroundStyle(Palette.textMuted)
+                    }
+                    HStack(spacing: 4) {
+                        ForEach(group.members.prefix(4)) { member in
+                            Text(member.app)
+                                .font(Typo.caption(8))
+                                .foregroundStyle(Palette.textMuted)
+                                .lineLimit(1)
+                        }
+                        if group.members.count > 4 {
+                            Text("+\(group.members.count - 4)")
+                                .font(Typo.monoBold(8))
+                                .foregroundStyle(Palette.textDim)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                liveTabs.toggleLayout(id: group.id)
+            } label: {
+                Image(systemName: group.isExpanded ? "rectangle.stack.fill" : "rectangle.split.2x1")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(group.isExpanded ? HUDChrome.cyan : Palette.textMuted)
+                    .frame(width: 26, height: 26)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.05)))
+            }
+            .buttonStyle(.plain)
+            .help(group.isExpanded ? "Return to tabs" : "Split inside the tab group's bounds")
+
+            Button {
+                liveTabs.toggleGuideVisibility(id: group.id)
+            } label: {
+                Image(systemName: group.isGuideVisible ? "pin.fill" : "pin.slash")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(group.isGuideVisible ? HUDChrome.cyan : Palette.textMuted)
+                    .frame(width: 26, height: 26)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.05)))
+            }
+            .buttonStyle(.plain)
+            .help(group.isGuideVisible ? "Hide the floating tab tools" : "Keep the floating tab tools visible")
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(group.id == liveTabs.activeGroupID ? HUDChrome.cyan.opacity(0.09) : Color.white.opacity(0.035))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .strokeBorder(group.id == liveTabs.activeGroupID ? HUDChrome.cyan.opacity(0.28) : HUDChrome.glassStrokeSoft, lineWidth: 0.6)
+                )
+        )
+        .contextMenu {
+            Button(role: .destructive) {
+                liveTabs.delete(id: group.id)
+            } label: {
+                Label("Ungroup", systemImage: "minus.circle")
+            }
+        }
     }
 
     // A one-line readout of the whole staged plan, so the grouped intent reads at a
@@ -6567,6 +6750,9 @@ struct ExposeView: View {
             }
             .disabled(pickCount < 2)
             if pickCount >= 2 {
+                Button { onStackSelection() } label: {
+                    Label("Create Tab Group from \(pickCount) Windows (⌘T)", systemImage: "rectangle.stack")
+                }
                 Button { onSwapFirstTwo() } label: {
                     Label("Swap First Two (S)", systemImage: "arrow.left.arrow.right")
                 }
@@ -6644,6 +6830,21 @@ struct ExposeView: View {
     // nothing real moves until ⏎/G, same as the rest of Hyperspace.
     @ViewBuilder
     private func tileMenu(_ t: Tile) -> some View {
+        let picked = t.pickSlot != nil
+        let pickCount = pickedWids.count
+        Button { onPick(t.id) } label: {
+            Label(picked ? "Remove from Selection" : "Add to Selection",
+                  systemImage: picked ? "minus.circle" : "plus.circle")
+        }
+        if pickCount >= 2 {
+            Button { onStackSelection() } label: {
+                Label("Create Tab Group from \(pickCount) Windows", systemImage: "rectangle.stack")
+            }
+            Button { onGridSelection() } label: {
+                Label("Arrange \(pickCount) Side by Side", systemImage: "rectangle.split.2x1")
+            }
+        }
+        Divider()
         Button { drag.beginPlacing(t.id, on: screenID) } label: {
             Label("Place…", systemImage: "rectangle.dashed")
         }
@@ -6658,8 +6859,6 @@ struct ExposeView: View {
                 }
             }
         }
-        Divider()
-        Button(t.pickSlot != nil ? "Remove from group" : "Add to group") { onPick(t.id) }
     }
 
     private func stagePlacement(_ wid: UInt32, _ gp: GridPlacement?) {

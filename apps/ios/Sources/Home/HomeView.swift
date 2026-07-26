@@ -19,6 +19,8 @@ import SwiftUI
 /// Sections are independent and previewable on their own; this file just
 /// composes them with the right paddings and spacings.
 struct HomeView: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
     let machines: [HomeMachine]
     let scenes: [HomeScene]
     let routines: [HomeRoutine]
@@ -72,7 +74,7 @@ struct HomeView: View {
                     connectedLayout
                 }
             }
-            if !voicePanelOpen {
+            if !voicePanelOpen && horizontalSizeClass != .compact {
                 voiceTrigger
                     .padding(.trailing, 18)
                     .padding(.bottom, 70) // sit above the HomeBottomBar
@@ -131,7 +133,8 @@ struct HomeView: View {
             HomeTopBar(
                 machines: machines,
                 agentsRunning: agentsRunning,
-                onSettings: onSettings
+                onSettings: onSettings,
+                onPillTap: onEnterDeck
             )
 
             ScrollView {
@@ -154,8 +157,8 @@ struct HomeView: View {
                         onBroadcast: onBroadcast
                     )
                 }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 18)
+                .padding(.horizontal, horizontalSizeClass == .compact ? 14 : 24)
+                .padding(.vertical, horizontalSizeClass == .compact ? 12 : 18)
                 .frame(maxWidth: .infinity)
             }
 
@@ -179,7 +182,11 @@ struct HomeView: View {
             HomeCloudStrip(cloud: cloud)
             HomeBottomBar(
                 agentState: foregroundAgentState,
-                telemetry: bottomTelemetry
+                telemetry: bottomTelemetry,
+                onCommand: foregroundMachine.map { machine in
+                    { onEnterDeck?(machine) }
+                },
+                onVoice: onVoiceStart
             )
         }
         .animation(.easeInOut(duration: 0.22), value: voicePanelOpen)

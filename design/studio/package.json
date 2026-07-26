@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "next dev --port 3050",
     "build": "next build",
+    "build:embed": "bun run build && bun scripts/export-deck-builder.ts",
+    "export:deck-builder": "bun scripts/export-deck-builder.ts",
     "start": "next start --port 3050",
     "typecheck": "tsc --noEmit"
   },

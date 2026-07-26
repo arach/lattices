@@ -7,7 +7,11 @@ import Foundation
 enum OmniResultKind: String {
     case window
     case project
+    case app
     case session
+    case layer
+    case group
+    case action
     case process
     case ocrContent
 }
@@ -26,7 +30,11 @@ struct OmniResult: Identifiable {
         switch kind {
         case .window:     return "Windows"
         case .project:    return "Projects"
+        case .app:        return "Applications"
         case .session:    return "Sessions"
+        case .layer:      return "Layers"
+        case .group:      return "Groups"
+        case .action:     return "App"
         case .process:    return "Processes"
         case .ocrContent: return "Screen Text"
         }
@@ -87,10 +95,10 @@ final class OmniSearchState: ObservableObject {
                     return
                 }
                 if q.isEmpty {
-                    self.results = []
+                    self.results = BrowseMenu.build()   // no-typing browse menu (was the palette)
                     self.refreshSummary()
                 } else if q.count == 1 {
-                    self.results = []          // require ≥2 chars — a single letter matches too much
+                    self.quickSearch(q)        // single char: window index only, no debounce
                 } else {
                     self.fullSearchTask = DispatchWorkItem { [weak self] in
                         self?.search(q)
@@ -218,6 +226,44 @@ final class OmniSearchState: ObservableObject {
             }
         }
 
+        // ── Applications: launch or activate by name ──
+        for match in AppIndex.shared.match(q, limit: 5) {
+            let entry = match.entry
+            let running = match.isRunning
+            all.append(OmniResult(
+                kind: .app,
+                title: entry.name,
+                subtitle: running ? "Running — bring to front" : "Launch application",
+                icon: running ? "app.badge" : "arrow.up.forward.app",
+                score: match.score
+            ) {
+                AppIndex.shared.launch(entry)
+            })
+        }
+
+        // ── tmux sessions: focus/attach by session name ──
+        let terminal = Preferences.shared.terminal
+        let sessionMatches = TmuxModel.shared.sessions
+            .compactMap { session -> (Int, TmuxSession)? in
+                let score = FuzzyScore.score(query: q, candidate: session.name)
+                return score > 0 ? (score, session) : nil
+            }
+            .sorted { $0.0 > $1.0 }
+            .prefix(5)
+        for (score, session) in sessionMatches {
+            let name = session.name
+            all.append(OmniResult(
+                kind: .session,
+                title: name,
+                subtitle: "\(session.panes.count) pane\(session.panes.count == 1 ? "" : "s")"
+                    + (session.attached ? " · attached" : ""),
+                icon: "terminal",
+                score: score
+            ) {
+                WindowTiler.navigateToWindow(session: name, terminal: terminal)
+            })
+        }
+
         all.sort { $0.score > $1.score }
         results = all
         selectedIndex = 0
@@ -226,13 +272,9 @@ final class OmniSearchState: ObservableObject {
     // MARK: - Project scoring (local — projects aren't windows)
 
     private func scoreProjectMatch(_ query: String, name: String, path: String) -> Int {
-        let lowerName = name.lowercased()
-        let lowerPath = path.lowercased()
-        if lowerName == query { return 100 }
-        if lowerName.hasPrefix(query) { return 80 }
-        if lowerName.contains(query) { return 60 }
-        if lowerPath.contains(query) { return 40 }
-        return 0
+        let nameScore = FuzzyScore.score(query: query, candidate: name)
+        if nameScore > 0 { return nameScore }
+        return path.lowercased().contains(query) ? 40 : 0
     }
 
     // MARK: - Navigation
@@ -241,11 +283,6 @@ final class OmniSearchState: ObservableObject {
         if commandMode { command.moveSelection(delta); return }
         guard !results.isEmpty else { return }
         selectedIndex = max(0, min(results.count - 1, selectedIndex + delta))
-    }
-
-    func activateSelected() {
-        guard selectedIndex >= 0, selectedIndex < results.count else { return }
-        results[selectedIndex].action()
     }
 
     // MARK: - Activity Summary
@@ -293,7 +330,7 @@ final class OmniSearchState: ObservableObject {
     /// Grouped results for display
     var groupedResults: [(String, [OmniResult])] {
         let groups = Dictionary(grouping: results) { $0.groupLabel }
-        let order: [String] = ["Windows", "Projects", "Sessions", "Processes", "Screen Text"]
+        let order: [String] = ["Windows", "Projects", "Applications", "Sessions", "Layers", "Groups", "App", "Processes", "Screen Text"]
         return order.compactMap { key in
             guard let items = groups[key], !items.isEmpty else { return nil }
             return (key, items)

@@ -12,7 +12,7 @@ matches it to an intent, and executes it.
 ## Quick start
 
 1. Install Vox (provides mic + transcription)
-2. Connect an Assistant provider in **Settings > AI**
+2. Optionally connect a voice provider in **Settings > Voice** for provider-backed interpretation and speech services
 3. Press **Hyper+D** to open the voice command window
 4. Hold **Option** and speak a command
 5. Release **Option** — Lattices transcribes and executes
@@ -106,7 +106,7 @@ Trigger an OCR scan of visible windows.
 
 ## AI advisor
 
-Every voice command can ask the selected Assistant provider for
+Every voice command can ask the selected voice provider for
 commentary and follow-up suggestions in the **AI corner** (bottom-right
 of the voice command window).
 
@@ -119,7 +119,7 @@ suggestion button.
 
 1. You speak a command
 2. Local intent matching runs immediately (fast, free)
-3. The selected Assistant provider runs in parallel when connected
+3. The selected voice provider runs in parallel when connected
 4. If the advisor suggests something, a button appears in the AI corner
 5. Click the suggestion to execute it
 6. If you engage with a suggestion that the local matcher missed,
@@ -146,13 +146,14 @@ LATTICES_VOICE_MODEL=llama-3.1-8b-instant
 
 ## Configuration
 
-Open **Settings > AI** to configure:
+Open **Settings > AI** to inspect Scout chat status, and **Settings > Voice**
+to configure the optional voice provider:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| Assistant provider | OpenAI Codex | Provider used by the in-app chat and provider-backed voice advisor. Supports OAuth providers such as GitHub Copilot and OpenAI Codex plus API-key providers. |
-| Pi runtime | Auto-detected | Installs or refreshes the provider runtime used by the in-app assistant. |
-| Provider credentials | Not authenticated | Sign in with OAuth or save an API key locally for the selected provider. |
+| Workspace chat | Scout | Uses the existing local Scout broker and Scout-owned authorization; Lattices does not store a separate chat key. |
+| Voice provider | OpenAI | Optional direct HudsonAI provider used only by provider-backed voice interpretation and speech services. OpenAI, Anthropic, and OpenRouter are supported. |
+| Voice provider credentials | Not authenticated | Save an optional voice-only API key locally in the macOS Keychain. |
 
 ## Layout
 
@@ -215,7 +216,7 @@ mappings and phrase pattern improvements.
 
 - **Vox** — provides microphone access and
   speech-to-text transcription
-- **Assistant provider** — enables provider-backed AI suggestions from
-  **Settings > AI** (optional, voice commands still work without it)
+- **Voice provider** — enables provider-backed AI suggestions from
+  **Settings > Voice** (optional, voice commands still work without it)
 - **Accessibility** permission — for window tiling and focus
 - **Screen Recording** permission — for window discovery

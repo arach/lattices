@@ -15,7 +15,7 @@ final class UnifiedCommandBarState: ObservableObject {
 
     /// What the expansion panel under the bar should render. `.none` keeps the
     /// bar slim — detail is revealed only when there's something to show.
-    enum Detail: Equatable { case none, search, command, voice, welcome, nlCommand }
+    enum Detail: Equatable { case none, search, command, voice, welcome, browse, nlCommand }
 
     /// The single text-field binding. Forwarded verbatim into the composed
     /// engine, which routes a leading "/" into command mode (the visible trigger)
@@ -98,8 +98,11 @@ final class UnifiedCommandBarState: ObservableObject {
             // (↑/↓ navigate, ⇥ complete, ↵ run).
             return search.command.suggestions.isEmpty ? .none : .command
         }
-        // Empty bar → a short welcome.
-        if query.trimmingCharacters(in: .whitespaces).isEmpty { return .welcome }
+        // Empty bar → the browse menu (no-typing actions), or a short welcome
+        // when there's nothing to browse.
+        if query.trimmingCharacters(in: .whitespaces).isEmpty {
+            return search.results.isEmpty ? .welcome : .browse
+        }
         // Plain text that reads as an actionable command → preview it; else search.
         if nlMatch != nil { return .nlCommand }
         return search.results.isEmpty ? .none : .search

@@ -206,7 +206,14 @@ final class CommandBarState: ObservableObject {
         for p in TilePosition.allCases where positionMatches(p, prefix) {
             addPlacement(.tile(p), p.label, p.arrowGlyph)
         }
-        for cmd in commands where commandMatches(cmd, prefix) { addCommand(cmd) }
+        // Fuzzy-ranked commands — best match first instead of catalog order.
+        let ranked = commands
+            .compactMap { cmd -> (Int, BarCommand)? in
+                let s = commandScore(cmd, prefix)
+                return s > 0 ? (s, cmd) : nil
+            }
+            .sorted { $0.0 > $1.0 }
+        for (_, cmd) in ranked { addCommand(cmd) }
         return out
     }
 
@@ -471,9 +478,24 @@ final class CommandBarState: ObservableObject {
 
         default:
             if slot.name == "project" {
-                return ProjectScanner.shared.projects.map(\.name)
+                let projects = ProjectScanner.shared.projects.map(\.name)
                     .filter { f.isEmpty || $0.lowercased().contains(f) }
                     .map { SlotValue(label: $0, detail: "project", glyph: "folder", value: .string($0), spec: nil) }
+                if !projects.isEmpty { return projects }
+                // No scanned project matched — suggest installed/running apps,
+                // then echo the typed text so LaunchIntent's app fallback
+                // stays reachable ("/launch chrome" used to dead-end here).
+                if !f.isEmpty {
+                    let apps = AppIndex.shared.match(f, limit: 5).map {
+                        SlotValue(label: $0.entry.name,
+                                  detail: $0.isRunning ? "app · running" : "app",
+                                  glyph: "arrow.up.forward.app",
+                                  value: .string($0.entry.name), spec: nil)
+                    }
+                    if !apps.isEmpty { return apps }
+                }
+                guard !raw.isEmpty else { return [] }
+                return [SlotValue(label: raw, detail: slot.name, glyph: "text.cursor", value: .string(raw), spec: nil)]
             }
             // query / layer / freeform string — echo what's typed.
             guard !raw.isEmpty else { return [] }
@@ -539,8 +561,9 @@ final class CommandBarState: ObservableObject {
 
     // MARK: - Matching helpers
 
-    private func commandMatches(_ cmd: BarCommand, _ prefix: String) -> Bool {
-        cmd.keywords.contains { $0.hasPrefix(prefix) || $0.contains(prefix) }
+    /// Best fuzzy score across the command's keywords (name, title, aliases).
+    private func commandScore(_ cmd: BarCommand, _ prefix: String) -> Int {
+        cmd.keywords.map { FuzzyScore.score(query: prefix, candidate: $0) }.max() ?? 0
     }
 
     private func positionMatches(_ p: TilePosition, _ q: String) -> Bool {

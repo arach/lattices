@@ -18,18 +18,6 @@ enum HudsonKitSwitch {
         UserDefaults.standard.bool(forKey: "useHudsonKit")
     }
 
-    /// Route the workspace-assistant chat through HudsonKit's `HudAIClient`
-    /// (with pi as a `HudAIProviderAdapter`) instead of driving `PiRpcRuntime`
-    /// directly. Independent of the voice switch so each surface can be cut over
-    /// on its own.
-    ///
-    /// Canonical path for the in-app chat: the HudAIClient route gives a truly
-    /// cancellable stream (stop/steer), so it's on by default. Opt out at runtime:
-    /// `defaults write dev.lattices.app useHudAIChat -bool NO`
-    static var useHudAIChat: Bool {
-        UserDefaults.standard.object(forKey: "useHudAIChat") as? Bool ?? true
-    }
-
     /// Whether the HudsonKit voice surface is compiled in
     /// (the `HudsonVoice` product only exists when the app is built with
     /// `HUDSONKIT_WITH_VOICE=1`).

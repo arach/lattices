@@ -18,6 +18,7 @@ ENTITLEMENTS="$APP_DIR/Lattices.entitlements"
 BUNDLE_ID="${LATTICES_DEV_BUNDLE_ID:-dev.lattices.app.dev}"
 ICON="$ROOT/assets/AppIcon.icns"
 TAP_SOUND="$APP_DIR/Resources/tap.wav"
+DECK_BUILDER_RESOURCES="$APP_DIR/Resources/DeckBuilder"
 VERSION="$(node -p "require('$ROOT/package.json').version" 2>/dev/null || echo '0.1.0')"
 GIT_REVISION="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
 BUILD_TIMESTAMP="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
@@ -184,13 +185,18 @@ write_info_plist() {
     <key>LatticesBuildTimestamp</key>
     <string>$BUILD_TIMESTAMP</string>
     <key>LSMinimumSystemVersion</key>
-    <string>13.0</string>
+    <string>26.0</string>
     <key>LSUIElement</key>
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSMicrophoneUsageDescription</key>
     <string>Lattices uses the microphone for Hudson Voice dictation and voice commands.</string>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
     <key>NSSupportsAutomaticTermination</key>
     <true/>
 </dict>
@@ -215,6 +221,9 @@ cmd_build() {
     fi
     if [ -f "$TAP_SOUND" ]; then
         cp "$TAP_SOUND" "$RESOURCES_DIR/tap.wav"
+    fi
+    if [ -d "$DECK_BUILDER_RESOURCES" ]; then
+        cp -R "$DECK_BUILDER_RESOURCES" "$RESOURCES_DIR/DeckBuilder"
     fi
     write_info_plist
     # Re-sign so TCC permissions persist across rebuilds

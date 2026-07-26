@@ -22,7 +22,9 @@ class InventoryManager: ObservableObject {
         if let groups = WorkspaceManager.shared.config?.groups {
             for group in groups {
                 for tab in group.tabs {
-                    managed.insert(WorkspaceManager.sessionName(for: tab.path))
+                    if let path = tab.path {
+                        managed.insert(WorkspaceManager.sessionName(for: path))
+                    }
                 }
             }
         }

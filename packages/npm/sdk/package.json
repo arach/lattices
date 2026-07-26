@@ -1,6 +1,6 @@
 {
   "name": "@lattices/sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Typed SDK modules for Lattices desktop automation",
   "type": "module",
   "exports": {
@@ -38,8 +38,5 @@
   "homepage": "https://github.com/arach/lattices",
   "engines": {
     "node": ">=18"
-  },
-  "dependencies": {
-    "zod": "^3.25.76"
   }
 }

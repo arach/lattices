@@ -81,3 +81,4 @@ apps/ios/LatticesCompanion.xcodeproj/project.xcworkspace/xcuserdata/
 # Generated local media/review artifacts
 artifacts/
 apps/artifacts/
+apps/ios/.artifacts/

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { execFileSync, execSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, chmodSync, createWriteStream, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, chmodSync, createWriteStream, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { get } from "node:https";
@@ -18,6 +18,7 @@ const entitlementsPath = resolve(__dirname, "../apps/mac/Lattices.entitlements")
 const resourcesDir = resolve(bundlePath, "Contents/Resources");
 const iconPath = resolve(__dirname, "../assets/AppIcon.icns");
 const tapSoundPath = resolve(__dirname, "../apps/mac/Resources/tap.wav");
+const deckBuilderResourcesPath = resolve(__dirname, "../apps/mac/Resources/DeckBuilder");
 
 const REPO = "arach/lattices";
 const RELEASE_APP_ASSET_NAMES = ["Lattices.dmg"];
@@ -392,13 +393,18 @@ function writeInfoPlist(metadata: BundleBuildMetadata = {}): void {
     <key>CFBundleShortVersionString</key>
     <string>${version}</string>
 ${buildMetadata}    <key>LSMinimumSystemVersion</key>
-    <string>13.0</string>
+    <string>26.0</string>
     <key>LSUIElement</key>
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSMicrophoneUsageDescription</key>
     <string>Lattices uses the microphone for Hudson Voice dictation and voice commands.</string>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
     <key>NSSupportsAutomaticTermination</key>
     <true/>
 </dict>
@@ -414,6 +420,11 @@ function syncBundleResources(): void {
   }
   if (existsSync(tapSoundPath)) {
     execSync(`cp '${tapSoundPath}' '${resolve(resourcesDir, "tap.wav")}'`);
+  }
+  if (existsSync(deckBuilderResourcesPath)) {
+    const bundledDeckBuilderPath = resolve(resourcesDir, "DeckBuilder");
+    rmSync(bundledDeckBuilderPath, { recursive: true, force: true });
+    cpSync(deckBuilderResourcesPath, bundledDeckBuilderPath, { recursive: true });
   }
   // Bundle the assistant knowledge base so the in-app chat assistant can load it
   // in shipped builds (dev builds fall back to the repo docs/ path).
