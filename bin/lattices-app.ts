@@ -400,6 +400,11 @@ ${buildMetadata}    <key>LSMinimumSystemVersion</key>
     <true/>
     <key>NSMicrophoneUsageDescription</key>
     <string>Lattices uses the microphone for Hudson Voice dictation and voice commands.</string>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
     <key>NSSupportsAutomaticTermination</key>
     <true/>
 </dict>

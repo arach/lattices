@@ -32,6 +32,10 @@ if [ "$SKIP_SIGN" != "1" ]; then
 fi
 
 echo "==> Building Lattices v$VERSION (release)..."
+# Resolve the same declarative feature flags used by the dev and package
+# builders. In particular, this enables Hudson Voice when apps/mac/build.json
+# declares the voice feature.
+eval "$(bun "$ROOT/bin/lattices-build-env.ts" shell)"
 cd "$APP_DIR"
 # Stream the full build (tee) so CI surfaces real compiler errors; on failure,
 # re-print just the error: lines for a quick scan. (Previously `| tail -3`
@@ -74,50 +78,18 @@ if [ -d "$DECK_BUILDER_RESOURCES" ]; then
     cp -R "$DECK_BUILDER_RESOURCES" "$BUNDLE/Contents/Resources/DeckBuilder"
 fi
 
-# Info.plist — based on existing, with version injected
-cat > "$BUNDLE/Contents/Info.plist" << PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleName</key>
-    <string>Lattices</string>
-    <key>CFBundleDisplayName</key>
-    <string>Lattices</string>
-    <key>CFBundleIdentifier</key>
-    <string>dev.lattices.app</string>
-    <key>CFBundleVersion</key>
-    <string>$VERSION</string>
-    <key>CFBundleShortVersionString</key>
-    <string>$VERSION</string>
-    <key>CFBundleExecutable</key>
-    <string>Lattices</string>
-    <key>CFBundleIconFile</key>
-    <string>AppIcon</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleURLTypes</key>
-    <array>
-        <dict>
-            <key>CFBundleURLName</key>
-            <string>dev.lattices.app</string>
-            <key>CFBundleURLSchemes</key>
-            <array>
-                <string>lattices</string>
-            </array>
-        </dict>
-    </array>
-    <key>LSMinimumSystemVersion</key>
-    <string>13.0</string>
-    <key>LSUIElement</key>
-    <true/>
-    <key>NSHighResolutionCapable</key>
-    <true/>
-    <key>NSSupportsAutomaticTermination</key>
-    <true/>
-</dict>
-</plist>
-PLIST
+# Keep privacy and transport declarations in one canonical plist, then inject
+# the requested release version. This prevents release-only drift from the dev
+# bundle (for example a missing microphone usage description).
+cp "$APP_DIR/Info.plist" "$BUNDLE/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$BUNDLE/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$BUNDLE/Contents/Info.plist"
+
+ASSISTANT_KNOWLEDGE="$ROOT/docs/assistant-knowledge.md"
+if [ -f "$ASSISTANT_KNOWLEDGE" ]; then
+    mkdir -p "$BUNDLE/Contents/Resources/docs"
+    cp "$ASSISTANT_KNOWLEDGE" "$BUNDLE/Contents/Resources/docs/assistant-knowledge.md"
+fi
 
 echo "    App bundle created at $BUNDLE"
 
