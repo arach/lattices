@@ -393,7 +393,7 @@ function writeInfoPlist(metadata: BundleBuildMetadata = {}): void {
     <key>CFBundleShortVersionString</key>
     <string>${version}</string>
 ${buildMetadata}    <key>LSMinimumSystemVersion</key>
-    <string>13.0</string>
+    <string>26.0</string>
     <key>LSUIElement</key>
     <true/>
     <key>NSHighResolutionCapable</key>
