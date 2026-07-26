@@ -35,12 +35,6 @@ struct PermissionsAssistantView: View {
         .onAppear {
             PermissionChecker.shared.check()
         }
-        .task {
-            while !Task.isCancelled {
-                PermissionChecker.shared.check()
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
-            }
-        }
     }
 
     // MARK: - Sidebar

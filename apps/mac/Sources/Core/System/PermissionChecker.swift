@@ -14,6 +14,7 @@ final class PermissionChecker: ObservableObject {
     @Published private(set) var lastCheckedAt: Date?
 
     private var pollTimer: Timer?
+    private var pollDeadline: Date?
     private var burstRefreshTask: Task<Void, Never>?
     private var hasLoggedInitial = false
     private var screenProbeInFlight = false
@@ -21,6 +22,7 @@ final class PermissionChecker: ObservableObject {
     private var screenProbeCooldownUntil: Date?
     private static let deniedScreenProbeCooldown: TimeInterval = 20
     private static let successfulScreenProbeTTL: TimeInterval = 8
+    private static let permissionPollingDuration: TimeInterval = 30
     private static let microphoneUsageDescriptionKey = "NSMicrophoneUsageDescription"
 
     var allGranted: Bool { accessibility && screenRecording && microphoneGranted }
@@ -73,9 +75,15 @@ final class PermissionChecker: ObservableObject {
             diag.info("Permissions: Accessibility \(ax ? "✓" : "✗"), Screen Recording \(sr ? "✓" : "✗"), Microphone \(Self.describe(mic))")
         }
 
-        accessibility = ax
-        screenRecording = sr
-        microphone = mic
+        if accessibility != ax {
+            accessibility = ax
+        }
+        if screenRecording != sr {
+            screenRecording = sr
+        }
+        if microphone != mic {
+            microphone = mic
+        }
 
         // Only poll after an intentional permission request. A passive launch-time
         // check should not keep nudging macOS privacy state in the background.
@@ -340,12 +348,19 @@ final class PermissionChecker: ObservableObject {
 
     // MARK: - Polling
 
-    /// Poll every second to detect permission changes made in System Settings.
+    /// Poll briefly after an explicit request so a System Settings toggle is
+    /// reflected quickly without leaving a permanent background timer behind.
     private func startPolling() {
         guard pollTimer == nil else { return }
+        pollDeadline = Date().addingTimeInterval(Self.permissionPollingDuration)
         pollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             DispatchQueue.main.async {
-                self?.check()
+                guard let self else { return }
+                guard let deadline = self.pollDeadline, Date() < deadline else {
+                    self.stopPolling()
+                    return
+                }
+                self.check()
             }
         }
     }
@@ -460,6 +475,7 @@ final class PermissionChecker: ObservableObject {
     private func stopPolling() {
         pollTimer?.invalidate()
         pollTimer = nil
+        pollDeadline = nil
         burstRefreshTask?.cancel()
         burstRefreshTask = nil
         refreshInFlight = false

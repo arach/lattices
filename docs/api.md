@@ -1256,6 +1256,10 @@ sources at an app-owned folder such as `~/Library/Application Support/...`.
 | `deck.manifest` | read | Shared companion deck manifest |
 | `deck.snapshot` | read | Current companion deck runtime snapshot |
 | `deck.perform` | write | Perform a companion deck action |
+| `focus.status` | read | Check whether Focus Mode is active |
+| `focus.enter` | write | Spotlight the frontmost window |
+| `focus.exit` | write | Exit Focus Mode and restore the window |
+| `focus.toggle` | write | Toggle Focus Mode for the frontmost window |
 | `daemon.status` | read | Health check and stats |
 | `api.schema` | read | Full API schema for self-discovery |
 | `diagnostics.list` | read | Recent diagnostic entries |
@@ -1311,6 +1315,22 @@ Example:
   }
 }
 ```
+
+#### `focus.status`, `focus.enter`, `focus.exit`, `focus.toggle`
+
+Control the same reversible Focus Mode exposed through the **Hyper+Z** chord
+and command palette. `focus.enter` targets the currently frontmost window;
+`focus.exit` restores the exact frame captured on entry.
+
+```bash
+lattices call focus.enter
+lattices call focus.status
+lattices call focus.exit
+```
+
+Each method returns the resulting `active` state. Mutating methods also return
+`ok`; `focus.enter` returns `ok: false` when there is no eligible frontmost
+window.
 
 #### `daemon.status`
 

@@ -165,6 +165,10 @@ enum BrowseMenu {
                        subtitle: "View logs, events, and diagnostics", icon: "list.bullet.rectangle", score: 0) {
                 ScreenMapWindowController.shared.showPage(.activity)
             },
+            OmniResult(kind: .action, title: "Toggle Focus Mode",
+                       subtitle: "Spotlight the frontmost window (Hyper+Z)", icon: "viewfinder", score: 0) {
+                FocusModeController.shared.toggle()
+            },
             OmniResult(kind: .action, title: "Settings",
                        subtitle: "Terminal, scan root, keyboard, shortcuts, voice, and OCR", icon: "gearshape", score: 0) {
                 SettingsWindowController.shared.show()
