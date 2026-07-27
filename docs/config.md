@@ -139,6 +139,9 @@ Run `lattices init` in your project directory to generate a starter
 | `lattices groups`            | List all tab groups with status                   |
 | `lattices tab <group> [tab]` | Switch tab within a group (by label or index)     |
 | `lattices app`               | Launch the menu bar companion app                 |
+| `lattices app install`       | Register launch-at-login and start now            |
+| `lattices app login status`  | Show launch-at-login registration                 |
+| `lattices app login disable` | Disable launch-at-login                           |
 | `lattices app update`        | Download the latest menu bar app and relaunch     |
 | `lattices app build`         | Rebuild the menu bar app from source              |
 | `lattices app restart`       | Rebuild and relaunch the menu bar app             |
@@ -159,6 +162,9 @@ Run `lattices init` in your project directory to generate a starter
 | `lattices scan search <query>` | Search indexed screen text                       |
 | `lattices diag [limit]`       | Show recent diagnostic entries                   |
 | `lattices app`               | Launch the menu bar companion app                 |
+| `lattices app install`       | Register launch-at-login and start now            |
+| `lattices app login status`  | Show launch-at-login registration                 |
+| `lattices app login disable` | Disable launch-at-login                           |
 | `lattices app update`        | Download the latest menu bar app and relaunch     |
 | `lattices app build`         | Rebuild the menu bar app from source              |
 | `lattices app restart`       | Rebuild and relaunch the menu bar app             |
