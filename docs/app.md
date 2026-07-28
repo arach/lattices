@@ -216,6 +216,16 @@ Rules live in `~/.lattices/keyboard-remaps.json`, and the Settings toggle
 can turn the layer off. Keyboard remaps require Accessibility permission
 because they use a local event tap.
 
+If Caps Lock-to-Hyper behaves intermittently, open **Settings > Keyboard** and
+choose **Start Trace**. Reproduce the problem, stop the trace, then choose
+**Reveal Trace**. The bounded JSONL file at
+`~/.lattices/hyper-key-trace.jsonl` records only Caps Lock/F18 events, Hyper
+layer state, event-tap lifecycle, HID mapping transitions, and anonymous
+keyboard-event counts. When macOS Secure Event Input blocks the pipeline, the
+trace also records its owning PID and app identity. It does not record
+characters, key codes for general typing, or source applications. Recording
+stays enabled across one or more app relaunches until explicitly stopped.
+
 ### Companion
 
 Shows the secure local bridge status, Mac bridge fingerprint, supported

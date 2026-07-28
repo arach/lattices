@@ -1,4 +1,5 @@
 import AppKit
+import Carbon
 import Combine
 import CoreGraphics
 import IOKit.hidsystem
@@ -26,6 +27,7 @@ final class KeyboardRemapController: ObservableObject {
     private var lastCapsLayerStaleLogAt: CFAbsoluteTime = 0
     private var pressedKeyCodes: [Int64: CFAbsoluteTime] = [:]
     private let capsLockTransport = CapsLockHIDTransportController()
+    private let hyperTrace = HyperKeyDiagnosticRecorder.shared
     private let breaker = EventTapBreaker(label: "KeyboardRemap")
     private let budgetMeter = TapBudgetMeter(label: "KeyboardRemap")
     private let maxCapsLayerIdleDuration: TimeInterval = 2.0
@@ -63,6 +65,7 @@ final class KeyboardRemapController: ObservableObject {
             refresh()
         }
         DiagnosticLog.shared.warn("KeyboardRemap: manual Caps Lock recovery \(cleared ? "succeeded" : "failed")")
+        traceState("recovery.manual", fields: ["latchCleared": cleared])
         return cleared
     }
 
@@ -71,7 +74,44 @@ final class KeyboardRemapController: ObservableObject {
         refresh()
     }
 
+    func captureHyperDiagnosticSnapshot(reason: String) {
+        dispatchPrecondition(condition: .onQueue(.main))
+        var fields = capsLockTransport.diagnosticSnapshot()
+        fields["reason"] = reason
+        fields.merge(SecureEventInputDiagnostics.snapshot().traceFields) { _, new in new }
+        fields["accessibility"] = PermissionChecker.shared.accessibility
+        fields["remapsEnabled"] = Preferences.shared.keyboardRemapsEnabled
+        traceState("diagnostic.snapshot", fields: fields)
+    }
+
+    /// Schedule a diagnostic keyboard sequence through IOHIDSystem rather than
+    /// CGEvent posting. Synthetic CG events are intentionally ignored by
+    /// Carbon global hotkeys, so they cannot validate the full remap path.
+    /// This posts direct Hyper+key as a control, then F18+key to exercise the
+    /// same transport event the Caps Lock HID mapping produces.
+    func scheduleEndToEndDiagnostic(keyCode: UInt16) -> (secureInput: Bool, postAccess: Int) {
+        dispatchPrecondition(condition: .onQueue(.main))
+        let secureInputSnapshot = SecureEventInputDiagnostics.snapshot()
+        let secureInput = secureInputSnapshot.enabled
+        let access = Int(IOHIDCheckAccess(kIOHIDRequestTypePostEvent).rawValue)
+        let owner = secureInputSnapshot.ownerDescription.map { " owner=\($0)" } ?? ""
+        DiagnosticLog.shared.info(
+            "HyperE2E: scheduled keyCode=\(keyCode) secureInput=\(secureInput) hidPostAccess=\(access)\(owner)"
+        )
+
+        guard !secureInput else {
+            DiagnosticLog.shared.warn("HyperE2E: blocked by Secure Event Input")
+            return (secureInput, access)
+        }
+
+        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.3) {
+            Self.performEndToEndDiagnostic(keyCode: keyCode)
+        }
+        return (secureInput, access)
+    }
+
     func stop() {
+        traceState("controller.stop")
         removeEventTap()
         capsLockTransport.disable()
         capsLockTransportActive = capsLockTransport.isActive
@@ -89,6 +129,7 @@ final class KeyboardRemapController: ObservableObject {
             refresh()
         }
         DiagnosticLog.shared.warn("KeyboardRemap: reset for \(reason)")
+        traceState("controller.reset", fields: ["reason": reason])
     }
 
     private func installObserversIfNeeded() {
@@ -112,6 +153,11 @@ final class KeyboardRemapController: ObservableObject {
     }
 
     private func refresh() {
+        hyperTrace.record(kind: "controller.refresh", fields: [
+            "enabled": Preferences.shared.keyboardRemapsEnabled,
+            "accessibility": PermissionChecker.shared.accessibility,
+            "tapInstalled": eventTap != nil,
+        ])
         guard Preferences.shared.keyboardRemapsEnabled,
               PermissionChecker.shared.accessibility else {
             removeEventTap()
@@ -166,6 +212,7 @@ final class KeyboardRemapController: ObservableObject {
 
         guard let tap else {
             DiagnosticLog.shared.warn("KeyboardRemap: failed to install keyboard event tap")
+            hyperTrace.record(kind: "tap.install.failed")
             return
         }
 
@@ -183,9 +230,11 @@ final class KeyboardRemapController: ObservableObject {
             CGEvent.tapEnable(tap: tap, enable: true)
         }
         DiagnosticLog.shared.info("KeyboardRemap: keyboard event tap installed (\(installedLabel))")
+        hyperTrace.record(kind: "tap.installed", fields: ["location": installedLabel])
     }
 
     private func removeEventTap() {
+        hyperTrace.record(kind: "tap.removed", fields: ["wasInstalled": eventTap != nil])
         if let source = runLoopSource {
             EventTapThread.shared.remove(source: source)
         }
@@ -216,6 +265,7 @@ final class KeyboardRemapController: ObservableObject {
             // re-enabling immediately and getting killed again.
             clearCapsLayer()
             breaker.recordTrip()
+            traceState("tap.disabled.timeout")
             return Unmanaged.passUnretained(event)
         }
         if type == .tapDisabledByUserInput {
@@ -224,6 +274,7 @@ final class KeyboardRemapController: ObservableObject {
             if let eventTap {
                 CGEvent.tapEnable(tap: eventTap, enable: true)
             }
+            traceState("tap.disabled.userInput")
             return Unmanaged.passUnretained(event)
         }
 
@@ -231,8 +282,18 @@ final class KeyboardRemapController: ObservableObject {
             return Unmanaged.passUnretained(event)
         }
 
+        hyperTrace.observeInputEvent(type: eventTypeName(type))
+
+        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+        let traceThisEvent = capsLayerActive
+            || keyCode == CapsLockHIDTransportController.transportKeyCode
+            || keyCode == KeyboardRemapKey.capsLock.keyCode
+        if traceThisEvent {
+            traceEvent(type: type, event: event, phase: "received")
+        }
+
         expireStalePressedKeys(now: started)
-        updatePressedKeys(type: type, keyCode: event.getIntegerValueField(.keyboardEventKeycode), now: started)
+        updatePressedKeys(type: type, keyCode: keyCode, now: started)
         if shouldTriggerEmergencyReset(type: type, event: event) {
             emergencyClear(now: started)
             InputCaptureResetCenter.reset(reason: "keyboard emergency chord")
@@ -240,6 +301,7 @@ final class KeyboardRemapController: ObservableObject {
         }
 
         if started < bypassUntil {
+            if traceThisEvent { traceEvent(type: type, event: event, phase: "bypassed") }
             return Unmanaged.passUnretained(event)
         }
 
@@ -249,7 +311,6 @@ final class KeyboardRemapController: ObservableObject {
             return Unmanaged.passUnretained(event)
         }
 
-        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         if capsLockTransport.isActive,
            keyCode == CapsLockHIDTransportController.transportKeyCode {
             return handleCapsLockTransportEvent(type: type, event: event, rule: rule)
@@ -273,10 +334,12 @@ final class KeyboardRemapController: ObservableObject {
             capsUsedAsModifier = true
             capsLayerLastEventAt = started
             event.flags = normalizedFlags(event.flags).union(.latticesHyper)
+            traceEvent(type: type, event: event, phase: "hyper.applied")
             return Unmanaged.passUnretained(event)
         case .keyUp:
             capsLayerLastEventAt = started
             event.flags = normalizedFlags(event.flags).union(.latticesHyper)
+            traceEvent(type: type, event: event, phase: "hyper.applied")
             return Unmanaged.passUnretained(event)
         default:
             return Unmanaged.passUnretained(event)
@@ -289,6 +352,7 @@ final class KeyboardRemapController: ObservableObject {
             activateCapsLayer(now: CFAbsoluteTimeGetCurrent())
             releaseCapsLockLatchIfNeeded()
             DiagnosticLog.shared.info("KeyboardRemap: Caps Lock layer active")
+            traceState("layer.active", fields: ["source": "caps.flagsChanged"])
         } else {
             let shouldTap = capsLayerActive && !capsUsedAsModifier && rule.toIfAlone == .escape
             clearCapsLayer()
@@ -297,6 +361,7 @@ final class KeyboardRemapController: ObservableObject {
                 postKeyTap(keyCode: 53)
             }
             DiagnosticLog.shared.info("KeyboardRemap: Caps Lock layer inactive")
+            traceState("layer.inactive", fields: ["source": "caps.flagsChanged", "postedEscape": shouldTap])
         }
 
         return nil
@@ -312,7 +377,9 @@ final class KeyboardRemapController: ObservableObject {
             if event.getIntegerValueField(.keyboardEventAutorepeat) == 0 {
                 activateCapsLayer(now: CFAbsoluteTimeGetCurrent())
                 DiagnosticLog.shared.info("KeyboardRemap: Caps Lock transport layer active")
+                traceState("layer.active", fields: ["source": "f18.keyDown"])
             }
+            traceEvent(type: type, event: event, phase: "swallowed")
             return nil
         case .keyUp:
             let shouldTap = capsLayerActive && !capsUsedAsModifier && rule.toIfAlone == .escape
@@ -321,6 +388,8 @@ final class KeyboardRemapController: ObservableObject {
                 postKeyTap(keyCode: 53)
             }
             DiagnosticLog.shared.info("KeyboardRemap: Caps Lock transport layer inactive")
+            traceState("layer.inactive", fields: ["source": "f18.keyUp", "postedEscape": shouldTap])
+            traceEvent(type: type, event: event, phase: "swallowed")
             return nil
         default:
             return Unmanaged.passUnretained(event)
@@ -372,6 +441,7 @@ final class KeyboardRemapController: ObservableObject {
             lastCapsLayerStaleLogAt = now
             DiagnosticLog.shared.warn("KeyboardRemap: Caps Lock layer cleared (\(reason))")
         }
+        traceState("layer.cleared", fields: ["reason": reason])
     }
 
     private func emergencyClear(now: CFAbsoluteTime) {
@@ -379,6 +449,7 @@ final class KeyboardRemapController: ObservableObject {
         pressedKeyCodes.removeAll()
         bypassUntil = now + emergencyBypassDuration
         DiagnosticLog.shared.warn("KeyboardRemap: emergency bypass via Escape")
+        traceState("recovery.emergency", fields: ["bypassSeconds": emergencyBypassDuration])
     }
 
     private func updatePressedKeys(type: CGEventType, keyCode: Int64, now: CFAbsoluteTime) {
@@ -446,6 +517,106 @@ final class KeyboardRemapController: ObservableObject {
         up.setIntegerValueField(.eventSourceUserData, value: Self.syntheticMarker)
         down.post(tap: .cghidEventTap)
         up.post(tap: .cghidEventTap)
+        hyperTrace.record(kind: "synthetic.keyTap", fields: ["keyCode": keyCode])
+    }
+
+    private func traceEvent(type: CGEventType, event: CGEvent, phase: String) {
+        hyperTrace.record(kind: "keyboard.event", fields: [
+            "phase": phase,
+            "type": eventTypeName(type),
+            "keyCode": event.getIntegerValueField(.keyboardEventKeycode),
+            "flags": String(format: "0x%llx", event.flags.rawValue),
+            "autorepeat": event.getIntegerValueField(.keyboardEventAutorepeat),
+            "layerActive": capsLayerActive,
+            "usedAsModifier": capsUsedAsModifier,
+            "transportActive": capsLockTransport.isActive,
+            "pressedKeyCount": pressedKeyCodes.count,
+        ])
+    }
+
+    private func traceState(_ kind: String, fields: [String: Any] = [:]) {
+        var snapshot = fields
+        snapshot["layerActive"] = capsLayerActive
+        snapshot["usedAsModifier"] = capsUsedAsModifier
+        snapshot["transportActive"] = capsLockTransport.isActive
+        snapshot["tapInstalled"] = eventTap != nil
+        snapshot["pressedKeyCount"] = pressedKeyCodes.count
+        snapshot["bypassRemainingMs"] = max(0, Int((bypassUntil - CFAbsoluteTimeGetCurrent()) * 1_000))
+        hyperTrace.record(kind: kind, fields: snapshot)
+    }
+
+    private func eventTypeName(_ type: CGEventType) -> String {
+        switch type {
+        case .keyDown: return "keyDown"
+        case .keyUp: return "keyUp"
+        case .flagsChanged: return "flagsChanged"
+        case .tapDisabledByTimeout: return "tapDisabledByTimeout"
+        case .tapDisabledByUserInput: return "tapDisabledByUserInput"
+        default: return "type.\(type.rawValue)"
+        }
+    }
+
+    private static func performEndToEndDiagnostic(keyCode: UInt16) {
+        let service = IOServiceGetMatchingService(
+            kIOMainPortDefault,
+            IOServiceMatching(kIOHIDSystemClass)
+        )
+        guard service != 0 else {
+            DiagnosticLog.shared.warn("HyperE2E: IOHIDSystem service unavailable")
+            return
+        }
+        defer { IOObjectRelease(service) }
+
+        var connection: io_connect_t = 0
+        let openStatus = IOServiceOpen(
+            service,
+            mach_task_self_,
+            UInt32(kIOHIDParamConnectType),
+            &connection
+        )
+        guard openStatus == kIOReturnSuccess, connection != 0 else {
+            DiagnosticLog.shared.warn("HyperE2E: IOHIDSystem open failed status=\(openStatus)")
+            return
+        }
+        defer { IOServiceClose(connection) }
+
+        let hyperFlags = UInt32(NX_CONTROLMASK | NX_ALTERNATEMASK | NX_SHIFTMASK | NX_COMMANDMASK)
+        let directStatuses = [
+            postHIDKey(connection: connection, keyCode: keyCode, isDown: true, flags: hyperFlags),
+            postHIDKey(connection: connection, keyCode: keyCode, isDown: false, flags: hyperFlags),
+        ]
+        DiagnosticLog.shared.info("HyperE2E: direct Hyper control posted statuses=\(directStatuses)")
+
+        usleep(500_000)
+        let transportKey = UInt16(CapsLockHIDTransportController.transportKeyCode)
+        let transportStatuses = [
+            postHIDKey(connection: connection, keyCode: transportKey, isDown: true, flags: 0),
+            postHIDKey(connection: connection, keyCode: keyCode, isDown: true, flags: 0),
+            postHIDKey(connection: connection, keyCode: keyCode, isDown: false, flags: 0),
+            postHIDKey(connection: connection, keyCode: transportKey, isDown: false, flags: 0),
+        ]
+        DiagnosticLog.shared.info("HyperE2E: F18 transport posted statuses=\(transportStatuses)")
+    }
+
+    private static func postHIDKey(
+        connection: io_connect_t,
+        keyCode: UInt16,
+        isDown: Bool,
+        flags: UInt32
+    ) -> kern_return_t {
+        var data = NXEventData()
+        data.key.keyCode = keyCode
+        let location = IOGPoint(x: 0, y: 0)
+        let options = IOOptionBits(kIOHIDSetGlobalEventFlags | kIOHIDPostHIDManagerEvent)
+        return IOHIDPostEvent(
+            connection,
+            UInt32(isDown ? NX_KEYDOWN : NX_KEYUP),
+            location,
+            &data,
+            UInt32(kNXEventDataVersion),
+            flags,
+            options
+        )
     }
 }
 
@@ -477,8 +648,17 @@ private final class CapsLockHIDTransportController {
         guard let currentMappings = readMappings() else {
             DiagnosticLog.shared.warn("KeyboardRemap: failed to read HID keyboard mappings")
             requested = false
+            HyperKeyDiagnosticRecorder.shared.record(kind: "hid.read.failed")
             return
         }
+
+        let capsMapping: Any = currentMappings
+            .first(where: { $0.src == Self.capsLockUsage })
+            .map { $0.dst } ?? NSNull()
+        HyperKeyDiagnosticRecorder.shared.record(kind: "hid.enable.requested", fields: [
+            "mappingCount": currentMappings.count,
+            "capsMapping": capsMapping,
+        ])
 
         originalMappings = currentMappings
 
@@ -489,12 +669,14 @@ private final class CapsLockHIDTransportController {
                 originalMappings = restoreOriginalMappings() ?? currentMappings.filter { $0.src != Self.capsLockUsage }
             }
             DiagnosticLog.shared.info("KeyboardRemap: Caps Lock HID transport already active")
+            HyperKeyDiagnosticRecorder.shared.record(kind: "hid.active.existing", fields: ["owned": ownsMapping])
             return
         }
 
         if let existing = currentMappings.first(where: { $0.src == Self.capsLockUsage }) {
             DiagnosticLog.shared.warn("KeyboardRemap: Caps Lock already has HID mapping to \(existing.dst); using legacy event-tap fallback")
             requested = false
+            HyperKeyDiagnosticRecorder.shared.record(kind: "hid.conflict", fields: ["destination": existing.dst])
             return
         }
 
@@ -504,6 +686,7 @@ private final class CapsLockHIDTransportController {
         guard writeMappings(nextMappings) else {
             DiagnosticLog.shared.warn("KeyboardRemap: failed to apply Caps Lock HID transport")
             requested = false
+            HyperKeyDiagnosticRecorder.shared.record(kind: "hid.write.failed", fields: ["operation": "enable"])
             return
         }
 
@@ -511,9 +694,15 @@ private final class CapsLockHIDTransportController {
         ownsMapping = true
         persistOriginalMappings(currentMappings)
         DiagnosticLog.shared.info("KeyboardRemap: Caps Lock mapped to F18 transport")
+        HyperKeyDiagnosticRecorder.shared.record(kind: "hid.active.applied", fields: ["originalMappingCount": currentMappings.count])
     }
 
     func disable() {
+        HyperKeyDiagnosticRecorder.shared.record(kind: "hid.disable.requested", fields: [
+            "requested": requested,
+            "active": isActive,
+            "owned": ownsMapping,
+        ])
         guard requested else { return }
         defer {
             requested = false
@@ -526,9 +715,29 @@ private final class CapsLockHIDTransportController {
         if writeMappings(originalMappings) {
             clearPersistedOwnership()
             DiagnosticLog.shared.info("KeyboardRemap: Caps Lock HID transport restored")
+            HyperKeyDiagnosticRecorder.shared.record(kind: "hid.restored")
         } else {
             DiagnosticLog.shared.warn("KeyboardRemap: failed to restore HID keyboard mappings")
+            HyperKeyDiagnosticRecorder.shared.record(kind: "hid.write.failed", fields: ["operation": "restore"])
         }
+    }
+
+    func diagnosticSnapshot() -> [String: Any] {
+        var fields: [String: Any] = [
+            "transportRequested": requested,
+            "transportActive": isActive,
+            "ownsMapping": ownsMapping,
+        ]
+        if let mappings = readMappings() {
+            fields["hidReadSucceeded"] = true
+            fields["hidMappingCount"] = mappings.count
+            fields["capsMapping"] = mappings
+                .first(where: { $0.src == Self.capsLockUsage })
+                .map { $0.dst } ?? NSNull()
+        } else {
+            fields["hidReadSucceeded"] = false
+        }
+        return fields
     }
 
     private func readMappings() -> [HIDKeyboardModifierMapping]? {

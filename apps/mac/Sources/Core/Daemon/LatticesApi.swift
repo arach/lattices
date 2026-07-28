@@ -1222,6 +1222,28 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
+            method: "diagnostics.hyperTest",
+            description: "Run the direct-Hyper and F18 transport diagnostic sequence",
+            access: .mutate,
+            params: [Param(name: "keyCode", type: "int", required: false, description: "macOS virtual key code (default 19 / key 2)")],
+            returns: .custom("Object with scheduled, Secure Event Input, and HID post access state"),
+            handler: { params in
+                let requested = params?["keyCode"]?.intValue ?? 19
+                let keyCode = UInt16(clamping: requested)
+                var result = (secureInput: false, postAccess: 2)
+                Self.runOnMain {
+                    result = KeyboardRemapController.shared.scheduleEndToEndDiagnostic(keyCode: keyCode)
+                }
+                return .object([
+                    "scheduled": .bool(!result.secureInput),
+                    "secureEventInput": .bool(result.secureInput),
+                    "hidPostAccess": .int(result.postAccess),
+                    "keyCode": .int(Int(keyCode)),
+                ])
+            }
+        ))
+
+        api.register(Endpoint(
             method: "processes.list",
             description: "List interesting developer processes with tmux/window linkage",
             access: .read,

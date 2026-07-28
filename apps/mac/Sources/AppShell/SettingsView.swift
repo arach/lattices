@@ -125,6 +125,7 @@ struct SettingsContentView: View {
     @ObservedObject var permChecker: PermissionChecker = .shared
     @ObservedObject var mouseGestureController: MouseGestureController = .shared
     @ObservedObject var keyboardRemapController: KeyboardRemapController = .shared
+    @ObservedObject var hyperKeyDiagnostics: HyperKeyDiagnosticRecorder = .shared
     @ObservedObject var assistantSession: WorkspaceAssistantSession = .shared
     var onBack: (() -> Void)? = nil
 
@@ -941,6 +942,58 @@ struct SettingsContentView: View {
                             .buttonStyle(.plain)
 
                             Spacer()
+                        }
+
+                        cardDivider
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 8) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("Hyper troubleshooting trace")
+                                        .font(Typo.monoBold(10.5))
+                                        .foregroundColor(Palette.text)
+                                    Text("Captures Caps/F18 events and remap state only—never typed characters.")
+                                        .font(Typo.caption(9))
+                                        .foregroundColor(Palette.textMuted.opacity(0.78))
+                                }
+                                Spacer()
+                                statusToken(
+                                    hyperKeyDiagnostics.isRecording ? "Recording" : "Stopped",
+                                    color: hyperKeyDiagnostics.isRecording ? Palette.detach : Palette.textDim
+                                )
+                            }
+
+                            HStack(spacing: 8) {
+                                Button {
+                                    if hyperKeyDiagnostics.isRecording {
+                                        hyperKeyDiagnostics.stop()
+                                    } else {
+                                        hyperKeyDiagnostics.start()
+                                        keyboardRemapController.captureHyperDiagnosticSnapshot(reason: "recording started")
+                                    }
+                                } label: {
+                                    settingsActionLabel(
+                                        hyperKeyDiagnostics.isRecording ? "Stop Trace" : "Start Trace",
+                                        icon: hyperKeyDiagnostics.isRecording ? "stop.circle" : "record.circle",
+                                        emphasized: true
+                                    )
+                                }
+                                .buttonStyle(.plain)
+
+                                Button {
+                                    hyperKeyDiagnostics.reveal()
+                                } label: {
+                                    settingsActionLabel("Reveal Trace", icon: "folder")
+                                }
+                                .buttonStyle(.plain)
+
+                                Text("~/.lattices/hyper-key-trace.jsonl")
+                                    .font(Typo.mono(8.5))
+                                    .foregroundColor(Palette.textMuted.opacity(0.64))
+                                    .lineLimit(1)
+
+                                Spacer(minLength: 0)
+                            }
                         }
 
                         if !permChecker.accessibility {
