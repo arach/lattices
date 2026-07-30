@@ -35,6 +35,17 @@ final class ScoutAssistantTransport {
 
     var isInstalled: Bool { executableURL != nil }
 
+    /// A saved Scout ref is continuity metadata, not a permanent route. Broker
+    /// restarts and retired sessions can invalidate it while project routing is
+    /// still healthy, so callers may safely retry these errors without the ref.
+    static func isUnroutableBindingError(_ error: Error) -> Bool {
+        guard let transportError = error as? ScoutAssistantTransportError,
+              case .commandFailed(let detail) = transportError else { return false }
+        let normalized = detail.lowercased()
+        return normalized.contains("not currently routable")
+            || (normalized.contains("no agent matches") && normalized.contains("ref:"))
+    }
+
     func checkAvailability(projectPath: String?) async -> Bool {
         do {
             _ = try await run(

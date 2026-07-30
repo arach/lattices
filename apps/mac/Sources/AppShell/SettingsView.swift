@@ -2424,7 +2424,7 @@ struct SettingsContentView: View {
                                 Text("HudsonVoice runtime")
                                     .font(Typo.mono(12))
                                     .foregroundColor(Palette.text)
-                                Text("Voice mode is compiled in. The Workspace Assistant mic uses HudsonVoice's Vox local WebSocket session.")
+                                Text("Lattices is hosting an authenticated local voice runtime for dictation and voice commands.")
                                     .font(Typo.caption(9.5))
                                     .foregroundColor(Palette.textMuted)
                                     .fixedSize(horizontal: false, vertical: true)

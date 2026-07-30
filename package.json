@@ -53,7 +53,7 @@
     "docs:agent": "bun --cwd apps/site agent-docs",
     "check": "bun run check:types && bun run check:app",
     "check:types": "tsc --noEmit",
-    "check:app": "env CLANG_MODULE_CACHE_PATH=/tmp/lattices-clang-cache SWIFTPM_TESTS_MODULECACHE=/tmp/lattices-swiftpm-cache swift build --package-path apps/mac",
+    "check:app": "bash -lc 'eval \"$(bun ./bin/lattices-build-env.ts shell)\"; exec env CLANG_MODULE_CACHE_PATH=/tmp/lattices-clang-cache SWIFTPM_TESTS_MODULECACHE=/tmp/lattices-swiftpm-cache swift build --package-path apps/mac'",
     "test": "node --experimental-strip-types --test tests/cli.test.mjs && bun test tests/dependency-free.test.ts",
     "test:cli": "node --experimental-strip-types --test tests/cli.test.mjs",
     "test:dependencies": "bun test tests/dependency-free.test.ts",

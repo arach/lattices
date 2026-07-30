@@ -11,6 +11,14 @@ let hudsonDependency: Package.Dependency = hudsonSource == "git"
     ? .package(url: "git@github.com:arach/hudson.git", branch: "main")
     : .package(path: "../../../hudson")
 
+// Lattices owns the long-running local voice service. HudsonVoice supplies the
+// client/session API while VoxService supplies the embeddable WebSocket host.
+// Use the same package URL Hudson uses so SwiftPM coalesces the dependency.
+let voxDependency: Package.Dependency = .package(
+    url: "https://github.com/arach/vox.git",
+    branch: "main"
+)
+
 let voiceEnabled = Context.environment["HUDSONKIT_WITH_VOICE"] == "1"
 
 var latticesDependencies: [Target.Dependency] = [
@@ -22,15 +30,26 @@ var latticesDependencies: [Target.Dependency] = [
 ]
 if voiceEnabled {
     latticesDependencies.append(.product(name: "HudsonVoice", package: "hudson"))
+    latticesDependencies.append(.product(name: "VoxService", package: "vox"))
+}
+
+var packageDependencies: [Package.Dependency] = [
+    .package(path: "../../swift"),
+    hudsonDependency,
+]
+if voiceEnabled {
+    packageDependencies.append(voxDependency)
+}
+
+var testDependencies: [Target.Dependency] = ["Lattices"]
+if voiceEnabled {
+    testDependencies.append(.product(name: "HudsonVoice", package: "hudson"))
 }
 
 let package = Package(
     name: "Lattices",
     platforms: [.macOS(.v26)],
-    dependencies: [
-        .package(path: "../../swift"),
-        hudsonDependency,
-    ],
+    dependencies: packageDependencies,
     targets: [
         .executableTarget(
             name: "Lattices",
@@ -45,8 +64,9 @@ let package = Package(
         ),
         .testTarget(
             name: "LatticesTests",
-            dependencies: ["Lattices"],
-            path: "Tests"
+            dependencies: testDependencies,
+            path: "Tests",
+            swiftSettings: voiceEnabled ? [.define("LATTICES_VOICE")] : []
         )
     ],
     // Stay in Swift 5 language mode: adopt macOS 26 / the 6.2 toolchain without

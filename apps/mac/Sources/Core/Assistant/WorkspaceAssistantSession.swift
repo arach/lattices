@@ -463,11 +463,30 @@ final class WorkspaceAssistantSession: ObservableObject {
         streamingTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let reply = try await self.scoutTransport.ask(
-                    prompt: prompt,
-                    projectPath: projectPath,
-                    bindingRef: continuingRef
-                )
+                let reply: ScoutAssistantReply
+                do {
+                    reply = try await self.scoutTransport.ask(
+                        prompt: prompt,
+                        projectPath: projectPath,
+                        bindingRef: continuingRef
+                    )
+                } catch {
+                    guard continuingRef != nil,
+                          ScoutAssistantTransport.isUnroutableBindingError(error) else { throw error }
+                    DiagnosticLog.shared.warn(
+                        "Workspace Assistant: saved Scout ref is no longer routable; retrying with the project route"
+                    )
+                    await MainActor.run { [weak self] in
+                        guard let self, self.scoutBindingRef == continuingRef else { return }
+                        self.scoutBindingRef = nil
+                        self.scoutTargetLabel = nil
+                    }
+                    reply = try await self.scoutTransport.ask(
+                        prompt: prompt,
+                        projectPath: projectPath,
+                        bindingRef: nil
+                    )
+                }
                 await MainActor.run { [weak self] in
                     guard let self, self.turnGeneration == generation else { return }
                     self.streamingTask = nil

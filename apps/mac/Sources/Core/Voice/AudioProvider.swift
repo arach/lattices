@@ -561,7 +561,8 @@ final class HudVoxAudioProvider: AudioProvider {
             do {
                 _ = try await HudVoxProbe.health(
                     endpoint: runtime.endpoint,
-                    clientId: runtime.options.clientId
+                    clientId: runtime.options.clientId,
+                    authToken: runtime.options.authToken
                 )
                 await MainActor.run {
                     self.lastProviderError = nil

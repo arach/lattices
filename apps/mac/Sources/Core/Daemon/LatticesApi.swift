@@ -3435,7 +3435,7 @@ final class LatticesApi {
                     "capabilityPath": runtime?.capabilityPath.map { .string($0) } ?? .null,
                     "requiresAuth": .bool(runtime?.authToken != nil),
                     "runtimeError": .null,
-                    "note": .string("HudsonVoice is compiled in; Lattices uses HudsonVoice's Vox WebSocket contract for live sessions."),
+                    "note": .string("Lattices is hosting an authenticated embedded Vox runtime through HudsonVoice."),
                 ])
                 #else
                 return .object([
