@@ -2424,7 +2424,7 @@ struct SettingsContentView: View {
                                 Text("HudsonVoice runtime")
                                     .font(Typo.mono(12))
                                     .foregroundColor(Palette.text)
-                                Text("Lattices is hosting an authenticated local voice runtime for dictation and voice commands.")
+                                Text("Lattices is hosting an authenticated local speech runtime for dictation, voice commands, and TTS.")
                                     .font(Typo.caption(9.5))
                                     .foregroundColor(Palette.textMuted)
                                     .fixedSize(horizontal: false, vertical: true)

@@ -144,13 +144,10 @@ enum LatticesVoiceRuntime {
 
             setenv("VOX_HOME", runtimeHome.path, 1)
             setenv("VOX_RUNTIME_PATH", runtimeURL.path, 1)
-            setenv("VOX_HOST", "127.0.0.1", 1)
-            setenv("VOX_AUTH_TOKEN", authToken, 1)
 
             var lastError: Error?
             for _ in 0..<8 {
                 let port = UInt16.random(in: 49_152...65_535)
-                setenv("VOX_PORT", String(port), 1)
                 let service = VoxRuntimeService(
                     port: port,
                     bindAddress: "127.0.0.1",
