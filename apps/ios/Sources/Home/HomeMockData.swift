@@ -223,7 +223,7 @@ enum HomeMock {
             name: "arach-mini",
             host: "mini.local",
             icon: "macmini",
-            status: .standby,
+            status: .online,
             isForeground: false,
             scene: "Wind Down",
             focusedApp: "Music",

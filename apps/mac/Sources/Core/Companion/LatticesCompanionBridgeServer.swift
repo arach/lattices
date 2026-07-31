@@ -11,6 +11,13 @@ final class LatticesCompanionBridgeServer: NSObject {
     static let maxBodyBytes = 512 * 1024
 
     private let queue = DispatchQueue(label: "lattices.companion.bridge", qos: .userInitiated)
+    /// Pairing is the one request that waits on a human, so it gets its own
+    /// queue. Answering it on `queue` — which is serial, and carries every
+    /// snapshot, action, and trackpad event from every paired device — would
+    /// freeze the entire bridge for as long as the approval alert is up.
+    /// Serial on purpose: two devices asking at once should queue, not stack
+    /// two modal alerts on top of each other.
+    private let pairingQueue = DispatchQueue(label: "lattices.companion.bridge.pairing", qos: .userInitiated)
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
@@ -162,8 +169,16 @@ private extension LatticesCompanionBridgeServer {
         }
     }
 
+    /// Whether `route` answered the request itself, or handed the socket to
+    /// another queue that will answer and close it later.
+    enum RouteOutcome {
+        case answered
+        case handedOff
+    }
+
     func handleClient(fd: Int32) {
-        defer { close(fd) }
+        var ownsSocket = true
+        defer { if ownsSocket { close(fd) } }
 
         guard let request = readRequest(from: fd) else {
             sendError(status: 400, message: "Invalid HTTP request", to: fd)
@@ -171,7 +186,9 @@ private extension LatticesCompanionBridgeServer {
         }
 
         do {
-            try route(request, to: fd)
+            if try route(request, to: fd) == .handedOff {
+                ownsSocket = false
+            }
         } catch let error as LatticesCompanionSecurityError {
             let status: Int
             switch error {
@@ -186,7 +203,8 @@ private extension LatticesCompanionBridgeServer {
         }
     }
 
-    func route(_ request: HTTPRequest, to fd: Int32) throws {
+    @discardableResult
+    func route(_ request: HTTPRequest, to fd: Int32) throws -> RouteOutcome {
         switch (request.method, request.path) {
         case ("GET", "/health"):
             let security = LatticesDeckHost.shared.securityConfiguration
@@ -213,20 +231,36 @@ private extension LatticesCompanionBridgeServer {
         case ("GET", "/deck-builder"):
             guard sendDeckBuilderAsset(path: "index.html", to: fd) else {
                 sendError(status: 404, message: "Deck Builder asset is unavailable", to: fd)
-                return
+                return .answered
             }
 
         case ("GET", let path) where path.hasPrefix("/_next/static/"):
             guard sendDeckBuilderAsset(path: String(path.dropFirst()), to: fd) else {
                 sendError(status: 404, message: "Deck Builder asset is unavailable", to: fd)
-                return
+                return .answered
             }
 
         case ("POST", "/pairing/request"):
+            // Decode on the bridge queue so a malformed body still fails fast,
+            // but answer on `pairingQueue`: `handlePairingRequest` blocks until
+            // a human clicks, and the companion has to keep serving everyone
+            // else meanwhile.
             let pairingRequest = try decoder.decode(DeckPairingRequest.self, from: request.body)
-            let response = LatticesCompanionSecurityCoordinator.shared.handlePairingRequest(pairingRequest)
-            let status = response.disposition == .denied ? 403 : 200
-            try sendJSON(status: status, value: response, to: fd)
+            pairingQueue.async { [weak self] in
+                defer { close(fd) }
+                guard let self else { return }
+                let response = LatticesCompanionSecurityCoordinator.shared.handlePairingRequest(pairingRequest)
+                let status = response.disposition == .denied ? 403 : 200
+                do {
+                    try self.sendJSON(status: status, value: response, to: fd)
+                } catch {
+                    // The companion may well have given up waiting and closed
+                    // the socket. The trust decision still stands on this side;
+                    // a retry resolves as `alreadyTrusted`.
+                    DiagnosticLog.shared.warn("CompanionPairing: could not deliver response — \(error.localizedDescription)")
+                }
+            }
+            return .handedOff
 
         case ("GET", "/deck/snapshot"):
             let auth = try authorizeProtectedRequest(request, requiredCapability: DeckBridgeCapability.deckRead)
@@ -278,6 +312,8 @@ private extension LatticesCompanionBridgeServer {
         default:
             sendError(status: 404, message: "Unknown route", to: fd)
         }
+
+        return .answered
     }
 
     func authorizeProtectedRequest(_ request: HTTPRequest, requiredCapability: String) throws -> AuthorizedBridgeRequest {

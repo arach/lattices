@@ -4,26 +4,33 @@ import UIKit
 
 // MARK: - Design System
 
+/// Home and the single-host cockpit speak through these names; they now resolve
+/// to the one token layer in `DeckTheme.swift`. Kept as an alias rather than a
+/// find-and-replace so ~5,600 lines of call sites move in one step instead of
+/// one risky sweep.
 enum LatsPalette {
-    static let bgEdge   = Color(hue: 0.62, saturation: 0.05, brightness: 0.08)
-    static let bg       = Color(hue: 0.62, saturation: 0.05, brightness: 0.13)
-    static let surface  = Color(hue: 0.62, saturation: 0.06, brightness: 0.18)
-    static let surface2 = Color(hue: 0.62, saturation: 0.07, brightness: 0.22)
+    static let bgEdge   = DeckTheme.canvas
+    static let bg       = DeckTheme.canvas
+    static let surface  = DeckTheme.card
+    static let surface2 = DeckTheme.raised
 
-    static let hairline  = Color.white.opacity(0.06)
-    static let hairline2 = Color.white.opacity(0.10)
+    static let hairline  = DeckTheme.hairline
+    static let hairline2 = DeckTheme.hairlineStrong
 
-    static let text      = Color(white: 0.96)
-    static let textDim   = Color(white: 0.96).opacity(0.55)
-    static let textFaint = Color(white: 0.96).opacity(0.32)
+    static let text      = DeckTheme.text
+    static let textDim   = DeckTheme.textSecondary
+    static let textFaint = DeckTheme.textTertiary
 
-    static let red    = Color(red: 0.95, green: 0.40, blue: 0.42)
-    static let amber  = Color(red: 0.96, green: 0.74, blue: 0.36)
-    static let green  = Color(red: 0.43, green: 0.86, blue: 0.55)
-    static let teal   = Color(red: 0.43, green: 0.83, blue: 0.84)
-    static let blue   = Color(red: 0.49, green: 0.71, blue: 0.97)
-    static let violet = Color(red: 0.74, green: 0.59, blue: 0.99)
-    static let pink   = Color(red: 0.97, green: 0.58, blue: 0.81)
+    // Two hues for the whole app. Everything that used to carry a decorative
+    // tint resolves to a grey, so the only saturation left is something that
+    // actually wants you.
+    static let red    = DeckTheme.error
+    static let amber  = DeckTheme.accent
+    static let green  = DeckTheme.textSecondary
+    static let teal   = DeckTheme.textSecondary
+    static let blue   = DeckTheme.textSecondary
+    static let violet = DeckTheme.textSecondary
+    static let pink   = DeckTheme.textSecondary
 }
 
 enum LatsTint: String, CaseIterable {
@@ -47,12 +54,15 @@ enum LatsTint: String, CaseIterable {
     }
 }
 
+/// Both faces are now the system face. See `DeckTheme` — the app operates
+/// agents and dictation, not terminals, so chrome has no reason to wear
+/// monospace. The serif is reserved for utterances and lives on `DeckTheme`.
 enum LatsFont {
     static func mono(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        .system(size: size, weight: weight, design: .monospaced)
+        .system(size: size, weight: weight)
     }
     static func ui(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        .system(size: size, weight: weight, design: .default)
+        .system(size: size, weight: weight)
     }
 }
 
@@ -630,27 +640,17 @@ struct LatsTrackpadTopBezel: View {
     }
 }
 
+/// The blueprint grid, retired.
+///
+/// Both design systems independently reached for an engineering grid, which is
+/// what made that the shared tell rather than a coincidence — it is a costume
+/// that makes even neutral content read as technical, and it adds moiré behind
+/// text for nothing. Flat near-black is what lets a two-hue palette read as
+/// deliberate instead of empty.
+///
+/// Kept as an empty view so its call sites can stay put.
 struct LatsGridBackground: View {
-    var body: some View {
-        Canvas { context, size in
-            let step: CGFloat = 20
-            let lineColor = Color.white.opacity(0.025)
-            var path = Path()
-            var x: CGFloat = 0
-            while x < size.width {
-                path.move(to: CGPoint(x: x, y: 0))
-                path.addLine(to: CGPoint(x: x, y: size.height))
-                x += step
-            }
-            var y: CGFloat = 0
-            while y < size.height {
-                path.move(to: CGPoint(x: 0, y: y))
-                path.addLine(to: CGPoint(x: size.width, y: y))
-                y += step
-            }
-            context.stroke(path, with: .color(lineColor), lineWidth: 1)
-        }
-    }
+    var body: some View { EmptyView() }
 }
 
 struct LatsInsetSlice<Content: View>: View {
@@ -2537,13 +2537,10 @@ struct FleetDeckScreen: View {
     }
 
     var body: some View {
-        Group {
-            if stores.count == 1, let store = stores.first, store.snapshot != nil {
-                singleDeck(store)
-            } else {
-                fleetLayout
-            }
-        }
+        // No auto-deciding by host count: Home already chose this surface. A
+        // single-Mac focus environment is reached through `DeckDestination.host`,
+        // which presents `LatsDeckScreen` directly.
+        fleetLayout
         .preferredColorScheme(.dark)
         .statusBarHidden(true)
         .onAppear {
@@ -2556,6 +2553,11 @@ struct FleetDeckScreen: View {
         .onChange(of: primaryStore.discoveredBridges) { _, _ in
             guard previewStores == nil else { return }
             fleetStore.synchronize(with: primaryStore)
+            // `synchronize` mints new sessions at the default ambient rate. The
+            // deck is open, so anything joining the roster now has to keep up
+            // with it — otherwise a Mac that appears mid-session updates at
+            // background cadence while sitting on screen.
+            fleetStore.setUIPriority(.fast, primaryStore: primaryStore)
             selectInitialSessionIfNeeded()
         }
         .onChange(of: fleetStore.secondaryStores.map(\.sessionID)) { _, _ in
@@ -2568,33 +2570,32 @@ struct FleetDeckScreen: View {
         }
     }
 
-    @ViewBuilder
-    private func singleDeck(_ store: DeckStore) -> some View {
-        LatsDeckScreen(
-            liveSnapshot: store.snapshot,
-            connectionLabel: store.connectionLabel,
-            onAction: { actionID, payload, label in
-                store.perform(actionID: actionID, pageID: "cockpit", payload: payload, label: label)
-            },
-            onTrackpadEvent: { event, dx, dy in
-                store.sendTrackpad(event: event, dx: dx, dy: dy)
-            }
-        )
-    }
-
     private var fleetLayout: some View {
         GeometryReader { proxy in
             let isLandscape = proxy.size.width > proxy.size.height
+            // The Fleet Deck design is authored on a 1376×1032 iPad-landscape
+            // canvas. Give it the screen whenever there is room for its fixed
+            // rows; anything shorter (iPhone landscape) keeps the lane layout.
+            let fitsDeck = isLandscape && proxy.size.height >= 700 && !stores.isEmpty
 
-            LatsBackground(grid: true) {
-                VStack(spacing: 0) {
-                    fleetTopBar(isLandscape: isLandscape)
-                    if stores.isEmpty {
-                        fleetEmptyState
-                    } else if isLandscape {
-                        landscapeDecks(size: proxy.size)
-                    } else {
-                        portraitDecks
+            if fitsDeck {
+                FleetDeckHost(
+                    stores: stores,
+                    initialMachineID: initialMachineID,
+                    onClose: { dismiss() }
+                )
+                .ignoresSafeArea(.container, edges: .bottom)
+            } else {
+                LatsBackground(grid: true) {
+                    VStack(spacing: 0) {
+                        fleetTopBar(isLandscape: isLandscape)
+                        if stores.isEmpty {
+                            fleetEmptyState
+                        } else if isLandscape {
+                            landscapeDecks(size: proxy.size)
+                        } else {
+                            portraitDecks
+                        }
                     }
                 }
             }
@@ -2754,26 +2755,42 @@ struct FleetDeckScreen: View {
 }
 
 #if DEBUG
+/// Renders the Fleet Deck against four canned Macs, which exercises the whole
+/// live path — `DeckStore` snapshots through `FleetDeckAdapter` — without a
+/// network. Pass `useDesignFixture` to render the design source's own data
+/// instead, for comparison against the artifact.
 struct FleetDeckPreviewHost: View {
     @StateObject private var primaryStore: DeckStore
     @StateObject private var fleetStore = DeckFleetStore()
     private let previewStores: [DeckStore]
+    private let useDesignFixture: Bool
+    private let fixtureLayout: FleetDeckLayout
 
-    init(machineCount: Int = 4) {
+    init(machineCount: Int = 4, useDesignFixture: Bool = false, fixtureLayout: FleetDeckLayout = .ops) {
+        self.fixtureLayout = fixtureLayout
         let names = ["Arach MacBook Pro", "Studio", "Mac mini", "Build Mac"]
         let stores = (0..<max(1, min(machineCount, names.count))).map {
             DeckStore.fleetPreview(name: names[$0], index: $0)
         }
         previewStores = stores
+        self.useDesignFixture = useDesignFixture
         _primaryStore = StateObject(wrappedValue: stores[0])
     }
 
     var body: some View {
-        FleetDeckScreen(
-            primaryStore: primaryStore,
-            fleetStore: fleetStore,
-            previewStores: previewStores
-        )
+        Group {
+            if useDesignFixture {
+                FleetDeckFixtureHost(initialLayout: fixtureLayout)
+            } else {
+                FleetDeckScreen(
+                    primaryStore: primaryStore,
+                    fleetStore: fleetStore,
+                    previewStores: previewStores
+                )
+            }
+        }
+        .preferredColorScheme(.dark)
+        .statusBarHidden(true)
     }
 }
 #endif

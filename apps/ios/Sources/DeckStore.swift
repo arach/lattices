@@ -1,3 +1,4 @@
+import Combine
 import DeckKit
 import Foundation
 
@@ -63,6 +64,20 @@ final class DeckStore: ObservableObject {
     /// activity or pending questions, so callers don't have to be exhaustive.
     private var uiPriority: DeckPollPriority = .ambient
 
+    /// Set by a deliberate disconnect or by discovering that a Mac revoked us.
+    /// Cleared the moment the user connects to something on purpose.
+    private var autoConnectSuppressed = false
+
+    /// Bumped by every `connect`. `loadConnection` walks six mutations with
+    /// awaits between them, so without this two overlapping connects interleave
+    /// and the *later-finishing* one wins rather than the later-requested one —
+    /// which can leave one Mac's health signing another Mac's requests.
+    private var connectionGeneration = 0
+
+    /// Consecutive failed polls, for backoff. A host that is not answering
+    /// should be asked less often, not more.
+    private var consecutivePollFailures = 0
+
     var connectionLabel: String {
         // Prefer human-readable names (Bonjour service name / health-reported name)
         // over raw hosts/UUIDs which look like "F8B453FB-…" in the UI.
@@ -118,6 +133,12 @@ final class DeckStore: ObservableObject {
     func connect(to endpoint: BridgeEndpoint) {
         pollingTask?.cancel()
         pollingTask = nil
+        // An explicit connection is the user changing their mind about a
+        // previous explicit disconnect.
+        autoConnectSuppressed = false
+        connectionGeneration += 1
+        consecutivePollFailures = 0
+        let generation = connectionGeneration
         activeEndpoint = endpoint
         health = nil
         manifest = nil
@@ -130,7 +151,7 @@ final class DeckStore: ObservableObject {
         isPerformingAction = false
 
         Task {
-            await loadConnection(endpoint: endpoint, forceManifest: true)
+            await loadConnection(endpoint: endpoint, forceManifest: true, generation: generation)
         }
     }
 
@@ -149,7 +170,13 @@ final class DeckStore: ObservableObject {
         connect(to: BridgeEndpoint(name: host, host: host, port: port, source: "Manual"))
     }
 
-    func disconnect() {
+    /// Close the session.
+    ///
+    /// `suppressAutoReconnect` matters more than it looks: discovery reconnects
+    /// to any trusted host the moment there is no active one, so without it a
+    /// deliberate disconnect was undone by the next Bonjour update — the button
+    /// appeared to do nothing at all.
+    func disconnect(suppressAutoReconnect: Bool = true) {
         pollingTask?.cancel()
         pollingTask = nil
         activeEndpoint = nil
@@ -159,6 +186,21 @@ final class DeckStore: ObservableObject {
         lastActionResult = nil
         lastActionLabel = nil
         isPerformingAction = false
+        autoConnectSuppressed = suppressAutoReconnect
+    }
+
+    /// Stop trusting a Mac and let go of it.
+    ///
+    /// Trust is two separate records — one on each device — and the Mac can
+    /// revoke its own at any time without telling anybody. This is the iPad's
+    /// half, so that a host whose trust is gone leaves the roster and returns to
+    /// being something you add, rather than sitting there failing forever.
+    func forget(publicKey: String) {
+        DeckBridgeSecurityStore.shared.forgetBridge(publicKey: publicKey)
+        if health?.bridgePublicKey == publicKey {
+            disconnect(suppressAutoReconnect: true)
+        }
+        objectWillChange.send()
     }
 
     func refreshSnapshot() {
@@ -192,6 +234,7 @@ final class DeckStore: ObservableObject {
                 isPerformingAction = true
                 let request = DeckActionRequest(pageID: pageID, actionID: actionID, payload: payload)
                 let result = try await performWithFallback(request: request, preferred: endpoint, health: health)
+                consecutivePollFailures = 0
                 lastActionResult = result
                 if let runtimeSnapshot = result.runtimeSnapshot {
                     snapshot = runtimeSnapshot
@@ -202,9 +245,24 @@ final class DeckStore: ObservableObject {
             } catch {
                 lastActionResult = nil
                 errorMessage = error.localizedDescription
+                // Deliberately not treated as revocation here. The Mac answers
+                // 403 for *both* "I don't trust you" and "you weren't granted
+                // that capability", so forgetting on this path would destroy a
+                // perfectly good pairing because one action wasn't permitted.
+                // A snapshot read is granted to every pairing, so let that be
+                // the arbiter.
+                await probeTrustIfRefused(error, endpoint: endpoint)
             }
             isPerformingAction = false
         }
+    }
+
+    /// Ask the one question every pairing is allowed to ask, so a 403 can be
+    /// attributed. If the snapshot read is refused too, trust really is gone and
+    /// `refreshSnapshot` will drop it.
+    private func probeTrustIfRefused(_ error: Error, endpoint: BridgeEndpoint) async {
+        guard case DeckBridgeClientError.badStatus(403, _) = error else { return }
+        await refreshSnapshot(endpoint: endpoint)
     }
 
     // MARK: - Voice (relay)
@@ -283,6 +341,7 @@ private extension DeckStore {
                 }
             } catch {
                 errorMessage = error.localizedDescription
+                await probeTrustIfRefused(error, endpoint: endpoint)
             }
             finishTrackpadEvent()
         }
@@ -307,8 +366,17 @@ private extension DeckStore {
     func handleDiscoveryUpdate(_ bridges: [BridgeEndpoint]) {
         discoveredBridges = bridges
 
-        if activeEndpoint == nil, let first = bridges.first {
-            connect(to: first)
+        // Finding a Mac on the network is an observation; pairing with one is a
+        // decision that raises a modal alert on somebody's desk. Reconnecting to
+        // a Mac this device already paired with is silent and welcome, so that
+        // still happens on its own — but a stranger now waits in the roster as a
+        // candidate until the user actually asks for it.
+        //
+        // `first(where:)` rather than `first`: with several Macs on the network
+        // the paired one wins regardless of where it sorts.
+        if activeEndpoint == nil, !autoConnectSuppressed,
+           let known = bridges.first(where: { DeckBridgeSecurityStore.shared.isTrusted(endpoint: $0) }) {
+            connect(to: known)
             return
         }
 
@@ -321,31 +389,56 @@ private extension DeckStore {
         }
     }
 
-    func loadConnection(endpoint: BridgeEndpoint, forceManifest: Bool) async {
+    /// Bring a session up.
+    ///
+    /// `generation` is checked after every suspension: if a newer connect has
+    /// started meanwhile, this one abandons rather than writing its half of a
+    /// session over someone else's. Without that the sequence below can splice
+    /// one Mac's `health` onto another's `manifest`, and every protected request
+    /// signs against `health` — so the mismatch authenticates to the wrong Mac
+    /// instead of failing loudly.
+    func loadConnection(endpoint: BridgeEndpoint, forceManifest: Bool, generation: Int) async {
         isLoading = true
-        defer { isLoading = false }
+        defer { if generation == connectionGeneration { isLoading = false } }
 
         do {
             let healthResponse = try await client.health(endpoint: endpoint)
+            guard generation == connectionGeneration else { return }
             health = healthResponse
             let resolvedEndpoint = canonicalEndpoint(from: endpoint, health: healthResponse)
             activeEndpoint = resolvedEndpoint
             manualHost = resolvedEndpoint.host
             manualPort = String(resolvedEndpoint.port)
             if forceManifest || manifest == nil {
-                manifest = try await client.manifest(endpoint: resolvedEndpoint)
+                let loaded = try await client.manifest(endpoint: resolvedEndpoint)
+                guard generation == connectionGeneration else { return }
+                manifest = loaded
                 if let firstPage = manifest?.pages.first(where: { $0.id == selectedPageID }) ?? manifest?.pages.first {
                     selectedPageID = firstPage.id
                 }
             }
             try await ensurePairing(endpoint: resolvedEndpoint, health: healthResponse)
-            snapshot = try await client.snapshot(endpoint: resolvedEndpoint, health: healthResponse)
+            guard generation == connectionGeneration else { return }
+            // Macs move. Recording where this one answered — keyed by the public
+            // key `/health` just proved, never by name or address — is what
+            // keeps it reconnectable once it stops advertising on Bonjour.
+            DeckBridgeSecurityStore.shared.rememberAddress(
+                forPublicKey: healthResponse.bridgePublicKey,
+                host: resolvedEndpoint.host,
+                port: resolvedEndpoint.port
+            )
+            let loadedSnapshot = try await client.snapshot(endpoint: resolvedEndpoint, health: healthResponse)
+            guard generation == connectionGeneration else { return }
+            snapshot = loadedSnapshot
             if let firstCockpitPage = snapshot?.cockpit?.pages.first(where: { $0.id == selectedCockpitPageID }) ?? snapshot?.cockpit?.pages.first {
                 selectedCockpitPageID = firstCockpitPage.id
             }
             errorMessage = nil
+            consecutivePollFailures = 0
             startPolling(endpoint: resolvedEndpoint)
         } catch {
+            guard generation == connectionGeneration else { return }
+            guard !handleRevokedTrust(error) else { return }
             errorMessage = error.localizedDescription
         }
     }
@@ -359,9 +452,37 @@ private extension DeckStore {
                 selectedCockpitPageID = firstCockpitPage.id
             }
             errorMessage = nil
+            consecutivePollFailures = 0
         } catch {
+            consecutivePollFailures += 1
+            guard !handleRevokedTrust(error) else { return }
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// Notice that a Mac has stopped trusting this device, and let go.
+    ///
+    /// Trust lives in two records — one per device — and the Mac can drop its
+    /// own at any time. When it does, every protected request comes back 403
+    /// while this side still holds a record saying all is well. That record is
+    /// exactly what makes `ensurePairing` skip re-pairing, so the session can
+    /// never recover on its own: it reconnects, gets refused, reconnects, and
+    /// reports a different flavour of the same failure forever.
+    ///
+    /// Dropping our half breaks the loop. The host leaves the roster and turns
+    /// back into something you can add, which is the one action that fixes it.
+    private func handleRevokedTrust(_ error: Error) -> Bool {
+        guard case DeckBridgeClientError.badStatus(403, _) = error,
+              let publicKey = health?.bridgePublicKey,
+              DeckBridgeSecurityStore.shared.trust(forPublicKey: publicKey) != nil else {
+            return false
+        }
+
+        let name = connectionLabel
+        DeckBridgeSecurityStore.shared.forgetBridge(publicKey: publicKey)
+        disconnect(suppressAutoReconnect: true)
+        errorMessage = "\(name) no longer trusts this iPad. Add it again to reconnect."
+        return true
     }
 
     func startPolling(endpoint: BridgeEndpoint) {
@@ -381,6 +502,16 @@ private extension DeckStore {
     /// pull us into 1s mode; otherwise we sip at 5s. Intervals are
     /// re-evaluated each tick so the loop adapts as state changes.
     private var currentPollInterval: TimeInterval {
+        // A host that is not answering gets asked less often, not more. Without
+        // this the failure state was the most expensive state in the app: a
+        // snapshot that went stale while holding a question pinned the loop at
+        // 1Hz against a Mac that had stopped replying, each attempt paying a
+        // full connect timeout.
+        if consecutivePollFailures > 0 {
+            let step = min(consecutivePollFailures, 5)
+            return min(60.0, 2.0 * pow(2.0, Double(step - 1)))
+        }
+
         if uiPriority == .fast { return 1.0 }
         if let voice = snapshot?.voice {
             if voice.phase != .idle { return 1.0 }
@@ -499,6 +630,33 @@ final class DeckFleetStore: ObservableObject {
 
     private var storesByEndpointKey: [String: DeckStore] = [:]
 
+    /// Macs the user added deliberately. Discovery may never report them — a
+    /// hand-entered address on a network where Bonjour is blocked never will —
+    /// so reconciliation must not treat their absence as a reason to reap them.
+    private var adoptedKeys: Set<String> = []
+
+    /// Republish when any secondary session changes.
+    ///
+    /// `secondaryStores` being `@Published` only announces the *array* — adding
+    /// or removing a Mac. It says nothing when a Mac inside it gets a new
+    /// snapshot, so anything observing this store alone saw every host but the
+    /// primary frozen at whatever it happened to hold when it arrived.
+    private var storeSubscriptions: [ObjectIdentifier: AnyCancellable] = [:]
+
+    private func observe(_ store: DeckStore) {
+        let key = ObjectIdentifier(store)
+        guard storeSubscriptions[key] == nil else { return }
+        storeSubscriptions[key] = store.objectWillChange
+            // `objectWillChange` fires *before* the value lands, so republishing
+            // synchronously would broadcast the old state.
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+    }
+
+    private func stopObserving(_ store: DeckStore) {
+        storeSubscriptions.removeValue(forKey: ObjectIdentifier(store))
+    }
+
     func synchronize(with primaryStore: DeckStore) {
         let primaryKey = primaryStore.activeEndpoint.map(Self.endpointKey)
         var desiredKeys = Set<String>()
@@ -508,12 +666,7 @@ final class DeckFleetStore: ObservableObject {
             // Secondary sessions are created only for Macs this device has
             // already paired with. This prevents Fleet Deck from spraying
             // approval prompts across every Bonjour peer on the network.
-            let isTrusted = endpoint.bridgeFingerprint.map { fingerprint in
-                DeckBridgeSecurityStore.shared.trustedBridgeList().contains {
-                    $0.bridgeFingerprint.caseInsensitiveCompare(fingerprint) == .orderedSame
-                }
-            } ?? false
-            guard isTrusted else { continue }
+            guard DeckBridgeSecurityStore.shared.isTrusted(endpoint: endpoint) else { continue }
 
             let key = Self.endpointKey(endpoint)
             guard key != primaryKey else { continue }
@@ -528,16 +681,91 @@ final class DeckFleetStore: ObservableObject {
             } else {
                 store = DeckStore(endpoint: endpoint, discoversBridges: false)
                 storesByEndpointKey[key] = store
+                observe(store)
             }
             orderedStores.append(store)
         }
 
-        let staleKeys = storesByEndpointKey.keys.filter { !desiredKeys.contains($0) }
+        let staleKeys = storesByEndpointKey.keys.filter {
+            !desiredKeys.contains($0) && !adoptedKeys.contains($0)
+        }
         for key in staleKeys {
-            storesByEndpointKey.removeValue(forKey: key)?.disconnect()
+            if let reaped = storesByEndpointKey.removeValue(forKey: key) {
+                stopObserving(reaped)
+                reaped.disconnect()
+            }
+        }
+
+        // A Mac the user added by hand keeps its place in the fleet even when
+        // this pass didn't see it on the network.
+        for key in adoptedKeys where !desiredKeys.contains(key) {
+            guard let store = storesByEndpointKey[key] else { continue }
+            orderedStores.append(store)
         }
 
         secondaryStores = orderedStores
+    }
+
+    /// Bring a just-paired Mac into the fleet now, instead of waiting for the
+    /// next discovery tick to notice it.
+    ///
+    /// Safe against the trust guard in `synchronize` because callers pair
+    /// *before* they adopt: by the time this runs the Mac is trusted like any
+    /// other, so nothing has to be held open or specially exempted while a
+    /// human is deciding.
+    func adopt(_ endpoint: BridgeEndpoint) {
+        let key = Self.endpointKey(endpoint)
+        adoptedKeys.insert(key)
+
+        if let existing = storesByEndpointKey[key] {
+            if !secondaryStores.contains(where: { $0 === existing }) {
+                secondaryStores.append(existing)
+            }
+            return
+        }
+
+        let store = DeckStore(endpoint: endpoint, discoversBridges: false)
+        storesByEndpointKey[key] = store
+        observe(store)
+        secondaryStores.append(store)
+    }
+
+    /// Drop a Mac from the fleet. Adoption is user intent, so only the user
+    /// undoes it — discovery never does.
+    func release(_ endpoint: BridgeEndpoint) {
+        let key = Self.endpointKey(endpoint)
+        adoptedKeys.remove(key)
+        guard let store = storesByEndpointKey.removeValue(forKey: key) else { return }
+        stopObserving(store)
+        store.disconnect()
+        secondaryStores.removeAll { $0 === store }
+    }
+
+    /// Let go of every secondary whose pairing is gone.
+    ///
+    /// Forgetting a Mac removes its trust record, but reconciliation only runs
+    /// when discovery changes — and forgetting doesn't change discovery. So
+    /// without this a forgotten Mac kept its session alive and went on signing
+    /// requests against a host the user had just told us to drop.
+    func releaseUntrusted() {
+        let security = DeckBridgeSecurityStore.shared
+        for (key, store) in storesByEndpointKey {
+            let isTrusted: Bool
+            if let publicKey = store.health?.bridgePublicKey {
+                isTrusted = security.trust(forPublicKey: publicKey) != nil
+            } else if let endpoint = store.activeEndpoint {
+                isTrusted = security.isTrusted(endpoint: endpoint)
+            } else {
+                continue  // Still connecting — nothing proven either way yet.
+            }
+            guard !isTrusted else { continue }
+
+            adoptedKeys.remove(key)
+            storesByEndpointKey.removeValue(forKey: key)
+            stopObserving(store)
+            store.disconnect()
+            secondaryStores.removeAll { $0 === store }
+        }
     }
 
     func stores(including primaryStore: DeckStore) -> [DeckStore] {
@@ -705,9 +933,63 @@ extension DeckStore {
                     tint: ["green", "violet", "blue", "green"][index],
                     text: ["fixture data refreshed", "checking shared controls", "spacing pass complete", "all services nominal"][index]
                 )
-            ]
+            ],
+            // Two of the four Macs are blocked on a human decision, so the deck
+            // has something to triage — the Fleet Deck's whole reason to exist.
+            questions: previewQuestions(index: index)
         )
         return store
+    }
+
+    private static func previewQuestions(index: Int) -> [DeckQuestionCard] {
+        switch index {
+        case 2:
+            return [
+                DeckQuestionCard(
+                    id: "preview-question-lane",
+                    prompt: "Which naming scheme should I apply across all screens?",
+                    detail: "Lane model review is blocked — two naming options need your call.",
+                    options: [
+                        DeckQuestionOption(
+                            id: "lane-a",
+                            title: "route / lane / bus",
+                            detail: "matches the audio-desk metaphor",
+                            actionID: "agent.answer"
+                        ),
+                        DeckQuestionOption(
+                            id: "lane-b",
+                            title: "channel / track / send",
+                            detail: "matches the deck labels",
+                            actionID: "agent.answer"
+                        )
+                    ]
+                )
+            ]
+        case 3:
+            return [
+                DeckQuestionCard(
+                    id: "preview-question-ship",
+                    prompt: "Push build 412 to TestFlight now?",
+                    detail: "Build 412 is signed and staged — needs your go before it ships.",
+                    options: [
+                        DeckQuestionOption(
+                            id: "ship-now",
+                            title: "Ship it",
+                            detail: "notify the fleet when live",
+                            actionID: "agent.answer"
+                        ),
+                        DeckQuestionOption(
+                            id: "ship-hold",
+                            title: "Hold for nightly",
+                            detail: "roll it into the 02:00 batch",
+                            actionID: "agent.answer"
+                        )
+                    ]
+                )
+            ]
+        default:
+            return []
+        }
     }
 }
 #endif

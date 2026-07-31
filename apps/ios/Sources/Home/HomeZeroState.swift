@@ -148,7 +148,7 @@ struct HomeZeroState: View {
     private var cta: some View {
         VStack(spacing: 14) {
             LatsButton(
-                title: "Pair a Mac",
+                title: "Add a host",
                 icon: "plus.circle",
                 style: .primary(.green)
             ) {

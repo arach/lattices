@@ -64,10 +64,18 @@ extension HomeBottomMachineTelemetry {
 /// cluster expands an accordion with per-machine rows.
 ///
 /// Surface follows the Talkie BottomTrayBackground pattern: the dark surface
-/// extends into the bottom safe area while content sits above the home
-/// indicator via internal padding. The hairline lives only at the top edge.
+/// extends into the bottom safe area while content stays above the home
+/// indicator. The hairline lives only at the top edge.
 ///
-/// Size budget: ~40pt collapsed, ~96pt expanded (excluding safe-area extension).
+/// **The safe area does the lifting, not a padding constant.** This bar is the
+/// last child of a container that already respects the safe area, so its
+/// content is above the home indicator before any padding is applied — the
+/// `padding(.bottom, 16)` that used to sit here was stacked *on top of* the
+/// real ~20pt inset, spending 70pt of screen on 30pt of text. Chrome should
+/// cost what it renders; the surface reaching the physical bottom edge is the
+/// `ignoresSafeArea` below, not height.
+///
+/// Size budget: ~34pt collapsed, ~90pt expanded (excluding safe-area extension).
 struct HomeBottomBar: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -150,9 +158,8 @@ struct HomeBottomBar: View {
             }
         }
         .padding(.horizontal, 14)
-        .padding(.bottom, 16)   // lift content above home indicator
-        .frame(height: 54, alignment: .top)
-        .padding(.top, 0)
+        .frame(height: 30)
+        .padding(.bottom, 4)
     }
 
     private var compactCollapsedBar: some View {
@@ -189,8 +196,8 @@ struct HomeBottomBar: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.bottom, 15)
-        .frame(height: 58, alignment: .top)
+        .frame(height: 34)
+        .padding(.bottom, 4)
     }
 
     private func compactAction(icon: String, label: String, action: @escaping () -> Void) -> some View {
@@ -198,7 +205,7 @@ struct HomeBottomBar: View {
             Image(systemName: icon)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(LatsPalette.text)
-                .frame(width: 30, height: 30)
+                .frame(width: 28, height: 28)
                 .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.055)))
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(LatsPalette.hairline2, lineWidth: 1))
         }

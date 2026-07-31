@@ -9,6 +9,16 @@ final class BridgeDiscovery: NSObject {
     private var resolvingServices: [String: NetService] = [:]
     private var discoveredEndpoints: [String: BridgeEndpoint] = [:]
 
+    /// Bumped per rescan, so a late prune from an older rescan can't fire.
+    private var scanGeneration = 0
+    /// Services the current rescan has *seen*, which is a different and much
+    /// earlier signal than having resolved them — see `refresh()`.
+    private var seenThisScan: Set<String> = []
+    /// Comfortably longer than `resolveTimeout`, so a slow resolve is never
+    /// mistaken for a host that went away.
+    private let rescanGracePeriod: TimeInterval = 12
+    private let resolveTimeout: TimeInterval = 5
+
     override init() {
         super.init()
         browser.delegate = self
@@ -18,12 +28,38 @@ final class BridgeDiscovery: NSObject {
         browser.searchForServices(ofType: Self.serviceType, inDomain: "local.")
     }
 
+    /// Re-browse the network without ever publishing an empty roster.
+    ///
+    /// Clearing the list first looked harmless and was not: subscribers treat a
+    /// Mac's absence as a reason to tear down its live session, so a rescan
+    /// disconnected every secondary Mac and rebuilt it as a *new* session with
+    /// a new identity — which the Fleet Deck keys its channels on. Rescanning is
+    /// exactly what someone does while adding a Mac, so it has to be harmless.
+    ///
+    /// Instead the current roster stands, and only what the new browse never
+    /// even *sees* is pruned.
+    ///
+    /// That distinction matters: pruning on "hasn't resolved yet" raced the
+    /// resolve timeout, so tapping refresh could delete a host that was simply
+    /// slow to answer — the host then stayed gone until something else provoked
+    /// the browser. Being *found* means the service is there; resolving is just
+    /// how long it takes to learn its address.
     func refresh() {
         browser.stop()
         resolvingServices.removeAll()
-        discoveredEndpoints.removeAll()
-        onUpdate?([])
+
+        scanGeneration += 1
+        let generation = scanGeneration
+        seenThisScan.removeAll()
         start()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + rescanGracePeriod) { [weak self] in
+            guard let self, self.scanGeneration == generation else { return }
+            let vanished = self.discoveredEndpoints.keys.filter { !self.seenThisScan.contains($0) }
+            guard !vanished.isEmpty else { return }
+            vanished.forEach { self.discoveredEndpoints.removeValue(forKey: $0) }
+            self.publish()
+        }
     }
 
     func stop() {
@@ -42,8 +78,11 @@ extension BridgeDiscovery: NetServiceBrowserDelegate, NetServiceDelegate {
     ) {
         let key = service.name + service.type + service.domain
         resolvingServices[key] = service
+        // Seen is enough to keep it: the service is on the network whether or
+        // not we have its address yet.
+        seenThisScan.insert(key)
         service.delegate = self
-        service.resolve(withTimeout: 5)
+        service.resolve(withTimeout: resolveTimeout)
     }
 
     func netServiceBrowser(
@@ -66,6 +105,7 @@ extension BridgeDiscovery: NetServiceBrowserDelegate, NetServiceDelegate {
         guard !normalizedHost.isEmpty, sender.port > 0 else { return }
         let txt = txtDictionary(from: sender.txtRecordData())
 
+        seenThisScan.insert(key)
         discoveredEndpoints[key] = BridgeEndpoint(
             name: sender.name,
             host: normalizedHost,

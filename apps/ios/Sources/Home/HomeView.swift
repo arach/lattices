@@ -37,6 +37,11 @@ struct HomeView: View {
     var bottomTelemetry: HomeBottomTelemetry = .empty
 
     var onEnterDeck: ((HomeMachine) -> Void)? = nil
+    /// Opens the multi-host deck. Only offered when there is more than one Mac.
+    var onEnterFleet: (() -> Void)? = nil
+    var onAddHost: (() -> Void)? = nil
+    /// Unpaired Macs discovery can see right now. Surfaced on the add cell.
+    var nearbyCandidateCount: Int = 0
     var onScene: ((HomeScene) -> Void)? = nil
     var onRoutine: ((HomeRoutine) -> Void)? = nil
     var onBroadcast: ((HomeSyncAction, [HomeMachine]) -> Void)? = nil
@@ -139,7 +144,13 @@ struct HomeView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    HomeTargetsRow(machines: machines, onEnterDeck: onEnterDeck)
+                    HomeTargetsRow(
+                        machines: machines,
+                        nearbyCandidateCount: nearbyCandidateCount,
+                        onEnterDeck: onEnterDeck,
+                        onEnterFleet: onEnterFleet,
+                        onAddHost: onAddHost
+                    )
 
                     HomeScenesGrid(scenes: scenes, onScene: onScene)
 
