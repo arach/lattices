@@ -29,6 +29,10 @@ struct HomeTargetsRow: View {
     var onEnterFleet: (() -> Void)? = nil
     var onAddHost: (() -> Void)? = nil
     var onAttention: ((HomeMachine) -> Void)? = nil
+    /// Start or stop dictation on one specific host. The mic lives on the
+    /// card because with a fleet, the target has to be chosen at the moment
+    /// you speak rather than configured ahead of time.
+    var onVoice: ((HomeMachine) -> Void)? = nil
 
     /// Measured width of the roster. Zero until first layout, which is why
     /// every fit test below treats zero as "assume it fits" — the first frame
@@ -140,7 +144,8 @@ struct HomeTargetsRow: View {
                     emphasis: m.isForeground ? .deemphasized : .full,
                     density: .compact,
                     onEnterDeck: onEnterDeck,
-                    onAttention: onAttention
+                    onAttention: onAttention,
+                    onVoice: onVoice
                 )
             }
         }
@@ -154,7 +159,8 @@ struct HomeTargetsRow: View {
                 emphasis: machine.isForeground ? .deemphasized : .full,
                 density: density,
                 onEnterDeck: onEnterDeck,
-                onAttention: onAttention
+                onAttention: onAttention,
+                onVoice: onVoice
             )
         }
     }
@@ -378,6 +384,7 @@ private struct HomeTargetCard: View {
     var density: HomeTargetDensity = .full
     var onEnterDeck: ((HomeMachine) -> Void)? = nil
     var onAttention: ((HomeMachine) -> Void)? = nil
+    var onVoice: ((HomeMachine) -> Void)? = nil
 
     /// Shared minimum card height per density. Picked so the gauges have room
     /// to breathe and offline cards reserve the same space — geometry stays
@@ -428,6 +435,7 @@ private struct HomeTargetCard: View {
     private var leftColumn: some View {
         VStack(alignment: .leading, spacing: 10) {
             nameRow
+            voiceLine
             identityBlock
             metadataBlock
             Spacer(minLength: 0)
@@ -445,6 +453,75 @@ private struct HomeTargetCard: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
+            micButton
+        }
+    }
+
+    // MARK: Per-host mic
+    //
+    // Talking to a fleet needs the target chosen at the moment you speak, not
+    // configured somewhere ahead of time — so the mic lives on the host, and
+    // "which Mac is listening" stops being a question.
+    //
+    // It is also the live indicator, which is the point: an open microphone on
+    // a machine in another room was previously announced only by a panel
+    // sliding up, and dismissing that panel left the mic open with nothing on
+    // screen to say so. Here the affordance and the state are the same object,
+    // so it cannot be dismissed away from its own indicator.
+
+    @ViewBuilder
+    private var micButton: some View {
+        if machine.status != .offline, machine.hasLiveSession {
+            Button { onVoice?(machine) } label: {
+                ZStack {
+                    Circle()
+                        .fill(micFill)
+                        .frame(width: 30, height: 30)
+                    if machine.voice == .listening {
+                        // Colour alone can't carry "your mic is open".
+                        Circle()
+                            .stroke(DeckTheme.accent, lineWidth: 1.5)
+                            .frame(width: 30, height: 30)
+                        MicPulseRing()
+                    }
+                    Image(systemName: micGlyph)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(micTint)
+                }
+                .frame(width: 44, height: 44)   // touch target, not visual size
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(onVoice == nil)
+            .accessibilityLabel(micAccessibilityLabel)
+        }
+    }
+
+    private var micGlyph: String {
+        switch machine.voice {
+        case .listening: return "mic.fill"
+        case .working:   return "waveform"
+        case .off:       return "mic"
+        }
+    }
+
+    private var micFill: Color {
+        machine.voice == .listening ? DeckTheme.accentFill : DeckTheme.control
+    }
+
+    private var micTint: Color {
+        switch machine.voice {
+        case .listening: return DeckTheme.accent
+        case .working:   return DeckTheme.text
+        case .off:       return DeckTheme.textSecondary
+        }
+    }
+
+    private var micAccessibilityLabel: String {
+        switch machine.voice {
+        case .listening: return "\(machine.name) is listening. Tap to stop."
+        case .working:   return "\(machine.name) is working on what you said."
+        case .off:       return "Talk to \(machine.name)"
         }
     }
 
@@ -493,6 +570,7 @@ private struct HomeTargetCard: View {
     private var compactBody: some View {
         VStack(alignment: .leading, spacing: 8) {
             compactNameRow
+            voiceLine
             identityBlock
             metadataBlock
             Spacer(minLength: 0)
@@ -505,7 +583,7 @@ private struct HomeTargetCard: View {
     }
 
     private var compactNameRow: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             iconTile(size: 30, glyph: 15)
             Text(machine.name)
                 .font(DeckTheme.body(.medium))
@@ -516,6 +594,39 @@ private struct HomeTargetCard: View {
             if machine.attentionCount > 0 {
                 attentionDot
             }
+            micButton
+        }
+    }
+
+    /// A word, not just a colour. The complaint that started this was that a
+    /// live microphone was "a little bit too subtle" — a tinted glyph alone
+    /// repeats that mistake for anyone glancing at the roster from a metre away.
+    @ViewBuilder
+    private var voiceLine: some View {
+        switch machine.voice {
+        case .listening:
+            HStack(spacing: 6) {
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(DeckTheme.accent)
+                Text("Listening")
+                    .font(DeckTheme.secondary(.medium))
+                    .foregroundStyle(DeckTheme.accent)
+                Spacer(minLength: 0)
+            }
+        case .working:
+            HStack(spacing: 6) {
+                Image(systemName: "waveform")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(DeckTheme.textSecondary)
+                Text("Working on what you said")
+                    .font(DeckTheme.secondary())
+                    .foregroundStyle(DeckTheme.textSecondary)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+        case .off:
+            EmptyView()
         }
     }
 
@@ -721,6 +832,27 @@ private struct HomeTargetCard: View {
 }
 
 // MARK: - Agent pulse
+
+/// Expanding ring behind a live mic. Motion carries "right now" in peripheral
+/// vision in a way a static tint does not — which is the whole complaint this
+/// answers.
+private struct MicPulseRing: View {
+    @State private var pulse = false
+
+    var body: some View {
+        Circle()
+            .stroke(DeckTheme.accent.opacity(0.55), lineWidth: 1.5)
+            .frame(width: 30, height: 30)
+            .scaleEffect(pulse ? 1.55 : 1.0)
+            .opacity(pulse ? 0.0 : 0.8)
+            .onAppear {
+                withAnimation(.easeOut(duration: 1.5).repeatForever(autoreverses: false)) {
+                    pulse = true
+                }
+            }
+            .allowsHitTesting(false)
+    }
+}
 
 private struct AgentPulseDot: View {
     let color: Color

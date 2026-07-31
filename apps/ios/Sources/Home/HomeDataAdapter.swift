@@ -200,8 +200,22 @@ private extension HomeDataAdapter {
             agentState: agentState(for: voice),
             attentionCount: snapshot?.questions.count ?? 0,
             latencyMs: nil,
-            metrics: metrics(from: snapshot?.telemetry)
+            metrics: metrics(from: snapshot?.telemetry),
+            voice: voiceActivity(for: voice)
         )
+    }
+
+    /// Reduce the wire phase to what the roster card renders.
+    ///
+    /// Only `.listening` means a microphone is actually open. The rest are the
+    /// Mac working on something you already said, which is worth showing but is
+    /// not the state that needs to be impossible to miss.
+    static func voiceActivity(for voice: DeckVoiceState?) -> HomeVoiceActivity {
+        switch voice?.phase {
+        case .listening:                            return .listening
+        case .transcribing, .reasoning, .speaking:  return .working
+        case .idle, nil:                            return .off
+        }
     }
 
     /// Map `DeckSystemTelemetry` onto the gauge struct. Returns nil if no
@@ -233,7 +247,8 @@ private extension HomeDataAdapter {
             lastActionAgo: nil,
             agentState: .idle,
             attentionCount: 0,
-            latencyMs: nil
+            latencyMs: nil,
+            hasLiveSession: false
         )
     }
 
@@ -254,7 +269,8 @@ private extension HomeDataAdapter {
                 : agoLabel(from: trust.pairedAt),
             agentState: .idle,
             attentionCount: 0,
-            latencyMs: nil
+            latencyMs: nil,
+            hasLiveSession: false
         )
     }
 }

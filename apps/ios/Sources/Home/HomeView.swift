@@ -40,6 +40,8 @@ struct HomeView: View {
     /// Opens the multi-host deck. Only offered when there is more than one Mac.
     var onEnterFleet: (() -> Void)? = nil
     var onAddHost: (() -> Void)? = nil
+    /// Toggle dictation on one specific host, from its roster card.
+    var onMachineVoice: ((HomeMachine) -> Void)? = nil
     /// Unpaired Macs discovery can see right now. Surfaced on the add cell.
     var nearbyCandidateCount: Int = 0
     var onScene: ((HomeScene) -> Void)? = nil
@@ -149,7 +151,8 @@ struct HomeView: View {
                         nearbyCandidateCount: nearbyCandidateCount,
                         onEnterDeck: onEnterDeck,
                         onEnterFleet: onEnterFleet,
-                        onAddHost: onAddHost
+                        onAddHost: onAddHost,
+                        onVoice: onMachineVoice
                     )
 
                     HomeScenesGrid(scenes: scenes, onScene: onScene)
@@ -184,7 +187,20 @@ struct HomeView: View {
                         onVoiceCancel?()
                         voicePanelOpen = false
                     },
-                    onClose: { voicePanelOpen = false },
+                    onClose: {
+                        // Dismissing the panel must not leave a microphone open
+                        // on a machine you can no longer see. The chevron reads
+                        // as "close voice" and used to close only the *panel* —
+                        // capture kept running on the remote Mac with nothing on
+                        // screen to say so, and no way back to a stop button
+                        // except re-opening the panel.
+                        //
+                        // Only `.listening` holds the mic open; the later phases
+                        // are the Mac thinking, and silently cancelling that
+                        // would throw away a turn the user already spoke.
+                        if voiceState?.phase == .listening { onVoiceStop?() }
+                        voicePanelOpen = false
+                    },
                     onRemediate: { onVoiceRemediate?($0) }
                 )
                 .transition(.move(edge: .bottom).combined(with: .opacity))

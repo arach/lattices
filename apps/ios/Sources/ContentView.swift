@@ -106,6 +106,14 @@ struct ContentView: View {
                         deckDestination = .fleet(initialMachineID: nil)
                     },
                     onAddHost:   { showAddHost = true },
+
+                    // Per-host dictation. Routed to *that machine's* store, not
+                    // the primary — which is the point: the primary is whichever
+                    // trusted host Bonjour listed first, so "who hears me" was
+                    // decided by discovery order rather than by the user.
+                    onMachineVoice: { machine in
+                        hostStore(for: machine.id)?.toggleVoice()
+                    },
                     nearbyCandidateCount: nearbyCandidateCount,
                     onPair:      { showAddHost = true },
                     onSettings:  { showSettings = true },
