@@ -8,6 +8,9 @@ public struct DeckTrackpadState: Codable, Equatable, Sendable {
     public var pointerScale: Double
     public var scrollScale: Double
     public var supportsDragLock: Bool
+    /// Current Mac pointer position normalized across the complete desktop.
+    public var pointerX: Double?
+    public var pointerY: Double?
 
     public init(
         isEnabled: Bool,
@@ -16,7 +19,9 @@ public struct DeckTrackpadState: Codable, Equatable, Sendable {
         statusDetail: String? = nil,
         pointerScale: Double = 1.6,
         scrollScale: Double = 1.0,
-        supportsDragLock: Bool = true
+        supportsDragLock: Bool = true,
+        pointerX: Double? = nil,
+        pointerY: Double? = nil
     ) {
         self.isEnabled = isEnabled
         self.isAvailable = isAvailable
@@ -25,6 +30,8 @@ public struct DeckTrackpadState: Codable, Equatable, Sendable {
         self.pointerScale = pointerScale
         self.scrollScale = scrollScale
         self.supportsDragLock = supportsDragLock
+        self.pointerX = pointerX
+        self.pointerY = pointerY
     }
 }
 
@@ -56,8 +63,12 @@ public enum DeckTrackpadEvent: String, Codable, CaseIterable, Sendable {
 
 public struct DeckTrackpadEventResult: Codable, Equatable, Sendable {
     public var ok: Bool
+    public var pointerX: Double?
+    public var pointerY: Double?
 
-    public init(ok: Bool) {
+    public init(ok: Bool, pointerX: Double? = nil, pointerY: Double? = nil) {
         self.ok = ok
+        self.pointerX = pointerX
+        self.pointerY = pointerY
     }
 }

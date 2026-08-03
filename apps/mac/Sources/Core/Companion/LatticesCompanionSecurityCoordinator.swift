@@ -59,7 +59,7 @@ struct LatticesCompanionTrustedDeviceRecord: Codable, Equatable, Identifiable, S
     }
 
     var effectiveCapabilities: [String] {
-        capabilities ?? DeckBridgeCapability.defaultCompanionCapabilities
+        capabilities ?? DeckBridgeCapability.legacyCompanionCapabilities
     }
 }
 
@@ -156,7 +156,18 @@ final class LatticesCompanionSecurityCoordinator {
 
         if var existing = trustedDevices[request.deviceID], existing.publicKey == request.devicePublicKey {
             existing.lastSeenAt = Date()
-            existing.capabilities = grantedCapabilities.isEmpty ? existing.effectiveCapabilities : grantedCapabilities
+            let existingCapabilities = existing.effectiveCapabilities
+            let additions = Self.additionalCapabilities(
+                existing: existingCapabilities,
+                requested: grantedCapabilities
+            )
+            let upgradeApproved = additions.isEmpty
+                || promptForCapabilityUpgrade(request, additions: additions)
+            existing.capabilities = Self.capabilitiesAfterPairingRequest(
+                existing: existingCapabilities,
+                requested: grantedCapabilities,
+                upgradeApproved: upgradeApproved
+            )
             trustedDevices[request.deviceID] = existing
             persistTrustedDevices()
             diag.success("CompanionPairing: device already trusted id=\(request.deviceID)")
@@ -310,7 +321,7 @@ final class LatticesCompanionSecurityCoordinator {
     }
 }
 
-private extension LatticesCompanionSecurityCoordinator {
+extension LatticesCompanionSecurityCoordinator {
     static func loadTrustedDevices() -> [String: LatticesCompanionTrustedDeviceRecord] {
         guard
             let data = UserDefaults.standard.data(forKey: DefaultsKey.trustedDevices),
@@ -367,6 +378,19 @@ private extension LatticesCompanionSecurityCoordinator {
         return requested
             .intersection(supported)
             .sorted()
+    }
+
+    static func additionalCapabilities(existing: [String], requested: [String]) -> [String] {
+        Array(Set(requested).subtracting(existing)).sorted()
+    }
+
+    static func capabilitiesAfterPairingRequest(
+        existing: [String],
+        requested: [String],
+        upgradeApproved: Bool
+    ) -> [String] {
+        guard upgradeApproved else { return Array(Set(existing)).sorted() }
+        return Array(Set(existing).union(requested)).sorted()
     }
 
     func persistTrustedDevices() {
@@ -556,6 +580,41 @@ private extension LatticesCompanionSecurityCoordinator {
         return approved
     }
 
+    func promptForCapabilityUpgrade(_ request: DeckPairingRequest, additions: [String]) -> Bool {
+        if Thread.isMainThread {
+            return runCapabilityUpgradeAlert(request, additions: additions)
+        }
+
+        let semaphore = DispatchSemaphore(value: 0)
+        var approved = false
+        DispatchQueue.main.async {
+            approved = self.runCapabilityUpgradeAlert(request, additions: additions)
+            semaphore.signal()
+        }
+        semaphore.wait()
+        return approved
+    }
+
+    func runCapabilityUpgradeAlert(_ request: DeckPairingRequest, additions: [String]) -> Bool {
+        NSApp.activate(ignoringOtherApps: true)
+        let code = Self.fingerprint(forPublicKeyBase64: request.devicePublicKey)
+        let labels = additions.map(Self.userFacingCapabilityName)
+
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Allow more access for this device?"
+        alert.informativeText = """
+        “\(request.deviceName)” is already paired as \(code) and is asking for:
+
+            \(labels.joined(separator: "\n    "))
+
+        Existing access remains available if you keep the current permissions.
+        """
+        alert.addButton(withTitle: "Allow Access")
+        alert.addButton(withTitle: "Keep Current Access")
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
     func runPairingAlert(_ request: DeckPairingRequest) -> Bool {
         NSApp.activate(ignoringOtherApps: true)
 
@@ -566,6 +625,13 @@ private extension LatticesCompanionSecurityCoordinator {
         // is derived from a key the sender must actually hold, so it leads,
         // and the forgeable fields are labelled as claims rather than facts.
         let code = Self.fingerprint(forPublicKeyBase64: request.devicePublicKey)
+        // Disclose the same normalized set that pairing will actually grant.
+        // Older clients may send an empty list, which intentionally maps to
+        // the current supported companion capability set.
+        let requestedAccess = Self.grantedCapabilities(for: request.requestedCapabilities)
+            .map(Self.userFacingCapabilityName)
+            .map { "    • \($0)" }
+            .joined(separator: "\n")
 
         let alert = NSAlert()
         alert.alertStyle = .warning
@@ -578,11 +644,29 @@ private extension LatticesCompanionSecurityCoordinator {
         The device calls itself “\(request.deviceName)” (\(request.platform)). \
         That name is chosen by the device and is not verified — only the code is.
 
+        If allowed, this device can:
+        \(requestedAccess)
+
         If the codes do not match, deny: something else on your network is asking.
         """
         alert.addButton(withTitle: "Allow Pairing")
         alert.addButton(withTitle: "Deny")
         return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    static func userFacingCapabilityName(_ capability: String) -> String {
+        switch capability {
+        case DeckBridgeCapability.screenPreview:
+            return "View this Mac's screen"
+        case DeckBridgeCapability.inputTrackpad:
+            return "Move, click, and scroll the pointer"
+        case DeckBridgeCapability.deckPerform:
+            return "Run companion deck actions"
+        case DeckBridgeCapability.deckRead:
+            return "Read the companion deck and Mac status"
+        default:
+            return capability
+        }
     }
 
     static func constantTimeEquals(_ lhs: String, _ rhs: String) -> Bool {

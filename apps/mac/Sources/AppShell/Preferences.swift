@@ -32,7 +32,7 @@ class Preferences: ObservableObject {
         static let cockpitLayoutVersion = "companion.cockpit.layoutVersion"
     }
 
-    private static let currentCockpitLayoutVersion = 2
+    private static let currentCockpitLayoutVersion = 4
 
     private static let dismissedCapabilitiesKey = "permissions.dismissed"
 
@@ -311,21 +311,23 @@ class Preferences: ObservableObject {
     private static func loadCompanionCockpitLayout() -> LatticesCompanionCockpitLayout {
         if let data = UserDefaults.standard.data(forKey: CompanionDefaultsKey.cockpitLayout),
            let decoded = try? JSONDecoder().decode(LatticesCompanionCockpitLayout.self, from: data) {
-            let normalized = LatticesCompanionCockpitCatalog.normalized(decoded)
-            guard UserDefaults.standard.integer(forKey: CompanionDefaultsKey.cockpitLayoutVersion)
-                    < currentCockpitLayoutVersion else {
-                return normalized
+            let savedVersion = UserDefaults.standard.integer(
+                forKey: CompanionDefaultsKey.cockpitLayoutVersion
+            )
+            guard savedVersion < currentCockpitLayoutVersion else {
+                return LatticesCompanionCockpitCatalog.normalized(decoded)
             }
 
-            let migrated = migrateCompanionCockpitLayout(normalized)
-            if let encoded = try? JSONEncoder().encode(migrated) {
+            let migrated = migrateCompanionCockpitLayout(decoded, fromVersion: savedVersion)
+            let normalized = LatticesCompanionCockpitCatalog.normalized(migrated)
+            if let encoded = try? JSONEncoder().encode(normalized) {
                 UserDefaults.standard.set(encoded, forKey: CompanionDefaultsKey.cockpitLayout)
             }
             UserDefaults.standard.set(
                 currentCockpitLayoutVersion,
                 forKey: CompanionDefaultsKey.cockpitLayoutVersion
             )
-            return migrated
+            return normalized
         }
 
         // One-time migration from the original web-builder draft. Early builds
@@ -353,10 +355,31 @@ class Preferences: ObservableObject {
         return LatticesCompanionCockpitCatalog.defaultLayout
     }
 
-    /// Adds the phone-to-Mac gateway paste action to existing starter decks
-    /// without replacing the user's other placements. The schema version makes
-    /// this a one-time migration, so removing the tile later remains respected.
-    private static func migrateCompanionCockpitLayout(
+    /// Advances old deck layouts without replacing anything the user authored.
+    /// Only exact untouched starter layouts advance; every renamed, reordered,
+    /// added, removed, or repositioned page remains the user's layout.
+    static func migrateCompanionCockpitLayout(
+        _ layout: LatticesCompanionCockpitLayout,
+        fromVersion: Int
+    ) -> LatticesCompanionCockpitLayout {
+        var migrated = layout
+        if fromVersion < 2 {
+            migrated = migratePasteDeviceIntoCompanionCockpit(migrated)
+        }
+        if fromVersion < 3,
+           migrated == LatticesCompanionCockpitCatalog.legacyDefaultLayoutV2 {
+            migrated = LatticesCompanionCockpitCatalog.legacyDefaultLayoutV3
+        }
+        if fromVersion < 4,
+           migrated == LatticesCompanionCockpitCatalog.legacyDefaultLayoutV3 {
+            migrated = LatticesCompanionCockpitCatalog.defaultLayout
+        }
+        return migrated
+    }
+
+    /// Adds the phone-to-Mac gateway paste action to the v1 starter deck
+    /// without replacing the user's other placements.
+    private static func migratePasteDeviceIntoCompanionCockpit(
         _ layout: LatticesCompanionCockpitLayout
     ) -> LatticesCompanionCockpitLayout {
         var migrated = layout
@@ -419,14 +442,15 @@ class Preferences: ObservableObject {
                 "switch-window-prev", "switch-window-next", "switch-app-prev", "switch-app-next",
                 "layout-optimize", "mouse-find", "key-up", "key-down"
             ]
-            if page.slotIDs == legacyStarter,
-               let starter = LatticesCompanionCockpitCatalog.defaultLayout.pages.first(where: { $0.id == "dev" }) {
-                page = starter
+            if let starter = LatticesCompanionCockpitCatalog.legacyDefaultLayoutV2.pages.first(where: { $0.id == "dev" }) {
+                var exactLegacyPage = starter
+                exactLegacyPage.slotIDs = legacyStarter
+                if page == exactLegacyPage {
+                    page = starter
+                }
             }
         }
 
-        page.subtitle = LatticesCompanionCockpitCatalog.defaultLayout.pages
-            .first(where: { $0.id == "dev" })?.subtitle ?? page.subtitle
         migrated.pages[index] = page
         return migrated
     }

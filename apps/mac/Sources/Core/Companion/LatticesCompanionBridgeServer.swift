@@ -309,6 +309,37 @@ private extension LatticesCompanionBridgeServer {
             )
             try sendJSON(status: 200, value: response, to: fd)
 
+        case ("POST", "/deck/preview"):
+            let auth = try authorizeProtectedRequest(request, requiredCapability: DeckBridgeCapability.screenPreview)
+            let previewRequest = try LatticesCompanionSecurityCoordinator.shared.decodeProtectedBody(
+                DeckDesktopPreviewRequest.self,
+                body: request.body,
+                auth: auth,
+                method: request.method,
+                path: request.path
+            )
+
+            // ScreenCaptureKit is async. Hand the socket off so the serial bridge
+            // queue can keep serving trackpad, snapshot, and action requests while
+            // the frame is being captured and encoded.
+            Task { [weak self] in
+                defer { close(fd) }
+                guard let self else { return }
+                do {
+                    let frame = try await LatticesDesktopPreviewCapture.capture(previewRequest)
+                    let response = try LatticesCompanionSecurityCoordinator.shared.encodeProtectedResponse(
+                        frame,
+                        auth: auth,
+                        status: 200,
+                        path: request.path
+                    )
+                    try self.sendJSON(status: 200, value: response, to: fd)
+                } catch {
+                    self.sendError(status: 500, message: error.localizedDescription, to: fd)
+                }
+            }
+            return .handedOff
+
         default:
             sendError(status: 404, message: "Unknown route", to: fd)
         }

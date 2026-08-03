@@ -8,6 +8,7 @@ final class LatticesCompanionTrackpadController {
     private init() {}
 
     func state(isEnabled: Bool) -> DeckTrackpadState {
+        let pointer = normalizedCursorPosition()
         guard isEnabled else {
             return DeckTrackpadState(
                 isEnabled: false,
@@ -16,7 +17,9 @@ final class LatticesCompanionTrackpadController {
                 statusDetail: "Enable the companion trackpad from the Mac Companion settings.",
                 pointerScale: 1.6,
                 scrollScale: 1.0,
-                supportsDragLock: true
+                supportsDragLock: true,
+                pointerX: pointer.x,
+                pointerY: pointer.y
             )
         }
 
@@ -30,7 +33,9 @@ final class LatticesCompanionTrackpadController {
                 : "Grant Accessibility permission to Lattices on your Mac to enable pointer control.",
             pointerScale: 1.6,
             scrollScale: 1.0,
-            supportsDragLock: true
+            supportsDragLock: true,
+            pointerX: pointer.x,
+            pointerY: pointer.y
         )
     }
 
@@ -57,13 +62,39 @@ final class LatticesCompanionTrackpadController {
             ok = performMouseDrag(dx: request.dx, dy: request.dy)
         }
 
-        return DeckTrackpadEventResult(ok: ok)
+        let pointer = normalizedCursorPosition()
+        return DeckTrackpadEventResult(ok: ok, pointerX: pointer.x, pointerY: pointer.y)
     }
 }
 
 private extension LatticesCompanionTrackpadController {
     func currentCursorPoint() -> CGPoint {
         CGEvent(source: nil)?.location ?? .zero
+    }
+
+    /// CGEvent and CGDisplayBounds share the same global coordinate space, so
+    /// this remains accurate across displays above, below, or left of the main
+    /// screen. The iPad renders the normalized point as full-surface X/Y guides.
+    func normalizedCursorPosition() -> (x: Double?, y: Double?) {
+        var displays = Array(repeating: CGDirectDisplayID(), count: 16)
+        var count: UInt32 = 0
+        guard CGGetActiveDisplayList(UInt32(displays.count), &displays, &count) == .success,
+              count > 0 else {
+            return (nil, nil)
+        }
+
+        let desktopBounds = displays.prefix(Int(count))
+            .map(CGDisplayBounds)
+            .reduce(CGRect.null) { $0.union($1) }
+        guard !desktopBounds.isNull, desktopBounds.width > 0, desktopBounds.height > 0 else {
+            return (nil, nil)
+        }
+
+        let point = currentCursorPoint()
+        return (
+            min(1, max(0, Double((point.x - desktopBounds.minX) / desktopBounds.width))),
+            min(1, max(0, Double((point.y - desktopBounds.minY) / desktopBounds.height)))
+        )
     }
 
     func clamp(delta: Double) -> CGFloat {

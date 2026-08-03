@@ -31,10 +31,13 @@ targets:
         excludes:
           - Contents.json
           - AppIcon.appiconset/Contents.json
+          # Alternate design review artifact; intentionally not part of the app
+          # bundle until it is selected as the shipping icon.
+          - AppIconV2.appiconset
     info:
       path: Sources/Info.plist
       properties:
-        CFBundleDisplayName: Lattices
+        CFBundleDisplayName: Lattices Deck
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         NSBonjourServices:

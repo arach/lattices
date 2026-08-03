@@ -33,7 +33,7 @@ final class DeckStore: ObservableObject {
     private let client = DeckBridgeClient()
     private let discovery = BridgeDiscovery()
     private var pollingTask: Task<Void, Never>?
-    private var trackpadEventInFlight = false
+    private var trackpadEventInFlightGeneration: Int?
     private var queuedTrackpadEvents: [QueuedTrackpadEvent] = []
     private let maxQueuedTrackpadEvents = 8
 
@@ -41,6 +41,7 @@ final class DeckStore: ObservableObject {
         var event: DeckTrackpadEvent
         var dx: Double
         var dy: Double
+        var connectionGeneration: Int
 
         var canCoalesce: Bool {
             switch event {
@@ -137,6 +138,7 @@ final class DeckStore: ObservableObject {
         // previous explicit disconnect.
         autoConnectSuppressed = false
         connectionGeneration += 1
+        resetTrackpadPipeline()
         consecutivePollFailures = 0
         let generation = connectionGeneration
         activeEndpoint = endpoint
@@ -179,6 +181,8 @@ final class DeckStore: ObservableObject {
     func disconnect(suppressAutoReconnect: Bool = true) {
         pollingTask?.cancel()
         pollingTask = nil
+        connectionGeneration += 1
+        resetTrackpadPipeline()
         activeEndpoint = nil
         health = nil
         manifest = nil
@@ -217,6 +221,28 @@ final class DeckStore: ObservableObject {
     /// callers don't need to be perfect.
     func setUIPriority(_ priority: DeckPollPriority) {
         uiPriority = priority
+    }
+
+    /// Pull one current desktop frame from the paired Mac. Callers await each
+    /// frame before requesting another so capture work cannot pile up when the
+    /// iPad is backgrounded or the local network slows down.
+    func desktopPreview(
+        displayIndex: Int? = nil,
+        maxPixelWidth: Int = 1_440,
+        scope: DeckDesktopPreviewScope = .display
+    ) async throws -> DeckDesktopPreviewFrame {
+        guard let endpoint = preferredEndpoint(), let health else {
+            throw DeckBridgeClientError.badStatus(503, "The Mac is not connected.")
+        }
+        return try await client.desktopPreview(
+            endpoint: endpoint,
+            health: health,
+            request: DeckDesktopPreviewRequest(
+                displayIndex: displayIndex,
+                maxPixelWidth: maxPixelWidth,
+                scope: scope
+            )
+        )
     }
 
     func perform(
@@ -292,15 +318,21 @@ final class DeckStore: ObservableObject {
         dy: Double = 0
     ) {
         guard let endpoint = preferredEndpoint(), let health else { return }
-        let queued = QueuedTrackpadEvent(event: event, dx: dx, dy: dy)
+        let generation = connectionGeneration
+        let queued = QueuedTrackpadEvent(
+            event: event,
+            dx: dx,
+            dy: dy,
+            connectionGeneration: generation
+        )
 
-        guard !trackpadEventInFlight else {
+        guard trackpadEventInFlightGeneration == nil else {
             enqueueTrackpadEvent(queued)
             return
         }
 
-        trackpadEventInFlight = true
-        sendTrackpadEvent(queued, endpoint: endpoint, health: health)
+        trackpadEventInFlightGeneration = generation
+        sendTrackpadEvent(queued, endpoint: endpoint, health: health, generation: generation)
     }
 }
 
@@ -309,6 +341,7 @@ private extension DeckStore {
         if event.canCoalesce,
            let last = queuedTrackpadEvents.last,
            last.event == event.event,
+           last.connectionGeneration == event.connectionGeneration,
            last.canCoalesce {
             queuedTrackpadEvents[queuedTrackpadEvents.count - 1].coalesce(event)
         } else {
@@ -327,7 +360,8 @@ private extension DeckStore {
     func sendTrackpadEvent(
         _ queued: QueuedTrackpadEvent,
         endpoint: BridgeEndpoint,
-        health: BridgeHealthResponse
+        health: BridgeHealthResponse,
+        generation: Int
     ) {
         Task {
             do {
@@ -336,31 +370,48 @@ private extension DeckStore {
                     health: health,
                     request: DeckTrackpadEventRequest(event: queued.event, dx: queued.dx, dy: queued.dy)
                 )
+                guard generation == connectionGeneration else { return }
                 if !result.ok {
                     errorMessage = "Trackpad input was rejected. Check that the Mac bridge is enabled and has Accessibility permission."
+                } else if var currentSnapshot = snapshot,
+                          var trackpad = currentSnapshot.trackpad {
+                    trackpad.pointerX = result.pointerX
+                    trackpad.pointerY = result.pointerY
+                    currentSnapshot.trackpad = trackpad
+                    snapshot = currentSnapshot
                 }
             } catch {
+                guard generation == connectionGeneration else { return }
                 errorMessage = error.localizedDescription
                 await probeTrustIfRefused(error, endpoint: endpoint)
             }
-            finishTrackpadEvent()
+            finishTrackpadEvent(generation: generation)
         }
     }
 
-    func finishTrackpadEvent() {
+    func finishTrackpadEvent(generation: Int) {
+        guard generation == connectionGeneration,
+              trackpadEventInFlightGeneration == generation else { return }
+
+        queuedTrackpadEvents.removeAll { $0.connectionGeneration != generation }
         guard let next = queuedTrackpadEvents.first else {
-            trackpadEventInFlight = false
+            trackpadEventInFlightGeneration = nil
             return
         }
 
         queuedTrackpadEvents.removeFirst()
         guard let endpoint = preferredEndpoint(), let health else {
-            trackpadEventInFlight = false
+            trackpadEventInFlightGeneration = nil
             queuedTrackpadEvents.removeAll()
             return
         }
 
-        sendTrackpadEvent(next, endpoint: endpoint, health: health)
+        sendTrackpadEvent(next, endpoint: endpoint, health: health, generation: generation)
+    }
+
+    func resetTrackpadPipeline() {
+        queuedTrackpadEvents.removeAll()
+        trackpadEventInFlightGeneration = nil
     }
 
     func handleDiscoveryUpdate(_ bridges: [BridgeEndpoint]) {
@@ -460,7 +511,7 @@ private extension DeckStore {
         }
     }
 
-    /// Notice that a Mac has stopped trusting this device, and let go.
+    /// Notice that the two devices no longer agree on this pairing, and let go.
     ///
     /// Trust lives in two records — one per device — and the Mac can drop its
     /// own at any time. When it does, every protected request comes back 403
@@ -469,10 +520,24 @@ private extension DeckStore {
     /// never recover on its own: it reconnects, gets refused, reconnects, and
     /// reports a different flavour of the same failure forever.
     ///
-    /// Dropping our half breaks the loop. The host leaves the roster and turns
-    /// back into something you can add, which is the one action that fixes it.
+    /// The same deadlock happens when the iPad's private key changes while its
+    /// UserDefaults trust record survives (for example, after restoring app
+    /// data without its Keychain item). The Mac still knows the old public key,
+    /// so it correctly rejects every signature with a 401.
+    ///
+    /// Dropping our half breaks either loop. The host leaves the roster and
+    /// turns back into something you can add, which is the one action that can
+    /// safely replace a mismatched key with explicit approval on the Mac.
     private func handleRevokedTrust(_ error: Error) -> Bool {
-        guard case DeckBridgeClientError.badStatus(403, _) = error,
+        guard case DeckBridgeClientError.badStatus(let status, let detail) = error else {
+            return false
+        }
+
+        let macRevokedTrust = status == 403
+        let signingKeyChanged = status == 401
+            && detail.localizedCaseInsensitiveContains("signature could not be verified")
+
+        guard (macRevokedTrust || signingKeyChanged),
               let publicKey = health?.bridgePublicKey,
               DeckBridgeSecurityStore.shared.trust(forPublicKey: publicKey) != nil else {
             return false
@@ -481,7 +546,11 @@ private extension DeckStore {
         let name = connectionLabel
         DeckBridgeSecurityStore.shared.forgetBridge(publicKey: publicKey)
         disconnect(suppressAutoReconnect: true)
-        errorMessage = "\(name) no longer trusts this iPad. Add it again to reconnect."
+        if signingKeyChanged {
+            errorMessage = "\(name)'s saved pairing no longer matches this iPad. Go back and add it again to reconnect."
+        } else {
+            errorMessage = "\(name) no longer trusts this iPad. Add it again to reconnect."
+        }
         return true
     }
 
