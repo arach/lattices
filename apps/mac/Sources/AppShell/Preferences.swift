@@ -32,7 +32,7 @@ class Preferences: ObservableObject {
         static let cockpitLayoutVersion = "companion.cockpit.layoutVersion"
     }
 
-    private static let currentCockpitLayoutVersion = 4
+    private static let currentCockpitLayoutVersion = 5
 
     private static let dismissedCapabilitiesKey = "permissions.dismissed"
 
@@ -372,6 +372,10 @@ class Preferences: ObservableObject {
         }
         if fromVersion < 4,
            migrated == LatticesCompanionCockpitCatalog.legacyDefaultLayoutV3 {
+            migrated = LatticesCompanionCockpitCatalog.legacyDefaultLayoutV4
+        }
+        if fromVersion < 5,
+           migrated == LatticesCompanionCockpitCatalog.legacyDefaultLayoutV4 {
             migrated = LatticesCompanionCockpitCatalog.defaultLayout
         }
         return migrated

@@ -296,11 +296,9 @@ enum LatticesCompanionCockpitCatalog {
         ]
     )
 
-    /// The companion is a remote for the Mac in front of the user, not a
-    /// catalog of the subsystems that happen to implement its commands. Keep
-    /// the starter deliberately small and job-based; the complete catalog
-    /// remains available in the Mac deck builder.
-    static let defaultLayout = LatticesCompanionCockpitLayout(
+    /// The first compact job-based starter shipped as v4. Retain it so an exact,
+    /// untouched copy can move forward without changing personalized decks.
+    static let legacyDefaultLayoutV4 = LatticesCompanionCockpitLayout(
         pages: [
             .init(
                 id: "remote",
@@ -348,6 +346,89 @@ enum LatticesCompanionCockpitCatalog {
                     .init(shortcutID: "talkie-record", col: 2, row: 1, colSpan: 2),
                     .init(shortcutID: "talkie-settings", col: 0, row: 2, colSpan: 2),
                     .init(shortcutID: "mac-sessions", col: 2, row: 2, colSpan: 2),
+                ]
+            ),
+        ]
+    )
+
+    /// Keep the default deck focused on the four contexts that are useful from
+    /// the couch even when Talkie and voice are unavailable. The Mac deck
+    /// builder still exposes the complete action catalog for personalization.
+    static let defaultLayout = LatticesCompanionCockpitLayout(
+        pages: [
+            .init(
+                id: "command",
+                title: "Command",
+                subtitle: "See the Mac, move between apps, and recover the pointer",
+                columns: 4,
+                rows: 3,
+                slots: [
+                    .init(shortcutID: "mac-windows", col: 0, row: 0, colSpan: 2),
+                    .init(shortcutID: "paste-device", col: 2, row: 0, colSpan: 2),
+                    .init(shortcutID: "switch-app-prev", col: 0, row: 1, colSpan: 2),
+                    .init(shortcutID: "switch-app-next", col: 2, row: 1, colSpan: 2),
+                    .init(shortcutID: "switch-window-prev", col: 0, row: 2),
+                    .init(shortcutID: "switch-window-next", col: 1, row: 2),
+                    .init(shortcutID: "mouse-find", col: 2, row: 2),
+                    .init(shortcutID: "mouse-summon", col: 3, row: 2),
+                ]
+            ),
+            .init(
+                id: "dev",
+                title: "Dev",
+                subtitle: "Clipboard, editing, and terminal-friendly navigation",
+                columns: 4,
+                rows: 3,
+                slots: [
+                    .init(shortcutID: "key-copy", col: 0, row: 0),
+                    .init(shortcutID: "key-paste", col: 1, row: 0),
+                    .init(shortcutID: "key-undo", col: 2, row: 0),
+                    .init(shortcutID: "key-escape", col: 3, row: 0),
+                    .init(shortcutID: "key-enter", col: 0, row: 1),
+                    .init(shortcutID: "key-space", col: 1, row: 1),
+                    .init(shortcutID: "key-up", col: 2, row: 1),
+                    .init(shortcutID: "key-down", col: 3, row: 1),
+                    .init(shortcutID: "key-left", col: 0, row: 2),
+                    .init(shortcutID: "key-right", col: 1, row: 2),
+                    .init(shortcutID: "switch-window-prev", col: 2, row: 2),
+                    .init(shortcutID: "switch-window-next", col: 3, row: 2),
+                ]
+            ),
+            .init(
+                id: "media",
+                title: "Media",
+                subtitle: "Playback and presentation controls",
+                columns: 4,
+                rows: 2,
+                slots: [
+                    .init(shortcutID: "key-space", col: 0, row: 0, colSpan: 2),
+                    .init(shortcutID: "key-left", col: 2, row: 0),
+                    .init(shortcutID: "key-right", col: 3, row: 0),
+                    .init(shortcutID: "place-center", col: 0, row: 1),
+                    .init(shortcutID: "place-maximize", col: 1, row: 1),
+                    .init(shortcutID: "resize-grow", col: 2, row: 1),
+                    .init(shortcutID: "resize-shrink", col: 3, row: 1),
+                ]
+            ),
+            .init(
+                id: "windows",
+                title: "Windows",
+                subtitle: "Place and resize the frontmost window",
+                columns: 4,
+                rows: 3,
+                slots: [
+                    .init(shortcutID: "place-top-left", col: 0, row: 0),
+                    .init(shortcutID: "place-top-right", col: 1, row: 0),
+                    .init(shortcutID: "place-bottom-left", col: 2, row: 0),
+                    .init(shortcutID: "place-bottom-right", col: 3, row: 0),
+                    .init(shortcutID: "place-left-third", col: 0, row: 1),
+                    .init(shortcutID: "place-center-third", col: 1, row: 1),
+                    .init(shortcutID: "place-right-third", col: 2, row: 1),
+                    .init(shortcutID: "place-center", col: 3, row: 1),
+                    .init(shortcutID: "place-left", col: 0, row: 2),
+                    .init(shortcutID: "place-right", col: 1, row: 2),
+                    .init(shortcutID: "place-maximize", col: 2, row: 2),
+                    .init(shortcutID: "layout-optimize", col: 3, row: 2),
                 ]
             ),
         ]

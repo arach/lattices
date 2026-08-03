@@ -2869,7 +2869,7 @@ struct FleetDeckScreen: View {
             // The Fleet Deck design is authored on a 1376×1032 iPad-landscape
             // canvas. Give it the screen whenever there is room for its fixed
             // rows; anything shorter (iPhone landscape) keeps the lane layout.
-            let fitsDeck = isLandscape && proxy.size.height >= 700 && !stores.isEmpty
+            let fitsDeck = isLandscape && proxy.size.height >= 820 && !stores.isEmpty
 
             if fitsDeck {
                 FleetDeckHost(
@@ -2877,7 +2877,6 @@ struct FleetDeckScreen: View {
                     initialMachineID: initialMachineID,
                     onClose: { dismiss() }
                 )
-                .ignoresSafeArea(.container, edges: .bottom)
             } else {
                 LatsBackground(grid: true) {
                     VStack(spacing: 0) {
