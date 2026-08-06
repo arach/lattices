@@ -414,7 +414,32 @@ final class VoiceIntentResolver {
         return nil
     }
 
+    /// True when some intent other than `search` declares this exact utterance
+    /// as one of its own examples.
+    ///
+    /// The search shortcuts below are *shape* heuristics — "starts with find",
+    /// "ends in windows" — and they run inside `directMatch`, which fires before
+    /// any intent gets to compete. So a heuristic about a suffix outranked
+    /// intents that had spelled the phrase out, and it did so at 0.98
+    /// confidence: `search` claimed nine of the resolver's own declared
+    /// examples, including "where's my mouse" (find_mouse), "organize the
+    /// windows" (distribute), and "show me all windows" (list_windows). A
+    /// confident wrong answer is worse than no answer, because nothing
+    /// downstream second-guesses 0.98.
+    ///
+    /// Yielding here doesn't hand the utterance to the other intent — it just
+    /// stops short-circuiting, and lets the semantic scorer below decide on the
+    /// merits.
+    private func isDeclaredByOtherIntent(_ input: String) -> Bool {
+        IntentEngine.shared.definitions().contains { def in
+            def.name != "search"
+                && def.examples.contains { normalizeUtterance($0) == input }
+        }
+    }
+
     private func exactSearchQuery(for input: String) -> String? {
+        guard !isDeclaredByOtherIntent(input) else { return nil }
+
         if let query = extractSearchQuery(from: input), !query.isEmpty,
            searchPrefixes.contains(where: input.hasPrefix) {
             return cleanQuery(query)

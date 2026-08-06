@@ -33,6 +33,15 @@ struct StoredBridgeTrust: Codable, Equatable, Sendable {
     var grantedCapabilities: [String]?
     var pairedAt: Date
 
+    /// Where this Mac was last reachable. Optional so records written before
+    /// these fields existed still decode — synthesized `Decodable` uses
+    /// `decodeIfPresent` for optionals, so old JSON reads back with both nil.
+    ///
+    /// This is what lets a paired-but-not-currently-discovered Mac stay in the
+    /// roster as something you can reconnect to, rather than a dead card.
+    var lastKnownHost: String?
+    var lastKnownPort: Int?
+
     var effectiveCapabilities: [String] {
         grantedCapabilities ?? DeckBridgeCapability.defaultCompanionCapabilities
     }
@@ -82,8 +91,51 @@ final class DeckBridgeSecurityStore {
         Data(privateKey.publicKey.rawRepresentation).base64EncodedString()
     }
 
+    /// This device's own fingerprint, derived exactly as the Mac derives it for
+    /// its approval alert (`LatticesCompanionSecurityCoordinator.fingerprint`).
+    /// Both screens show the same string — that is the whole point of showing
+    /// it, and it is why this derivation must not drift from the Mac's.
+    ///
+    /// Hex has no confusable pairs to worry about: `O`, `I` and `L` are not in
+    /// the alphabet, so `0` and `1` are unambiguous.
+    var deviceFingerprint: String {
+        let digest = SHA256.hash(data: Data(devicePublicKeyBase64.utf8))
+        let hex = digest.map { String(format: "%02x", $0) }.joined()
+        let compact = String(hex.prefix(12)).uppercased()
+        return stride(from: 0, to: compact.count, by: 4).map { offset in
+            let start = compact.index(compact.startIndex, offsetBy: offset)
+            let end = compact.index(start, offsetBy: min(4, compact.count - offset))
+            return String(compact[start..<end])
+        }.joined(separator: "-")
+    }
+
     func isTrusted(health: BridgeHealthResponse) -> Bool {
         trustedBridges[health.bridgePublicKey] != nil
+    }
+
+    /// Whether this device has paired with the Mac behind an endpoint.
+    ///
+    /// One definition, because this comparison was previously written out by
+    /// hand in `ContentView.prepareConnection` and `DeckFleetStore.synchronize`
+    /// and the two are easy to let drift apart.
+    ///
+    /// Note the limit of what this proves: the fingerprint arrives in an
+    /// unauthenticated Bonjour TXT record, so a match is a *hint* that this is
+    /// a Mac we know, good enough to decide what to show in a roster. It is not
+    /// authentication — that happens against `health.bridgePublicKey` when the
+    /// connection is actually made.
+    func isTrusted(endpoint: BridgeEndpoint) -> Bool {
+        guard let fingerprint = endpoint.bridgeFingerprint, !fingerprint.isEmpty else { return false }
+        return trustedBridges.values.contains {
+            $0.bridgeFingerprint.caseInsensitiveCompare(fingerprint) == .orderedSame
+        }
+    }
+
+    /// The trust record for a Mac, by the public key its `/health` reports.
+    /// This is the authenticated identity — prefer it over fingerprint matching
+    /// anywhere the answer decides what a control does.
+    func trust(forPublicKey publicKey: String) -> StoredBridgeTrust? {
+        trustedBridges[publicKey]
     }
 
     /// All Macs this device has paired with (most recently paired first).
@@ -108,7 +160,15 @@ final class DeckBridgeSecurityStore {
         )
     }
 
-    func storePairing(_ response: DeckPairingResponse) {
+    func storePairing(
+        _ response: DeckPairingResponse,
+        lastKnownHost: String? = nil,
+        lastKnownPort: Int? = nil
+    ) {
+        // `alreadyTrusted` comes back for a Mac we have paired with before, so
+        // keep the original pairing date rather than restamping it every time
+        // a retry resolves.
+        let existing = trustedBridges[response.bridgePublicKey]
         trustedBridges[response.bridgePublicKey] = StoredBridgeTrust(
             bridgeName: response.bridgeName,
             bridgePublicKey: response.bridgePublicKey,
@@ -116,8 +176,22 @@ final class DeckBridgeSecurityStore {
             requestSigningRequired: response.requestSigningRequired,
             payloadEncryptionRequired: response.payloadEncryptionRequired,
             grantedCapabilities: response.grantedCapabilities,
-            pairedAt: Date()
+            pairedAt: existing?.pairedAt ?? Date(),
+            lastKnownHost: lastKnownHost ?? existing?.lastKnownHost,
+            lastKnownPort: lastKnownPort ?? existing?.lastKnownPort
         )
+        persistTrustedBridges()
+    }
+
+    /// Remember where a Mac answered, so it stays reconnectable once it stops
+    /// advertising on Bonjour. Only ever called after `/health` has proved the
+    /// public key, so an address can never be attached to the wrong Mac.
+    func rememberAddress(forPublicKey publicKey: String, host: String, port: Int) {
+        guard var trust = trustedBridges[publicKey] else { return }
+        guard trust.lastKnownHost != host || trust.lastKnownPort != port else { return }
+        trust.lastKnownHost = host
+        trust.lastKnownPort = port
+        trustedBridges[publicKey] = trust
         persistTrustedBridges()
     }
 

@@ -3,16 +3,48 @@ import SwiftUI
 
 // MARK: - Router
 
+/// Where a tap on Home leads.
+///
+/// Home is the roster, so the choice of surface is made there and carried here
+/// intact — nothing downstream re-decides it. With one Mac there is no choice to
+/// make; with several, tapping a machine opens that host and the fleet entry
+/// opens the deck.
+enum DeckDestination: Identifiable, Hashable {
+    /// One Mac's focus environment, keyed by `BridgeEndpoint.id`.
+    case host(String)
+    /// The multi-host deck, optionally opening on a particular Mac's channel.
+    case fleet(initialMachineID: String?)
+
+    var id: String {
+        switch self {
+        case .host(let machineID):    return "host:\(machineID)"
+        case .fleet(let machineID):   return "fleet:\(machineID ?? "-")"
+        }
+    }
+}
+
 struct ContentView: View {
     @StateObject private var store = DeckStore()
     @StateObject private var fleetStore = DeckFleetStore()
-    @State private var showLatsDeck = false
-    @State private var requestedMachineID: String?
+    @State private var deckDestination: DeckDestination?
+    /// The machine whose tap re-pointed the primary store for first-time pairing.
+    @State private var repointedMachineID: String?
     @State private var showSettings = false
+    @State private var showAddHost = false
     @State private var trustedBridges: [StoredBridgeTrust] = []
 
     private var liveMachines: [HomeMachine] {
-        HomeDataAdapter.machines(store: store, trustedBridges: trustedBridges)
+        HomeDataAdapter.machines(
+            store: store,
+            secondaryStores: fleetStore.secondaryStores,
+            trustedBridges: trustedBridges
+        )
+    }
+
+    /// Unpaired Macs on the network right now. Home shows the count and does
+    /// nothing else with it — deciding to pair is the user's.
+    private var nearbyCandidateCount: Int {
+        AddHostController.candidates(from: store).count
     }
 
     private var liveRecent: [HomeRecentEntry] {
@@ -61,24 +93,29 @@ struct ContentView: View {
 
                     onEnterDeck: { machine in
                         guard machine.status != .offline else { return }
-                        if machine.status != .active,
-                           let endpoint = store.discoveredBridges.first(where: { $0.id == machine.id }) {
-                            let isTrusted = endpoint.bridgeFingerprint.map { fingerprint in
-                                DeckBridgeSecurityStore.shared.trustedBridgeList().contains {
-                                    $0.bridgeFingerprint.caseInsensitiveCompare(fingerprint) == .orderedSame
-                                }
-                            } ?? false
-                            if !isTrusted {
-                                // Keep first-time pairing explicit and scoped to
-                                // the Mac the user actually tapped.
-                                store.connect(to: endpoint)
-                            }
-                        }
-                        fleetStore.synchronize(with: store)
-                        requestedMachineID = machine.id
-                        showLatsDeck = true
+                        prepareConnection(for: machine)
+                        // Start fetching on the tap rather than on arrival, so
+                        // the request is already in flight while the cover
+                        // animates instead of starting after it.
+                        hostStore(for: machine.id)?.setUIPriority(.fast)
+                        hostStore(for: machine.id)?.refreshSnapshot()
+                        deckDestination = .host(machine.id)
                     },
-                    onPair:      { showSettings = true },
+                    onEnterFleet: {
+                        fleetStore.synchronize(with: store)
+                        deckDestination = .fleet(initialMachineID: nil)
+                    },
+                    onAddHost:   { showAddHost = true },
+
+                    // Per-host dictation. Routed to *that machine's* store, not
+                    // the primary — which is the point: the primary is whichever
+                    // trusted host Bonjour listed first, so "who hears me" was
+                    // decided by discovery order rather than by the user.
+                    onMachineVoice: { machine in
+                        hostStore(for: machine.id)?.toggleVoice()
+                    },
+                    nearbyCandidateCount: nearbyCandidateCount,
+                    onPair:      { showAddHost = true },
                     onSettings:  { showSettings = true },
 
                     // Voice relay — wired to the active Mac via /deck/perform.
@@ -96,22 +133,73 @@ struct ContentView: View {
             }
             .navigationBarHidden(true)
             .toolbar(.hidden, for: .navigationBar)
-            .fullScreenCover(isPresented: $showLatsDeck) {
-                FleetDeckScreen(
-                    primaryStore: store,
-                    fleetStore: fleetStore,
-                    initialMachineID: requestedMachineID
-                )
+            .fullScreenCover(item: $deckDestination) { destination in
+                switch destination {
+                case .host(let machineID):
+                    if let hostStore = hostStore(for: machineID) {
+                        HostDeckHost(store: hostStore, onClose: { deckDestination = nil })
+                    } else {
+                        // Better to say we lost it than to silently open a
+                        // different Mac's cockpit.
+                        LatsBackground {
+                            LatsEmptyState(
+                                title: "That Mac is no longer reachable",
+                                subtitle: "Its connection changed while you were opening it. Go back and pick it again.",
+                                icon: "laptopcomputer.slash"
+                            )
+                            .padding(24)
+                        }
+                        .onTapGesture { deckDestination = nil }
+                    }
+                case .fleet(let machineID):
+                    FleetDeckScreen(
+                        primaryStore: store,
+                        fleetStore: fleetStore,
+                        initialMachineID: machineID
+                    )
+                }
             }
             .sheet(isPresented: $showSettings) {
-                LatsSettingsView(store: store)
-                    .preferredColorScheme(.dark)
+                LatsSettingsView(
+                    store: store,
+                    onForget: {
+                        fleetStore.releaseUntrusted()
+                        trustedBridges = DeckBridgeSecurityStore.shared.trustedBridgeList()
+                    }
+                )
+                .preferredColorScheme(.dark)
+            }
+            .sheet(isPresented: $showAddHost) {
+                AddHostSheet(
+                    store: store,
+                    onPaired: { endpoint in
+                        // Adding is additive. The Mac on screen does not move
+                        // just because another one joined — the user asked to
+                        // add, not to switch. The only exception is having
+                        // nothing to look at yet.
+                        if store.activeEndpoint == nil {
+                            repointedMachineID = endpoint.id
+                            store.connect(to: endpoint)
+                        } else {
+                            fleetStore.adopt(endpoint)
+                        }
+                        trustedBridges = DeckBridgeSecurityStore.shared.trustedBridgeList()
+                    },
+                    onOpen: { endpoint in
+                        deckDestination = .host(endpoint.id)
+                    }
+                )
+                .preferredColorScheme(.dark)
             }
             // Adaptive polling: speed up while the user is in the cockpit
             // (Deck or settings) — Home alone runs in ambient mode.
-            .onChange(of: showLatsDeck) { _, isOpen in
-                store.setUIPriority(isOpen ? .fast : .ambient)
-                fleetStore.setUIPriority(isOpen ? .fast : .ambient, primaryStore: store)
+            .onChange(of: deckDestination) { _, destination in
+                applyPollPriority(for: destination)
+                // The escape hatch below is only good for the presentation that
+                // opened it. Left standing, it would keep vouching for the
+                // primary store long after the primary had been pointed at some
+                // other Mac — which is the exact confusion it exists to prevent.
+                if destination == nil { repointedMachineID = nil }
             }
             .onChange(of: showSettings) { _, isOpen in
                 store.setUIPriority(isOpen ? .fast : .ambient)
@@ -120,10 +208,164 @@ struct ContentView: View {
         .preferredColorScheme(.dark)
         .onChange(of: store.discoveredBridges) { _, _ in
             fleetStore.synchronize(with: store)
+            promoteNewSessionsIfPresenting()
         }
         .onChange(of: store.activeEndpoint) { _, _ in
             fleetStore.synchronize(with: store)
+            promoteNewSessionsIfPresenting()
         }
+    }
+
+    /// Pair with (and connect to) the tapped Mac if this device has not trusted
+    /// it yet. Keeps first-time pairing explicit and scoped to the one Mac the
+    /// user actually tapped, rather than every Bonjour peer on the network.
+    private func prepareConnection(for machine: HomeMachine) {
+        // Any previous tap's vouching is void the moment a new one happens.
+        repointedMachineID = nil
+
+        if machine.status != .active,
+           let endpoint = store.discoveredBridges.first(where: { $0.id == machine.id }),
+           !DeckBridgeSecurityStore.shared.isTrusted(endpoint: endpoint) {
+            // Home only lists Macs this device has paired with, so reaching here
+            // means the fingerprint went missing rather than that the user is
+            // pairing from the roster — pairing has its own flow now.
+            store.connect(to: endpoint)
+            // Remember that *this* tap is what re-pointed the primary, so the
+            // lookup in `hostStore(for:)` may legitimately return it.
+            repointedMachineID = machine.id
+        }
+        fleetStore.synchronize(with: store)
+    }
+
+    /// Poll fast for what is actually on screen, and only that.
+    ///
+    /// One Mac's cockpit does not make the other Macs urgent. Lifting the whole
+    /// fleet to 1Hz meant opening a solo deck kicked every host into a snapshot
+    /// fetch, decrypt and decode — on the exact frame the presentation was
+    /// trying to animate.
+    private func applyPollPriority(for destination: DeckDestination?) {
+        let sessions = fleetStore.stores(including: store)
+
+        switch destination {
+        case .none:
+            sessions.forEach { $0.setUIPriority(.ambient) }
+
+        case .host(let machineID):
+            let target = hostStore(for: machineID)
+            sessions.forEach { $0.setUIPriority($0 === target ? .fast : .ambient) }
+
+        case .fleet:
+            // The fleet view really is watching everything at once.
+            sessions.forEach { $0.setUIPriority(.fast) }
+        }
+    }
+
+    /// Sessions created while a deck is on screen start at the default ambient
+    /// cadence; give them whatever the current presentation calls for.
+    private func promoteNewSessionsIfPresenting() {
+        guard deckDestination != nil else { return }
+        applyPollPriority(for: deckDestination)
+    }
+
+    /// The session backing one Mac, or nil when we cannot prove we have it.
+    ///
+    /// `BridgeEndpoint.id` is derived from host:port and is not stable — a Mac
+    /// that changes address, or falls back to another endpoint, keeps its
+    /// fingerprint but not its id. Falling back to the primary store on a miss
+    /// would then open whichever Mac the primary happens to hold, which is a
+    /// host-ownership violation: the user taps one machine and drives another.
+    /// The primary is only acceptable when this very tap re-pointed it.
+    private func hostStore(for machineID: String) -> DeckStore? {
+        if let match = fleetStore.stores(including: store)
+            .first(where: { $0.activeEndpoint?.id == machineID }) {
+            return match
+        }
+        return repointedMachineID == machineID ? store : nil
+    }
+}
+
+/// Presents one Mac's focus environment.
+///
+/// This exists to *observe* the store: `LatsDeckScreen` takes plain values, so
+/// without an `@ObservedObject` here a secondary Mac's cockpit would render its
+/// first snapshot and then freeze — `ContentView` only observes the primary
+/// store and the fleet roster, not each secondary session.
+private struct HostDeckHost: View {
+    @ObservedObject var store: DeckStore
+    var onClose: () -> Void = {}
+
+    /// The cover's own animation has to finish before the deck's view tree is
+    /// built, or the two compete and the transition is what loses.
+    @State private var transitionSettled = false
+    /// Only true once waiting has gone on long enough to deserve an explanation.
+    @State private var waitIsWorthExplaining = false
+
+    /// Roughly the length of a `fullScreenCover` presentation.
+    private let settleDelay = Duration.milliseconds(300)
+    /// Below this, saying anything would be noise nobody finishes reading.
+    private let narrationDelay = Duration.milliseconds(550)
+
+    private var isReady: Bool { transitionSettled && store.snapshot != nil }
+
+    /// A failure only counts once there is nothing to show instead. A stale
+    /// snapshot plus a transient error is still a usable deck.
+    private var failure: String? {
+        guard store.snapshot == nil, let message = store.errorMessage else { return nil }
+        return message
+    }
+
+    var body: some View {
+        ZStack {
+            if isReady {
+                deck.transition(.opacity)
+            } else if let failure {
+                DeckUnavailable(
+                    title: "Can't open \(store.connectionLabel)",
+                    detail: failure,
+                    onRetry: { store.refreshSnapshot() },
+                    onClose: onClose
+                )
+                .transition(.opacity)
+            } else {
+                DeckSkeleton(
+                    narration: narration,
+                    showsNarration: waitIsWorthExplaining
+                )
+                .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.22), value: isReady)
+        .preferredColorScheme(.dark)
+        .statusBarHidden(true)
+        .task {
+            // Data goes in flight immediately; the tree is built after the
+            // animation lands. The two costs stop overlapping.
+            store.refreshSnapshot()
+            try? await Task.sleep(for: settleDelay)
+            transitionSettled = true
+            try? await Task.sleep(for: narrationDelay)
+            if store.snapshot == nil { waitIsWorthExplaining = true }
+        }
+    }
+
+    /// Real state, not a generic "loading" — if someone is made to wait, the
+    /// least we owe them is the truth about what for.
+    private var narration: String {
+        if store.health == nil { return "Connecting to \(store.connectionLabel)…" }
+        return "Reading \(store.connectionLabel)…"
+    }
+
+    private var deck: some View {
+        LatsDeckScreen(
+            liveSnapshot: store.snapshot,
+            connectionLabel: store.connectionLabel,
+            onAction: { actionID, payload, label in
+                store.perform(actionID: actionID, pageID: "cockpit", payload: payload, label: label)
+            },
+            onTrackpadEvent: { event, dx, dy in
+                store.sendTrackpad(event: event, dx: dx, dy: dy)
+            }
+        )
     }
 }
 
@@ -638,6 +880,10 @@ struct LatsConnectedHome: View {
 
 struct LatsSettingsView: View {
     @ObservedObject var store: DeckStore
+    /// Forgetting has to reach the fleet too — the primary store cannot see the
+    /// secondary sessions, and a forgotten Mac with a live session goes on
+    /// polling a host the user just dropped.
+    var onForget: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
 
     @State private var trustedBridges: [StoredBridgeTrust] = []
@@ -838,6 +1084,30 @@ struct LatsSettingsView: View {
                 Spacer()
 
                 LatsBadge(text: stateLabel, tint: stateTint.color, dot: entry.isActive)
+
+                // A visible control rather than a swipe. `.swipeActions` only
+                // does anything inside a `List`, and these rows are in a
+                // `VStack` — so forgetting a Mac was unreachable, which is a
+                // bad thing to discover when a stale pairing is the very thing
+                // you are trying to clear.
+                if let publicKey = entry.publicKey {
+                    Button {
+                        store.forget(publicKey: publicKey)
+                        onForget?()
+                        reloadTrustedBridges()
+                    } label: {
+                        Text("Forget")
+                            .font(LatsFont.ui(11, weight: .medium))
+                            .foregroundStyle(LatsPalette.red)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 5)
+                            .background(
+                                RoundedRectangle(cornerRadius: 5)
+                                    .fill(LatsPalette.red.opacity(0.12))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 9)
@@ -851,14 +1121,6 @@ struct LatsSettingsView: View {
             )
         }
         .buttonStyle(.plain)
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            if let pk = entry.publicKey, !entry.isActive {
-                Button(role: .destructive) {
-                    DeckBridgeSecurityStore.shared.forgetBridge(publicKey: pk)
-                    reloadTrustedBridges()
-                } label: { Label("Forget", systemImage: "trash") }
-            }
-        }
     }
 
     private func reloadTrustedBridges() {

@@ -31,6 +31,26 @@ struct BridgeEndpoint: Identifiable, Hashable {
     var id: String {
         "\(host):\(port)"
     }
+
+    /// Carry the Mac's own identity onto this endpoint once `/health` has
+    /// reported it.
+    ///
+    /// A manually-typed endpoint has no Bonjour `fp` record, so without this it
+    /// would never match a trust record and would never dedupe against the same
+    /// Mac discovered over Bonjour — it would live in the fleet twice, or not
+    /// at all.
+    func adoptingIdentity(from health: BridgeHealthResponse) -> BridgeEndpoint {
+        let reportedName = health.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return BridgeEndpoint(
+            name: reportedName.isEmpty ? name : reportedName,
+            host: host,
+            port: port,
+            source: source,
+            bridgeFingerprint: health.bridgeFingerprint,
+            securityMode: securityMode ?? health.mode,
+            capabilities: capabilities.isEmpty ? (health.capabilities ?? []) : capabilities
+        )
+    }
 }
 
 struct BridgeHealthResponse: Codable, Equatable {
@@ -71,6 +91,22 @@ struct DeckBridgeClient {
         configuration.timeoutIntervalForResource = 10
         return URLSession(configuration: configuration)
     }()
+
+    /// Pairing waits on a person, not on a network.
+    ///
+    /// It cannot share `session`: `timeoutIntervalForResource` caps the whole
+    /// transfer regardless of the request's own timeout, so a 10s resource
+    /// limit silently overrode the 90s we thought we were asking for and the
+    /// iPad abandoned pairing ten seconds into a human decision — while the Mac
+    /// went on to approve and store trust the iPad never received. Both limits
+    /// have to be raised, not just one.
+    private let pairingSession: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = 180
+        configuration.timeoutIntervalForResource = 180
+        return URLSession(configuration: configuration)
+    }()
+
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
@@ -82,13 +118,32 @@ struct DeckBridgeClient {
         try await get(path: "/deck/manifest", endpoint: endpoint)
     }
 
+    /// Ask the Mac to pair. Returns the Mac's answer — including a refusal.
+    ///
+    /// A denial is an answer, not a transport failure, so it must not be thrown:
+    /// the Mac replies `403` *with* a `DeckPairingResponse` body, and the
+    /// generic `send` path threw on the status before ever decoding it, which
+    /// made `.denied` unreachable for callers and surfaced refusals as raw JSON.
     func pair(endpoint: BridgeEndpoint) async throws -> DeckPairingResponse {
         var request = URLRequest(url: try makeURL(path: "/pairing/request", endpoint: endpoint))
         request.httpMethod = "POST"
-        request.timeoutInterval = 90
+        request.timeoutInterval = 180
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try encoder.encode(security.pairingRequest())
-        return try await send(request)
+
+        let (data, response) = try await pairingSession.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw DeckBridgeClientError.invalidResponse
+        }
+
+        if (200..<300).contains(http.statusCode) || http.statusCode == 403 {
+            if let pairing = try? decoder.decode(DeckPairingResponse.self, from: data) {
+                return pairing
+            }
+        }
+
+        let detail = decodeErrorDetail(from: data) ?? String(data: data, encoding: .utf8) ?? ""
+        throw DeckBridgeClientError.badStatus(http.statusCode, detail)
     }
 
     func snapshot(
@@ -226,12 +281,11 @@ private extension DeckBridgeClient {
     }
 
     func decodeErrorDetail(from data: Data) -> String? {
-        guard
-            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let error = object["error"] as? String
-        else {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return nil
         }
-        return error
+        // `sendError` writes `error`; the pairing response carries `detail`.
+        // Reading only the first turned every refusal into a wall of JSON.
+        return (object["error"] as? String) ?? (object["detail"] as? String)
     }
 }

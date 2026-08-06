@@ -14,8 +14,16 @@ import Foundation
 @MainActor
 enum HomeDataAdapter {
 
+    /// Build the roster.
+    ///
+    /// `secondaryStores` matters: without it this could only ever describe the
+    /// primary Mac in any detail, because a discovered endpoint carries an
+    /// address and nothing else. Every other host rendered as a name with no
+    /// scene, no focused app and no gauges — not because the data was missing,
+    /// but because the adapter was never handed the session that had it.
     static func machines(
         store: DeckStore,
+        secondaryStores: [DeckStore] = [],
         trustedBridges: [StoredBridgeTrust]
     ) -> [HomeMachine] {
         var result: [HomeMachine] = []
@@ -27,11 +35,33 @@ enum HomeDataAdapter {
             result.append(makeActive(endpoint: endpoint, snapshot: store.snapshot))
         }
 
+        // Only Macs this device has paired with. An unpaired Mac that merely
+        // happens to be on the network is a *candidate*, and it belongs in the
+        // add flow — putting it in the roster made a tap on it re-point the
+        // primary connection and raise an approval prompt on someone's desk,
+        // which is the swap-plus-unsolicited-prompt behaviour the add flow
+        // exists to replace.
         for bridge in store.discoveredBridges {
+            guard DeckBridgeSecurityStore.shared.isTrusted(endpoint: bridge) else { continue }
             let key = nameKey(bridge.name, host: bridge.host)
             if seen.contains(key) { continue }
             seen.insert(key)
-            result.append(makeDiscovered(endpoint: bridge))
+
+            // Match by fingerprint first — it is the Mac's identity — and fall
+            // back to address, which is all a manually-added host has.
+            let session = secondaryStores.first { candidate in
+                guard let active = candidate.activeEndpoint else { return false }
+                if let a = active.bridgeFingerprint, let b = bridge.bridgeFingerprint, !a.isEmpty {
+                    return a.caseInsensitiveCompare(b) == .orderedSame
+                }
+                return active.host == bridge.host && active.port == bridge.port
+            }
+
+            if let session, session.snapshot != nil {
+                result.append(makeActive(endpoint: bridge, snapshot: session.snapshot, isForeground: false))
+            } else {
+                result.append(makeDiscovered(endpoint: bridge))
+            }
         }
 
         for trust in trustedBridges {
@@ -144,7 +174,8 @@ private extension HomeDataAdapter {
 
     static func makeActive(
         endpoint: BridgeEndpoint,
-        snapshot: DeckRuntimeSnapshot?
+        snapshot: DeckRuntimeSnapshot?,
+        isForeground: Bool = true
     ) -> HomeMachine {
         let displayName = endpoint.name.isEmpty ? endpoint.host : endpoint.name
         let host = displayHost(endpoint.host)
@@ -159,8 +190,8 @@ private extension HomeDataAdapter {
             name: displayName,
             host: host,
             icon: iconFor(displayName + " " + host),
-            status: .active,
-            isForeground: true,                     // assume the connected Mac is foreground
+            status: isForeground ? .active : .online,
+            isForeground: isForeground,
             scene: nonEmpty(desktop?.activeLayerName),
             focusedApp: nonEmpty(desktop?.activeAppName),
             focusedWindow: nonEmpty(frontTitle),
@@ -169,8 +200,22 @@ private extension HomeDataAdapter {
             agentState: agentState(for: voice),
             attentionCount: snapshot?.questions.count ?? 0,
             latencyMs: nil,
-            metrics: metrics(from: snapshot?.telemetry)
+            metrics: metrics(from: snapshot?.telemetry),
+            voice: voiceActivity(for: voice)
         )
+    }
+
+    /// Reduce the wire phase to what the roster card renders.
+    ///
+    /// Only `.listening` means a microphone is actually open. The rest are the
+    /// Mac working on something you already said, which is worth showing but is
+    /// not the state that needs to be impossible to miss.
+    static func voiceActivity(for voice: DeckVoiceState?) -> HomeVoiceActivity {
+        switch voice?.phase {
+        case .listening:                            return .listening
+        case .transcribing, .reasoning, .speaking:  return .working
+        case .idle, nil:                            return .off
+        }
     }
 
     /// Map `DeckSystemTelemetry` onto the gauge struct. Returns nil if no
@@ -202,7 +247,8 @@ private extension HomeDataAdapter {
             lastActionAgo: nil,
             agentState: .idle,
             attentionCount: 0,
-            latencyMs: nil
+            latencyMs: nil,
+            hasLiveSession: false
         )
     }
 
@@ -223,7 +269,8 @@ private extension HomeDataAdapter {
                 : agoLabel(from: trust.pairedAt),
             agentState: .idle,
             attentionCount: 0,
-            latencyMs: nil
+            latencyMs: nil,
+            hasLiveSession: false
         )
     }
 }

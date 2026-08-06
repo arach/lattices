@@ -71,6 +71,29 @@ struct HomeMachine: Identifiable, Equatable {
     /// Live load gauges. nil when the machine isn't reporting telemetry
     /// (offline / standby / discovered-but-not-paired).
     var metrics: HomeMachineMetrics? = nil
+    /// Whether this host's microphone is open right now. Per-machine because
+    /// with a fleet, "a mic is live" is not useful without "on which one".
+    var voice: HomeVoiceActivity = .off
+    /// Whether there is a live authenticated session behind this card.
+    /// A host can be trusted and visible on the network without one, and
+    /// offering a mic we cannot actually route to is worse than offering
+    /// none — the tap would look accepted and do nothing.
+    var hasLiveSession: Bool = true
+}
+
+/// What a host's voice runtime is doing, reduced to what the roster needs.
+///
+/// Deliberately not `DeckVoicePhase` — the card only needs to distinguish
+/// "your microphone is open on that machine" from "it is busy thinking" from
+/// "nothing". Keeping the view model free of the wire enum also keeps the
+/// mock fixtures free of DeckKit.
+enum HomeVoiceActivity: Equatable {
+    /// Nothing running.
+    case off
+    /// The microphone is open. This is the state that must never be subtle.
+    case listening
+    /// Captured, now transcribing / reasoning / speaking. Mic is closed.
+    case working
 }
 
 /// Per-machine load metrics surfaced as gauges. All fields are 0…100
@@ -223,7 +246,7 @@ enum HomeMock {
             name: "arach-mini",
             host: "mini.local",
             icon: "macmini",
-            status: .standby,
+            status: .online,
             isForeground: false,
             scene: "Wind Down",
             focusedApp: "Music",

@@ -559,15 +559,26 @@ private extension LatticesCompanionSecurityCoordinator {
     func runPairingAlert(_ request: DeckPairingRequest) -> Bool {
         NSApp.activate(ignoringOtherApps: true)
 
+        // Everything a device tells us about itself — its name, its id, its
+        // platform — is chosen by whoever sent the request, so a machine on
+        // the same network can raise a prompt that looks exactly like the one
+        // the user is expecting. The fingerprint is the only field here that
+        // is derived from a key the sender must actually hold, so it leads,
+        // and the forgeable fields are labelled as claims rather than facts.
+        let code = Self.fingerprint(forPublicKeyBase64: request.devicePublicKey)
+
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "Allow \(request.deviceName) to pair with Lattices?"
+        alert.messageText = "Allow a device to control this Mac?"
         alert.informativeText = """
-        This device is asking for encrypted local-network control of your Mac.
+        Check that this code matches the one on the device asking:
 
-        Device ID: \(request.deviceID)
-        Device Fingerprint: \(Self.fingerprint(forPublicKeyBase64: request.devicePublicKey))
-        Platform: \(request.platform)
+            \(code)
+
+        The device calls itself “\(request.deviceName)” (\(request.platform)). \
+        That name is chosen by the device and is not verified — only the code is.
+
+        If the codes do not match, deny: something else on your network is asking.
         """
         alert.addButton(withTitle: "Allow Pairing")
         alert.addButton(withTitle: "Deny")
