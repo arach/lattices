@@ -360,13 +360,13 @@ final class FocusModeController {
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         escapeEventTap = tap
         escapeRunLoopSource = source
-        if let source { EventTapThread.shared.add(source: source) }
+        if let source { EventTapThread.overlay.add(source: source) }
         CGEvent.tapEnable(tap: tap, enable: true)
     }
 
     private func removeEscapeCapture() {
         if let source = escapeRunLoopSource {
-            EventTapThread.shared.remove(source: source)
+            EventTapThread.overlay.remove(source: source)
         }
         escapeRunLoopSource = nil
         if let tap = escapeEventTap { CFMachPortInvalidate(tap) }

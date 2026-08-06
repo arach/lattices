@@ -229,7 +229,7 @@ final class InPlaceChordHintOverlay {
 
     private func removeMonitors() {
         if let source = keyRunLoopSource {
-            EventTapThread.shared.remove(source: source)
+            EventTapThread.overlay.remove(source: source)
         }
         keyRunLoopSource = nil
         if let tap = keyEventTap {
@@ -263,7 +263,7 @@ final class InPlaceChordHintOverlay {
         keyEventTap = tap
         keyRunLoopSource = source
         if let source {
-            EventTapThread.shared.add(source: source)
+            EventTapThread.overlay.add(source: source)
         }
         CGEvent.tapEnable(tap: tap, enable: true)
         return true

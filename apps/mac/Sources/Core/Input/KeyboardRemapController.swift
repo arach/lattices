@@ -230,7 +230,7 @@ final class KeyboardRemapController: ObservableObject {
         runLoopSource = source
 
         if let source {
-            EventTapThread.shared.add(source: source)
+            EventTapThread.keyboard.add(source: source)
         }
         CGEvent.tapEnable(tap: tap, enable: true)
         breaker.rearm = { [weak self] in
@@ -242,7 +242,7 @@ final class KeyboardRemapController: ObservableObject {
 
     private func removeEventTap() {
         if let source = runLoopSource {
-            EventTapThread.shared.remove(source: source)
+            EventTapThread.keyboard.remove(source: source)
         }
         runLoopSource = nil
         if let tap = eventTap {

@@ -49,8 +49,15 @@ final class TapBudgetMeter {
         lastLog = now
         lock.unlock()
 
-        DiagnosticLog.shared.warn(
-            "\(label): tap callback peak \(Int(peak))ms (× \(count) over threshold \(Int(warnThresholdMs))ms in last \(Int(throttleSec))s)"
-        )
+        // Never log on the event-tap thread — DiagnosticLog was showing up in
+        // multi-ms stalls and feeding the timeout spiral.
+        let label = self.label
+        let threshold = warnThresholdMs
+        let window = throttleSec
+        DispatchQueue.global(qos: .utility).async {
+            DiagnosticLog.shared.warn(
+                "\(label): tap callback peak \(Int(peak))ms (× \(count) over threshold \(Int(threshold))ms in last \(Int(window))s)"
+            )
+        }
     }
 }

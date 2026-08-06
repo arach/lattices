@@ -1,19 +1,32 @@
 import Foundation
 import CoreFoundation
 
-/// Hosts a long-lived thread + CFRunLoop dedicated to CGEventTap callbacks,
-/// so taps installed at `.headInsertEventTap` don't add main-thread latency
-/// to every keyboard/mouse event in the user's session.
+/// Hosts a long-lived thread + CFRunLoop dedicated to CGEventTap callbacks.
 ///
-/// Callbacks fire on this thread — callers must hop AppKit/UI work back to
-/// main themselves (DispatchQueue.main.async).
+/// **Important:** keyboard and mouse must *not* share a run loop. Both taps
+/// used `EventTapThread.shared` for months of fine Hyper/gestures — then under
+/// load a 40ms+ mouse callback serialized *keyboard* delivery on the same
+/// thread and macOS delayed typing system-wide. That is a regression, not an
+/// inherent limit of event taps.
+///
+/// Callbacks fire on this thread — hop AppKit/UI work to main yourself.
 final class EventTapThread {
-    static let shared = EventTapThread()
+    /// Keyboard remap / Hyper only.
+    static let keyboard = EventTapThread(name: "dev.lattices.app.EventTap.keyboard")
+    /// Mouse gestures only.
+    static let mouse = EventTapThread(name: "dev.lattices.app.EventTap.mouse")
+    /// Escape / focus / chord taps that must not contend with keyboard Hyper.
+    static let overlay = EventTapThread(name: "dev.lattices.app.EventTap.overlay")
+
+    /// Legacy alias — prefer `.keyboard` / `.mouse` / `.overlay`.
+    static var shared: EventTapThread { keyboard }
 
     private let lock = NSLock()
     private var runLoop: CFRunLoop?
+    private let threadName: String
 
-    private init() {
+    init(name: String) {
+        self.threadName = name
         let ready = DispatchSemaphore(value: 0)
         let thread = Thread { [unowned self] in
             let loop = CFRunLoopGetCurrent()
@@ -29,7 +42,7 @@ final class EventTapThread {
             CFRunLoopRun()
         }
         thread.qualityOfService = .userInteractive
-        thread.name = "dev.lattices.app.EventTapThread"
+        thread.name = name
         thread.start()
         ready.wait()
     }
