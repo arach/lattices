@@ -14,17 +14,19 @@
  */
 
 import { useEffect, useState } from "react";
-import { DeckBuilder, type Deck } from "@/studio/studies/DeckBuilder";
+import { DeckBuilder, type CatalogGroup, type Deck } from "@/studio/studies/DeckBuilder";
 
 declare global {
   interface Window {
     __DECK_INIT__?: Deck[];
+    __DECK_CATALOG__?: CatalogGroup[];
     webkit?: { messageHandlers?: Record<string, { postMessage: (msg: unknown) => void }> };
   }
 }
 
 export default function DeckBuilderEmbed() {
   const [initial, setInitial] = useState<Deck[] | undefined>(undefined);
+  const [catalog, setCatalog] = useState<CatalogGroup[] | undefined>(undefined);
   const [ver, setVer] = useState(0); // bump → remount DeckBuilder with fresh initialDecks
   const [ready, setReady] = useState(false);
 
@@ -32,6 +34,9 @@ export default function DeckBuilderEmbed() {
     if (typeof window !== "undefined" && Array.isArray(window.__DECK_INIT__)) {
       setInitial(window.__DECK_INIT__);
       setVer((v) => v + 1);
+    }
+    if (typeof window !== "undefined" && Array.isArray(window.__DECK_CATALOG__)) {
+      setCatalog(window.__DECK_CATALOG__);
     }
     const onMsg = (e: MessageEvent) => {
       const d = e.data as { type?: string; decks?: Deck[] } | null;
@@ -55,7 +60,7 @@ export default function DeckBuilderEmbed() {
 
   return (
     <div style={{ minHeight: "100vh", background: "#060607", color: "#e2e2df" }}>
-      <DeckBuilder key={ver} initialDecks={initial} onChange={onChange} className="p-6" />
+      <DeckBuilder key={ver} initialDecks={initial} catalog={catalog} onChange={onChange} className="p-6" />
     </div>
   );
 }

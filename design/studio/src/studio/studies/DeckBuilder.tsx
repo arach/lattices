@@ -58,7 +58,8 @@ function Icon({ name, size = 15, color }: { name: IconName; size?: number; color
 }
 
 // ── action catalog (mirrors the Mac shortcut catalog) ────────────────────
-type CatalogItem = { id: string; label: string; icon: IconName; tint: Tint; category: string };
+export type CatalogItem = { id: string; label: string; icon: IconName; tint: Tint; category: string };
+export type CatalogGroup = { group: string; items: CatalogItem[] };
 const CATALOG: { group: string; items: CatalogItem[] }[] = [
   { group: "Voice", items: [
     { id: "voice-toggle", label: "Start Voice", icon: "Mic", tint: "red", category: "voice" },
@@ -102,15 +103,21 @@ const CATALOG_BY_ID = new Map(CATALOG.flatMap((g) => g.items).map((i) => [i.id, 
 // ── model ────────────────────────────────────────────────────────────────
 export type Key = {
   id: string; label: string; icon: IconName; tint: Tint; category: string;
+  baseLabel?: string; baseIcon?: IconName; baseTint?: Tint; baseCategory?: string;
   actionID: string; col: number; row: number; colSpan: number; rowSpan: number;
 };
-export type Deck = { id: string; name: string; tint: Tint; columns: number; rows: number; keys: Key[] };
+export type Deck = {
+  id: string; name: string; subtitle?: string | null; tint: Tint;
+  columns: number; rows: number; keys: Key[];
+};
 
 let uid = 0;
 const nid = () => `k${++uid}`;
 function keyFrom(item: CatalogItem, col: number, row: number, colSpan = 1, rowSpan = 1): Key {
   return { id: nid(), label: item.label, icon: item.icon, tint: item.tint,
-    category: item.category, actionID: item.id, col, row, colSpan, rowSpan };
+    category: item.category, actionID: item.id,
+    baseLabel: item.label, baseIcon: item.icon, baseTint: item.tint, baseCategory: item.category,
+    col, row, colSpan, rowSpan };
 }
 const c = (id: string) => CATALOG_BY_ID.get(id)!;
 
@@ -248,8 +255,9 @@ type Drag =
  * `initialDecks` (the Mac's current layout) and reporting every change through
  * `onChange` → the JS↔Swift bridge, which persists to `companionCockpitLayout`.
  */
-export function DeckBuilder({ initialDecks, onChange, className }: {
+export function DeckBuilder({ initialDecks, catalog = CATALOG, onChange, className }: {
   initialDecks?: Deck[];
+  catalog?: CatalogGroup[];
   onChange?: (decks: Deck[]) => void;
   className?: string;
 }) {
@@ -359,9 +367,13 @@ export function DeckBuilder({ initialDecks, onChange, className }: {
   };
 
   const setGrid = (cols: number, rows: number) => {
+    const removed = deck.keys.filter((k) => k.col + k.colSpan > cols || k.row + k.rowSpan > rows);
+    if (removed.length > 0 && !window.confirm(
+      `Shrinking this page will remove ${removed.length} ${removed.length === 1 ? "key" : "keys"}. Continue?`,
+    )) return;
     patchDeck((d) => ({
       ...d, columns: cols, rows,
-      // drop keys that no longer fit within the new bounds
+      // Removal is intentional here: a destructive shrink was confirmed above.
       keys: d.keys.filter((k) => k.col + k.colSpan <= cols && k.row + k.rowSpan <= rows),
     }));
   };
@@ -378,7 +390,18 @@ export function DeckBuilder({ initialDecks, onChange, className }: {
 
   const chooseAction = (item: CatalogItem) => {
     if (!sel) return;
-    patchKey(sel.id, (k) => ({ ...k, actionID: item.id, label: item.label, icon: item.icon, tint: item.tint, category: item.category }));
+    patchKey(sel.id, (k) => ({
+      ...k,
+      actionID: item.id,
+      label: item.label,
+      icon: item.icon,
+      tint: item.tint,
+      category: item.category,
+      baseLabel: item.label,
+      baseIcon: item.icon,
+      baseTint: item.tint,
+      baseCategory: item.category,
+    }));
   };
 
   const keyCount = deck.keys.length;
@@ -498,6 +521,7 @@ export function DeckBuilder({ initialDecks, onChange, className }: {
           {sel ? (
             <KeyInspector
               k={sel}
+              catalog={catalog}
               onLabel={(v) => patchKey(sel.id, (k) => ({ ...k, label: v }))}
               onTint={(t) => patchKey(sel.id, (k) => ({ ...k, tint: t }))}
               onIcon={(ic) => patchKey(sel.id, (k) => ({ ...k, icon: ic }))}
@@ -749,8 +773,9 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-function KeyInspector({ k, onLabel, onTint, onIcon, onSize, onAction, onDelete }: {
+function KeyInspector({ k, catalog, onLabel, onTint, onIcon, onSize, onAction, onDelete }: {
   k: Key;
+  catalog: CatalogGroup[];
   onLabel: (v: string) => void; onTint: (t: Tint) => void; onIcon: (i: IconName) => void;
   onSize: (cs: number, rs: number) => void; onAction: (i: CatalogItem) => void; onDelete: () => void;
 }) {
@@ -818,7 +843,7 @@ function KeyInspector({ k, onLabel, onTint, onIcon, onSize, onAction, onDelete }
       <div>
         <SectionLabel>action</SectionLabel>
         <div className="max-h-[220px] overflow-y-auto rounded-[6px]" style={{ border: `1px solid ${INK.brk}` }}>
-          {CATALOG.map((grp) => (
+          {catalog.map((grp) => (
             <div key={grp.group}>
               <div className="px-3 py-1.5 font-mono text-[9px] uppercase tracking-wider" style={{ color: INK.fg4, background: "rgba(255,255,255,0.02)" }}>
                 {grp.group}
