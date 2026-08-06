@@ -670,7 +670,7 @@ final class WorkspaceAssistantSession: ObservableObject {
                     let detail = error.localizedDescription
                     DiagnosticLog.shared.fail(inferenceTimer, message: detail)
                     self.failAssistantMessage(id: messageID, detail: detail)
-                    if Self.isOfflineTargetError(error) {
+                    if Self.shouldRetryScoutWithoutBinding(error) {
                         self.scoutBindingRef = nil
                         self.scoutTargetLabel = nil
                         self.statusText = "idle"
@@ -697,15 +697,20 @@ final class WorkspaceAssistantSession: ObservableObject {
                 bindingRef: bindingRef
             )
         } catch {
-            guard Self.isOfflineTargetError(error),
+            // Offline-queued targets *and* dead binding refs share the same recovery:
+            // drop the saved ref and re-ask via project routing once.
+            guard Self.shouldRetryScoutWithoutBinding(error),
                   let bindingRef,
                   !bindingRef.isEmpty else { throw error }
 
+            let reason = ScoutAssistantTransport.isUnroutableBindingError(error)
+                ? "saved Scout ref is no longer routable"
+                : "bound session offline"
             await MainActor.run {
                 self.scoutBindingRef = nil
                 self.scoutTargetLabel = nil
                 DiagnosticLog.shared.info(
-                    "Assistant · bound session offline — retrying project route \(projectPath)"
+                    "Assistant · \(reason) — retrying project route \(projectPath)"
                 )
             }
             return try await scoutTransport.ask(
@@ -716,7 +721,8 @@ final class WorkspaceAssistantSession: ObservableObject {
         }
     }
 
-    private static func isOfflineTargetError(_ error: Error) -> Bool {
+    private static func shouldRetryScoutWithoutBinding(_ error: Error) -> Bool {
+        if ScoutAssistantTransport.isUnroutableBindingError(error) { return true }
         if let scoutError = error as? ScoutAssistantTransportError {
             return scoutError.shouldClearBinding
         }

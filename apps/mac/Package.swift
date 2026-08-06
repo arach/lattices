@@ -42,6 +42,12 @@ if let voxDependency {
     packageDependencies.append(voxDependency)
 }
 
+var testDependencies: [Target.Dependency] = ["Lattices"]
+if voiceEnabled {
+    // Lets optional live voice probes import HudsonVoice under LATTICES_VOICE.
+    testDependencies.append(.product(name: "HudsonVoice", package: "hudson"))
+}
+
 let package = Package(
     name: "Lattices",
     platforms: [.macOS(.v26)],
@@ -60,8 +66,9 @@ let package = Package(
         ),
         .testTarget(
             name: "LatticesTests",
-            dependencies: ["Lattices"],
-            path: "Tests"
+            dependencies: testDependencies,
+            path: "Tests",
+            swiftSettings: voiceEnabled ? [.define("LATTICES_VOICE")] : []
         )
     ],
     // Stay in Swift 5 language mode: adopt macOS 26 / the 6.2 toolchain without

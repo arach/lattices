@@ -3419,23 +3419,30 @@ final class LatticesApi {
             description: "Re-probe the voice runtime. HudsonVoice opens a fresh session per capture, so there is no persistent socket to reconnect.",
             access: .mutate,
             params: [],
-            returns: .custom("Voice runtime reachability: { ok, runtimeAvailable, runtimeHost, service, transport, endpoint, port, pid, capabilityPath }"),
+            returns: .custom("Speech runtime reachability: { ok, runtimeAvailable, runtimeHost, service, transport, capabilities, endpoint, port, pid, capabilityPath }"),
             handler: { _ in
                 #if LATTICES_VOICE && canImport(HudsonVoice)
+                // Ensure the embedded host is up before advertising reachability.
+                _ = LatticesVoiceRuntime.ensureRunning()
                 let runtime = HudsonVoiceRuntimeResolver.resolve(clientId: "lattices")
+                let capabilities: [JSON] = runtime == nil ? [] : [
+                    .string("transcription"),
+                    .string("speech-synthesis"),
+                ]
                 return .object([
                     "ok": .bool(true),
                     "runtimeAvailable": .bool(runtime != nil),
                     "runtimeHost": .string(runtime?.source ?? "none"),
                     "service": .string("hudson-voice"),
                     "transport": .string("ws+json-rpc"),
+                    "capabilities": .array(capabilities),
                     "endpoint": runtime.map { .string($0.endpoint.url.absoluteString) } ?? .null,
                     "port": runtime.map { .int(Int($0.endpoint.port)) } ?? .null,
                     "pid": runtime?.pid.map { .int($0) } ?? .null,
                     "capabilityPath": runtime?.capabilityPath.map { .string($0) } ?? .null,
                     "requiresAuth": .bool(runtime?.authToken != nil),
                     "runtimeError": .null,
-                    "note": .string("HudsonVoice is compiled in; Lattices uses HudsonVoice's Vox WebSocket contract for live sessions."),
+                    "note": .string("Lattices hosts authenticated Vox transcription (and TTS when available) via HudsonVoice on the local voice port."),
                 ])
                 #else
                 return .object([
@@ -3444,10 +3451,12 @@ final class LatticesApi {
                     "runtimeHost": .string("none"),
                     "service": .null,
                     "transport": .null,
+                    "capabilities": .array([]),
                     "endpoint": .null,
                     "port": .null,
                     "pid": .null,
                     "capabilityPath": .null,
+                    "requiresAuth": .bool(false),
                     "runtimeError": .string("HudsonVoice is not compiled into this build."),
                     "note": .string("HudsonVoice is not compiled into this build."),
                 ])

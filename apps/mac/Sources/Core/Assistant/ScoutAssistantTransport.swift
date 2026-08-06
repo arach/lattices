@@ -37,6 +37,10 @@ enum ScoutAssistantTransportError: LocalizedError {
     /// True when the binding should be dropped so the next ask re-resolves a live target.
     var shouldClearBinding: Bool {
         if case .targetOffline = self { return true }
+        // Stale / retired refs also need a clean project re-route.
+        if case .commandFailed(let detail) = self {
+            return ScoutAssistantTransport.isUnroutableBindingDetail(detail)
+        }
         return false
     }
 }
@@ -47,6 +51,26 @@ enum ScoutAssistantTransportError: LocalizedError {
 final class ScoutAssistantTransport {
     private let processLock = NSLock()
     private var activeProcess: Process?
+
+    /// A saved Scout ref is continuity metadata, not a permanent route. Broker
+    /// restarts and retired sessions can invalidate it while project routing is
+    /// still healthy, so callers may safely clear the ref and retry.
+    static func isUnroutableBindingError(_ error: Error) -> Bool {
+        if let transportError = error as? ScoutAssistantTransportError {
+            if transportError.shouldClearBinding { return true }
+            if case .commandFailed(let detail) = transportError {
+                return isUnroutableBindingDetail(detail)
+            }
+            return false
+        }
+        return isUnroutableBindingDetail(error.localizedDescription)
+    }
+
+    static func isUnroutableBindingDetail(_ detail: String) -> Bool {
+        let normalized = detail.lowercased()
+        return normalized.contains("not currently routable")
+            || (normalized.contains("no agent matches") && normalized.contains("ref:"))
+    }
 
     var isInstalled: Bool { executableURL != nil }
 
