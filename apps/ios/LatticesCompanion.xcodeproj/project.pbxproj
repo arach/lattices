@@ -13,6 +13,7 @@
 		02DFEEC584B5BE76F4E0EF59 /* Icon-App-29x29@3x.png in Resources */ = {isa = PBXBuildFile; fileRef = AB70174A80BDBEF97964B1D1 /* Icon-App-29x29@3x.png */; };
 		0B62E8780B2EF68BB75DCB77 /* DeckKit in Frameworks */ = {isa = PBXBuildFile; productRef = 1D4FCB5C53FAA6DC26531C63 /* DeckKit */; };
 		0F0698A95BD07D14D89D5BA1 /* HomeRoutinesList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23261457659049EF7D390F0E /* HomeRoutinesList.swift */; };
+		1F06EA84AB51D9E228FBBBCB /* DesktopPreviewScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFD01DA0D87BAD6328C48DE8 /* DesktopPreviewScreen.swift */; };
 		2495F9FA74E60FE3935AF9AB /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6008CE13AA2719DE4CFEFBA5 /* ContentView.swift */; };
 		29EB1F420B2143258D6BE3E6 /* HomeVoiceOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F80BAECD547AFCAF6FB4487 /* HomeVoiceOverlay.swift */; };
 		303C0ED6FF5A801009E72EBD /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = E0A62477A93C15EBE3917B2E /* LaunchScreen.storyboard */; };
@@ -131,6 +132,7 @@
 		E8CF4F00C46E366B32EC05B6 /* FleetDeckConsole.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetDeckConsole.swift; sourceTree = "<group>"; };
 		EDEBF60950520605C2AFCAB6 /* FleetDeckFocusPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetDeckFocusPane.swift; sourceTree = "<group>"; };
 		EE5C0AF5BDF4BE3A05157A33 /* HomeVoicePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeVoicePanel.swift; sourceTree = "<group>"; };
+		EFD01DA0D87BAD6328C48DE8 /* DesktopPreviewScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopPreviewScreen.swift; sourceTree = "<group>"; };
 		EFEA84FACFEF2BC028E68125 /* FleetDeckVoiceBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetDeckVoiceBar.swift; sourceTree = "<group>"; };
 		F48879BE5FDAA5E9B1F69EB2 /* LocalNetworkScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalNetworkScanner.swift; sourceTree = "<group>"; };
 		F6F62141EE310B1E14C10F6D /* FleetDeckHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetDeckHost.swift; sourceTree = "<group>"; };
@@ -261,6 +263,7 @@
 				CE3829B428DD890399011344 /* DeckSkeleton.swift */,
 				11238FFB50336470B6A97CE0 /* DeckStore.swift */,
 				33D07069EDC1FC31F2D17855 /* DeckTheme.swift */,
+				EFD01DA0D87BAD6328C48DE8 /* DesktopPreviewScreen.swift */,
 				0A0454EF94BCB42389D5B90B /* Info.plist */,
 				0AE37E6C4302786080981EE9 /* LatsDeckScreen.swift */,
 				E5BE58AB3627168981D1D91F /* LatsDesignSystem.swift */,
@@ -374,6 +377,7 @@
 				702E0CE9E43B03A228EB124B /* DeckSkeleton.swift in Sources */,
 				015334E9F01E2EC8CE7C6C77 /* DeckStore.swift in Sources */,
 				A554A5F6BEE7A1D19133D7E3 /* DeckTheme.swift in Sources */,
+				1F06EA84AB51D9E228FBBBCB /* DesktopPreviewScreen.swift in Sources */,
 				E49DB476A1AF62CF00A48A94 /* FleetDeckAdapter.swift in Sources */,
 				E28369386027FFF51101E239 /* FleetDeckChannelStrip.swift in Sources */,
 				3A1671AC9709B03CC97F9D13 /* FleetDeckCommandBay.swift in Sources */,

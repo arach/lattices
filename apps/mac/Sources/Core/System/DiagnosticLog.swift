@@ -36,14 +36,13 @@ final class DiagnosticLog: ObservableObject {
 
     @Published private(set) var entries: [Entry] = []
 
-    private let store = HudLogStore.shared
     private let logger = HudLogger(subsystem: "dev.lattices.app", category: "diagnostic")
     private var cancellables = Set<AnyCancellable>()
 
     private init() {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            self.store.$entries
+            HudLogStore.shared.$entries
                 .receive(on: DispatchQueue.main)
                 .map { $0.map(Entry.init(hud:)) }
                 .sink { [weak self] mapped in
@@ -63,7 +62,7 @@ final class DiagnosticLog: ObservableObject {
     func error(_ msg: String)   { log(msg, level: .error) }
     func clear() {
         Task { @MainActor in
-            store.clear()
+            HudLogStore.shared.clear()
         }
     }
 

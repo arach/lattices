@@ -1,5 +1,6 @@
 import DeckKit
 import SwiftUI
+import UIKit
 
 // MARK: - Router
 
@@ -199,7 +200,15 @@ struct ContentView: View {
                 // opened it. Left standing, it would keep vouching for the
                 // primary store long after the primary had been pointed at some
                 // other Mac — which is the exact confusion it exists to prevent.
-                if destination == nil { repointedMachineID = nil }
+                if destination == nil {
+                    repointedMachineID = nil
+                    // A protected request can discover that the saved pairing
+                    // no longer matches while the deck is covering Home. Pull
+                    // the roster again as the cover closes so the stale card is
+                    // replaced by the Add flow immediately.
+                    trustedBridges = DeckBridgeSecurityStore.shared.trustedBridgeList()
+                    fleetStore.releaseUntrusted()
+                }
             }
             .onChange(of: showSettings) { _, isOpen in
                 store.setUIPriority(isOpen ? .fast : .ambient)
@@ -213,6 +222,14 @@ struct ContentView: View {
         .onChange(of: store.activeEndpoint) { _, _ in
             fleetStore.synchronize(with: store)
             promoteNewSessionsIfPresenting()
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: DeckBridgeSecurityStore.trustDidChangeNotification
+            )
+        ) { _ in
+            trustedBridges = DeckBridgeSecurityStore.shared.trustedBridgeList()
+            fleetStore.releaseUntrusted()
         }
     }
 
@@ -299,6 +316,8 @@ private struct HostDeckHost: View {
     @State private var transitionSettled = false
     /// Only true once waiting has gone on long enough to deserve an explanation.
     @State private var waitIsWorthExplaining = false
+    @State private var showsDesktopPreview = false
+    @State private var trackpadWindowPreviewImage: UIImage?
 
     /// Roughly the length of a `fullScreenCover` presentation.
     private let settleDelay = Duration.milliseconds(300)
@@ -337,6 +356,9 @@ private struct HostDeckHost: View {
         .animation(.easeInOut(duration: 0.22), value: isReady)
         .preferredColorScheme(.dark)
         .statusBarHidden(true)
+        .fullScreenCover(isPresented: $showsDesktopPreview) {
+            DesktopPreviewScreen(store: store)
+        }
         .task {
             // Data goes in flight immediately; the tree is built after the
             // animation lands. The two costs stop overlapping.
@@ -345,6 +367,9 @@ private struct HostDeckHost: View {
             transitionSettled = true
             try? await Task.sleep(for: narrationDelay)
             if store.snapshot == nil { waitIsWorthExplaining = true }
+        }
+        .task(id: trackpadPreviewTaskID) {
+            await updateTrackpadWindowPreview()
         }
     }
 
@@ -359,14 +384,59 @@ private struct HostDeckHost: View {
         LatsDeckScreen(
             liveSnapshot: store.snapshot,
             connectionLabel: store.connectionLabel,
+            trackpadWindowPreviewImage: trackpadWindowPreviewImage,
             onAction: { actionID, payload, label in
                 store.perform(actionID: actionID, pageID: "cockpit", payload: payload, label: label)
             },
             onTrackpadEvent: { event, dx, dy in
                 store.sendTrackpad(event: event, dx: dx, dy: dy)
-            }
+            },
+            onDesktopPreview: { showsDesktopPreview = true }
         )
     }
+
+    private var trackpadPreviewTaskID: TrackpadWindowPreviewTaskID {
+        TrackpadWindowPreviewTaskID(
+            windowID: store.snapshot?.layout?.frontmostWindow?.id,
+            isEnabled: isReady && !showsDesktopPreview
+        )
+    }
+
+    private func updateTrackpadWindowPreview() async {
+        trackpadWindowPreviewImage = nil
+        guard trackpadPreviewTaskID.isEnabled,
+              trackpadPreviewTaskID.windowID != nil else {
+            return
+        }
+
+        while !Task.isCancelled {
+            do {
+                let preview = try await store.desktopPreview(
+                    maxPixelWidth: 960,
+                    scope: .frontmostWindow
+                )
+                try Task.checkCancellation()
+                guard
+                    let jpeg = Data(base64Encoded: preview.jpegBase64),
+                    let image = UIImage(data: jpeg)
+                else {
+                    return
+                }
+                trackpadWindowPreviewImage = image
+            } catch {
+                // The full Desktop Preview surface owns permission and pairing
+                // guidance. The trackpad thumbnail stays quiet and optional.
+                return
+            }
+
+            try? await Task.sleep(for: .seconds(4))
+        }
+    }
+}
+
+private struct TrackpadWindowPreviewTaskID: Hashable {
+    let windowID: String?
+    let isEnabled: Bool
 }
 
 // MARK: - Home (no Mac connected)

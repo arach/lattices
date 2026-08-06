@@ -205,6 +205,7 @@ extension AddHostController {
         case DeckBridgeCapability.deckRead:     return "reading this host's state"
         case DeckBridgeCapability.deckPerform:  return "running commands"
         case DeckBridgeCapability.inputTrackpad: return "trackpad control"
+        case DeckBridgeCapability.screenPreview: return "viewing this Mac's screen"
         default:                                 return capability
         }
     }

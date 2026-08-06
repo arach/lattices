@@ -168,6 +168,14 @@ struct DeckBridgeClient {
     ) async throws -> DeckTrackpadEventResult {
         try await protectedPost(path: "/deck/trackpad", endpoint: endpoint, health: health, body: request)
     }
+
+    func desktopPreview(
+        endpoint: BridgeEndpoint,
+        health: BridgeHealthResponse,
+        request: DeckDesktopPreviewRequest
+    ) async throws -> DeckDesktopPreviewFrame {
+        try await protectedPost(path: "/deck/preview", endpoint: endpoint, health: health, body: request)
+    }
 }
 
 private extension DeckBridgeClient {

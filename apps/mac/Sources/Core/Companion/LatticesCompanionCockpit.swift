@@ -10,13 +10,34 @@ struct LatticesCompanionCockpitLayout: Codable, Equatable {
         var row: Int
         var colSpan: Int
         var rowSpan: Int
+        /// Optional visual overrides authored in the Mac deck builder. The
+        /// action remains catalog-backed; these fields only customize how the
+        /// key is presented on companion devices.
+        var customLabel: String?
+        var customBuilderIcon: String?
+        var customTint: String?
+        var customCategory: String?
 
-        init(shortcutID: String, col: Int, row: Int, colSpan: Int = 1, rowSpan: Int = 1) {
+        init(
+            shortcutID: String,
+            col: Int,
+            row: Int,
+            colSpan: Int = 1,
+            rowSpan: Int = 1,
+            customLabel: String? = nil,
+            customBuilderIcon: String? = nil,
+            customTint: String? = nil,
+            customCategory: String? = nil
+        ) {
             self.shortcutID = shortcutID
             self.col = col
             self.row = row
             self.colSpan = colSpan
             self.rowSpan = rowSpan
+            self.customLabel = customLabel
+            self.customBuilderIcon = customBuilderIcon
+            self.customTint = customTint
+            self.customCategory = customCategory
         }
     }
 
@@ -140,7 +161,9 @@ enum LatticesCompanionCockpitCatalog {
 
     static let slotCount = 16
 
-    static let defaultLayout = LatticesCompanionCockpitLayout(
+    /// The original six-way starter is retained only so Preferences can tell an
+    /// untouched deck from a personalized one during the v3 migration.
+    static let legacyDefaultLayoutV2 = LatticesCompanionCockpitLayout(
         pages: [
             .init(
                 id: "command",
@@ -212,8 +235,130 @@ enum LatticesCompanionCockpitCatalog {
         ]
     )
 
+    /// The first job-based starter shipped briefly as v3. Retain it so an exact,
+    /// untouched copy can move forward without changing personalized decks.
+    static let legacyDefaultLayoutV3 = LatticesCompanionCockpitLayout(
+        pages: [
+            .init(
+                id: "remote",
+                title: "Remote",
+                subtitle: "See and directly control this Mac",
+                columns: 4,
+                rows: 3,
+                slots: [
+                    .init(shortcutID: "mac-windows", col: 0, row: 0, colSpan: 2, rowSpan: 2),
+                    .init(shortcutID: "mouse-joystick", col: 2, row: 0, colSpan: 2, rowSpan: 2),
+                    .init(shortcutID: "talkie-search", col: 0, row: 2, colSpan: 2),
+                    .init(shortcutID: "paste-device", col: 2, row: 2, colSpan: 2),
+                ]
+            ),
+            .init(
+                id: "move",
+                title: "Move",
+                subtitle: "Navigate apps and arrange the current window",
+                columns: 4,
+                rows: 4,
+                slots: [
+                    .init(shortcutID: "switch-app-prev", col: 0, row: 0, colSpan: 2),
+                    .init(shortcutID: "switch-app-next", col: 2, row: 0, colSpan: 2),
+                    .init(shortcutID: "switch-window-prev", col: 0, row: 1, colSpan: 2),
+                    .init(shortcutID: "switch-window-next", col: 2, row: 1, colSpan: 2),
+                    .init(shortcutID: "place-left", col: 0, row: 2),
+                    .init(shortcutID: "place-center", col: 1, row: 2),
+                    .init(shortcutID: "place-right", col: 2, row: 2),
+                    .init(shortcutID: "place-maximize", col: 3, row: 2),
+                    .init(shortcutID: "mouse-find", col: 0, row: 3),
+                    .init(shortcutID: "mouse-summon", col: 1, row: 3),
+                    .init(shortcutID: "layout-optimize", col: 2, row: 3, colSpan: 2),
+                ]
+            ),
+            .init(
+                id: "speak-run",
+                title: "Speak & Run",
+                subtitle: "Create, capture, and delegate",
+                columns: 4,
+                rows: 4,
+                slots: [
+                    .init(shortcutID: "talkie-dictate", col: 0, row: 0, colSpan: 2),
+                    .init(shortcutID: "talkie-settings", col: 2, row: 0, colSpan: 2),
+                    .init(shortcutID: "talkie-record", col: 0, row: 1, colSpan: 2),
+                    .init(shortcutID: "talkie-keyboard", col: 2, row: 1, colSpan: 2),
+                    .init(shortcutID: "voice-toggle", col: 0, row: 2),
+                    .init(shortcutID: "voice-cancel", col: 1, row: 2),
+                    .init(shortcutID: "talkie-memos", col: 2, row: 2),
+                    .init(shortcutID: "mac-sessions", col: 3, row: 2),
+                    .init(shortcutID: "mac-claude", col: 0, row: 3),
+                    .init(shortcutID: "talkie-agent", col: 1, row: 3),
+                    .init(shortcutID: "talkie-ssh", col: 2, row: 3),
+                    .init(shortcutID: "talkie-command", col: 3, row: 3),
+                ]
+            ),
+        ]
+    )
+
+    /// The companion is a remote for the Mac in front of the user, not a
+    /// catalog of the subsystems that happen to implement its commands. Keep
+    /// the starter deliberately small and job-based; the complete catalog
+    /// remains available in the Mac deck builder.
+    static let defaultLayout = LatticesCompanionCockpitLayout(
+        pages: [
+            .init(
+                id: "remote",
+                title: "Remote",
+                subtitle: "Couch controls that complement the live trackpad",
+                columns: 4,
+                rows: 2,
+                slots: [
+                    .init(shortcutID: "mac-windows", col: 0, row: 0, colSpan: 2),
+                    .init(shortcutID: "paste-device", col: 2, row: 0, colSpan: 2),
+                    .init(shortcutID: "mouse-find", col: 0, row: 1, colSpan: 2),
+                    .init(shortcutID: "mouse-summon", col: 2, row: 1, colSpan: 2),
+                ]
+            ),
+            .init(
+                id: "move",
+                title: "Move",
+                subtitle: "Navigate apps and arrange the current window",
+                columns: 4,
+                rows: 4,
+                slots: [
+                    .init(shortcutID: "switch-app-prev", col: 0, row: 0, colSpan: 2),
+                    .init(shortcutID: "switch-app-next", col: 2, row: 0, colSpan: 2),
+                    .init(shortcutID: "switch-window-prev", col: 0, row: 1, colSpan: 2),
+                    .init(shortcutID: "switch-window-next", col: 2, row: 1, colSpan: 2),
+                    .init(shortcutID: "place-left", col: 0, row: 2),
+                    .init(shortcutID: "place-center", col: 1, row: 2),
+                    .init(shortcutID: "place-right", col: 2, row: 2),
+                    .init(shortcutID: "place-maximize", col: 3, row: 2),
+                    .init(shortcutID: "resize-grow", col: 0, row: 3),
+                    .init(shortcutID: "resize-shrink", col: 1, row: 3),
+                    .init(shortcutID: "layout-optimize", col: 2, row: 3, colSpan: 2),
+                ]
+            ),
+            .init(
+                id: "speak-run",
+                title: "Speak & Run",
+                subtitle: "Voice, capture, and repeatable work",
+                columns: 4,
+                rows: 3,
+                slots: [
+                    .init(shortcutID: "voice-toggle", col: 0, row: 0, colSpan: 2),
+                    .init(shortcutID: "voice-cancel", col: 2, row: 0, colSpan: 2),
+                    .init(shortcutID: "talkie-dictate", col: 0, row: 1, colSpan: 2),
+                    .init(shortcutID: "talkie-record", col: 2, row: 1, colSpan: 2),
+                    .init(shortcutID: "talkie-settings", col: 0, row: 2, colSpan: 2),
+                    .init(shortcutID: "mac-sessions", col: 2, row: 2, colSpan: 2),
+                ]
+            ),
+        ]
+    )
+
     static let shortcuts: [LatticesCompanionShortcutDefinition] = [
         .init(id: "", title: "Empty", subtitle: "Leave this slot unused", iconSystemName: "square.dashed", accentToken: nil, category: .layout),
+        // Keep the legacy `mac-windows` slot id so saved deck layouts remain
+        // valid, but own the definition here. Desktop Preview is Lattices
+        // navigation and must never inherit Talkie's perform/open fallback.
+        .init(id: "mac-windows", title: "Desktop Preview", subtitle: "View this Mac's screen on your iPad", iconSystemName: "display", accentToken: "green", category: .layout),
     ] + TalkieDeckProvider.shortcuts.map {
         LatticesCompanionShortcutDefinition(
             id: $0.id,
@@ -270,24 +415,112 @@ enum LatticesCompanionCockpitCatalog {
     }
 
     static func normalized(_ layout: LatticesCompanionCockpitLayout) -> LatticesCompanionCockpitLayout {
-        let blueprintPages = defaultLayout.pages
-        let existing = Dictionary(uniqueKeysWithValues: layout.pages.map { ($0.id, $0) })
+        let sourcePages = layout.pages.isEmpty ? defaultLayout.pages : layout.pages
+        var usedPageIDs = Set<String>()
 
-        return LatticesCompanionCockpitLayout(
-            pages: blueprintPages.map { blueprint in
-                let current = existing[blueprint.id]
-                let flatSlots = normalizedSlots(current?.slotIDs ?? blueprint.slotIDs)
-                return .init(
-                    id: blueprint.id,
-                    title: current?.title ?? blueprint.title,
-                    subtitle: current?.subtitle ?? blueprint.subtitle,
-                    columns: max(2, current?.columns ?? blueprint.columns),
-                    rows: current?.rows ?? blueprint.rows,
-                    slotIDs: flatSlots,
-                    slots: current?.slots
-                )
+        let pages: [LatticesCompanionCockpitLayout.Page] = sourcePages.enumerated().map { index, page in
+            let columns = min(5, max(2, page.columns))
+            let inferredRows = page.slots?.map { $0.row + max(1, $0.rowSpan) }.max() ?? 1
+            let rows = min(4, max(1, page.rows ?? inferredRows))
+
+            let baseID = page.id.trimmingCharacters(in: .whitespacesAndNewlines)
+            let fallbackID = baseID.isEmpty ? "page-\(index + 1)" : baseID
+            var pageID = fallbackID
+            var suffix = 2
+            while usedPageIDs.contains(pageID) {
+                pageID = "\(fallbackID)-\(suffix)"
+                suffix += 1
             }
-        )
+            usedPageIDs.insert(pageID)
+
+            let positioned = page.slots.map { slots in
+                var occupied = Set<Int>()
+
+                func cells(col: Int, row: Int, colSpan: Int, rowSpan: Int) -> [Int] {
+                    (row..<(row + rowSpan)).flatMap { cellRow in
+                        (col..<(col + colSpan)).map { cellCol in
+                            cellRow * columns + cellCol
+                        }
+                    }
+                }
+
+                func firstOpenPosition(colSpan: Int, rowSpan: Int) -> (col: Int, row: Int)? {
+                    guard colSpan <= columns, rowSpan <= rows else { return nil }
+                    for row in 0...(rows - rowSpan) {
+                        for col in 0...(columns - colSpan) {
+                            if cells(col: col, row: row, colSpan: colSpan, rowSpan: rowSpan)
+                                .allSatisfy({ !occupied.contains($0) }) {
+                                return (col, row)
+                            }
+                        }
+                    }
+                    return nil
+                }
+
+                let normalizedSlots: [LatticesCompanionCockpitLayout.Slot] = slots
+                    .prefix(slotCount)
+                    .compactMap { slot -> LatticesCompanionCockpitLayout.Slot? in
+                    let preferredCol = min(columns - 1, max(0, slot.col))
+                    let preferredRow = min(rows - 1, max(0, slot.row))
+                    var colSpan = min(columns - preferredCol, max(1, slot.colSpan))
+                    var rowSpan = min(rows - preferredRow, max(1, slot.rowSpan))
+                    let preferredCells = cells(
+                        col: preferredCol,
+                        row: preferredRow,
+                        colSpan: colSpan,
+                        rowSpan: rowSpan
+                    )
+
+                    var position: (col: Int, row: Int)?
+                    if preferredCells.allSatisfy({ !occupied.contains($0) }) {
+                        position = (preferredCol, preferredRow)
+                    } else {
+                        position = firstOpenPosition(colSpan: colSpan, rowSpan: rowSpan)
+                    }
+
+                    // A custom layout can become denser when an oversized grid
+                    // is clamped to the supported 5×4 canvas. Keep every action
+                    // reachable by relaxing its span before ever overlapping it.
+                    if position == nil {
+                        colSpan = 1
+                        rowSpan = 1
+                        position = firstOpenPosition(colSpan: 1, rowSpan: 1)
+                    }
+                    guard let position else { return nil }
+
+                    occupied.formUnion(cells(
+                        col: position.col,
+                        row: position.row,
+                        colSpan: colSpan,
+                        rowSpan: rowSpan
+                    ))
+                    return LatticesCompanionCockpitLayout.Slot(
+                        shortcutID: slot.shortcutID,
+                        col: position.col,
+                        row: position.row,
+                        colSpan: colSpan,
+                        rowSpan: rowSpan,
+                        customLabel: slot.customLabel,
+                        customBuilderIcon: slot.customBuilderIcon,
+                        customTint: slot.customTint,
+                        customCategory: slot.customCategory
+                    )
+                }
+                return normalizedSlots
+            }
+
+            return .init(
+                id: pageID,
+                title: page.title,
+                subtitle: page.subtitle,
+                columns: columns,
+                rows: page.slots == nil ? page.rows : rows,
+                slotIDs: normalizedSlots(page.slotIDs),
+                slots: positioned
+            )
+        }
+
+        return LatticesCompanionCockpitLayout(pages: pages)
     }
 
     static func renderedState(
@@ -318,6 +551,9 @@ enum LatticesCompanionCockpitCatalog {
                             row: slot.row,
                             colSpan: slot.colSpan,
                             rowSpan: slot.rowSpan,
+                            customLabel: slot.customLabel,
+                            customBuilderIcon: slot.customBuilderIcon,
+                            customTint: slot.customTint,
                             voice: voice,
                             desktop: desktop,
                             layoutState: layoutState,
@@ -366,6 +602,9 @@ enum LatticesCompanionCockpitCatalog {
         row: Int? = nil,
         colSpan: Int? = nil,
         rowSpan: Int? = nil,
+        customLabel: String? = nil,
+        customBuilderIcon: String? = nil,
+        customTint: String? = nil,
         voice: DeckVoiceState?,
         desktop: DeckDesktopSummary?,
         layoutState: DeckLayoutState?,
@@ -386,12 +625,12 @@ enum LatticesCompanionCockpitCatalog {
         return DeckCockpitTile(
             id: id,
             shortcutID: shortcutID,
-            title: rendered.title,
+            title: nonBlank(customLabel) ?? rendered.title,
             subtitle: rendered.subtitle,
-            iconSystemName: rendered.iconSystemName,
+            iconSystemName: customBuilderIcon.map(builderSystemIcon) ?? rendered.iconSystemName,
             accentToken: rendered.accentToken,
             deckID: rendered.deckID ?? pageID,
-            categoryTint: rendered.categoryTint ?? definition(for: shortcutID)?.category.tintToken,
+            categoryTint: customTint ?? rendered.categoryTint ?? definition(for: shortcutID)?.category.tintToken,
             actionID: rendered.actionID,
             payload: rendered.payload,
             isEnabled: rendered.isEnabled,
@@ -402,6 +641,35 @@ enum LatticesCompanionCockpitCatalog {
             colSpan: colSpan,
             rowSpan: rowSpan
         )
+    }
+
+    private static func nonBlank(_ value: String?) -> String? {
+        guard let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        return value
+    }
+
+    private static func builderSystemIcon(_ icon: String) -> String {
+        let icons: [String: String] = [
+            "Mic": "mic.fill", "X": "xmark", "CornerDownLeft": "return",
+            "ArrowLeft": "arrow.left", "ArrowRight": "arrow.right",
+            "ArrowUp": "arrow.up", "ArrowDown": "arrow.down",
+            "ChevronLeft": "chevron.left", "ChevronRight": "chevron.right",
+            "Search": "magnifyingglass", "Command": "command",
+            "LayoutGrid": "rectangle.3.group.fill", "Crosshair": "scope",
+            "MousePointer2": "cursorarrow", "SpaceIcon": "space",
+            "PanelLeft": "rectangle.leadinghalf.filled",
+            "PanelRight": "rectangle.trailinghalf.filled",
+            "SquareDashed": "square.dashed", "Maximize2": "macwindow",
+            "Monitor": "display", "Terminal": "terminal", "Play": "play.fill",
+            "Hammer": "hammer.fill", "GitBranch": "arrow.triangle.branch",
+            "Volume2": "speaker.wave.2.fill", "Sun": "sun.max.fill",
+            "Camera": "camera.fill", "Sparkles": "sparkles", "Home": "house.fill",
+            "Clock": "clock", "Joystick": "circle.circle.fill",
+            "ClipboardPaste": "rectangle.portrait.and.arrow.forward"
+        ]
+        return icons[icon] ?? "square.dashed"
     }
 
     private static func renderedShortcut(
@@ -416,6 +684,23 @@ enum LatticesCompanionCockpitCatalog {
 
         if let keyShortcut = keyboardShortcut(for: shortcutID) {
             return keyShortcut
+        }
+
+        // Desktop Preview belongs to the Lattices companion itself. It is a
+        // read-only view of this Mac's current screen, not a Talkie launch
+        // action, even though the slot originated in Talkie's deck layout.
+        if shortcutID == "mac-windows" {
+            return RenderedShortcut(
+                title: "Desktop Preview",
+                subtitle: "View this Mac's screen on your iPad",
+                iconSystemName: "display",
+                accentToken: "green",
+                categoryTint: LatticesCompanionShortcutCategory.layout.tintToken,
+                actionID: "desktop.preview.open",
+                payload: [:],
+                isEnabled: true,
+                isActive: false
+            )
         }
 
         if let talkieShortcut = talkieShortcut(for: shortcutID, snapshot: talkie) {
@@ -694,20 +979,21 @@ enum LatticesCompanionCockpitCatalog {
         } else if snapshot.isReachable {
             subtitle = shortcut.subtitle
         } else if snapshot.isRunning {
-            subtitle = snapshot.lastError ?? "Talkie is running; waiting for its bridge."
+            subtitle = snapshot.lastError ?? "Voice controls are starting."
         } else {
-            subtitle = "Open Talkie on this Mac."
+            subtitle = "Unavailable until the voice companion is running."
         }
 
+        let canOpenProvider = shortcut.id == "talkie-home"
         return RenderedShortcut(
-            title: shortcut.title,
+            title: !snapshot.isReachable && canOpenProvider ? "Open Talkie" : shortcut.title,
             subtitle: subtitle,
             iconSystemName: shortcut.iconSystemName,
             accentToken: shortcut.accentToken,
             categoryTint: shortcut.accentToken,
-            actionID: snapshot.isReachable ? "talkie.perform" : "talkie.open",
+            actionID: snapshot.isReachable ? "talkie.perform" : (canOpenProvider ? "talkie.open" : nil),
             payload: snapshot.isReachable ? ["shortcutID": .string(shortcut.id)] : [:],
-            isEnabled: true,
+            isEnabled: snapshot.isReachable || canOpenProvider,
             isActive: isActive
         )
     }

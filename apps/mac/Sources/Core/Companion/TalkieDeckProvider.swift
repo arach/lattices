@@ -74,6 +74,8 @@ private struct TalkieLocalClientAccessResponse: Decodable {
 final class TalkieDeckProvider: @unchecked Sendable {
     static let shared = TalkieDeckProvider()
 
+    /// Slot order of the retired six-page starter. Kept only for exact-layout
+    /// migration and for decoding saved legacy Talkie pages.
     static let talkiePageSlotIDs: [String] = [
         "talkie-dictate", "talkie-record", "talkie-settings", "talkie-search",
         "deck-app-previous", "deck-app-next", "deck-window-previous", "deck-window-next",
@@ -82,18 +84,17 @@ final class TalkieDeckProvider: @unchecked Sendable {
     ]
 
     static let shortcuts: [TalkieDeckShortcutDefinition] = [
-        .init(id: "talkie-dictate", title: "Dictate", subtitle: "Start or stop Talkie dictation.", iconSystemName: "mic.fill", accentToken: "red"),
-        .init(id: "talkie-record", title: "Record Memo", subtitle: "Start or stop a Talkie memo.", iconSystemName: "square.and.pencil", accentToken: "violet"),
-        .init(id: "talkie-settings", title: "Voice Command", subtitle: "Start Talkie's voice command capture.", iconSystemName: "waveform.badge.mic", accentToken: "pink"),
-        .init(id: "talkie-search", title: "Search", subtitle: "Open Talkie search on the Mac.", iconSystemName: "magnifyingglass", accentToken: "blue"),
-        .init(id: "mac-claude", title: "Claude", subtitle: "Open Talkie's Claude console.", iconSystemName: "sparkles", accentToken: "violet"),
-        .init(id: "talkie-agent", title: "Pi", subtitle: "Open Talkie's Pi console.", iconSystemName: "circle.grid.cross", accentToken: "blue"),
-        .init(id: "talkie-ssh", title: "Shell", subtitle: "Open the Talkie Shell tab.", iconSystemName: "terminal", accentToken: "green"),
-        .init(id: "mac-sessions", title: "Workflows", subtitle: "Open Talkie's workflow picker.", iconSystemName: "wand.and.stars", accentToken: "teal"),
-        .init(id: "mac-windows", title: "Desktop Preview", subtitle: "Start Talkie's desktop capture flow.", iconSystemName: "display", accentToken: "green"),
-        .init(id: "talkie-keyboard", title: "Record Screen", subtitle: "Start Talkie's screen recording flow.", iconSystemName: "record.circle", accentToken: "red"),
-        .init(id: "talkie-command", title: "Palette", subtitle: "Open Talkie's command palette.", iconSystemName: "command", accentToken: "violet"),
-        .init(id: "talkie-memos", title: "Memos", subtitle: "Open Talkie's memo library.", iconSystemName: "waveform", accentToken: "pink"),
+        .init(id: "talkie-dictate", title: "Type by Voice", subtitle: "Dictate into the current Mac app.", iconSystemName: "mic.fill", accentToken: "red"),
+        .init(id: "talkie-record", title: "Record Note", subtitle: "Start or stop a voice note.", iconSystemName: "square.and.pencil", accentToken: "violet"),
+        .init(id: "talkie-settings", title: "Tell Mac", subtitle: "Speak a command for this Mac.", iconSystemName: "waveform.badge.mic", accentToken: "pink"),
+        .init(id: "talkie-search", title: "Search", subtitle: "Search apps and commands on the Mac.", iconSystemName: "magnifyingglass", accentToken: "blue"),
+        .init(id: "mac-claude", title: "Claude", subtitle: "Open the Claude console.", iconSystemName: "sparkles", accentToken: "violet"),
+        .init(id: "talkie-agent", title: "Agent Console", subtitle: "Open the secondary agent console.", iconSystemName: "circle.grid.cross", accentToken: "blue"),
+        .init(id: "talkie-ssh", title: "Shell", subtitle: "Open a remote shell.", iconSystemName: "terminal", accentToken: "green"),
+        .init(id: "mac-sessions", title: "Run Workflow", subtitle: "Choose a saved workflow.", iconSystemName: "wand.and.stars", accentToken: "teal"),
+        .init(id: "talkie-keyboard", title: "Record Screen", subtitle: "Start a screen recording.", iconSystemName: "record.circle", accentToken: "red"),
+        .init(id: "talkie-command", title: "Commands", subtitle: "Choose a command to run.", iconSystemName: "command", accentToken: "violet"),
+        .init(id: "talkie-memos", title: "Notes", subtitle: "Open recorded notes.", iconSystemName: "waveform", accentToken: "pink"),
         .init(id: "talkie-home", title: "Home", subtitle: "Bring Talkie home to the front.", iconSystemName: "house", accentToken: "violet"),
         .init(id: "talkie-pending", title: "Pending", subtitle: "Open Talkie's pending actions.", iconSystemName: "hourglass", accentToken: "amber"),
         .init(id: "talkie-recent", title: "Recents", subtitle: "Open Talkie's recent activity.", iconSystemName: "clock.arrow.circlepath", accentToken: "amber"),

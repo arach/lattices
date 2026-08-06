@@ -22,9 +22,10 @@ struct CompanionDeckBuilderView: NSViewRepresentable {
         let config = WKWebViewConfiguration()
         let controller = WKUserContentController()
         controller.add(context.coordinator, name: "deck")
-        if let json = Self.builderJSON(for: layout) {
+        if let json = Self.builderJSON(for: layout),
+           let catalogJSON = Self.builderCatalogJSON() {
             controller.addUserScript(WKUserScript(
-                source: "window.__DECK_INIT__ = \(json);",
+                source: "window.__DECK_INIT__ = \(json); window.__DECK_CATALOG__ = \(catalogJSON);",
                 injectionTime: .atDocumentStart,
                 forMainFrameOnly: true
             ))
@@ -102,10 +103,11 @@ struct CompanionDeckBuilderView: NSViewRepresentable {
     }
 }
 
-private extension CompanionDeckBuilderView {
+extension CompanionDeckBuilderView {
     struct BuilderDeck: Codable {
         var id: String
         var name: String
+        var subtitle: String?
         var tint: String
         var columns: Int
         var rows: Int
@@ -119,10 +121,46 @@ private extension CompanionDeckBuilderView {
         var tint: String
         var category: String
         var actionID: String
+        var baseLabel: String?
+        var baseIcon: String?
+        var baseTint: String?
+        var baseCategory: String?
         var col: Int
         var row: Int
         var colSpan: Int
         var rowSpan: Int
+    }
+
+    struct BuilderCatalogGroup: Codable {
+        var group: String
+        var items: [BuilderCatalogItem]
+    }
+
+    struct BuilderCatalogItem: Codable {
+        var id: String
+        var label: String
+        var icon: String
+        var tint: String
+        var category: String
+    }
+
+    static func builderCatalogJSON() -> String? {
+        let groups = LatticesCompanionShortcutCategory.allCases.compactMap { category -> BuilderCatalogGroup? in
+            let items = LatticesCompanionCockpitCatalog.shortcuts.compactMap { definition -> BuilderCatalogItem? in
+                guard !definition.id.isEmpty, definition.category == category else { return nil }
+                return BuilderCatalogItem(
+                    id: definition.id,
+                    label: definition.title,
+                    icon: builderIcon(for: definition.id),
+                    tint: definition.category.tintToken,
+                    category: definition.category.rawValue
+                )
+            }
+            guard !items.isEmpty else { return nil }
+            return BuilderCatalogGroup(group: category.title, items: items)
+        }
+        guard let data = try? JSONEncoder().encode(groups) else { return nil }
+        return String(data: data, encoding: .utf8)
     }
 
     static func builderJSON(for layout: LatticesCompanionCockpitLayout) -> String? {
@@ -147,11 +185,15 @@ private extension CompanionDeckBuilderView {
                       !slot.shortcutID.isEmpty else { return nil }
                 return BuilderKey(
                     id: "\(page.id)-\(index)",
-                    label: definition.title,
-                    icon: builderIcon(for: slot.shortcutID),
-                    tint: definition.category.tintToken,
-                    category: definition.category.rawValue,
+                    label: slot.customLabel ?? definition.title,
+                    icon: slot.customBuilderIcon ?? builderIcon(for: slot.shortcutID),
+                    tint: slot.customTint ?? definition.category.tintToken,
+                    category: slot.customCategory ?? definition.category.rawValue,
                     actionID: slot.shortcutID,
+                    baseLabel: definition.title,
+                    baseIcon: builderIcon(for: slot.shortcutID),
+                    baseTint: definition.category.tintToken,
+                    baseCategory: definition.category.rawValue,
                     col: slot.col,
                     row: slot.row,
                     colSpan: slot.colSpan,
@@ -161,6 +203,7 @@ private extension CompanionDeckBuilderView {
             return BuilderDeck(
                 id: page.id,
                 name: page.title,
+                subtitle: page.subtitle,
                 tint: keys.first?.tint ?? "blue",
                 columns: page.columns,
                 rows: page.rows ?? max(1, Int(ceil(Double(max(1, page.slotIDs.count)) / Double(max(1, page.columns))))),
@@ -177,17 +220,23 @@ private extension CompanionDeckBuilderView {
             LatticesCompanionCockpitLayout.Page(
                 id: deck.id,
                 title: deck.name,
+                subtitle: deck.subtitle,
                 columns: min(5, max(2, deck.columns)),
                 rows: min(4, max(1, deck.rows)),
                 slots: deck.keys.prefix(LatticesCompanionCockpitCatalog.slotCount).compactMap { key in
                     let shortcutID = canonicalShortcutID(key.actionID)
-                    guard LatticesCompanionCockpitCatalog.definition(for: shortcutID) != nil else { return nil }
+                    guard let definition = LatticesCompanionCockpitCatalog.definition(for: shortcutID) else { return nil }
+                    let defaultIcon = builderIcon(for: shortcutID)
                     return .init(
                         shortcutID: shortcutID,
                         col: key.col,
                         row: key.row,
                         colSpan: max(1, key.colSpan),
-                        rowSpan: max(1, key.rowSpan)
+                        rowSpan: max(1, key.rowSpan),
+                        customLabel: key.label == (key.baseLabel ?? definition.title) ? nil : key.label,
+                        customBuilderIcon: key.icon == (key.baseIcon ?? defaultIcon) ? nil : key.icon,
+                        customTint: key.tint == (key.baseTint ?? definition.category.tintToken) ? nil : key.tint,
+                        customCategory: key.category == (key.baseCategory ?? definition.category.rawValue) ? nil : key.category
                     )
                 }
             )
