@@ -274,11 +274,20 @@ final class MouseGestureController: ObservableObject {
         dispatchPrecondition(condition: .onQueue(.main))
         let healthBeforeReset = currentTapHealth()
         clearSession()
-        breaker.reset()
-        if let eventTap {
-            CGEvent.tapEnable(tap: eventTap, enable: true)
-        } else {
-            refresh()
+        // Match KeyboardRemap: do not re-arm a tripped breaker on app activation
+        // or Secure Event Input flaps — that reintroduces multi-second freezes.
+        switch breaker.state {
+        case .armed:
+            if let eventTap {
+                CGEvent.tapEnable(tap: eventTap, enable: true)
+            } else {
+                refresh()
+            }
+        case .paused, .disabled:
+            DiagnosticLog.shared.warn(
+                "MouseGesture: boundary '\(reason)' ignored re-arm — breaker is \(breaker.state) (before: \(healthBeforeReset.summary))"
+            )
+            return
         }
         let healthAfterReset = currentTapHealth()
         DiagnosticLog.shared.warn(
@@ -345,6 +354,13 @@ final class MouseGestureController: ObservableObject {
         }
 
         let desiredMask = desiredEventMask()
+        // Never re-enable a tripped mouse tap from a casual refresh.
+        switch breaker.state {
+        case .paused, .disabled:
+            return
+        case .armed:
+            break
+        }
         if eventTap == nil {
             installEventTap(mask: desiredMask)
         } else if let eventTap {

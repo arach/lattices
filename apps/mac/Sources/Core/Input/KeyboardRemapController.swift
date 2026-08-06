@@ -28,6 +28,14 @@ final class KeyboardRemapController: ObservableObject {
     private let capsLockTransport = CapsLockHIDTransportController()
     private let breaker = EventTapBreaker(label: "KeyboardRemap")
     private let budgetMeter = TapBudgetMeter(label: "KeyboardRemap")
+    /// Tap-thread cache — never read KeyboardRemapStore (or take its lock) from
+    /// the CGEventTap callback. Store access was showing up as multi-ms stalls
+    /// on every keystroke and the OS then delayed *all* keyboard input.
+    private let tapConfigLock = NSLock()
+    private var tapHyperEnabled = false
+    private var tapTransportActive = false
+    private var tapCapsKeyCode: Int64 = 57 // Caps Lock
+    private var tapAloneIsEscape = true
     private let maxCapsLayerIdleDuration: TimeInterval = 2.0
     private let maxCapsLayerHeldDuration: TimeInterval = 20.0
     private let maxTrackedKeyDownDuration: TimeInterval = 120.0
@@ -127,19 +135,56 @@ final class KeyboardRemapController: ObservableObject {
             removeEventTap()
             capsLockTransport.disable()
             capsLockTransportActive = capsLockTransport.isActive
+            publishTapConfig(hyperEnabled: false, transportActive: false, capsKeyCode: 57, aloneEscape: true)
             return
         }
 
         KeyboardRemapStore.shared.ensureConfigFile()
-        let shouldUseCapsLockTransport = KeyboardRemapStore.shared.capsLockRule?.toIfHeld == .hyper
+        let rule = KeyboardRemapStore.shared.capsLockRule
+        let shouldUseCapsLockTransport = rule?.toIfHeld == .hyper
         capsLockTransport.setEnabled(shouldUseCapsLockTransport)
         capsLockTransportActive = capsLockTransport.isActive
+        publishTapConfig(
+            hyperEnabled: shouldUseCapsLockTransport,
+            transportActive: capsLockTransport.isActive,
+            capsKeyCode: Int64(rule?.from.keyCode ?? 57),
+            aloneEscape: rule?.toIfAlone == .escape
+        )
+
+        // Never re-enable a breaker-paused or permanently disabled tap from a
+        // casual refresh (prefs/accessibility churn). That re-introduces freezes.
+        switch breaker.state {
+        case .paused, .disabled:
+            return
+        case .armed:
+            break
+        }
 
         if eventTap == nil {
             installEventTap()
         } else if let eventTap {
             CGEvent.tapEnable(tap: eventTap, enable: true)
         }
+    }
+
+    private func publishTapConfig(
+        hyperEnabled: Bool,
+        transportActive: Bool,
+        capsKeyCode: Int64,
+        aloneEscape: Bool
+    ) {
+        tapConfigLock.lock()
+        tapHyperEnabled = hyperEnabled
+        tapTransportActive = transportActive
+        tapCapsKeyCode = capsKeyCode
+        tapAloneIsEscape = aloneEscape
+        tapConfigLock.unlock()
+    }
+
+    private func readTapConfig() -> (hyper: Bool, transport: Bool, capsKey: Int64, aloneEscape: Bool) {
+        tapConfigLock.lock()
+        defer { tapConfigLock.unlock() }
+        return (tapHyperEnabled, tapTransportActive, tapCapsKeyCode, tapAloneIsEscape)
     }
 
     private func installEventTap() {
@@ -214,26 +259,18 @@ final class KeyboardRemapController: ObservableObject {
     }
 
     private func handleEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
-        let started = CFAbsoluteTimeGetCurrent()
-        defer {
-            let elapsedMs = (CFAbsoluteTimeGetCurrent() - started) * 1000
-            budgetMeter.record(durationMs: elapsedMs)
-        }
+        // Intentionally no budgetMeter / logging on the common path — even a
+        // few ms of bookkeeping on every keystroke was enough for the OS to
+        // queue keyboard delivery system-wide (user-visible "Lattices ate my keys").
 
         if type == .tapDisabledByTimeout {
-            // OS killed the tap because a callback was too slow. Run through
-            // the breaker — it backs off in escalating cooldowns rather than
-            // re-enabling immediately and getting killed again.
             clearCapsLayer()
             breaker.recordTrip()
             return Unmanaged.passUnretained(event)
         }
         if type == .tapDisabledByUserInput {
-            // User-driven disable (rare). Re-enable directly, no cooldown.
             clearCapsLayer()
-            if let eventTap {
-                CGEvent.tapEnable(tap: eventTap, enable: true)
-            }
+            // Do not auto re-enable here; honor breaker state via refresh/reArm.
             return Unmanaged.passUnretained(event)
         }
 
@@ -241,39 +278,40 @@ final class KeyboardRemapController: ObservableObject {
             return Unmanaged.passUnretained(event)
         }
 
-        expireStalePressedKeys(now: started)
-        updatePressedKeys(type: type, keyCode: event.getIntegerValueField(.keyboardEventKeycode), now: started)
-        if shouldTriggerEmergencyReset(type: type, event: event) {
-            emergencyClear(now: started)
-            // Never do broad input-capture reset work on the tap thread — it
-            // can stall every key and mouse event system-wide.
-            DispatchQueue.main.async {
-                InputCaptureResetCenter.reset(reason: "keyboard emergency chord")
-            }
-            return Unmanaged.passUnretained(event)
-        }
-
+        let started = CFAbsoluteTimeGetCurrent()
         if started < bypassUntil {
             return Unmanaged.passUnretained(event)
         }
 
-        KeyboardRemapStore.shared.scheduleReloadCheckIfNeeded()
-        guard let rule = KeyboardRemapStore.shared.capsLockRule,
-              rule.toIfHeld == .hyper else {
+        let config = readTapConfig()
+        guard config.hyper else {
             return Unmanaged.passUnretained(event)
         }
 
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-        if capsLockTransport.isActive,
-           keyCode == CapsLockHIDTransportController.transportKeyCode {
-            return handleCapsLockTransportEvent(type: type, event: event, rule: rule)
+
+        // ── Fail-open fast path ─────────────────────────────────────────
+        // Normal typing never needs store access, key-down tracking, or
+        // reload checks. Only Caps/F18 and an active Hyper layer matter.
+        if !capsLayerActive {
+            if config.transport {
+                if keyCode == CapsLockHIDTransportController.transportKeyCode {
+                    return handleCapsLockTransportEvent(
+                        type: type,
+                        event: event,
+                        aloneEscape: config.aloneEscape
+                    )
+                }
+                return Unmanaged.passUnretained(event)
+            }
+            if type == .flagsChanged, keyCode == config.capsKey {
+                return handleCapsLockFlagsChanged(event, aloneEscape: config.aloneEscape)
+            }
+            return Unmanaged.passUnretained(event)
         }
 
-        if type == .flagsChanged, keyCode == rule.from.keyCode {
-            return handleCapsLockFlagsChanged(event, rule: rule)
-        }
-
-        reconcileCapsLayer(event: event, type: type, now: started)
+        // Hyper layer is down — inject Hyper and keep layer bookkeeping light.
+        reconcileCapsLayer(event: event, type: type, now: started, transportActive: config.transport)
         guard capsLayerActive else {
             return Unmanaged.passUnretained(event)
         }
@@ -284,27 +322,41 @@ final class KeyboardRemapController: ObservableObject {
                 emergencyClear(now: started)
                 return Unmanaged.passUnretained(event)
             }
+            // F18 transport key while held: swallow, keep layer.
+            if config.transport, keyCode == CapsLockHIDTransportController.transportKeyCode {
+                return nil
+            }
             capsUsedAsModifier = true
             capsLayerLastEventAt = started
             event.flags = normalizedFlags(event.flags).union(.latticesHyper)
             return Unmanaged.passUnretained(event)
         case .keyUp:
+            if config.transport, keyCode == CapsLockHIDTransportController.transportKeyCode {
+                let shouldTap = !capsUsedAsModifier && config.aloneEscape
+                clearCapsLayer()
+                if shouldTap { scheduleKeyTap(keyCode: 53) }
+                return nil
+            }
             capsLayerLastEventAt = started
             event.flags = normalizedFlags(event.flags).union(.latticesHyper)
+            return Unmanaged.passUnretained(event)
+        case .flagsChanged:
+            if keyCode == config.capsKey {
+                return handleCapsLockFlagsChanged(event, aloneEscape: config.aloneEscape)
+            }
             return Unmanaged.passUnretained(event)
         default:
             return Unmanaged.passUnretained(event)
         }
     }
 
-    private func handleCapsLockFlagsChanged(_ event: CGEvent, rule: KeyboardRemapRule) -> Unmanaged<CGEvent>? {
+    private func handleCapsLockFlagsChanged(_ event: CGEvent, aloneEscape: Bool) -> Unmanaged<CGEvent>? {
         let isDown = event.flags.contains(.maskAlphaShift)
         if isDown {
             activateCapsLayer(now: CFAbsoluteTimeGetCurrent())
             scheduleCapsLockLatchRelease()
-            // Hot path: no DiagnosticLog — logging from the HID tap freezes input.
         } else {
-            let shouldTap = capsLayerActive && !capsUsedAsModifier && rule.toIfAlone == .escape
+            let shouldTap = capsLayerActive && !capsUsedAsModifier && aloneEscape
             clearCapsLayer()
             scheduleCapsLockLatchRelease()
             if shouldTap {
@@ -318,7 +370,7 @@ final class KeyboardRemapController: ObservableObject {
     private func handleCapsLockTransportEvent(
         type: CGEventType,
         event: CGEvent,
-        rule: KeyboardRemapRule
+        aloneEscape: Bool
     ) -> Unmanaged<CGEvent>? {
         switch type {
         case .keyDown:
@@ -327,7 +379,7 @@ final class KeyboardRemapController: ObservableObject {
             }
             return nil
         case .keyUp:
-            let shouldTap = capsLayerActive && !capsUsedAsModifier && rule.toIfAlone == .escape
+            let shouldTap = capsLayerActive && !capsUsedAsModifier && aloneEscape
             clearCapsLayer()
             if shouldTap {
                 scheduleKeyTap(keyCode: 53)
@@ -352,13 +404,18 @@ final class KeyboardRemapController: ObservableObject {
         capsLayerLastEventAt = nil
     }
 
-    private func reconcileCapsLayer(event: CGEvent, type: CGEventType, now: CFAbsoluteTime) {
+    private func reconcileCapsLayer(
+        event: CGEvent,
+        type: CGEventType,
+        now: CFAbsoluteTime,
+        transportActive: Bool
+    ) {
         guard capsLayerActive else { return }
 
         // If a release event was dropped, later key events often arrive
         // without the physical Caps flag. Treat that as an input boundary and
         // fail open before rewriting the user's key.
-        if !capsLockTransport.isActive,
+        if !transportActive,
            type == .keyDown || type == .keyUp,
            !event.flags.contains(.maskAlphaShift) {
             clearCapsLayer(reason: "physical Caps flag cleared", now: now)
@@ -392,42 +449,9 @@ final class KeyboardRemapController: ObservableObject {
         clearCapsLayer()
         pressedKeyCodes.removeAll()
         bypassUntil = now + emergencyBypassDuration
-        // Log off-thread; do not block the tap.
         DispatchQueue.global(qos: .utility).async {
             DiagnosticLog.shared.warn("KeyboardRemap: emergency bypass via Escape")
         }
-    }
-
-    private func updatePressedKeys(type: CGEventType, keyCode: Int64, now: CFAbsoluteTime) {
-        switch type {
-        case .keyDown:
-            pressedKeyCodes[keyCode] = now
-        case .keyUp:
-            pressedKeyCodes.removeValue(forKey: keyCode)
-        default:
-            break
-        }
-    }
-
-    private func expireStalePressedKeys(now: CFAbsoluteTime) {
-        let staleKeys = pressedKeyCodes.filter { now - $0.value > maxTrackedKeyDownDuration }.map(\.key)
-        guard !staleKeys.isEmpty else { return }
-        for keyCode in staleKeys {
-            pressedKeyCodes.removeValue(forKey: keyCode)
-        }
-        let count = staleKeys.count
-        DispatchQueue.global(qos: .utility).async {
-            DiagnosticLog.shared.warn("KeyboardRemap: cleared stale key-down state for \(count) key(s)")
-        }
-    }
-
-    private func shouldTriggerEmergencyReset(type: CGEventType, event: CGEvent) -> Bool {
-        guard type == .keyDown else { return false }
-        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-        let flags = event.flags
-        return keyCode == 40
-            && pressedKeyCodes[53] != nil
-            && flags.contains(.maskShift)
     }
 
     private func normalizedFlags(_ flags: CGEventFlags) -> CGEventFlags {
