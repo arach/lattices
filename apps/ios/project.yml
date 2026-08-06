@@ -27,13 +27,6 @@ targets:
       - path: Sources
         type: group
       - path: Assets.xcassets
-        type: group
-        excludes:
-          - Contents.json
-          - AppIcon.appiconset/Contents.json
-          # Alternate design review artifact; intentionally not part of the app
-          # bundle until it is selected as the shipping icon.
-          - AppIconV2.appiconset
     info:
       path: Sources/Info.plist
       properties:
@@ -63,6 +56,7 @@ targets:
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIconV2
         SUPPORTS_MACCATALYST: NO
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
 
