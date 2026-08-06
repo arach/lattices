@@ -198,6 +198,18 @@ final class DeckBridgeSecurityStore {
         persistTrustedBridges()
     }
 
+    /// Remember where a Mac answered, so it stays reconnectable once it stops
+    /// advertising on Bonjour. Only ever called after `/health` has proved the
+    /// public key, so an address can never be attached to the wrong Mac.
+    func rememberAddress(forPublicKey publicKey: String, host: String, port: Int) {
+        guard var trust = trustedBridges[publicKey] else { return }
+        guard trust.lastKnownHost != host || trust.lastKnownPort != port else { return }
+        trust.lastKnownHost = host
+        trust.lastKnownPort = port
+        trustedBridges[publicKey] = trust
+        persistTrustedBridges()
+    }
+
     func prepareRequest(
         method: String,
         path: String,
