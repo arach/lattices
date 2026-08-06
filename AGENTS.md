@@ -12,6 +12,7 @@
 - Window navigation falls through CG → AX → AppleScript depending on macOS permissions
 - Space switching uses private SkyLight framework APIs loaded via dlopen at runtime
 - The daemon runs on ws://127.0.0.1:9399 with 35+ RPC methods and real-time events (localhost only, no auth by design)
+- Voice runtime is hosted in-process by the menu bar app on ws://127.0.0.1:9398 (deterministic Lattices port family: 9399 agent API, 9398 voice; see `LatticesLocalEndpoints` / `docs/voice.md`)
 - Bare `lattices` (no args) shows a home/status screen — use `lattices start` (alias: `lattices tmux`) to create or attach a session
 - `lattices search <q> --deep` and `--all` both request all search sources (index + live terminal inspection)
 

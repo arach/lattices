@@ -41,7 +41,7 @@ public struct DeckPairingRequest: Codable, Equatable, Sendable {
         platform = try container.decode(String.self, forKey: .platform)
         appVersion = try container.decodeIfPresent(String.self, forKey: .appVersion)
         requestedCapabilities = try container.decodeIfPresent([String].self, forKey: .requestedCapabilities)
-            ?? DeckBridgeCapability.defaultCompanionCapabilities
+            ?? DeckBridgeCapability.legacyCompanionCapabilities
     }
 }
 
@@ -95,7 +95,7 @@ public struct DeckPairingResponse: Codable, Equatable, Sendable {
         requestSigningRequired = try container.decode(Bool.self, forKey: .requestSigningRequired)
         payloadEncryptionRequired = try container.decode(Bool.self, forKey: .payloadEncryptionRequired)
         grantedCapabilities = try container.decodeIfPresent([String].self, forKey: .grantedCapabilities)
-            ?? DeckBridgeCapability.defaultCompanionCapabilities
+            ?? DeckBridgeCapability.legacyCompanionCapabilities
         detail = try container.decodeIfPresent(String.self, forKey: .detail)
     }
 }
@@ -143,10 +143,15 @@ public enum DeckBridgeCapability {
     public static let deckRead = "deck.read"
     public static let deckPerform = "deck.perform"
     public static let inputTrackpad = "input.trackpad"
+    public static let screenPreview = "screen.preview"
 
-    public static let defaultCompanionCapabilities = [
+    /// Capabilities granted before pairing records stored an explicit list.
+    /// This must remain frozen: expanding it would silently elevate old trust.
+    public static let legacyCompanionCapabilities = [
         deckRead,
         deckPerform,
         inputTrackpad,
     ]
+
+    public static let defaultCompanionCapabilities = legacyCompanionCapabilities + [screenPreview]
 }

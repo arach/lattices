@@ -85,6 +85,7 @@ final class LatticesDeckHost: DeckHost, @unchecked Sendable {
             .appSwitching,
             .taskSwitching,
             .historyFeed,
+            .screenPreview,
             .systemTelemetry,
             .spaces,
             .keyboardForwarding,
@@ -177,6 +178,44 @@ final class LatticesDeckHost: DeckHost, @unchecked Sendable {
     }
 }
 
+extension LatticesDeckHost {
+    static func resolveSpaceTarget(
+        displays: [DisplaySpaces],
+        displayIndex: Int,
+        index: Int
+    ) -> (display: DisplaySpaces, space: SpaceInfo)? {
+        guard index >= 0,
+              let display = displays.first(where: { $0.displayIndex == displayIndex }),
+              display.spaces.indices.contains(index) else {
+            return nil
+        }
+        return (display, display.spaces[index])
+    }
+
+    /// Pure relative target resolution for previous/next space (no SkyLight call).
+    /// `direction` is typically −1 (previous) or +1 (next). Does not wrap.
+    static func relativeSpaceTarget(in display: DisplaySpaces, direction: Int) -> SpaceInfo? {
+        guard let currentIdx = display.spaces.firstIndex(where: { $0.isCurrent }) else { return nil }
+        let targetIdx = currentIdx + direction
+        guard display.spaces.indices.contains(targetIdx) else { return nil }
+        return display.spaces[targetIdx]
+    }
+
+    /// Map Control+Left/Right (and variants) to a previous/next space direction.
+    func spaceSwitchDirection(key: String, modifiers: [String]) -> Int? {
+        let normalized = key.lowercased()
+            .replacingOccurrences(of: "←", with: "left")
+            .replacingOccurrences(of: "→", with: "right")
+        guard normalized == "left" || normalized == "right" else { return nil }
+        let hasControl = modifiers.contains { mod in
+            let m = mod.lowercased()
+            return m == "control" || m == "ctrl" || m == "⌃"
+        }
+        guard hasControl else { return nil }
+        return normalized == "right" ? 1 : -1
+    }
+}
+
 private extension LatticesDeckHost {
     enum ResizeDimension: String {
         case width
@@ -266,6 +305,17 @@ private extension LatticesDeckHost {
         case "talkie.perform":
             guard let shortcutID = request.payload["shortcutID"]?.stringValue else {
                 throw LatticesDeckHostError.missingPayload("shortcutID")
+            }
+            // Compatibility guard for an iPad holding a pre-preview snapshot.
+            // That older mapping called this Talkie route with `mac-windows`,
+            // which caused Talkie to open. A refreshed deck handles the slot as
+            // native iPad navigation and never sends a Mac action at all.
+            if shortcutID == "mac-windows" {
+                return ActionOutcome(
+                    summary: "Refresh Desktop Preview",
+                    detail: "Refresh the deck on your iPad, then open Desktop Preview again.",
+                    suggestedActions: []
+                )
             }
             do {
                 let result = try TalkieDeckProvider.shared.trigger(shortcutID: shortcutID)
@@ -429,7 +479,22 @@ private extension LatticesDeckHost {
 
         case "spaces.focusRelative":
             let direction = request.payload["direction"]?.intValue ?? 1
-            return try MainActorSync.run { self.switchActiveSpace(direction: direction > 0 ? 1 : -1) }
+            let displayIndex = request.payload["displayIndex"]?.intValue
+            return try MainActorSync.run {
+                self.switchActiveSpace(
+                    direction: direction > 0 ? 1 : -1,
+                    displayIndex: displayIndex
+                )
+            }
+
+        case "spaces.focusIndex":
+            guard let index = request.payload["index"]?.intValue else {
+                throw LatticesDeckHostError.missingPayload("index")
+            }
+            let displayIndex = request.payload["displayIndex"]?.intValue
+            return try MainActorSync.run {
+                self.switchActiveSpace(index: index, displayIndex: displayIndex)
+            }
 
         case "mouse.find":
             let result = try callAPI("mouse.find")
@@ -1071,21 +1136,8 @@ private extension LatticesDeckHost {
             }
     }
 
-    func spaceSwitchDirection(key: String, modifiers: [String]) -> Int? {
-        let normalized = key.lowercased()
-            .replacingOccurrences(of: "←", with: "left")
-            .replacingOccurrences(of: "→", with: "right")
-        guard normalized == "left" || normalized == "right" else { return nil }
-        let hasControl = modifiers.contains { mod in
-            let m = mod.lowercased()
-            return m == "control" || m == "ctrl" || m == "⌃"
-        }
-        guard hasControl else { return nil }
-        return normalized == "right" ? 1 : -1
-    }
-
     @MainActor
-    func switchActiveSpace(direction: Int) -> ActionOutcome {
+    func switchActiveSpace(direction: Int, displayIndex: Int? = nil) -> ActionOutcome {
         let displays = WindowTiler.getDisplaySpaces()
         guard !displays.isEmpty else {
             return ActionOutcome(summary: "No displays available", detail: nil, suggestedActions: [])
@@ -1100,10 +1152,12 @@ private extension LatticesDeckHost {
             return NSScreen.screens.first(where: { $0.frame.contains(mouse) }) ?? NSScreen.main
         }()
 
-        let preferredDisplayIndex = NSScreen.screens.firstIndex { activeScreen === $0 } ?? 0
+        let preferredDisplayIndex = displayIndex
+            ?? NSScreen.screens.firstIndex { activeScreen === $0 }
+            ?? 0
         let display = displays.first(where: { $0.displayIndex == preferredDisplayIndex }) ?? displays[0]
 
-        guard let currentIdx = display.spaces.firstIndex(where: { $0.isCurrent }) else {
+        guard display.spaces.contains(where: { $0.isCurrent }) else {
             return ActionOutcome(
                 summary: "No current space",
                 detail: "Could not determine the active space on display \(display.displayIndex + 1).",
@@ -1111,8 +1165,7 @@ private extension LatticesDeckHost {
             )
         }
 
-        let targetIdx = currentIdx + direction
-        guard targetIdx >= 0, targetIdx < display.spaces.count else {
+        guard let target = Self.relativeSpaceTarget(in: display, direction: direction) else {
             return ActionOutcome(
                 summary: direction > 0 ? "Already on last space" : "Already on first space",
                 detail: nil,
@@ -1120,11 +1173,57 @@ private extension LatticesDeckHost {
             )
         }
 
-        let target = display.spaces[targetIdx]
         WindowTiler.switchToSpace(spaceId: target.id)
         return ActionOutcome(
             summary: direction > 0 ? "Next space" : "Previous space",
             detail: "Switched display \(display.displayIndex + 1) to space \(target.index).",
+            suggestedActions: []
+        )
+    }
+
+    @MainActor
+    func switchActiveSpace(index: Int, displayIndex: Int? = nil) -> ActionOutcome {
+        let displays = WindowTiler.getDisplaySpaces()
+        guard !displays.isEmpty else {
+            return ActionOutcome(summary: "No displays available", detail: nil, suggestedActions: [])
+        }
+
+        let activeScreen: NSScreen? = {
+            if let frontmost = frontmostWindowTarget(),
+               let entry = DesktopModel.shared.windows[frontmost.wid] {
+                return WindowTiler.screenForWindowFrame(entry.frame)
+            }
+            let mouse = NSEvent.mouseLocation
+            return NSScreen.screens.first(where: { $0.frame.contains(mouse) }) ?? NSScreen.main
+        }()
+        let preferredDisplayIndex = displayIndex
+            ?? NSScreen.screens.firstIndex { activeScreen === $0 }
+            ?? 0
+
+        guard let target = Self.resolveSpaceTarget(
+            displays: displays,
+            displayIndex: preferredDisplayIndex,
+            index: index
+        ) else {
+            return ActionOutcome(
+                summary: "Space unavailable",
+                detail: "Display \(preferredDisplayIndex + 1) does not have space \(index + 1).",
+                suggestedActions: []
+            )
+        }
+
+        if target.space.isCurrent {
+            return ActionOutcome(
+                summary: "Already on space \(target.space.index)",
+                detail: "Display \(target.display.displayIndex + 1) is already showing that space.",
+                suggestedActions: []
+            )
+        }
+
+        WindowTiler.switchToSpace(spaceId: target.space.id)
+        return ActionOutcome(
+            summary: "Space \(target.space.index)",
+            detail: "Switched display \(target.display.displayIndex + 1) to space \(target.space.index).",
             suggestedActions: []
         )
     }

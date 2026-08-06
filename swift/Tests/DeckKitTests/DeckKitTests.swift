@@ -82,7 +82,8 @@ final class DeckKitTests: XCTestCase {
         """.data(using: .utf8)!
 
         let decodedResponse = try JSONDecoder().decode(DeckPairingResponse.self, from: responseJSON)
-        XCTAssertEqual(decodedResponse.grantedCapabilities, DeckBridgeCapability.defaultCompanionCapabilities)
+        XCTAssertEqual(decodedResponse.grantedCapabilities, DeckBridgeCapability.legacyCompanionCapabilities)
+        XCTAssertFalse(decodedResponse.grantedCapabilities.contains(DeckBridgeCapability.screenPreview))
 
         let requestJSON = """
         {
@@ -94,7 +95,60 @@ final class DeckKitTests: XCTestCase {
         """.data(using: .utf8)!
 
         let decodedRequest = try JSONDecoder().decode(DeckPairingRequest.self, from: requestJSON)
-        XCTAssertEqual(decodedRequest.requestedCapabilities, DeckBridgeCapability.defaultCompanionCapabilities)
+        XCTAssertEqual(decodedRequest.requestedCapabilities, DeckBridgeCapability.legacyCompanionCapabilities)
+        XCTAssertFalse(decodedRequest.requestedCapabilities.contains(DeckBridgeCapability.screenPreview))
+    }
+
+    func testDefaultCompanionCapabilitiesIncludeProtectedScreenPreview() {
+        XCTAssertTrue(
+            DeckBridgeCapability.defaultCompanionCapabilities.contains(DeckBridgeCapability.screenPreview)
+        )
+    }
+
+    func testDesktopPreviewFrameRoundTripPreservesDisplayMetadata() throws {
+        let frame = DeckDesktopPreviewFrame(
+            capturedAt: Date(timeIntervalSince1970: 1_713_700_000),
+            displayIndex: 1,
+            displays: [
+                DeckDesktopPreviewDisplay(
+                    displayIndex: 0,
+                    name: "Studio Display",
+                    pixelWidth: 5_120,
+                    pixelHeight: 2_880
+                ),
+                DeckDesktopPreviewDisplay(
+                    displayIndex: 1,
+                    name: "Built-in Display",
+                    pixelWidth: 3_456,
+                    pixelHeight: 2_234
+                ),
+            ],
+            pixelWidth: 1_440,
+            pixelHeight: 931,
+            jpegBase64: "aW1hZ2U="
+        )
+
+        let data = try JSONEncoder().encode(frame)
+        let decoded = try JSONDecoder().decode(DeckDesktopPreviewFrame.self, from: data)
+
+        XCTAssertEqual(decoded, frame)
+        XCTAssertEqual(decoded.displays.map(\.id), [0, 1])
+    }
+
+    func testDesktopPreviewRequestDecodesLegacyDisplayScope() throws {
+        let data = #"{"displayIndex":0,"maxPixelWidth":960}"#.data(using: .utf8)!
+        let request = try JSONDecoder().decode(DeckDesktopPreviewRequest.self, from: data)
+
+        XCTAssertEqual(request.scope, .display)
+        XCTAssertEqual(request.maxPixelWidth, 960)
+    }
+
+    func testTrackpadResultPreservesNormalizedPointerPosition() throws {
+        let result = DeckTrackpadEventResult(ok: true, pointerX: 0.42, pointerY: 0.73)
+        let data = try JSONEncoder().encode(result)
+        let decoded = try JSONDecoder().decode(DeckTrackpadEventResult.self, from: data)
+
+        XCTAssertEqual(decoded, result)
     }
 
     func testRuntimeSnapshotRoundTripPreservesSwitcherAndHistory() throws {

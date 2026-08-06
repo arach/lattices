@@ -2,40 +2,37 @@ import SwiftUI
 
 // MARK: - Channel strip
 //
-// `.fd-channels` — four columns in one recessed well. Tap a column to put that
-// Mac on deck. Blocked channels sort to the front; the status dot is the only
-// marker they carry.
+// Compact, horizontally scrollable host rail. Selecting a Mac also makes it the
+// route for commands and voice, so the deck does not need a second destination
+// picker.
 
 struct FleetChannelStrip: View {
     let channels: [FleetChannel]
     let order: [Int]
     let currentIndex: Int
-    /// `focus` collapses the strip to a 52pt switcher rail.
+    /// Retained for source compatibility; both layouts use the compact rail.
     let layout: FleetDeckLayout
     let onSelect: (Int) -> Void
 
     var body: some View {
-        FleetWell {
-            HStack(spacing: 0) {
+        ScrollView(.horizontal) {
+            LazyHStack(spacing: 6) {
                 ForEach(order, id: \.self) { index in
                     if channels.indices.contains(index) {
                         FleetChannelColumn(
                             channel: channels[index],
                             isActive: index == currentIndex,
-                            isRail: layout == .focus,
+                            isRail: true,
                             onSelect: { onSelect(index) }
                         )
-                        .frame(maxWidth: .infinity)
-                        .overlay(alignment: .leading) {
-                            if index != order.first {
-                                Rectangle().fill(FleetV6.brk2).frame(width: 1)
-                            }
-                        }
+                        .frame(width: 210)
                     }
                 }
             }
+            .padding(.horizontal, 4)
         }
-        .frame(height: layout == .focus ? FleetV6.M.channelsRailHeight : FleetV6.M.channelsHeight)
+        .scrollIndicators(.hidden)
+        .frame(height: 44)
     }
 }
 

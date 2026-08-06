@@ -280,7 +280,7 @@ screen position. Available positions:
 | `left-third`   | Left third                  |
 | `center-third` | Center third                |
 | `right-third`  | Right third                 |
-| `center`       | 70% width, 80% height, centered |
+| `center`       | 80% width, 80% height, centered (20% margin all sides) |
 
 Aliases: `left-half`/`left`, `right-half`/`right`, `top-half`/`top`,
 `bottom-half`/`bottom`, `max`/`maximize`.

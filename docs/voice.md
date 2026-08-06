@@ -6,12 +6,36 @@ order: 7
 
 Voice commands let you control Lattices by speaking. Press **Hyper+D**
 to open the voice command window, hold **Option** to speak, release to
-stop. Lattices transcribes your speech via Vox,
-matches it to an intent, and executes it.
+stop. Lattices transcribes your speech via its **embedded Hudson Voice /
+Vox runtime**, matches it to an intent, and executes it.
+
+## Embedded voice runtime
+
+Lattices **hosts** the voice engine inside the menu bar process. You do not
+need a separate `voxd` for normal use. On app boot, Lattices starts an
+in-process live-session server and tears it down on quit.
+
+| Service | Port | Endpoint | Owner |
+|---------|------|----------|--------|
+| Agent API / daemon | **9399** | `ws://127.0.0.1:9399` | `DaemonServer` |
+| Voice runtime | **9398** | `ws://127.0.0.1:9398` | `LatticesVoiceRuntime` |
+
+These ports are **deterministic** and Lattices-owned (`LatticesLocalEndpoints`
+in the app). The `939x` loopback family is the self-describing local contract:
+
+- **9399** — agent RPC (existing)
+- **9398** — voice live session (transcription)
+
+Capability file (auth token + pid + port) lives at:
+
+`~/Library/Application Support/Lattices/Voice/hudson-voice-runtime.json`
+
+Override the voice port only for tests/dev with `LATTICES_VOICE_PORT`
+(or legacy `HUDSON_VOICE_VOX_PORT`).
 
 ## Quick start
 
-1. Install Vox (provides mic + transcription)
+1. Grant microphone access when prompted (Settings → Voice if you skipped it)
 2. Optionally connect a voice provider in **Settings > Voice** for provider-backed interpretation and speech services
 3. Press **Hyper+D** to open the voice command window
 4. Hold **Option** and speak a command

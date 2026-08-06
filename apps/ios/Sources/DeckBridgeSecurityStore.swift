@@ -43,7 +43,7 @@ struct StoredBridgeTrust: Codable, Equatable, Sendable {
     var lastKnownPort: Int?
 
     var effectiveCapabilities: [String] {
-        grantedCapabilities ?? DeckBridgeCapability.defaultCompanionCapabilities
+        grantedCapabilities ?? DeckBridgeCapability.legacyCompanionCapabilities
     }
 }
 
@@ -55,6 +55,7 @@ struct PreparedBridgeRequest {
 
 final class DeckBridgeSecurityStore {
     static let shared = DeckBridgeSecurityStore()
+    static let trustDidChangeNotification = Notification.Name("DeckBridgeSecurityStore.trustDidChange")
 
     private enum DefaultsKey {
         static let deviceID = "companion.security.deviceID"
@@ -145,8 +146,9 @@ final class DeckBridgeSecurityStore {
 
     /// Forget a previously paired bridge by its public key.
     func forgetBridge(publicKey: String) {
-        trustedBridges.removeValue(forKey: publicKey)
+        guard trustedBridges.removeValue(forKey: publicKey) != nil else { return }
         persistTrustedBridges()
+        NotificationCenter.default.post(name: Self.trustDidChangeNotification, object: nil)
     }
 
     func pairingRequest() -> DeckPairingRequest {
@@ -180,6 +182,19 @@ final class DeckBridgeSecurityStore {
             lastKnownHost: lastKnownHost ?? existing?.lastKnownHost,
             lastKnownPort: lastKnownPort ?? existing?.lastKnownPort
         )
+        persistTrustedBridges()
+        NotificationCenter.default.post(name: Self.trustDidChangeNotification, object: nil)
+    }
+
+    /// Remember where a Mac answered, so it stays reconnectable once it stops
+    /// advertising on Bonjour. Only ever called after `/health` has proved the
+    /// public key, so an address can never be attached to the wrong Mac.
+    func rememberAddress(forPublicKey publicKey: String, host: String, port: Int) {
+        guard var trust = trustedBridges[publicKey] else { return }
+        guard trust.lastKnownHost != host || trust.lastKnownPort != port else { return }
+        trust.lastKnownHost = host
+        trust.lastKnownPort = port
+        trustedBridges[publicKey] = trust
         persistTrustedBridges()
     }
 
@@ -392,6 +407,8 @@ private extension DeckBridgeSecurityStore {
             required = DeckBridgeCapability.deckPerform
         case "/deck/trackpad":
             required = DeckBridgeCapability.inputTrackpad
+        case "/deck/preview":
+            required = DeckBridgeCapability.screenPreview
         default:
             required = nil
         }

@@ -107,10 +107,19 @@ enum FrontWindowPlacer {
     }
 }
 
-/// Compact 3×3 grid — tap a cell to snap the frontmost window there.
+/// Quick Action: one-line **Move** row that expands to a placement grid.
+///
+/// Collapsed by default so the menu-bar popover stays compact. Tap the row to
+/// unfold slots for the frontmost window; pick a cell to snap and (optionally)
+/// dismiss the host surface.
 struct FrontWindowPlacementGrid: View {
     var onPlaced: (() -> Void)? = nil
-    @State private var refreshToken = UUID()
+    /// Host can listen for expand/collapse to resize a fixed-size popover.
+    var onExpandedChange: ((Bool) -> Void)? = nil
+
+    @State private var expanded = false
+    @State private var targetLabel: String?
+    @State private var isHovered = false
 
     private let cells: [[TilePosition?]] = [
         [.topLeft, .top, .topRight],
@@ -118,29 +127,89 @@ struct FrontWindowPlacementGrid: View {
         [.bottomLeft, .bottom, .bottomRight],
     ]
 
+    private var targetSubtitle: String {
+        if let targetLabel, !targetLabel.isEmpty {
+            return targetLabel
+        }
+        return "Focus another app, then pick a slot"
+    }
+
     var body: some View {
+        VStack(spacing: 0) {
+            headerRow
+
+            if expanded {
+                placementPanel
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 10)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .onAppear { refreshTarget() }
+        .onReceive(NotificationCenter.default.publisher(for: .latticesPopoverWillShow)) { _ in
+            // Each open starts collapsed so the popover stays a short action list.
+            if expanded {
+                withAnimation(.easeOut(duration: 0.12)) {
+                    expanded = false
+                }
+            }
+            refreshTarget()
+        }
+        .onChange(of: expanded) { _, isOpen in
+            onExpandedChange?(isOpen)
+        }
+    }
+
+    private var headerRow: some View {
+        Button {
+            withAnimation(.easeOut(duration: 0.15)) {
+                expanded.toggle()
+            }
+        } label: {
+            HStack(spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(Palette.running.opacity(isHovered || expanded ? 0.18 : 0.12))
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(isHovered || expanded ? Palette.text : Palette.running)
+                }
+                .frame(width: 22, height: 22)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Move")
+                        .font(Typo.body(12))
+                        .foregroundColor(isHovered || expanded ? Palette.text : Palette.textDim)
+                        .lineLimit(1)
+
+                    Text(targetSubtitle)
+                        .font(Typo.mono(9))
+                        .foregroundColor(Palette.textMuted)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(Palette.textMuted)
+                    .frame(width: 16, height: 16)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(isHovered || expanded ? Palette.surfaceHov : Color.clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .help(expanded ? "Hide placement grid" : "Position the frontmost window")
+    }
+
+    private var placementPanel: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "macwindow")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(Palette.running)
-                Text("Move front window")
-                    .font(Typo.monoBold(10))
-                    .foregroundColor(Palette.textMuted)
-                Spacer()
-            }
-
-            if let label = FrontWindowPlacer.targetLabel() {
-                Text(label)
-                    .font(Typo.mono(9))
-                    .foregroundColor(Palette.textDim)
-                    .lineLimit(1)
-            } else {
-                Text("Focus another app, then pick a slot")
-                    .font(Typo.mono(9))
-                    .foregroundColor(Palette.textMuted)
-            }
-
             VStack(spacing: 4) {
                 ForEach(0..<cells.count, id: \.self) { row in
                     HStack(spacing: 4) {
@@ -160,13 +229,19 @@ struct FrontWindowPlacementGrid: View {
                 placementPill(.rightThird, label: "⅓ R")
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .id(refreshToken)
-        .onAppear { refreshToken = UUID() }
-        .onReceive(NotificationCenter.default.publisher(for: .latticesPopoverWillShow)) { _ in
-            refreshToken = UUID()
-        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Palette.surface.opacity(0.55))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(Palette.border, lineWidth: 0.5)
+                )
+        )
+    }
+
+    private func refreshTarget() {
+        targetLabel = FrontWindowPlacer.targetLabel()
     }
 
     private func placementCell(_ position: TilePosition) -> some View {

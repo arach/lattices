@@ -10,9 +10,9 @@
 		0058D393E44DEF775DA31C65 /* FleetDeckView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A141DE2D3AA7C43AE670B36A /* FleetDeckView.swift */; };
 		015334E9F01E2EC8CE7C6C77 /* DeckStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11238FFB50336470B6A97CE0 /* DeckStore.swift */; };
 		025FA3204BAD8CD313BA29A7 /* HomeActivityFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6098E179D9E917692848D127 /* HomeActivityFeed.swift */; };
-		02DFEEC584B5BE76F4E0EF59 /* Icon-App-29x29@3x.png in Resources */ = {isa = PBXBuildFile; fileRef = AB70174A80BDBEF97964B1D1 /* Icon-App-29x29@3x.png */; };
 		0B62E8780B2EF68BB75DCB77 /* DeckKit in Frameworks */ = {isa = PBXBuildFile; productRef = 1D4FCB5C53FAA6DC26531C63 /* DeckKit */; };
 		0F0698A95BD07D14D89D5BA1 /* HomeRoutinesList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23261457659049EF7D390F0E /* HomeRoutinesList.swift */; };
+		1F06EA84AB51D9E228FBBBCB /* DesktopPreviewScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFD01DA0D87BAD6328C48DE8 /* DesktopPreviewScreen.swift */; };
 		2495F9FA74E60FE3935AF9AB /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6008CE13AA2719DE4CFEFBA5 /* ContentView.swift */; };
 		29EB1F420B2143258D6BE3E6 /* HomeVoiceOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F80BAECD547AFCAF6FB4487 /* HomeVoiceOverlay.swift */; };
 		303C0ED6FF5A801009E72EBD /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = E0A62477A93C15EBE3917B2E /* LaunchScreen.storyboard */; };
@@ -21,18 +21,14 @@
 		3638B83B044C466CDFC95D74 /* HomeRecentTape.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14C92E6807AE18FFB1268EDA /* HomeRecentTape.swift */; };
 		39910639463B85C88940415F /* DeckBridgeClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B31BBB86BC2F6969B6F8C6AC /* DeckBridgeClient.swift */; };
 		3A1671AC9709B03CC97F9D13 /* FleetDeckCommandBay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E8338D3E7435105844A04A0 /* FleetDeckCommandBay.swift */; };
-		3CD5F4319B4419DA9ACCA70A /* Icon-App-60x60@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = D6A573A92276901B84AA3EE4 /* Icon-App-60x60@2x.png */; };
 		41CC7A2C0996C6F6DB3772B0 /* HomeOverflowGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4AFBCA3400844A37C27E7E3 /* HomeOverflowGrid.swift */; };
 		432575F519F865BDCFE18B25 /* FleetDeckCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2DF53527C0D8B29AB3ECF51 /* FleetDeckCommands.swift */; };
 		463B785BA54ED05DE516BAC5 /* HomeTargetsRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36A4114F8C72CC8E8B22BED3 /* HomeTargetsRow.swift */; };
 		466A7968EA0D32CAB12A314F /* FleetDeckFocusPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDEBF60950520605C2AFCAB6 /* FleetDeckFocusPane.swift */; };
 		477B603FA482CD0AF55BC9C7 /* DeckBridgeSecurityStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D303982A361559374D4ECAF /* DeckBridgeSecurityStore.swift */; };
-		48AB2F1093E08D5F972BEF57 /* Icon-App-76x76@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 2008FE641E08A7EA3F1142D8 /* Icon-App-76x76@2x.png */; };
-		49328530140603E31D3C44C4 /* Icon-App-29x29@1x.png in Resources */ = {isa = PBXBuildFile; fileRef = 763E58A4536019D1C0D225B5 /* Icon-App-29x29@1x.png */; };
 		4932E64B0E7CF7E4C48DB05E /* LatsDeckScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AE37E6C4302786080981EE9 /* LatsDeckScreen.swift */; };
 		52A7A84BD7038A00D44473CB /* FleetDeckConsole.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8CF4F00C46E366B32EC05B6 /* FleetDeckConsole.swift */; };
 		57C2B51D869407F1BC8823C1 /* FleetDeckModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 402515ACE950AAA6EB8DC125 /* FleetDeckModel.swift */; };
-		58104483ED43F7B6EADEDD47 /* Icon-App-29x29@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 5E31C91E44E310ECB2F450E6 /* Icon-App-29x29@2x.png */; };
 		5D875934B56A9DC50211E1C3 /* HomeDataAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39EFEF38997FEAEB9C381D62 /* HomeDataAdapter.swift */; };
 		638DE62C1A554C5E39F0D430 /* FleetDeckVoiceBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFEA84FACFEF2BC028E68125 /* FleetDeckVoiceBar.swift */; };
 		6D5C7D4A62CD79AB8E33AEA1 /* HomeZeroState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0124DA4C4A5337F1FCDE85F0 /* HomeZeroState.swift */; };
@@ -42,23 +38,15 @@
 		830D5F288DDE1326F8AD0354 /* FleetDeckFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADCE94827305E1EAA62E3E39 /* FleetDeckFeed.swift */; };
 		84F9131A8649EB980EC5A378 /* BridgeDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4603482511D3BE1F2132C82 /* BridgeDiscovery.swift */; };
 		8509FE10337BF9B4286C77DF /* LatticesCompanionApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31BAB98213FEF0182FB2EA32 /* LatticesCompanionApp.swift */; };
-		890DFAA5138BB9EFA7C21D8C /* Icon-App-20x20@1x.png in Resources */ = {isa = PBXBuildFile; fileRef = D91400AA758EB6C7BDEFA067 /* Icon-App-20x20@1x.png */; };
-		89AB5D05E905F1A23A38C4F3 /* Icon-App-40x40@3x.png in Resources */ = {isa = PBXBuildFile; fileRef = 742860D211F50B7F0B23A4DB /* Icon-App-40x40@3x.png */; };
 		8C0507D98FBDCCF4D9E2D2D1 /* HomeSyncSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1F87999BB14714FBFACB9F /* HomeSyncSection.swift */; };
 		93CDDD1693747AEA8F93A53D /* FleetDeckHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6F62141EE310B1E14C10F6D /* FleetDeckHost.swift */; };
 		956F8FD18A151C41F808CF3D /* FleetDeckFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BCD1E352126CF05657A6F7B /* FleetDeckFixture.swift */; };
 		A554A5F6BEE7A1D19133D7E3 /* DeckTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33D07069EDC1FC31F2D17855 /* DeckTheme.swift */; };
 		A922FDD1ECB6EC0325799626 /* AddHostController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98064778419B457BD396A587 /* AddHostController.swift */; };
-		AE392FBE93D051B87EF6EB52 /* Icon-App-40x40@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 65151992218EDBCB6BFC8518 /* Icon-App-40x40@2x.png */; };
-		B5BD61D18065255F3BA23397 /* Icon-App-40x40@1x.png in Resources */ = {isa = PBXBuildFile; fileRef = B9B6EE50773DB75253F67837 /* Icon-App-40x40@1x.png */; };
-		B87350C3DF5953681D197E24 /* Icon-App-60x60@3x.png in Resources */ = {isa = PBXBuildFile; fileRef = D0A784E5230CF4A1207A5B63 /* Icon-App-60x60@3x.png */; };
 		C521143339E9016DF721F243 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E418F5CA4F95128A4654679B /* HomeView.swift */; };
 		C690A1C61C0A8A0FBE4639FA /* LocalNetworkScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = F48879BE5FDAA5E9B1F69EB2 /* LocalNetworkScanner.swift */; };
 		C7C2501F8E91C0BB8B1E8CE3 /* AddHostSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8DF3079141147D2D920A0D6 /* AddHostSheet.swift */; };
-		CAF7F48B371B153DED55637D /* Icon-App-20x20@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 358CE7599268D7E37739DA40 /* Icon-App-20x20@2x.png */; };
-		D087EC7E9542F2EB5989500F /* Icon-App-1024x1024@1x.png in Resources */ = {isa = PBXBuildFile; fileRef = 2484AA38E059AA293C768446 /* Icon-App-1024x1024@1x.png */; };
-		D22111B43C6A48912D6E5A96 /* Icon-App-20x20@3x.png in Resources */ = {isa = PBXBuildFile; fileRef = 2569702CC7CAC0677B8C6524 /* Icon-App-20x20@3x.png */; };
-		D34392C35E4145D4262AC87F /* Icon-App-83.5x83.5@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = BCF0269F9663D59AA5D8BEF6 /* Icon-App-83.5x83.5@2x.png */; };
+		C82C67DE6E96431518AAD2E5 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E7FCEDC55B4C20969D3FD0D4 /* Assets.xcassets */; };
 		D6EEC01EF1A11293570069EF /* HomeTopBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BAA7488EF7726F4258EABF6 /* HomeTopBar.swift */; };
 		DFB63FF98BF7CE3D5A28A37D /* HomeMachineGauges.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCC75F1AC3E0B76173D0E3EA /* HomeMachineGauges.swift */; };
 		E28369386027FFF51101E239 /* FleetDeckChannelStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D6C98FFC4F744672C96DB8C /* FleetDeckChannelStrip.swift */; };
@@ -66,7 +54,6 @@
 		E7EC416CD4478DCF4FEBB4FC /* CompanionTrackpadSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA2C2E756959812A344E33FA /* CompanionTrackpadSurface.swift */; };
 		EC49AAE0FD658F4D651D6CB1 /* LatsDesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5BE58AB3627168981D1D91F /* LatsDesignSystem.swift */; };
 		F72E10BB85375949AAE483F2 /* HomeScenesGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EE0F84AD8C6B6C5109C4628 /* HomeScenesGrid.swift */; };
-		FD675D5F19359E6AA5DC41AB /* Icon-App-76x76@1x.png in Resources */ = {isa = PBXBuildFile; fileRef = 924A59FEB2399ED0CF09A4B5 /* Icon-App-76x76@1x.png */; };
 		FF2C00D84ADBC9A2241BA55A /* HomeBottomBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 239FA0F75F234965764D0C62 /* HomeBottomBar.swift */; };
 /* End PBXBuildFile section */
 
@@ -77,60 +64,47 @@
 		0AE37E6C4302786080981EE9 /* LatsDeckScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LatsDeckScreen.swift; sourceTree = "<group>"; };
 		11238FFB50336470B6A97CE0 /* DeckStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStore.swift; sourceTree = "<group>"; };
 		14C92E6807AE18FFB1268EDA /* HomeRecentTape.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeRecentTape.swift; sourceTree = "<group>"; };
-		2008FE641E08A7EA3F1142D8 /* Icon-App-76x76@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-76x76@2x.png"; sourceTree = "<group>"; };
 		23261457659049EF7D390F0E /* HomeRoutinesList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeRoutinesList.swift; sourceTree = "<group>"; };
 		239FA0F75F234965764D0C62 /* HomeBottomBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeBottomBar.swift; sourceTree = "<group>"; };
-		2484AA38E059AA293C768446 /* Icon-App-1024x1024@1x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-1024x1024@1x.png"; sourceTree = "<group>"; };
-		2569702CC7CAC0677B8C6524 /* Icon-App-20x20@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-20x20@3x.png"; sourceTree = "<group>"; };
 		31BAB98213FEF0182FB2EA32 /* LatticesCompanionApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LatticesCompanionApp.swift; sourceTree = "<group>"; };
 		33D07069EDC1FC31F2D17855 /* DeckTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckTheme.swift; sourceTree = "<group>"; };
-		358CE7599268D7E37739DA40 /* Icon-App-20x20@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-20x20@2x.png"; sourceTree = "<group>"; };
 		36A4114F8C72CC8E8B22BED3 /* HomeTargetsRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeTargetsRow.swift; sourceTree = "<group>"; };
 		39EFEF38997FEAEB9C381D62 /* HomeDataAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeDataAdapter.swift; sourceTree = "<group>"; };
 		3E8338D3E7435105844A04A0 /* FleetDeckCommandBay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetDeckCommandBay.swift; sourceTree = "<group>"; };
 		402515ACE950AAA6EB8DC125 /* FleetDeckModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetDeckModel.swift; sourceTree = "<group>"; };
-		5E31C91E44E310ECB2F450E6 /* Icon-App-29x29@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-29x29@2x.png"; sourceTree = "<group>"; };
 		6008CE13AA2719DE4CFEFBA5 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		6098E179D9E917692848D127 /* HomeActivityFeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeActivityFeed.swift; sourceTree = "<group>"; };
-		65151992218EDBCB6BFC8518 /* Icon-App-40x40@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-40x40@2x.png"; sourceTree = "<group>"; };
 		6BAA7488EF7726F4258EABF6 /* HomeTopBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeTopBar.swift; sourceTree = "<group>"; };
 		6BCD1E352126CF05657A6F7B /* FleetDeckFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetDeckFixture.swift; sourceTree = "<group>"; };
 		6F80BAECD547AFCAF6FB4487 /* HomeVoiceOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeVoiceOverlay.swift; sourceTree = "<group>"; };
-		742860D211F50B7F0B23A4DB /* Icon-App-40x40@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-40x40@3x.png"; sourceTree = "<group>"; };
-		763E58A4536019D1C0D225B5 /* Icon-App-29x29@1x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-29x29@1x.png"; sourceTree = "<group>"; };
 		7D303982A361559374D4ECAF /* DeckBridgeSecurityStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckBridgeSecurityStore.swift; sourceTree = "<group>"; };
 		8D6C98FFC4F744672C96DB8C /* FleetDeckChannelStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetDeckChannelStrip.swift; sourceTree = "<group>"; };
-		924A59FEB2399ED0CF09A4B5 /* Icon-App-76x76@1x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-76x76@1x.png"; sourceTree = "<group>"; };
 		977D8E982F70B14D99DF82FE /* LatticesCompanion.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = LatticesCompanion.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		98064778419B457BD396A587 /* AddHostController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddHostController.swift; sourceTree = "<group>"; };
 		9D4E739253EC58DB13D63E59 /* FleetDeckTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetDeckTheme.swift; sourceTree = "<group>"; };
 		9EE0F84AD8C6B6C5109C4628 /* HomeScenesGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeScenesGrid.swift; sourceTree = "<group>"; };
 		A141DE2D3AA7C43AE670B36A /* FleetDeckView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetDeckView.swift; sourceTree = "<group>"; };
 		A9BAE762CC872FFCA8CB25DD /* HomeCloudStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeCloudStrip.swift; sourceTree = "<group>"; };
-		AB70174A80BDBEF97964B1D1 /* Icon-App-29x29@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-29x29@3x.png"; sourceTree = "<group>"; };
 		ADCE94827305E1EAA62E3E39 /* FleetDeckFeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetDeckFeed.swift; sourceTree = "<group>"; };
 		B31BBB86BC2F6969B6F8C6AC /* DeckBridgeClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckBridgeClient.swift; sourceTree = "<group>"; };
 		B4603482511D3BE1F2132C82 /* BridgeDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeDiscovery.swift; sourceTree = "<group>"; };
 		B864A7A18AF861B84FA6AF38 /* FleetDeckAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetDeckAdapter.swift; sourceTree = "<group>"; };
 		B8DF3079141147D2D920A0D6 /* AddHostSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddHostSheet.swift; sourceTree = "<group>"; };
-		B9B6EE50773DB75253F67837 /* Icon-App-40x40@1x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-40x40@1x.png"; sourceTree = "<group>"; };
 		BA2C2E756959812A344E33FA /* CompanionTrackpadSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionTrackpadSurface.swift; sourceTree = "<group>"; };
 		BB1F87999BB14714FBFACB9F /* HomeSyncSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeSyncSection.swift; sourceTree = "<group>"; };
 		BCC75F1AC3E0B76173D0E3EA /* HomeMachineGauges.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMachineGauges.swift; sourceTree = "<group>"; };
-		BCF0269F9663D59AA5D8BEF6 /* Icon-App-83.5x83.5@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-83.5x83.5@2x.png"; sourceTree = "<group>"; };
 		CE3829B428DD890399011344 /* DeckSkeleton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckSkeleton.swift; sourceTree = "<group>"; };
-		D0A784E5230CF4A1207A5B63 /* Icon-App-60x60@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-60x60@3x.png"; sourceTree = "<group>"; };
 		D2DF53527C0D8B29AB3ECF51 /* FleetDeckCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetDeckCommands.swift; sourceTree = "<group>"; };
-		D6A573A92276901B84AA3EE4 /* Icon-App-60x60@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-60x60@2x.png"; sourceTree = "<group>"; };
-		D91400AA758EB6C7BDEFA067 /* Icon-App-20x20@1x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Icon-App-20x20@1x.png"; sourceTree = "<group>"; };
 		E0A62477A93C15EBE3917B2E /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		E2C0C0DD3A5DE3971145E8B4 /* HomeMockData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMockData.swift; sourceTree = "<group>"; };
 		E418F5CA4F95128A4654679B /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		E4AFBCA3400844A37C27E7E3 /* HomeOverflowGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeOverflowGrid.swift; sourceTree = "<group>"; };
 		E5BE58AB3627168981D1D91F /* LatsDesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LatsDesignSystem.swift; sourceTree = "<group>"; };
+		E7FCEDC55B4C20969D3FD0D4 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		E8CF4F00C46E366B32EC05B6 /* FleetDeckConsole.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetDeckConsole.swift; sourceTree = "<group>"; };
 		EDEBF60950520605C2AFCAB6 /* FleetDeckFocusPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetDeckFocusPane.swift; sourceTree = "<group>"; };
 		EE5C0AF5BDF4BE3A05157A33 /* HomeVoicePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeVoicePanel.swift; sourceTree = "<group>"; };
+		EFD01DA0D87BAD6328C48DE8 /* DesktopPreviewScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopPreviewScreen.swift; sourceTree = "<group>"; };
 		EFEA84FACFEF2BC028E68125 /* FleetDeckVoiceBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetDeckVoiceBar.swift; sourceTree = "<group>"; };
 		F48879BE5FDAA5E9B1F69EB2 /* LocalNetworkScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalNetworkScanner.swift; sourceTree = "<group>"; };
 		F6F62141EE310B1E14C10F6D /* FleetDeckHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetDeckHost.swift; sourceTree = "<group>"; };
@@ -148,28 +122,6 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		016972A54EE0B0FD9BFF9AA2 /* AppIcon.appiconset */ = {
-			isa = PBXGroup;
-			children = (
-				D91400AA758EB6C7BDEFA067 /* Icon-App-20x20@1x.png */,
-				358CE7599268D7E37739DA40 /* Icon-App-20x20@2x.png */,
-				2569702CC7CAC0677B8C6524 /* Icon-App-20x20@3x.png */,
-				763E58A4536019D1C0D225B5 /* Icon-App-29x29@1x.png */,
-				5E31C91E44E310ECB2F450E6 /* Icon-App-29x29@2x.png */,
-				AB70174A80BDBEF97964B1D1 /* Icon-App-29x29@3x.png */,
-				B9B6EE50773DB75253F67837 /* Icon-App-40x40@1x.png */,
-				65151992218EDBCB6BFC8518 /* Icon-App-40x40@2x.png */,
-				742860D211F50B7F0B23A4DB /* Icon-App-40x40@3x.png */,
-				D6A573A92276901B84AA3EE4 /* Icon-App-60x60@2x.png */,
-				D0A784E5230CF4A1207A5B63 /* Icon-App-60x60@3x.png */,
-				924A59FEB2399ED0CF09A4B5 /* Icon-App-76x76@1x.png */,
-				2008FE641E08A7EA3F1142D8 /* Icon-App-76x76@2x.png */,
-				BCF0269F9663D59AA5D8BEF6 /* Icon-App-83.5x83.5@2x.png */,
-				2484AA38E059AA293C768446 /* Icon-App-1024x1024@1x.png */,
-			);
-			path = AppIcon.appiconset;
-			sourceTree = "<group>";
-		};
 		513162B6C40BBCE8437AF800 /* Home */ = {
 			isa = PBXGroup;
 			children = (
@@ -196,18 +148,10 @@
 			path = Home;
 			sourceTree = "<group>";
 		};
-		5E1E566C7FE1684D66EAD5A7 /* Assets.xcassets */ = {
-			isa = PBXGroup;
-			children = (
-				016972A54EE0B0FD9BFF9AA2 /* AppIcon.appiconset */,
-			);
-			path = Assets.xcassets;
-			sourceTree = "<group>";
-		};
 		7222461E8EFB707683CF0F1F = {
 			isa = PBXGroup;
 			children = (
-				5E1E566C7FE1684D66EAD5A7 /* Assets.xcassets */,
+				E7FCEDC55B4C20969D3FD0D4 /* Assets.xcassets */,
 				B343272AB8FA90BB3207C575 /* Packages */,
 				F83FF26ABEBD47CFB79371F9 /* Sources */,
 				F3908548B1A4941A6C97B64B /* Products */,
@@ -261,6 +205,7 @@
 				CE3829B428DD890399011344 /* DeckSkeleton.swift */,
 				11238FFB50336470B6A97CE0 /* DeckStore.swift */,
 				33D07069EDC1FC31F2D17855 /* DeckTheme.swift */,
+				EFD01DA0D87BAD6328C48DE8 /* DesktopPreviewScreen.swift */,
 				0A0454EF94BCB42389D5B90B /* Info.plist */,
 				0AE37E6C4302786080981EE9 /* LatsDeckScreen.swift */,
 				E5BE58AB3627168981D1D91F /* LatsDesignSystem.swift */,
@@ -338,21 +283,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				D087EC7E9542F2EB5989500F /* Icon-App-1024x1024@1x.png in Resources */,
-				890DFAA5138BB9EFA7C21D8C /* Icon-App-20x20@1x.png in Resources */,
-				CAF7F48B371B153DED55637D /* Icon-App-20x20@2x.png in Resources */,
-				D22111B43C6A48912D6E5A96 /* Icon-App-20x20@3x.png in Resources */,
-				49328530140603E31D3C44C4 /* Icon-App-29x29@1x.png in Resources */,
-				58104483ED43F7B6EADEDD47 /* Icon-App-29x29@2x.png in Resources */,
-				02DFEEC584B5BE76F4E0EF59 /* Icon-App-29x29@3x.png in Resources */,
-				B5BD61D18065255F3BA23397 /* Icon-App-40x40@1x.png in Resources */,
-				AE392FBE93D051B87EF6EB52 /* Icon-App-40x40@2x.png in Resources */,
-				89AB5D05E905F1A23A38C4F3 /* Icon-App-40x40@3x.png in Resources */,
-				3CD5F4319B4419DA9ACCA70A /* Icon-App-60x60@2x.png in Resources */,
-				B87350C3DF5953681D197E24 /* Icon-App-60x60@3x.png in Resources */,
-				FD675D5F19359E6AA5DC41AB /* Icon-App-76x76@1x.png in Resources */,
-				48AB2F1093E08D5F972BEF57 /* Icon-App-76x76@2x.png in Resources */,
-				D34392C35E4145D4262AC87F /* Icon-App-83.5x83.5@2x.png in Resources */,
+				C82C67DE6E96431518AAD2E5 /* Assets.xcassets in Resources */,
 				303C0ED6FF5A801009E72EBD /* LaunchScreen.storyboard in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -374,6 +305,7 @@
 				702E0CE9E43B03A228EB124B /* DeckSkeleton.swift in Sources */,
 				015334E9F01E2EC8CE7C6C77 /* DeckStore.swift in Sources */,
 				A554A5F6BEE7A1D19133D7E3 /* DeckTheme.swift in Sources */,
+				1F06EA84AB51D9E228FBBBCB /* DesktopPreviewScreen.swift in Sources */,
 				E49DB476A1AF62CF00A48A94 /* FleetDeckAdapter.swift in Sources */,
 				E28369386027FFF51101E239 /* FleetDeckChannelStrip.swift in Sources */,
 				3A1671AC9709B03CC97F9D13 /* FleetDeckCommandBay.swift in Sources */,
@@ -417,7 +349,7 @@
 		45F25506216BC79D425A39CF /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIconV2;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -439,7 +371,7 @@
 		69F90BA8CC71BE9DBBE8004A /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIconV2;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = NO;

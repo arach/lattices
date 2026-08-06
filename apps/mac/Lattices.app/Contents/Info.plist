@@ -30,13 +30,18 @@
     <key>CFBundleShortVersionString</key>
     <string>0.9.0</string>
     <key>LSMinimumSystemVersion</key>
-    <string>13.0</string>
+    <string>26.0</string>
     <key>LSUIElement</key>
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSMicrophoneUsageDescription</key>
     <string>Lattices uses the microphone for Hudson Voice dictation and voice commands.</string>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
     <key>NSSupportsAutomaticTermination</key>
     <true/>
 </dict>

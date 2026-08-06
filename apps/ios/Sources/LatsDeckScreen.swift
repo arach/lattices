@@ -191,8 +191,8 @@ struct LatsWindow: Identifiable {
 
 struct CommandDeck {
     static let accent: LatsTint = .green
-    static let name = "command"
-    static let hint = "core"
+    static let name = "remote"
+    static let hint = "control"
 
     static let shortcuts: [LatsShortcut] = [
         .init(label: "Dictate",     icon: "mic.fill",                 tint: .red,    category: .voice,  hint: "F1",  sim: .rec),
@@ -382,6 +382,11 @@ struct LatsCockpitShell<Content: View>: View {
 // MARK: - Trackpad Surface
 
 struct LatsTrackpadSurface: View {
+    private enum TrackpadInteractionMode {
+        case pointer
+        case scroll
+    }
+
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     let mode: CockpitMode
@@ -399,16 +404,18 @@ struct LatsTrackpadSurface: View {
     let activityLog: [DeckActivityLogEntry]
     let hostLabel: String
     let trackpadState: DeckTrackpadState?
+    var windowPreviewImage: UIImage? = nil
     var spaceDisplays: [DeckSpaceDisplay] = []
     var frontmostApp: String? = nil
     var frontmostTitle: String? = nil
     var onSendKey: ((String, [String]) -> Void)? = nil
     var onReplayUndo: (() -> Void)? = nil
     var onTrackpadEvent: ((DeckTrackpadEvent, Double, Double) -> Void)? = nil
-    var onSpaceTap: ((Int) -> Void)? = nil
+    var onSpaceTap: ((_ display: Int, _ index: Int) -> Void)? = nil
     var onMonitorSwipe: ((_ display: Int, _ direction: Int) -> Void)? = nil
 
     @State private var lastTrackpadLocation: CGPoint?
+    @State private var trackpadInteractionMode: TrackpadInteractionMode = .pointer
 
     var body: some View {
         ZStack {
@@ -419,6 +426,12 @@ struct LatsTrackpadSurface: View {
                 .gesture(trackpadDragGesture)
                 .simultaneousGesture(trackpadTapGesture)
                 .allowsHitTesting(isTrackpadReady)
+                .accessibilityLabel("Mac trackpad")
+                .accessibilityHint(
+                    trackpadInteractionMode == .pointer
+                        ? "Drag to move the pointer. Tap to click."
+                        : "Drag to scroll the current Mac window. Tap to click."
+                )
 
             // Top bezel: useful state — Mac name (left), live mode (center), frontmost app/title (right).
             // Symmetric with the bottom action bezel; together they frame the touch surface.
@@ -436,6 +449,19 @@ struct LatsTrackpadSurface: View {
             }
             .allowsHitTesting(false)
 
+            if let windowPreviewImage {
+                LatsTrackpadWindowPreview(
+                    image: windowPreviewImage,
+                    appName: frontmostApp,
+                    windowTitle: frontmostTitle,
+                    isDeemphasized: mode != .idle
+                )
+                .padding(.horizontal, horizontalSizeClass == .compact ? 24 : 270)
+                .padding(.top, 38)
+                .padding(.bottom, 92)
+                .allowsHitTesting(false)
+            }
+
             // Center mode visual
             LatsTrackpadModeVisual(
                 mode: mode,
@@ -447,6 +473,12 @@ struct LatsTrackpadSurface: View {
                 onReplayUndo: onReplayUndo
             )
             .allowsHitTesting(mode == .replay && onReplayUndo != nil)
+
+            if let pointerX = trackpadState?.pointerX,
+               let pointerY = trackpadState?.pointerY {
+                LatsTrackpadPointerGuides(x: pointerX, y: pointerY)
+                    .allowsHitTesting(false)
+            }
 
             if horizontalSizeClass != .compact {
                 // LEFT column — system on top, displays bottom; equal share of vertical space
@@ -495,14 +527,19 @@ struct LatsTrackpadSurface: View {
             // Bottom bezel: keyboard buttons sit on a quiet ledge that mirrors the top bezel.
             VStack(spacing: 0) {
                 Spacer()
+                trackpadControlRow
+                    .padding(.horizontal, 12)
+                    .padding(.top, 5)
                 LatsActionKeyboardRow(onSendKey: onSendKey)
                     .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
+                    .padding(.top, 4)
+                    .padding(.bottom, 6)
                     .frame(maxWidth: .infinity)
                     .background(Color.black.opacity(0.32))
-                    .overlay(alignment: .top) {
-                        Rectangle().fill(LatsPalette.hairline).frame(height: 1)
-                    }
+            }
+            .background(Color.black.opacity(0.32))
+            .overlay(alignment: .top) {
+                Rectangle().fill(LatsPalette.hairline).frame(height: 1)
             }
         }
         .background(LatsPalette.bgEdge)
@@ -527,8 +564,17 @@ struct LatsTrackpadSurface: View {
                 lastTrackpadLocation = value.location
 
                 guard abs(dx) > 0.2 || abs(dy) > 0.2 else { return }
-                let scale = trackpadState?.pointerScale ?? 1.6
-                onTrackpadEvent?(.move, Double(dx) * scale, Double(dy) * scale)
+                let event: DeckTrackpadEvent
+                let scale: Double
+                switch trackpadInteractionMode {
+                case .pointer:
+                    event = .move
+                    scale = trackpadState?.pointerScale ?? 1.6
+                case .scroll:
+                    event = .scroll
+                    scale = trackpadState?.scrollScale ?? 1
+                }
+                onTrackpadEvent?(event, Double(dx) * scale, Double(dy) * scale)
             }
             .onEnded { _ in
                 lastTrackpadLocation = nil
@@ -541,6 +587,173 @@ struct LatsTrackpadSurface: View {
                 guard isTrackpadReady else { return }
                 onTrackpadEvent?(.click, 0, 0)
             }
+    }
+
+    private var trackpadControlRow: some View {
+        HStack(spacing: 5) {
+            trackpadModeButton(
+                title: "Pointer",
+                icon: "cursorarrow.motionlines",
+                mode: .pointer
+            )
+            trackpadModeButton(
+                title: "Scroll",
+                icon: "arrow.up.and.down",
+                mode: .scroll
+            )
+
+            Spacer(minLength: 8)
+
+            trackpadActionButton(title: "Click", icon: "cursorarrow.click") {
+                onTrackpadEvent?(.click, 0, 0)
+            }
+            trackpadActionButton(title: "Right Click", icon: "cursorarrow.rays") {
+                onTrackpadEvent?(.rightClick, 0, 0)
+            }
+        }
+        .disabled(!isTrackpadReady)
+    }
+
+    private func trackpadModeButton(
+        title: String,
+        icon: String,
+        mode: TrackpadInteractionMode
+    ) -> some View {
+        let isActive = trackpadInteractionMode == mode
+        return Button {
+            trackpadInteractionMode = mode
+        } label: {
+            trackpadControlLabel(title: title, icon: icon, isActive: isActive)
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Use drags on the trackpad to \(title.lowercased()).")
+    }
+
+    private func trackpadActionButton(
+        title: String,
+        icon: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            trackpadControlLabel(title: title, icon: icon, isActive: false)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func trackpadControlLabel(title: String, icon: String, isActive: Bool) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+            Text(title)
+                .lineLimit(1)
+        }
+        .font(LatsFont.mono(9, weight: .semibold))
+        .foregroundStyle(isActive ? LatsPalette.green : LatsPalette.textDim)
+        .padding(.horizontal, 9)
+        .frame(minHeight: 30)
+        .background(
+            RoundedRectangle(cornerRadius: 4)
+                .fill(isActive ? LatsPalette.green.opacity(0.14) : Color.white.opacity(0.035))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 4)
+                .stroke(isActive ? LatsPalette.green.opacity(0.48) : LatsPalette.hairline2, lineWidth: 1)
+        )
+    }
+}
+
+/// The frontmost window is subdued enough to remain a touch surface, but clear
+/// enough that someone away from the Mac can see what the pointer is acting on.
+private struct LatsTrackpadWindowPreview: View {
+    let image: UIImage
+    let appName: String?
+    let windowTitle: String?
+    let isDeemphasized: Bool
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.black)
+
+            if let appName, !appName.isEmpty {
+                HStack(spacing: 5) {
+                    Image(systemName: "macwindow")
+                    Text(appName)
+                        .font(LatsFont.ui(9, weight: .semibold))
+                    if let windowTitle, !windowTitle.isEmpty {
+                        Text("·")
+                            .foregroundStyle(LatsPalette.textFaint)
+                        Text(windowTitle)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
+                .font(LatsFont.ui(9))
+                .foregroundStyle(LatsPalette.textDim)
+                .padding(.horizontal, 8)
+                .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+                .background(Color.black.opacity(0.78))
+            }
+        }
+        .background(Color.black)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay {
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(LatsPalette.hairline2, lineWidth: 1)
+        }
+        .shadow(color: Color.black.opacity(0.5), radius: 10, y: 5)
+        .opacity(isDeemphasized ? 0.20 : 0.62)
+        .accessibilityHidden(true)
+    }
+}
+
+/// Actual normalized Mac cursor position, updated directly from joystick event
+/// responses. The crossing lines make X and Y legible even when the preview is
+/// visually busy or the pointer itself is tiny.
+private struct LatsTrackpadPointerGuides: View {
+    let x: Double
+    let y: Double
+
+    var body: some View {
+        GeometryReader { proxy in
+            let topInset: CGFloat = 31
+            let bottomInset: CGFloat = 57
+            let usableHeight = max(1, proxy.size.height - topInset - bottomInset)
+            let point = CGPoint(
+                x: min(max(CGFloat(x), 0), 1) * proxy.size.width,
+                y: topInset + min(max(CGFloat(y), 0), 1) * usableHeight
+            )
+
+            ZStack(alignment: .topLeading) {
+                Path { path in
+                    path.move(to: CGPoint(x: point.x, y: topInset))
+                    path.addLine(to: CGPoint(x: point.x, y: proxy.size.height - bottomInset))
+                    path.move(to: CGPoint(x: 0, y: point.y))
+                    path.addLine(to: CGPoint(x: proxy.size.width, y: point.y))
+                }
+                .stroke(LatsPalette.green.opacity(0.46), style: StrokeStyle(lineWidth: 1, dash: [5, 5]))
+
+                Circle()
+                    .fill(LatsPalette.green.opacity(0.18))
+                    .overlay(Circle().stroke(LatsPalette.green, lineWidth: 1.5))
+                    .frame(width: 18, height: 18)
+                    .position(point)
+
+                Text("X \(Int((min(max(x, 0), 1) * 100).rounded()))  Y \(Int((min(max(y, 0), 1) * 100).rounded()))")
+                    .font(LatsFont.mono(8, weight: .semibold))
+                    .foregroundStyle(LatsPalette.green)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 3)
+                    .background(Color.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 3))
+                    .position(
+                        x: min(max(point.x + 48, 52), proxy.size.width - 52),
+                        y: min(max(point.y - 18, topInset + 12), proxy.size.height - bottomInset - 12)
+                    )
+            }
+        }
+        .accessibilityHidden(true)
     }
 }
 
@@ -738,7 +951,7 @@ struct CompactDisplaysPanel: View {
     let spaceCount: Int
     let spaceName: String?
     var spaceDisplays: [DeckSpaceDisplay] = []
-    var onSpaceTap: ((Int) -> Void)? = nil
+    var onSpaceTap: ((_ display: Int, _ index: Int) -> Void)? = nil
     var onMonitorSwipe: ((_ display: Int, _ direction: Int) -> Void)? = nil
 
     @State private var selectedDisplay: Int = 0
@@ -761,9 +974,19 @@ struct CompactDisplaysPanel: View {
 
     private var spacesForActiveDisplay: [Int] {
         if activeDisplay < spaceDisplays.count {
-            return spaceDisplays[activeDisplay].spaces.map(\.index)
+            // The bridge reports one-based display-local indices. The rest of
+            // the iPad cockpit uses zero-based indices for state and actions.
+            return spaceDisplays[activeDisplay].spaces.map { max(0, $0.index - 1) }
         }
         return Array(0..<max(spaceCount, 1))
+    }
+
+    private var activeSpaceIndex: Int {
+        guard activeDisplay < spaceDisplays.count,
+              let current = spaceDisplays[activeDisplay].spaces.first(where: \.isCurrent) else {
+            return space
+        }
+        return max(0, current.index - 1)
     }
 
     var body: some View {
@@ -868,7 +1091,7 @@ struct CompactDisplaysPanel: View {
     }
 
     private func spaceCell(index: Int) -> some View {
-        let isActive = index == space
+        let isActive = index == activeSpaceIndex
         let label = Text("\(index + 1)")
             .font(LatsFont.mono(8, weight: isActive ? .semibold : .regular))
             .foregroundStyle(isActive ? LatsPalette.green : LatsPalette.textDim)
@@ -885,7 +1108,7 @@ struct CompactDisplaysPanel: View {
 
         return Group {
             if let onSpaceTap {
-                Button { onSpaceTap(index) } label: { label }.buttonStyle(.plain)
+                Button { onSpaceTap(activeDisplay, index) } label: { label }.buttonStyle(.plain)
             } else {
                 label
             }
@@ -1542,6 +1765,7 @@ struct LatsShortcutGrid: View {
                 index: index,
                 isRecent: recentlyPressed == shortcut.id
             ) {
+                guard shortcut.isEnabled else { return }
                 onTap(shortcut)
                 withAnimation { recentlyPressed = shortcut.id }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
@@ -1551,6 +1775,26 @@ struct LatsShortcutGrid: View {
                 }
             }
         }
+    }
+}
+
+private struct LatsEmptyDeckState: View {
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "square.dashed")
+                .font(.system(size: 24, weight: .medium))
+                .foregroundStyle(LatsPalette.textFaint)
+            Text("THIS PAGE IS EMPTY")
+                .font(LatsFont.mono(10, weight: .bold))
+                .foregroundStyle(LatsPalette.text)
+                .tracking(1)
+            Text("Add controls in Lattices on your Mac.")
+                .font(LatsFont.mono(9))
+                .foregroundStyle(LatsPalette.textDim)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -1590,6 +1834,29 @@ struct LatsJoystickControl: View {
                     Circle()
                         .fill(shortcut.tint.color.opacity(0.07))
                         .overlay(Circle().stroke(shortcut.tint.color.opacity(0.30), lineWidth: 1))
+                    GeometryReader { geometry in
+                        let center = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
+                        let knobPoint = CGPoint(
+                            x: center.x + knobOffset.width,
+                            y: center.y + knobOffset.height
+                        )
+                        Path { path in
+                            path.move(to: CGPoint(x: center.x, y: 0))
+                            path.addLine(to: CGPoint(x: center.x, y: geometry.size.height))
+                            path.move(to: CGPoint(x: 0, y: center.y))
+                            path.addLine(to: CGPoint(x: geometry.size.width, y: center.y))
+                        }
+                        .stroke(LatsPalette.hairline2, lineWidth: 1)
+
+                        Path { path in
+                            path.move(to: CGPoint(x: knobPoint.x, y: 0))
+                            path.addLine(to: CGPoint(x: knobPoint.x, y: geometry.size.height))
+                            path.move(to: CGPoint(x: 0, y: knobPoint.y))
+                            path.addLine(to: CGPoint(x: geometry.size.width, y: knobPoint.y))
+                        }
+                        .stroke(shortcut.tint.color.opacity(0.48), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                    }
+                    .clipShape(Circle())
                     Circle()
                         .stroke(LatsPalette.hairline, style: StrokeStyle(lineWidth: 1, dash: [3, 4]))
                         .padding(diameter * 0.22)
@@ -1720,6 +1987,9 @@ struct LatsShortcutTile: View {
             )
         }
         .buttonStyle(.plain)
+        .disabled(!shortcut.isEnabled)
+        .opacity(shortcut.isEnabled ? 1 : 0.46)
+        .accessibilityHint(shortcut.isEnabled ? shortcut.hint : "\(shortcut.hint) Unavailable.")
         .onLongPressGesture(minimumDuration: 0, maximumDistance: .infinity, perform: {}, onPressingChanged: { pressing in
             withAnimation(.easeOut(duration: 0.08)) { isPressed = pressing }
         })
@@ -1989,14 +2259,22 @@ struct LatsDeckScreen: View {
     /// Active bridge label supplied by the connection store.
     var connectionLabel: String?
 
+    /// Periodically captured frontmost Mac window shown beneath the trackpad's
+    /// pointer guides. Nil keeps offline previews and fleet lanes lightweight.
+    var trackpadWindowPreviewImage: UIImage? = nil
+
     /// When connected, tile presses and keyboard sends route through this callback.
     var onAction: ((_ actionID: String, _ payload: [String: DeckValue], _ label: String?) -> Void)?
 
     /// When connected, the full-screen cockpit surface forwards pointer events here.
     var onTrackpadEvent: ((_ event: DeckTrackpadEvent, _ dx: Double, _ dy: Double) -> Void)?
 
-    /// Which deck to render. Defaults to "command".
-    var deckID: String = "command"
+    /// Opens the native, read-only Mac screen viewer. This is navigation on the
+    /// iPad, not an action to perform on the Mac.
+    var onDesktopPreview: (() -> Void)?
+
+    /// Which deck to render. Defaults to the stable remote surface.
+    var deckID: String = "remote"
 
     // ── Mock-mode state (only used when liveSnapshot is nil) ──
     @State private var selectedDeckID: String?
@@ -2131,7 +2409,7 @@ struct LatsDeckScreen: View {
     }
 
     private var shortcuts: [LatsShortcut] {
-        if let live = liveShortcuts(), !live.isEmpty { return live }
+        if let live = liveShortcuts() { return live }
         return CommandDeck.shortcuts
     }
 
@@ -2152,7 +2430,7 @@ struct LatsDeckScreen: View {
         let liveNames = liveSnapshot?.cockpit?.pages
             .map { $0.title.lowercased() }
             .filter { !$0.isEmpty } ?? []
-        return liveNames.isEmpty ? ["command", "dev", "media", "windows", "voice"] : liveNames
+        return liveNames.isEmpty ? ["remote", "move", "speak & run"] : liveNames
     }
 
     var body: some View {
@@ -2194,6 +2472,7 @@ struct LatsDeckScreen: View {
                                     activityLog: activityLog,
                                     hostLabel: hostLabel,
                                     trackpadState: liveSnapshot?.trackpad,
+                                    windowPreviewImage: trackpadWindowPreviewImage,
                                     spaceDisplays: spaceDisplays,
                                     frontmostApp: liveSnapshot?.layout?.frontmostWindow?.appName
                                         ?? liveSnapshot?.desktop?.activeAppName,
@@ -2216,33 +2495,40 @@ struct LatsDeckScreen: View {
                         }
 
                         // Shortcut grid (deck keys) — horizontal swipe cycles decks
-                        ScrollView {
-                            LatsShortcutGrid(
-                                shortcuts: shortcuts,
-                                columns: gridColumns,
-                                rows: hSize == .compact ? nil : activeCockpitPage()?.rows,
-                                onTap: handleTilePress,
-                                onJoystickMove: { dx, dy in
-                                    onTrackpadEvent?(.move, dx, dy)
-                                },
-                                onJoystickInteractionChanged: { active in
-                                    isUsingJoystick = active
-                                    if !active {
-                                        joystickSwipeSuppressedUntil = Date().addingTimeInterval(0.25)
-                                    }
-                                },
-                                joystickEnabled: joystickReady,
-                                joystickScale: liveSnapshot?.trackpad?.pointerScale ?? 1.6
-                            )
-                            .padding(14)
-                            .id(effectiveDeckID)
-                            .transition(.opacity.combined(with: .move(edge: .leading)))
+                        Group {
+                            if isConnected, activeCockpitPage() != nil, shortcuts.isEmpty {
+                                LatsEmptyDeckState()
+                                    .padding(14)
+                            } else {
+                                ScrollView {
+                                    LatsShortcutGrid(
+                                        shortcuts: shortcuts,
+                                        columns: gridColumns,
+                                        rows: hSize == .compact ? nil : activeCockpitPage()?.rows,
+                                        onTap: handleTilePress,
+                                        onJoystickMove: { dx, dy in
+                                            onTrackpadEvent?(.move, dx, dy)
+                                        },
+                                        onJoystickInteractionChanged: { active in
+                                            isUsingJoystick = active
+                                            if !active {
+                                                joystickSwipeSuppressedUntil = Date().addingTimeInterval(0.25)
+                                            }
+                                        },
+                                        joystickEnabled: joystickReady,
+                                        joystickScale: liveSnapshot?.trackpad?.pointerScale ?? 1.6
+                                    )
+                                    .padding(14)
+                                    .id(effectiveDeckID)
+                                    .transition(.opacity.combined(with: .move(edge: .leading)))
+                                }
+                                .contentShape(Rectangle())
+                                // simultaneousGesture so the ScrollView's vertical scroll
+                                // and the horizontal deck-cycle swipe can both recognize.
+                                .simultaneousGesture(deckSwipeGesture)
+                            }
                         }
                         .frame(maxHeight: .infinity)
-                        .contentShape(Rectangle())
-                        // simultaneousGesture so the ScrollView's vertical scroll
-                        // and the horizontal deck-cycle swipe can both recognize.
-                        .simultaneousGesture(deckSwipeGesture)
                     }
                 }
                 .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -2340,6 +2626,12 @@ struct LatsDeckScreen: View {
     // MARK: - Behaviour
 
     private func handleTilePress(_ shortcut: LatsShortcut) {
+        guard shortcut.isEnabled else { return }
+        if shortcut.actionID == "desktop.preview.open" {
+            onDesktopPreview?()
+            return
+        }
+
         if let onAction, let actionID = shortcut.actionID {
             var payload = shortcut.payload
             if actionID == "clipboard.pasteFromDevice",
@@ -2407,24 +2699,25 @@ struct LatsDeckScreen: View {
         }
     }
 
-    private func handleSpaceTap(_ index: Int) {
+    private func handleSpaceTap(_ display: Int, _ index: Int) {
         if let onAction {
-            // Mac-side gap: bridge needs a "spaces.focusIndex" handler to honor this.
-            onAction("spaces.focusIndex", ["index": .int(index)], "Switch to space \(index + 1)")
+            onAction(
+                "spaces.focusIndex",
+                ["displayIndex": .int(display), "index": .int(index)],
+                "Switch display \(display + 1) to space \(index + 1)"
+            )
         } else {
             mockSpace = index
         }
     }
 
-    /// Swipe a monitor to the next/previous space. Falls back to Ctrl+Left/Right via
-    /// keys.send when the bridge has no per-display swipe action.
+    /// Swipe a monitor to the next/previous space on that display.
     private func handleMonitorSwipe(_ display: Int, _ direction: Int) {
         if let onAction {
-            let key = direction > 0 ? "right" : "left"
             let label = direction > 0 ? "Next space" : "Previous space"
             onAction(
-                "keys.send",
-                ["key": .string(key), "modifiers": .array([.string("⌃")])],
+                "spaces.focusRelative",
+                ["displayIndex": .int(display), "direction": .int(direction)],
                 label
             )
         } else {
@@ -2449,7 +2742,7 @@ struct LatsDeckScreen: View {
 
     private func cycleDeck(forward: Bool = true) {
         let liveIDs = liveSnapshot?.cockpit?.pages.map(\.id).filter { !$0.isEmpty } ?? []
-        let ids = liveIDs.isEmpty ? ["command", "dev", "media", "windows", "voice"] : liveIDs
+        let ids = liveIDs.isEmpty ? ["remote", "move", "speak-run"] : liveIDs
         guard !ids.isEmpty else { return }
         guard let currentIndex = ids.firstIndex(of: effectiveDeckID) else {
             withAnimation(.easeOut(duration: 0.22)) { selectedDeckID = ids.first }
@@ -2576,7 +2869,7 @@ struct FleetDeckScreen: View {
             // The Fleet Deck design is authored on a 1376×1032 iPad-landscape
             // canvas. Give it the screen whenever there is room for its fixed
             // rows; anything shorter (iPhone landscape) keeps the lane layout.
-            let fitsDeck = isLandscape && proxy.size.height >= 700 && !stores.isEmpty
+            let fitsDeck = isLandscape && proxy.size.height >= 820 && !stores.isEmpty
 
             if fitsDeck {
                 FleetDeckHost(
@@ -2584,7 +2877,6 @@ struct FleetDeckScreen: View {
                     initialMachineID: initialMachineID,
                     onClose: { dismiss() }
                 )
-                .ignoresSafeArea(.container, edges: .bottom)
             } else {
                 LatsBackground(grid: true) {
                     VStack(spacing: 0) {
@@ -3185,6 +3477,7 @@ private struct FleetSharedDeck: View {
     let laneNumber: Int
 
     @State private var selectedPageID: String?
+    @State private var showsDesktopPreview = false
 
     private var pages: [DeckCockpitPage] {
         store.snapshot?.cockpit?.pages ?? []
@@ -3245,26 +3538,37 @@ private struct FleetSharedDeck: View {
 
             LatsHairlineDivider()
 
-            GeometryReader { proxy in
-                let columns = max(1, min(3, shortcuts.count))
-                let rows = max(1, Int(ceil(Double(shortcuts.count) / Double(columns))))
-                let availableHeight = max(96, proxy.size.height - 24 - CGFloat(max(0, rows - 1)) * 10)
-                let controlHeight = availableHeight / CGFloat(rows)
+            Group {
+                if store.snapshot != nil, shortcuts.isEmpty {
+                    LatsEmptyDeckState()
+                        .padding(12)
+                } else {
+                    GeometryReader { proxy in
+                        let authoredRows = activePage?.rows
+                        let columns = authoredRows == nil
+                            ? max(1, min(3, shortcuts.count))
+                            : max(1, activePage?.columns ?? 4)
+                        let flowRows = max(1, Int(ceil(Double(shortcuts.count) / Double(columns))))
+                        let availableHeight = max(96, proxy.size.height - 24 - CGFloat(max(0, flowRows - 1)) * 10)
+                        let controlHeight = availableHeight / CGFloat(flowRows)
 
-                ScrollView {
-                    LatsShortcutGrid(
-                        shortcuts: shortcuts,
-                        columns: columns,
-                        onTap: perform,
-                        onJoystickMove: { dx, dy in store.sendTrackpad(event: .move, dx: dx, dy: dy) },
-                        joystickEnabled: joystickReady,
-                        joystickScale: store.snapshot?.trackpad?.pointerScale ?? 1.6,
-                        minimumControlHeight: controlHeight
-                    )
-                    .padding(12)
-                    .frame(minHeight: proxy.size.height, alignment: .bottom)
+                        ScrollView {
+                            LatsShortcutGrid(
+                                shortcuts: shortcuts,
+                                columns: columns,
+                                rows: authoredRows,
+                                onTap: perform,
+                                onJoystickMove: { dx, dy in store.sendTrackpad(event: .move, dx: dx, dy: dy) },
+                                joystickEnabled: joystickReady,
+                                joystickScale: store.snapshot?.trackpad?.pointerScale ?? 1.6,
+                                minimumControlHeight: controlHeight
+                            )
+                            .padding(12)
+                            .frame(minHeight: proxy.size.height, alignment: .bottom)
+                        }
+                        .scrollIndicators(.hidden)
+                    }
                 }
-                .scrollIndicators(.hidden)
             }
 
             deckFooter
@@ -3291,6 +3595,9 @@ private struct FleetSharedDeck: View {
             .padding(.horizontal, 8)
         }
         .shadow(color: Color.black.opacity(0.60), radius: 9, x: 0, y: 5)
+        .fullScreenCover(isPresented: $showsDesktopPreview) {
+            DesktopPreviewScreen(store: store)
+        }
         .onAppear(perform: selectFirstPageIfNeeded)
         .onChange(of: pages.map(\.id)) { _, _ in selectFirstPageIfNeeded() }
     }
@@ -3461,21 +3768,20 @@ private struct FleetSharedDeck: View {
         store.perform(actionID: actionID, pageID: activePage?.id ?? "cockpit", label: "Undo last action")
     }
 
-    private func focusSpace(_ index: Int) {
+    private func focusSpace(_ display: Int, _ index: Int) {
         store.perform(
             actionID: "spaces.focusIndex",
             pageID: activePage?.id ?? "cockpit",
-            payload: ["index": .int(index)],
-            label: "Switch to space \(index + 1)"
+            payload: ["displayIndex": .int(display), "index": .int(index)],
+            label: "Switch display \(display + 1) to space \(index + 1)"
         )
     }
 
     private func swipeMonitor(_ display: Int, _ direction: Int) {
-        let key = direction > 0 ? "right" : "left"
         store.perform(
-            actionID: "keys.send",
+            actionID: "spaces.focusRelative",
             pageID: activePage?.id ?? "cockpit",
-            payload: ["key": .string(key), "modifiers": .array([.string("⌃")])],
+            payload: ["displayIndex": .int(display), "direction": .int(direction)],
             label: direction > 0 ? "Next space" : "Previous space"
         )
     }
@@ -3492,6 +3798,10 @@ private struct FleetSharedDeck: View {
             actionID: tile.actionID,
             payload: tile.payload,
             controlKind: tile.controlKind,
+            col: tile.col,
+            row: tile.row,
+            colSpan: tile.colSpan,
+            rowSpan: tile.rowSpan,
             isEnabled: tile.isEnabled
         )
     }
@@ -3509,6 +3819,10 @@ private struct FleetSharedDeck: View {
 
     private func perform(_ shortcut: LatsShortcut) {
         guard shortcut.isEnabled, let actionID = shortcut.actionID else { return }
+        if actionID == "desktop.preview.open" {
+            showsDesktopPreview = true
+            return
+        }
         var payload = shortcut.payload
         if actionID == "clipboard.pasteFromDevice",
            let text = UIPasteboard.general.string,
@@ -3535,6 +3849,7 @@ private struct FleetMachineDeck: View {
     var accentOverride: Color? = nil
 
     @State private var selectedPageID: String?
+    @State private var showsDesktopPreview = false
 
     private var pages: [DeckCockpitPage] {
         store.snapshot?.cockpit?.pages ?? []
@@ -3630,6 +3945,9 @@ private struct FleetMachineDeck: View {
                 Group {
                     if !shortcuts.isEmpty {
                         shortcutGrid(width: proxy.size.width)
+                    } else if store.snapshot != nil {
+                        LatsEmptyDeckState()
+                            .padding(10)
                     } else {
                         connectionState
                     }
@@ -3662,6 +3980,9 @@ private struct FleetMachineDeck: View {
                     .padding(.horizontal, 5)
             }
             .shadow(color: Color.black.opacity(0.50), radius: 6, x: 0, y: 3)
+        }
+        .fullScreenCover(isPresented: $showsDesktopPreview) {
+            DesktopPreviewScreen(store: store)
         }
         .onAppear(perform: selectFirstPageIfNeeded)
         .onChange(of: pages.map(\.id)) { _, _ in selectFirstPageIfNeeded() }
@@ -3754,7 +4075,10 @@ private struct FleetMachineDeck: View {
             ScrollView {
                 LatsShortcutGrid(
                     shortcuts: shortcuts,
-                    columns: width >= 560 ? 3 : 2,
+                    columns: activePage?.rows == nil
+                        ? (width >= 560 ? 3 : 2)
+                        : max(1, activePage?.columns ?? 4),
+                    rows: activePage?.rows,
                     onTap: perform,
                     onJoystickMove: { dx, dy in store.sendTrackpad(event: .move, dx: dx, dy: dy) },
                     joystickEnabled: joystickReady,
@@ -3917,21 +4241,20 @@ private struct FleetMachineDeck: View {
         store.perform(actionID: actionID, pageID: activePage?.id ?? "cockpit", label: "Undo last action")
     }
 
-    private func focusSpace(_ index: Int) {
+    private func focusSpace(_ display: Int, _ index: Int) {
         store.perform(
             actionID: "spaces.focusIndex",
             pageID: activePage?.id ?? "cockpit",
-            payload: ["index": .int(index)],
-            label: "Switch to space \(index + 1)"
+            payload: ["displayIndex": .int(display), "index": .int(index)],
+            label: "Switch display \(display + 1) to space \(index + 1)"
         )
     }
 
     private func swipeMonitor(_ display: Int, _ direction: Int) {
-        let key = direction > 0 ? "right" : "left"
         store.perform(
-            actionID: "keys.send",
+            actionID: "spaces.focusRelative",
             pageID: activePage?.id ?? "cockpit",
-            payload: ["key": .string(key), "modifiers": .array([.string("⌃")])],
+            payload: ["displayIndex": .int(display), "direction": .int(direction)],
             label: direction > 0 ? "Next space" : "Previous space"
         )
     }
@@ -3948,6 +4271,10 @@ private struct FleetMachineDeck: View {
             actionID: tile.actionID,
             payload: tile.payload,
             controlKind: tile.controlKind,
+            col: tile.col,
+            row: tile.row,
+            colSpan: tile.colSpan,
+            rowSpan: tile.rowSpan,
             isEnabled: tile.isEnabled
         )
     }
@@ -3965,6 +4292,10 @@ private struct FleetMachineDeck: View {
 
     private func perform(_ shortcut: LatsShortcut) {
         guard shortcut.isEnabled, let actionID = shortcut.actionID else { return }
+        if actionID == "desktop.preview.open" {
+            showsDesktopPreview = true
+            return
+        }
         var payload = shortcut.payload
         if actionID == "clipboard.pasteFromDevice",
            let text = UIPasteboard.general.string,

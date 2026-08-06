@@ -33,28 +33,7 @@ struct FleetDeckView: View {
     var body: some View {
         VStack(spacing: FleetV6.M.stackGap) {
             topBar
-
-            FleetChannelStrip(
-                channels: model.channels,
-                order: model.channelOrder,
-                currentIndex: model.currentIndex,
-                layout: model.layout,
-                onSelect: { index in withAnimation(.easeOut(duration: 0.18)) { model.select(index) } }
-            )
-
-            FleetVoiceBar(
-                phase: voicePhase,
-                transcript: voiceTranscript,
-                channels: model.channels,
-                routeIndex: model.routeIndex,
-                isBusy: isBusy,
-                onPushToTalk: onPushToTalk,
-                onRoute: { model.routeIndex = $0 }
-            )
-
             deckPanel
-
-            statusBar
         }
         .padding(.horizontal, FleetV6.M.padH)
         .padding(.top, FleetV6.M.padTop)
@@ -70,83 +49,115 @@ struct FleetDeckView: View {
         .animation(.easeOut(duration: 0.25), value: model.layout)
     }
 
-    // MARK: Top bar — `.fd-top`
+    // MARK: Compact host and routing rail
 
     private var topBar: some View {
-        HStack(spacing: 14) {
-            HStack(alignment: .firstTextBaseline, spacing: 7) {
-                Text("LATS").font(FleetV6.mono(11, .bold)).foregroundStyle(FleetV6.fg)
-                Text("·").font(FleetV6.mono(11)).foregroundStyle(FleetV6.fg4)
-                Text("OPS").font(FleetV6.mono(11, .medium)).foregroundStyle(FleetV6.fg3)
-            }
-            .tracking(1.76)
-
-            HStack(spacing: 6) {
-                FleetDot(color: FleetV6.green, size: 4)
-                Text(model.layout.label)
-                    .font(FleetV6.mono(9, .medium))
-                    .tracking(1.26)
-                    .foregroundStyle(FleetV6.fg3)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 2)
-            .background {
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(Color.white.opacity(0.03))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                            .strokeBorder(FleetV6.brk, lineWidth: 1)
-                    }
-            }
-
-            Spacer(minLength: 8)
-
-            Text("\(model.channels.count) MACS · \(agentCount) AGENTS")
-                .font(FleetV6.mono(9, .medium))
-                .tracking(1.08)
-                .monospacedDigit()
-                .foregroundStyle(FleetV6.fg3)
-
-            if let onClose {
-                Button(action: onClose) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(FleetV6.fg3)
-                        .frame(width: 18, height: 18)
-                        .contentShape(Rectangle())
+        FleetWell {
+            HStack(spacing: 8) {
+                HStack(spacing: 7) {
+                    FleetDot(color: isOnline ? FleetV6.green : FleetV6.fg4, size: 6, glow: isOnline)
+                    Text("LATS DECK")
+                        .font(FleetV6.mono(11, .bold))
+                        .tracking(1.2)
+                        .foregroundStyle(FleetV6.fg)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Close deck")
+                .padding(.leading, 10)
+                .fixedSize()
+
+                Rectangle()
+                    .fill(FleetV6.brk2)
+                    .frame(width: 1, height: 28)
+
+                FleetChannelStrip(
+                    channels: model.channels,
+                    order: model.channelOrder,
+                    currentIndex: model.currentIndex,
+                    layout: model.layout,
+                    onSelect: { index in
+                        withAnimation(.easeOut(duration: 0.18)) { model.select(index) }
+                    }
+                )
+                .frame(maxWidth: .infinity)
+
+                if model.attentionIndices.count > 0 {
+                    Button {
+                        withAnimation(.easeOut(duration: 0.18)) { model.focusAttention() }
+                    } label: {
+                        Text("ATTN \(model.attentionIndices.count)")
+                            .font(FleetV6.mono(10, .semibold))
+                            .foregroundStyle(FleetV6.amber)
+                            .frame(minWidth: 62, minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Focus next Mac that needs attention")
+                }
+
+                headerButton(
+                    symbol: voicePhase == .listening || voicePhase == .transcribing ? "mic.fill" : "mic",
+                    label: "Toggle voice on \(model.current?.deviceName ?? "selected Mac")",
+                    isActive: voicePhase == .listening || voicePhase == .transcribing,
+                    isEnabled: !isBusy,
+                    action: onPushToTalk
+                )
+
+                headerButton(
+                    symbol: model.layout == .ops ? "rectangle.split.2x1" : "rectangle.inset.filled",
+                    label: "Toggle deck view",
+                    action: {
+                        withAnimation(.easeOut(duration: 0.25)) {
+                            model.layout = model.layout == .ops ? .focus : .ops
+                        }
+                    }
+                )
+
+                if let onClose {
+                    headerButton(symbol: "xmark", label: "Close deck", action: onClose)
+                }
             }
+            .padding(.horizontal, 6)
         }
-        .padding(.horizontal, 6)
-        .padding(.bottom, 6)
-        .frame(height: FleetV6.M.topBarHeight)
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(Color.white.opacity(0.07)).frame(height: 1)
-        }
+        .frame(height: FleetV6.M.channelsRailHeight)
     }
 
-    private var agentCount: Int {
-        model.channels.filter { $0.state != .idle }.count
+    private func headerButton(
+        symbol: String,
+        label: String,
+        isActive: Bool = false,
+        isEnabled: Bool = true,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(isActive ? FleetV6.fg : FleetV6.fg3)
+                .frame(width: 44, height: 44)
+                .background(isActive ? Color.white.opacity(0.08) : .clear)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1 : 0.45)
+        .accessibilityLabel(label)
     }
 
     // MARK: Deck panel — `.deck-panel`
 
     private var deckPanel: some View {
         VStack(spacing: 0) {
-            panelHead
-            panelBody
-            if showsTrackpadStrip {
-                FleetTrackpadStrip(onTrackpad: onTrackpad)
-                    .frame(height: FleetV6.M.trackpadHeight)
-            }
             FleetCommandBay(
                 sets: model.sets,
                 setIndex: model.setIndex,
                 onSelectSet: { model.setIndex = $0 },
                 onTile: onTile
             )
+            .layoutPriority(1)
+            panelBody
+            if showsTrackpadStrip {
+                FleetTrackpadStrip(onTrackpad: onTrackpad)
+                    .frame(height: FleetV6.M.trackpadHeight)
+            }
             FleetKeyRow(onKey: onKey)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -234,14 +245,14 @@ struct FleetDeckView: View {
         }
         .padding(.horizontal, FleetV6.M.panelBodyPadH)
         .padding(.vertical, FleetV6.M.panelBodyPadV)
-        .frame(maxHeight: .infinity)
+        .frame(height: model.current?.decision == nil ? FleetV6.M.consoleBodyHeight : FleetV6.M.decisionBodyHeight)
     }
 
     /// The design's fixed column widths, held as a share on narrower iPads so
     /// neither column collapses.
     private func consoleWidth(for available: CGFloat, target: CGFloat) -> CGFloat {
         guard available > 0 else { return target }
-        return min(target, max(260, available * 0.36))
+        return min(target, max(280, available * 0.30))
     }
 
     private func console(_ channel: FleetChannel, isRecent: Bool) -> some View {
@@ -271,27 +282,6 @@ struct FleetDeckView: View {
         )
     }
 
-    // MARK: Status bar
-
-    private var statusBar: some View {
-        FleetStatusBar(
-            deviceName: model.current?.deviceName ?? "—",
-            routeLabel: model.routeLabel,
-            attentionCount: model.attentionIndices.count,
-            machineCount: model.channels.count,
-            agentCount: agentCount,
-            layout: model.layout,
-            isOnline: isOnline,
-            onAttention: { withAnimation(.easeOut(duration: 0.18)) { model.focusAttention() } },
-            onToggleLayout: {
-                withAnimation(.easeOut(duration: 0.25)) {
-                    model.layout = model.layout == .ops ? .focus : .ops
-                }
-            }
-        )
-        .padding(.horizontal, -FleetV6.M.padH)
-        .padding(.bottom, -FleetV6.M.padBottom)
-    }
 }
 
 /// The three console buttons that are not a decision — they act on the agent

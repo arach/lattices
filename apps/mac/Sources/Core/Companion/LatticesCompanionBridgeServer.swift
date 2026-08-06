@@ -309,6 +309,37 @@ private extension LatticesCompanionBridgeServer {
             )
             try sendJSON(status: 200, value: response, to: fd)
 
+        case ("POST", "/deck/preview"):
+            let auth = try authorizeProtectedRequest(request, requiredCapability: DeckBridgeCapability.screenPreview)
+            let previewRequest = try LatticesCompanionSecurityCoordinator.shared.decodeProtectedBody(
+                DeckDesktopPreviewRequest.self,
+                body: request.body,
+                auth: auth,
+                method: request.method,
+                path: request.path
+            )
+
+            // ScreenCaptureKit is async. Hand the socket off so the serial bridge
+            // queue can keep serving trackpad, snapshot, and action requests while
+            // the frame is being captured and encoded.
+            Task { [weak self] in
+                defer { close(fd) }
+                guard let self else { return }
+                do {
+                    let frame = try await LatticesDesktopPreviewCapture.capture(previewRequest)
+                    let response = try LatticesCompanionSecurityCoordinator.shared.encodeProtectedResponse(
+                        frame,
+                        auth: auth,
+                        status: 200,
+                        path: request.path
+                    )
+                    try self.sendJSON(status: 200, value: response, to: fd)
+                } catch {
+                    self.sendError(status: 500, message: error.localizedDescription, to: fd)
+                }
+            }
+            return .handedOff
+
         default:
             sendError(status: 404, message: "Unknown route", to: fd)
         }
@@ -436,10 +467,7 @@ private extension LatticesCompanionBridgeServer {
     func sendDeckBuilderAsset(path: String, to fd: Int32) -> Bool {
         guard !path.contains(".."), !path.hasPrefix("/") else { return false }
 
-        let roots = [
-            Bundle.main.resourceURL?.appendingPathComponent("DeckBuilder", isDirectory: true),
-            Bundle.module.resourceURL?.appendingPathComponent("DeckBuilder", isDirectory: true),
-        ].compactMap { $0 }
+        let roots = Self.deckBuilderResourceRoots()
 
         for root in roots {
             let url = root.appendingPathComponent(path)
@@ -533,5 +561,35 @@ private extension LatticesCompanionBridgeServer {
         } catch { }
 
         return Host.current().localizedName ?? "localhost"
+    }
+}
+
+extension LatticesCompanionBridgeServer {
+    /// Resolve both the hand-built app bundle and SwiftPM's nested resource
+    /// bundles without touching `Bundle.module`, whose generated accessor traps
+    /// when a manually packaged app does not contain the expected bundle.
+    static func deckBuilderResourceRoots(
+        applicationResourceURL: URL? = Bundle.main.resourceURL,
+        loadedBundles: [Bundle] = Bundle.allBundles + Bundle.allFrameworks,
+        fileManager: FileManager = .default
+    ) -> [URL] {
+        var resourceURLs = [applicationResourceURL].compactMap { $0 }
+        resourceURLs.append(contentsOf: loadedBundles.compactMap(\.resourceURL))
+
+        if let applicationResourceURL,
+           let children = try? fileManager.contentsOfDirectory(
+               at: applicationResourceURL,
+               includingPropertiesForKeys: nil
+           ) {
+            resourceURLs.append(contentsOf: children.compactMap { child in
+                guard child.pathExtension == "bundle" else { return nil }
+                return Bundle(url: child)?.resourceURL
+            })
+        }
+
+        var seen = Set<String>()
+        return resourceURLs
+            .map { $0.appendingPathComponent("DeckBuilder", isDirectory: true) }
+            .filter { seen.insert($0.standardizedFileURL.path).inserted }
     }
 }

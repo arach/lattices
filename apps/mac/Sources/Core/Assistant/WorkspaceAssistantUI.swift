@@ -149,8 +149,8 @@ struct WorkspaceAssistantTranscript: View {
     }
 
     private var showsEmptyState: Bool {
-        // Scout chat has no provider-auth setup wall, so the rich empty state
-        // is always the first conversation surface.
+        // Show starters until the first real turn; credential setup is handled
+        // when the user tries to send without a key.
         !session.hasConversationHistory
     }
 
@@ -493,10 +493,16 @@ struct WorkspaceAssistantComposer: View {
     #endif
 
     var body: some View {
-        VStack(spacing: 7) {
+        VStack(spacing: 0) {
             #if LATTICES_VOICE && canImport(HudsonVoice)
+            // Keep the idle composer footprint identical to pre-voice chrome.
+            // Grow only while recording/transcribing, or for a brief outcome note.
             if voice.state.isCaptureActive || voice.state.isProcessing {
                 dictationStrip
+            } else if voice.lastOutcome != nil {
+                if let outcome = voice.lastOutcome {
+                    voiceOutcomeStrip(outcome)
+                }
             }
             #endif
 
@@ -600,20 +606,56 @@ struct WorkspaceAssistantComposer: View {
         }
     }
 
-    /// Live dictation strip above the field: a 5-bar waveform with the running
-    /// partial transcript beside it. Shown only while the mic is hot.
+    /// Compact live strip while the mic is hot. Sits inside the same chrome as
+    /// HudComposer — no extra horizontal pad (parent already applies it).
     private var dictationStrip: some View {
-        HStack(spacing: 9) {
+        HStack(spacing: 8) {
             WorkspaceAssistantWaveform(tint: micAccent)
-            if !voice.partial.isEmpty {
-                Text(voice.partial)
-                    .font(Typo.body(style.composerSize))
-                    .foregroundColor(Palette.textDim)
-                    .lineLimit(2)
+            Group {
+                if voice.state.isProcessing {
+                    Text("Transcribing…")
+                        .foregroundColor(Palette.detach)
+                } else if !voice.partial.isEmpty {
+                    Text(voice.partial)
+                        .foregroundColor(Palette.textDim)
+                        .lineLimit(1)
+                } else {
+                    Text(voice.state == .starting ? "Starting…" : "Listening…")
+                        .foregroundColor(Palette.textMuted)
+                }
             }
+            .font(Typo.caption(11))
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 14)
+        .padding(.bottom, 6)
+        .transition(.opacity)
+    }
+
+    /// Soft note for empty/fail only — keeps the idle input box uncluttered.
+    private func voiceOutcomeStrip(_ outcome: WorkspaceVoiceOutcome) -> some View {
+        let tint: Color = outcome.kind == .failed ? Palette.kill : Palette.detach
+        return HStack(spacing: 6) {
+            Image(systemName: outcome.kind == .failed ? "exclamationmark.circle" : "waveform")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(tint.opacity(0.9))
+            Text(outcome.message)
+                .font(Typo.caption(10.5))
+                .foregroundColor(Palette.textMuted)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            Button {
+                voice.dismissOutcome()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(Palette.textMuted.opacity(0.7))
+                    .frame(width: 16, height: 16)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Dismiss")
+        }
+        .padding(.bottom, 6)
         .transition(.opacity)
     }
 

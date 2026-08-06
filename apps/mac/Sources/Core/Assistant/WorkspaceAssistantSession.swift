@@ -166,7 +166,11 @@ final class WorkspaceAssistantSession: ObservableObject {
     private let scoutTransport = ScoutAssistantTransport()
     private var scoutBindingRef: String? {
         didSet {
-            UserDefaults.standard.set(scoutBindingRef, forKey: Self.scoutBindingRefDefaultsKey)
+            if let scoutBindingRef, !scoutBindingRef.isEmpty {
+                UserDefaults.standard.set(scoutBindingRef, forKey: Self.scoutBindingRefDefaultsKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: Self.scoutBindingRefDefaultsKey)
+            }
         }
     }
     private var streamingMessageID: UUID?
@@ -191,6 +195,10 @@ final class WorkspaceAssistantSession: ObservableObject {
 
     private static let selectedProviderDefaultsKey = "HudsonAISelectedProvider"
     private static let scoutBindingRefDefaultsKey = "ScoutWorkspaceAssistantBindingRef"
+    private static let preferredHarnessDefaultsKey = "LatticesAssistantPreferredHarness"
+
+    /// Last successful agent-runtime harness id (for status chrome).
+    @Published private(set) var agentRuntimeHarnessLabel: String?
     private static let voiceInferenceTimeout: TimeInterval = 45
     private static let voiceAppendSystemPrompt = """
         You are the Workspace Assistant for Lattices voice surfaces.
@@ -276,8 +284,7 @@ final class WorkspaceAssistantSession: ObservableObject {
         !hasSelectedCredential
     }
 
-    /// Chat never needs a Lattices-owned model credential. Scout owns routing,
-    /// authorization, and the concrete harness session.
+    /// Chat always has a path: HudsonAI when a key is saved, otherwise Scout.
     var needsChatSetup: Bool { false }
 
     var scoutStatusSummary: String {
@@ -291,6 +298,28 @@ final class WorkspaceAssistantSession: ObservableObject {
             return "Scout unavailable"
         case nil:
             return "Checking Scout…"
+        }
+    }
+
+    var chatTransportSummary: String {
+        if let harness = agentRuntimeHarnessLabel, !harness.isEmpty {
+            return "Agent runtime · \(harness)"
+        }
+        if hasSelectedCredential {
+            return "\(currentProvider.name) · API"
+        }
+        return "Scout · project session"
+    }
+
+    var preferredAgentHarness: String? {
+        get { UserDefaults.standard.string(forKey: Self.preferredHarnessDefaultsKey) }
+        set {
+            if let newValue, !newValue.isEmpty {
+                UserDefaults.standard.set(newValue, forKey: Self.preferredHarnessDefaultsKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: Self.preferredHarnessDefaultsKey)
+            }
+            objectWillChange.send()
         }
     }
 
@@ -318,7 +347,7 @@ final class WorkspaceAssistantSession: ObservableObject {
     }
 
     var setupStatusSummary: String {
-        scoutStatusSummary
+        chatTransportSummary
     }
 
     /// Active tool name when the runtime is mid-tool-call, else nil. Drives
@@ -423,14 +452,13 @@ final class WorkspaceAssistantSession: ObservableObject {
         }
 
         isSending = true
-        statusText = "asking scout..."
+        statusText = "thinking..."
         settleActiveStreamingMessage(interrupted: false)   // snap any prior reveal to full before a new turn
         turnGeneration &+= 1
         let turnGen = turnGeneration
-        let prompt = scoutPrompt(for: trimmed, attachments: attachments)
-        let projectPath = scoutProjectPath()
-        let inferenceTimer = DiagnosticLog.shared.startTimed("Chat inference via Scout")
         let messageID = UUID()
+        // Empty body while the turn is in flight — HudAgentTurn already shows LIVE /
+        // Composing. Do not leak transport brand names into the message stream.
         messages.append(WorkspaceAssistantMessage(
             id: messageID,
             role: .assistant,
@@ -441,17 +469,165 @@ final class WorkspaceAssistantSession: ObservableObject {
         streamingMessageID = messageID
         resetStreamingDrain()
 
-        sendViaScout(
-            prompt: prompt,
-            projectPath: projectPath,
-            messageID: messageID,
-            generation: turnGen,
-            inferenceTimer: inferenceTimer
-        )
+        // Transport preference:
+        // 1) local agent-runtime / ACP harness (no Lattices API key)
+        // 2) HudsonAI direct when a key is saved
+        // 3) Scout project session fallback
+        let system = chatSystemPrompt(attachments: attachments)
+        let projectPath = scoutProjectPath()
+        let preferredHarness = UserDefaults.standard.string(forKey: Self.preferredHarnessDefaultsKey)
+        let canUseAPI = hasSelectedCredential
+        let providerName = currentProvider.name
+        streamingTask = Task { [weak self] in
+            guard let self else { return }
+            let runtime = AgentRuntimeTransport.shared
+            if await runtime.isAvailable() {
+                let timer = DiagnosticLog.shared.startTimed("Chat inference via agent-runtime")
+                await self.sendViaAgentRuntime(
+                    userText: trimmed,
+                    systemPrompt: system,
+                    cwd: projectPath,
+                    preferredHarness: preferredHarness,
+                    messageID: messageID,
+                    generation: turnGen,
+                    inferenceTimer: timer,
+                    canUseAPI: canUseAPI,
+                    providerName: providerName,
+                    attachments: attachments
+                )
+                return
+            }
+            if canUseAPI {
+                let timer = DiagnosticLog.shared.startTimed(
+                    "Chat inference via HudsonAI · \(providerName)"
+                )
+                await MainActor.run {
+                    self.sendViaDirectProvider(
+                        userText: trimmed,
+                        attachments: attachments,
+                        messageID: messageID,
+                        generation: turnGen,
+                        inferenceTimer: timer
+                    )
+                }
+                return
+            }
+            let prompt = await MainActor.run {
+                self.scoutPrompt(for: trimmed, attachments: attachments)
+            }
+            let timer = DiagnosticLog.shared.startTimed("Chat inference via Scout")
+            await MainActor.run {
+                self.sendViaScout(
+                    prompt: prompt,
+                    projectPath: projectPath,
+                    messageID: messageID,
+                    generation: turnGen,
+                    inferenceTimer: timer
+                )
+            }
+        }
     }
 
-    /// Ask through the user's existing Scout broker and retain the returned ref
-    /// so every follow-up stays attached to the same concrete Scout session.
+    /// Local harness path (claude / codex / pi / opencode / ACP adapters via agent-runner).
+    private func sendViaAgentRuntime(
+        userText: String,
+        systemPrompt: String,
+        cwd: String,
+        preferredHarness: String?,
+        messageID: UUID,
+        generation: Int,
+        inferenceTimer: DiagnosticLog.TimedAction,
+        canUseAPI: Bool,
+        providerName: String,
+        attachments: [WorkspaceAssistantAttachment]
+    ) async {
+        do {
+            let reply = try await AgentRuntimeTransport.shared.ask(
+                text: userText,
+                systemPrompt: systemPrompt,
+                cwd: cwd,
+                preferredHarness: preferredHarness,
+                onDelta: { [weak self] snapshot in
+                    Task { @MainActor in
+                        guard let self, self.turnGeneration == generation else { return }
+                        self.statusText = "streaming..."
+                        self.commitStreamingText(snapshot)
+                    }
+                },
+                onTool: { [weak self] name in
+                    Task { @MainActor in
+                        guard let self, self.turnGeneration == generation else { return }
+                        self.statusText = "tool: \(name)"
+                    }
+                }
+            )
+            await MainActor.run { [weak self] in
+                guard let self, self.turnGeneration == generation else { return }
+                self.streamingTask = nil
+                self.isSending = false
+                self.statusText = "idle"
+                self.agentRuntimeHarnessLabel = reply.harness
+                DiagnosticLog.shared.finish(inferenceTimer)
+                DiagnosticLog.shared.info("Assistant · agent-runtime \(reply.harness) completed")
+                self.commitStreamingText(reply.text)
+                self.finalizeStreaming(finalText: reply.text)
+                self.drainQueuedPrompt()
+            }
+        } catch is CancellationError {
+            DiagnosticLog.shared.info("Assistant · agent-runtime cancelled")
+            await MainActor.run { [weak self] in
+                guard let self, self.turnGeneration == generation else { return }
+                self.streamingTask = nil
+                if self.isSending {
+                    self.isSending = false
+                    self.statusText = "idle"
+                    self.settleActiveStreamingMessage(interrupted: true)
+                }
+            }
+        } catch {
+            let detail = error.localizedDescription
+            DiagnosticLog.shared.fail(inferenceTimer, message: detail)
+            DiagnosticLog.shared.info("Assistant · agent-runtime failed (\(detail)) — falling back")
+            await MainActor.run { [weak self] in
+                guard let self, self.turnGeneration == generation else { return }
+                self.statusText = canUseAPI
+                    ? "agent runtime failed · trying API…"
+                    : "agent runtime failed · trying Scout…"
+            }
+            if canUseAPI {
+                let timer = DiagnosticLog.shared.startTimed(
+                    "Chat inference via HudsonAI · \(providerName)"
+                )
+                await MainActor.run {
+                    self.streamingTask = nil
+                    self.sendViaDirectProvider(
+                        userText: userText,
+                        attachments: attachments,
+                        messageID: messageID,
+                        generation: generation,
+                        inferenceTimer: timer
+                    )
+                }
+            } else {
+                let prompt = await MainActor.run {
+                    self.scoutPrompt(for: userText, attachments: attachments)
+                }
+                let timer = DiagnosticLog.shared.startTimed("Chat inference via Scout")
+                await MainActor.run {
+                    self.streamingTask = nil
+                    self.sendViaScout(
+                        prompt: prompt,
+                        projectPath: cwd,
+                        messageID: messageID,
+                        generation: generation,
+                        inferenceTimer: timer
+                    )
+                }
+            }
+        }
+    }
+
+    /// Scout path kept as fallback when no in-app provider key is saved.
     private func sendViaScout(
         prompt: String,
         projectPath: String,
@@ -463,7 +639,7 @@ final class WorkspaceAssistantSession: ObservableObject {
         streamingTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let reply = try await self.scoutTransport.ask(
+                let reply = try await self.askWithOfflineRetry(
                     prompt: prompt,
                     projectPath: projectPath,
                     bindingRef: continuingRef
@@ -477,8 +653,13 @@ final class WorkspaceAssistantSession: ObservableObject {
                     self.scoutBindingRef = reply.bindingRef
                     self.scoutTargetLabel = reply.targetLabel
                     DiagnosticLog.shared.finish(inferenceTimer)
-                    self.commitStreamingText(reply.text)
-                    self.finalizeStreaming(finalText: reply.text)
+                    let text = reply.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if text.isEmpty {
+                        self.failAssistantMessage(id: messageID, detail: "Empty reply.")
+                    } else {
+                        self.commitStreamingText(text)
+                        self.finalizeStreaming(finalText: text)
+                    }
                     self.drainQueuedPrompt()
                 }
             } catch {
@@ -489,12 +670,223 @@ final class WorkspaceAssistantSession: ObservableObject {
                     let detail = error.localizedDescription
                     DiagnosticLog.shared.fail(inferenceTimer, message: detail)
                     self.failAssistantMessage(id: messageID, detail: detail)
-                    self.statusText = "scout offline"
-                    self.isScoutAvailable = false
+                    if Self.isOfflineTargetError(error) {
+                        self.scoutBindingRef = nil
+                        self.scoutTargetLabel = nil
+                        self.statusText = "idle"
+                        self.isScoutAvailable = true
+                    } else {
+                        self.statusText = "scout offline"
+                        self.isScoutAvailable = false
+                    }
                     self.drainQueuedPrompt()
                 }
             }
         }
+    }
+
+    private func askWithOfflineRetry(
+        prompt: String,
+        projectPath: String,
+        bindingRef: String?
+    ) async throws -> ScoutAssistantReply {
+        do {
+            return try await scoutTransport.ask(
+                prompt: prompt,
+                projectPath: projectPath,
+                bindingRef: bindingRef
+            )
+        } catch {
+            guard Self.isOfflineTargetError(error),
+                  let bindingRef,
+                  !bindingRef.isEmpty else { throw error }
+
+            await MainActor.run {
+                self.scoutBindingRef = nil
+                self.scoutTargetLabel = nil
+                DiagnosticLog.shared.info(
+                    "Assistant · bound session offline — retrying project route \(projectPath)"
+                )
+            }
+            return try await scoutTransport.ask(
+                prompt: prompt,
+                projectPath: projectPath,
+                bindingRef: nil
+            )
+        }
+    }
+
+    private static func isOfflineTargetError(_ error: Error) -> Bool {
+        if let scoutError = error as? ScoutAssistantTransportError {
+            return scoutError.shouldClearBinding
+        }
+        let text = error.localizedDescription
+        return text.localizedCaseInsensitiveContains("offline session")
+            || text.localizedCaseInsensitiveContains("when online")
+    }
+
+    /// Direct chat path: HudsonAI provider stream (same credential vault as voice).
+    /// Skips Scout broker / offline session parking for ordinary assistant turns.
+    private func sendViaDirectProvider(
+        userText: String,
+        attachments: [WorkspaceAssistantAttachment],
+        messageID: UUID,
+        generation: Int,
+        inferenceTimer: DiagnosticLog.TimedAction
+    ) {
+        let provider = currentProvider
+        let system = chatSystemPrompt(attachments: attachments)
+        let history = chatHistoryMessages(excludingAssistantID: messageID)
+        let request = HudAIRequest(
+            model: provider.modelID,
+            messages: history + [.user(userText)],
+            system: system
+        )
+        let client = HudAIClient(
+            provider: provider.makeAdapter(),
+            model: provider.modelID,
+            hudVault: voiceVault,
+            defaults: HudAIDefaults(maxOutputTokens: 4_096, timeout: 120),
+            routeDefault: .local
+        )
+
+        streamingTask = Task { [weak self] in
+            guard let self else { return }
+            var accumulated = ""
+            do {
+                for try await event in client.stream(request) {
+                    try Task.checkCancellation()
+                    switch event {
+                    case .textDelta(_, let text):
+                        accumulated += text
+                        let snapshot = accumulated
+                        await MainActor.run { [weak self] in
+                            guard let self, self.turnGeneration == generation else { return }
+                            self.statusText = "streaming..."
+                            self.commitStreamingText(snapshot)
+                        }
+                    case .toolCallStarted(_, let name):
+                        await MainActor.run { [weak self] in
+                            guard let self, self.turnGeneration == generation else { return }
+                            self.statusText = "tool: \(name)"
+                        }
+                    case .completed(let response):
+                        if accumulated.isEmpty {
+                            accumulated = response.text
+                        }
+                    case .failed(let error):
+                        throw error
+                    case .cancelled:
+                        throw CancellationError()
+                    case .started, .reasoningDelta, .toolCallInputDelta, .toolCallReady,
+                         .toolResultAccepted, .usage:
+                        break
+                    }
+                }
+
+                let finalText = accumulated.trimmingCharacters(in: .whitespacesAndNewlines)
+                await MainActor.run { [weak self] in
+                    guard let self, self.turnGeneration == generation else { return }
+                    self.streamingTask = nil
+                    self.isSending = false
+                    self.statusText = "idle"
+                    DiagnosticLog.shared.finish(inferenceTimer)
+                    if finalText.isEmpty {
+                        self.failAssistantMessage(
+                            id: messageID,
+                            detail: "The model returned an empty reply."
+                        )
+                    } else {
+                        self.commitStreamingText(finalText)
+                        self.finalizeStreaming(finalText: finalText)
+                    }
+                    self.drainQueuedPrompt()
+                }
+            } catch is CancellationError {
+                await MainActor.run { [weak self] in
+                    guard let self, self.turnGeneration == generation else { return }
+                    self.streamingTask = nil
+                    // stop() already settled the UI; only clean up if still marked sending.
+                    if self.isSending {
+                        self.isSending = false
+                        self.statusText = "idle"
+                        self.settleActiveStreamingMessage(interrupted: true)
+                    }
+                }
+            } catch {
+                await MainActor.run { [weak self] in
+                    guard let self, self.turnGeneration == generation else { return }
+                    self.streamingTask = nil
+                    self.isSending = false
+                    let detail = error.localizedDescription
+                    DiagnosticLog.shared.fail(inferenceTimer, message: detail)
+                    self.failAssistantMessage(id: messageID, detail: detail)
+                    if Self.isAuthFailure(detail) {
+                        self.statusText = "setup ai"
+                        self.authErrorText = detail
+                        self.isAuthPanelVisible = true
+                    } else {
+                        self.statusText = "idle"
+                    }
+                    self.drainQueuedPrompt()
+                }
+            }
+        }
+    }
+
+    /// Prior turns for multi-turn chat (excludes the empty streaming placeholder).
+    private func chatHistoryMessages(excludingAssistantID: UUID) -> [HudAIMessage] {
+        messages.compactMap { message -> HudAIMessage? in
+            if message.id == excludingAssistantID { return nil }
+            let text = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { return nil }
+            switch message.role {
+            case .user:
+                return .user(text)
+            case .assistant:
+                // Skip prior error cards — they pollute the model context.
+                if text.hasPrefix("**Assistant error**") { return nil }
+                return .assistant(text)
+            case .system:
+                return nil
+            }
+        }
+    }
+
+    private func chatSystemPrompt(attachments: [WorkspaceAssistantAttachment] = []) -> String {
+        let knowledge = Self.capabilitiesGuide
+        let knowledgeBlock = knowledge.isEmpty ? "" : """
+
+            Lattices product knowledge (how the app works; cite the linked docs when a question goes deeper):
+            \(knowledge)
+            """
+        let attachmentBlock = attachments.isEmpty ? "" : """
+
+            Attached files:
+            \(assistantAttachmentBlock(attachments))
+            """
+        return """
+        You are the Workspace Assistant, the in-app assistant for Lattices.
+
+        Use the structured context as ground truth for this user's current configuration, and the product knowledge to explain how Lattices works and point to the right feature or doc. Answer naturally and concretely. For informational questions, explain what is currently configured and what the available choices mean.
+
+        For setting changes, say what should change and the exact next step if you cannot apply it yourself. Never claim a setting or file changed unless you know it did.
+        \(knowledgeBlock)
+        \(attachmentBlock)
+
+        Structured context:
+        \(assistantKnowledgeBrief())
+        """
+    }
+
+    private static func isAuthFailure(_ detail: String) -> Bool {
+        let lower = detail.lowercased()
+        return lower.contains("unauthorized")
+            || lower.contains("invalid api key")
+            || lower.contains("authentication")
+            || lower.contains("401")
+            || lower.contains("missing api key")
+            || lower.contains("no credential")
     }
 
     func askVoiceAdvisor(transcript: String, matched: String, callback: @escaping (AgentResponse?) -> Void) {
@@ -747,10 +1139,10 @@ final class WorkspaceAssistantSession: ObservableObject {
     /// `interrupted`, tag the partial so it reads as deliberately cut off.
     private func settleActiveStreamingMessage(interrupted: Bool) {
         guard let id = streamingMessageID else { return }
-        let full = streamingTargetText
+        let full = streamingTargetText.trimmingCharacters(in: .whitespacesAndNewlines)
         resetStreamingDrain()
         streamingMessageID = nil
-        if full.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if full.isEmpty {
             removeMessageIfEmpty(id: id)
         } else if interrupted {
             updateAssistantMessage(id: id, text: full + "\n\n— stopped —")
@@ -773,6 +1165,7 @@ final class WorkspaceAssistantSession: ObservableObject {
     private func stop(drainQueue: Bool) {
         turnGeneration &+= 1
         scoutTransport.cancelCurrentTurn()
+        AgentRuntimeTransport.shared.interrupt()
         streamingTask?.cancel()
         streamingTask = nil
         isSending = false
@@ -906,6 +1299,7 @@ final class WorkspaceAssistantSession: ObservableObject {
 
     private func invalidateChatRuntime() {
         scoutTransport.cancelCurrentTurn()
+        AgentRuntimeTransport.shared.interrupt()
         streamingTask?.cancel()
         streamingTask = nil
     }
@@ -958,7 +1352,7 @@ final class WorkspaceAssistantSession: ObservableObject {
         return """
         Welcome to the Workspace Assistant.
 
-        Chat is routed through your existing Scout broker and stays attached to one Scout session until you clear it. No separate model authorization is required in Lattices.
+        Chat prefers a local agent runtime (Claude Code, Codex, Pi, OpenCode — ACP under the covers when the harness uses it). Falls back to a saved API key or Scout if no local runtime is ready.
         """
     }
 
@@ -1394,10 +1788,11 @@ final class WorkspaceAssistantSession: ObservableObject {
             "assistant": [
                 "name": "Workspace Assistant",
                 "chatRuntime": [
-                    "transport": "Scout local broker",
-                    "authorization": "Inherited from Scout",
-                    "bindingRef": scoutBindingRef ?? "new session",
-                    "target": scoutTargetLabel ?? "Scout project route",
+                    "transportPreference": ["agent-runtime", "hudson-ai-api", "scout"],
+                    "agentRuntimeHarness": agentRuntimeHarnessLabel ?? preferredAgentHarness ?? "auto",
+                    "apiProvider": currentProvider.name,
+                    "apiModel": currentProvider.modelID,
+                    "apiCredential": selectedCredentialSummary,
                 ],
                 "voiceProvider": [
                     "id": authProviderID,

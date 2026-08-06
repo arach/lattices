@@ -4,6 +4,12 @@ import SwiftUI
 final class MenuBarController: NSObject, NSPopoverDelegate {
     static let shared = MenuBarController()
 
+    /// Collapsed quick-actions layout (Move row closed).
+    static let popoverHeightCollapsed: CGFloat = 360
+    /// Move grid unfolded — room for 3×3 slots + thirds row.
+    static let popoverHeightExpanded: CGFloat = 540
+    static let popoverWidth: CGFloat = 380
+
     private var statusItem: NSStatusItem?
     private var popover: NSPopover?
     private var contextMenu: NSMenu?
@@ -39,9 +45,22 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         popover?.performClose(nil)
     }
 
+    /// Resize the menu-bar popover when inline sections expand (e.g. Move grid).
+    func setPopoverContentHeight(_ height: CGFloat) {
+        guard let popover else { return }
+        let size = NSSize(width: Self.popoverWidth, height: height)
+        guard popover.contentSize != size else { return }
+        popover.contentSize = size
+    }
+
     private func showProjectsPopover() {
         guard let button = statusItem?.button else { return }
         let popover = makePopover()
+        // Always open collapsed; Move expands on demand.
+        popover.contentSize = NSSize(
+            width: Self.popoverWidth,
+            height: Self.popoverHeightCollapsed
+        )
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         popover.contentViewController?.view.window?.sharingType = .readOnly
         popover.contentViewController?.view.window?.makeKey()
@@ -66,7 +85,14 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         let popover = NSPopover()
         popover.contentViewController = NSHostingController(rootView: MainView(scanner: ProjectScanner.shared))
         popover.behavior = .transient
-        popover.contentSize = NSSize(width: 380, height: 430)
+        // Keep resize of contentSize (Move expand/collapse) non-animated —
+        // animating NSPopover + SwiftUI layout has crashed with nested material
+        // resolve (EXC_BAD_ACCESS / stack guard) on recent macOS builds.
+        popover.animates = false
+        popover.contentSize = NSSize(
+            width: Self.popoverWidth,
+            height: Self.popoverHeightCollapsed
+        )
         popover.appearance = NSAppearance(named: .darkAqua)
         popover.delegate = self
         self.popover = popover
