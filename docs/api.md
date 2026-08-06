@@ -4,7 +4,9 @@ description: WebSocket API reference for programmatic control of lattices
 order: 5
 ---
 
-The lattices menu bar app runs a WebSocket server on `ws://127.0.0.1:9399`.
+The lattices menu bar app runs a WebSocket server on `ws://127.0.0.1:9399`
+(agent API). The same process also hosts the voice live-session runtime on
+`ws://127.0.0.1:9398` (see [Voice](/docs/voice) — deterministic Lattices ports).
 35+ RPC methods and 5 real-time events.
 
 ## Quick start

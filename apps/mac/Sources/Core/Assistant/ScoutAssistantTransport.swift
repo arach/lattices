@@ -11,6 +11,8 @@ enum ScoutAssistantTransportError: LocalizedError {
     case invalidResponse(String)
     case commandFailed(String)
     case emptyReply
+    /// Flight parked for an offline/offline-queued target — not worth a 10‑minute wait.
+    case targetOffline(summary: String, targetLabel: String?)
 
     var errorDescription: String? {
         switch self {
@@ -22,7 +24,20 @@ enum ScoutAssistantTransportError: LocalizedError {
             return detail.isEmpty ? "Scout could not complete this turn." : detail
         case .emptyReply:
             return "Scout completed the turn without returning a reply."
+        case .targetOffline(let summary, let targetLabel):
+            let target = (targetLabel?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
+            // Keep user-facing copy product-level; avoid "Waiting for …" style transport copy.
+            if let target {
+                return "The assistant session is offline (\(target)). \(summary) The binding was cleared — try again."
+            }
+            return "The assistant session is offline. \(summary) The binding was cleared — try again."
         }
+    }
+
+    /// True when the binding should be dropped so the next ask re-resolves a live target.
+    var shouldClearBinding: Bool {
+        if case .targetOffline = self { return true }
+        return false
     }
 }
 
@@ -75,24 +90,50 @@ final class ScoutAssistantTransport {
             ?? bindingRef
         let targetLabel = Self.string(in: ids, key: "targetAgentId")
 
-        if let immediate = Self.replyText(fromFlight: receipt["flight"] as? [String: Any]) {
+        let receiptFlight = receipt["flight"] as? [String: Any]
+        if let immediate = Self.replyText(fromFlight: receiptFlight) {
             return ScoutAssistantReply(text: immediate, bindingRef: nextRef, targetLabel: targetLabel)
+        }
+
+        // Offline targets return state=queued with "when online" and never complete
+        // until the session wakes — do not hang the composer for the full wait window.
+        if let offline = Self.offlineQueueError(fromFlight: receiptFlight, targetLabel: targetLabel) {
+            throw offline
         }
 
         guard let invocationID, !invocationID.isEmpty else {
             throw ScoutAssistantTransportError.invalidResponse("The ask receipt did not include an invocation id.")
         }
 
+        // Cap wait well under Scout's multi-minute parking window so a stuck
+        // flight surfaces as an error instead of a permanent LIVE / Composing card.
         let waitData = try await run(
-            arguments: ["--json", "wait", invocationID, "--timeout", "600"],
+            arguments: ["--json", "wait", invocationID, "--timeout", "90"],
             currentDirectory: projectPath
         )
         let wait = try Self.jsonObject(from: waitData)
         if let error = Self.string(in: wait, key: "error"), !error.isEmpty {
             throw ScoutAssistantTransportError.commandFailed(error)
         }
+
+        let waitFlight = wait["flight"] as? [String: Any] ?? receiptFlight
+        if wait["timedOut"] as? Bool == true {
+            if let offline = Self.offlineQueueError(fromFlight: waitFlight, targetLabel: targetLabel) {
+                throw offline
+            }
+            let summary = Self.string(in: waitFlight, key: "summary")
+                ?? Self.string(in: wait, key: "summary")
+                ?? "No reply yet."
+            throw ScoutAssistantTransportError.commandFailed(
+                "Scout timed out waiting for a reply. \(summary)"
+            )
+        }
+
         guard let output = Self.string(in: wait, key: "output")?.trimmingCharacters(in: .whitespacesAndNewlines),
               !output.isEmpty else {
+            if let offline = Self.offlineQueueError(fromFlight: waitFlight, targetLabel: targetLabel) {
+                throw offline
+            }
             if let summary = Self.string(in: wait, key: "summary")?.trimmingCharacters(in: .whitespacesAndNewlines),
                !summary.isEmpty {
                 return ScoutAssistantReply(text: summary, bindingRef: nextRef, targetLabel: targetLabel)
@@ -110,8 +151,7 @@ final class ScoutAssistantTransport {
     }
 
     private var executableURL: URL? {
-        let environment = ProcessInfo.processInfo.environment
-        let pathCandidates = (environment["PATH"] ?? "")
+        let pathCandidates = Self.enrichedPath
             .split(separator: ":")
             .map { String($0) + "/scout" }
         let home = FileManager.default.homeDirectoryForCurrentUser.path
@@ -123,6 +163,33 @@ final class ScoutAssistantTransport {
         ]
         return candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) })
             .map(URL.init(fileURLWithPath:))
+    }
+
+    /// PATH with common user install prefixes prepended so GUI-spawned Scout
+    /// can resolve `bun` / `node` (macOS LaunchServices PATH is often bare).
+    private static var enrichedPath: String {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let prefixes = [
+            "\(home)/.bun/bin",
+            "\(home)/.local/bin",
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+        ]
+        let existing = (ProcessInfo.processInfo.environment["PATH"] ?? "")
+            .split(separator: ":")
+            .map(String.init)
+        var seen = Set<String>()
+        var parts: [String] = []
+        for part in prefixes + existing where !part.isEmpty && seen.insert(part).inserted {
+            parts.append(part)
+        }
+        return parts.joined(separator: ":")
+    }
+
+    private static func processEnvironment() -> [String: String] {
+        var env = ProcessInfo.processInfo.environment
+        env["PATH"] = enrichedPath
+        return env
     }
 
     private func run(
@@ -155,6 +222,9 @@ final class ScoutAssistantTransport {
             let process = Process()
             process.executableURL = executableURL
             process.arguments = arguments
+            // GUI apps inherit a minimal PATH from LaunchServices, so scout's
+            // shell wrapper cannot find bun/node unless we restore user bins.
+            process.environment = Self.processEnvironment()
             if let currentDirectory, FileManager.default.fileExists(atPath: currentDirectory) {
                 process.currentDirectoryURL = URL(fileURLWithPath: currentDirectory, isDirectory: true)
             }
@@ -167,7 +237,29 @@ final class ScoutAssistantTransport {
             }
 
             try process.run()
-            process.waitUntilExit()
+            // Wall-clock cap so a hung scout binary cannot leave the composer on
+            // "Composing…" forever (wait --timeout alone is not enough if the
+            // process never returns).
+            let wallSeconds = Self.wallClockSeconds(for: arguments)
+            let deadline = Date().addingTimeInterval(wallSeconds)
+            while process.isRunning, Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.05)
+                try Task.checkCancellation()
+            }
+            if process.isRunning {
+                process.terminate()
+                // Brief grace, then hard kill if still alive.
+                let killDeadline = Date().addingTimeInterval(1.0)
+                while process.isRunning, Date() < killDeadline {
+                    Thread.sleep(forTimeInterval: 0.05)
+                }
+                if process.isRunning {
+                    process.interrupt()
+                }
+                throw ScoutAssistantTransportError.commandFailed(
+                    "Scout timed out after \(Int(wallSeconds))s (\(arguments.dropFirst().prefix(3).joined(separator: " ")))."
+                )
+            }
             try stdout.synchronize()
             try stderr.synchronize()
             try Task.checkCancellation()
@@ -186,6 +278,14 @@ final class ScoutAssistantTransport {
         }.value
     }
 
+    /// Max seconds a Scout subprocess may live before Lattices kills it.
+    static func wallClockSeconds(for arguments: [String]) -> TimeInterval {
+        if arguments.contains("wait") { return 105 }
+        if arguments.contains("whoami") { return 8 }
+        if arguments.contains("ask") { return 45 }
+        return 30
+    }
+
     private static func jsonObject(from data: Data) throws -> [String: Any] {
         guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             let text = String(data: data, encoding: .utf8) ?? ""
@@ -201,6 +301,28 @@ final class ScoutAssistantTransport {
     private static func replyText(fromFlight flight: [String: Any]?) -> String? {
         guard flight?["state"] as? String == "completed" else { return nil }
         return (flight?["output"] as? String) ?? (flight?["summary"] as? String)
+    }
+
+    /// Detect Scout parking a flight for a session that is not currently online.
+    static func offlineQueueError(
+        fromFlight flight: [String: Any]?,
+        targetLabel: String?
+    ) -> ScoutAssistantTransportError? {
+        guard let flight else { return nil }
+        let state = (flight["state"] as? String)?.lowercased() ?? ""
+        let summary = string(in: flight, key: "summary")?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let looksOffline =
+            summary.localizedCaseInsensitiveContains("when online")
+            || summary.localizedCaseInsensitiveContains("will deliver when")
+            || summary.localizedCaseInsensitiveContains("offline")
+        let parked = state == "queued" || state == "pending" || state == "deferred"
+        // Definitive signal: parked + offline wording (e.g. "Will deliver when online").
+        guard parked && looksOffline else { return nil }
+        return .targetOffline(
+            summary: summary.isEmpty ? "Will deliver when the target is online." : summary,
+            targetLabel: targetLabel ?? string(in: flight, key: "targetAgentId")
+        )
     }
 
     private static func normalizedRef(_ value: String) -> String {

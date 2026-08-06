@@ -27,6 +27,26 @@ runner.onEvent((sequenced) => {
   write({ type: "event", event: sequenced.event ?? sequenced });
 });
 
+// Also mirror registry adapter errors as structured events so native hosts
+// do not have to scrape stderr for "claude exited with code 1".
+const originalError = console.error.bind(console);
+console.error = (...args) => {
+  originalError(...args);
+  const joined = args.map((a) => (typeof a === "string" ? a : a?.message ?? String(a))).join(" ");
+  if (joined.includes("adapter error")) {
+    const message = joined.replace(/^.*adapter error\s*\([^)]*\):\s*/i, "").trim() || joined;
+    write({
+      type: "event",
+      event: {
+        event: "turn:error",
+        sessionId: "unknown",
+        turnId: "unknown",
+        message,
+      },
+    });
+  }
+};
+
 function write(obj) {
   process.stdout.write(JSON.stringify(obj) + "\n");
 }

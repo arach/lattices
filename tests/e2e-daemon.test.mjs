@@ -108,6 +108,47 @@ test("tmux.inventory returns array buckets", async () => {
   assert.ok(Array.isArray(inventory.orphans));
 });
 
+test("spaces.list returns displays with ordered spaces and a current space", async () => {
+  const payload = await daemonCall("spaces.list");
+  // Daemon may return an array of displays or { displays: [...] }.
+  const displays = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.displays)
+      ? payload.displays
+      : null;
+  assert.ok(Array.isArray(displays), "spaces.list should return displays");
+  assert.ok(displays.length > 0, "expected at least one display");
+
+  for (const display of displays) {
+    assert.equal(typeof display.displayIndex, "number");
+    assert.ok(Array.isArray(display.spaces), "display.spaces must be an array");
+    assert.ok(display.spaces.length > 0, "display should list at least one space");
+    assert.equal(typeof display.currentSpaceId, "number");
+
+    let currentCount = 0;
+    for (const space of display.spaces) {
+      assert.equal(typeof space.id, "number");
+      if (typeof space.index === "number") {
+        assert.ok(space.index >= 1, "space.index is 1-based when present");
+      }
+      if (space.isCurrent === true || space.id === display.currentSpaceId) {
+        currentCount += 1;
+      }
+    }
+    assert.ok(
+      currentCount >= 1,
+      `display ${display.displayId ?? display.displayIndex} should mark a current space`
+    );
+  }
+
+  // Contract for previous/next math: spaces are ordered; first has no prev, last no next.
+  const primary = displays[0];
+  if (primary.spaces.length >= 2) {
+    const ids = primary.spaces.map((s) => s.id);
+    assert.equal(new Set(ids).size, ids.length, "space ids unique per display");
+  }
+});
+
 test("voice.simulate parses a search command without executing", async () => {
   const result = await daemonCall("voice.simulate", {
     text: "find lattices",

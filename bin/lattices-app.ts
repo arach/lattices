@@ -569,7 +569,9 @@ function buildFromSource(): boolean {
 
   mkdirSync(binaryDir, { recursive: true });
   execSync(`cp '${builtPath}' '${binaryPath}'`);
-  writeInfoPlist();
+  // Source builds are local/dev — stamp channel so Settings shows DEV, not the
+  // release fallback when LatticesBuildChannel is missing from Info.plist.
+  writeInfoPlist({ channel: "dev" });
   syncBundleResources();
 
   // Re-sign the bundle so macOS TCC recognizes a stable identity across rebuilds.

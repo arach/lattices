@@ -541,17 +541,26 @@ final class AudioLayer: ObservableObject {
 final class HudVoxAudioProvider: AudioProvider {
     private var session: HudVoxLiveSession?
     private var pumpTask: Task<Void, Never>?
+    private var stopTimeoutTask: Task<Void, Never>?
     private var onTranscript: ((Transcription) -> Void)?
     private var stopCompletion: ((Transcription?) -> Void)?
     private var _isListening = false
     private var finalDelivered = false
     private var lastProviderError: String?
+    private var listeningStartedAt: Date?
+    /// Match WorkspaceVoiceInput: short taps produce empty WAVs; stop needs a deadline.
+    private static let minimumRecordingNanoseconds: UInt64 = 700_000_000
+    private static let stopTimeoutNanoseconds: UInt64 = 10_000_000_000
 
-    var isAvailable: Bool { HudsonVoiceRuntimeResolver.resolve(clientId: "lattices") != nil }
+    var isAvailable: Bool {
+        LatticesVoiceRuntime.ensureRunning()
+        return HudsonVoiceRuntimeResolver.resolve(clientId: "lattices") != nil
+    }
     var isListening: Bool { _isListening }
     var lastErrorMessage: String? { lastProviderError }
 
     func checkHealth(completion: @escaping (Bool) -> Void) {
+        _ = LatticesVoiceRuntime.ensureRunning()
         guard let runtime = HudsonVoiceRuntimeResolver.resolve(clientId: "lattices") else {
             lastProviderError = "Voice runtime unavailable"
             completion(false)
@@ -561,7 +570,8 @@ final class HudVoxAudioProvider: AudioProvider {
             do {
                 _ = try await HudVoxProbe.health(
                     endpoint: runtime.endpoint,
-                    clientId: runtime.options.clientId
+                    clientId: runtime.options.clientId,
+                    authToken: runtime.options.authToken ?? runtime.authToken
                 )
                 await MainActor.run {
                     self.lastProviderError = nil
@@ -583,10 +593,13 @@ final class HudVoxAudioProvider: AudioProvider {
         self.onTranscript = onTranscript
         _isListening = true
         finalDelivered = false
+        listeningStartedAt = Date()
 
+        _ = LatticesVoiceRuntime.ensureRunning()
         guard let runtime = HudsonVoiceRuntimeResolver.resolve(clientId: "lattices") else {
             DiagnosticLog.shared.warn("HudVoxAudioProvider: cannot start because HudsonVoice runtime is unavailable")
             _isListening = false
+            listeningStartedAt = nil
             self.onTranscript = nil
             lastProviderError = "Voice runtime unavailable"
             AudioLayer.shared.setFinalResult("Voice runtime unavailable", warning: true)
@@ -621,7 +634,33 @@ final class HudVoxAudioProvider: AudioProvider {
         }
         DiagnosticLog.shared.info("HudVoxAudioProvider: stopping session")
         self.stopCompletion = completion
-        Task { try? await session.stop() }
+
+        // Pad short captures so the mic buffer is not empty; then hard-stop
+        // if the runtime never delivers a final transcript.
+        let started = listeningStartedAt ?? Date()
+        let elapsedNs = UInt64(max(0, Date().timeIntervalSince(started)) * 1_000_000_000)
+        let padNs = elapsedNs < Self.minimumRecordingNanoseconds
+            ? Self.minimumRecordingNanoseconds - elapsedNs
+            : 0
+
+        stopTimeoutTask?.cancel()
+        stopTimeoutTask = Task { [weak self] in
+            if padNs > 0 {
+                try? await Task.sleep(nanoseconds: padNs)
+            }
+            guard !Task.isCancelled else { return }
+            try? await session.stop()
+
+            try? await Task.sleep(nanoseconds: Self.stopTimeoutNanoseconds)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard let self, !self.finalDelivered else { return }
+                DiagnosticLog.shared.warn("HudVoxAudioProvider: stop timed out waiting for final transcript")
+                self.lastProviderError = "Transcription timed out"
+                AudioLayer.shared.setFinalResult("Transcription timed out", error: "Transcription timed out", warning: true)
+                self.streamEnded(error: nil)
+            }
+        }
     }
 
     // MARK: - Event handling (main actor)
@@ -646,6 +685,9 @@ final class HudVoxAudioProvider: AudioProvider {
         guard !finalDelivered else { return }
         finalDelivered = true
         _isListening = false
+        listeningStartedAt = nil
+        stopTimeoutTask?.cancel()
+        stopTimeoutTask = nil
         let t = Transcription(text: text, confidence: 0.95, source: "hudson-voice", isPartial: false, durationMs: elapsedMs)
         DiagnosticLog.shared.info("HudVoxAudioProvider: transcribed → '\(text)' (\(elapsedMs)ms)")
         // onTranscript drives the streaming-execute path; stopCompletion the stop path.
@@ -664,6 +706,9 @@ final class HudVoxAudioProvider: AudioProvider {
     @MainActor
     private func streamEnded(error: Error?) {
         _isListening = false
+        listeningStartedAt = nil
+        stopTimeoutTask?.cancel()
+        stopTimeoutTask = nil
         if !finalDelivered {
             if let error {
                 let message = Self.voiceRuntimeMessage(for: error)
@@ -676,6 +721,8 @@ final class HudVoxAudioProvider: AudioProvider {
             stopCompletion = nil
             finalDelivered = true
         }
+        pumpTask?.cancel()
+        session?.close()
         session = nil
         pumpTask = nil
     }

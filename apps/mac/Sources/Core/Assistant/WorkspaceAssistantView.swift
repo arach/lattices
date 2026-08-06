@@ -69,7 +69,7 @@ struct WorkspaceAssistantView: View {
     }
 
     private var headerSubtitle: String {
-        "Scout-backed chat for settings, layout help, planning, and debugging."
+        "Local agent runtime chat for settings, layout help, planning, and debugging."
     }
 
     private var statusPill: some View {

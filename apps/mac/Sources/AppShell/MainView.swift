@@ -155,14 +155,6 @@ struct MainView: View {
                     .fill(Palette.border)
                     .frame(height: 0.5)
 
-                FrontWindowPlacementGrid {
-                    MenuBarController.shared.dismissPopover()
-                }
-
-                Rectangle()
-                    .fill(Palette.border)
-                    .frame(height: 0.5)
-
                 actionsSection
 
                 Rectangle()
@@ -353,6 +345,21 @@ struct MainView: View {
             .padding(.horizontal, 14)
             .padding(.top, 10)
             .padding(.bottom, 6)
+
+            // Move is a one-line action that unfolds the placement grid —
+            // keeps the popover compact until you need window spots.
+            FrontWindowPlacementGrid(
+                onPlaced: {
+                    MenuBarController.shared.dismissPopover()
+                },
+                onExpandedChange: { expanded in
+                    MenuBarController.shared.setPopoverContentHeight(
+                        expanded
+                            ? MenuBarController.popoverHeightExpanded
+                            : MenuBarController.popoverHeightCollapsed
+                    )
+                }
+            )
 
             ActionRow(
                 label: "Assistant",
