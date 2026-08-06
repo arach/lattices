@@ -2424,15 +2424,29 @@ struct SettingsContentView: View {
                                 Text("HudsonVoice runtime")
                                     .font(Typo.mono(12))
                                     .foregroundColor(Palette.text)
-                                Text("Voice mode is compiled in. The Workspace Assistant mic uses HudsonVoice's Vox local WebSocket session.")
+                                Text("Lattices hosts the voice engine in-process on a fixed loopback port. The Workspace Assistant mic, Hands-Off, and voice commands all use that session.")
                                     .font(Typo.caption(9.5))
                                     .foregroundColor(Palette.textMuted)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                         }
 
+                        Text("Well-known endpoint: \(LatticesLocalEndpoints.voiceRuntimeWebSocketURL)")
+                            .font(Typo.mono(10))
+                            .foregroundColor(Palette.textDim)
+
+                        if LatticesVoiceRuntime.isRunning {
+                            Text("Host: running")
+                                .font(Typo.mono(10))
+                                .foregroundColor(Palette.running)
+                        } else {
+                            Text("Host: not running — restart Lattices if dictation fails")
+                                .font(Typo.mono(10))
+                                .foregroundColor(Palette.kill)
+                        }
+
                         if let runtime = HudsonVoiceRuntimeResolver.resolve(clientId: "lattices") {
-                            Text("Endpoint: \(runtime.endpoint.url.absoluteString)")
+                            Text("Resolved: \(runtime.endpoint.url.absoluteString) (\(runtime.source))")
                                 .font(Typo.mono(10))
                                 .foregroundColor(Palette.textDim)
                         }
@@ -2833,11 +2847,11 @@ struct SettingsContentView: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .center, spacing: 10) {
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(scoutTint.opacity(0.13))
+                        .fill(chatTransportTint.opacity(0.13))
                         .overlay(
-                            Image(systemName: "point.3.connected.trianglepath.dotted")
+                            Image(systemName: "bubble.left.and.bubble.right")
                                 .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(scoutTint)
+                                .foregroundColor(chatTransportTint)
                         )
                         .frame(width: 30, height: 30)
 
@@ -2853,10 +2867,10 @@ struct SettingsContentView: View {
 
                     Spacer()
 
-                    aiStatusPill(scoutStatusLabel, tint: scoutTint)
+                    aiStatusPill(chatTransportStatusLabel, tint: chatTransportTint)
                 }
 
-                Text("In-app chat uses your existing local Scout broker and Scout session. Lattices does not ask for or store a separate model credential for chat.")
+                Text("Chat prefers a local agent runtime (Claude Code, Codex, Pi, OpenCode — ACP when the harness uses it). Falls back to a saved API key (HudsonAI), then Scout.")
                     .font(Typo.caption(10))
                     .foregroundColor(Palette.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -2864,12 +2878,36 @@ struct SettingsContentView: View {
                 cardDivider
 
                 VStack(alignment: .leading, spacing: 8) {
-                    voiceFactRow("Transport", value: "Scout local broker", detail: "Scout owns model routing, authorization, and the concrete harness session.")
-                    voiceFactRow("Conversation", value: "Persistent ref", detail: "Follow-up turns reuse the same Scout session until you clear the chat.")
-                    voiceFactRow("Chat credential", value: "None in Lattices", detail: "Any provider authentication remains owned by Scout.")
+                    voiceFactRow(
+                        "Transport",
+                        value: assistantSession.chatTransportSummary,
+                        detail: "Order: agent-runtime → API key → Scout."
+                    )
+                    voiceFactRow(
+                        "Preferred harness",
+                        value: assistantSession.preferredAgentHarness ?? "auto",
+                        detail: "Auto picks pi, then claude-code, codex, opencode."
+                    )
+                    voiceFactRow("API fallback", value: assistantSession.currentProvider.name, detail: "Used when no local harness is available and a key is saved.")
+                    voiceFactRow("API credential", value: assistantSession.selectedCredentialSummary, detail: "Optional for chat; used for HudsonAI API fallback and voice interpretation.")
                 }
                 .padding(10)
                 .background(shortcutsInsetPanel)
+
+                HStack(spacing: 8) {
+                    ForEach(["auto", "claude-code", "codex", "pi", "opencode"], id: \.self) { harness in
+                        aiActionButton(
+                            harness,
+                            tint: (assistantSession.preferredAgentHarness ?? "auto") == harness
+                                || (harness == "auto" && assistantSession.preferredAgentHarness == nil)
+                                ? Palette.running
+                                : Palette.textMuted
+                        ) {
+                            assistantSession.preferredAgentHarness = harness == "auto" ? nil : harness
+                        }
+                    }
+                    Spacer()
+                }
 
                 HStack {
                     aiActionButton("Refresh Scout", tint: Palette.running) {
@@ -2977,6 +3015,22 @@ struct SettingsContentView: View {
         case true: return "SCOUT READY"
         case false: return "SCOUT OFFLINE"
         case nil: return "CHECKING"
+        }
+    }
+
+    private var chatTransportTint: Color {
+        Palette.running
+    }
+
+    private var chatTransportStatusLabel: String {
+        if let harness = assistantSession.agentRuntimeHarnessLabel {
+            return harness.uppercased()
+        }
+        if assistantSession.hasSelectedCredential { return "API READY" }
+        switch assistantSession.isScoutAvailable {
+        case true: return "SCOUT FALLBACK"
+        case false: return "SCOUT OFFLINE"
+        case nil: return "RUNTIME"
         }
     }
 

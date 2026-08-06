@@ -446,7 +446,7 @@ struct FleetConsoleButton: View {
             }
             .foregroundStyle(isEnabled ? tint : FleetV6.fg4)
             .frame(maxWidth: .infinity)
-            .frame(height: 32)
+            .frame(height: 44)
             .background { FleetKeycapBackground(radius: 7) }
             .opacity(isEnabled ? 1 : 0.55)
             .contentShape(Rectangle())

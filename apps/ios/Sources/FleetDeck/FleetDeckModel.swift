@@ -154,11 +154,18 @@ struct FleetCommandTile: Identifiable {
     var symbol: String
     var actionID: String?
     var payload: [String: DeckValue] = [:]
+    var isEnabled: Bool = true
+    var col: Int? = nil
+    var row: Int? = nil
+    var colSpan: Int = 1
+    var rowSpan: Int = 1
 }
 
 struct FleetCommandSet: Identifiable {
     let id: String
     var key: String
+    var columns: Int = 4
+    var rows: Int? = nil
     var tiles: [FleetCommandTile]
 }
 

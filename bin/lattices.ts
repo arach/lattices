@@ -2689,7 +2689,7 @@ const tilePresets: Record<string, (s: ScreenBounds) => number[]> = {
   "maximize":     (s) => [s.x, s.y, s.x + s.w, s.y + s.h],
   "max":          (s) => [s.x, s.y, s.x + s.w, s.y + s.h],
   "center":       (s) => {
-    const mw = Math.round(s.w * 0.7);
+    const mw = Math.round(s.w * 0.8);
     const mh = Math.round(s.h * 0.8);
     const mx = s.x + Math.round((s.w - mw) / 2);
     const my = s.y + Math.round((s.h - mh) / 2);

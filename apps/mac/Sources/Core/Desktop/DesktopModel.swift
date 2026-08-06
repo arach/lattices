@@ -83,8 +83,30 @@ final class DesktopModel: ObservableObject {
         Array(windows.values).sorted { $0.zIndex < $1.zIndex }
     }
 
+    /// The frontmost window a user would call "the current window".
+    ///
+    /// Raw z-order is not enough: apps keep untitled helper surfaces (Chrome's
+    /// 64×64 status/drag windows, tooltip and panel shims) in the window list,
+    /// and those routinely sort above the real window. They are also absent from
+    /// the app's `AXWindows`, so tiling one resolves 0 moves and then reports
+    /// "drifted" forever. Filter to windows that can actually be placed, and
+    /// prefer the AX-focused window when it survives the same filter.
     func frontmostWindow() -> WindowEntry? {
-        windows.values.min { $0.zIndex < $1.zIndex }
+        let placeable = windows.values.filter(Self.isPlaceableTarget)
+        if let focused = focusedWindowID.flatMap({ windows[$0] }),
+           Self.isPlaceableTarget(focused) {
+            return focused
+        }
+        return placeable.min { $0.zIndex < $1.zIndex }
+    }
+
+    /// Minimum size for a window to count as a real, user-facing target.
+    private static let minTargetSide: Double = 120
+
+    static func isPlaceableTarget(_ entry: WindowEntry) -> Bool {
+        guard entry.isOnScreen, !entry.title.isEmpty else { return false }
+        guard entry.frame.w >= minTargetSide, entry.frame.h >= minTargetSide else { return false }
+        return entry.pid != getpid()   // never target Lattices' own panels
     }
 
     func focusedWindow() -> WindowEntry? {

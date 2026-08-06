@@ -151,7 +151,7 @@ frontmost window.
 | Left Third   | Left third                      |
 | Center Third | Center third                    |
 | Right Third  | Right third                     |
-| Center       | 70% width, 80% height, centered |
+| Center       | 80% width, 80% height, centered (20% margin all sides) |
 
 ## Space navigation
 
@@ -343,6 +343,18 @@ More in the [Agent API reference](/docs/api#ocrsnapshot).
 
 - **Screen Recording** permission — required to capture window images
 - Granted via System Settings > Privacy & Security > Screen Recording
+
+## Local loopback services
+
+The menu bar process owns fixed loopback ports (see `LatticesLocalEndpoints`):
+
+| Service | Port | Endpoint |
+|---------|------|----------|
+| Agent API / daemon | **9399** | `ws://127.0.0.1:9399` |
+| Voice runtime (Hudson Voice / Vox) | **9398** | `ws://127.0.0.1:9398` |
+
+Both start automatically when the app launches and stop when the app quits.
+Voice does not require an external `voxd` for normal operation.
 
 ## Agent API server
 

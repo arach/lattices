@@ -93,11 +93,11 @@ enum FleetV6 {
         static let padH: CGFloat = 16
         static let padTop: CGFloat = 12
         static let padBottom: CGFloat = 9
-        static let stackGap: CGFloat = 9
+        static let stackGap: CGFloat = 8
 
         static let topBarHeight: CGFloat = 26
-        static let channelsHeight: CGFloat = 158
-        static let channelsRailHeight: CGFloat = 52     // .layout-focus
+        static let channelsHeight: CGFloat = 52
+        static let channelsRailHeight: CGFloat = 52
         static let voiceBarHeight: CGFloat = 58
         static let statusHeight: CGFloat = 26
 
@@ -108,13 +108,15 @@ enum FleetV6 {
         static let panelBodyPadH: CGFloat = 15
         static let panelBodyPadV: CGFloat = 12
         static let bodyGap: CGFloat = 14
-        static let consoleWidth: CGFloat = 390          // #bodyOps  390px 1fr
-        static let focusConsoleWidth: CGFloat = 340     // #bodyFocus 1fr 340px
+        static let consoleWidth: CGFloat = 340
+        static let focusConsoleWidth: CGFloat = 320
+        static let consoleBodyHeight: CGFloat = 280
+        static let decisionBodyHeight: CGFloat = 360
 
         static let tilesHeight: CGFloat = 128
         static let tileGap: CGFloat = 8
         static let trackpadHeight: CGFloat = 84
-        static let keyRowHeight: CGFloat = 46
+        static let keyRowHeight: CGFloat = 52
     }
 
     // MARK: Helper

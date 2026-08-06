@@ -13,7 +13,7 @@ All valid position strings that `TilePosition` accepts:
 | Position string | Grid | Cell (col, row) | Description |
 |---|---|---|---|
 | `maximize` | 1×1 | full | Full screen (100% × 100%) |
-| `center` | — | — | Centered floating (70% × 80%, offset 15%/10%) |
+| `center` | — | — | Centered floating (80% × 80%, offset 10%/10%) |
 | **Halves (2×1, full height)** | | | |
 | `left` | 2×1 | 0,0 | Left 50% |
 | `right` | 2×1 | 1,0 | Right 50% |

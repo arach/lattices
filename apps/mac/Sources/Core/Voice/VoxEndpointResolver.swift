@@ -5,9 +5,13 @@ import HudsonVoice
 
 /// Resolves the voice runtime Lattices should use.
 ///
-/// HudsonVoice speaks Vox's local WebSocket JSON-RPC contract directly. Prefer
-/// the runtime file written by Vox so dev builds can move ports without making
-/// Lattices point at a stale default.
+/// Preferred path: the Lattices-hosted capability file written at boot by
+/// `LatticesVoiceRuntime` (`HUDSON_VOICE_RUNTIME_PATH` → Application Support/
+/// Lattices/Voice/hudson-voice-runtime.json) on the deterministic port
+/// `LatticesLocalEndpoints.voiceRuntimePort` (**9398**).
+///
+/// Fallbacks exist for dev (external voxd / env overrides) but normal product
+/// operation does not require an external daemon.
 enum HudsonVoiceRuntimeResolver {
     private struct RuntimeFile: Decodable {
         let host: String?
@@ -24,15 +28,34 @@ enum HudsonVoiceRuntimeResolver {
         clientId: String = "lattices",
         mode: HudVoiceMode? = nil
     ) -> (endpoint: HudVoxEndpoint, options: HudVoxLiveSessionOptions, source: String, pid: Int?, authToken: String?, capabilityPath: String?)? {
-        let runtime = resolvedRuntime()
-        let endpoint = HudVoxEndpoint(host: runtime.host, port: runtime.port)
-        let options = HudVoxLiveSessionOptions(
+        // 1. Canonical Hudson capability (Lattices-hosted, auth token included).
+        if let connection = try? HudsonVoiceRuntime.resolveConnection(
+            clientId: clientId,
+            mode: mode,
+            metadata: ["hostApp": "lattices"]
+        ) {
+            return (
+                endpoint: connection.endpoint,
+                options: connection.options,
+                source: "lattices-host",
+                pid: connection.capability.pid.map(Int.init),
+                authToken: connection.capability.authToken,
+                capabilityPath: HudsonVoiceRuntime.runtimeURL().path
+            )
+        }
+
+        // 2. File / env discovery (legacy external voxd, tests).
+        guard let runtime = resolvedRuntimeFallback() else { return nil }
+        var options = HudVoxLiveSessionOptions(
             clientId: clientId,
             mode: mode ?? .pushToTalk,
-            metadata: ["hostApp": "lattices"]
+            metadata: ["hostApp": "lattices"],
+            authToken: runtime.authToken
         )
+        // Keep options.authToken populated even if init signature drifts.
+        options.authToken = runtime.authToken
         return (
-            endpoint: endpoint,
+            endpoint: HudVoxEndpoint(host: runtime.host, port: runtime.port),
             options: options,
             source: runtime.source,
             pid: runtime.pid,
@@ -41,19 +64,20 @@ enum HudsonVoiceRuntimeResolver {
         )
     }
 
-    private static func resolvedRuntime() -> (host: String, port: UInt16, source: String, pid: Int?, authToken: String?, path: String?) {
+    /// Fallbacks when the Lattices capability file is missing (host failed, or
+    /// a non-voice build tool is probing). Prefer Lattices' deterministic port
+    /// over the old external voxd default so we do not silently talk to a
+    /// dead/unrelated process.
+    private static func resolvedRuntimeFallback() -> (host: String, port: UInt16, source: String, pid: Int?, authToken: String?, path: String?)? {
         for candidate in runtimeFileCandidates() {
             guard let runtime = readRuntimeFile(candidate.url),
                   let port = runtime.port,
                   port > 0,
                   runtime.pid.map(processIsAlive) ?? true else { continue }
-            // HudVoxLiveSession does not currently expose an auth-token field,
-            // so authenticated Hudson capability files cannot be used safely yet.
-            guard nonEmpty(runtime.authToken) == nil else { continue }
 
             let host = runtime.host
                 ?? hostFromWebSocketURL(runtime.webSocketUrl)
-                ?? "127.0.0.1"
+                ?? LatticesLocalEndpoints.loopbackHost
             guard isLoopback(host) else { continue }
 
             return (
@@ -67,10 +91,10 @@ enum HudsonVoiceRuntimeResolver {
         }
 
         let env = ProcessInfo.processInfo.environment
-        if let rawPort = env["VOX_PORT"] ?? env["HUDSON_VOICE_VOX_PORT"],
-           let port = UInt16(rawPort) {
+        if let rawPort = env["LATTICES_VOICE_PORT"] ?? env["VOX_PORT"] ?? env["HUDSON_VOICE_VOX_PORT"],
+           let port = UInt16(rawPort), port > 0 {
             return (
-                host: nonEmpty(env["VOX_HOST"]) ?? "127.0.0.1",
+                host: nonEmpty(env["VOX_HOST"]) ?? LatticesLocalEndpoints.loopbackHost,
                 port: port,
                 source: "env",
                 pid: nil,
@@ -79,23 +103,51 @@ enum HudsonVoiceRuntimeResolver {
             )
         }
 
-        // Vox's current daemon default is 42137. HudsonVoice's older 42138
-        // default is intentionally avoided here because it makes Lattices miss
-        // a running Vox dev daemon and surface a fake transcription failure.
-        return (
-            host: "127.0.0.1",
-            port: 42137,
-            source: "vox-default",
-            pid: nil,
-            authToken: nil,
-            path: nil
-        )
+        // Only advertise the well-known port when this process is actually
+        // hosting the voice runtime (auth + listener ready). Avoids clients
+        // connecting to a dead 9398 and hanging on "Transcribing…".
+        if LatticesVoiceRuntime.isRunning {
+            return (
+                host: LatticesLocalEndpoints.loopbackHost,
+                port: LatticesLocalEndpoints.resolvedVoiceRuntimePort,
+                source: "lattices-default",
+                pid: nil,
+                authToken: nil,
+                path: nil
+            )
+        }
+
+        return nil
     }
 
     private static func runtimeFileCandidates() -> [(url: URL, source: String)] {
         var candidates: [(URL, String)] = []
         let env = ProcessInfo.processInfo.environment
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
 
+        // Lattices-hosted capability first (set at boot via setenv).
+        if let path = nonEmpty(env[HudsonVoiceRuntime.runtimePathEnvironmentKey]) {
+            candidates.append((URL(fileURLWithPath: path), "lattices-host"))
+        }
+        candidates.append((
+            support
+                .appendingPathComponent("Lattices", isDirectory: true)
+                .appendingPathComponent("Voice", isDirectory: true)
+                .appendingPathComponent("hudson-voice-runtime.json"),
+            "lattices-host"
+        ))
+
+        // Hudson Menu / shared Hudson capability (if user runs Hudson Voice separately).
+        candidates.append((
+            support
+                .appendingPathComponent("Hudson", isDirectory: true)
+                .appendingPathComponent("Vox", isDirectory: true)
+                .appendingPathComponent("hudson-voice-runtime.json"),
+            "hudson-voice"
+        ))
+
+        // Standalone voxd runtime registry.
         if let path = nonEmpty(env["VOX_RUNTIME_PATH"]) {
             candidates.append((URL(fileURLWithPath: path), "vox"))
         }
@@ -104,19 +156,6 @@ enum HudsonVoiceRuntimeResolver {
                 .appendingPathComponent(".vox", isDirectory: true)
                 .appendingPathComponent("runtime.json"),
             "vox"
-        ))
-
-        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
-        if let path = nonEmpty(env["HUDSON_VOICE_RUNTIME_PATH"]) {
-            candidates.append((URL(fileURLWithPath: path), "hudson-voice"))
-        }
-        candidates.append((
-            support
-                .appendingPathComponent("Hudson", isDirectory: true)
-                .appendingPathComponent("Vox", isDirectory: true)
-                .appendingPathComponent("hudson-voice-runtime.json"),
-            "hudson-voice"
         ))
 
         var seen = Set<String>()

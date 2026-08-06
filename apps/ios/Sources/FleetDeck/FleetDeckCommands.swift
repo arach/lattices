@@ -3,8 +3,8 @@ import Foundation
 
 extension FleetCommandSet {
 
-    /// The design's four command sets, in its order — AGENT first, because this
-    /// deck steers agents, not cursors.
+    /// The four core remote-control contexts shown when a Mac has not advertised
+    /// a deck yet. Live tiles still come from the selected Mac.
     ///
     /// These are the *shape* of the bay, used when a Mac advertises no cockpit
     /// pages of its own (and by the design fixture). Tiles here carry no
@@ -12,60 +12,60 @@ extension FleetCommandSet {
     /// which come with the bridge's real action IDs attached.
     static let canonical: [FleetCommandSet] = [
         FleetCommandSet(
-            id: "agent",
-            key: "AGENT",
+            id: "command",
+            key: "COMMAND",
             tiles: tiles([
-                ("Run Agent", "spawn", "sparkles"),
-                ("Steer", "redirect", "slider.horizontal.3"),
-                ("Approve", "unblock", "checkmark.circle"),
-                ("Reject", "redo", "xmark.circle"),
-                ("Handoff", "pass work", "arrow.right.to.line"),
-                ("Delegate", "fan out", "point.3.connected.trianglepath.dotted"),
-                ("Summarize", "digest", "text.alignleft"),
-                ("Stop", "halt", "stop.circle")
-            ], prefix: "agent")
+                ("Desktop Preview", "see Mac", "display"),
+                ("Paste Device", "clipboard", "rectangle.portrait.and.arrow.forward"),
+                ("Previous App", "switch", "chevron.left.square"),
+                ("Next App", "switch", "chevron.right.square"),
+                ("Previous Window", "switch", "rectangle.on.rectangle"),
+                ("Next Window", "switch", "rectangle.on.rectangle"),
+                ("Find Mouse", "locate", "scope"),
+                ("Summon Mouse", "center", "dot.scope")
+            ], prefix: "command")
         ),
         FleetCommandSet(
-            id: "review",
-            key: "REVIEW",
+            id: "dev",
+            key: "DEV",
             tiles: tiles([
-                ("Open Diff", "inspect", "plusminus"),
-                ("Run Tests", "suite", "testtube.2"),
-                ("Browser Check", "see result", "globe"),
-                ("Screenshot", "capture", "camera"),
-                ("Logs", "stream", "list.bullet"),
-                ("Commit", "git", "smallcircle.filled.circle"),
-                ("Push", "ship", "arrow.up.to.line"),
-                ("Revert", "undo", "arrow.uturn.backward")
-            ], prefix: "review")
+                ("Copy", "command C", "doc.on.doc"),
+                ("Paste", "command V", "doc.on.clipboard"),
+                ("Undo", "command Z", "arrow.uturn.backward"),
+                ("Escape", "dismiss", "escape"),
+                ("Enter", "return", "return"),
+                ("Space", "input", "space"),
+                ("Up", "navigate", "arrow.up"),
+                ("Down", "navigate", "arrow.down")
+            ], prefix: "dev")
         ),
         FleetCommandSet(
-            id: "window",
-            key: "WINDOW",
+            id: "media",
+            key: "MEDIA",
             tiles: tiles([
-                ("Focus App", "front", "scope"),
-                ("Tile Left", "snap", "rectangle.lefthalf.inset.filled"),
-                ("Tile Right", "snap", "rectangle.righthalf.inset.filled"),
-                ("Fullscreen", "zoom", "arrow.up.left.and.arrow.down.right"),
-                ("Center", "place", "rectangle.center.inset.filled"),
-                ("Next Window", "cycle", "arrow.right.square"),
-                ("Paste", "clip", "doc.on.clipboard"),
-                ("Terminal", "shell", "terminal")
-            ], prefix: "window")
+                ("Play / Pause", "space", "playpause"),
+                ("Back", "seek", "gobackward"),
+                ("Forward", "seek", "goforward"),
+                ("Center", "place", "plus.rectangle.on.rectangle"),
+                ("Maximize", "fill screen", "macwindow"),
+                ("Grow", "resize", "plus.rectangle.fill.on.rectangle.fill"),
+                ("Shrink", "resize", "minus.rectangle"),
+                ("Escape", "dismiss", "escape")
+            ], prefix: "media")
         ),
         FleetCommandSet(
-            id: "system",
-            key: "SYSTEM",
+            id: "windows",
+            key: "WINDOWS",
             tiles: tiles([
-                ("Lock", "secure", "lock"),
-                ("Sleep", "idle", "moon"),
-                ("Restart", "reboot", "arrow.clockwise"),
-                ("Snapshot", "capture", "camera"),
-                ("Sync", "push", "arrow.triangle.2.circlepath"),
-                ("Mute", "silence", "speaker.slash"),
-                ("Journal", "history", "list.bullet"),
-                ("Clear", "reset", "xmark.circle")
-            ], prefix: "system")
+                ("Top Left", "quarter", "rectangle.inset.topleft.filled"),
+                ("Top Right", "quarter", "rectangle.inset.topright.filled"),
+                ("Bottom Left", "quarter", "rectangle.inset.bottomleft.filled"),
+                ("Bottom Right", "quarter", "rectangle.inset.bottomright.filled"),
+                ("Left", "half", "rectangle.leadinghalf.filled"),
+                ("Right", "half", "rectangle.trailinghalf.filled"),
+                ("Maximize", "fill screen", "macwindow"),
+                ("Optimize", "retile", "rectangle.3.group.fill")
+            ], prefix: "windows")
         )
     ]
 
@@ -88,6 +88,8 @@ extension FleetCommandSet {
         self.init(
             id: page.id,
             key: page.title.uppercased(),
+            columns: max(1, page.columns),
+            rows: page.rows,
             tiles: page.tiles.enumerated().map { index, tile in
                 let hint = tile.subtitle?.lowercased() ?? tile.shortcutID.lowercased()
                 return FleetCommandTile(
@@ -96,7 +98,12 @@ extension FleetCommandSet {
                     meta: "\(String(format: "%02d", index + 1)) · \(hint)",
                     symbol: tile.iconSystemName,
                     actionID: tile.actionID,
-                    payload: tile.payload
+                    payload: tile.payload,
+                    isEnabled: tile.isEnabled,
+                    col: tile.col,
+                    row: tile.row,
+                    colSpan: max(1, tile.colSpan ?? 1),
+                    rowSpan: max(1, tile.rowSpan ?? 1)
                 )
             }
         )

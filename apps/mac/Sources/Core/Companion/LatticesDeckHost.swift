@@ -191,6 +191,29 @@ extension LatticesDeckHost {
         }
         return (display, display.spaces[index])
     }
+
+    /// Pure relative target resolution for previous/next space (no SkyLight call).
+    /// `direction` is typically −1 (previous) or +1 (next). Does not wrap.
+    static func relativeSpaceTarget(in display: DisplaySpaces, direction: Int) -> SpaceInfo? {
+        guard let currentIdx = display.spaces.firstIndex(where: { $0.isCurrent }) else { return nil }
+        let targetIdx = currentIdx + direction
+        guard display.spaces.indices.contains(targetIdx) else { return nil }
+        return display.spaces[targetIdx]
+    }
+
+    /// Map Control+Left/Right (and variants) to a previous/next space direction.
+    func spaceSwitchDirection(key: String, modifiers: [String]) -> Int? {
+        let normalized = key.lowercased()
+            .replacingOccurrences(of: "←", with: "left")
+            .replacingOccurrences(of: "→", with: "right")
+        guard normalized == "left" || normalized == "right" else { return nil }
+        let hasControl = modifiers.contains { mod in
+            let m = mod.lowercased()
+            return m == "control" || m == "ctrl" || m == "⌃"
+        }
+        guard hasControl else { return nil }
+        return normalized == "right" ? 1 : -1
+    }
 }
 
 private extension LatticesDeckHost {
@@ -1113,19 +1136,6 @@ private extension LatticesDeckHost {
             }
     }
 
-    func spaceSwitchDirection(key: String, modifiers: [String]) -> Int? {
-        let normalized = key.lowercased()
-            .replacingOccurrences(of: "←", with: "left")
-            .replacingOccurrences(of: "→", with: "right")
-        guard normalized == "left" || normalized == "right" else { return nil }
-        let hasControl = modifiers.contains { mod in
-            let m = mod.lowercased()
-            return m == "control" || m == "ctrl" || m == "⌃"
-        }
-        guard hasControl else { return nil }
-        return normalized == "right" ? 1 : -1
-    }
-
     @MainActor
     func switchActiveSpace(direction: Int, displayIndex: Int? = nil) -> ActionOutcome {
         let displays = WindowTiler.getDisplaySpaces()
@@ -1147,7 +1157,7 @@ private extension LatticesDeckHost {
             ?? 0
         let display = displays.first(where: { $0.displayIndex == preferredDisplayIndex }) ?? displays[0]
 
-        guard let currentIdx = display.spaces.firstIndex(where: { $0.isCurrent }) else {
+        guard display.spaces.contains(where: { $0.isCurrent }) else {
             return ActionOutcome(
                 summary: "No current space",
                 detail: "Could not determine the active space on display \(display.displayIndex + 1).",
@@ -1155,8 +1165,7 @@ private extension LatticesDeckHost {
             )
         }
 
-        let targetIdx = currentIdx + direction
-        guard targetIdx >= 0, targetIdx < display.spaces.count else {
+        guard let target = Self.relativeSpaceTarget(in: display, direction: direction) else {
             return ActionOutcome(
                 summary: direction > 0 ? "Already on last space" : "Already on first space",
                 detail: nil,
@@ -1164,7 +1173,6 @@ private extension LatticesDeckHost {
             )
         }
 
-        let target = display.spaces[targetIdx]
         WindowTiler.switchToSpace(spaceId: target.id)
         return ActionOutcome(
             summary: direction > 0 ? "Next space" : "Previous space",

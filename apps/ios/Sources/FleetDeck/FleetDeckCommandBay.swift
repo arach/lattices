@@ -15,8 +15,20 @@ struct FleetCommandBay: View {
         sets.indices.contains(setIndex) ? sets[setIndex].tiles : []
     }
 
-    private var columns: [GridItem] {
-        Array(repeating: GridItem(.flexible(), spacing: FleetV6.M.tileGap), count: 4)
+    private var activeSet: FleetCommandSet? {
+        sets.indices.contains(setIndex) ? sets[setIndex] : nil
+    }
+
+    private var columnCount: Int {
+        max(1, activeSet?.columns ?? 4)
+    }
+
+    private var rowCount: Int {
+        let flowRows = Int(ceil(Double(max(tiles.count, 1)) / Double(columnCount)))
+        let positionedRows = tiles.compactMap { tile in
+            tile.row.map { $0 + max(1, tile.rowSpan) }
+        }.max() ?? 0
+        return max(2, activeSet?.rows ?? 0, flowRows, positionedRows)
     }
 
     var body: some View {
@@ -24,6 +36,7 @@ struct FleetCommandBay: View {
             tabs
             grid
         }
+        .frame(maxHeight: .infinity)
         .background(FleetV6.tilesWrapBG)
         .overlay(alignment: .top) {
             ZStack(alignment: .top) {
@@ -36,49 +49,42 @@ struct FleetCommandBay: View {
     // `.set-tabs`
     private var tabs: some View {
         HStack(spacing: 8) {
-            FleetLabel(text: "COMMANDS")
-                .padding(.trailing, 4)
+            ScrollView(.horizontal) {
+                HStack(spacing: 8) {
+                    FleetLabel(text: "COMMANDS")
+                        .padding(.trailing, 4)
 
-            ForEach(Array(sets.enumerated()), id: \.element.id) { index, set in
-                Button { onSelectSet(index) } label: {
-                    HStack(spacing: 6) {
-                        Text("\(index + 1)")
-                            .foregroundStyle(FleetV6.fg4)
-                        Text(set.key)
-                            .foregroundStyle(index == setIndex ? FleetV6.fg : FleetV6.fg4)
-                    }
-                    .font(FleetV6.mono(10, .medium))
-                    .tracking(1.4)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 6)
-                    .background {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(
-                                index == setIndex
-                                    ? AnyShapeStyle(Color.white.opacity(0.07))
-                                    : AnyShapeStyle(
-                                        LinearGradient(
-                                            colors: [FleetV6.rgb(0x101113), FleetV6.rgb(0x0B0C0D)],
-                                            startPoint: .top,
-                                            endPoint: .bottom
-                                        )
-                                    )
-                            )
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    .strokeBorder(
-                                        index == setIndex ? Color.white.opacity(0.16) : FleetV6.brk2,
-                                        lineWidth: 1
-                                    )
+                    ForEach(Array(sets.enumerated()), id: \.element.id) { index, set in
+                        Button { onSelectSet(index) } label: {
+                            HStack(spacing: 6) {
+                                Text("\(index + 1)")
+                                    .foregroundStyle(FleetV6.fg4)
+                                Text(set.key)
+                                    .foregroundStyle(index == setIndex ? FleetV6.fg : FleetV6.fg4)
                             }
+                            .font(FleetV6.mono(10, .medium))
+                            .tracking(1.1)
+                            .padding(.horizontal, 14)
+                            .frame(minHeight: 44)
+                            .background {
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(index == setIndex ? Color.white.opacity(0.07) : .clear)
+                                    .overlay {
+                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                            .strokeBorder(
+                                                index == setIndex ? Color.white.opacity(0.16) : FleetV6.brk2,
+                                                lineWidth: 1
+                                            )
+                                    }
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(index == setIndex ? [.isSelected, .isButton] : .isButton)
                     }
-                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(index == setIndex ? [.isSelected, .isButton] : .isButton)
             }
-
-            Spacer(minLength: 8)
+            .scrollIndicators(.hidden)
 
             Text("SET \(setIndex + 1) / \(max(sets.count, 1))")
                 .font(FleetV6.mono(9.5, .medium))
@@ -87,20 +93,43 @@ struct FleetCommandBay: View {
                 .foregroundStyle(FleetV6.fg4)
         }
         .padding(.horizontal, 15)
-        .padding(.top, 10)
+        .padding(.vertical, 6)
     }
 
     // `.deck-tiles`
     private var grid: some View {
-        LazyVGrid(columns: columns, spacing: FleetV6.M.tileGap) {
-            ForEach(tiles) { tile in
-                FleetCommandTileView(tile: tile) { onTile(tile) }
+        GeometryReader { proxy in
+            let horizontalPadding: CGFloat = 15
+            let verticalPadding: CGFloat = 10
+            let gap = FleetV6.M.tileGap
+            let contentWidth = max(0, proxy.size.width - horizontalPadding * 2)
+            let contentHeight = max(0, proxy.size.height - verticalPadding * 2)
+            let cellWidth = max(0, (contentWidth - gap * CGFloat(columnCount - 1)) / CGFloat(columnCount))
+            let cellHeight = max(0, (contentHeight - gap * CGFloat(rowCount - 1)) / CGFloat(rowCount))
+
+            ZStack(alignment: .topLeading) {
+                ForEach(Array(tiles.enumerated()), id: \.element.id) { index, tile in
+                    let col = min(max(0, tile.col ?? index % columnCount), columnCount - 1)
+                    let row = min(max(0, tile.row ?? index / columnCount), rowCount - 1)
+                    let colSpan = min(max(1, tile.colSpan), columnCount - col)
+                    let rowSpan = min(max(1, tile.rowSpan), rowCount - row)
+
+                    FleetCommandTileView(tile: tile) { onTile(tile) }
+                        .frame(
+                            width: cellWidth * CGFloat(colSpan) + gap * CGFloat(colSpan - 1),
+                            height: cellHeight * CGFloat(rowSpan) + gap * CGFloat(rowSpan - 1)
+                        )
+                        .offset(
+                            x: CGFloat(col) * (cellWidth + gap),
+                            y: CGFloat(row) * (cellHeight + gap)
+                        )
+                }
             }
+            .frame(width: contentWidth, height: contentHeight, alignment: .topLeading)
+            .padding(.horizontal, horizontalPadding)
+            .padding(.vertical, verticalPadding)
         }
-        .padding(.horizontal, 15)
-        .padding(.top, 10)
-        .padding(.bottom, 12)
-        .frame(height: FleetV6.M.tilesHeight + 22)
+        .frame(minHeight: 180, maxHeight: .infinity)
     }
 }
 
@@ -164,6 +193,8 @@ struct FleetCommandTileView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(FleetPressStyle())
+        .disabled(!tile.isEnabled)
+        .opacity(tile.isEnabled ? 1 : 0.45)
         .accessibilityLabel(tile.title)
         .accessibilityHint(tile.meta)
     }
@@ -178,34 +209,31 @@ struct FleetKeyRow: View {
     let onKey: (String, [String]) -> Void
 
     var body: some View {
-        HStack(spacing: 14) {
+        ScrollView(.horizontal) {
             HStack(spacing: 7) {
                 key("esc") { onKey("escape", []) }
                 key("⌘C") { onKey("c", ["command"]) }
                 key("⌘V") { onKey("v", ["command"]) }
                 key("⌘Z") { onKey("z", ["command"]) }
                 key("space", wide: true) { onKey("space", []) }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
 
-            HStack(spacing: 7) {
+                keyDivider
                 symbolKey("arrow.left") { onKey("left", []) }
                 symbolKey("arrow.up") { onKey("up", []) }
                 symbolKey("arrow.down") { onKey("down", []) }
                 symbolKey("arrow.right") { onKey("right", []) }
-            }
 
-            HStack(spacing: 7) {
+                keyDivider
                 key("⌃") { onKey("control", []) }
                 key("⌥") { onKey("option", []) }
                 key("⇧") { onKey("shift", []) }
                 key("⌘") { onKey("command", []) }
                 key("↵ enter", wide: true) { onKey("return", []) }
             }
-            .frame(maxWidth: .infinity, alignment: .trailing)
+            .padding(.horizontal, 13)
         }
-        .padding(.horizontal, 13)
-        .padding(.vertical, 8)
+        .scrollIndicators(.hidden)
+        .frame(height: FleetV6.M.keyRowHeight)
         .background(FleetV6.bezel)
         .overlay(alignment: .top) {
             ZStack(alignment: .top) {
@@ -215,13 +243,20 @@ struct FleetKeyRow: View {
         }
     }
 
+    private var keyDivider: some View {
+        Rectangle()
+            .fill(FleetV6.brk2)
+            .frame(width: 1, height: 24)
+            .padding(.horizontal, 4)
+    }
+
     private func key(_ label: String, wide: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(label)
                 .font(FleetV6.mono(12))
                 .foregroundStyle(FleetV6.fg2)
                 .padding(.horizontal, 12)
-                .frame(minWidth: wide ? 84 : 42, minHeight: 30)
+                .frame(minWidth: wide ? 88 : 44, minHeight: 44)
                 .background { FleetKeycapBackground() }
                 .contentShape(Rectangle())
         }
@@ -234,7 +269,7 @@ struct FleetKeyRow: View {
             Image(systemName: symbol)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(FleetV6.fg2)
-                .frame(minWidth: 42, minHeight: 30)
+                .frame(minWidth: 44, minHeight: 44)
                 .background { FleetKeycapBackground() }
                 .contentShape(Rectangle())
         }

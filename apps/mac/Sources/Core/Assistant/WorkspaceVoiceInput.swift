@@ -30,6 +30,44 @@ enum WorkspaceVoiceState: Equatable {
     }
 }
 
+/// One-line outcome shown under the composer after a dictation turn.
+struct WorkspaceVoiceOutcome: Equatable {
+    enum Kind: Equatable {
+        case heard
+        case empty
+        case failed
+    }
+
+    let kind: Kind
+    let message: String
+    let transcript: String?
+    let at: Date
+
+    static func heard(_ text: String) -> WorkspaceVoiceOutcome {
+        WorkspaceVoiceOutcome(
+            kind: .heard,
+            message: "Heard: \(Self.preview(text))",
+            transcript: text,
+            at: Date()
+        )
+    }
+
+    static func empty(detail: String) -> WorkspaceVoiceOutcome {
+        WorkspaceVoiceOutcome(kind: .empty, message: detail, transcript: nil, at: Date())
+    }
+
+    static func failed(_ reason: String) -> WorkspaceVoiceOutcome {
+        WorkspaceVoiceOutcome(kind: .failed, message: reason, transcript: nil, at: Date())
+    }
+
+    private static func preview(_ text: String, limit: Int = 80) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count > limit else { return "“\(trimmed)”" }
+        let end = trimmed.index(trimmed.startIndex, offsetBy: limit)
+        return "“\(trimmed[..<end])…”"
+    }
+}
+
 /// Splice a dictated phrase into an existing buffer: empty → set; non-empty →
 /// append with a single separating space. Mirrors OpenScout's ScoutDictationBuffer.
 enum WorkspaceDictationBuffer {
@@ -57,13 +95,23 @@ final class WorkspaceVoiceInput: ObservableObject {
     /// Most recent final transcript. The chat session observes this and splices
     /// it into the draft, then calls `consumeFinalText()` so it fires once.
     @Published private(set) var lastFinalText: String = ""
+    /// Human-readable result of the last completed turn (success, empty, fail).
+    @Published private(set) var lastOutcome: WorkspaceVoiceOutcome?
 
     private var session: HudVoxLiveSession?
     private var pumpTask: Task<Void, Never>?
     private var stopTimeoutTask: Task<Void, Never>?
+    private var outcomeClearTask: Task<Void, Never>?
     private var activeCaptureID: String?
+    private var turnStartedAt: Date?
+    /// When the runtime first reported `.recording` (mic actually hot).
+    private var recordingStartedAt: Date?
     private var finalDelivered = false
     private static let stopTimeoutNanoseconds: UInt64 = 10_000_000_000
+    private static let outcomeVisibleNanoseconds: UInt64 = 8_000_000_000
+    /// AVCapture often needs a short settle after start; stopping too early yields
+    /// a near-empty WAV and a useless empty transcript.
+    private static let minimumRecordingNanoseconds: UInt64 = 700_000_000
 
     private init() {}
 
@@ -81,25 +129,38 @@ final class WorkspaceVoiceInput: ObservableObject {
     }
 
     @MainActor
+    func dismissOutcome() {
+        lastOutcome = nil
+        outcomeClearTask?.cancel()
+        outcomeClearTask = nil
+    }
+
+    @MainActor
     func start() {
         guard session == nil else {
-            DiagnosticLog.shared.warn("WorkspaceVoiceInput: start ignored; existing capture \(activeCaptureID ?? "unknown") is still \(stateLabel)")
+            voiceLog("already listening — ignored", level: .info)
             return
         }
         partial = ""
         finalDelivered = false
+        lastOutcome = nil
+        recordingStartedAt = nil
+        outcomeClearTask?.cancel()
         let captureID = UUID().uuidString.prefix(8).lowercased()
         activeCaptureID = String(captureID)
+        turnStartedAt = Date()
         state = .starting
 
         guard let runtime = HudsonVoiceRuntimeResolver.resolve(clientId: "lattices") else {
-            DiagnosticLog.shared.warn("WorkspaceVoiceInput[\(captureID)]: HudsonVoice runtime unavailable")
-            activeCaptureID = nil
-            state = .unavailable(reason: "Hudson Voice runtime is unavailable.")
+            finishTurn(
+                .failed("Voice runtime is not running. Restart Lattices."),
+                captureID: String(captureID),
+                asUnavailable: true
+            )
             return
         }
         let endpoint = runtime.endpoint
-        DiagnosticLog.shared.info("WorkspaceVoiceInput[\(captureID)]: starting voice session at \(endpoint.url.absoluteString)")
+        voiceLog("listening on \(endpoint.url.absoluteString)", level: .info, id: String(captureID))
         let session = HudVoxLiveSession(
             endpoint: endpoint,
             options: runtime.options
@@ -122,20 +183,35 @@ final class WorkspaceVoiceInput: ObservableObject {
     @MainActor
     func stop() {
         guard state.isCaptureActive else {
-            DiagnosticLog.shared.warn("WorkspaceVoiceInput: stop ignored while \(stateLabel)")
+            voiceLog("stop ignored (not recording)", level: .info)
+            return
+        }
+        // Wait until the runtime is actually recording — stop during `.starting`
+        // is a common source of empty WAVs.
+        guard state == .recording, recordingStartedAt != nil else {
+            voiceLog("still starting mic — hold a moment, then tap again", level: .info)
+            lastOutcome = .empty(detail: "Mic is still starting — hold a beat, then tap to finish.")
+            scheduleOutcomeClear()
             return
         }
         let captureID = activeCaptureID ?? "unknown"
-        DiagnosticLog.shared.info("WorkspaceVoiceInput[\(captureID)]: stopping voice session")
+        voiceLog("transcribing…", level: .info, id: captureID)
         state = .processing
         let session = self.session
+        let recordedFor = recordingStartedAt.map { Date().timeIntervalSince($0) } ?? 0
         stopTimeoutTask?.cancel()
         stopTimeoutTask = Task { [weak self, captureID] in
             try? await Task.sleep(nanoseconds: Self.stopTimeoutNanoseconds)
             guard !Task.isCancelled else { return }
             await MainActor.run { self?.stopTimedOut(captureID: captureID) }
         }
-        Task { [weak self, captureID] in
+        Task { [weak self, captureID, recordedFor] in
+            // Give AVCapture a minimum window so the file isn't just a header.
+            let minSeconds = Double(Self.minimumRecordingNanoseconds) / 1_000_000_000
+            if recordedFor < minSeconds {
+                let remaining = minSeconds - recordedFor
+                try? await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
+            }
             do {
                 try await session?.stop()
             } catch {
@@ -147,7 +223,7 @@ final class WorkspaceVoiceInput: ObservableObject {
     @MainActor
     func cancel() {
         let captureID = activeCaptureID ?? "unknown"
-        DiagnosticLog.shared.info("WorkspaceVoiceInput[\(captureID)]: cancelling voice session")
+        voiceLog("cancelled", level: .info, id: captureID)
         let session = self.session
         finalDelivered = true   // suppress any trailing final
         partial = ""
@@ -169,15 +245,22 @@ final class WorkspaceVoiceInput: ObservableObject {
         guard isCurrentCapture(captureID) else { return }
         switch event {
         case .state(let s):
-            DiagnosticLog.shared.info("WorkspaceVoiceInput[\(captureID)]: session -> \(s.state)")
+            // Only surface user-meaningful states — skip noisy starting/done chatter.
             switch s.state {
             case .recording:
+                if state != .recording {
+                    voiceLog("recording", level: .info, id: captureID)
+                    recordingStartedAt = Date()
+                }
                 state = .recording
             case .processing:
                 state = .processing
             case .error:
-                DiagnosticLog.shared.warn("WorkspaceVoiceInput[\(captureID)]: voice runtime reported a session error state")
-                state = .unavailable(reason: "Voice runtime reported a session error.")
+                finishTurn(
+                    .failed("Voice engine reported an error. Try again."),
+                    captureID: captureID,
+                    asUnavailable: true
+                )
                 clearCapture(closeSession: true)
             case .cancelled:
                 if !state.isUnavailable { state = .idle }
@@ -186,8 +269,12 @@ final class WorkspaceVoiceInput: ObservableObject {
                 if state != .recording { state = .starting }
             case .done:
                 if !finalDelivered {
-                    DiagnosticLog.shared.warn("WorkspaceVoiceInput[\(captureID)]: session ended without a final transcript")
-                    state = .unavailable(reason: "No speech detected. Try again.")
+                    finishTurn(
+                        .empty(detail: "No speech detected."),
+                        captureID: captureID,
+                        asUnavailable: false
+                    )
+                    state = .idle
                 }
                 clearCapture(closeSession: true)
             }
@@ -207,12 +294,27 @@ final class WorkspaceVoiceInput: ObservableObject {
         finalDelivered = true
         partial = ""
         let trimmed = final.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        DiagnosticLog.shared.info("WorkspaceVoiceInput[\(captureID)]: final transcript length=\(trimmed.count) elapsed=\(final.elapsedMs)ms")
+        let elapsed = final.elapsedMs
         if trimmed.isEmpty {
-            DiagnosticLog.shared.warn("WorkspaceVoiceInput[\(captureID)]: empty transcript from voice runtime")
-            state = .unavailable(reason: "No speech detected. Try again.")
+            // Empty is usually a truncated/empty capture (mic wrote almost no samples),
+            // not a hard system failure — keep out of red status-bar sticky.
+            finishTurn(
+                .empty(detail: "No audio captured — check the mic and speak for a second or two."),
+                captureID: captureID,
+                asUnavailable: false
+            )
+            state = .idle
         } else {
             lastFinalText = trimmed
+            // Success lands in the draft; still surface a brief confirmation so it
+            // doesn't feel like the mic did nothing.
+            finishTurn(
+                .heard(trimmed),
+                captureID: captureID,
+                asUnavailable: false,
+                elapsedMs: elapsed,
+                surfaceOutcome: true
+            )
             state = .idle
         }
         clearCapture(closeSession: true)
@@ -222,10 +324,9 @@ final class WorkspaceVoiceInput: ObservableObject {
     private func streamEnded(error: Error?, captureID: String) {
         guard isCurrentCapture(captureID) else { return }
         if let error, !finalDelivered {
-            DiagnosticLog.shared.warn("WorkspaceVoiceInput[\(captureID)]: session stream ended with error — \(error.localizedDescription)")
-            state = .unavailable(reason: error.localizedDescription)
+            let detail = Self.friendlyConnectionError(error)
+            finishTurn(.failed(detail), captureID: captureID, asUnavailable: true)
         } else if !finalDelivered, !state.isUnavailable {
-            DiagnosticLog.shared.warn("WorkspaceVoiceInput[\(captureID)]: stream ended without final transcript")
             state = .idle
         }
         clearCapture(closeSession: false)
@@ -234,8 +335,11 @@ final class WorkspaceVoiceInput: ObservableObject {
     @MainActor
     private func stopTimedOut(captureID: String) {
         guard isCurrentCapture(captureID), state.isProcessing else { return }
-        DiagnosticLog.shared.warn("WorkspaceVoiceInput[\(captureID)]: stop timed out waiting for final transcript")
-        state = .unavailable(reason: "Transcription timed out. Try again.")
+        finishTurn(
+            .failed("Transcription timed out. Try again."),
+            captureID: captureID,
+            asUnavailable: true
+        )
         let session = self.session
         clearCapture(closeSession: false)
         Task { try? await session?.cancel() }
@@ -244,9 +348,69 @@ final class WorkspaceVoiceInput: ObservableObject {
     @MainActor
     private func stopFailed(_ error: Error, captureID: String) {
         guard isCurrentCapture(captureID) else { return }
-        DiagnosticLog.shared.warn("WorkspaceVoiceInput[\(captureID)]: stop failed — \(error.localizedDescription)")
-        state = .unavailable(reason: error.localizedDescription)
+        finishTurn(
+            .failed(Self.friendlyConnectionError(error)),
+            captureID: captureID,
+            asUnavailable: true
+        )
         clearCapture(closeSession: true)
+    }
+
+    @MainActor
+    private func finishTurn(
+        _ outcome: WorkspaceVoiceOutcome,
+        captureID: String,
+        asUnavailable: Bool,
+        elapsedMs: Int? = nil,
+        surfaceOutcome: Bool = true
+    ) {
+        if surfaceOutcome {
+            lastOutcome = outcome
+            scheduleOutcomeClear()
+        } else {
+            lastOutcome = nil
+            outcomeClearTask?.cancel()
+            outcomeClearTask = nil
+        }
+        if asUnavailable {
+            state = .unavailable(reason: outcome.message)
+        }
+
+        let holdMs: String = {
+            if let elapsedMs { return "\(elapsedMs)ms" }
+            if let started = turnStartedAt {
+                return "\(Int(Date().timeIntervalSince(started) * 1000))ms"
+            }
+            return "?"
+        }()
+
+        switch outcome.kind {
+        case .heard:
+            let text = outcome.transcript ?? ""
+            DiagnosticLog.shared.success("Voice · heard (\(holdMs)): \(text)")
+        case .empty:
+            // Soft outcome — not a system fault; keep out of red status-bar sticky.
+            DiagnosticLog.shared.info("Voice · \(outcome.message)")
+        case .failed:
+            DiagnosticLog.shared.warn("Voice · \(outcome.message)")
+        }
+
+        _ = captureID
+    }
+
+    @MainActor
+    private func scheduleOutcomeClear() {
+        outcomeClearTask?.cancel()
+        outcomeClearTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: Self.outcomeVisibleNanoseconds)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                self?.lastOutcome = nil
+                if case .unavailable = self?.state {
+                    self?.state = .idle
+                }
+            }
+        }
     }
 
     @MainActor
@@ -258,6 +422,8 @@ final class WorkspaceVoiceInput: ObservableObject {
         pumpTask?.cancel()
         pumpTask = nil
         activeCaptureID = nil
+        turnStartedAt = nil
+        recordingStartedAt = nil
         if closeSession {
             currentSession?.close()
         }
@@ -267,19 +433,25 @@ final class WorkspaceVoiceInput: ObservableObject {
         activeCaptureID == captureID
     }
 
-    private var stateLabel: String {
-        switch state {
-        case .idle:
-            return "idle"
-        case .starting:
-            return "starting"
-        case .recording:
-            return "recording"
-        case .processing:
-            return "processing"
-        case .unavailable(let reason):
-            return "unavailable(\(reason))"
+    private func voiceLog(_ message: String, level: DiagnosticLog.Entry.Level, id: String? = nil) {
+        let prefix = id.map { "Voice[\($0)] · " } ?? "Voice · "
+        switch level {
+        case .info: DiagnosticLog.shared.info(prefix + message)
+        case .success: DiagnosticLog.shared.success(prefix + message)
+        case .warning: DiagnosticLog.shared.warn(prefix + message)
+        case .error: DiagnosticLog.shared.error(prefix + message)
         }
+    }
+
+    private static func friendlyConnectionError(_ error: Error) -> String {
+        let raw = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        if raw.localizedCaseInsensitiveContains("could not connect")
+            || raw.localizedCaseInsensitiveContains("connection refused")
+            || raw.localizedCaseInsensitiveContains("network connection was lost") {
+            return "Could not reach the voice runtime on \(LatticesLocalEndpoints.voiceRuntimeWebSocketURL). Restart Lattices."
+        }
+        if raw.isEmpty { return "Voice session failed." }
+        return raw
     }
 }
 

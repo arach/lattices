@@ -3,7 +3,8 @@ import CommonCrypto
 
 // MARK: - POSIX WebSocket Server
 // NWListener is broken on macOS 26 (Tahoe) — EINVAL on any listener creation.
-// This is a minimal POSIX-socket WebSocket server on 127.0.0.1:9399.
+// Minimal POSIX-socket WebSocket server on LatticesLocalEndpoints.agentAPIPort
+// (ws://127.0.0.1:9399).
 
 final class DaemonServer: ObservableObject {
     static let shared = DaemonServer()
@@ -38,11 +39,11 @@ final class DaemonServer: ObservableObject {
         var yes: Int32 = 1
         setsockopt(serverFd, SOL_SOCKET, SO_REUSEADDR, &yes, socklen_t(MemoryLayout<Int32>.size))
 
-        // 2. Bind to 127.0.0.1:9399
+        // 2. Bind to Lattices agent API port (well-known: 9399)
         var addr = sockaddr_in()
         addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
         addr.sin_family = sa_family_t(AF_INET)
-        addr.sin_port = UInt16(9399).bigEndian
+        addr.sin_port = LatticesLocalEndpoints.agentAPIPort.bigEndian
         addr.sin_addr.s_addr = UInt32(0x7f000001).bigEndian // 127.0.0.1
 
         let bindResult = withUnsafePointer(to: &addr) {
@@ -80,7 +81,7 @@ final class DaemonServer: ObservableObject {
         acceptSource = source
 
         DispatchQueue.main.async { self.isListening = true }
-        diag.success("DaemonServer: listening on ws://127.0.0.1:9399")
+        diag.success("DaemonServer: listening on \(LatticesLocalEndpoints.agentAPIWebSocketURL)")
 
         // Subscribe to EventBus for broadcasting
         EventBus.shared.subscribe { [weak self] event in

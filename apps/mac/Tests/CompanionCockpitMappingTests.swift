@@ -118,7 +118,7 @@ final class CompanionCockpitMappingTests: XCTestCase {
             talkie: .unavailable
         )
 
-        let page = try XCTUnwrap(state.pages.first(where: { $0.id == "remote" }))
+        let page = try XCTUnwrap(state.pages.first(where: { $0.id == "command" }))
         let tile = try XCTUnwrap(page.tiles.first(where: { $0.shortcutID == "mac-windows" }))
         let definition = try XCTUnwrap(LatticesCompanionCockpitCatalog.definition(for: "mac-windows"))
 
@@ -129,15 +129,16 @@ final class CompanionCockpitMappingTests: XCTestCase {
         XCTAssertNil(TalkieDeckProvider.shortcut(for: "mac-windows"))
     }
 
-    func testStarterDeckIsJobBasedAndHasNoRepeatedActions() throws {
+    func testStarterDeckFocusesOnFourCoreContexts() throws {
         let layout = LatticesCompanionCockpitCatalog.defaultLayout
-        XCTAssertEqual(layout.pages.map(\.id), ["remote", "move", "speak-run"])
+        XCTAssertEqual(layout.pages.map(\.id), ["command", "dev", "media", "windows"])
 
         let shortcutIDs = layout.pages.flatMap { page in
             page.slots?.map(\.shortcutID) ?? page.slotIDs.filter { !$0.isEmpty }
         }
-        XCTAssertEqual(shortcutIDs.count, 21)
-        XCTAssertEqual(Set(shortcutIDs).count, shortcutIDs.count)
+        XCTAssertEqual(shortcutIDs.count, 39)
+        XCTAssertFalse(shortcutIDs.contains(where: { $0.hasPrefix("talkie-") }))
+        XCTAssertFalse(shortcutIDs.contains(where: { $0.hasPrefix("voice-") }))
     }
 
     func testStarterDeckPositionedControlsStayInsideTheirPagesWithoutOverlap() throws {
@@ -164,7 +165,7 @@ final class CompanionCockpitMappingTests: XCTestCase {
         }
     }
 
-    func testStarterDeckRemainsUsefulAndHonestWithoutTalkie() {
+    func testStarterDeckRemainsFullyUsefulWithoutTalkieOrVoice() {
         let state = LatticesCompanionCockpitCatalog.renderedState(
             layout: LatticesCompanionCockpitCatalog.defaultLayout,
             voice: nil,
@@ -173,13 +174,19 @@ final class CompanionCockpitMappingTests: XCTestCase {
             talkie: .unavailable
         )
 
-        XCTAssertEqual(state.pages.map { $0.tiles.filter(\.isEnabled).count }, [4, 11, 2])
+        XCTAssertEqual(state.pages.map { $0.tiles.filter(\.isEnabled).count }, [8, 12, 7, 12])
         XCTAssertTrue(state.pages.flatMap(\.tiles).allSatisfy { $0.title != "Empty" })
+        XCTAssertTrue(state.pages.flatMap(\.tiles).allSatisfy(\.isEnabled))
+    }
 
-        let speakPage = state.pages.first(where: { $0.id == "speak-run" })
-        let providerTiles = speakPage?.tiles.filter { $0.shortcutID.hasPrefix("talkie-") || $0.shortcutID == "mac-sessions" }
-        XCTAssertEqual(providerTiles?.count, 4)
-        XCTAssertTrue(providerTiles?.allSatisfy { !$0.isEnabled && $0.actionID == nil } == true)
+    func testDeckBuilderLookupStartsWithPackagedAppResources() {
+        let resources = URL(fileURLWithPath: "/Applications/Lattices.app/Contents/Resources")
+        let roots = LatticesCompanionBridgeServer.deckBuilderResourceRoots(
+            applicationResourceURL: resources,
+            loadedBundles: []
+        )
+
+        XCTAssertEqual(roots.first, resources.appendingPathComponent("DeckBuilder", isDirectory: true))
     }
 
     func testBuilderCatalogIncludesEveryAssignableShortcut() throws {
@@ -291,7 +298,7 @@ final class CompanionCockpitMappingTests: XCTestCase {
         }
     }
 
-    func testV4MigrationReplacesOnlyUntouchedStarters() {
+    func testV5MigrationReplacesOnlyUntouchedStarters() {
         XCTAssertEqual(
             Preferences.migrateCompanionCockpitLayout(
                 LatticesCompanionCockpitCatalog.legacyDefaultLayoutV2,
@@ -304,6 +311,14 @@ final class CompanionCockpitMappingTests: XCTestCase {
             Preferences.migrateCompanionCockpitLayout(
                 LatticesCompanionCockpitCatalog.legacyDefaultLayoutV3,
                 fromVersion: 3
+            ),
+            LatticesCompanionCockpitCatalog.defaultLayout
+        )
+
+        XCTAssertEqual(
+            Preferences.migrateCompanionCockpitLayout(
+                LatticesCompanionCockpitCatalog.legacyDefaultLayoutV4,
+                fromVersion: 4
             ),
             LatticesCompanionCockpitCatalog.defaultLayout
         )
@@ -321,9 +336,16 @@ final class CompanionCockpitMappingTests: XCTestCase {
             Preferences.migrateCompanionCockpitLayout(customizedV3, fromVersion: 3),
             customizedV3
         )
+
+        var customizedV4 = LatticesCompanionCockpitCatalog.legacyDefaultLayoutV4
+        customizedV4.pages[0].title = "My Remote"
+        XCTAssertEqual(
+            Preferences.migrateCompanionCockpitLayout(customizedV4, fromVersion: 4),
+            customizedV4
+        )
     }
 
-    func testV4MigrationAdvancesTheUntouchedV1StarterThroughEveryVersion() throws {
+    func testV5MigrationAdvancesTheUntouchedV1StarterThroughEveryVersion() throws {
         var v1Starter = LatticesCompanionCockpitCatalog.legacyDefaultLayoutV2
         let devIndex = try XCTUnwrap(v1Starter.pages.firstIndex(where: { $0.id == "dev" }))
         v1Starter.pages[devIndex].slotIDs = [

@@ -13,6 +13,14 @@ let hudsonDependency: Package.Dependency = hudsonSource == "git"
 
 let voiceEnabled = Context.environment["HUDSONKIT_WITH_VOICE"] == "1"
 
+// Vox is already a HudsonVoice transitive dep; Lattices also links VoxService
+// directly so it can host the live-session runtime in-process on boot.
+let voxSource = Context.environment["LATTICES_VOX_SOURCE"] ?? Context.environment["HUDSON_VOX_PATH"]
+let voxDependency: Package.Dependency? = voiceEnabled
+    ? (voxSource.map { .package(path: $0) }
+        ?? .package(url: "https://github.com/arach/vox.git", branch: "main"))
+    : nil
+
 var latticesDependencies: [Target.Dependency] = [
     .product(name: "DeckKit", package: "swift"),
     .product(name: "HudsonObservability", package: "hudson"),
@@ -22,15 +30,22 @@ var latticesDependencies: [Target.Dependency] = [
 ]
 if voiceEnabled {
     latticesDependencies.append(.product(name: "HudsonVoice", package: "hudson"))
+    // Package identity for https://github.com/arach/vox.git is "vox".
+    latticesDependencies.append(.product(name: "VoxService", package: "vox"))
+}
+
+var packageDependencies: [Package.Dependency] = [
+    .package(path: "../../swift"),
+    hudsonDependency,
+]
+if let voxDependency {
+    packageDependencies.append(voxDependency)
 }
 
 let package = Package(
     name: "Lattices",
     platforms: [.macOS(.v26)],
-    dependencies: [
-        .package(path: "../../swift"),
-        hudsonDependency,
-    ],
+    dependencies: packageDependencies,
     targets: [
         .executableTarget(
             name: "Lattices",

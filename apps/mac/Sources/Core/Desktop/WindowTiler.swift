@@ -457,7 +457,7 @@ enum TilePosition: String, CaseIterable, Identifiable {
         switch self {
         // 1x1
         case .maximize:    return (0,     0,   1.0,   1.0)
-        case .center:      return (0.15,  0.1, 0.7,   0.8)
+        case .center:      return (0.1,   0.1, 0.8,   0.8)
         // 2x1
         case .left:        return tileGrid(cols: 2, rows: 1, col: 0, row: 0)
         case .right:       return tileGrid(cols: 2, rows: 1, col: 1, row: 0)
