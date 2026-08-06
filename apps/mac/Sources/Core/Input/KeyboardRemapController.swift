@@ -82,11 +82,21 @@ final class KeyboardRemapController: ObservableObject {
         dispatchPrecondition(condition: .onQueue(.main))
         clearCapsLayer()
         pressedKeyCodes.removeAll()
-        breaker.reset()
-        if let eventTap {
-            CGEvent.tapEnable(tap: eventTap, enable: true)
-        } else {
-            refresh()
+        // Do not hard-reset the circuit breaker here. App-activation storms used
+        // to re-arm a just-tripped HID tap and immediately freeze input again.
+        // Only re-enable if the breaker is currently armed (healthy).
+        switch breaker.state {
+        case .armed:
+            if let eventTap {
+                CGEvent.tapEnable(tap: eventTap, enable: true)
+            } else {
+                refresh()
+            }
+        case .paused, .disabled:
+            DiagnosticLog.shared.warn(
+                "KeyboardRemap: boundary '\(reason)' ignored re-arm — breaker is \(breaker.state)"
+            )
+            return
         }
         DiagnosticLog.shared.warn("KeyboardRemap: reset for \(reason)")
     }
@@ -235,7 +245,11 @@ final class KeyboardRemapController: ObservableObject {
         updatePressedKeys(type: type, keyCode: event.getIntegerValueField(.keyboardEventKeycode), now: started)
         if shouldTriggerEmergencyReset(type: type, event: event) {
             emergencyClear(now: started)
-            InputCaptureResetCenter.reset(reason: "keyboard emergency chord")
+            // Never do broad input-capture reset work on the tap thread — it
+            // can stall every key and mouse event system-wide.
+            DispatchQueue.main.async {
+                InputCaptureResetCenter.reset(reason: "keyboard emergency chord")
+            }
             return Unmanaged.passUnretained(event)
         }
 
@@ -287,16 +301,15 @@ final class KeyboardRemapController: ObservableObject {
         let isDown = event.flags.contains(.maskAlphaShift)
         if isDown {
             activateCapsLayer(now: CFAbsoluteTimeGetCurrent())
-            releaseCapsLockLatchIfNeeded()
-            DiagnosticLog.shared.info("KeyboardRemap: Caps Lock layer active")
+            scheduleCapsLockLatchRelease()
+            // Hot path: no DiagnosticLog — logging from the HID tap freezes input.
         } else {
             let shouldTap = capsLayerActive && !capsUsedAsModifier && rule.toIfAlone == .escape
             clearCapsLayer()
-            releaseCapsLockLatchIfNeeded()
+            scheduleCapsLockLatchRelease()
             if shouldTap {
-                postKeyTap(keyCode: 53)
+                scheduleKeyTap(keyCode: 53)
             }
-            DiagnosticLog.shared.info("KeyboardRemap: Caps Lock layer inactive")
         }
 
         return nil
@@ -311,16 +324,14 @@ final class KeyboardRemapController: ObservableObject {
         case .keyDown:
             if event.getIntegerValueField(.keyboardEventAutorepeat) == 0 {
                 activateCapsLayer(now: CFAbsoluteTimeGetCurrent())
-                DiagnosticLog.shared.info("KeyboardRemap: Caps Lock transport layer active")
             }
             return nil
         case .keyUp:
             let shouldTap = capsLayerActive && !capsUsedAsModifier && rule.toIfAlone == .escape
             clearCapsLayer()
             if shouldTap {
-                postKeyTap(keyCode: 53)
+                scheduleKeyTap(keyCode: 53)
             }
-            DiagnosticLog.shared.info("KeyboardRemap: Caps Lock transport layer inactive")
             return nil
         default:
             return Unmanaged.passUnretained(event)
@@ -370,7 +381,10 @@ final class KeyboardRemapController: ObservableObject {
         clearCapsLayer()
         if now - lastCapsLayerStaleLogAt > 1 {
             lastCapsLayerStaleLogAt = now
-            DiagnosticLog.shared.warn("KeyboardRemap: Caps Lock layer cleared (\(reason))")
+            let r = reason
+            DispatchQueue.global(qos: .utility).async {
+                DiagnosticLog.shared.warn("KeyboardRemap: Caps Lock layer cleared (\(r))")
+            }
         }
     }
 
@@ -378,7 +392,10 @@ final class KeyboardRemapController: ObservableObject {
         clearCapsLayer()
         pressedKeyCodes.removeAll()
         bypassUntil = now + emergencyBypassDuration
-        DiagnosticLog.shared.warn("KeyboardRemap: emergency bypass via Escape")
+        // Log off-thread; do not block the tap.
+        DispatchQueue.global(qos: .utility).async {
+            DiagnosticLog.shared.warn("KeyboardRemap: emergency bypass via Escape")
+        }
     }
 
     private func updatePressedKeys(type: CGEventType, keyCode: Int64, now: CFAbsoluteTime) {
@@ -398,7 +415,10 @@ final class KeyboardRemapController: ObservableObject {
         for keyCode in staleKeys {
             pressedKeyCodes.removeValue(forKey: keyCode)
         }
-        DiagnosticLog.shared.warn("KeyboardRemap: cleared stale key-down state for \(staleKeys.count) key(s)")
+        let count = staleKeys.count
+        DispatchQueue.global(qos: .utility).async {
+            DiagnosticLog.shared.warn("KeyboardRemap: cleared stale key-down state for \(count) key(s)")
+        }
     }
 
     private func shouldTriggerEmergencyReset(type: CGEventType, event: CGEvent) -> Bool {
@@ -416,15 +436,23 @@ final class KeyboardRemapController: ObservableObject {
         return normalized
     }
 
-    private func releaseCapsLockLatchIfNeeded() {
-        clearCapsLockLatch(reason: "event")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) { [weak self] in
+    /// IOHID latch clears + synthetic Escape must never run on the CGEventTap
+    /// callback. They can take tens of ms and stall *all* keyboard (and under
+    /// load, feel like the whole desktop is frozen).
+    private func scheduleCapsLockLatchRelease() {
+        let queue = Self.latchQueue
+        queue.async { [weak self] in
+            self?.clearCapsLockLatch(reason: "event")
+        }
+        queue.asyncAfter(deadline: .now() + 0.04) { [weak self] in
             self?.clearCapsLockLatch(reason: "settle")
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) { [weak self] in
+        queue.asyncAfter(deadline: .now() + 0.14) { [weak self] in
             self?.clearCapsLockLatch(reason: "deferred")
         }
     }
+
+    private static let latchQueue = DispatchQueue(label: "dev.lattices.keyboard-remap.latch", qos: .userInitiated)
 
     @discardableResult
     private func clearCapsLockLatch(reason: String) -> Bool {
@@ -434,6 +462,12 @@ final class KeyboardRemapController: ObservableObject {
             return false
         }
         return true
+    }
+
+    private func scheduleKeyTap(keyCode: CGKeyCode) {
+        Self.latchQueue.async { [weak self] in
+            self?.postKeyTap(keyCode: keyCode)
+        }
     }
 
     private func postKeyTap(keyCode: CGKeyCode) {

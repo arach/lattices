@@ -23,7 +23,10 @@ final class EventTapBreaker {
 
     private let label: String
     private let trippedWindow: TimeInterval = 600          // 10 min rolling window
-    private let cooldowns: [TimeInterval] = [30, 120]      // trip 1 → 30s, trip 2 → 2 min, trip 3+ → permanent
+    // Longer first pause: a slow HID callback freezes *all* typing until the OS
+    // disables the tap; re-arming too soon often re-trips and feels like a
+    // multi-ten-second system hang.
+    private let cooldowns: [TimeInterval] = [60, 180]      // trip 1 → 60s, trip 2 → 3 min, trip 3+ → permanent
 
     private let lock = NSLock()
     private var tripsInWindow: [Date] = []
@@ -67,7 +70,10 @@ final class EventTapBreaker {
             pendingRearm = nil
             _state = .disabled
             lock.unlock()
-            DiagnosticLog.shared.error("\(label): tap tripped \(count)× in \(Int(trippedWindow))s — disabled until app restart or manual re-arm")
+            let message = "\(label): tap tripped \(count)× in \(Int(trippedWindow))s — disabled until app restart or manual re-arm"
+            DispatchQueue.global(qos: .utility).async {
+                DiagnosticLog.shared.error(message)
+            }
             notifyStateChanged(.disabled)
             return false
         }
@@ -79,7 +85,9 @@ final class EventTapBreaker {
         pendingRearm?.cancel()
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
-            DiagnosticLog.shared.info("\(self.label): tap auto-recovering")
+            DispatchQueue.global(qos: .utility).async {
+                DiagnosticLog.shared.info("\(self.label): tap auto-recovering")
+            }
             self.lock.lock()
             self._state = .armed
             self.lock.unlock()
@@ -89,7 +97,10 @@ final class EventTapBreaker {
         pendingRearm = work
         lock.unlock()
 
-        DiagnosticLog.shared.warn("\(label): tap disabled by OS (trip #\(count)) — paused for \(Int(cooldown))s")
+        let pauseMessage = "\(label): tap disabled by OS (trip #\(count)) — paused for \(Int(cooldown))s"
+        DispatchQueue.global(qos: .utility).async {
+            DiagnosticLog.shared.warn(pauseMessage)
+        }
         notifyStateChanged(nextState)
         DispatchQueue.main.asyncAfter(deadline: .now() + cooldown, execute: work)
         return false
