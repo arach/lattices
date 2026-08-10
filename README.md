@@ -1,3 +1,5 @@
+
+
 ![lattices](https://lattices.dev/og.png)
 
 # lattices
@@ -39,7 +41,7 @@ Launch sessions, tile windows, switch layers, subscribe to live events.
 npm install -g @arach/lattices
 ```
 
-Also on npm as `@lattices/cli`. macOS only. Optional: `brew install tmux` for
+Also on npm as `@lattices/cli`. macOS only. Requires Node 18+ or Bun. Optional: `brew install tmux` for
 persistent sessions; [download the app](https://github.com/arach/lattices/releases/latest)
 for palette, layers, and voice.
 
