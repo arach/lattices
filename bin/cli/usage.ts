@@ -56,6 +56,8 @@ Usage:
   lattices place <query> [pos]  Deep search + focus + tile (default: bottom-right)
   lattices focus <session>    Raise a session's window
   lattices windows [--json]   List all desktop windows (daemon required)
+  lattices map [--display n]  Render displays and visible windows as an ASCII map
+  lattices map --json         Return the structured display/window map for agents
   lattices sessions [--json]  List active sessions via daemon
   lattices terminals [--json] [--refresh]
                          List synthesized terminal instances

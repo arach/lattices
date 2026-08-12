@@ -147,6 +147,7 @@ Run `lattices init` in your project directory to generate a starter
 | `lattices app restart`       | Rebuild and relaunch the menu bar app             |
 | `lattices layer [name\|index]` | Switch to a workspace layer by name or index      |
 | `lattices windows [--json]`  | List all visible windows                          |
+| [`lattices map [--json]`](/docs/workspace-map) | Read-only current-Space terminal/JSON map |
 | `lattices window assign <wid> <layer>` | Tag a window to a layer                |
 | `lattices window map [--json]` | Show all window→layer assignments                |
 | `lattices actor toggle`      | Hide/show persistent overlay actors               |
@@ -201,15 +202,16 @@ Keyboard remaps. Hold Caps Lock to send Hyper (`Control` + `Option` +
 
 ### `--json` flag
 
-The `lattices windows` command supports a `--json` flag for structured
-output:
+`lattices windows --json` returns the raw window array.
+[`lattices map --json`](/docs/workspace-map) returns a versioned, per-display
+current-Space snapshot with coordinate metadata:
 
 ```bash
 lattices windows --json
+lattices map --json
 ```
 
-Returns a JSON array of window objects to stdout, useful for piping
-into `jq` or consuming from scripts.
+Both are useful for piping into `jq` or consuming from scripts.
 
 ### Daemon responses
 

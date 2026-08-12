@@ -1569,6 +1569,11 @@ The response includes `cached` and `loading`. A ready preview also includes
 
 List macOS display spaces (virtual desktops).
 
+Display `frame` and `visibleFrame` use the same top-left global coordinate
+system as window frames returned by `windows.list`.
+See [Workspace Map](/docs/workspace-map) for the complete coordinate contract,
+terminal/JSON projection, and visible-surface lifecycle guidance.
+
 **Params**: none
 
 **Returns**: array of display objects:
@@ -1578,10 +1583,13 @@ List macOS display spaces (virtual desktops).
   {
     "displayIndex": 0,
     "displayId": "main",
+    "name": "Built-in Liquid Retina XDR Display",
+    "frame": { "x": 0, "y": 0, "w": 1728, "h": 1117 },
+    "visibleFrame": { "x": 0, "y": 38, "w": 1728, "h": 1079 },
     "currentSpaceId": 1,
     "spaces": [
-      { "id": 1, "index": 0, "display": 0, "isCurrent": true },
-      { "id": 2, "index": 1, "display": 0, "isCurrent": false }
+      { "id": 1, "index": 1, "display": 0, "isCurrent": true },
+      { "id": 2, "index": 2, "display": 0, "isCurrent": false }
     ]
   }
 ]

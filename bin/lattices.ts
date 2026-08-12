@@ -19,6 +19,7 @@ import { searchCommand, placeCommand } from "./cli/search.ts";
 import { captureCommand } from "./cli/capture.ts";
 import { layerCommand } from "./cli/layer.ts";
 import { runsCommand } from "./cli/runs.ts";
+import { mapCommand, mapUsage } from "./cli/map.ts";
 import {
   esc,
   sessionExists,
@@ -3034,6 +3035,13 @@ switch (command) {
     break;
   case "windows":
     await windowsCommand(args[1] === "--json");
+    break;
+  case "map":
+    if (args.includes("--help") || args.includes("-h")) {
+      console.log(mapUsage());
+    } else {
+      await withDaemon(async ({ daemonCall }) => mapCommand(args.slice(1), daemonCall));
+    }
     break;
   case "window":
     if (args[1] === "assign") {

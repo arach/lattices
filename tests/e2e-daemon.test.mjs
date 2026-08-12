@@ -121,6 +121,15 @@ test("spaces.list returns displays with ordered spaces and a current space", asy
 
   for (const display of displays) {
     assert.equal(typeof display.displayIndex, "number");
+    assert.equal(typeof display.name, "string");
+    assert.equal(typeof display.frame, "object");
+    assert.equal(typeof display.visibleFrame, "object");
+    for (const frame of [display.frame, display.visibleFrame]) {
+      assert.equal(typeof frame.x, "number");
+      assert.equal(typeof frame.y, "number");
+      assert.ok(frame.w > 0);
+      assert.ok(frame.h > 0);
+    }
     assert.ok(Array.isArray(display.spaces), "display.spaces must be an array");
     assert.ok(display.spaces.length > 0, "display should list at least one space");
     assert.equal(typeof display.currentSpaceId, "number");

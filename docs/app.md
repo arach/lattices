@@ -272,6 +272,13 @@ from Settings > Shortcuts.
 | Ctrl+B  Z         | Zoom pane (toggle)   |
 | Ctrl+B  [         | Scroll mode          |
 
+Hyper+L opens Studio; close it with Escape or `q` when the map owns keyboard
+focus, or use the window close button. Hyper+3 opens or dismisses the HUD and
+its miniature workspace map. The Scattered and Full HUD presets intentionally
+retain a faint, non-interactive ambient surface after dismissal. Neither UI is
+the read-only terminal [`lattices map`](/docs/workspace-map) command; see that
+page for exact side effects, full-teardown steps, and tab-stack cleanup.
+
 ### Docs
 
 Embedded quick reference with glossary, "how it works" steps, and

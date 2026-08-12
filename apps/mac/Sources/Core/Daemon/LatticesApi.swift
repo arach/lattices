@@ -47,6 +47,51 @@ struct ApiModel {
     let fields: [Field]
 }
 
+// MARK: - Display Geometry
+
+enum DisplayGeometryMapper {
+    /// Convert AppKit's bottom-left global coordinates to the top-left global
+    /// coordinates used by CG window bounds and the Lattices API.
+    static func topLeftFrame(_ frame: CGRect, primaryHeight: CGFloat) -> CGRect {
+        CGRect(
+            x: frame.origin.x,
+            y: primaryHeight - frame.maxY,
+            width: frame.width,
+            height: frame.height
+        )
+    }
+
+    /// SkyLight and AppKit do not document matching array order. Prefer the
+    /// stable display UUID and retain the historical index fallback.
+    static func screen(for display: DisplaySpaces, in screens: [NSScreen]) -> NSScreen? {
+        let wanted = normalizeIdentifier(display.displayId)
+        if !wanted.isEmpty,
+           let matched = screens.first(where: { screen in
+               guard let identifier = identifier(for: screen) else { return false }
+               return normalizeIdentifier(identifier) == wanted
+           }) {
+            return matched
+        }
+        return screens.indices.contains(display.displayIndex) ? screens[display.displayIndex] : nil
+    }
+
+    private static func identifier(for screen: NSScreen) -> String? {
+        let key = NSDeviceDescriptionKey("NSScreenNumber")
+        guard let number = screen.deviceDescription[key] as? NSNumber,
+              let uuid = CGDisplayCreateUUIDFromDisplayID(CGDirectDisplayID(number.uint32Value))?.takeRetainedValue()
+        else {
+            return nil
+        }
+        return CFUUIDCreateString(nil, uuid) as String
+    }
+
+    private static func normalizeIdentifier(_ value: String) -> String {
+        value
+            .trimmingCharacters(in: CharacterSet(charactersIn: "{}"))
+            .lowercased()
+    }
+}
+
 // MARK: - Central Registry
 
 final class LatticesApi {
@@ -212,6 +257,9 @@ final class LatticesApi {
         api.model(ApiModel(name: "Display", fields: [
             Field(name: "displayIndex", type: "int", required: true, description: "Display index"),
             Field(name: "displayId", type: "string", required: true, description: "Display identifier"),
+            Field(name: "name", type: "string", required: true, description: "Human-readable display name"),
+            Field(name: "frame", type: "Frame", required: true, description: "Full display frame in top-left screen coordinates"),
+            Field(name: "visibleFrame", type: "Frame", required: true, description: "Usable display frame in top-left screen coordinates"),
             Field(name: "currentSpaceId", type: "int", required: true, description: "Currently active space ID"),
             Field(name: "spaces", type: "[Space]", required: true, description: "Spaces on this display"),
         ]))
@@ -889,10 +937,33 @@ final class LatticesApi {
             returns: .array(model: "Display"),
             handler: { _ in
                 let displays = WindowTiler.getDisplaySpaces()
+                let screens: [NSScreen]
+                if Thread.isMainThread {
+                    screens = NSScreen.screens
+                } else {
+                    screens = DispatchQueue.main.sync { NSScreen.screens }
+                }
+                let primaryHeight = screens.first?.frame.height ?? 0
                 return .array(displays.map { display in
-                    .object([
+                    let screen = DisplayGeometryMapper.screen(for: display, in: screens)
+                    func topLeftFrame(_ frame: CGRect?) -> JSON {
+                        guard let frame else {
+                            return .object(["x": .double(0), "y": .double(0), "w": .double(0), "h": .double(0)])
+                        }
+                        let converted = DisplayGeometryMapper.topLeftFrame(frame, primaryHeight: primaryHeight)
+                        return .object([
+                            "x": .double(converted.origin.x),
+                            "y": .double(converted.origin.y),
+                            "w": .double(converted.width),
+                            "h": .double(converted.height),
+                        ])
+                    }
+                    return .object([
                         "displayIndex": .int(display.displayIndex),
                         "displayId": .string(display.displayId),
+                        "name": .string(screen?.localizedName ?? display.displayId),
+                        "frame": topLeftFrame(screen?.frame),
+                        "visibleFrame": topLeftFrame(screen?.visibleFrame),
                         "currentSpaceId": .int(display.currentSpaceId),
                         "spaces": .array(display.spaces.map { space in
                             .object([

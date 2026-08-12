@@ -40,10 +40,11 @@ Compatibility wrappers still exist:
 Agents should use these paths in order:
 
 1. **API schema**: `lattices call api.schema`
-2. **Daemon reference**: [/docs/api](/docs/api)
-3. **Agent guide**: [/docs/agents](/docs/agents)
-4. **Voice model**: [/docs/voice](/docs/voice)
-5. **Concepts / config**: [/docs/concepts](/docs/concepts), [/docs/config](/docs/config)
+2. **Read-only workspace map and UI hygiene**: [/docs/workspace-map](/docs/workspace-map)
+3. **Daemon reference**: [/docs/api](/docs/api)
+4. **Agent guide**: [/docs/agents](/docs/agents)
+5. **Voice model**: [/docs/voice](/docs/voice)
+6. **Concepts / config**: [/docs/concepts](/docs/concepts), [/docs/config](/docs/config)
 
 Useful CLI discovery commands:
 
