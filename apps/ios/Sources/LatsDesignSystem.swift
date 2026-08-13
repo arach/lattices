@@ -110,15 +110,13 @@ struct LatsInset<Content: View>: View {
 
 struct LatsSectionLabel: View {
     let text: String
-    // Source design uses amber (~#d9a05b) for all section headers — gives the
-    // surface its tactical-HUD feel and visually anchors each section above
-    // the dim mono subtitles that sit alongside.
-    var tint: Color = LatsPalette.amber
+    /// Amber is attention, not a section style. Default is secondary text.
+    var tint: Color = LatsPalette.textDim
+    var attention: Bool = false
     var body: some View {
-        Text(text.uppercased())
-            .font(LatsFont.mono(9, weight: .bold))
-            .tracking(2.0)
-            .foregroundStyle(tint)
+        Text(text)
+            .font(LatsFont.ui(13, weight: .medium))
+            .foregroundStyle(attention ? LatsPalette.amber : tint)
     }
 }
 
@@ -149,7 +147,7 @@ struct LatsButton: View {
         Button(action: action) {
             HStack(spacing: 8) {
                 if let icon { Image(systemName: icon).font(.system(size: 12, weight: .semibold)) }
-                Text(title).font(LatsFont.mono(12, weight: .semibold)).tracking(0.5)
+                Text(title).font(LatsFont.ui(13, weight: .semibold))
             }
             .foregroundStyle(foreground)
             .padding(.horizontal, 14)

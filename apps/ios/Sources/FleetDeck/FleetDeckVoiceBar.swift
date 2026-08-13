@@ -21,11 +21,11 @@ struct FleetVoiceBar: View {
 
     private var promptLabel: String {
         switch phase {
-        case .listening:    return "LISTENING · RELEASE TO SEND"
-        case .transcribing: return "TRANSCRIBING"
-        case .reasoning:    return "THINKING"
-        case .speaking:     return "SPEAKING"
-        case .idle, .none:  return "HOLD TO TALK"
+        case .listening:    return "Listening · release to send"
+        case .transcribing: return "Transcribing"
+        case .reasoning:    return "Thinking"
+        case .speaking:     return "Speaking"
+        case .idle, .none:  return "Hold to talk"
         }
     }
 
@@ -42,7 +42,7 @@ struct FleetVoiceBar: View {
                             .font(FleetV6.mono(13.5))
                             .foregroundStyle(FleetV6.fg4)
                         Text(transcript.isEmpty ? "—" : transcript)
-                            .font(FleetV6.mono(13.5))
+                            .font(DeckTheme.saidSecondary)
                             .foregroundStyle(FleetV6.fg)
                             .lineLimit(1)
                             .truncationMode(.tail)
@@ -54,7 +54,7 @@ struct FleetVoiceBar: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 HStack(spacing: 8) {
-                    FleetLabel(text: "ROUTE TO", size: 8.5, color: FleetV6.fg3)
+                    FleetLabel(text: "Route to", size: 8.5, color: FleetV6.fg3)
                     routeChips
                 }
             }

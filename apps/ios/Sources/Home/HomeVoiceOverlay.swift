@@ -261,7 +261,7 @@ struct HomeVoiceOverlay: View {
         HStack(spacing: 12) {
             switch phase {
             case .idle:
-                LatsButton(title: "Start", icon: "mic.fill", style: .primary(.green), action: onStart)
+                LatsButton(title: "Start", icon: "mic.fill", style: .primary(.amber), action: onStart)
                 LatsButton(title: "Close", icon: "xmark", style: .ghost, action: onClose)
 
             case .listening:

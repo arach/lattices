@@ -55,10 +55,9 @@ struct FleetDeckView: View {
         FleetWell {
             HStack(spacing: 8) {
                 HStack(spacing: 7) {
-                    FleetDot(color: isOnline ? FleetV6.green : FleetV6.fg4, size: 6, glow: isOnline)
-                    Text("LATS DECK")
-                        .font(FleetV6.mono(11, .bold))
-                        .tracking(1.2)
+                    FleetDot(color: isOnline ? FleetV6.fg2 : FleetV6.fg4, size: 6, glow: false)
+                    Text("Lats Deck")
+                        .font(DeckTheme.secondary(.semibold))
                         .foregroundStyle(FleetV6.fg)
                 }
                 .padding(.leading, 10)
@@ -83,8 +82,8 @@ struct FleetDeckView: View {
                     Button {
                         withAnimation(.easeOut(duration: 0.18)) { model.focusAttention() }
                     } label: {
-                        Text("ATTN \(model.attentionIndices.count)")
-                            .font(FleetV6.mono(10, .semibold))
+                        Text("Needs you · \(model.attentionIndices.count)")
+                            .font(DeckTheme.caption(.semibold))
                             .foregroundStyle(FleetV6.amber)
                             .frame(minWidth: 62, minHeight: 44)
                             .contentShape(Rectangle())

@@ -271,10 +271,9 @@ struct LatsTopChrome: View {
 
     private var compactChrome: some View {
         HStack(spacing: 10) {
-            Text("LATS · DECK")
-                .font(LatsFont.mono(11, weight: .bold))
+            Text("Lats Deck")
+                .font(DeckTheme.secondary(.semibold))
                 .foregroundStyle(LatsPalette.text)
-                .tracking(1.3)
                 .fixedSize()
 
             Button(action: onSwitcher) {
@@ -312,10 +311,9 @@ struct LatsTopChrome: View {
     private var regularChrome: some View {
         HStack(spacing: 0) {
             HStack(spacing: 12) {
-                Text("LATS · DECK")
-                    .font(LatsFont.mono(11, weight: .bold))
+                Text("Lats Deck")
+                    .font(DeckTheme.secondary(.semibold))
                     .foregroundStyle(LatsPalette.text)
-                    .tracking(1.5)
                 Text("·").foregroundStyle(LatsPalette.textFaint)
                 Button(action: onSwitcher) {
                     HStack(spacing: 6) {

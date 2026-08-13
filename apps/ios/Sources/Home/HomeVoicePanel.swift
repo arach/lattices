@@ -52,8 +52,7 @@ struct HomeVoicePanel: View {
                     headerRow
 
                     Text(caption)
-                        .font(LatsFont.mono(11))
-                        .tracking(0.4)
+                        .font(DeckTheme.secondary())
                         .foregroundStyle(LatsPalette.textDim)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -82,9 +81,8 @@ struct HomeVoicePanel: View {
 
     private var headerRow: some View {
         HStack(spacing: 8) {
-            Text(macLabel.lowercased())
-                .font(LatsFont.mono(11))
-                .tracking(0.5)
+            Text(macLabel)
+                .font(DeckTheme.secondary())
                 .foregroundStyle(LatsPalette.textDim)
                 .lineLimit(1)
 
@@ -127,10 +125,10 @@ struct HomeVoicePanel: View {
     private func transcriptInline(_ text: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Text("›")
-                .font(LatsFont.mono(12, weight: .semibold))
-                .foregroundStyle(LatsPalette.green.opacity(0.8))
+                .font(DeckTheme.saidSecondary)
+                .foregroundStyle(DeckTheme.textTertiary)
             Text(text)
-                .font(LatsFont.mono(12))
+                .font(DeckTheme.saidSecondary)
                 .foregroundStyle(LatsPalette.text)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .multilineTextAlignment(.leading)
@@ -144,7 +142,7 @@ struct HomeVoicePanel: View {
                 .foregroundStyle(LatsPalette.green)
                 .frame(width: 12)
             Text(text)
-                .font(LatsFont.ui(12))
+                .font(DeckTheme.saidSecondary)
                 .foregroundStyle(LatsPalette.text)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }

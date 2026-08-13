@@ -480,7 +480,7 @@ struct LatsHomeView: View {
 
     private var hero: some View {
         VStack(alignment: .leading, spacing: 8) {
-            LatsSectionLabel(text: "lats deck")
+            LatsSectionLabel(text: "Lats Deck")
             Text("Pair your Mac")
                 .font(LatsFont.ui(28, weight: .bold))
                 .foregroundStyle(LatsPalette.text)
@@ -512,7 +512,7 @@ struct LatsHomeView: View {
     private var discoveryCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                LatsSectionLabel(text: "nearby macs")
+                LatsSectionLabel(text: "Nearby Macs")
                 Spacer()
                 LatsButton(title: "Refresh", icon: "arrow.clockwise", style: .ghost) {
                     store.refreshDiscovery()
@@ -555,7 +555,7 @@ struct LatsHomeView: View {
     private var manualCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                LatsSectionLabel(text: "manual connection")
+                LatsSectionLabel(text: "Manual connection")
                 Spacer()
             }
             Text("Use this if Bonjour discovery is blocked. Enter the Mac's Bonjour host, such as `mini.local`, or its local network name.")
@@ -568,7 +568,7 @@ struct LatsHomeView: View {
                 LatsField(placeholder: "Port", text: $store.manualPort, keyboardType: .numberPad)
             }
 
-            LatsButton(title: "Connect", icon: "bolt.fill", style: .primary(.green)) {
+            LatsButton(title: "Connect", icon: "bolt.fill", style: .primary(.amber)) {
                 store.connectManually()
             }
             .frame(maxWidth: .infinity)
@@ -588,7 +588,7 @@ struct LatsHomeView: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 11))
                     .foregroundStyle(LatsPalette.red)
-                LatsSectionLabel(text: "connection issue", tint: LatsPalette.red)
+                LatsSectionLabel(text: "Connection issue", tint: LatsPalette.red, attention: true)
             }
             Text(message)
                 .font(LatsFont.mono(11))
@@ -872,7 +872,7 @@ struct LatsConnectedHome: View {
     private var surfacesSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                LatsSectionLabel(text: "surfaces")
+                LatsSectionLabel(text: "Surfaces")
                 Spacer()
                 Text("legacy · will fold into deck")
                     .font(LatsFont.mono(9))
@@ -920,8 +920,9 @@ struct LatsConnectedHome: View {
                 Circle()
                     .fill(result.ok ? LatsPalette.green : LatsPalette.red)
                     .frame(width: 6, height: 6)
-                LatsSectionLabel(text: result.ok ? "last action" : "action failed",
-                                 tint: result.ok ? LatsPalette.green : LatsPalette.red)
+                LatsSectionLabel(text: result.ok ? "Last action" : "Action failed",
+                                 tint: result.ok ? LatsPalette.textDim : LatsPalette.red,
+                                 attention: !result.ok)
             }
             Text(result.summary)
                 .font(LatsFont.ui(13, weight: .semibold))
@@ -1064,7 +1065,7 @@ struct LatsSettingsView: View {
     private var macsCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                LatsSectionLabel(text: "macs")
+                LatsSectionLabel(text: "Macs")
                 Spacer()
                 LatsButton(title: "Refresh", icon: "arrow.clockwise", style: .ghost) {
                     store.refreshDiscovery()
@@ -1201,7 +1202,7 @@ struct LatsSettingsView: View {
 
     private var activeDetailCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            LatsSectionLabel(text: "active session")
+            LatsSectionLabel(text: "Active session")
             if let endpoint = store.activeEndpoint {
                 LatsKVRow(key: "host", value: endpoint.host, valueColor: LatsPalette.green)
                 LatsKVRow(key: "port", value: "\(endpoint.port)")
@@ -1229,7 +1230,7 @@ struct LatsSettingsView: View {
 
     private var disconnectCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            LatsSectionLabel(text: "device")
+            LatsSectionLabel(text: "Device")
             Text("Disconnecting clears the active session. Re-pair to re-encrypt this device with the Mac.")
                 .font(LatsFont.mono(10))
                 .foregroundStyle(LatsPalette.textDim)
@@ -1251,7 +1252,7 @@ struct LatsSettingsView: View {
 
     private var aboutCard: some View {
         VStack(alignment: .leading, spacing: 6) {
-            LatsSectionLabel(text: "about")
+            LatsSectionLabel(text: "About")
             LatsKVRow(key: "build", value: "lats deck · v0.1")
             LatsKVRow(key: "device", value: UIDevice.current.model)
             LatsKVRow(key: "system", value: "iOS \(UIDevice.current.systemVersion)")
@@ -1323,7 +1324,7 @@ struct LatsCockpitSurface: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            LatsSectionLabel(text: "command deck")
+            LatsSectionLabel(text: "Command deck")
             Text("Open the cockpit for the full Lats Deck experience.")
                 .font(LatsFont.mono(11))
                 .foregroundStyle(LatsPalette.textDim)
@@ -1395,7 +1396,7 @@ struct LatsVoiceSurface: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Circle().fill(phaseColor).frame(width: 8, height: 8)
-                LatsSectionLabel(text: store.snapshot?.voice?.provider?.uppercased() ?? "VOICE",
+                LatsSectionLabel(text: store.snapshot?.voice?.provider ?? "Voice",
                                  tint: phaseColor)
             }
             Text(phaseLabel)
@@ -1432,9 +1433,9 @@ struct LatsVoiceSurface: View {
     private var transcriptCard: some View {
         if let transcript = store.snapshot?.voice?.transcript, !transcript.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
-                LatsSectionLabel(text: "transcript")
+                LatsSectionLabel(text: "Transcript")
                 Text("\u{201C}\(transcript)\u{201D}")
-                    .font(LatsFont.ui(15))
+                    .font(DeckTheme.said)
                     .foregroundStyle(LatsPalette.text)
                     .lineSpacing(2)
             }
@@ -1450,9 +1451,9 @@ struct LatsVoiceSurface: View {
 
         if let summary = store.snapshot?.voice?.responseSummary, !summary.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
-                LatsSectionLabel(text: "response")
+                LatsSectionLabel(text: "Response")
                 Text(summary)
-                    .font(LatsFont.mono(11))
+                    .font(DeckTheme.saidSecondary)
                     .foregroundStyle(LatsPalette.text)
                     .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1476,7 +1477,7 @@ struct LatsVoiceSurface: View {
             "Switch to my review layer",
         ]
         return VStack(alignment: .leading, spacing: 8) {
-            LatsSectionLabel(text: "try saying")
+            LatsSectionLabel(text: "Try saying")
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 6)], spacing: 6) {
                 ForEach(examples, id: \.self) { e in
                     Text(e)
@@ -1569,7 +1570,7 @@ struct LatsLayoutSurface: View {
 
     private var placementsCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            LatsSectionLabel(text: "placements")
+            LatsSectionLabel(text: "Placements")
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 6)], spacing: 6) {
                 ForEach(placements, id: \.1) { p in
                     Button {
@@ -1606,7 +1607,7 @@ struct LatsLayoutSurface: View {
     private func previewCard(preview: DeckLayoutPreview) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                LatsSectionLabel(text: "stage")
+                LatsSectionLabel(text: "Stage")
                 Spacer()
                 Text("tap a window to focus")
                     .font(LatsFont.mono(9))
