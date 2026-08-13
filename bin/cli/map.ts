@@ -801,6 +801,29 @@ Options:
   -h, --help     Show this help`;
 }
 
+async function loadMapState(
+  daemonCall: (method: string, params?: Record<string, unknown> | null) => Promise<unknown>,
+): Promise<{ displays: MapDisplay[]; windows: MapWindow[] }> {
+  try {
+    const snapshot = await daemonCall("desktop.snapshot", { includeOffscreen: false }) as {
+      displays?: MapDisplay[];
+      windows?: MapWindow[];
+    };
+    if (Array.isArray(snapshot?.displays) && Array.isArray(snapshot?.windows)) {
+      return { displays: snapshot.displays, windows: snapshot.windows };
+    }
+  } catch {
+    // Older app builds have map but not desktop.snapshot.
+  }
+  const [spacesPayload, windowsPayload] = await Promise.all([
+    daemonCall("spaces.list"),
+    daemonCall("windows.list"),
+  ]);
+  const displays = (Array.isArray(spacesPayload) ? spacesPayload : (spacesPayload as { displays?: MapDisplay[] })?.displays ?? []) as MapDisplay[];
+  const windows = (Array.isArray(windowsPayload) ? windowsPayload : []) as MapWindow[];
+  return { displays, windows };
+}
+
 export function parseMapOptions(args: string[]): MapOptions & { json: boolean } {
   const options: MapOptions & { json: boolean } = { json: false };
   const numericOptions = new Set(["display", "width", "height"]);
@@ -844,12 +867,7 @@ export async function mapCommand(
   }
   const { json, display, height, width: requestedWidth } = parseMapOptions(args);
   const width = requestedWidth ?? process.stdout.columns;
-  const [spacesPayload, windowsPayload] = await Promise.all([
-    daemonCall("spaces.list"),
-    daemonCall("windows.list"),
-  ]);
-  const displays = (Array.isArray(spacesPayload) ? spacesPayload : (spacesPayload as { displays?: MapDisplay[] })?.displays ?? []) as MapDisplay[];
-  const windows = (Array.isArray(windowsPayload) ? windowsPayload : []) as MapWindow[];
+  const { displays, windows } = await loadMapState(daemonCall);
 
   if (json) {
     // A display without geometry would yield a valid-looking snapshot whose
