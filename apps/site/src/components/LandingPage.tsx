@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { ThemeToggle } from "./ThemeToggle";
+import { GestureMatrix } from "./GestureMatrix";
 
 function LatticesLogo({ size = 20 }: { size?: number }) {
   // 3×3 grid with L-shape pattern (left column + bottom row bright, rest dim)
@@ -233,6 +235,36 @@ const heroWindowMeta: Record<HeroWindowId, { app: string; title: string; tint: s
   terminal: { app: "Terminal", title: "atlas — bun dev", tint: "#34d399" },
 };
 
+// `lattices map` of the fictional hero desktop — same four windows, same frames.
+const heroDesktopMaps: Record<HeroDesktopPhase, string> = {
+  messy: `\
+┌ Display 0 · MacBook Pro · Space 1 ───────────────────────────────┐
+│                                                                  │
+│    ┌3 Code · session.ts───┐       ┌4 Browser · localhost─────┐   │
+│    │       ┌1 Terminal · codex────┼────────┐                 │   │
+│    │       │                               │                 │   │
+│    └───────┼                               │                 │   │
+│            │                               │          ┬──────┘   │
+│            │                               │          │          │
+│            └─────────────────┼─────────────┘          │          │
+│                              └────────────────────────┘          │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘`,
+  organized: `\
+┌ Display 0 · MacBook Pro · Space 1 ───────────────────────────────┐
+│                                                                  │
+│ ┌1 Terminal · codex───────────────────┐┌3 Code · session.ts────┐ │
+│ │                                     ││                       │ │
+│ │                                     │└───────────────────────┘ │
+│ │                                     │┌4 Browser · localhost──┐ │
+│ │                                     ││                       │ │
+│ │                                     ││                       │ │
+│ │                                     │├2 Terminal · bun dev───┤ │
+│ │                                     ││                       │ │
+│ └─────────────────────────────────────┘└───────────────────────┘ │
+└──────────────────────────────────────────────────────────────────┘`,
+};
+
 function HeroWindowContent({ id }: { id: HeroWindowId }) {
   if (id === "agent") {
     return (
@@ -461,17 +493,20 @@ function HeroWorkspaceStage() {
             <b>&gt;</b> what&apos;s on my screen?
           </span>
           <span className="hero-harness-tool">
-            <i aria-hidden="true">⏺</i> lattices — windows.list
+            <i aria-hidden="true">⏺</i> lattices — map
           </span>
-          <motion.span
+          <motion.div
             key={driver === "agent" ? "agent" : phase}
-            className="hero-harness-result"
+            className="hero-harness-result hero-harness-map-result"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: prefersReducedMotion ? 0 : 0.3, delay: prefersReducedMotion ? 0 : 0.6 }}
           >
-            <b aria-hidden="true">⎿</b> 4 windows · {driver === "agent" || !organized ? "3 overlapping" : "tiled main-left"} · focused: atlas — codex
-          </motion.span>
+            <span>
+              <b aria-hidden="true">⎿</b> 4 windows · {driver === "agent" || !organized ? "3 overlapping" : "tiled main-left"} · focused: atlas — codex
+            </span>
+            <pre className="hero-harness-map" aria-hidden="true">{heroDesktopMaps[phase]}</pre>
+          </motion.div>
           <AnimatePresence>
             {driver === "agent" && (
               <motion.span
@@ -516,6 +551,59 @@ function HeroWorkspaceStage() {
   );
 }
 
+const handsShortcuts: Array<{ keys: string[]; action: string }> = [
+  { keys: ["⌃", "⌥", "← / →"], action: "Tile halves" },
+  { keys: ["⌃", "⌥", "G"], action: "4×4 grid on the front window" },
+  { keys: ["⌃", "⌥", "V"], action: "Fill the next 3×2 cell" },
+  { keys: ["⌘", "⌥", "1 / 2 / 3"], action: "Switch workspace layer" },
+  { keys: ["⌘", "⇧", "M"], action: "Command palette" },
+  { keys: ["Hyper", "L"], action: "Studio / screen map" },
+];
+
+function HandsOnSection() {
+  return (
+    <section className="hands-section fade-in" id="hands">
+      <div className="hands-copy">
+        <div className="cua-kicker">Keyboard and mouse</div>
+        <h2>Shortcuts and mouse gestures, not just the palette.</h2>
+        <p>
+          Caps Lock is Hyper. ⌃⌥ tiles halves and grids. Hold a mouse button,
+          draw a direction or a shape, release. The app replays that path in
+          a 3×3 <em>matrix</em> — the same completer as the logo.
+        </p>
+        <div className="hands-links">
+          <a href="/docs/app">Shortcut reference &rarr;</a>
+          <a href="/docs/mouse-gestures">Mouse gestures &rarr;</a>
+        </div>
+      </div>
+
+      <div className="hands-stage">
+        <div className="hands-panel">
+          <h3>Keyboard</h3>
+          <ul className="hands-list">
+            {handsShortcuts.map((row) => (
+              <li key={row.action}>
+                <span className="hands-chords">
+                  {row.keys.map((key) => (
+                    <kbd key={key}>{key}</kbd>
+                  ))}
+                </span>
+                <span>{row.action}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="hands-note">Hold Caps Lock for Hyper. Defaults — change them in Settings.</p>
+        </div>
+
+        <div className="hands-panel">
+          <h3>The matrix</h3>
+          <GestureMatrix />
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function App() {
   const [paneLayout, setPaneLayout] = useState<PaneLayout>(2);
   const [cuaStep, setCuaStep] = useState<CuaStepId>("observe");
@@ -553,20 +641,19 @@ export default function App() {
             <a href="#cua" className="nav-link">
               CUA
             </a>
+            <a href="#hands" className="nav-link nav-optional-mobile">
+              Keys
+            </a>
             <a href="#config" className="nav-link nav-optional-mobile">
               Config
             </a>
             <a href="#app" className="nav-link nav-optional-mobile">
               App
             </a>
-            <button
-              type="button"
-              className="nav-link"
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-              aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
-            >
-              Theme
-            </button>
+            <ThemeToggle
+              theme={theme}
+              onToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
+            />
             <a
               href="https://github.com/arach/lattices"
               target="_blank"
@@ -586,8 +673,8 @@ export default function App() {
           <div className="hero-copy">
             <h1>The workspace manager<br /><span className="accent">for you and your agents.</span></h1>
             <p className="hero-sub">
-              Every window, terminal, and layout on your Mac<br />
-              organized and accessible, by hand, keystroke, or API.
+              Every window, terminal, and layout on your Mac —<br />
+              by shortcut, mouse gesture, or API.
             </p>
             <div className="hero-actions">
               <a
@@ -602,6 +689,7 @@ export default function App() {
                 Read the docs
               </a>
             </div>
+            <p className="hero-proof">5,500+ installs</p>
           </div>
 
           <HeroWorkspaceStage />
@@ -638,6 +726,8 @@ export default function App() {
             </p>
           </div>
         </section>
+
+        <HandsOnSection />
 
         {/* Computer use (CUA) */}
         <section className="section cua-section" id="cua">
@@ -761,9 +851,9 @@ export default function App() {
               <ul className="app-features">
                 <li>See every project and live session</li>
                 <li>Launch, attach, or detach with a click</li>
-                <li>Tile windows and switch workspace layers</li>
+                <li>Tile with ⌃⌥ chords, a 4×4 grid, or a mouse drag</li>
                 <li>Search windows, terminals, and screen text</li>
-                <li>Work by keyboard, mouse gesture, or voice</li>
+                <li>Middle-drag for Spaces, Screen Map, and dictation</li>
               </ul>
             </div>
             <div className="app-demo-reel" aria-label="Animated preview of lattices arranging windows, layers, search, and voice commands">
@@ -802,11 +892,12 @@ export default function App() {
             <span className="workflow-number">02</span>
             <div>
               <h3>Arrange</h3>
-              <h2>Tile, layer, and switch — by hand or by keystroke.</h2>
+              <h2>Tile, layer, and switch — from a chord or a mouse shape.</h2>
               <p>
-                Snap windows to grids, group them into layers and spaces, and
-                move across your desktop with the keyboard, mouse gestures, or
-                voice. When things drift, one command rebalances the screen.
+                ⌃⌥ tiles halves, thirds, and a 4×4 grid. Hold the middle
+                mouse button and draw: left and right for Spaces, down for
+                Screen Map, up for dictation. Caps Lock is Hyper. When things
+                drift, one command rebalances the screen.
               </p>
             </div>
           </article>

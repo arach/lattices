@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { ThemeToggle } from './ThemeToggle'
 
 declare global {
   interface Window {
@@ -83,13 +84,10 @@ export function SiteHeader() {
               Search
               <span aria-hidden="true">⌘K</span>
             </button>
-            <button
-              type="button"
-              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
-            >
-              Theme
-            </button>
+            <ThemeToggle
+              theme={theme}
+              onToggle={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            />
           </nav>
         </div>
       </header>

@@ -123,6 +123,21 @@
   background: color-mix(in srgb, var(--docs-text) 6%, transparent);
 }
 
+.site-links .theme-toggle {
+  width: 32px;
+  height: 32px;
+  margin-left: 4px;
+  padding: 0;
+  border: 1px solid var(--border-lit);
+  border-radius: 999px;
+  color: var(--docs-muted);
+}
+
+.site-links .theme-toggle:hover {
+  color: var(--docs-text);
+  border-color: var(--text-muted);
+}
+
 .docs-shell {
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr) 220px;
