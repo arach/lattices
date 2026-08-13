@@ -496,6 +496,14 @@ private extension LatticesDeckHost {
                 self.switchActiveSpace(index: index, displayIndex: displayIndex)
             }
 
+        case "displays.focus", "display.focus":
+            guard let displayIndex = request.payload["displayIndex"]?.intValue else {
+                throw LatticesDeckHostError.missingPayload("displayIndex")
+            }
+            return try MainActorSync.run {
+                self.focusDisplay(index: displayIndex)
+            }
+
         case "mouse.find":
             let result = try callAPI("mouse.find")
             let x = result["x"]?.intValue ?? 0
@@ -1134,6 +1142,30 @@ private extension LatticesDeckHost {
             .min { lhs, rhs in
                 lhs.zIndex < rhs.zIndex
             }
+    }
+
+    @MainActor
+    func focusDisplay(index: Int) -> ActionOutcome {
+        let screens = NSScreen.screens
+        guard let screen = DisplayGeometryMapper.screen(forDisplayIndex: index) else {
+            return ActionOutcome(
+                summary: "Display unavailable",
+                detail: "No monitor at index \(index + 1) (attached: \(screens.count)).",
+                suggestedActions: []
+            )
+        }
+
+        let frame = screen.frame
+        MouseFinder.shared.summon(to: NSPoint(x: frame.midX, y: frame.midY))
+
+        let name = screen.localizedName
+        return ActionOutcome(
+            summary: "Monitor \(index + 1)",
+            detail: name.isEmpty
+                ? "Moved pointer to display \(index + 1) of \(screens.count)."
+                : "Moved pointer to \(name) (\(index + 1)/\(screens.count)).",
+            suggestedActions: []
+        )
     }
 
     @MainActor

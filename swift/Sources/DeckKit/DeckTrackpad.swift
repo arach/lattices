@@ -11,6 +11,10 @@ public struct DeckTrackpadState: Codable, Equatable, Sendable {
     /// Current Mac pointer position normalized across the complete desktop.
     public var pointerX: Double?
     public var pointerY: Double?
+    /// Zero-based index of the NSScreen currently under the pointer.
+    public var pointerDisplayIndex: Int?
+    /// Total attached displays (NSScreen.screens.count).
+    public var displayCount: Int?
 
     public init(
         isEnabled: Bool,
@@ -21,7 +25,9 @@ public struct DeckTrackpadState: Codable, Equatable, Sendable {
         scrollScale: Double = 1.0,
         supportsDragLock: Bool = true,
         pointerX: Double? = nil,
-        pointerY: Double? = nil
+        pointerY: Double? = nil,
+        pointerDisplayIndex: Int? = nil,
+        displayCount: Int? = nil
     ) {
         self.isEnabled = isEnabled
         self.isAvailable = isAvailable
@@ -32,6 +38,8 @@ public struct DeckTrackpadState: Codable, Equatable, Sendable {
         self.supportsDragLock = supportsDragLock
         self.pointerX = pointerX
         self.pointerY = pointerY
+        self.pointerDisplayIndex = pointerDisplayIndex
+        self.displayCount = displayCount
     }
 }
 
@@ -65,10 +73,17 @@ public struct DeckTrackpadEventResult: Codable, Equatable, Sendable {
     public var ok: Bool
     public var pointerX: Double?
     public var pointerY: Double?
+    public var pointerDisplayIndex: Int?
 
-    public init(ok: Bool, pointerX: Double? = nil, pointerY: Double? = nil) {
+    public init(
+        ok: Bool,
+        pointerX: Double? = nil,
+        pointerY: Double? = nil,
+        pointerDisplayIndex: Int? = nil
+    ) {
         self.ok = ok
         self.pointerX = pointerX
         self.pointerY = pointerY
+        self.pointerDisplayIndex = pointerDisplayIndex
     }
 }

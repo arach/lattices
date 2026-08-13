@@ -9,6 +9,7 @@ final class LatticesCompanionTrackpadController {
 
     func state(isEnabled: Bool) -> DeckTrackpadState {
         let pointer = normalizedCursorPosition()
+        let display = pointerDisplay()
         guard isEnabled else {
             return DeckTrackpadState(
                 isEnabled: false,
@@ -19,7 +20,9 @@ final class LatticesCompanionTrackpadController {
                 scrollScale: 1.0,
                 supportsDragLock: true,
                 pointerX: pointer.x,
-                pointerY: pointer.y
+                pointerY: pointer.y,
+                pointerDisplayIndex: display.index,
+                displayCount: display.count
             )
         }
 
@@ -35,7 +38,9 @@ final class LatticesCompanionTrackpadController {
             scrollScale: 1.0,
             supportsDragLock: true,
             pointerX: pointer.x,
-            pointerY: pointer.y
+            pointerY: pointer.y,
+            pointerDisplayIndex: display.index,
+            displayCount: display.count
         )
     }
 
@@ -63,7 +68,28 @@ final class LatticesCompanionTrackpadController {
         }
 
         let pointer = normalizedCursorPosition()
-        return DeckTrackpadEventResult(ok: ok, pointerX: pointer.x, pointerY: pointer.y)
+        let display = pointerDisplay()
+        return DeckTrackpadEventResult(
+            ok: ok,
+            pointerX: pointer.x,
+            pointerY: pointer.y,
+            pointerDisplayIndex: display.index
+        )
+    }
+
+    /// Warp the pointer to the centre of `NSScreen.screens[index]`.
+    @discardableResult
+    func focusDisplay(index: Int) -> Bool {
+        let screens = NSScreen.screens
+        guard index >= 0, index < screens.count else { return false }
+        let frame = screens[index].frame
+        let target = NSPoint(x: frame.midX, y: frame.midY)
+        let primaryHeight = screens.first?.frame.height ?? 0
+        let cgPoint = CGPoint(x: target.x, y: primaryHeight - target.y)
+        CGAssociateMouseAndMouseCursorPosition(0)
+        CGWarpMouseCursorPosition(cgPoint)
+        CGAssociateMouseAndMouseCursorPosition(1)
+        return true
     }
 }
 
@@ -95,6 +121,18 @@ private extension LatticesCompanionTrackpadController {
             min(1, max(0, Double((point.x - desktopBounds.minX) / desktopBounds.width))),
             min(1, max(0, Double((point.y - desktopBounds.minY) / desktopBounds.height)))
         )
+    }
+
+    /// Zero-based NSScreen index under the cursor, plus attached display count.
+    func pointerDisplay() -> (index: Int?, count: Int) {
+        let screens = NSScreen.screens
+        let count = screens.count
+        guard count > 0 else { return (nil, 0) }
+        let mouse = NSEvent.mouseLocation
+        if let index = screens.firstIndex(where: { $0.frame.contains(mouse) }) {
+            return (index, count)
+        }
+        return (nil, count)
     }
 
     func clamp(delta: Double) -> CGFloat {
