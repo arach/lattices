@@ -134,6 +134,8 @@ Run `lattices init` in your project directory to generate a starter
 | `lattices restart [pane]`    | Restart a pane's process (by name or index)       |
 | `lattices tile <position>`   | Tile the frontmost window to a screen position    |
 | `lattices tile family [app] [region]` | Smart-grid the frontmost app family, or a named app |
+| `lattices window move <wid> --display <n> [--placement <slot>]` | Move a window to another display |
+| `lattices window place <wid> <slot> [--display <n>]` | Snap a window into a placement slot |
 | `lattices distribute [app] [region]` | Smart-grid visible windows or just one app      |
 | `lattices group [id]`        | List tab groups or launch/attach a group          |
 | `lattices groups`            | List all tab groups with status                   |
@@ -147,6 +149,7 @@ Run `lattices init` in your project directory to generate a starter
 | `lattices app restart`       | Rebuild and relaunch the menu bar app             |
 | `lattices layer [name\|index]` | Switch to a workspace layer by name or index      |
 | `lattices windows [--json]`  | List all visible windows                          |
+| [`lattices map [--json]`](/docs/workspace-map) | Read-only current-Space terminal/JSON map |
 | `lattices window assign <wid> <layer>` | Tag a window to a layer                |
 | `lattices window map [--json]` | Show all window→layer assignments                |
 | `lattices actor toggle`      | Hide/show persistent overlay actors               |
@@ -201,15 +204,16 @@ Keyboard remaps. Hold Caps Lock to send Hyper (`Control` + `Option` +
 
 ### `--json` flag
 
-The `lattices windows` command supports a `--json` flag for structured
-output:
+`lattices windows --json` returns the raw window array.
+[`lattices map --json`](/docs/workspace-map) returns a versioned, per-display
+current-Space snapshot with coordinate metadata:
 
 ```bash
 lattices windows --json
+lattices map --json
 ```
 
-Returns a JSON array of window objects to stdout, useful for piping
-into `jq` or consuming from scripts.
+Both are useful for piping into `jq` or consuming from scripts.
 
 ### Daemon responses
 
@@ -291,6 +295,27 @@ area, not the full screen.
 For arbitrary cells, use compact `CxR:c,r` with 1-indexed coordinates
 from the top-left, or canonical `grid:CxR:c,r` with 0-indexed coordinates.
 Example: `lattices tile 4x4:1,2`.
+
+When the menu bar app is running, `lattices tile` routes through the daemon's
+canonical `window.place` and reports a verified receipt. Without the daemon it
+falls back to AppleScript (frontmost app, primary display) and says so.
+
+### Moving a specific window
+
+`lattices tile` always targets the frontmost window. To move a *specific*
+window — by the CGWindowID shown in `lattices map` or `lattices windows` —
+use `lattices window move` / `lattices window place` (daemon required):
+
+```bash
+lattices window move 4182 --display 1              # keep relative size/position
+lattices window move 4182 --display 1 --placement right
+lattices window place 4182 top-left                # slot on its current display
+lattices window move 4182 --display 0 --dry-run --json   # plan without moving
+```
+
+A malformed wid is an error; these commands never fall back to the frontmost
+window. Slots are the named positions above plus grid placements; fractional
+typed placements remain available via `lattices call window.place`.
 
 ### Smart app tiling
 

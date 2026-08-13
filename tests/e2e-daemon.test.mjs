@@ -121,6 +121,15 @@ test("spaces.list returns displays with ordered spaces and a current space", asy
 
   for (const display of displays) {
     assert.equal(typeof display.displayIndex, "number");
+    assert.equal(typeof display.name, "string");
+    assert.equal(typeof display.frame, "object");
+    assert.equal(typeof display.visibleFrame, "object");
+    for (const frame of [display.frame, display.visibleFrame]) {
+      assert.equal(typeof frame.x, "number");
+      assert.equal(typeof frame.y, "number");
+      assert.ok(frame.w > 0);
+      assert.ok(frame.h > 0);
+    }
     assert.ok(Array.isArray(display.spaces), "display.spaces must be an array");
     assert.ok(display.spaces.length > 0, "display should list at least one space");
     assert.equal(typeof display.currentSpaceId, "number");
@@ -185,4 +194,128 @@ test("CLI search --json returns structured quick-search results", () => {
     assert.equal(typeof first.score, "number");
     assert.ok(Array.isArray(first.reasons));
   }
+});
+
+// ── window.move contract ─────────────────────────────────────────────
+//
+// These tests exercise validation and dry-run planning only; none of them
+// moves a real window.
+
+test("window.move rejects a missing target instead of falling back to frontmost", async () => {
+  await assert.rejects(
+    daemonCall("window.move", { display: 0 }),
+    /wid or session/,
+  );
+});
+
+test("window.move rejects a call with no operation", async () => {
+  await assert.rejects(
+    daemonCall("window.move", { wid: 999999999 }),
+    /display, placement, or spaceId/,
+  );
+});
+
+test("window.move rejects spaceId combined with display or placement", async () => {
+  await assert.rejects(
+    daemonCall("window.move", { wid: 999999999, spaceId: 1, display: 0 }),
+    /spaceId cannot be combined/,
+  );
+  await assert.rejects(
+    daemonCall("window.move", { wid: 999999999, spaceId: 1, placement: "left" }),
+    /spaceId cannot be combined/,
+  );
+});
+
+test("window.move rejects an unknown placement synchronously", async () => {
+  await assert.rejects(
+    daemonCall("window.move", { wid: 999999999, placement: "diagonal" }),
+    /Unknown placement/,
+  );
+});
+
+test("window.move rejects an unknown wid", async () => {
+  await assert.rejects(
+    daemonCall("window.move", { wid: 999999999, display: 0 }),
+    /Not found: window/,
+  );
+});
+
+test("window.move dry run plans a display move with structured geometry", async () => {
+  const windows = await daemonCall("windows.list");
+  const candidate = (Array.isArray(windows) ? windows : []).find((w) => w.isOnScreen);
+  if (!candidate) return; // headless desktop — nothing to plan against
+
+  const receipt = await daemonCall("window.move", { wid: candidate.wid, display: 0, dryRun: true });
+  assert.equal(receipt.ok, true);
+  assert.equal(receipt.status, "planned");
+  assert.equal(receipt.dryRun, true);
+  assert.equal(receipt.wid, candidate.wid);
+  assert.equal(receipt.action?.type, "window.move");
+  assert.equal(receipt.targetResolution, "wid");
+  assert.equal(typeof receipt.display?.name, "string");
+  assert.equal(typeof receipt.sourceDisplay?.name, "string");
+
+  const mutation = receipt.mutations?.[0];
+  assert.equal(mutation?.kind, "moveWindowToDisplay");
+  for (const key of ["from", "to"]) {
+    for (const field of ["x", "y", "w", "h"]) {
+      assert.equal(typeof mutation[key]?.[field], "number", `${key}.${field} should be numeric`);
+    }
+  }
+  assert.equal("after" in mutation, false, "dry run must not report an after frame");
+
+  const fractions = receipt.fractions;
+  for (const field of ["x", "y", "w", "h"]) {
+    assert.equal(typeof fractions?.[field], "number");
+    assert.ok(fractions[field] >= 0 && fractions[field] <= 1, `fraction ${field} in [0,1]`);
+  }
+});
+
+test("window.move dry run with placement routes through canonical window.place", async () => {
+  const windows = await daemonCall("windows.list");
+  const candidate = (Array.isArray(windows) ? windows : []).find((w) => w.isOnScreen);
+  if (!candidate) return;
+
+  const receipt = await daemonCall("window.move", {
+    wid: candidate.wid,
+    display: 0,
+    placement: "left",
+    dryRun: true,
+  });
+  assert.equal(receipt.status, "planned");
+  assert.equal(receipt.action?.type, "window.place");
+  assert.equal(receipt.compatibilityMethod, "window.move");
+  assert.equal(receipt.placement?.kind, "tile");
+  assert.equal(receipt.placement?.value, "left");
+});
+
+test("window.move placement rejects an explicit unknown display", async () => {
+  const windows = await daemonCall("windows.list");
+  const candidate = (Array.isArray(windows) ? windows : []).find((w) => w.isOnScreen);
+  if (!candidate) return;
+
+  await assert.rejects(
+    daemonCall("window.move", {
+      wid: candidate.wid,
+      display: 999999,
+      placement: "left",
+      dryRun: true,
+    }),
+    /Not found: display 999999/,
+  );
+});
+
+test("window.place dry run resolves an explicit wid without mutating", async () => {
+  const windows = await daemonCall("windows.list");
+  const candidate = (Array.isArray(windows) ? windows : []).find((w) => w.isOnScreen);
+  if (!candidate) return;
+
+  const receipt = await daemonCall("window.place", {
+    wid: candidate.wid,
+    placement: "bottom-right",
+    dryRun: true,
+  });
+  assert.equal(receipt.status, "planned");
+  assert.equal(receipt.wid, candidate.wid);
+  assert.equal(receipt.targetResolution, "wid");
 });

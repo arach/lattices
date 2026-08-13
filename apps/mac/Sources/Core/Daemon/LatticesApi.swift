@@ -47,6 +47,97 @@ struct ApiModel {
     let fields: [Field]
 }
 
+// MARK: - Display Geometry
+
+enum DisplayGeometryMapper {
+    /// Convert AppKit's bottom-left global coordinates to the top-left global
+    /// coordinates used by CG window bounds and the Lattices API.
+    static func topLeftFrame(_ frame: CGRect, primaryHeight: CGFloat) -> CGRect {
+        CGRect(
+            x: frame.origin.x,
+            y: primaryHeight - frame.maxY,
+            width: frame.width,
+            height: frame.height
+        )
+    }
+
+    /// SkyLight and AppKit do not document matching array order. Prefer the
+    /// stable display UUID and retain the historical index fallback.
+    static func screen(for display: DisplaySpaces, in screens: [NSScreen]) -> NSScreen? {
+        let identifiers = screens.map { identifier(for: $0) }
+        guard let index = matchIndex(
+            displayId: display.displayId,
+            displayIndex: display.displayIndex,
+            identifiers: identifiers
+        ) else {
+            return nil
+        }
+        return screens[index]
+    }
+
+    /// Pure matching core: given the SkyLight display identifier and index plus
+    /// the per-screen UUID strings (nil when a screen has no resolvable UUID),
+    /// pick the screen index. UUID equality wins; the array index is only a
+    /// fallback for identifier-less environments.
+    static func matchIndex(displayId: String, displayIndex: Int, identifiers: [String?]) -> Int? {
+        let wanted = normalizeIdentifier(displayId)
+        if !wanted.isEmpty {
+            for (index, identifier) in identifiers.enumerated() {
+                guard let identifier else { continue }
+                if normalizeIdentifier(identifier) == wanted {
+                    return index
+                }
+            }
+        }
+        return identifiers.indices.contains(displayIndex) ? displayIndex : nil
+    }
+
+    /// Resolve an API display index to an NSScreen through the SkyLight display
+    /// list and UUID matching — never by assuming NSScreen.screens shares the
+    /// SkyLight array order. Call on the main thread.
+    static func screen(forDisplayIndex index: Int) -> NSScreen? {
+        let screens = NSScreen.screens
+        if let display = WindowTiler.getDisplaySpaces().first(where: { $0.displayIndex == index }) {
+            return screen(for: display, in: screens)
+        }
+        return screens.indices.contains(index) ? screens[index] : nil
+    }
+
+    /// Normalized x/y/w/h of `frame` within `container`, clamped so the result
+    /// always describes a rect that fits inside the unit square. Both rects must
+    /// share one coordinate space. Returns nil when either has no area.
+    static func normalizedFractions(
+        of frame: CGRect,
+        in container: CGRect
+    ) -> (x: CGFloat, y: CGFloat, w: CGFloat, h: CGFloat)? {
+        guard container.width > 0, container.height > 0,
+              frame.width > 0, frame.height > 0 else {
+            return nil
+        }
+        let w = min(frame.width / container.width, 1)
+        let h = min(frame.height / container.height, 1)
+        let x = min(max((frame.minX - container.minX) / container.width, 0), 1 - w)
+        let y = min(max((frame.minY - container.minY) / container.height, 0), 1 - h)
+        return (x, y, w, h)
+    }
+
+    private static func identifier(for screen: NSScreen) -> String? {
+        let key = NSDeviceDescriptionKey("NSScreenNumber")
+        guard let number = screen.deviceDescription[key] as? NSNumber,
+              let uuid = CGDisplayCreateUUIDFromDisplayID(CGDirectDisplayID(number.uint32Value))?.takeRetainedValue()
+        else {
+            return nil
+        }
+        return CFUUIDCreateString(nil, uuid) as String
+    }
+
+    private static func normalizeIdentifier(_ value: String) -> String {
+        value
+            .trimmingCharacters(in: CharacterSet(charactersIn: "{}"))
+            .lowercased()
+    }
+}
+
 // MARK: - Central Registry
 
 final class LatticesApi {
@@ -212,6 +303,9 @@ final class LatticesApi {
         api.model(ApiModel(name: "Display", fields: [
             Field(name: "displayIndex", type: "int", required: true, description: "Display index"),
             Field(name: "displayId", type: "string", required: true, description: "Display identifier"),
+            Field(name: "name", type: "string", required: true, description: "Human-readable display name"),
+            Field(name: "frame", type: "Frame", required: true, description: "Full display frame in top-left screen coordinates"),
+            Field(name: "visibleFrame", type: "Frame", required: true, description: "Usable display frame in top-left screen coordinates"),
             Field(name: "currentSpaceId", type: "int", required: true, description: "Currently active space ID"),
             Field(name: "spaces", type: "[Space]", required: true, description: "Spaces on this display"),
         ]))
@@ -889,10 +983,33 @@ final class LatticesApi {
             returns: .array(model: "Display"),
             handler: { _ in
                 let displays = WindowTiler.getDisplaySpaces()
+                let screens: [NSScreen]
+                if Thread.isMainThread {
+                    screens = NSScreen.screens
+                } else {
+                    screens = DispatchQueue.main.sync { NSScreen.screens }
+                }
+                let primaryHeight = screens.first?.frame.height ?? 0
                 return .array(displays.map { display in
-                    .object([
+                    let screen = DisplayGeometryMapper.screen(for: display, in: screens)
+                    func topLeftFrame(_ frame: CGRect?) -> JSON {
+                        guard let frame else {
+                            return .object(["x": .double(0), "y": .double(0), "w": .double(0), "h": .double(0)])
+                        }
+                        let converted = DisplayGeometryMapper.topLeftFrame(frame, primaryHeight: primaryHeight)
+                        return .object([
+                            "x": .double(converted.origin.x),
+                            "y": .double(converted.origin.y),
+                            "w": .double(converted.width),
+                            "h": .double(converted.height),
+                        ])
+                    }
+                    return .object([
                         "displayIndex": .int(display.displayIndex),
                         "displayId": .string(display.displayId),
+                        "name": .string(screen?.localizedName ?? display.displayId),
+                        "frame": topLeftFrame(screen?.frame),
+                        "visibleFrame": topLeftFrame(screen?.visibleFrame),
                         "currentSpaceId": .int(display.currentSpaceId),
                         "spaces": .array(display.spaces.map { space in
                             .object([
@@ -2567,25 +2684,99 @@ final class LatticesApi {
 
         api.register(Endpoint(
             method: "window.move",
-            description: "Move a session's window to a different space",
+            description: "Move a window to another display, placement slot, or Space",
             access: .mutate,
             params: [
-                Param(name: "session", type: "string", required: true, description: "Tmux session name"),
-                Param(name: "spaceId", type: "int", required: true, description: "Target space ID"),
+                Param(name: "wid", type: "uint32", required: false, description: "Window ID (preferred target)"),
+                Param(name: "session", type: "string", required: false, description: "Tmux session name (legacy target)"),
+                Param(name: "display", type: "int", required: false, description: "Target display index (spaces.list displayIndex)"),
+                Param(name: "placement", type: "string|object", required: false, description: "Placement slot on the target display; omit to preserve the window's normalized frame"),
+                Param(name: "position", type: "string", required: false, description: "Alias for placement"),
+                Param(name: "spaceId", type: "int", required: false, description: "Target Space ID (exclusive with display/placement)"),
+                Param(name: "dryRun", type: "bool", required: false, description: "Plan and verify inputs without moving the window"),
             ],
-            returns: .ok,
+            returns: .custom("Execution receipt with before/target/after geometry, source/target display, and verification"),
             handler: { params in
-                guard let session = params?["session"]?.stringValue else {
-                    throw RouterError.missingParam("session")
+                let wid = params?["wid"]?.uint32Value
+                let session = params?["session"]?.stringValue
+                let spaceId = params?["spaceId"]?.intValue
+                let hasDisplay = params?["display"]?.intValue != nil
+                let hasPlacement = (params?["placement"] ?? params?["position"]) != nil
+
+                guard wid != nil || session != nil else {
+                    throw RouterError.missingParam("wid or session")
                 }
-                guard let spaceId = params?["spaceId"]?.intValue else {
-                    throw RouterError.missingParam("spaceId")
+                if let spaceId {
+                    guard !hasDisplay, !hasPlacement else {
+                        throw RouterError.custom("spaceId cannot be combined with display or placement; move Spaces and geometry in separate calls")
+                    }
+                    if let wid {
+                        // wid → Space rides the same CGS primitive present()
+                        // and the legacy session path already use. When CGS is
+                        // unavailable we report that instead of pretending.
+                        guard DesktopModel.shared.windows[wid] != nil else {
+                            throw RouterError.notFound("window \(wid)")
+                        }
+                        let knownSpaces = WindowTiler.getDisplaySpaces().flatMap { $0.spaces.map(\.id) }
+                        guard knownSpaces.isEmpty || knownSpaces.contains(spaceId) else {
+                            throw RouterError.notFound("space \(spaceId)")
+                        }
+                        let dryRun = params?["dryRun"]?.boolValue == true
+                        let fromSpaces = WindowTiler.getSpacesForWindow(wid)
+                        if fromSpaces.contains(spaceId) {
+                            return .object([
+                                "ok": .bool(true),
+                                "wid": .int(Int(wid)),
+                                "spaceId": .int(spaceId),
+                                "moved": .bool(false),
+                                "method": .string("already-on-space"),
+                                "dryRun": .bool(dryRun),
+                                "targetResolution": .string("wid"),
+                            ])
+                        }
+                        if dryRun {
+                            return .object([
+                                "ok": .bool(true),
+                                "status": .string("planned"),
+                                "wid": .int(Int(wid)),
+                                "spaceId": .int(spaceId),
+                                "moved": .bool(false),
+                                "dryRun": .bool(true),
+                                "fromSpaceIds": .array(fromSpaces.map { .int($0) }),
+                                "targetResolution": .string("wid"),
+                            ])
+                        }
+                        let result = Self.syncOnMain {
+                            WindowTiler.moveViaCGS(wid: wid, fromSpaces: fromSpaces, toSpace: spaceId)
+                        }
+                        guard let result, case .success(let method) = result else {
+                            throw RouterError.custom("Space moves are unavailable: CGS APIs could not be loaded")
+                        }
+                        return .object([
+                            "ok": .bool(true),
+                            "wid": .int(Int(wid)),
+                            "spaceId": .int(spaceId),
+                            "moved": .bool(method == "CGS"),
+                            "method": .string(method),
+                            "fromSpaceIds": .array(fromSpaces.map { .int($0) }),
+                            "targetResolution": .string("wid"),
+                        ])
+                    }
+                    // Legacy contract: session + spaceId, fire-and-forget.
+                    if params?["dryRun"]?.boolValue == true {
+                        return .object(["ok": .bool(true), "status": .string("planned"), "dryRun": .bool(true)])
+                    }
+                    let terminal = Preferences.shared.terminal
+                    DispatchQueue.main.async {
+                        _ = WindowTiler.moveWindowToSpace(session: session!, terminal: terminal, spaceId: spaceId)
+                    }
+                    return .object(["ok": .bool(true)])
                 }
-                let terminal = Preferences.shared.terminal
-                DispatchQueue.main.async {
-                    _ = WindowTiler.moveWindowToSpace(session: session, terminal: terminal, spaceId: spaceId)
+
+                guard hasDisplay || hasPlacement else {
+                    throw RouterError.missingParam("display, placement, or spaceId")
                 }
-                return .object(["ok": .bool(true)])
+                return try ActionRuntime.shared.executeWindowMove(params: params)
             }
         ))
 
@@ -4282,8 +4473,8 @@ private extension LatticesApi {
     }
 
     static func resolveTargetScreen(for entry: WindowEntry?, displayIndex: Int?) -> NSScreen {
-        if let displayIndex, displayIndex >= 0, displayIndex < NSScreen.screens.count {
-            return NSScreen.screens[displayIndex]
+        if let displayIndex, let screen = DisplayGeometryMapper.screen(forDisplayIndex: displayIndex) {
+            return screen
         }
         if let entry {
             return WindowTiler.screenForWindowFrame(entry.frame)

@@ -97,4 +97,5 @@ await daemonCall('window.place', {
 - [Concepts](/docs/concepts): architecture, glossary, and how it all works
 - [Agent Guide](/docs/agents): canonical action contracts for voice, CLI, and daemon clients
 - [Agent API](/docs/api): RPC method reference for agents and scripts
+- [Workspace Map](/docs/workspace-map): read-only terminal/JSON desktop snapshots and visible-surface hygiene
 - [Embedded SDK](/docs/embedded-sdk): host-owned helper model for Scout, HudsonKit, and other embeddings
