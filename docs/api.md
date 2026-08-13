@@ -1727,7 +1727,7 @@ synchronously:
 (`ok`/`planned`/`blocked`/`failed`), before/target/after frames in `mutations`,
 `sourceDisplay` and `display` (name, index, visible frame), `targetResolution`,
 `verified`, `trace`, and undo metadata. Successful moves are undoable via
-`action.undo`.
+`actions.undo`.
 
 ```js
 // Move window 4182 to display 1, keeping its relative size and position

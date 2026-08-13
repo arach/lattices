@@ -1034,6 +1034,11 @@ struct CommandModeView: View {
     private func windowContextMenu(for window: DesktopInventorySnapshot.InventoryWindowInfo) -> some View {
         let multiSelected = state.selectedWindowIds.count > 1 && state.isSelected(window.id)
         let selCount = state.selectedWindowIds.count
+        let moveTargets = WindowMoveMenuModel.resolveTargets(
+            clicked: .init(wid: window.id, pid: window.pid),
+            selection: selectedWindows.map { .init(wid: $0.id, pid: $0.pid) }
+        )
+        let moveModel = WindowMovementService.menuModel(windowFrame: window.frame, targets: moveTargets)
 
         if multiSelected {
             // Multi-select context menu
@@ -1053,6 +1058,15 @@ struct CommandModeView: View {
                 state.distributeSelected()
             } label: {
                 Label("Distribute (\(selCount))", systemImage: "rectangle.split.3x1")
+            }
+
+            if moveModel.isAvailable {
+                Divider()
+
+                WindowMovementMenuSection(
+                    model: moveModel,
+                    onMove: { display in moveSelection(moveModel.targets, to: display) }
+                )
             }
 
             Divider()
@@ -1115,12 +1129,22 @@ struct CommandModeView: View {
 
             Divider()
 
+            if moveModel.isAvailable {
+                WindowMovementMenuSection(
+                    model: moveModel,
+                    onMove: { display in moveSelection(moveModel.targets, to: display) },
+                    onPlace: { display, slot in placeWindow(moveModel.targets, on: display, slot: slot) }
+                )
+
+                Divider()
+            }
+
             Menu("Tile Window") {
                 ForEach(TilePosition.allCases) { tile in
                     Button {
                         WindowTiler.tileWindowById(wid: window.id, pid: window.pid, to: tile)
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            state.desktopSnapshot = nil
+                            state.refreshDesktopInventory()
                         }
                     } label: {
                         Label(tile.label, systemImage: tile.icon)
@@ -1144,6 +1168,24 @@ struct CommandModeView: View {
             } label: {
                 Label("Copy Info", systemImage: "doc.on.doc")
             }
+        }
+    }
+
+    /// Immediate cross-monitor move through the canonical `window.move`
+    /// engine; flashes a truthful receipt and refreshes the inventory while
+    /// the selection (tracked by wid) survives the reload.
+    private func moveSelection(_ targets: [WindowMoveMenuModel.Target], to display: WindowMoveMenuModel.Display) {
+        WindowMovementService.moveTargets(targets, to: display) { outcome in
+            state.flash(outcome.message)
+            state.refreshDesktopInventory()
+        }
+    }
+
+    private func placeWindow(_ targets: [WindowMoveMenuModel.Target], on display: WindowMoveMenuModel.Display, slot: TilePosition) {
+        guard let target = targets.first else { return }
+        WindowMovementService.placeTarget(target, on: display, slot: slot) { outcome in
+            state.flash(outcome.message)
+            state.refreshDesktopInventory()
         }
     }
 

@@ -1216,6 +1216,13 @@ final class CommandModeState: ObservableObject {
         }
     }
 
+    /// Rebuild the desktop inventory snapshot in place after a window
+    /// mutation. Clearing the snapshot instead would leave the pane blank:
+    /// nothing observes a nil snapshot to trigger a rebuild.
+    func refreshDesktopInventory() {
+        desktopSnapshot = buildDesktopInventory()
+    }
+
     /// Copy a text representation of the desktop inventory to clipboard
     func copyInventoryToClipboard() {
         guard let snapshot = desktopSnapshot else { return }

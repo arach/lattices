@@ -1939,9 +1939,35 @@ struct ScreenMapView: View {
         .highPriorityGesture(TapGesture().onEnded {
             controller.selectSingle(win.id)
         })
+        .contextMenu { sidebarWindowContextMenu(win: win) }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(win.title.isEmpty ? win.app : "\(win.app), \(win.title)")
         .accessibilityAddTraits(.isButton)
+    }
+
+    /// Context menu for Studio sidebar window rows: the same immediate
+    /// movement section as the canvas, plus Show on Screen so the menu is
+    /// never empty on a single-display machine.
+    @ViewBuilder
+    private func sidebarWindowContextMenu(win: ScreenMapWindowEntry) -> some View {
+        Button {
+            controller.focusWindowOnScreen(win.id)
+        } label: {
+            Label("Show on Screen", systemImage: "macwindow")
+        }
+
+        if let editor = controller.editor {
+            let model = studioMoveModel(for: win, editor: editor)
+            if model.isAvailable {
+                Divider()
+
+                WindowMovementMenuSection(
+                    model: model,
+                    onMove: { display in moveStudioTargets(model.targets, to: display) },
+                    onPlace: { display, slot in placeStudioTarget(model.targets, on: display, slot: slot) }
+                )
+            }
+        }
     }
 
     @ViewBuilder
@@ -2007,6 +2033,7 @@ struct ScreenMapView: View {
                         .simultaneousGesture(TapGesture().onEnded {
                             selectSidebarWindow(win.id)
                         })
+                        .contextMenu { sidebarWindowContextMenu(win: win) }
                     }
                 }
                 .padding(.leading, 4)
@@ -3976,6 +4003,69 @@ struct ScreenMapView: View {
 
     // MARK: - Context Menu
 
+    /// Shared movement model for Studio surfaces: a right-click on a member
+    /// of a multi-selection targets the whole selection, otherwise just the
+    /// clicked window. The anchor display is resolved from the window's real
+    /// (snapshot-time) geometry, not `displayIndex` — staged cross-display
+    /// edits mutate the latter before any real move happens.
+    private func studioMoveModel(for win: ScreenMapWindowEntry, editor: ScreenMapEditorState) -> WindowMoveMenuModel {
+        let selection = controller.selectedWindowIds
+        let selectionTargets = editor.windows
+            .filter { selection.contains($0.id) }
+            .map { WindowMoveMenuModel.Target(wid: $0.id, pid: $0.pid) }
+        let targets = WindowMoveMenuModel.resolveTargets(
+            clicked: WindowMoveMenuModel.Target(wid: win.id, pid: win.pid),
+            selection: selectionTargets
+        )
+        let liveFrame = WindowFrame(
+            x: win.originalFrame.origin.x,
+            y: win.originalFrame.origin.y,
+            w: win.originalFrame.width,
+            h: win.originalFrame.height
+        )
+        return WindowMovementService.menuModel(windowFrame: liveFrame, targets: targets)
+    }
+
+    private func moveStudioTargets(_ targets: [WindowMoveMenuModel.Target], to display: WindowMoveMenuModel.Display) {
+        let fingerprints = stagedFingerprints(for: targets)
+        WindowMovementService.moveTargets(targets, to: display) { outcome in
+            finishStudioMovement(outcome, expectedFingerprints: fingerprints)
+        }
+    }
+
+    private func placeStudioTarget(_ targets: [WindowMoveMenuModel.Target], on display: WindowMoveMenuModel.Display, slot: TilePosition) {
+        guard let target = targets.first else { return }
+        let fingerprints = stagedFingerprints(for: [target])
+        WindowMovementService.placeTarget(target, on: display, slot: slot) { outcome in
+            finishStudioMovement(outcome, expectedFingerprints: fingerprints)
+        }
+    }
+
+    /// Per-target staging fingerprint (edited/virtual frames, layer, display)
+    /// captured at action start so the completion can tell whether the user
+    /// staged anything on a target while the async verification was pending.
+    private func stagedFingerprints(for targets: [WindowMoveMenuModel.Target]) -> [UInt32: ScreenMapWindowEntry.StagingFingerprint] {
+        guard let editor = controller.editor else { return [:] }
+        let wids = Set(targets.map(\.wid))
+        return editor.windows.reduce(into: [UInt32: ScreenMapWindowEntry.StagingFingerprint]()) { acc, win in
+            if wids.contains(win.id) { acc[win.id] = win.stagingFingerprint }
+        }
+    }
+
+    /// Targeted reconcile after an immediate move: only windows that
+    /// verifiably moved (`outcome.movedWids`) are refreshed from live desktop
+    /// geometry — a failed or blocked target keeps its staged edits; a target
+    /// re-staged while verification was pending keeps its newer staged state
+    /// on a fresh live `originalFrame` baseline; and unrelated staged edits,
+    /// the selection, search, and the viewport all stay exactly as they were.
+    private func finishStudioMovement(
+        _ outcome: WindowMovementService.Outcome,
+        expectedFingerprints: [UInt32: ScreenMapWindowEntry.StagingFingerprint]
+    ) {
+        controller.applyLiveFrames(for: Set(outcome.movedWids), expectedFingerprints: expectedFingerprints)
+        controller.flash(outcome.message)
+    }
+
     private func showLayerContextMenu(for windowId: UInt32, at point: NSPoint, in window: NSWindow, editor: ScreenMapEditorState) {
         guard let winIdx = editor.windows.firstIndex(where: { $0.id == windowId }) else { return }
         let win = editor.windows[winIdx]
@@ -3995,6 +4085,19 @@ struct ScreenMapView: View {
         menu.addItem(focusItem)
 
         menu.addItem(.separator())
+
+        // Immediate cross-monitor movement — same canonical engine as
+        // window.move / window.place. Absent on single-display machines.
+        let moveModel = studioMoveModel(for: win, editor: editor)
+        if moveModel.isAvailable {
+            WindowMovementMenuBuilder.appendSection(
+                to: menu,
+                model: moveModel,
+                onMove: { display in moveStudioTargets(moveModel.targets, to: display) },
+                onPlace: { display, slot in placeStudioTarget(moveModel.targets, on: display, slot: slot) }
+            )
+            menu.addItem(.separator())
+        }
 
         // Move to Layer → submenu
         let moveItem = NSMenuItem(title: "Move to Layer", action: nil, keyEquivalent: "")

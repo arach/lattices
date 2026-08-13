@@ -109,6 +109,25 @@ struct ScreenMapWindowEntry: Identifiable {
     var tmuxPaneTitle: String?  // tmux pane title (often cwd or custom label)
     var hasEdits: Bool { originalFrame != editedFrame }
 
+    /// Snapshot of every field the Studio user can stage on an entry. Captured
+    /// when an immediate move starts so its async completion can detect edits
+    /// made while verification was pending.
+    struct StagingFingerprint: Equatable {
+        let editedFrame: CGRect
+        let virtualFrame: CGRect
+        let layer: Int
+        let displayIndex: Int
+    }
+
+    var stagingFingerprint: StagingFingerprint {
+        StagingFingerprint(
+            editedFrame: editedFrame,
+            virtualFrame: virtualFrame,
+            layer: layer,
+            displayIndex: displayIndex
+        )
+    }
+
     /// Rich search key combining all available metadata.
     /// Format: m{spatial}.L{layer}.{layerName}.{app}.{title}.{session}.{command}.{paneTitle}.{state}
     /// Example: m1.L0.primary.terminal.~/dev/lattices.session:myproject.cmd:vim.visible
@@ -143,6 +162,57 @@ enum CanvasDragMode {
 // MARK: - Screen Map Editor State
 
 final class ScreenMapEditorState: ObservableObject {
+    /// Pure merge for the immediate-movement reconcile path: entries whose id
+    /// appears in `movedFrames` are rebuilt from that live frame (original,
+    /// edited, and virtual frames reset; display recomputed; staged edits
+    /// cleared because the real window now defines truth). Every other entry
+    /// is returned untouched, so unrelated staged frame/layer/canvas edits
+    /// survive by construction.
+    ///
+    /// `expectedFingerprints` carries each target's staged state (edited and
+    /// virtual frames, layer, display) captured when the move was requested:
+    /// the async verification takes up to ~0.8s per window, and the entry
+    /// stays editable meanwhile. If the fingerprint still matches, the entry
+    /// resets fully to live truth. If the user staged anything newer during
+    /// the wait, the verified live frame still becomes the new
+    /// `originalFrame` baseline (the real move did happen — reset/undo and
+    /// `hasEdits` must not compare against the stale pre-move origin) while
+    /// the newer staged fields stay pending.
+    static func updatingMovedWindows(
+        _ windows: [ScreenMapWindowEntry],
+        movedFrames: [UInt32: CGRect],
+        expectedFingerprints: [UInt32: ScreenMapWindowEntry.StagingFingerprint] = [:],
+        displayIndexForFrame: (CGRect) -> Int?
+    ) -> [ScreenMapWindowEntry] {
+        windows.map { old in
+            guard let frame = movedFrames[old.id] else { return old }
+            if let expected = expectedFingerprints[old.id], expected != old.stagingFingerprint {
+                return ScreenMapWindowEntry(
+                    id: old.id, pid: old.pid, app: old.app, title: old.title,
+                    originalFrame: frame,
+                    editedFrame: old.editedFrame,
+                    virtualFrame: old.virtualFrame,
+                    zIndex: old.zIndex, layer: old.layer,
+                    displayIndex: old.displayIndex,
+                    isOnScreen: old.isOnScreen,
+                    latticesSession: old.latticesSession,
+                    tmuxCommand: old.tmuxCommand,
+                    tmuxPaneTitle: old.tmuxPaneTitle
+                )
+            }
+            return ScreenMapWindowEntry(
+                id: old.id, pid: old.pid, app: old.app, title: old.title,
+                originalFrame: frame, editedFrame: frame, virtualFrame: frame,
+                zIndex: old.zIndex, layer: old.layer,
+                displayIndex: displayIndexForFrame(frame) ?? old.displayIndex,
+                isOnScreen: old.isOnScreen,
+                latticesSession: old.latticesSession,
+                tmuxCommand: old.tmuxCommand,
+                tmuxPaneTitle: old.tmuxPaneTitle
+            )
+        }
+    }
+
     @Published var windows: [ScreenMapWindowEntry]
     @Published var selectedLayers: Set<Int> = []  // empty = show all
     @Published var draggingWindowId: UInt32? = nil
@@ -1696,29 +1766,10 @@ final class ScreenMapController: ObservableObject {
         let screens = NSScreen.screens
         let primaryHeight = screens.first?.frame.height ?? 0
 
+        let displayCGRects = Self.displayCGRects(screens: screens, primaryHeight: primaryHeight)
+
         func displayIndex(for frame: CGRect) -> Int {
-            let centerX = frame.midX
-            let centerY = frame.midY
-            for (i, screen) in screens.enumerated() {
-                let cgOriginY = primaryHeight - screen.frame.maxY
-                let cgRect = CGRect(x: screen.frame.origin.x, y: cgOriginY,
-                                    width: screen.frame.width, height: screen.frame.height)
-                if cgRect.contains(CGPoint(x: centerX, y: centerY)) {
-                    return i
-                }
-            }
-            var bestIdx = 0
-            var bestDist = CGFloat.infinity
-            for (i, screen) in screens.enumerated() {
-                let cgOriginY = primaryHeight - screen.frame.maxY
-                let cgRect = CGRect(x: screen.frame.origin.x, y: cgOriginY,
-                                    width: screen.frame.width, height: screen.frame.height)
-                let dx = centerX - cgRect.midX
-                let dy = centerY - cgRect.midY
-                let dist = dx * dx + dy * dy
-                if dist < bestDist { bestDist = dist; bestIdx = i }
-            }
-            return bestIdx
+            Self.displayIndex(forCGFrame: frame, displayCGRects: displayCGRects)
         }
 
         var ordered: [CGWin] = []
@@ -1872,6 +1923,79 @@ final class ScreenMapController: ObservableObject {
                   self.editor?.activeViewportPreset == .overview else { return }
             self.focusViewportPreset(.overview, flashView: false)
         }
+    }
+
+    /// NSScreen frames converted to the CG top-left global coordinate space
+    /// used by window bounds, in `NSScreen.screens` order.
+    static func displayCGRects(screens: [NSScreen], primaryHeight: CGFloat) -> [CGRect] {
+        screens.map { screen in
+            CGRect(
+                x: screen.frame.origin.x,
+                y: primaryHeight - screen.frame.maxY,
+                width: screen.frame.width,
+                height: screen.frame.height
+            )
+        }
+    }
+
+    /// Which display (by `NSScreen.screens` index) owns a CG top-left frame:
+    /// midpoint containment first, nearest display center as fallback.
+    static func displayIndex(forCGFrame frame: CGRect, displayCGRects: [CGRect]) -> Int {
+        let center = CGPoint(x: frame.midX, y: frame.midY)
+        for (i, cgRect) in displayCGRects.enumerated() where cgRect.contains(center) {
+            return i
+        }
+        var bestIdx = 0
+        var bestDist = CGFloat.infinity
+        for (i, cgRect) in displayCGRects.enumerated() {
+            let dx = center.x - cgRect.midX
+            let dy = center.y - cgRect.midY
+            let dist = dx * dx + dy * dy
+            if dist < bestDist { bestDist = dist; bestIdx = i }
+        }
+        return bestIdx
+    }
+
+    /// Refresh only the windows an immediate move touched: their entries are
+    /// rebuilt from live desktop geometry (frames reset, display recomputed)
+    /// while every other entry — staged frame edits, layer reassignments,
+    /// canvas positions — and the selection stay untouched. Entries the user
+    /// re-staged after `expectedFingerprints` was captured keep their newer
+    /// staged state over the fresh live baseline.
+    func applyLiveFrames(
+        for wids: Set<UInt32>,
+        expectedFingerprints: [UInt32: ScreenMapWindowEntry.StagingFingerprint] = [:]
+    ) {
+        guard let editor, !wids.isEmpty else { return }
+        let frames = Self.liveWindowFrames(for: wids)
+        guard !frames.isEmpty else { return }
+        let screens = NSScreen.screens
+        let primaryHeight = screens.first?.frame.height ?? 0
+        let displayCGRects = Self.displayCGRects(screens: screens, primaryHeight: primaryHeight)
+        editor.windows = ScreenMapEditorState.updatingMovedWindows(
+            editor.windows,
+            movedFrames: frames,
+            expectedFingerprints: expectedFingerprints,
+            displayIndexForFrame: { Self.displayIndex(forCGFrame: $0, displayCGRects: displayCGRects) }
+        )
+        objectWillChange.send()
+    }
+
+    private static func liveWindowFrames(for wids: Set<UInt32>) -> [UInt32: CGRect] {
+        guard let windowList = CGWindowListCopyWindowInfo(
+            [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID
+        ) as? [[String: Any]] else { return [:] }
+        var frames: [UInt32: CGRect] = [:]
+        for info in windowList {
+            guard let wid = info[kCGWindowNumber as String] as? UInt32,
+                  wids.contains(wid),
+                  let boundsDict = info[kCGWindowBounds as String] as? NSDictionary else { continue }
+            var rect = CGRect.zero
+            if CGRectMakeWithDictionaryRepresentation(boundsDict, &rect) {
+                frames[wid] = rect
+            }
+        }
+        return frames
     }
 
     /// Re-snapshot, preserving display/layer context
