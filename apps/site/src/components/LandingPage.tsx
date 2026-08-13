@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { ThemeToggle } from "./ThemeToggle";
+import { GestureMatrix } from "./GestureMatrix";
 
 function LatticesLogo({ size = 20 }: { size?: number }) {
   // 3×3 grid with L-shape pattern (left column + bottom row bright, rest dim)
@@ -110,8 +112,8 @@ const configExamples: Record<PaneLayout, string> = {
 
 const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span class="hl-kw">from</span> <span class="hl-str">'@lattices/sdk'</span>
 
-<span class="hl-cmt">// Search the live desktop</span>
-<span class="hl-kw">const</span> [match] = <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'windows.search'</span>, {
+<span class="hl-cmt">// Find a window by title, app, session, or cwd</span>
+<span class="hl-kw">const</span> [match] = <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'lattices.search'</span>, {
   query: <span class="hl-str">'myproject'</span>
 })
 <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'window.focus'</span>, {
@@ -144,12 +146,11 @@ const cuaSteps: Array<{
     number: "01",
     title: "Observe",
     heading: "Read the app before acting",
-    caption: "Capture AX, OCR, screenshots, and window state so the agent chooses from stable targets.",
+    caption: "Read the Accessibility tree and optional screenshot so the agent chooses from stable element ids.",
     filename: "observe.ts",
-    code: `<span class="hl-kw">const</span> ui = <span class="hl-kw">await</span> windowState({
+    code: `<span class="hl-kw">const</span> ui = <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'computer.windowState'</span>, {
   app: <span class="hl-str">'Calculator'</span>,
   mode: <span class="hl-str">'ax'</span>,
-  capture: [<span class="hl-str">'tree'</span>, <span class="hl-str">'ocr'</span>, <span class="hl-str">'screen'</span>],
 })`,
   },
   {
@@ -157,9 +158,9 @@ const cuaSteps: Array<{
     number: "02",
     title: "Stage",
     heading: "Prepare a reviewable action",
-    caption: "Bind the next move to an element, region, or coordinate while nothing has run yet.",
+    caption: "Bind the next move to a snapshot element while nothing has run yet.",
     filename: "stage.ts",
-    code: `<span class="hl-kw">await</span> elementAction({
+    code: `<span class="hl-kw">await</span> daemonCall(<span class="hl-str">'computer.elementAction'</span>, {
   snapshotId: ui.snapshotId,
   elementId: <span class="hl-str">'e7'</span>,
   action: <span class="hl-str">'press'</span>,
@@ -171,14 +172,13 @@ const cuaSteps: Array<{
     number: "03",
     title: "Execute",
     heading: "Run the exact staged command",
-    caption: "Click, type, hotkey, scroll, drag, set values, or drive browser actions with recording on.",
+    caption: "Click, type, hotkey, or set a value on-device after the same safety checks.",
     filename: "execute.ts",
-    code: `<span class="hl-kw">await</span> elementAction({
+    code: `<span class="hl-kw">await</span> daemonCall(<span class="hl-str">'computer.elementAction'</span>, {
   snapshotId: ui.snapshotId,
   elementId: <span class="hl-str">'e7'</span>,
   action: <span class="hl-str">'press'</span>,
   treatment: <span class="hl-str">'execute'</span>,
-  recording: <span class="hl-num">true</span>,
 })`,
   },
   {
@@ -186,13 +186,12 @@ const cuaSteps: Array<{
     number: "04",
     title: "Verify",
     heading: "Check the result on-device",
-    caption: "Confirm the outcome with OCR, AX, or artifact diff, then feed that receipt into the next observation.",
+    caption: "Confirm the outcome with OCR or AX, then feed that receipt into the next observation.",
     filename: "verify.ts",
-    code: `<span class="hl-kw">const</span> receipt = <span class="hl-kw">await</span> verify({
+    code: `<span class="hl-kw">const</span> receipt = <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'computer.verify'</span>, {
   app: <span class="hl-str">'Calculator'</span>,
   mode: <span class="hl-str">'ocr'</span>,
   contains: <span class="hl-str">'42'</span>,
-  attachArtifact: <span class="hl-num">true</span>,
 })`,
   },
 ];
@@ -234,6 +233,36 @@ const heroWindowMeta: Record<HeroWindowId, { app: string; title: string; tint: s
   editor: { app: "Code", title: "session.ts — atlas", tint: "#62a0ff" },
   browser: { app: "Browser", title: "localhost:5173", tint: "#f3c969" },
   terminal: { app: "Terminal", title: "atlas — bun dev", tint: "#34d399" },
+};
+
+// `lattices map` of the fictional hero desktop — same four windows, same frames.
+const heroDesktopMaps: Record<HeroDesktopPhase, string> = {
+  messy: `\
+┌ Display 0 · MacBook Pro · Space 1 ───────────────────────────────┐
+│                                                                  │
+│    ┌3 Code · session.ts───┐       ┌4 Browser · localhost─────┐   │
+│    │       ┌1 Terminal · codex────┼────────┐                 │   │
+│    │       │                               │                 │   │
+│    └───────┼                               │                 │   │
+│            │                               │          ┬──────┘   │
+│            │                               │          │          │
+│            └─────────────────┼─────────────┘          │          │
+│                              └────────────────────────┘          │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘`,
+  organized: `\
+┌ Display 0 · MacBook Pro · Space 1 ───────────────────────────────┐
+│                                                                  │
+│ ┌1 Terminal · codex───────────────────┐┌3 Code · session.ts────┐ │
+│ │                                     ││                       │ │
+│ │                                     │└───────────────────────┘ │
+│ │                                     │┌4 Browser · localhost──┐ │
+│ │                                     ││                       │ │
+│ │                                     ││                       │ │
+│ │                                     │├2 Terminal · bun dev───┤ │
+│ │                                     ││                       │ │
+│ └─────────────────────────────────────┘└───────────────────────┘ │
+└──────────────────────────────────────────────────────────────────┘`,
 };
 
 function HeroWindowContent({ id }: { id: HeroWindowId }) {
@@ -464,17 +493,20 @@ function HeroWorkspaceStage() {
             <b>&gt;</b> what&apos;s on my screen?
           </span>
           <span className="hero-harness-tool">
-            <i aria-hidden="true">⏺</i> lattices — windows.list
+            <i aria-hidden="true">⏺</i> lattices — map
           </span>
-          <motion.span
+          <motion.div
             key={driver === "agent" ? "agent" : phase}
-            className="hero-harness-result"
+            className="hero-harness-result hero-harness-map-result"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: prefersReducedMotion ? 0 : 0.3, delay: prefersReducedMotion ? 0 : 0.6 }}
           >
-            <b aria-hidden="true">⎿</b> 4 windows · {driver === "agent" || !organized ? "3 overlapping" : "tiled main-left"} · focused: atlas — codex
-          </motion.span>
+            <span>
+              <b aria-hidden="true">⎿</b> 4 windows · {driver === "agent" || !organized ? "3 overlapping" : "tiled main-left"} · focused: atlas — codex
+            </span>
+            <pre className="hero-harness-map" aria-hidden="true">{heroDesktopMaps[phase]}</pre>
+          </motion.div>
           <AnimatePresence>
             {driver === "agent" && (
               <motion.span
@@ -497,7 +529,7 @@ function HeroWorkspaceStage() {
                 exit={{ opacity: 0, transition: { duration: 0.25, delay: 0 } }}
                 transition={{ duration: 0.3, delay: 2.1 }}
               >
-                <i aria-hidden="true">⏺</i> lattices — layout.distribute
+                <i aria-hidden="true">⏺</i> lattices — space.optimize
               </motion.span>
             )}
             {driver === "agent" && organized && (
@@ -516,6 +548,59 @@ function HeroWorkspaceStage() {
         </div>
       </div>
     </div>
+  );
+}
+
+const handsShortcuts: Array<{ keys: string[]; action: string }> = [
+  { keys: ["⌃", "⌥", "← / →"], action: "Tile halves" },
+  { keys: ["⌃", "⌥", "G"], action: "4×4 grid on the front window" },
+  { keys: ["⌃", "⌥", "V"], action: "Fill the next 3×2 cell" },
+  { keys: ["⌘", "⌥", "1 / 2 / 3"], action: "Switch workspace layer" },
+  { keys: ["⌘", "⇧", "M"], action: "Command palette" },
+  { keys: ["Hyper", "L"], action: "Studio / screen map" },
+];
+
+function HandsOnSection() {
+  return (
+    <section className="hands-section fade-in" id="hands">
+      <div className="hands-copy">
+        <div className="cua-kicker">Keyboard and mouse</div>
+        <h2>Shortcuts and mouse gestures, not just the palette.</h2>
+        <p>
+          Caps Lock is Hyper. ⌃⌥ tiles halves and grids. Hold a mouse button,
+          draw a direction or a shape, release. The app replays that path in
+          a 3×3 <em>matrix</em> — the same completer as the logo.
+        </p>
+        <div className="hands-links">
+          <a href="/docs/app">Shortcut reference &rarr;</a>
+          <a href="/docs/mouse-gestures">Mouse gestures &rarr;</a>
+        </div>
+      </div>
+
+      <div className="hands-stage">
+        <div className="hands-panel">
+          <h3>Keyboard</h3>
+          <ul className="hands-list">
+            {handsShortcuts.map((row) => (
+              <li key={row.action}>
+                <span className="hands-chords">
+                  {row.keys.map((key) => (
+                    <kbd key={key}>{key}</kbd>
+                  ))}
+                </span>
+                <span>{row.action}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="hands-note">Hold Caps Lock for Hyper. Defaults — change them in Settings.</p>
+        </div>
+
+        <div className="hands-panel">
+          <h3>The matrix</h3>
+          <GestureMatrix />
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -556,20 +641,19 @@ export default function App() {
             <a href="#cua" className="nav-link">
               CUA
             </a>
+            <a href="#hands" className="nav-link nav-optional-mobile">
+              Keys
+            </a>
             <a href="#config" className="nav-link nav-optional-mobile">
               Config
             </a>
             <a href="#app" className="nav-link nav-optional-mobile">
               App
             </a>
-            <button
-              type="button"
-              className="nav-link"
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-              aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
-            >
-              Theme
-            </button>
+            <ThemeToggle
+              theme={theme}
+              onToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
+            />
             <a
               href="https://github.com/arach/lattices"
               target="_blank"
@@ -589,8 +673,8 @@ export default function App() {
           <div className="hero-copy">
             <h1>The workspace manager<br /><span className="accent">for you and your agents.</span></h1>
             <p className="hero-sub">
-              Every window, terminal, and layout on your Mac<br />
-              organized and accessible, by hand, keystroke, or API.
+              Every window, terminal, and layout on your Mac —<br />
+              by shortcut, mouse gesture, or API.
             </p>
             <div className="hero-actions">
               <a
@@ -605,6 +689,7 @@ export default function App() {
                 Read the docs
               </a>
             </div>
+            <p className="hero-proof">5,500+ installs</p>
           </div>
 
           <HeroWorkspaceStage />
@@ -617,8 +702,9 @@ export default function App() {
             <p>
               Agents can write your code and run your tests, but they can&apos;t
               organize where you actually work: your screen. Lattices gives
-              them that — the same live state as you. You move a window, your
-              agent sees it; your agent stages an action, you watch it land.
+              them the same verbs you already use — place, focus, activate a
+              layer, then stage an action before it runs. You watch the receipt
+              land on the same desktop.
             </p>
           </div>
           <div className="operator-rows fade-in fade-in-delay-1" aria-label="The same action, by hand and by API">
@@ -632,7 +718,7 @@ export default function App() {
             <div className="operator-row">
               <span className="operator-row-label">Your agent</span>
               <span className="operator-row-action">
-                <code>window.place {'{'} query: &apos;editor&apos;, at: &apos;left&apos; {'}'}</code>
+                <code>window.place {'{'} app: &apos;Code&apos;, placement: &apos;left&apos; {'}'}</code>
               </span>
             </div>
             <p className="operator-result">
@@ -640,6 +726,8 @@ export default function App() {
             </p>
           </div>
         </section>
+
+        <HandsOnSection />
 
         {/* Computer use (CUA) */}
         <section className="section cua-section" id="cua">
@@ -763,9 +851,9 @@ export default function App() {
               <ul className="app-features">
                 <li>See every project and live session</li>
                 <li>Launch, attach, or detach with a click</li>
-                <li>Tile windows and switch workspace layers</li>
+                <li>Tile with ⌃⌥ chords, a 4×4 grid, or a mouse drag</li>
                 <li>Search windows, terminals, and screen text</li>
-                <li>Work by keyboard, mouse gesture, or voice</li>
+                <li>Middle-drag for Spaces, Screen Map, and dictation</li>
               </ul>
             </div>
             <div className="app-demo-reel" aria-label="Animated preview of lattices arranging windows, layers, search, and voice commands">
@@ -804,11 +892,12 @@ export default function App() {
             <span className="workflow-number">02</span>
             <div>
               <h3>Arrange</h3>
-              <h2>Tile, layer, and switch — by hand or by keystroke.</h2>
+              <h2>Tile, layer, and switch — from a chord or a mouse shape.</h2>
               <p>
-                Snap windows to grids, group them into layers and spaces, and
-                move across your desktop with the keyboard, mouse gestures, or
-                voice. When things drift, one command rebalances the screen.
+                ⌃⌥ tiles halves, thirds, and a 4×4 grid. Hold the middle
+                mouse button and draw: left and right for Spaces, down for
+                Screen Map, up for dictation. Caps Lock is Hyper. When things
+                drift, one command rebalances the screen.
               </p>
             </div>
           </article>
@@ -818,9 +907,9 @@ export default function App() {
               <h3>Automate</h3>
               <h2>Let agents see the screen and act on it, safely.</h2>
               <p>
-                Agents read any window through AX and OCR, then work in a loop
-                you can trust: observe, stage, execute on-device, and verify the
-                result before moving on.
+                Agents inspect windows through Accessibility, then work in a
+                loop you can trust: observe, stage, execute on-device, and
+                verify the result before moving on.
               </p>
             </div>
           </article>
@@ -887,22 +976,22 @@ export default function App() {
           <div className="config-grid fade-in fade-in-delay-2">
             <div>
               <h2 className="config-title">
-                Your agents need to see what you see
+                Your agents need the same desktop
               </h2>
               <p className="config-desc">
-                Agents are limited to a terminal. Lattices gives them
-                eyes — every window, every pixel of text, every layout
-                change — over a single WebSocket.
+                Agents start in a terminal. Lattices gives them the workspace
+                verbs on localhost: search, place, activate a layer, then
+                observe / stage / execute / verify before they touch the
+                screen.
               </p>
               <ul className="agent-methods">
-                <li><code>windows.search</code> — find windows by title, app, session, OCR</li>
-                <li><code>terminals.search</code> — inspect terminal tabs, processes, cwds</li>
-                <li><code>ocr.search</code> — full-text search across all screen content</li>
-                <li><code>computer.windowState</code> — AX snapshot with actionable element IDs</li>
-                <li><code>computer.verify</code> — confirm outcomes via OCR, AX, or artifact diff</li>
-                <li><code>layer.activate</code> — launch or focus a whole workspace</li>
-                <li><code>space.optimize</code> — balance visible windows after launch</li>
-                <li>40+ methods + live workspace updates pushed over WebSocket</li>
+                <li><code>lattices.search</code> — title, app, session, or cwd</li>
+                <li><code>window.place</code> — tile by session, app, or window id</li>
+                <li><code>layer.activate</code> — launch or focus a workspace</li>
+                <li><code>space.optimize</code> — rebalance visible windows</li>
+                <li><code>computer.windowState</code> — AX snapshot, element ids</li>
+                <li><code>computer.elementAction</code> — stage or execute those ids</li>
+                <li><code>computer.verify</code> — confirm via OCR or AX</li>
               </ul>
               <a href="/docs/api" className="agent-api-link">
                 Full API reference &rarr;
@@ -976,7 +1065,7 @@ export default function App() {
 
         {/* CTA */}
         <section className="cta">
-          <h2>Give your windows a system.</h2>
+          <h2>Same desktop. You or your agent.</h2>
           <p>Free and open source. Running on your Mac in seconds.</p>
           <div className="cta-download-row">
             <a
