@@ -149,6 +149,101 @@ final class ScreenMapMovedWindowTests: XCTestCase {
         XCTAssertEqual(updated[1].displayIndex, 0)
     }
 
+    // MARK: - Edits staged while the async move was pending
+
+    func testUnchangedFingerprintResetsEntryToLiveTruth() {
+        let base = CGRect(x: 0, y: 0, width: 500, height: 400)
+        let live = CGRect(x: 3600, y: 300, width: 500, height: 400)
+        let target = entry(id: 1, frame: base)
+        let updated = ScreenMapEditorState.updatingMovedWindows(
+            [target],
+            movedFrames: [1: live],
+            expectedFingerprints: [1: target.stagingFingerprint],
+            displayIndexForFrame: { _ in 1 }
+        )
+        XCTAssertEqual(updated[0].originalFrame, live)
+        XCTAssertEqual(updated[0].editedFrame, live)
+        XCTAssertEqual(updated[0].virtualFrame, live)
+        XCTAssertEqual(updated[0].displayIndex, 1)
+        XCTAssertFalse(updated[0].hasEdits)
+    }
+
+    func testEditDuringPendingMoveKeepsNewerStagedStateOnLiveBaseline() {
+        // Fingerprint was captured before the user dragged the entry again:
+        // the verified live frame must still become the new originalFrame
+        // (the real move happened), while the newer staged fields survive.
+        let base = CGRect(x: 0, y: 0, width: 500, height: 400)
+        let live = CGRect(x: 3600, y: 300, width: 500, height: 400)
+        let newerEdit = CGRect(x: 50, y: 60, width: 640, height: 480)
+        let canvasSpot = CGRect(x: 9000, y: 9000, width: 500, height: 400)
+        let preMove = entry(id: 1, frame: base)
+        let reEdited = entry(
+            id: 1, frame: base, edited: newerEdit, virtualFrame: canvasSpot,
+            layer: 5, displayIndex: 1
+        )
+        let updated = ScreenMapEditorState.updatingMovedWindows(
+            [reEdited],
+            movedFrames: [1: live],
+            expectedFingerprints: [1: preMove.stagingFingerprint],
+            displayIndexForFrame: { _ in 0 }
+        )
+        XCTAssertEqual(updated[0].originalFrame, live)
+        XCTAssertEqual(updated[0].editedFrame, newerEdit)
+        XCTAssertEqual(updated[0].virtualFrame, canvasSpot)
+        XCTAssertEqual(updated[0].layer, 5)
+        XCTAssertEqual(updated[0].displayIndex, 1)
+        XCTAssertTrue(updated[0].hasEdits)
+    }
+
+    func testLayerChangeDuringPendingMoveIsPreserved() {
+        // A layer-only re-stage (frames untouched) must also defeat the full
+        // reset — the fingerprint covers every stageable field.
+        let base = CGRect(x: 0, y: 0, width: 500, height: 400)
+        let live = CGRect(x: 3600, y: 300, width: 500, height: 400)
+        let preMove = entry(id: 1, frame: base, layer: 0)
+        let reLayered = entry(id: 1, frame: base, layer: 3)
+        let updated = ScreenMapEditorState.updatingMovedWindows(
+            [reLayered],
+            movedFrames: [1: live],
+            expectedFingerprints: [1: preMove.stagingFingerprint],
+            displayIndexForFrame: { _ in 1 }
+        )
+        XCTAssertEqual(updated[0].originalFrame, live)
+        XCTAssertEqual(updated[0].layer, 3)
+        XCTAssertEqual(updated[0].editedFrame, base)
+    }
+
+    func testPartialSuccessWithMidFlightEditOnlyTouchesVerifiedTargets() {
+        // wid 1 verified and untouched → full reset; wid 2 verified but
+        // re-edited mid-flight → live baseline + newer edit; wid 3 failed →
+        // completely untouched.
+        let base = CGRect(x: 0, y: 0, width: 500, height: 400)
+        let live1 = CGRect(x: 3600, y: 300, width: 500, height: 400)
+        let live2 = CGRect(x: 4200, y: 300, width: 500, height: 400)
+        let newerEdit = CGRect(x: 5, y: 5, width: 300, height: 200)
+        let staged = CGRect(x: 25, y: 25, width: 700, height: 500)
+        let pristine = entry(id: 1, frame: base)
+        let reEdited = entry(id: 2, frame: base, edited: newerEdit)
+        let preMove2 = entry(id: 2, frame: base)
+        let failed = entry(id: 3, frame: base, edited: staged)
+        let updated = ScreenMapEditorState.updatingMovedWindows(
+            [pristine, reEdited, failed],
+            movedFrames: [1: live1, 2: live2],
+            expectedFingerprints: [
+                1: pristine.stagingFingerprint,
+                2: preMove2.stagingFingerprint,
+            ],
+            displayIndexForFrame: { _ in 1 }
+        )
+        XCTAssertEqual(updated[0].editedFrame, live1)
+        XCTAssertFalse(updated[0].hasEdits)
+        XCTAssertEqual(updated[1].originalFrame, live2)
+        XCTAssertEqual(updated[1].editedFrame, newerEdit)
+        XCTAssertTrue(updated[1].hasEdits)
+        XCTAssertEqual(updated[2].originalFrame, base)
+        XCTAssertEqual(updated[2].editedFrame, staged)
+    }
+
     // MARK: - Display index resolution (hoisted from the snapshot path)
 
     // Two displays in CG top-left space: primary 3440×1440 at origin,

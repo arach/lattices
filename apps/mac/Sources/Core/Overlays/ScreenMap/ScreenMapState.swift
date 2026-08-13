@@ -109,6 +109,25 @@ struct ScreenMapWindowEntry: Identifiable {
     var tmuxPaneTitle: String?  // tmux pane title (often cwd or custom label)
     var hasEdits: Bool { originalFrame != editedFrame }
 
+    /// Snapshot of every field the Studio user can stage on an entry. Captured
+    /// when an immediate move starts so its async completion can detect edits
+    /// made while verification was pending.
+    struct StagingFingerprint: Equatable {
+        let editedFrame: CGRect
+        let virtualFrame: CGRect
+        let layer: Int
+        let displayIndex: Int
+    }
+
+    var stagingFingerprint: StagingFingerprint {
+        StagingFingerprint(
+            editedFrame: editedFrame,
+            virtualFrame: virtualFrame,
+            layer: layer,
+            displayIndex: displayIndex
+        )
+    }
+
     /// Rich search key combining all available metadata.
     /// Format: m{spatial}.L{layer}.{layerName}.{app}.{title}.{session}.{command}.{paneTitle}.{state}
     /// Example: m1.L0.primary.terminal.~/dev/lattices.session:myproject.cmd:vim.visible
@@ -149,13 +168,38 @@ final class ScreenMapEditorState: ObservableObject {
     /// cleared because the real window now defines truth). Every other entry
     /// is returned untouched, so unrelated staged frame/layer/canvas edits
     /// survive by construction.
+    ///
+    /// `expectedFingerprints` carries each target's staged state (edited and
+    /// virtual frames, layer, display) captured when the move was requested:
+    /// the async verification takes up to ~0.8s per window, and the entry
+    /// stays editable meanwhile. If the fingerprint still matches, the entry
+    /// resets fully to live truth. If the user staged anything newer during
+    /// the wait, the verified live frame still becomes the new
+    /// `originalFrame` baseline (the real move did happen — reset/undo and
+    /// `hasEdits` must not compare against the stale pre-move origin) while
+    /// the newer staged fields stay pending.
     static func updatingMovedWindows(
         _ windows: [ScreenMapWindowEntry],
         movedFrames: [UInt32: CGRect],
+        expectedFingerprints: [UInt32: ScreenMapWindowEntry.StagingFingerprint] = [:],
         displayIndexForFrame: (CGRect) -> Int?
     ) -> [ScreenMapWindowEntry] {
         windows.map { old in
             guard let frame = movedFrames[old.id] else { return old }
+            if let expected = expectedFingerprints[old.id], expected != old.stagingFingerprint {
+                return ScreenMapWindowEntry(
+                    id: old.id, pid: old.pid, app: old.app, title: old.title,
+                    originalFrame: frame,
+                    editedFrame: old.editedFrame,
+                    virtualFrame: old.virtualFrame,
+                    zIndex: old.zIndex, layer: old.layer,
+                    displayIndex: old.displayIndex,
+                    isOnScreen: old.isOnScreen,
+                    latticesSession: old.latticesSession,
+                    tmuxCommand: old.tmuxCommand,
+                    tmuxPaneTitle: old.tmuxPaneTitle
+                )
+            }
             return ScreenMapWindowEntry(
                 id: old.id, pid: old.pid, app: old.app, title: old.title,
                 originalFrame: frame, editedFrame: frame, virtualFrame: frame,
@@ -1915,8 +1959,13 @@ final class ScreenMapController: ObservableObject {
     /// Refresh only the windows an immediate move touched: their entries are
     /// rebuilt from live desktop geometry (frames reset, display recomputed)
     /// while every other entry — staged frame edits, layer reassignments,
-    /// canvas positions — and the selection stay untouched.
-    func applyLiveFrames(for wids: Set<UInt32>) {
+    /// canvas positions — and the selection stay untouched. Entries the user
+    /// re-staged after `expectedFingerprints` was captured keep their newer
+    /// staged state over the fresh live baseline.
+    func applyLiveFrames(
+        for wids: Set<UInt32>,
+        expectedFingerprints: [UInt32: ScreenMapWindowEntry.StagingFingerprint] = [:]
+    ) {
         guard let editor, !wids.isEmpty else { return }
         let frames = Self.liveWindowFrames(for: wids)
         guard !frames.isEmpty else { return }
@@ -1926,6 +1975,7 @@ final class ScreenMapController: ObservableObject {
         editor.windows = ScreenMapEditorState.updatingMovedWindows(
             editor.windows,
             movedFrames: frames,
+            expectedFingerprints: expectedFingerprints,
             displayIndexForFrame: { Self.displayIndex(forCGFrame: $0, displayCGRects: displayCGRects) }
         )
         objectWillChange.send()

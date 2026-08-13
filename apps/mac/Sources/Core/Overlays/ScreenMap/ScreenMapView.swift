@@ -4027,25 +4027,42 @@ struct ScreenMapView: View {
     }
 
     private func moveStudioTargets(_ targets: [WindowMoveMenuModel.Target], to display: WindowMoveMenuModel.Display) {
+        let fingerprints = stagedFingerprints(for: targets)
         WindowMovementService.moveTargets(targets, to: display) { outcome in
-            finishStudioMovement(outcome)
+            finishStudioMovement(outcome, expectedFingerprints: fingerprints)
         }
     }
 
     private func placeStudioTarget(_ targets: [WindowMoveMenuModel.Target], on display: WindowMoveMenuModel.Display, slot: TilePosition) {
         guard let target = targets.first else { return }
+        let fingerprints = stagedFingerprints(for: [target])
         WindowMovementService.placeTarget(target, on: display, slot: slot) { outcome in
-            finishStudioMovement(outcome)
+            finishStudioMovement(outcome, expectedFingerprints: fingerprints)
+        }
+    }
+
+    /// Per-target staging fingerprint (edited/virtual frames, layer, display)
+    /// captured at action start so the completion can tell whether the user
+    /// staged anything on a target while the async verification was pending.
+    private func stagedFingerprints(for targets: [WindowMoveMenuModel.Target]) -> [UInt32: ScreenMapWindowEntry.StagingFingerprint] {
+        guard let editor = controller.editor else { return [:] }
+        let wids = Set(targets.map(\.wid))
+        return editor.windows.reduce(into: [UInt32: ScreenMapWindowEntry.StagingFingerprint]()) { acc, win in
+            if wids.contains(win.id) { acc[win.id] = win.stagingFingerprint }
         }
     }
 
     /// Targeted reconcile after an immediate move: only windows that
     /// verifiably moved (`outcome.movedWids`) are refreshed from live desktop
-    /// geometry — a failed or blocked target keeps its staged edits, and
-    /// unrelated staged frame/layer/canvas edits, the selection, search, and
-    /// the viewport all stay exactly as they were. Then flash the receipt.
-    private func finishStudioMovement(_ outcome: WindowMovementService.Outcome) {
-        controller.applyLiveFrames(for: Set(outcome.movedWids))
+    /// geometry — a failed or blocked target keeps its staged edits; a target
+    /// re-staged while verification was pending keeps its newer staged state
+    /// on a fresh live `originalFrame` baseline; and unrelated staged edits,
+    /// the selection, search, and the viewport all stay exactly as they were.
+    private func finishStudioMovement(
+        _ outcome: WindowMovementService.Outcome,
+        expectedFingerprints: [UInt32: ScreenMapWindowEntry.StagingFingerprint]
+    ) {
+        controller.applyLiveFrames(for: Set(outcome.movedWids), expectedFingerprints: expectedFingerprints)
         controller.flash(outcome.message)
     }
 
