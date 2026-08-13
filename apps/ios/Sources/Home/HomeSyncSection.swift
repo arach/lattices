@@ -214,7 +214,7 @@ private struct HomeSyncRow: View {
                 LatsButton(
                     title: "BROADCAST",
                     icon: "arrow.up.right",
-                    style: .primary(.green),
+                    style: .primary(.amber),
                     action: onBroadcast
                 )
                 .opacity(canBroadcast ? 1.0 : 0.5)

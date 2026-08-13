@@ -76,9 +76,8 @@ struct HomeTopBar: View {
 
     private var compactCollapsedBar: some View {
         HStack(spacing: 8) {
-            Text("LATS")
-                .font(LatsFont.mono(11, weight: .bold))
-                .tracking(1.4)
+            Text("Lats Deck")
+                .font(DeckTheme.secondary(.semibold))
                 .foregroundStyle(LatsPalette.text)
                 .fixedSize()
 
@@ -106,9 +105,8 @@ struct HomeTopBar: View {
                         .fixedSize()
                 }
             } else {
-                Text("HOME")
-                    .font(LatsFont.mono(9, weight: .semibold))
-                    .tracking(1)
+                Text("Home")
+                    .font(DeckTheme.caption(.semibold))
                     .foregroundStyle(LatsPalette.textDim)
             }
 
@@ -116,11 +114,11 @@ struct HomeTopBar: View {
 
             if agentsRunning > 0 {
                 HStack(spacing: 4) {
-                    Circle().fill(LatsPalette.violet).frame(width: 5, height: 5)
+                    Circle().fill(DeckTheme.accent).frame(width: 5, height: 5)
                     Text("\(agentsRunning)")
-                        .font(LatsFont.mono(9, weight: .bold))
+                        .font(DeckTheme.caption(.semibold))
                 }
-                .foregroundStyle(LatsPalette.violet)
+                .foregroundStyle(DeckTheme.accent)
                 .fixedSize()
             }
 
@@ -133,14 +131,12 @@ struct HomeTopBar: View {
 
     private var productMark: some View {
         HStack(spacing: 8) {
-            Text("LATS")
-                .font(LatsFont.mono(11, weight: .bold))
-                .tracking(1.5)
+            Text("Lats Deck")
+                .font(DeckTheme.secondary(.semibold))
                 .foregroundStyle(LatsPalette.text)
             Text("·").foregroundStyle(LatsPalette.textFaint)
-            Text("home")
-                .font(LatsFont.mono(11))
-                .tracking(1)
+            Text("Home")
+                .font(DeckTheme.secondary())
                 .foregroundStyle(LatsPalette.textDim)
         }
         .fixedSize()
@@ -171,23 +167,21 @@ struct HomeTopBar: View {
     private var agentBadge: some View {
         HStack(spacing: 5) {
             Circle()
-                .fill(LatsPalette.violet)
+                .fill(DeckTheme.accent)
                 .frame(width: 5, height: 5)
             Text("\(agentsRunning) agents")
-                .font(LatsFont.mono(9, weight: .semibold))
-                .tracking(0.6)
-                .textCase(.uppercase)
+                .font(DeckTheme.caption(.semibold))
         }
-        .foregroundStyle(LatsPalette.violet)
+        .foregroundStyle(DeckTheme.accent)
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .background(
             RoundedRectangle(cornerRadius: 4)
-                .fill(LatsPalette.violet.opacity(0.14))
+                .fill(DeckTheme.accentFill)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 4)
-                .stroke(LatsPalette.violet.opacity(0.34), lineWidth: 1)
+                .stroke(DeckTheme.accent.opacity(0.34), lineWidth: 1)
         )
     }
 

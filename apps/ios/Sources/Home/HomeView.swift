@@ -110,13 +110,13 @@ struct HomeView: View {
         } label: {
             Image(systemName: "mic.fill")
                 .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(LatsPalette.text)
+                .foregroundStyle(DeckTheme.text)
                 .frame(width: 52, height: 52)
                 .background(
-                    Circle().fill(LatsPalette.violet.opacity(0.22))
+                    Circle().fill(DeckTheme.accentFill)
                 )
                 .overlay(
-                    Circle().stroke(LatsPalette.violet.opacity(0.6), lineWidth: 1)
+                    Circle().stroke(DeckTheme.accent.opacity(0.55), lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)

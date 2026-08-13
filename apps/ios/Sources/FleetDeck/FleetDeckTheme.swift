@@ -282,9 +282,8 @@ struct FleetLabel: View {
     var color: Color = FleetV6.fg3
 
     var body: some View {
-        Text(text.uppercased())
+        Text(text)
             .font(FleetV6.mono(size, .medium))
-            .tracking(size * 0.18)
             .foregroundStyle(color)
     }
 }

@@ -39,24 +39,21 @@ struct HomeZeroState: View {
 
     private var hero: some View {
         VStack(spacing: 14) {
-            Text("LATS")
-                .font(LatsFont.mono(34, weight: .bold))
-                .tracking(8)
+            Text("Lats Deck")
+                .font(DeckTheme.title(.semibold))
                 .foregroundStyle(LatsPalette.text)
 
-            Text("your iPad cockpit for a fleet of Macs")
-                .font(LatsFont.mono(12))
-                .tracking(0.5)
+            Text("Your iPad remote for paired Macs")
+                .font(DeckTheme.secondary())
                 .foregroundStyle(LatsPalette.textDim)
 
             HStack(spacing: 8) {
                 Circle()
-                    .fill(LatsPalette.green)
+                    .fill(DeckTheme.accent)
                     .frame(width: 6, height: 6)
                     .opacity(pulse ? 1.0 : 0.25)
-                Text("scanning network…")
-                    .font(LatsFont.mono(10))
-                    .tracking(0.4)
+                Text("Looking for Macs on this network")
+                    .font(DeckTheme.caption())
                     .foregroundStyle(LatsPalette.textFaint)
             }
             .padding(.top, 6)
@@ -71,7 +68,7 @@ struct HomeZeroState: View {
                 Rectangle()
                     .fill(LatsPalette.hairline2)
                     .frame(width: 18, height: 1)
-                LatsSectionLabel(text: "preview · once connected")
+                LatsSectionLabel(text: "Preview · once connected")
                 Rectangle()
                     .fill(LatsPalette.hairline2)
                     .frame(height: 1)
@@ -150,23 +147,21 @@ struct HomeZeroState: View {
             LatsButton(
                 title: "Add a host",
                 icon: "plus.circle",
-                style: .primary(.green)
-            ) {
+                style: .primary(.amber)
+            ) {}
                 onPair?()
             }
 
             Button(action: { onSettings?() }) {
                 Text("Open settings")
-                    .font(LatsFont.mono(11))
-                    .tracking(0.4)
+                    .font(DeckTheme.secondary())
                     .foregroundStyle(LatsPalette.textDim)
                     .underline(false)
             }
             .buttonStyle(.plain)
 
-            Text("looks like you don't have any paired Macs yet")
-                .font(LatsFont.mono(9))
-                .tracking(0.5)
+            Text("No paired Macs yet")
+                .font(DeckTheme.caption())
                 .foregroundStyle(LatsPalette.textFaint)
                 .padding(.top, 4)
         }

@@ -51,7 +51,7 @@ struct FleetCommandBay: View {
         HStack(spacing: 8) {
             ScrollView(.horizontal) {
                 HStack(spacing: 8) {
-                    FleetLabel(text: "COMMANDS")
+                    FleetLabel(text: "Commands")
                         .padding(.trailing, 4)
 
                     ForEach(Array(sets.enumerated()), id: \.element.id) { index, set in
