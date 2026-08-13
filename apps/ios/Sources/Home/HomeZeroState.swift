@@ -148,7 +148,7 @@ struct HomeZeroState: View {
                 title: "Add a host",
                 icon: "plus.circle",
                 style: .primary(.amber)
-            ) {}
+            ) {
                 onPair?()
             }
 
