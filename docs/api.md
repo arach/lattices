@@ -1452,7 +1452,7 @@ Supported action types:
 | `window.place` | write | Place a window or session using a typed placement spec |
 | `window.tile` | write | Compatibility wrapper for session tiling |
 | `window.focus` | write | Focus a window / switch Spaces |
-| `window.move` | write | Move a window to another Space |
+| `window.move` | write | Move a window to another display, placement slot, or Space |
 | `window.assignLayer` | write | Tag a window to a layer |
 | `window.removeLayer` | write | Remove a window's layer tag |
 | `window.layerMap` | read | All window→layer assignments |
@@ -1610,6 +1610,7 @@ single, typed placement contract across voice, CLI, and daemon clients.
 | `title`     | string          | no       | Optional title substring for app matching |
 | `display`   | number          | no       | Target display index                      |
 | `placement` | string \| object | yes     | Placement shorthand or typed object       |
+| `dryRun`    | bool            | no       | Plan and verify inputs without moving     |
 
 Target resolution priority is `wid` → `session` → `app/title` → frontmost window.
 
@@ -1679,14 +1680,65 @@ Provide either `wid` or `session`. If `wid` is given, it takes priority.
 
 #### `window.move`
 
-Move a session's window to a different macOS Space.
+Move a specific window to another display, into a placement slot, or to a
+different macOS Space. `window.place` stays the canonical placement mutation;
+`window.move` adds the display-to-display move that preserves the window's
+normalized geometry.
 
 **Params**:
 
-| Field     | Type   | Required | Description                |
-|-----------|--------|----------|----------------------------|
-| `session` | string | yes      | Session name               |
-| `spaceId` | number | yes      | Target Space ID (from `spaces.list`) |
+| Field       | Type             | Required | Description                                        |
+|-------------|------------------|----------|----------------------------------------------------|
+| `wid`       | number           | no       | Target CGWindowID (preferred)                      |
+| `session`   | string           | no       | Session name (legacy target)                       |
+| `display`   | number           | no       | Target display index (`spaces.list` `displayIndex`) |
+| `placement` | string \| object | no       | Placement slot on the target display               |
+| `position`  | string           | no       | Alias for `placement`                              |
+| `spaceId`   | number           | no       | Target Space ID (from `spaces.list`)               |
+| `dryRun`    | bool             | no       | Plan and validate without moving the window        |
+
+Provide `wid` or `session` — there is no frontmost fallback — plus at least one
+of `display`, `placement`, or `spaceId`. Invalid combinations are rejected
+synchronously:
+
+- `spaceId` cannot be combined with `display` or `placement`; move Spaces and
+  geometry in separate calls.
+- An unknown `placement` string or unresolvable `display` index is an error,
+  not a silent default.
+
+**Semantics**:
+
+- `display` **without** `placement` — the window's normalized `x/y/w/h` within
+  its source display's visible frame is preserved onto the target display's
+  visible frame and clamped to fit. Display indexes resolve to screens through
+  stable display UUIDs, not array order.
+- `display` **with** `placement` (or `placement` alone) — routes through the
+  canonical `window.place` execution path; the receipt carries
+  `compatibilityMethod: "window.move"`.
+- `session` + `spaceId` — legacy Space move, fire-and-forget `{ ok: true }`.
+- `wid` + `spaceId` — synchronous Space move through the CGS primitive. Returns
+  `{ ok, moved, method, fromSpaceIds }`; `method` is `"CGS"` when the window
+  actually moved or `"switch-view"` when macOS denied the move and only the
+  view switched. An unknown `spaceId` is rejected with `Not found`, and CGS
+  being unavailable is an error. `dryRun: true` validates the target and
+  returns `status: "planned"` without touching the window or the view.
+
+**Returns** (geometry moves): an execution receipt with `status`
+(`ok`/`planned`/`blocked`/`failed`), before/target/after frames in `mutations`,
+`sourceDisplay` and `display` (name, index, visible frame), `targetResolution`,
+`verified`, `trace`, and undo metadata. Successful moves are undoable via
+`action.undo`.
+
+```js
+// Move window 4182 to display 1, keeping its relative size and position
+await daemonCall('window.move', { wid: 4182, display: 1 })
+
+// Move it to display 1 and snap it into the right half
+await daemonCall('window.move', { wid: 4182, display: 1, placement: 'right' })
+
+// Plan only — validate the move and preview frames without executing
+await daemonCall('window.move', { wid: 4182, display: 1, dryRun: true })
+```
 
 #### `window.assignLayer`
 

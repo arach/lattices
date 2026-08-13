@@ -48,8 +48,16 @@ final class ActionRuntime {
         var events: [JSON] = []
 
         let resolved = try resolveWindowTarget(params: normalizedParams, trace: &trace, events: &events)
-        let screen = onMain {
-            Self.resolveTargetScreen(for: resolved.entry, displayIndex: displayIndex)
+        let screen: NSScreen
+        if let displayIndex {
+            guard let requestedScreen = onMain({ DisplayGeometryMapper.screen(forDisplayIndex: displayIndex) }) else {
+                throw RouterError.notFound("display \(displayIndex)")
+            }
+            screen = requestedScreen
+        } else {
+            screen = onMain {
+                Self.resolveTargetScreen(for: resolved.entry, displayIndex: nil)
+            }
         }
 
         var result: [String: JSON] = [
@@ -86,16 +94,209 @@ final class ActionRuntime {
         return .object(result)
     }
 
-    func executeWindowPlace(params: JSON?, source: String = "daemon", requestId: String? = nil) throws -> JSON {
+    func executeWindowPlace(
+        params: JSON?,
+        source: String = "daemon",
+        requestId: String? = nil,
+        compatibilityMethod: String? = nil
+    ) throws -> JSON {
         let context = ActionInvocationContext(
             requestId: requestId ?? Self.makeId(prefix: "req"),
             actionId: Self.makeId(prefix: "act"),
             source: source,
-            compatibilityMethod: nil
+            compatibilityMethod: compatibilityMethod
         )
         let receipt = try executeWindowPlace(params: params, context: context)
         history.record(receipt)
         return receipt
+    }
+
+    /// Geometry moves for `window.move`: a display target with an optional
+    /// placement slot. Space moves stay in the `window.move` endpoint handler.
+    ///
+    /// With a placement the move routes through the canonical `window.place`
+    /// execution path. Without one, the window's normalized x/y/w/h within its
+    /// source display's visible frame is preserved onto the target display's
+    /// visible frame and clamped to fit.
+    func executeWindowMove(params: JSON?, source: String = "daemon") throws -> JSON {
+        let displayIndex = params?["display"]?.intValue
+        let placementJSON = params?["placement"] ?? params?["position"]
+
+        if let placementJSON {
+            guard PlacementSpec(json: placementJSON) != nil else {
+                throw RouterError.custom("Unknown placement: \(placementJSON.stringValue ?? "<object>")")
+            }
+            return try executeWindowPlace(params: params, source: source, compatibilityMethod: "window.move")
+        }
+
+        guard let displayIndex else {
+            throw RouterError.missingParam("display, placement, or spaceId")
+        }
+
+        let dryRun = params?["dryRun"]?.boolValue == true
+        var trace: [String] = []
+        var events: [JSON] = []
+
+        let resolved = try resolveMoveTarget(params: params, trace: &trace, events: &events)
+        guard let entry = resolved.entry, let wid = resolved.wid, let pid = resolved.pid else {
+            throw RouterError.custom("window.move requires a resolvable on-screen window; no window found for the target")
+        }
+
+        guard let targetScreen = onMain({ DisplayGeometryMapper.screen(forDisplayIndex: displayIndex) }) else {
+            throw RouterError.notFound("display \(displayIndex)")
+        }
+
+        let beforeFrame = Self.cgWindowFrameTopLeft(wid: wid) ?? CGRect(
+            x: CGFloat(entry.frame.x),
+            y: CGFloat(entry.frame.y),
+            width: CGFloat(entry.frame.w),
+            height: CGFloat(entry.frame.h)
+        )
+
+        let geometry = onMain { () -> (source: NSScreen, fractions: (x: CGFloat, y: CGFloat, w: CGFloat, h: CGFloat)?, targetFrame: CGRect?) in
+            let sourceScreen = WindowTiler.screenForWindowFrame(entry.frame)
+            let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+            let sourceVisible = DisplayGeometryMapper.topLeftFrame(sourceScreen.visibleFrame, primaryHeight: primaryHeight)
+            guard let fractions = DisplayGeometryMapper.normalizedFractions(of: beforeFrame, in: sourceVisible) else {
+                return (sourceScreen, nil, nil)
+            }
+            return (sourceScreen, fractions, WindowTiler.tileFrame(fractions: fractions, on: targetScreen))
+        }
+        guard let fractions = geometry.fractions, let targetFrame = geometry.targetFrame else {
+            throw RouterError.custom("window.move could not derive source geometry for wid \(wid)")
+        }
+        let sourceScreen = geometry.source
+        let verificationTolerance = Self.verificationTolerance(forApp: resolved.app)
+
+        trace.append("normalized frame x=\(fractions.x) y=\(fractions.y) w=\(fractions.w) h=\(fractions.h)")
+        events.append(event("plan.computeFrame", "remapped source frame onto \(targetScreen.localizedName)"))
+
+        var blockedReason: String?
+        var requiredPermissions: [String] = []
+
+        if dryRun {
+            trace.append("dry run; skipped execution")
+            events.append(event("execute.skipped", "dry run requested; no window mutation performed"))
+        } else if !AXIsProcessTrusted() {
+            blockedReason = "accessibility-not-trusted"
+            requiredPermissions.append("accessibility")
+            trace.append("blocked: Accessibility permission required for deterministic window movement")
+            events.append(event("execute.blocked", "Accessibility permission required to move wid \(wid)"))
+        } else {
+            onMain {
+                WindowTiler.tileWindowById(wid: wid, pid: pid, fractions: fractions, on: targetScreen)
+            }
+            DesktopModel.shared.markInteraction(wid: wid)
+            trace.append("executed window move to display \(displayIndex)")
+            events.append(event("execute.moveWindow", "moved wid \(wid) to display \(displayIndex)"))
+        }
+
+        let afterFrame = dryRun ? nil : Self.waitForWindowFrame(
+            wid: wid,
+            targetFrame: targetFrame,
+            tolerance: verificationTolerance
+        )
+        let verified = dryRun ? false : (afterFrame.map { Self.framesClose($0, targetFrame, tolerance: verificationTolerance) } ?? false)
+        if dryRun {
+            trace.append("verification skipped for dry run")
+            events.append(event("verify.skipped", "dry run requested; no final frame verification performed"))
+        } else if verified {
+            trace.append("verified target frame")
+            events.append(event("verify.frame", "verified final frame"))
+        } else if blockedReason == nil {
+            trace.append("verification could not confirm exact target frame")
+            events.append(event("verify.frame", "final frame did not match target within tolerance"))
+        }
+
+        let status: String
+        if dryRun {
+            status = "planned"
+        } else if blockedReason != nil {
+            status = "blocked"
+        } else if verified {
+            status = "ok"
+        } else {
+            status = "failed"
+        }
+        let ok = status == "ok" || status == "planned"
+
+        var mutation: [String: JSON] = [
+            "kind": .string("moveWindowToDisplay"),
+            "wid": .int(Int(wid)),
+            "pid": .int(Int(pid)),
+            "from": Self.frameJSON(beforeFrame),
+            "to": Self.frameJSON(targetFrame),
+        ]
+        if let afterFrame { mutation["after"] = Self.frameJSON(afterFrame) }
+
+        let receiptId = Self.makeId(prefix: "exec")
+        var receipt: [String: JSON] = [
+            "ok": .bool(ok),
+            "status": .string(status),
+            "receiptId": .string(receiptId),
+            "requestId": .string(Self.makeId(prefix: "req")),
+            "source": .string(source),
+            "action": .object([
+                "id": .string(Self.makeId(prefix: "act")),
+                "type": .string("window.move"),
+            ]),
+            "target": resolved.json,
+            "targetKind": .string(resolved.kind),
+            "targetResolution": .string(resolved.resolution),
+            "dryRun": .bool(dryRun),
+            "sourceDisplay": onMain { displayJSON(sourceScreen, requestedIndex: nil) },
+            "display": onMain { displayJSON(targetScreen, requestedIndex: displayIndex) },
+            "fractions": .object([
+                "x": .double(Double(fractions.x)),
+                "y": .double(Double(fractions.y)),
+                "w": .double(Double(fractions.w)),
+                "h": .double(Double(fractions.h)),
+            ]),
+            "verificationTolerance": .double(Double(verificationTolerance)),
+            "plan": .object([
+                "actionType": .string("window.move"),
+                "target": resolved.json,
+                "steps": .array([
+                    .string("resolve target"),
+                    .string("resolve displays"),
+                    .string("remap normalized frame"),
+                    .string("move window"),
+                    .string("verify frame"),
+                ]),
+                "mutations": .array([.object(mutation)]),
+            ]),
+            "mutations": .array([.object(mutation)]),
+            "verified": .bool(verified),
+            "trace": .array(trace.map { .string($0) }),
+            "events": .array(events),
+            "timestamp": .double(Date().timeIntervalSince1970),
+        ]
+
+        receipt["wid"] = .int(Int(wid))
+        receipt["pid"] = .int(Int(pid))
+        if let app = resolved.app { receipt["app"] = .string(app) }
+        if let title = resolved.title { receipt["title"] = .string(title) }
+        if let session = resolved.session { receipt["session"] = .string(session) }
+        if let blockedReason {
+            receipt["blockedReason"] = .string(blockedReason)
+        }
+        if !requiredPermissions.isEmpty {
+            receipt["requiredPermissions"] = .array(requiredPermissions.map { .string($0) })
+        }
+
+        let undoable = status == "ok" && !dryRun && afterFrame != nil
+        receipt["undoable"] = .bool(undoable)
+        if undoable {
+            receipt["undo"] = .object([
+                "strategy": .string("restore-frame"),
+                "requiresCurrentFrameMatch": .bool(true),
+                "frameSource": .string("mutations.from"),
+            ])
+        }
+
+        let result = JSON.object(receipt)
+        history.record(result)
+        return result
     }
 
     private func executeBatch(root: [String: JSON], actions: [JSON]) throws -> JSON {
@@ -166,8 +367,16 @@ final class ActionRuntime {
         var events: [JSON] = []
 
         let resolved = try resolveWindowTarget(params: params, trace: &trace, events: &events)
-        let screen = onMain {
-            Self.resolveTargetScreen(for: resolved.entry, displayIndex: displayIndex)
+        let screen: NSScreen
+        if let displayIndex {
+            guard let requestedScreen = onMain({ DisplayGeometryMapper.screen(forDisplayIndex: displayIndex) }) else {
+                throw RouterError.notFound("display \(displayIndex)")
+            }
+            screen = requestedScreen
+        } else {
+            screen = onMain {
+                Self.resolveTargetScreen(for: resolved.entry, displayIndex: nil)
+            }
         }
         let targetFrame = onMain {
             WindowTiler.tileFrame(for: placement, on: screen)
@@ -593,6 +802,36 @@ final class ActionRuntime {
         throw RouterError.custom("Could not resolve a window target for placement")
     }
 
+    /// Strict target resolution for `window.move`: an explicit wid or session
+    /// only. Never falls back to the frontmost window — a malformed or missing
+    /// target must fail loudly rather than move whatever happens to be focused.
+    private func resolveMoveTarget(params: JSON?, trace: inout [String], events: inout [JSON]) throws -> ResolvedWindowTarget {
+        if let wid = params?["wid"]?.uint32Value {
+            guard let entry = DesktopModel.shared.windows[wid] else {
+                throw RouterError.notFound("window \(wid)")
+            }
+            trace.append("resolved target by wid")
+            events.append(event("plan.resolveTarget", "resolved wid \(wid)"))
+            return ResolvedWindowTarget(kind: "wid", resolution: "wid", confidence: 1.0, entry: entry)
+        }
+
+        if let session = params?["session"]?.stringValue {
+            if let entry = DesktopModel.shared.windowForSession(session) {
+                trace.append("resolved target by session")
+                events.append(event("plan.resolveTarget", "resolved session \(session) to wid \(entry.wid)"))
+                return ResolvedWindowTarget(kind: "session", resolution: "session", confidence: 1.0, entry: entry, session: session)
+            }
+            if let entry = Self.windowForSessionViaTerminalSynthesis(session) {
+                trace.append("resolved target by terminal synthesis")
+                events.append(event("plan.resolveTarget", "resolved session \(session) through terminal synthesis to wid \(entry.wid)"))
+                return ResolvedWindowTarget(kind: "session", resolution: "terminal-synthesis", confidence: 0.9, entry: entry, session: session)
+            }
+            throw RouterError.notFound("window for session \(session)")
+        }
+
+        throw RouterError.missingParam("wid or session")
+    }
+
     private static func windowPlaceParams(action: JSON?, root: JSON?) throws -> JSON {
         var dict: [String: JSON] = [:]
 
@@ -736,10 +975,11 @@ final class ActionRuntime {
     }
 
     private func isUndoableReceipt(_ receipt: JSON, undoneReceiptIds: Set<String>) -> Bool {
+        let actionType = receipt["action"]?["type"]?.stringValue
         guard let receiptId = receipt["receiptId"]?.stringValue,
               !undoneReceiptIds.contains(receiptId),
               receipt["status"]?.stringValue == "ok",
-              receipt["action"]?["type"]?.stringValue == "window.place" else {
+              actionType == "window.place" || actionType == "window.move" else {
             return false
         }
         if receipt["undoable"]?.boolValue == false {
@@ -789,6 +1029,25 @@ final class ActionRuntime {
         if let requestedIndex {
             obj["requestedIndex"] = .int(requestedIndex)
         }
+        return .object(obj)
+    }
+
+    /// screenJSON plus the SkyLight display index and visible frame in API
+    /// (top-left) coordinates. Call on the main thread.
+    private func displayJSON(_ screen: NSScreen, requestedIndex: Int?) -> JSON {
+        guard case .object(var obj) = screenJSON(screen, requestedIndex: requestedIndex) else {
+            return screenJSON(screen, requestedIndex: requestedIndex)
+        }
+        let screens = NSScreen.screens
+        if let display = WindowTiler.getDisplaySpaces().first(where: {
+            DisplayGeometryMapper.screen(for: $0, in: screens) === screen
+        }) {
+            obj["displayIndex"] = .int(display.displayIndex)
+        }
+        let primaryHeight = screens.first?.frame.height ?? 0
+        obj["visibleFrame"] = Self.frameJSON(
+            DisplayGeometryMapper.topLeftFrame(screen.visibleFrame, primaryHeight: primaryHeight)
+        )
         return .object(obj)
     }
 
@@ -881,8 +1140,8 @@ final class ActionRuntime {
     }
 
     private static func resolveTargetScreen(for entry: WindowEntry?, displayIndex: Int?) -> NSScreen {
-        if let displayIndex, displayIndex >= 0, displayIndex < NSScreen.screens.count {
-            return NSScreen.screens[displayIndex]
+        if let displayIndex, let screen = DisplayGeometryMapper.screen(forDisplayIndex: displayIndex) {
+            return screen
         }
         if let entry {
             return WindowTiler.screenForWindowFrame(entry.frame)

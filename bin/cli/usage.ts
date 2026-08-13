@@ -79,6 +79,11 @@ Usage:
   lattices computer demo-terminal  Record/focus/type a safe terminal demo
   lattices tile <position>    Tile the frontmost window (left, right, top, etc.)
   lattices tile family [app] [region]  Smart-grid the frontmost app family, or a named app
+  lattices window move <wid> --display <n> [--placement <slot>]
+                         Move a window to another display, keeping its
+                         normalized frame or snapping to a slot (daemon required)
+  lattices window place <wid> <slot> [--display <n>]
+                         Snap a window into a named or grid placement slot
   lattices distribute [app] [region]   Smart-grid visible windows or just one app (daemon required)
   lattices layer [name|index]  List layers or switch by name/index (daemon required)
   lattices layer create <name> [wid:N ...] [--json '<specs>']  Create a session layer

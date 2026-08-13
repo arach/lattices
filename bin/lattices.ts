@@ -4,7 +4,7 @@ import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, resolve } from "node:path";
 import { homedir } from "node:os";
-import { tryDaemon, withDaemon } from "./cli/daemon.ts";
+import { loadDaemonClient, tryDaemon, withDaemon } from "./cli/daemon.ts";
 import { printHome, printUsage } from "./cli/usage.ts";
 import {
   hasFlag,
@@ -2801,6 +2801,36 @@ function gridTileBounds(position: string, screen: ScreenBounds): number[] | null
   ];
 }
 
+/**
+ * Legacy `lattices tile <position>`: prefer the canonical daemon placement
+ * (window.place, frontmost target). Only when the daemon is down fall back to
+ * the AppleScript path — and say so, since that path is frontmost-app,
+ * primary-display only.
+ */
+async function tileFrontmostCommand(position: string): Promise<void> {
+  const { normalizePlacement, describeMoveReceipt } = await import("./cli/window.ts");
+  const placement = normalizePlacement(position);
+  if (!placement) {
+    tileWindow(position); // prints the unknown-position help
+    return;
+  }
+
+  const client = await loadDaemonClient();
+  if (await client.isDaemonRunning()) {
+    try {
+      const receipt = await client.daemonCall("window.place", { placement });
+      console.log(describeMoveReceipt(receipt));
+    } catch (e: unknown) {
+      console.error(`Daemon placement failed: ${(e as Error).message}`);
+      process.exit(1);
+    }
+    return;
+  }
+
+  console.log("Daemon not running — AppleScript fallback (frontmost app, primary display).");
+  tileWindow(position);
+}
+
 function tileWindow(position: string): void {
   const normalized = position.toLowerCase();
   const screen = getScreenBounds();
@@ -3016,7 +3046,7 @@ switch (command) {
     } else if (args[1] === "all") {
       await distributeCommand(args.slice(2));
     } else if (args[1]) {
-      tileWindow(args[1]);
+      await tileFrontmostCommand(args[1]);
     } else {
       console.log("Usage:");
       console.log("  lattices tile <position>");
@@ -3048,10 +3078,34 @@ switch (command) {
       await windowAssignCommand(args[2], args[3]);
     } else if (args[1] === "map") {
       await windowLayerMapCommand(args[2] === "--json");
+    } else if (args[1] === "move" || args[1] === "place") {
+      const method = args[1];
+      const { parseWindowMoveArgs, parseWindowPlaceArgs, runWindowMovement, windowMoveUsage } =
+        await import("./cli/window.ts");
+      const rest = args.slice(2);
+      if (rest.includes("--help") || rest.includes("-h")) {
+        console.log(windowMoveUsage());
+        break;
+      }
+      // Parse before touching the daemon: malformed input (a bad wid above
+      // all) must fail here and never fall back to another window.
+      let parsed;
+      try {
+        parsed = method === "move" ? parseWindowMoveArgs(rest) : parseWindowPlaceArgs(rest);
+      } catch (e: unknown) {
+        console.error((e as Error).message);
+        process.exit(1);
+      }
+      await withDaemon(async ({ daemonCall }) => runWindowMovement(method, parsed, daemonCall));
     } else {
+      const { windowMoveUsage } = await import("./cli/window.ts");
       console.log("Usage:");
+      console.log("  lattices window move <wid> --display <n> [--placement <slot>] [--dry-run] [--json]");
+      console.log("  lattices window place <wid> <slot> [--display <n>] [--dry-run] [--json]");
       console.log("  lattices window assign <wid> <layer-id>   Tag a window to a layer");
       console.log("  lattices window map [--json]               Show all layer tags");
+      console.log("");
+      console.log(windowMoveUsage());
     }
     break;
   case "search":

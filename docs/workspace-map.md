@@ -19,44 +19,125 @@ interactive **Studio / Screen Map** window and the **Hyper+3 HUD**.
 lattices map
 ```
 
-Example:
+Example with two differently sized, vertically offset displays
+(`lattices map --width 110 --height 14`):
 
 ```text
-┌ Display 0 · Built-in Display · Space 83 ───────────────────────┐
-│┌1 Ghostty - lattices──────────────────┐ ┌2 Safari - API docs─┐│
-││                                      │ │                    ││
-││                                      │ │                    ││
-│└──────────────────────────────────────┘ └────────────────────┘│
-└────────────────────────────────────────────────────────────────┘
+Desktop 7280×2395 @ 0,0 · 2 displays · 4 windows · 1 cell ≈ 92×184 pt
 
-  1  Ghostty · lattices  wid:4182  960×1038 @ 0,38
-  2  Safari · API docs   wid:4210  768×1038 @ 960,38
+╔═ D0 · AW3425DWM · Space 1 ═════════╗
+║                                    ╠═ D1 · U32J59x · Space 7 ════════════════╗
+║ ┌[2]┬[1] ChatGPT - ChatGPT───────┐ ║                                         ║
+║ │   │      │                     │ ║ ┌[3] Chrome────────┐                    ║
+║ │   │      │                     │ ║ │                  │                    ║
+║ │   │      │                     │ ║ │                  │    ┌[4]─┐          ║
+║ └───┴──────┘─────────────────────┘ ║ │                  │    │    │          ║
+║                                    ║ │                  │    │    │          ║
+╚════════════════════════════════════╣ │                  │    │    │          ║
+                                     ║ │                  │    │    │          ║
+                                     ║ │                  │    └────┘          ║
+                                     ║ └──────────────────┘                    ║
+                                     ║                                         ║
+                                     ╚═════════════════════════════════════════╝
+
+Key · ╔═ display ═╗   ┌[1] frontmost window ─┐   ┌[n]──┘ others, numbered only
+       lower n = nearer the front of its own display; n does not order across displays
+
+Displays
+  D0  Display 0 · AW3425DWM · Space 1  frame 3440×1440 @ 0,0       usable 3440×1410 @ 0,30
+  D1  Display 1 · U32J59x · Space 7    frame 3840×2160 @ 3440,235  usable 3840×2130 @ 3440,265
+
+Windows · front to back within each display
+  1  D0  ChatGPT · ChatGPT      wid:114   2847×1410 @ 593,30
+  2  D0  iTerm · lattices       wid:208   1235×1255 @ 0,30
+  3  D1  Chrome · API docs      wid:3874  1920×2130 @ 3440,265
+  4  D1  Simulator · iPhone 16  wid:146   447×950 @ 5783,913
 ```
 
-The diagram represents each display's usable `visibleFrame`, not a pixel
-capture. Window rectangles are clipped to that frame. Only on-screen windows
-on the display's current Space appear. `windows.list` is ordered front to back;
-the renderer paints back to front so a foreground window occludes the windows
-behind it.
+The diagram uses each full display `frame` to build one global desktop viewport,
+so displays above, below, left, right, or offset from the primary display retain
+their real topology and relative dimensions. One uniform point-to-cell scale is
+chosen for the entire canvas; displays are never independently normalized.
+Windows use the display's usable `visibleFrame`, are clipped to that frame, and
+remain positioned in the same global coordinate system. Only on-screen windows
+on each display's current Space appear. `windows.list` is ordered front to back,
+and the legend preserves that order: `[1]` is the frontmost window of its
+display. Numbering runs continuously across displays, so `[4]` on D0 and `[5]`
+on D1 have no z-relationship — depth is only meaningful within one display.
 
-Terminal cells are not square, so the automatic height compensates for a
-roughly 2:1 character aspect ratio. Geometry and overlap are proportional but
-approximate. Labels inside the fixed-width canvas use a one-cell-safe ASCII
-projection; the legend preserves cleaned Unicode app names and titles.
+Terminal cells are not square, so the projection compensates for a roughly 2:1
+character aspect ratio. The map summary reports the approximate point size of
+one terminal cell. Geometry and overlap are proportional but approximate.
+
+### The x-ray floor plan
+
+The drawing has a deliberate reading order: **monitor bezel → labelled primary
+window → numbered secondary shapes → legend.**
+
+**The bezel** is a double-line outer frame with a blank gutter inside it, so a
+window border is never adjacent to the monitor frame — `║ ┌` rather than `║┌`,
+which reads as one thick border. Window painting also refuses outright any cell
+already holding a double-line glyph, so the bezel cannot be merged into,
+replaced, or masqueraded as, whatever the window geometry. On a display too
+small to afford the gutter the inset falls back to one cell; the refusal still
+holds, so windows never reach the bezel itself.
+
+**Windows** are single-line rectangles. The map is an **x-ray**: a window never
+fills or erases its interior, so a window that is completely covered on the real
+desktop still appears as its own complete rectangle. Where two outlines cross
+they merge into the correct box-drawing junction (`┼`, `┬`, `┤`) rather than one
+erasing the other. This trades the visual "which window is in front" cue — which
+the legend carries authoritatively — for the guarantee that no window silently
+disappears. There is no `(occluded)` state.
+
+So that a rectangle still reads as closed inside all that merging, each window's
+**bottom-right endpoint is restamped as its own `┘` corner** after the outlines
+merge. Two windows wanting the same cell produce the same glyph, so the result
+is order-independent; where a corner lands mid-edge, closure deliberately wins
+over line continuity.
+
+**Labels.** Exactly one window per display — the frontmost drawable one — spells
+out its app and title on the canvas. Every other window keeps its complete
+geometry and its `[n]`, and its identity lives in the legend. Labelling every
+overlapping window is what turns a busy desktop into noise.
+
+Markers are placed front to back. A window's number hugs its own top-left
+corner and walks down its rows before it slides right, so a number always reads
+as belonging to the rectangle it sits inside. A marker may overwrite an outline;
+identity wins over line continuity. Every legend row then resolves to exactly
+one of four honest states:
+
+| Legend note | Meaning |
+|-------------|---------|
+| *(none)* | `[n]` is on the canvas |
+| `(small)` | The window had room for a bare `n` but not `[n]`. Numbers are never truncated — a bare marker also reserves a non-digit cell on each side so `10` and `12` cannot run together |
+| `(too small to label)` | The outline is drawn but no numeral fits anywhere inside it |
+| `(off-canvas)` | The window clipped away entirely and was not drawn |
+
+Labels inside the fixed-width canvas use a one-cell-safe projection; the legend
+preserves cleaned Unicode app names and titles and includes exact global
+geometry.
+
+The canvas still uses box-drawing characters, which are East Asian *Ambiguous*
+width. Under a CJK locale, or a terminal configured to render ambiguous-width
+characters as double width, the grid will shear. A pure-ASCII drawing mode is
+the fix for that and is not implemented.
 
 ## Options
 
 | Option | Effect |
 |--------|--------|
 | `--display <n>` | Include only the zero-based display index `n` |
-| `--width <n>` | Set terminal width; clamped to 32–120 columns |
-| `--height <n>` | Set terminal height; clamped to 8–40 rows |
+| `--width <n>` | Set the maximum canvas width; clamped to 32–120 columns |
+| `--height <n>` | Set the maximum canvas height; clamped to 8–40 rows |
 | `--json` | Emit the versioned current-Space snapshot instead of a diagram |
 | `-h`, `--help` | Print command help without contacting the daemon |
 
 Without `--width`, the command uses the terminal width when available and 72
-columns otherwise. Without `--height`, it derives the height from each
-display's aspect ratio. Numeric options must be non-negative integers.
+columns otherwise. Without `--height`, the canvas is capped at 24 rows. The
+desktop is scaled uniformly to fit within both maxima, so one bound can remain
+partly unused rather than distorting the topology. Numeric options must be
+non-negative integers.
 
 ## JSON for agents
 
@@ -107,7 +188,11 @@ not the unfiltered response from `windows.list`:
 
 Each display nests only windows that are on-screen, belong to its current
 Space, and intersect its usable frame. `zIndex: 0` is frontmost within that
-display snapshot. `--display` filters both terminal and JSON output. For every
+display snapshot; it is per-display and zero-based, whereas the terminal
+legend's `[n]` is continuous across displays and one-based. The two are not
+interchangeable — join on `wid`, which is stable across both. `[n]` also
+renumbers under `--display`, so a window the full map calls `[5]` becomes `[1]`
+in `map --display 1`. `--display` filters both terminal and JSON output. For every
 known window, including hidden and off-Space windows, call `windows.list`
 directly instead. The versioned projection copies the documented display,
 Space, and window fields explicitly rather than passing through arbitrary
@@ -176,6 +261,22 @@ The current API cannot enumerate or force-dismiss Lattices-owned transient
 HUD/Studio panels, so there is no honest structured proof that every such panel
 has torn down. That lifecycle API is a follow-up, not something agents should
 approximate with screenshots.
+
+## Acting on the map
+
+Every legend row carries the window's `wid`. That id feeds the movement
+commands directly, without any visible Lattices surface:
+
+```bash
+lattices window move 4182 --display 1                    # keep normalized frame
+lattices window move 4182 --display 1 --placement right  # snap into a slot
+lattices window place 4182 top-left                      # slot on current display
+lattices window move 4182 --display 0 --dry-run --json   # plan without moving
+```
+
+Both commands require an explicit wid — a malformed id is an error, never a
+frontmost fallback — and return the daemon's execution receipt with before,
+target, and after frames. Verify afterward with `lattices map --json`.
 
 ## Agent workflow and cleanup guarantees
 
