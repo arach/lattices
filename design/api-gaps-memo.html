@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>What an agent wants from the Lattices API</title>
+<meta name="description" content="A memo from an agent that actually uses the daemon. The API is unusually complete. What’s missing is situational awareness, honest completion, and a way to talk to the human." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    color-scheme: dark;
+    --canvas: #0b0c0f;
+    --canvas-alt: #101217;
+    --ink: #e6e8ec;
+    --ink-strong: #f5f7fb;
+    --faint: #8a8f9a;
+    --rule: rgba(255, 255, 255, 0.08);
+    --rule-strong: rgba(255, 255, 255, 0.14);
+    --chip: rgba(255, 255, 255, 0.05);
+    --chip-line: rgba(255, 255, 255, 0.1);
+    --accent: #7aa2ff;
+    --code-bg: #0d1014;
+    --sans: "Space Grotesk", system-ui, -apple-system, sans-serif;
+    --serif: "Newsreader", "Iowan Old Style", "Apple Garamond", Baskerville, Georgia, serif;
+    --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  html, body {
+    margin: 0;
+    background: var(--canvas);
+    color: var(--ink);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: inherit; }
+  code {
+    font-family: var(--mono);
+    font-size: 0.86em;
+    font-weight: 500;
+    background: var(--chip);
+    border: 1px solid var(--chip-line);
+    padding: 0.08em 0.38em;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+  pre {
+    margin: 1.1em 0 0;
+    padding: 14px 16px;
+    background: var(--code-bg);
+    border: 1px solid var(--rule-strong);
+    border-radius: 8px;
+    overflow: auto;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--ink-strong);
+  }
+  pre code {
+    background: none;
+    border: 0;
+    padding: 0;
+    white-space: pre;
+    font-size: inherit;
+  }
+
+  .frame {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 28px 28px 96px;
+  }
+
+  .mast {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px 28px;
+    padding-bottom: 22px;
+    border-bottom: 1px solid var(--rule-strong);
+  }
+  .mast .brand {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+  .mast .meta {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--faint);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 18px;
+  }
+  .mast .meta b { color: var(--ink); font-weight: 500; }
+
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.8fr);
+    gap: 48px 56px;
+    padding: 56px 0 48px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .kicker {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 18px;
+  }
+  h1 {
+    font-size: clamp(40px, 5.6vw, 68px);
+    line-height: 0.96;
+    letter-spacing: -0.03em;
+    font-weight: 500;
+    color: var(--ink-strong);
+    margin: 0;
+    text-wrap: balance;
+  }
+  .dek {
+    font-family: var(--serif);
+    font-size: clamp(20px, 2.1vw, 24px);
+    line-height: 1.4;
+    font-style: italic;
+    color: var(--ink);
+    margin: 22px 0 0;
+    max-width: 36em;
+    text-wrap: pretty;
+  }
+
+  .picks {
+    align-self: end;
+    border: 1px solid var(--rule-strong);
+    background: var(--canvas-alt);
+    padding: 22px 22px 18px;
+  }
+  .picks h2 {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--faint);
+    font-weight: 500;
+    margin: 0 0 14px;
+  }
+  .picks ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    counter-reset: pick;
+  }
+  .picks li {
+    counter-increment: pick;
+    display: grid;
+    grid-template-columns: 1.6em 1fr;
+    gap: 10px;
+    padding: 11px 0;
+    border-top: 1px solid var(--rule);
+    font-size: 14.5px;
+    line-height: 1.35;
+  }
+  .picks li:first-child { border-top: 0; padding-top: 0; }
+  .picks li::before {
+    content: counter(pick);
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent);
+    padding-top: 3px;
+  }
+  .picks strong {
+    display: block;
+    font-weight: 600;
+    color: var(--ink-strong);
+  }
+  .picks span {
+    display: block;
+    margin-top: 3px;
+    color: var(--faint);
+    font-size: 13px;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
+    gap: 48px;
+    padding-top: 40px;
+  }
+  nav.toc {
+    position: sticky;
+    top: 24px;
+    align-self: start;
+  }
+  nav.toc p {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--faint);
+    margin: 0 0 12px;
+  }
+  nav.toc a {
+    display: grid;
+    grid-template-columns: 1.6em 1fr;
+    gap: 8px;
+    padding: 6px 0;
+    text-decoration: none;
+    font-size: 13.5px;
+    line-height: 1.3;
+    color: var(--ink);
+    border-bottom: 1px solid transparent;
+  }
+  nav.toc a:hover { color: var(--ink-strong); }
+  nav.toc a:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+  nav.toc a.is-current { color: var(--ink-strong); }
+  nav.toc a.is-current .n { color: var(--accent); }
+  nav.toc a .n {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--faint);
+  }
+  nav.toc a.minor { color: var(--faint); }
+
+  article { max-width: 46rem; }
+  .lead {
+    font-size: 17.5px;
+    line-height: 1.6;
+    color: var(--ink-strong);
+    margin: 0 0 1.4em;
+    text-wrap: pretty;
+  }
+  p { margin: 0 0 1em; font-size: 16px; line-height: 1.68; text-wrap: pretty; }
+  .section {
+    padding-top: 42px;
+    margin-top: 42px;
+    border-top: 1px solid var(--rule);
+    scroll-margin-top: 24px;
+  }
+  .section:first-of-type { margin-top: 0; }
+  .num {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 10px;
+  }
+  h3 {
+    font-size: clamp(26px, 3vw, 34px);
+    line-height: 1.12;
+    letter-spacing: -0.025em;
+    font-weight: 500;
+    color: var(--ink-strong);
+    margin: 0 0 16px;
+    text-wrap: balance;
+  }
+  ul {
+    margin: 0.8em 0 1.1em;
+    padding: 0 0 0 1.15em;
+  }
+  li { margin: 0.35em 0; font-size: 16px; line-height: 1.6; }
+  .note {
+    margin: 1.3em 0 0;
+    padding: 16px 18px;
+    background: var(--canvas-alt);
+    border: 1px solid var(--rule);
+    font-family: var(--serif);
+    font-size: 18px;
+    font-style: italic;
+    line-height: 1.45;
+    color: var(--ink-strong);
+  }
+
+  .small-list { margin-top: 8px; }
+  .small-list dt {
+    font-weight: 600;
+    color: var(--ink-strong);
+    margin-top: 1.05em;
+  }
+  .small-list dd {
+    margin: 0.25em 0 0;
+    color: var(--ink);
+  }
+
+  footer.close {
+    margin-top: 64px;
+    padding-top: 28px;
+    border-top: 1px solid var(--rule-strong);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 28px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+
+  @media (max-width: 880px) {
+    .hero, .layout { grid-template-columns: 1fr; }
+    nav.toc { position: static; display: flex; flex-wrap: wrap; gap: 4px 16px; padding-bottom: 8px; }
+    nav.toc p { width: 100%; }
+    nav.toc a { border: 0; padding: 4px 0; }
+    .frame { padding: 20px 18px 72px; }
+    h1 { font-size: 40px; }
+  }
+
+  @media print {
+    :root { color-scheme: light; --canvas: #fff; --canvas-alt: #f4f5f7; --ink: #1a1c21; --ink-strong: #0b0c0f; --faint: #5b606b; --rule: #d8dae0; --rule-strong: #b8bcc6; --accent: #245bc4; --chip: #eef0f4; --chip-line: #d8dae0; --code-bg: #f5f6f8; }
+    nav.toc { display: none; }
+    .layout { grid-template-columns: 1fr; }
+    .hero { display: block; }
+    .picks { margin-top: 28px; }
+  }
+</style>
+</head>
+<body>
+  <div class="frame">
+    <header class="mast">
+      <div class="brand">Lattices · studio memo</div>
+      <div class="meta">
+        <span>LAT-010</span>
+        <span>12 Aug 2026</span>
+        <span>From <b>an agent on the daemon</b></span>
+      </div>
+    </header>
+
+    <section class="hero">
+      <div>
+        <p class="kicker">What I would like to see</p>
+        <h1>The API is complete. The situation is not.</h1>
+        <p class="dek">Computer-use, treatments, runs, receipts, AX, search, layers, overlays — those are real. What’s missing is less “more verbs” and more situational awareness, honest completion, and a way to talk to the human.</p>
+      </div>
+      <aside class="picks">
+        <h2>If I could pick only three</h2>
+        <ol>
+          <li>
+            <div>
+              <strong>desktop.snapshot</strong>
+              <span>One call for what’s in front of the user.</span>
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>terminals.capture</strong>
+              <span>Read a tmux pane. Don’t OCR it.</span>
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>Mutations that finish</strong>
+              <span>Don’t return <code>ok: true</code> before the work happens.</span>
+            </div>
+          </li>
+        </ol>
+      </aside>
+    </section>
+
+    <div class="layout">
+      <nav class="toc" aria-label="Memo sections">
+        <p>Gaps</p>
+        <a href="#snapshot"><span class="n">01</span> Snapshot</a>
+        <a href="#pane"><span class="n">02</span> Pane read</a>
+        <a href="#finish"><span class="n">03</span> Finish</a>
+        <a href="#errors"><span class="n">04</span> Errors</a>
+        <a href="#ask"><span class="n">05</span> Ask</a>
+        <a href="#away"><span class="n">06</span> Out of the way</a>
+        <a href="#events"><span class="n">07</span> Events</a>
+        <a href="#claim"><span class="n">08</span> Occupancy</a>
+        <a class="minor" href="#smaller">Smaller</a>
+      </nav>
+
+      <article>
+        <p class="lead">I reviewed the public API, the Swift router (~120 methods, not “35+”), and the agent docs. This is what I would actually use, in order. Not a laundry list of verbs. The three above change how I use Lattices every session. The rest makes it trustworthy enough to act without hovering.</p>
+
+        <section class="section" id="snapshot">
+          <p class="num">01 · desktop.snapshot</p>
+          <h3>One desktop snapshot</h3>
+          <p>Today I stitch <code>windows.list</code> + <code>spaces.list</code> + <code>layers.list</code> + <code>tmux.sessions</code> + <code>terminals.list</code> + <code>daemon.status</code> just to answer: what’s in front of the user right now?</p>
+          <p><code>daemon.status</code> is too thin: uptime, client count, window count, tmux count. Window objects don’t include z-order, last interaction, or “this is focused.” <code>lattices map</code> is the right instinct, but it’s CLI-only and not a daemon method.</p>
+          <p>I want one call, something like <code>desktop.snapshot</code>:</p>
+          <ul>
+            <li>current display + space</li>
+            <li>frontmost window</li>
+            <li>visible windows with frames, z-order, session, layer</li>
+            <li>running lattices sessions / interesting terminals</li>
+            <li>active layer</li>
+            <li>permission flags (AX, Screen Recording, Input Monitoring)</li>
+          </ul>
+          <p>That’s the first thing I would call every turn.</p>
+        </section>
+
+        <section class="section" id="pane">
+          <p class="num">02 · terminals.capture</p>
+          <h3>Read a tmux pane, not OCR it</h3>
+          <p>I can list terminals, score them, and type into them. I cannot read what is actually on the pane.</p>
+          <p><code>tmux capture-pane</code> is exact, cheap, and background-safe. OCR of a terminal is lossy, permission-heavy, and late. For “what is Claude doing in the lattices session?” I want:</p>
+          <ul>
+            <li><code>terminals.capture</code> / <code>tmux.pane.read</code> — last N lines, optional escape stripping</li>
+            <li>targeting by <code>session</code> + <code>pane</code> / <code>paneId</code>, not just <code>wid</code> / <code>tty</code></li>
+            <li>later: subscribe to pane output</li>
+          </ul>
+          <p class="note">This is the single biggest missing primitive for multi-agent work on this machine.</p>
+        </section>
+
+        <section class="section" id="finish">
+          <p class="num">03 · honest completion</p>
+          <h3>Mutations that finish</h3>
+          <p><code>window.place</code> returns a receipt. <code>session.launch</code>, <code>session.kill</code>, and <code>window.move</code> dispatch onto the main queue and return <code>{ ok: true }</code> before anything happens.</p>
+          <p>That is the failure mode that makes agents retry, double-launch, and then shrug.</p>
+          <p>I want either the call waits and returns a verified receipt, or it returns a handle I can wait on: <code>wait.forWindow</code>, <code>wait.forProcess</code>, <code>wait.forOcr</code>, <code>wait.forEvent</code>.</p>
+          <p><code>ComputerUseController</code> already has <code>waitForWindow</code> internally. It just isn’t a public verb.</p>
+        </section>
+
+        <section class="section" id="errors">
+          <p class="num">04 · structured errors</p>
+          <h3>Errors and ambiguous targets</h3>
+          <p>Errors are strings: <code>"Not found"</code>, <code>"Missing parameter: wid"</code>. That’s fine for a human. For an agent it should be:</p>
+          <pre><code>{
+  "code": "ambiguous_target",
+  "message": "3 Safari windows match",
+  "candidates": [{ "wid": 1, "title": "…" }]
+}</code></pre>
+          <p>Same for <code>protected</code>, <code>permission_denied</code>, <code>unsafe_terminal</code>, <code>timeout</code>, <code>not_found</code>.</p>
+          <p><code>window.place</code> with <code>app: "Safari"</code> when there are eight Safari windows is the everyday case. I want candidates + confidence, not silent first-match or a dead string.</p>
+        </section>
+
+        <section class="section" id="ask">
+          <p class="num">05 · user.ask</p>
+          <h3>Ask the user</h3>
+          <p><code>overlay.publish</code> is a toast. <code>window.pick.start</code> is one specific grab. Overlay actor clicks are still “planned.” Deck questions exist on the companion side.</p>
+          <p>There is no blocking <code>user.ask</code> / <code>user.confirm</code>:</p>
+          <ul>
+            <li>“I’m about to tile these four windows. OK?”</li>
+            <li>“Which of these three terminals is yours?”</li>
+            <li>“Type into the Claude pane, or leave it alone?”</li>
+          </ul>
+          <p>I will not freely rearrange someone’s desktop without that. A native confirm chip that returns <code>{ answered, choice }</code> would get more use from me than another click variant.</p>
+        </section>
+
+        <section class="section" id="away">
+          <p class="num">06 · window.hide / space.switch</p>
+          <h3>Get windows out of the way</h3>
+          <p>I can place, focus, present, and optimize. I cannot hide, minimize, unminimize, or close. I also cannot switch Space except as a side effect of focusing something, and <code>window.move</code> only takes a <strong>session name</strong>, not a <code>wid</code>.</p>
+          <p>Common agent jobs that are awkward today:</p>
+          <ul>
+            <li>“leave only these two windows visible”</li>
+            <li>“put Slack on the other Space”</li>
+            <li>“go to Space 3”</li>
+            <li>“get this off the current display”</li>
+          </ul>
+        </section>
+
+        <section class="section" id="events">
+          <p class="num">07 · events</p>
+          <h3>Events that say what changed</h3>
+          <p>The five events are a heartbeat, not a model:</p>
+          <ul>
+            <li><code>windows.changed</code> is a count plus added/removed ids — no titles, frames, or focus</li>
+            <li>no <code>window.focused</code></li>
+            <li>no <code>space.changed</code></li>
+            <li>no <code>run.completed</code></li>
+            <li>no overlay click</li>
+            <li>no subscribe/filter — every client gets everything</li>
+          </ul>
+          <p>I poll. That’s the opposite of the reactive story in the docs.</p>
+        </section>
+
+        <section class="section" id="claim">
+          <p class="num">08 · claim / protect</p>
+          <h3>Occupancy, then protection</h3>
+          <p>Several agents sit on this Mac. Nothing says “this pane is claimed.” <code>computer.typeText</code> heuristically avoids claude/vim; that’s not a lock.</p>
+          <p>I want <code>session.claim</code> / <code>window.lease</code> with a client name and TTL. LAT-009 protected windows are the other half — proposed, not enforced. I would use computer-use more freely if both existed at the daemon boundary.</p>
+        </section>
+
+        <section class="section" id="smaller">
+          <p class="num">Also</p>
+          <h3>Smaller things that still matter</h3>
+          <dl class="small-list">
+            <dt>Docs lag the daemon</dt>
+            <dd>The page still says “35+ methods.” The Swift router has on the order of 120, including <code>lattices.search</code>, <code>window.resolve</code>, <code>window.present</code>, <code>actions.*</code>, <code>capture.record*</code>, <code>session.layers.*</code>, <code>intents.*</code>, <code>voice.*</code>, <code>assistant.preview</code>, <code>handsoff.run</code>, <code>computer.magicCursor</code>. I read docs first. Hidden methods might as well not exist.</dd>
+            <dt><code>lattices.search</code> should be the search</dt>
+            <dd><code>windows.search</code> is the documented one and is weaker (no cwd/tabs/processes, no recency). Agents will keep calling the worse endpoint.</dd>
+            <dt>Permissions</dt>
+            <dd>I find out I lack Screen Recording by failing a capture. <code>permissions.status</code> should be on <code>daemon.status</code>.</dd>
+            <dt>Clipboard</dt>
+            <dd>Deck can paste from the phone. Agents have no <code>clipboard.get</code> / <code>clipboard.write</code>. Setting the clipboard is often safer than synthesizing keystrokes.</dd>
+            <dt>Connection identity</dt>
+            <dd>No hello, no client name, no schema version event after reconnect. After <code>lattices app restart</code> I just start failing.</dd>
+            <dt>Transactions across families</dt>
+            <dd><code>actions.execute</code> can batch <code>window.place</code>. I still cannot say “launch this session, wait for the window, place it left, verify” as one plan with one undo.</dd>
+          </dl>
+        </section>
+      </article>
+    </div>
+
+    <footer class="close">
+      <span>LAT-010</span>
+      <span>Not a spec · a want-list</span>
+      <span>Source · daemon review 2026-08-12</span>
+    </footer>
+  </div>
+  <script>
+    const links = [...document.querySelectorAll("nav.toc a[href^='#']")];
+    const sections = links
+      .map((link) => document.querySelector(link.getAttribute("href")))
+      .filter(Boolean);
+    const setCurrent = (id) => {
+      for (const link of links) {
+        link.classList.toggle("is-current", link.getAttribute("href") === `#${id}`);
+      }
+    };
+    const observer = new IntersectionObserver((entries) => {
+      const visible = entries
+        .filter((entry) => entry.isIntersecting)
+        .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+      if (visible?.target?.id) setCurrent(visible.target.id);
+    }, { rootMargin: "-18% 0px -62% 0px", threshold: [0.1, 0.35, 0.6] });
+    for (const section of sections) observer.observe(section);
+    if (location.hash) setCurrent(location.hash.slice(1));
+  </script>
+</body>
+</html>
