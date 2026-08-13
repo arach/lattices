@@ -1144,7 +1144,7 @@ struct CommandModeView: View {
                     Button {
                         WindowTiler.tileWindowById(wid: window.id, pid: window.pid, to: tile)
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            state.desktopSnapshot = nil
+                            state.refreshDesktopInventory()
                         }
                     } label: {
                         Label(tile.label, systemImage: tile.icon)
@@ -1177,7 +1177,7 @@ struct CommandModeView: View {
     private func moveSelection(_ targets: [WindowMoveMenuModel.Target], to display: WindowMoveMenuModel.Display) {
         WindowMovementService.moveTargets(targets, to: display) { outcome in
             state.flash(outcome.message)
-            state.desktopSnapshot = nil
+            state.refreshDesktopInventory()
         }
     }
 
@@ -1185,7 +1185,7 @@ struct CommandModeView: View {
         guard let target = targets.first else { return }
         WindowMovementService.placeTarget(target, on: display, slot: slot) { outcome in
             state.flash(outcome.message)
-            state.desktopSnapshot = nil
+            state.refreshDesktopInventory()
         }
     }
 

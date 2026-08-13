@@ -95,6 +95,10 @@ enum WindowMovementService {
     struct Outcome {
         let ok: Bool
         let message: String
+        /// Windows whose move actually executed and verified (`status == "ok"`).
+        /// Blocked/failed/unverified targets are excluded so callers reconcile
+        /// only windows that truly changed.
+        let movedWids: [UInt32]
     }
 
     /// Live display topology in API index order, resolved through SkyLight +
@@ -149,7 +153,7 @@ enum WindowMovementService {
         completion: @escaping (Outcome) -> Void
     ) {
         run(completion: completion) {
-            var okCount = 0
+            var okWids: [UInt32] = []
             var blocked = false
             for target in targets {
                 let params = JSON.object([
@@ -159,7 +163,7 @@ enum WindowMovementService {
                 do {
                     let receipt = try ActionRuntime.shared.executeWindowMove(params: params, source: "app.context-menu")
                     switch receipt["status"]?.stringValue {
-                    case "ok": okCount += 1
+                    case "ok": okWids.append(target.wid)
                     case "blocked": blocked = true
                     default: break
                     }
@@ -167,7 +171,7 @@ enum WindowMovementService {
                     DiagnosticLog.shared.error("[Move] wid \(target.wid) → display \(display.index): \(error)")
                 }
             }
-            return moveOutcome(okCount: okCount, total: targets.count, blocked: blocked, displayName: display.name)
+            return moveOutcome(okWids: okWids, total: targets.count, blocked: blocked, displayName: display.name)
         }
     }
 
@@ -189,35 +193,37 @@ enum WindowMovementService {
                 let receipt = try ActionRuntime.shared.executeWindowPlace(params: params, source: "app.context-menu")
                 switch receipt["status"]?.stringValue {
                 case "ok":
-                    return Outcome(ok: true, message: "Placed \(slot.label) on \(display.name)")
+                    return Outcome(ok: true, message: "Placed \(slot.label) on \(display.name)", movedWids: [target.wid])
                 case "blocked":
-                    return Outcome(ok: false, message: "Grant Accessibility to move windows")
+                    return Outcome(ok: false, message: "Grant Accessibility to move windows", movedWids: [])
                 default:
-                    return Outcome(ok: false, message: "Placement not verified on \(display.name)")
+                    return Outcome(ok: false, message: "Placement not verified on \(display.name)", movedWids: [])
                 }
             } catch {
                 DiagnosticLog.shared.error("[Place] wid \(target.wid) → display \(display.index) \(slot.rawValue): \(error)")
-                return Outcome(ok: false, message: "Placement failed: \(shortError(error))")
+                return Outcome(ok: false, message: "Placement failed: \(shortError(error))", movedWids: [])
             }
         }
     }
 
-    /// Truthful receipt text: full success, blocked-on-permissions, partial,
-    /// and executed-but-unverified are reported as what they are.
-    static func moveOutcome(okCount: Int, total: Int, blocked: Bool, displayName: String) -> Outcome {
+    /// Truthful receipt: full success, blocked-on-permissions, partial, and
+    /// executed-but-unverified are reported as what they are, and only the
+    /// wids that verifiably moved are carried for reconciliation.
+    static func moveOutcome(okWids: [UInt32], total: Int, blocked: Bool, displayName: String) -> Outcome {
+        let okCount = okWids.count
         if okCount == total {
             let message = total > 1
                 ? "Moved \(total) windows to \(displayName)"
                 : "Moved to \(displayName)"
-            return Outcome(ok: true, message: message)
+            return Outcome(ok: true, message: message, movedWids: okWids)
         }
         if blocked, okCount == 0 {
-            return Outcome(ok: false, message: "Grant Accessibility to move windows")
+            return Outcome(ok: false, message: "Grant Accessibility to move windows", movedWids: [])
         }
         if okCount > 0 {
-            return Outcome(ok: false, message: "Moved \(okCount)/\(total) windows to \(displayName)")
+            return Outcome(ok: false, message: "Moved \(okCount)/\(total) windows to \(displayName)", movedWids: okWids)
         }
-        return Outcome(ok: false, message: "Move not verified — window may not have reached \(displayName)")
+        return Outcome(ok: false, message: "Move not verified — window may not have reached \(displayName)", movedWids: [])
     }
 
     private static func run(

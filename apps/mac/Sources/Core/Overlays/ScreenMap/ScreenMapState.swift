@@ -143,6 +143,32 @@ enum CanvasDragMode {
 // MARK: - Screen Map Editor State
 
 final class ScreenMapEditorState: ObservableObject {
+    /// Pure merge for the immediate-movement reconcile path: entries whose id
+    /// appears in `movedFrames` are rebuilt from that live frame (original,
+    /// edited, and virtual frames reset; display recomputed; staged edits
+    /// cleared because the real window now defines truth). Every other entry
+    /// is returned untouched, so unrelated staged frame/layer/canvas edits
+    /// survive by construction.
+    static func updatingMovedWindows(
+        _ windows: [ScreenMapWindowEntry],
+        movedFrames: [UInt32: CGRect],
+        displayIndexForFrame: (CGRect) -> Int?
+    ) -> [ScreenMapWindowEntry] {
+        windows.map { old in
+            guard let frame = movedFrames[old.id] else { return old }
+            return ScreenMapWindowEntry(
+                id: old.id, pid: old.pid, app: old.app, title: old.title,
+                originalFrame: frame, editedFrame: frame, virtualFrame: frame,
+                zIndex: old.zIndex, layer: old.layer,
+                displayIndex: displayIndexForFrame(frame) ?? old.displayIndex,
+                isOnScreen: old.isOnScreen,
+                latticesSession: old.latticesSession,
+                tmuxCommand: old.tmuxCommand,
+                tmuxPaneTitle: old.tmuxPaneTitle
+            )
+        }
+    }
+
     @Published var windows: [ScreenMapWindowEntry]
     @Published var selectedLayers: Set<Int> = []  // empty = show all
     @Published var draggingWindowId: UInt32? = nil
@@ -1696,29 +1722,10 @@ final class ScreenMapController: ObservableObject {
         let screens = NSScreen.screens
         let primaryHeight = screens.first?.frame.height ?? 0
 
+        let displayCGRects = Self.displayCGRects(screens: screens, primaryHeight: primaryHeight)
+
         func displayIndex(for frame: CGRect) -> Int {
-            let centerX = frame.midX
-            let centerY = frame.midY
-            for (i, screen) in screens.enumerated() {
-                let cgOriginY = primaryHeight - screen.frame.maxY
-                let cgRect = CGRect(x: screen.frame.origin.x, y: cgOriginY,
-                                    width: screen.frame.width, height: screen.frame.height)
-                if cgRect.contains(CGPoint(x: centerX, y: centerY)) {
-                    return i
-                }
-            }
-            var bestIdx = 0
-            var bestDist = CGFloat.infinity
-            for (i, screen) in screens.enumerated() {
-                let cgOriginY = primaryHeight - screen.frame.maxY
-                let cgRect = CGRect(x: screen.frame.origin.x, y: cgOriginY,
-                                    width: screen.frame.width, height: screen.frame.height)
-                let dx = centerX - cgRect.midX
-                let dy = centerY - cgRect.midY
-                let dist = dx * dx + dy * dy
-                if dist < bestDist { bestDist = dist; bestIdx = i }
-            }
-            return bestIdx
+            Self.displayIndex(forCGFrame: frame, displayCGRects: displayCGRects)
         }
 
         var ordered: [CGWin] = []
@@ -1872,6 +1879,73 @@ final class ScreenMapController: ObservableObject {
                   self.editor?.activeViewportPreset == .overview else { return }
             self.focusViewportPreset(.overview, flashView: false)
         }
+    }
+
+    /// NSScreen frames converted to the CG top-left global coordinate space
+    /// used by window bounds, in `NSScreen.screens` order.
+    static func displayCGRects(screens: [NSScreen], primaryHeight: CGFloat) -> [CGRect] {
+        screens.map { screen in
+            CGRect(
+                x: screen.frame.origin.x,
+                y: primaryHeight - screen.frame.maxY,
+                width: screen.frame.width,
+                height: screen.frame.height
+            )
+        }
+    }
+
+    /// Which display (by `NSScreen.screens` index) owns a CG top-left frame:
+    /// midpoint containment first, nearest display center as fallback.
+    static func displayIndex(forCGFrame frame: CGRect, displayCGRects: [CGRect]) -> Int {
+        let center = CGPoint(x: frame.midX, y: frame.midY)
+        for (i, cgRect) in displayCGRects.enumerated() where cgRect.contains(center) {
+            return i
+        }
+        var bestIdx = 0
+        var bestDist = CGFloat.infinity
+        for (i, cgRect) in displayCGRects.enumerated() {
+            let dx = center.x - cgRect.midX
+            let dy = center.y - cgRect.midY
+            let dist = dx * dx + dy * dy
+            if dist < bestDist { bestDist = dist; bestIdx = i }
+        }
+        return bestIdx
+    }
+
+    /// Refresh only the windows an immediate move touched: their entries are
+    /// rebuilt from live desktop geometry (frames reset, display recomputed)
+    /// while every other entry — staged frame edits, layer reassignments,
+    /// canvas positions — and the selection stay untouched.
+    func applyLiveFrames(for wids: Set<UInt32>) {
+        guard let editor, !wids.isEmpty else { return }
+        let frames = Self.liveWindowFrames(for: wids)
+        guard !frames.isEmpty else { return }
+        let screens = NSScreen.screens
+        let primaryHeight = screens.first?.frame.height ?? 0
+        let displayCGRects = Self.displayCGRects(screens: screens, primaryHeight: primaryHeight)
+        editor.windows = ScreenMapEditorState.updatingMovedWindows(
+            editor.windows,
+            movedFrames: frames,
+            displayIndexForFrame: { Self.displayIndex(forCGFrame: $0, displayCGRects: displayCGRects) }
+        )
+        objectWillChange.send()
+    }
+
+    private static func liveWindowFrames(for wids: Set<UInt32>) -> [UInt32: CGRect] {
+        guard let windowList = CGWindowListCopyWindowInfo(
+            [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID
+        ) as? [[String: Any]] else { return [:] }
+        var frames: [UInt32: CGRect] = [:]
+        for info in windowList {
+            guard let wid = info[kCGWindowNumber as String] as? UInt32,
+                  wids.contains(wid),
+                  let boundsDict = info[kCGWindowBounds as String] as? NSDictionary else { continue }
+            var rect = CGRect.zero
+            if CGRectMakeWithDictionaryRepresentation(boundsDict, &rect) {
+                frames[wid] = rect
+            }
+        }
+        return frames
     }
 
     /// Re-snapshot, preserving display/layer context

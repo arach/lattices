@@ -4031,13 +4031,13 @@ struct ScreenMapView: View {
         }
     }
 
-    /// Re-snapshot the map so the canvas reflects the real desktop, restore
-    /// the selection (tracked by wid), then flash the truthful receipt.
-    /// `ScreenMapController.refresh()` is synchronous.
+    /// Targeted reconcile after an immediate move: only windows that
+    /// verifiably moved (`outcome.movedWids`) are refreshed from live desktop
+    /// geometry — a failed or blocked target keeps its staged edits, and
+    /// unrelated staged frame/layer/canvas edits, the selection, search, and
+    /// the viewport all stay exactly as they were. Then flash the receipt.
     private func finishStudioMovement(_ outcome: WindowMovementService.Outcome) {
-        let selection = controller.selectedWindowIds
-        controller.refresh()
-        controller.selectedWindowIds = selection
+        controller.applyLiveFrames(for: Set(outcome.movedWids))
         controller.flash(outcome.message)
     }
 

@@ -170,30 +170,35 @@ final class WindowMoveMenuModelTests: XCTestCase {
     // MARK: - Truthful receipts
 
     func testMoveOutcomeFullSuccess() {
-        let single = WindowMovementService.moveOutcome(okCount: 1, total: 1, blocked: false, displayName: "DELL U2720Q")
+        let single = WindowMovementService.moveOutcome(okWids: [11], total: 1, blocked: false, displayName: "DELL U2720Q")
         XCTAssertTrue(single.ok)
         XCTAssertEqual(single.message, "Moved to DELL U2720Q")
+        XCTAssertEqual(single.movedWids, [11])
 
-        let multi = WindowMovementService.moveOutcome(okCount: 3, total: 3, blocked: false, displayName: "DELL U2720Q")
+        let multi = WindowMovementService.moveOutcome(okWids: [1, 2, 3], total: 3, blocked: false, displayName: "DELL U2720Q")
         XCTAssertTrue(multi.ok)
         XCTAssertEqual(multi.message, "Moved 3 windows to DELL U2720Q")
+        XCTAssertEqual(multi.movedWids, [1, 2, 3])
     }
 
     func testMoveOutcomeBlockedIsNotSuccess() {
-        let outcome = WindowMovementService.moveOutcome(okCount: 0, total: 1, blocked: true, displayName: "DELL")
+        let outcome = WindowMovementService.moveOutcome(okWids: [], total: 1, blocked: true, displayName: "DELL")
         XCTAssertFalse(outcome.ok)
         XCTAssertTrue(outcome.message.contains("Accessibility"))
+        XCTAssertTrue(outcome.movedWids.isEmpty)
     }
 
-    func testMoveOutcomePartialReportsCounts() {
-        let outcome = WindowMovementService.moveOutcome(okCount: 1, total: 3, blocked: false, displayName: "DELL")
+    func testMoveOutcomePartialCarriesOnlySuccessfulWids() {
+        let outcome = WindowMovementService.moveOutcome(okWids: [7], total: 3, blocked: false, displayName: "DELL")
         XCTAssertFalse(outcome.ok)
         XCTAssertTrue(outcome.message.contains("1/3"))
+        XCTAssertEqual(outcome.movedWids, [7])
     }
 
-    func testMoveOutcomeUnverifiedIsNotReportedAsMoved() {
-        let outcome = WindowMovementService.moveOutcome(okCount: 0, total: 1, blocked: false, displayName: "DELL")
+    func testMoveOutcomeUnverifiedIsNotReportedAsMovedAndCarriesNoWids() {
+        let outcome = WindowMovementService.moveOutcome(okWids: [], total: 1, blocked: false, displayName: "DELL")
         XCTAssertFalse(outcome.ok)
         XCTAssertTrue(outcome.message.contains("not verified"))
+        XCTAssertTrue(outcome.movedWids.isEmpty)
     }
 }
