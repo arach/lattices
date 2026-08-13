@@ -1939,9 +1939,35 @@ struct ScreenMapView: View {
         .highPriorityGesture(TapGesture().onEnded {
             controller.selectSingle(win.id)
         })
+        .contextMenu { sidebarWindowContextMenu(win: win) }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(win.title.isEmpty ? win.app : "\(win.app), \(win.title)")
         .accessibilityAddTraits(.isButton)
+    }
+
+    /// Context menu for Studio sidebar window rows: the same immediate
+    /// movement section as the canvas, plus Show on Screen so the menu is
+    /// never empty on a single-display machine.
+    @ViewBuilder
+    private func sidebarWindowContextMenu(win: ScreenMapWindowEntry) -> some View {
+        Button {
+            controller.focusWindowOnScreen(win.id)
+        } label: {
+            Label("Show on Screen", systemImage: "macwindow")
+        }
+
+        if let editor = controller.editor {
+            let model = studioMoveModel(for: win, editor: editor)
+            if model.isAvailable {
+                Divider()
+
+                WindowMovementMenuSection(
+                    model: model,
+                    onMove: { display in moveStudioTargets(model.targets, to: display) },
+                    onPlace: { display, slot in placeStudioTarget(model.targets, on: display, slot: slot) }
+                )
+            }
+        }
     }
 
     @ViewBuilder
@@ -2007,6 +2033,7 @@ struct ScreenMapView: View {
                         .simultaneousGesture(TapGesture().onEnded {
                             selectSidebarWindow(win.id)
                         })
+                        .contextMenu { sidebarWindowContextMenu(win: win) }
                     }
                 }
                 .padding(.leading, 4)
@@ -3976,6 +4003,44 @@ struct ScreenMapView: View {
 
     // MARK: - Context Menu
 
+    /// Shared movement model for Studio surfaces: a right-click on a member
+    /// of a multi-selection targets the whole selection, otherwise just the
+    /// clicked window. Display topology comes from the shared service.
+    private func studioMoveModel(for win: ScreenMapWindowEntry, editor: ScreenMapEditorState) -> WindowMoveMenuModel {
+        let selection = controller.selectedWindowIds
+        let selectionTargets = editor.windows
+            .filter { selection.contains($0.id) }
+            .map { WindowMoveMenuModel.Target(wid: $0.id, pid: $0.pid) }
+        let targets = WindowMoveMenuModel.resolveTargets(
+            clicked: WindowMoveMenuModel.Target(wid: win.id, pid: win.pid),
+            selection: selectionTargets
+        )
+        return WindowMovementService.menuModel(nsScreenIndex: win.displayIndex, targets: targets)
+    }
+
+    private func moveStudioTargets(_ targets: [WindowMoveMenuModel.Target], to display: WindowMoveMenuModel.Display) {
+        WindowMovementService.moveTargets(targets, to: display) { outcome in
+            finishStudioMovement(outcome)
+        }
+    }
+
+    private func placeStudioTarget(_ targets: [WindowMoveMenuModel.Target], on display: WindowMoveMenuModel.Display, slot: TilePosition) {
+        guard let target = targets.first else { return }
+        WindowMovementService.placeTarget(target, on: display, slot: slot) { outcome in
+            finishStudioMovement(outcome)
+        }
+    }
+
+    /// Re-snapshot the map so the canvas reflects the real desktop, restore
+    /// the selection (tracked by wid), then flash the truthful receipt.
+    /// `ScreenMapController.refresh()` is synchronous.
+    private func finishStudioMovement(_ outcome: WindowMovementService.Outcome) {
+        let selection = controller.selectedWindowIds
+        controller.refresh()
+        controller.selectedWindowIds = selection
+        controller.flash(outcome.message)
+    }
+
     private func showLayerContextMenu(for windowId: UInt32, at point: NSPoint, in window: NSWindow, editor: ScreenMapEditorState) {
         guard let winIdx = editor.windows.firstIndex(where: { $0.id == windowId }) else { return }
         let win = editor.windows[winIdx]
@@ -3995,6 +4060,19 @@ struct ScreenMapView: View {
         menu.addItem(focusItem)
 
         menu.addItem(.separator())
+
+        // Immediate cross-monitor movement — same canonical engine as
+        // window.move / window.place. Absent on single-display machines.
+        let moveModel = studioMoveModel(for: win, editor: editor)
+        if moveModel.isAvailable {
+            WindowMovementMenuBuilder.appendSection(
+                to: menu,
+                model: moveModel,
+                onMove: { display in moveStudioTargets(moveModel.targets, to: display) },
+                onPlace: { display, slot in placeStudioTarget(moveModel.targets, on: display, slot: slot) }
+            )
+            menu.addItem(.separator())
+        }
 
         // Move to Layer → submenu
         let moveItem = NSMenuItem(title: "Move to Layer", action: nil, keyEquivalent: "")

@@ -153,6 +153,42 @@ frontmost window.
 | Right Third  | Right third                     |
 | Center       | 80% width, 80% height, centered (20% margin all sides) |
 
+## Moving windows between monitors
+
+Window movement is a right-click action wherever a window is listed.
+Both surfaces share one movement engine — the same canonical
+`window.move` / `window.place` semantics the CLI and daemon API use —
+so moving from the app, the CLI, or the API always behaves identically.
+
+Right-click a window in either surface:
+
+- **Desktop Inventory** — window rows in the inventory list.
+- **Studio** — window shapes on the canvas and window rows in the
+  sidebar (both the visible-windows list and the layer trees).
+
+The menu offers, top to bottom:
+
+- **Move to Next Monitor** — one click; cycles deterministically
+  through the display topology and wraps. The window keeps its
+  normalized position and size on the target display's visible frame,
+  clamped to fit.
+- **Move to Monitor** — submenu listing each display by name; the
+  current display is checked and disabled.
+- **Move & Place** — single-window only; pick an exact display, then a
+  canonical slot (maximize, center, halves, quarters, thirds).
+
+Right-clicking a member of a multi-selection moves the whole selection
+("Move 3 Windows to Next Monitor"); each window keeps its own
+normalized frame, so selections never collapse into one slot. Move &
+Place is omitted for multi-selections because a single slot would
+stack the windows. On a single-display machine the movement section
+disappears entirely.
+
+Moves happen immediately — no dialog. A short flash reports the
+truthful outcome (moved, partially moved, unverified, or blocked on
+the Accessibility permission), and the list or canvas refreshes with
+the selection preserved.
+
 ## Space navigation
 
 "Go to" commands can switch macOS Spaces to reach a window on a

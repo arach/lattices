@@ -1,0 +1,388 @@
+import AppKit
+import SwiftUI
+
+// MARK: - Menu Model (pure)
+
+/// Pure description of the immediate window-movement context menu shared by
+/// Desktop Inventory and Studio. Holds no AppKit state so the cycle/wrap,
+/// current-display, and multi-selection rules are unit-testable.
+struct WindowMoveMenuModel: Equatable {
+    struct Display: Equatable {
+        /// API display index (SkyLight topology order), as accepted by
+        /// `window.move` / `window.place`.
+        let index: Int
+        let name: String
+        /// True when this is the clicked window's display.
+        let isCurrent: Bool
+    }
+
+    struct Target: Equatable {
+        let wid: UInt32
+        let pid: Int32
+    }
+
+    let displays: [Display]
+    let targets: [Target]
+
+    /// Slot presets offered by Move & Place: the canonical named
+    /// `PlacementSpec` positions kept to a scannable set (maximize, center,
+    /// halves, quarters, thirds). The full catalog stays available through
+    /// Tile Window, the CLI, and the API.
+    static let placementSlots: [TilePosition] = [
+        .maximize, .center,
+        .left, .right, .top, .bottom,
+        .topLeft, .topRight, .bottomLeft, .bottomRight,
+        .leftThird, .centerThird, .rightThird,
+    ]
+
+    /// Right-click target rule shared by Inventory and Studio: a click on a
+    /// member of an existing multi-selection targets the whole selection; any
+    /// other click targets just the clicked window.
+    static func resolveTargets(clicked: Target, selection: [Target]) -> [Target] {
+        if selection.count > 1, selection.contains(clicked) { return selection }
+        return [clicked]
+    }
+
+    /// Cross-monitor movement only exists with two or more displays; callers
+    /// render nothing (no orphan separators) when this is false.
+    var isAvailable: Bool { displays.count > 1 && !targets.isEmpty }
+
+    var targetCount: Int { targets.count }
+
+    var currentDisplay: Display? { displays.first(where: \.isCurrent) }
+
+    /// Deterministic next display: one step through the display topology from
+    /// the clicked window's display, wrapping at the end. When the anchor
+    /// display cannot be resolved, cycling starts from the first display.
+    var nextDisplay: Display? {
+        guard isAvailable else { return nil }
+        guard let position = displays.firstIndex(where: \.isCurrent) else {
+            return displays.first
+        }
+        return displays[(position + 1) % displays.count]
+    }
+
+    private var countPrefix: String {
+        targetCount > 1 ? "Move \(targetCount) Windows" : "Move"
+    }
+
+    var nextMonitorTitle: String { "\(countPrefix) to Next Monitor" }
+    var moveToMonitorTitle: String { "\(countPrefix) to Monitor" }
+    var movePlaceTitle: String { "Move & Place" }
+
+    /// Move & Place is single-window only: several windows sent to the same
+    /// slot would stack into one overlapping pile.
+    var includesPlacement: Bool { isAvailable && targetCount == 1 }
+
+    func moveAccessibilityLabel(to display: Display) -> String {
+        targetCount > 1
+            ? "Move \(targetCount) windows to \(display.name)"
+            : "Move window to \(display.name)"
+    }
+
+    func placeAccessibilityLabel(slot: TilePosition, on display: Display) -> String {
+        "Move window to \(display.name) and place \(slot.label)"
+    }
+}
+
+// MARK: - Movement Service
+
+/// Shared immediate-movement engine for the UI surfaces. Inventory and Studio
+/// both build a `WindowMoveMenuModel` here and execute through the same
+/// canonical `ActionRuntime` paths as `window.move` / `window.place`, so the
+/// app, CLI, and API cannot drift.
+enum WindowMovementService {
+    struct Outcome {
+        let ok: Bool
+        let message: String
+    }
+
+    /// Live display topology in API index order, resolved through SkyLight +
+    /// UUID matching (never `NSScreen.screens` positional assumptions). Main
+    /// thread only. `anchorScreen` marks the clicked window's display.
+    static func displays(anchorScreen: NSScreen?) -> [WindowMoveMenuModel.Display] {
+        let screens = NSScreen.screens
+        let anchorNumber = screenNumber(anchorScreen)
+        let spaces = WindowTiler.getDisplaySpaces().sorted { $0.displayIndex < $1.displayIndex }
+        guard !spaces.isEmpty else {
+            // SkyLight unavailable — API display indices fall back to AppKit
+            // order, matching DisplayGeometryMapper's index fallback.
+            return screens.enumerated().map { offset, screen in
+                WindowMoveMenuModel.Display(
+                    index: offset,
+                    name: screen.localizedName,
+                    isCurrent: anchorNumber != nil && screenNumber(screen) == anchorNumber
+                )
+            }
+        }
+        return spaces.map { display in
+            let screen = DisplayGeometryMapper.screen(for: display, in: screens)
+            return WindowMoveMenuModel.Display(
+                index: display.displayIndex,
+                name: screen?.localizedName ?? "Display \(display.displayIndex + 1)",
+                isCurrent: anchorNumber != nil && screenNumber(screen) == anchorNumber
+            )
+        }
+    }
+
+    /// Menu model anchored on a window's global top-left frame (Inventory).
+    static func menuModel(windowFrame: WindowFrame, targets: [WindowMoveMenuModel.Target]) -> WindowMoveMenuModel {
+        WindowMoveMenuModel(
+            displays: displays(anchorScreen: WindowTiler.screenForWindowFrame(windowFrame)),
+            targets: targets
+        )
+    }
+
+    /// Menu model anchored on an `NSScreen.screens` index (Studio entries).
+    static func menuModel(nsScreenIndex: Int, targets: [WindowMoveMenuModel.Target]) -> WindowMoveMenuModel {
+        let screens = NSScreen.screens
+        let anchor = screens.indices.contains(nsScreenIndex) ? screens[nsScreenIndex] : nil
+        return WindowMoveMenuModel(displays: displays(anchorScreen: anchor), targets: targets)
+    }
+
+    /// Move each target to `display`, preserving each window's own normalized
+    /// frame — canonical `window.move` display-only semantics, one receipt per
+    /// window. Runs off the main thread; `completion` is delivered on main.
+    static func moveTargets(
+        _ targets: [WindowMoveMenuModel.Target],
+        to display: WindowMoveMenuModel.Display,
+        completion: @escaping (Outcome) -> Void
+    ) {
+        run(completion: completion) {
+            var okCount = 0
+            var blocked = false
+            for target in targets {
+                let params = JSON.object([
+                    "wid": .int(Int(target.wid)),
+                    "display": .int(display.index),
+                ])
+                do {
+                    let receipt = try ActionRuntime.shared.executeWindowMove(params: params, source: "app.context-menu")
+                    switch receipt["status"]?.stringValue {
+                    case "ok": okCount += 1
+                    case "blocked": blocked = true
+                    default: break
+                    }
+                } catch {
+                    DiagnosticLog.shared.error("[Move] wid \(target.wid) → display \(display.index): \(error)")
+                }
+            }
+            return moveOutcome(okCount: okCount, total: targets.count, blocked: blocked, displayName: display.name)
+        }
+    }
+
+    /// Move one window to `display` and place it into a canonical slot —
+    /// `window.place` semantics through the same runtime as the API.
+    static func placeTarget(
+        _ target: WindowMoveMenuModel.Target,
+        on display: WindowMoveMenuModel.Display,
+        slot: TilePosition,
+        completion: @escaping (Outcome) -> Void
+    ) {
+        run(completion: completion) {
+            let params = JSON.object([
+                "wid": .int(Int(target.wid)),
+                "display": .int(display.index),
+                "placement": .string(slot.rawValue),
+            ])
+            do {
+                let receipt = try ActionRuntime.shared.executeWindowPlace(params: params, source: "app.context-menu")
+                switch receipt["status"]?.stringValue {
+                case "ok":
+                    return Outcome(ok: true, message: "Placed \(slot.label) on \(display.name)")
+                case "blocked":
+                    return Outcome(ok: false, message: "Grant Accessibility to move windows")
+                default:
+                    return Outcome(ok: false, message: "Placement not verified on \(display.name)")
+                }
+            } catch {
+                DiagnosticLog.shared.error("[Place] wid \(target.wid) → display \(display.index) \(slot.rawValue): \(error)")
+                return Outcome(ok: false, message: "Placement failed: \(shortError(error))")
+            }
+        }
+    }
+
+    /// Truthful receipt text: full success, blocked-on-permissions, partial,
+    /// and executed-but-unverified are reported as what they are.
+    static func moveOutcome(okCount: Int, total: Int, blocked: Bool, displayName: String) -> Outcome {
+        if okCount == total {
+            let message = total > 1
+                ? "Moved \(total) windows to \(displayName)"
+                : "Moved to \(displayName)"
+            return Outcome(ok: true, message: message)
+        }
+        if blocked, okCount == 0 {
+            return Outcome(ok: false, message: "Grant Accessibility to move windows")
+        }
+        if okCount > 0 {
+            return Outcome(ok: false, message: "Moved \(okCount)/\(total) windows to \(displayName)")
+        }
+        return Outcome(ok: false, message: "Move not verified — window may not have reached \(displayName)")
+    }
+
+    private static func run(
+        completion: @escaping (Outcome) -> Void,
+        work: @escaping () -> Outcome
+    ) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let outcome = work()
+            DispatchQueue.main.async { completion(outcome) }
+        }
+    }
+
+    private static func screenNumber(_ screen: NSScreen?) -> NSNumber? {
+        screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
+    }
+
+    private static func shortError(_ error: Error) -> String {
+        error.localizedDescription
+    }
+}
+
+// MARK: - SwiftUI menu section
+
+/// The shared movement section rendered inside a SwiftUI `contextMenu`.
+/// Renders nothing on a single-display machine; callers gate their own
+/// dividers on `model.isAvailable` so no orphan separators remain.
+struct WindowMovementMenuSection: View {
+    let model: WindowMoveMenuModel
+    let onMove: (WindowMoveMenuModel.Display) -> Void
+    var onPlace: ((WindowMoveMenuModel.Display, TilePosition) -> Void)? = nil
+
+    var body: some View {
+        if model.isAvailable {
+            if let next = model.nextDisplay {
+                Button {
+                    onMove(next)
+                } label: {
+                    Label(model.nextMonitorTitle, systemImage: "arrow.right.square")
+                }
+                .accessibilityLabel(model.moveAccessibilityLabel(to: next))
+            }
+
+            Menu(model.moveToMonitorTitle) {
+                ForEach(model.displays, id: \.index) { display in
+                    Button {
+                        onMove(display)
+                    } label: {
+                        if display.isCurrent {
+                            Label(display.name, systemImage: "checkmark")
+                        } else {
+                            Text(display.name)
+                        }
+                    }
+                    .disabled(display.isCurrent)
+                    .accessibilityLabel(model.moveAccessibilityLabel(to: display))
+                }
+            }
+
+            if model.includesPlacement, let onPlace, let target = model.targets.first {
+                Menu(model.movePlaceTitle) {
+                    ForEach(model.displays, id: \.index) { display in
+                        Menu(display.isCurrent ? "\(display.name) (Current)" : display.name) {
+                            ForEach(WindowMoveMenuModel.placementSlots) { slot in
+                                Button {
+                                    onPlace(display, slot)
+                                } label: {
+                                    Label(slot.label, systemImage: slot.icon)
+                                }
+                                .accessibilityLabel(model.placeAccessibilityLabel(slot: slot, on: display))
+                            }
+                        }
+                    }
+                }
+                .accessibilityLabel("Move window \(target.wid) to a monitor and slot")
+            }
+        }
+    }
+}
+
+// MARK: - AppKit menu section
+
+/// Closure box carried on `NSMenuItem.representedObject`.
+final class WindowMovementMenuAction: NSObject {
+    let run: () -> Void
+    init(_ run: @escaping () -> Void) { self.run = run }
+}
+
+final class WindowMovementMenuTarget: NSObject {
+    static let shared = WindowMovementMenuTarget()
+
+    @objc func perform(_ sender: NSMenuItem) {
+        (sender.representedObject as? WindowMovementMenuAction)?.run()
+    }
+}
+
+/// AppKit twin of `WindowMovementMenuSection` for `NSMenu`-based surfaces
+/// (the Studio canvas). Same model, same ordering, same titles.
+enum WindowMovementMenuBuilder {
+    static func appendSection(
+        to menu: NSMenu,
+        model: WindowMoveMenuModel,
+        onMove: @escaping (WindowMoveMenuModel.Display) -> Void,
+        onPlace: ((WindowMoveMenuModel.Display, TilePosition) -> Void)? = nil
+    ) {
+        guard model.isAvailable else { return }
+
+        if let next = model.nextDisplay {
+            menu.addItem(actionItem(
+                title: model.nextMonitorTitle,
+                accessibilityLabel: model.moveAccessibilityLabel(to: next)
+            ) { onMove(next) })
+        }
+
+        let moveItem = NSMenuItem(title: model.moveToMonitorTitle, action: nil, keyEquivalent: "")
+        let moveSubmenu = NSMenu()
+        for display in model.displays {
+            if display.isCurrent {
+                // No action → auto-disabled; checkmark marks the current display.
+                let item = NSMenuItem(title: display.name, action: nil, keyEquivalent: "")
+                item.state = .on
+                item.setAccessibilityLabel("\(display.name), current display")
+                moveSubmenu.addItem(item)
+            } else {
+                moveSubmenu.addItem(actionItem(
+                    title: display.name,
+                    accessibilityLabel: model.moveAccessibilityLabel(to: display)
+                ) { onMove(display) })
+            }
+        }
+        moveItem.submenu = moveSubmenu
+        menu.addItem(moveItem)
+
+        guard model.includesPlacement, let onPlace else { return }
+        let placeItem = NSMenuItem(title: model.movePlaceTitle, action: nil, keyEquivalent: "")
+        let placeSubmenu = NSMenu()
+        for display in model.displays {
+            let title = display.isCurrent ? "\(display.name) (Current)" : display.name
+            let displayItem = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+            let slotSubmenu = NSMenu()
+            for slot in WindowMoveMenuModel.placementSlots {
+                slotSubmenu.addItem(actionItem(
+                    title: slot.label,
+                    accessibilityLabel: model.placeAccessibilityLabel(slot: slot, on: display)
+                ) { onPlace(display, slot) })
+            }
+            displayItem.submenu = slotSubmenu
+            placeSubmenu.addItem(displayItem)
+        }
+        placeItem.submenu = placeSubmenu
+        menu.addItem(placeItem)
+    }
+
+    private static func actionItem(
+        title: String,
+        accessibilityLabel: String,
+        run: @escaping () -> Void
+    ) -> NSMenuItem {
+        let item = NSMenuItem(
+            title: title,
+            action: #selector(WindowMovementMenuTarget.perform(_:)),
+            keyEquivalent: ""
+        )
+        item.target = WindowMovementMenuTarget.shared
+        item.representedObject = WindowMovementMenuAction(run)
+        item.setAccessibilityLabel(accessibilityLabel)
+        return item
+    }
+}
