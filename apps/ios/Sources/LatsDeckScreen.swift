@@ -411,6 +411,7 @@ struct LatsTrackpadSurface: View {
     var onTrackpadEvent: ((DeckTrackpadEvent, Double, Double) -> Void)? = nil
     var onSpaceTap: ((_ display: Int, _ index: Int) -> Void)? = nil
     var onMonitorSwipe: ((_ display: Int, _ direction: Int) -> Void)? = nil
+    var onDisplayFocus: ((_ display: Int) -> Void)? = nil
 
     @State private var lastTrackpadLocation: CGPoint?
     @State private var trackpadInteractionMode: TrackpadInteractionMode = .pointer
@@ -455,8 +456,8 @@ struct LatsTrackpadSurface: View {
                     isDeemphasized: mode != .idle
                 )
                 .padding(.horizontal, horizontalSizeClass == .compact ? 24 : 270)
-                .padding(.top, 38)
-                .padding(.bottom, 92)
+                .padding(.top, LatsTrackpadChrome.topInset)
+                .padding(.bottom, LatsTrackpadChrome.bottomInset + 8)
                 .allowsHitTesting(false)
             }
 
@@ -479,7 +480,9 @@ struct LatsTrackpadSurface: View {
             }
 
             if horizontalSizeClass != .compact {
-                // LEFT column — system on top, displays bottom; equal share of vertical space
+                // LEFT column — system on top, displays bottom. Bottom inset must clear
+                // the full chrome (Pointer/Scroll row + key bezel) so the minimap and
+                // space cells never sit on top of those controls.
                 VStack(alignment: .leading, spacing: 8) {
                     LatsInsetSlice {
                         CompactSystemPanel(hostLabel: hostLabel, telemetry: telemetry)
@@ -492,19 +495,22 @@ struct LatsTrackpadSurface: View {
                             spaceCount: spaceCount,
                             spaceName: spaceName,
                             spaceDisplays: spaceDisplays,
+                            screenCount: trackpadState?.displayCount ?? max(stage.count, 1),
+                            pointerDisplayIndex: trackpadState?.pointerDisplayIndex,
                             onSpaceTap: onSpaceTap,
-                            onMonitorSwipe: onMonitorSwipe
+                            onMonitorSwipe: onMonitorSwipe,
+                            onDisplayFocus: onDisplayFocus
                         )
                     }
                     .frame(maxHeight: .infinity)
                 }
                 .frame(width: 240)
-                .padding(.top, 30)
-                .padding(.bottom, 56)
+                .padding(.top, LatsTrackpadChrome.topInset)
+                .padding(.bottom, LatsTrackpadChrome.bottomInset)
                 .padding(.leading, 12)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
 
-                // RIGHT column — transcript on top, activity bottom; equal share of vertical space
+                // RIGHT column — transcript on top, activity bottom; same chrome clearance.
                 VStack(alignment: .leading, spacing: 8) {
                     LatsInsetSlice {
                         CompactTranscriptPanel(items: transcript)
@@ -516,28 +522,30 @@ struct LatsTrackpadSurface: View {
                     .frame(maxHeight: .infinity)
                 }
                 .frame(width: 240)
-                .padding(.top, 30)
-                .padding(.bottom, 56)
+                .padding(.top, LatsTrackpadChrome.topInset)
+                .padding(.bottom, LatsTrackpadChrome.bottomInset)
                 .padding(.trailing, 12)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
             }
 
-            // Bottom bezel: keyboard buttons sit on a quiet ledge that mirrors the top bezel.
+            // Bottom bezel: mode/click controls + keyboard on one ledge, mirrored by the top bezel.
             VStack(spacing: 0) {
                 Spacer()
-                trackpadControlRow
-                    .padding(.horizontal, 12)
-                    .padding(.top, 5)
-                LatsActionKeyboardRow(onSendKey: onSendKey)
-                    .padding(.horizontal, 12)
-                    .padding(.top, 4)
-                    .padding(.bottom, 6)
-                    .frame(maxWidth: .infinity)
-                    .background(Color.black.opacity(0.32))
-            }
-            .background(Color.black.opacity(0.32))
-            .overlay(alignment: .top) {
-                Rectangle().fill(LatsPalette.hairline).frame(height: 1)
+                VStack(spacing: 0) {
+                    trackpadControlRow
+                        .padding(.horizontal, 12)
+                        .padding(.top, 6)
+                        .padding(.bottom, 4)
+                    LatsActionKeyboardRow(onSendKey: onSendKey)
+                        .padding(.horizontal, 12)
+                        .padding(.top, 2)
+                        .padding(.bottom, 6)
+                        .frame(maxWidth: .infinity)
+                }
+                .background(Color.black.opacity(0.42))
+                .overlay(alignment: .top) {
+                    Rectangle().fill(LatsPalette.hairline).frame(height: 1)
+                }
             }
         }
         .background(LatsPalette.bgEdge)
@@ -707,22 +715,33 @@ private struct LatsTrackpadWindowPreview: View {
     }
 }
 
-/// Actual normalized Mac cursor position, updated directly from joystick event
-/// responses. The crossing lines make X and Y legible even when the preview is
-/// visually busy or the pointer itself is tiny.
+/// Shared insets for the trackpad surface chrome. Side columns, pointer guides,
+/// and the window preview all respect these so the minimap never collides with
+/// the Pointer/Scroll row or key bezel.
+private enum LatsTrackpadChrome {
+    static let topInset: CGFloat = 30
+    /// Mode/click row (~36) + key bezel (~40) + hairline breathing room.
+    static let bottomInset: CGFloat = 96
+}
+
+/// Quiet normalized cursor readout: thin dotted X/Y guides + small coords.
+/// No disc, no heavy pill — position is instrument, not a focal element.
 private struct LatsTrackpadPointerGuides: View {
     let x: Double
     let y: Double
 
     var body: some View {
         GeometryReader { proxy in
-            let topInset: CGFloat = 31
-            let bottomInset: CGFloat = 57
+            let topInset = LatsTrackpadChrome.topInset
+            let bottomInset = LatsTrackpadChrome.bottomInset
+            let clampedX = min(max(x, 0), 1)
+            let clampedY = min(max(y, 0), 1)
             let usableHeight = max(1, proxy.size.height - topInset - bottomInset)
             let point = CGPoint(
-                x: min(max(CGFloat(x), 0), 1) * proxy.size.width,
-                y: topInset + min(max(CGFloat(y), 0), 1) * usableHeight
+                x: CGFloat(clampedX) * proxy.size.width,
+                y: topInset + CGFloat(clampedY) * usableHeight
             )
+            let label = "X \(Int((clampedX * 100).rounded()))  Y \(Int((clampedY * 100).rounded()))"
 
             ZStack(alignment: .topLeading) {
                 Path { path in
@@ -731,23 +750,29 @@ private struct LatsTrackpadPointerGuides: View {
                     path.move(to: CGPoint(x: 0, y: point.y))
                     path.addLine(to: CGPoint(x: proxy.size.width, y: point.y))
                 }
-                .stroke(LatsPalette.green.opacity(0.46), style: StrokeStyle(lineWidth: 1, dash: [5, 5]))
+                .stroke(
+                    Color.white.opacity(0.22),
+                    style: StrokeStyle(lineWidth: 0.5, dash: [2, 4])
+                )
 
-                Circle()
-                    .fill(LatsPalette.green.opacity(0.18))
-                    .overlay(Circle().stroke(LatsPalette.green, lineWidth: 1.5))
-                    .frame(width: 18, height: 18)
-                    .position(point)
+                // Hairline cross at the intersection — quieter than a filled disc.
+                Path { path in
+                    path.move(to: CGPoint(x: point.x - 5, y: point.y))
+                    path.addLine(to: CGPoint(x: point.x + 5, y: point.y))
+                    path.move(to: CGPoint(x: point.x, y: point.y - 5))
+                    path.addLine(to: CGPoint(x: point.x, y: point.y + 5))
+                }
+                .stroke(Color.white.opacity(0.38), lineWidth: 0.5)
 
-                Text("X \(Int((min(max(x, 0), 1) * 100).rounded()))  Y \(Int((min(max(y, 0), 1) * 100).rounded()))")
-                    .font(LatsFont.mono(8, weight: .semibold))
-                    .foregroundStyle(LatsPalette.green)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 3)
-                    .background(Color.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 3))
+                Text(label)
+                    .font(LatsFont.mono(8, weight: .medium))
+                    .foregroundStyle(LatsPalette.textFaint)
+                    .monospacedDigit()
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
                     .position(
-                        x: min(max(point.x + 48, 52), proxy.size.width - 52),
-                        y: min(max(point.y - 18, topInset + 12), proxy.size.height - bottomInset - 12)
+                        x: min(max(point.x + 36, 40), proxy.size.width - 40),
+                        y: min(max(point.y - 12, topInset + 10), proxy.size.height - bottomInset - 10)
                     )
             }
         }
@@ -949,17 +974,27 @@ struct CompactDisplaysPanel: View {
     let spaceCount: Int
     let spaceName: String?
     var spaceDisplays: [DeckSpaceDisplay] = []
+    /// Authoritative attached-display count from the bridge (NSScreen.screens).
+    var screenCount: Int = 1
+    /// Live monitor under the Mac pointer — keeps the switcher honest as the cursor moves.
+    var pointerDisplayIndex: Int? = nil
     var onSpaceTap: ((_ display: Int, _ index: Int) -> Void)? = nil
     var onMonitorSwipe: ((_ display: Int, _ direction: Int) -> Void)? = nil
+    var onDisplayFocus: ((_ display: Int) -> Void)? = nil
 
     @State private var selectedDisplay: Int = 0
+    /// When true, user picked a monitor manually — don't auto-follow the pointer.
+    @State private var userPinnedDisplay = false
 
-    /// Authoritative monitor count: stage mirrors NSScreen.screens.count from the
-    /// bridge, falling back to live spaceDisplays then 1. Never silently 2.
+    /// Prefer live screen count, then stage buckets / space map, never under-report.
     private var monitorCount: Int {
-        if !stage.isEmpty { return stage.count }
-        if !spaceDisplays.isEmpty { return spaceDisplays.count }
-        return 1
+        max(
+            1,
+            screenCount,
+            stage.count,
+            spaceDisplays.count,
+            (stage.isEmpty && spaceDisplays.isEmpty) ? 1 : 0
+        )
     }
 
     private var activeDisplay: Int {
@@ -989,29 +1024,37 @@ struct CompactDisplaysPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
+            HStack(spacing: 6) {
                 Text("displays")
                     .font(LatsFont.mono(10, weight: .semibold))
                     .foregroundStyle(LatsPalette.text)
-                Spacer()
+                Spacer(minLength: 4)
                 if monitorCount > 1 {
-                    HStack(spacing: 3) {
-                        ForEach(0..<monitorCount, id: \.self) { d in
-                            displayPill(d)
-                        }
-                    }
+                    monitorSwitcher
                 } else {
-                    Text(spaceName ?? "\(space + 1)")
+                    Text(spaceName ?? "1 of 1")
                         .font(LatsFont.mono(8.5))
                         .foregroundStyle(LatsPalette.textFaint)
                 }
             }
 
             // Single mini-display for the selected monitor (full panel width).
-            miniDisplay(windows: windowsForActiveDisplay)
-                .contentShape(Rectangle())
-                .gesture(monitorSwipeGesture(displayIndex: activeDisplay))
-                .frame(maxHeight: .infinity)
+            ZStack(alignment: .topLeading) {
+                miniDisplay(windows: windowsForActiveDisplay)
+                    .contentShape(Rectangle())
+                    .gesture(monitorSwipeGesture(displayIndex: activeDisplay))
+
+                // Quiet corner badge: which monitor this minimap is showing.
+                Text("M\(activeDisplay + 1)")
+                    .font(LatsFont.mono(8, weight: .semibold))
+                    .foregroundStyle(LatsPalette.textFaint)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
+                    .background(Color.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 2))
+                    .padding(4)
+                    .allowsHitTesting(false)
+            }
+            .frame(maxHeight: .infinity)
 
             // Space cells for the selected monitor.
             let indices = spacesForActiveDisplay
@@ -1024,28 +1067,101 @@ struct CompactDisplaysPanel: View {
             }
         }
         .frame(maxHeight: .infinity)
+        .onAppear { syncFromPointerIfNeeded() }
+        .onChange(of: pointerDisplayIndex) { _, _ in syncFromPointerIfNeeded() }
+        .onChange(of: monitorCount) { _, newCount in
+            if selectedDisplay >= newCount {
+                selectedDisplay = max(0, newCount - 1)
+            }
+        }
+    }
+
+    /// Numbered pills + prev/next so multi-monitor setups are obvious and tappable.
+    private var monitorSwitcher: some View {
+        HStack(spacing: 3) {
+            Button {
+                selectDisplay(activeDisplay - 1)
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(activeDisplay > 0 ? LatsPalette.textDim : LatsPalette.textFaint.opacity(0.4))
+                    .frame(width: 16, height: 18)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(activeDisplay <= 0)
+            .accessibilityLabel("Previous monitor")
+
+            ForEach(0..<monitorCount, id: \.self) { d in
+                displayPill(d)
+            }
+
+            Text("\(activeDisplay + 1)/\(monitorCount)")
+                .font(LatsFont.mono(8, weight: .medium))
+                .foregroundStyle(LatsPalette.textFaint)
+                .monospacedDigit()
+                .frame(minWidth: 22, alignment: .trailing)
+
+            Button {
+                selectDisplay(activeDisplay + 1)
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(activeDisplay < monitorCount - 1 ? LatsPalette.textDim : LatsPalette.textFaint.opacity(0.4))
+                    .frame(width: 16, height: 18)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(activeDisplay >= monitorCount - 1)
+            .accessibilityLabel("Next monitor")
+        }
     }
 
     private func displayPill(_ d: Int) -> some View {
         let isActive = d == activeDisplay
+        let isPointerHere = pointerDisplayIndex == d
         return Button {
-            selectedDisplay = d
+            selectDisplay(d)
         } label: {
-            Text("D\(d + 1)")
-                .font(LatsFont.mono(8, weight: isActive ? .semibold : .regular))
+            Text("\(d + 1)")
+                .font(LatsFont.mono(9, weight: isActive ? .semibold : .regular))
                 .foregroundStyle(isActive ? LatsPalette.green : LatsPalette.textDim)
-                .padding(.horizontal, 5)
-                .padding(.vertical, 2)
+                .frame(minWidth: 18, minHeight: 18)
                 .background(
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(isActive ? LatsPalette.green.opacity(0.2) : Color.clear)
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(isActive ? LatsPalette.green.opacity(0.2) : Color.white.opacity(0.04))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 2)
-                        .stroke(isActive ? LatsPalette.green : LatsPalette.hairline, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 3)
+                        .stroke(
+                            isActive
+                                ? LatsPalette.green
+                                : (isPointerHere ? LatsPalette.green.opacity(0.35) : LatsPalette.hairline),
+                            lineWidth: 1
+                        )
                 )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Monitor \(d + 1)")
+        .accessibilityAddTraits(isActive ? .isSelected : [])
+    }
+
+    private func selectDisplay(_ d: Int) {
+        let clamped = max(0, min(d, monitorCount - 1))
+        guard clamped != selectedDisplay || onDisplayFocus != nil else { return }
+        userPinnedDisplay = true
+        selectedDisplay = clamped
+        onDisplayFocus?(clamped)
+    }
+
+    private func syncFromPointerIfNeeded() {
+        guard !userPinnedDisplay,
+              let pointer = pointerDisplayIndex,
+              pointer >= 0,
+              pointer < monitorCount else { return }
+        if selectedDisplay != pointer {
+            selectedDisplay = pointer
+        }
     }
 
     /// Horizontal swipe on a monitor: left → previous space, right → next space.
@@ -2479,7 +2595,8 @@ struct LatsDeckScreen: View {
                                     onReplayUndo: handleReplayUndo,
                                     onTrackpadEvent: onTrackpadEvent,
                                     onSpaceTap: handleSpaceTap,
-                                    onMonitorSwipe: handleMonitorSwipe
+                                    onMonitorSwipe: handleMonitorSwipe,
+                                    onDisplayFocus: handleDisplayFocus
                                 )
                             }
                         }
@@ -2720,6 +2837,16 @@ struct LatsDeckScreen: View {
             )
         } else {
             mockSpace = max(0, min(spaceCount - 1, mockSpace + direction))
+        }
+    }
+
+    private func handleDisplayFocus(_ display: Int) {
+        if let onAction {
+            onAction(
+                "displays.focus",
+                ["displayIndex": .int(display)],
+                "Focus monitor \(display + 1)"
+            )
         }
     }
 
@@ -3526,7 +3653,8 @@ private struct FleetSharedDeck: View {
                         store.sendTrackpad(event: event, dx: dx, dy: dy)
                     },
                     onSpaceTap: focusSpace,
-                    onMonitorSwipe: swipeMonitor
+                    onMonitorSwipe: swipeMonitor,
+                    onDisplayFocus: focusDisplay
                 )
                 .environment(\.horizontalSizeClass, .regular)
             }
@@ -3784,6 +3912,15 @@ private struct FleetSharedDeck: View {
         )
     }
 
+    private func focusDisplay(_ display: Int) {
+        store.perform(
+            actionID: "displays.focus",
+            pageID: activePage?.id ?? "cockpit",
+            payload: ["displayIndex": .int(display)],
+            label: "Focus monitor \(display + 1)"
+        )
+    }
+
     private func shortcut(from tile: DeckCockpitTile) -> LatsShortcut {
         LatsShortcut(
             id: tile.id,
@@ -3926,7 +4063,8 @@ private struct FleetMachineDeck: View {
                             store.sendTrackpad(event: event, dx: dx, dy: dy)
                         },
                         onSpaceTap: focusSpace,
-                        onMonitorSwipe: swipeMonitor
+                        onMonitorSwipe: swipeMonitor,
+                        onDisplayFocus: focusDisplay
                     )
                     .environment(\.horizontalSizeClass, .compact)
                 }
@@ -4254,6 +4392,15 @@ private struct FleetMachineDeck: View {
             pageID: activePage?.id ?? "cockpit",
             payload: ["displayIndex": .int(display), "direction": .int(direction)],
             label: direction > 0 ? "Next space" : "Previous space"
+        )
+    }
+
+    private func focusDisplay(_ display: Int) {
+        store.perform(
+            actionID: "displays.focus",
+            pageID: activePage?.id ?? "cockpit",
+            payload: ["displayIndex": .int(display)],
+            label: "Focus monitor \(display + 1)"
         )
     }
 
