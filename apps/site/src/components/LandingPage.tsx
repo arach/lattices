@@ -110,8 +110,8 @@ const configExamples: Record<PaneLayout, string> = {
 
 const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span class="hl-kw">from</span> <span class="hl-str">'@lattices/sdk'</span>
 
-<span class="hl-cmt">// Search the live desktop</span>
-<span class="hl-kw">const</span> [match] = <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'windows.search'</span>, {
+<span class="hl-cmt">// Find a window by title, app, session, or cwd</span>
+<span class="hl-kw">const</span> [match] = <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'lattices.search'</span>, {
   query: <span class="hl-str">'myproject'</span>
 })
 <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'window.focus'</span>, {
@@ -144,12 +144,11 @@ const cuaSteps: Array<{
     number: "01",
     title: "Observe",
     heading: "Read the app before acting",
-    caption: "Capture AX, OCR, screenshots, and window state so the agent chooses from stable targets.",
+    caption: "Read the Accessibility tree and optional screenshot so the agent chooses from stable element ids.",
     filename: "observe.ts",
-    code: `<span class="hl-kw">const</span> ui = <span class="hl-kw">await</span> windowState({
+    code: `<span class="hl-kw">const</span> ui = <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'computer.windowState'</span>, {
   app: <span class="hl-str">'Calculator'</span>,
   mode: <span class="hl-str">'ax'</span>,
-  capture: [<span class="hl-str">'tree'</span>, <span class="hl-str">'ocr'</span>, <span class="hl-str">'screen'</span>],
 })`,
   },
   {
@@ -157,9 +156,9 @@ const cuaSteps: Array<{
     number: "02",
     title: "Stage",
     heading: "Prepare a reviewable action",
-    caption: "Bind the next move to an element, region, or coordinate while nothing has run yet.",
+    caption: "Bind the next move to a snapshot element while nothing has run yet.",
     filename: "stage.ts",
-    code: `<span class="hl-kw">await</span> elementAction({
+    code: `<span class="hl-kw">await</span> daemonCall(<span class="hl-str">'computer.elementAction'</span>, {
   snapshotId: ui.snapshotId,
   elementId: <span class="hl-str">'e7'</span>,
   action: <span class="hl-str">'press'</span>,
@@ -171,14 +170,13 @@ const cuaSteps: Array<{
     number: "03",
     title: "Execute",
     heading: "Run the exact staged command",
-    caption: "Click, type, hotkey, scroll, drag, set values, or drive browser actions with recording on.",
+    caption: "Click, type, hotkey, or set a value on-device after the same safety checks.",
     filename: "execute.ts",
-    code: `<span class="hl-kw">await</span> elementAction({
+    code: `<span class="hl-kw">await</span> daemonCall(<span class="hl-str">'computer.elementAction'</span>, {
   snapshotId: ui.snapshotId,
   elementId: <span class="hl-str">'e7'</span>,
   action: <span class="hl-str">'press'</span>,
   treatment: <span class="hl-str">'execute'</span>,
-  recording: <span class="hl-num">true</span>,
 })`,
   },
   {
@@ -186,13 +184,12 @@ const cuaSteps: Array<{
     number: "04",
     title: "Verify",
     heading: "Check the result on-device",
-    caption: "Confirm the outcome with OCR, AX, or artifact diff, then feed that receipt into the next observation.",
+    caption: "Confirm the outcome with OCR or AX, then feed that receipt into the next observation.",
     filename: "verify.ts",
-    code: `<span class="hl-kw">const</span> receipt = <span class="hl-kw">await</span> verify({
+    code: `<span class="hl-kw">const</span> receipt = <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'computer.verify'</span>, {
   app: <span class="hl-str">'Calculator'</span>,
   mode: <span class="hl-str">'ocr'</span>,
   contains: <span class="hl-str">'42'</span>,
-  attachArtifact: <span class="hl-num">true</span>,
 })`,
   },
 ];
@@ -497,7 +494,7 @@ function HeroWorkspaceStage() {
                 exit={{ opacity: 0, transition: { duration: 0.25, delay: 0 } }}
                 transition={{ duration: 0.3, delay: 2.1 }}
               >
-                <i aria-hidden="true">⏺</i> lattices — layout.distribute
+                <i aria-hidden="true">⏺</i> lattices — space.optimize
               </motion.span>
             )}
             {driver === "agent" && organized && (
@@ -617,8 +614,9 @@ export default function App() {
             <p>
               Agents can write your code and run your tests, but they can&apos;t
               organize where you actually work: your screen. Lattices gives
-              them that — the same live state as you. You move a window, your
-              agent sees it; your agent stages an action, you watch it land.
+              them the same verbs you already use — place, focus, activate a
+              layer, then stage an action before it runs. You watch the receipt
+              land on the same desktop.
             </p>
           </div>
           <div className="operator-rows fade-in fade-in-delay-1" aria-label="The same action, by hand and by API">
@@ -632,7 +630,7 @@ export default function App() {
             <div className="operator-row">
               <span className="operator-row-label">Your agent</span>
               <span className="operator-row-action">
-                <code>window.place {'{'} query: &apos;editor&apos;, at: &apos;left&apos; {'}'}</code>
+                <code>window.place {'{'} app: &apos;Code&apos;, placement: &apos;left&apos; {'}'}</code>
               </span>
             </div>
             <p className="operator-result">
@@ -818,9 +816,9 @@ export default function App() {
               <h3>Automate</h3>
               <h2>Let agents see the screen and act on it, safely.</h2>
               <p>
-                Agents read any window through AX and OCR, then work in a loop
-                you can trust: observe, stage, execute on-device, and verify the
-                result before moving on.
+                Agents inspect windows through Accessibility, then work in a
+                loop you can trust: observe, stage, execute on-device, and
+                verify the result before moving on.
               </p>
             </div>
           </article>
@@ -887,22 +885,22 @@ export default function App() {
           <div className="config-grid fade-in fade-in-delay-2">
             <div>
               <h2 className="config-title">
-                Your agents need to see what you see
+                Your agents need the same desktop
               </h2>
               <p className="config-desc">
-                Agents are limited to a terminal. Lattices gives them
-                eyes — every window, every pixel of text, every layout
-                change — over a single WebSocket.
+                Agents start in a terminal. Lattices gives them the workspace
+                verbs on localhost: search, place, activate a layer, then
+                observe / stage / execute / verify before they touch the
+                screen.
               </p>
               <ul className="agent-methods">
-                <li><code>windows.search</code> — find windows by title, app, session, OCR</li>
-                <li><code>terminals.search</code> — inspect terminal tabs, processes, cwds</li>
-                <li><code>ocr.search</code> — full-text search across all screen content</li>
-                <li><code>computer.windowState</code> — AX snapshot with actionable element IDs</li>
-                <li><code>computer.verify</code> — confirm outcomes via OCR, AX, or artifact diff</li>
-                <li><code>layer.activate</code> — launch or focus a whole workspace</li>
-                <li><code>space.optimize</code> — balance visible windows after launch</li>
-                <li>40+ methods + live workspace updates pushed over WebSocket</li>
+                <li><code>lattices.search</code> — title, app, session, or cwd</li>
+                <li><code>window.place</code> — tile by session, app, or window id</li>
+                <li><code>layer.activate</code> — launch or focus a workspace</li>
+                <li><code>space.optimize</code> — rebalance visible windows</li>
+                <li><code>computer.windowState</code> — AX snapshot, element ids</li>
+                <li><code>computer.elementAction</code> — stage or execute those ids</li>
+                <li><code>computer.verify</code> — confirm via OCR or AX</li>
               </ul>
               <a href="/docs/api" className="agent-api-link">
                 Full API reference &rarr;
@@ -976,7 +974,7 @@ export default function App() {
 
         {/* CTA */}
         <section className="cta">
-          <h2>Give your windows a system.</h2>
+          <h2>Same desktop. You or your agent.</h2>
           <p>Free and open source. Running on your Mac in seconds.</p>
           <div className="cta-download-row">
             <a
