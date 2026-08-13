@@ -98,6 +98,25 @@ final class WindowMoveMenuModelTests: XCTestCase {
         XCTAssertFalse(model.includesPlacement)
     }
 
+    func testCurrentDisplayDisabledOnlyForSingleTarget() {
+        // Single window: its own display is not a meaningful target.
+        let single = WindowMoveMenuModel(
+            displays: [display(0, current: true), display(1)],
+            targets: [target(1)]
+        )
+        XCTAssertTrue(single.isDisabled(single.displays[0]))
+        XCTAssertFalse(single.isDisabled(single.displays[1]))
+
+        // Multi-selection may span monitors — the anchor display must stay
+        // selectable so the whole selection can gather onto it.
+        let multi = WindowMoveMenuModel(
+            displays: [display(0, current: true), display(1)],
+            targets: [target(1), target(2)]
+        )
+        XCTAssertFalse(multi.isDisabled(multi.displays[0]))
+        XCTAssertFalse(multi.isDisabled(multi.displays[1]))
+    }
+
     func testPlacementSlotsCoverCanonicalNamedPositions() {
         let slots = WindowMoveMenuModel.placementSlots
         XCTAssertTrue(slots.contains(.maximize))

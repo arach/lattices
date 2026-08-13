@@ -4005,7 +4005,9 @@ struct ScreenMapView: View {
 
     /// Shared movement model for Studio surfaces: a right-click on a member
     /// of a multi-selection targets the whole selection, otherwise just the
-    /// clicked window. Display topology comes from the shared service.
+    /// clicked window. The anchor display is resolved from the window's real
+    /// (snapshot-time) geometry, not `displayIndex` — staged cross-display
+    /// edits mutate the latter before any real move happens.
     private func studioMoveModel(for win: ScreenMapWindowEntry, editor: ScreenMapEditorState) -> WindowMoveMenuModel {
         let selection = controller.selectedWindowIds
         let selectionTargets = editor.windows
@@ -4015,7 +4017,13 @@ struct ScreenMapView: View {
             clicked: WindowMoveMenuModel.Target(wid: win.id, pid: win.pid),
             selection: selectionTargets
         )
-        return WindowMovementService.menuModel(nsScreenIndex: win.displayIndex, targets: targets)
+        let liveFrame = WindowFrame(
+            x: win.originalFrame.origin.x,
+            y: win.originalFrame.origin.y,
+            w: win.originalFrame.width,
+            h: win.originalFrame.height
+        )
+        return WindowMovementService.menuModel(windowFrame: liveFrame, targets: targets)
     }
 
     private func moveStudioTargets(_ targets: [WindowMoveMenuModel.Target], to display: WindowMoveMenuModel.Display) {

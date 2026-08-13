@@ -74,6 +74,14 @@ struct WindowMoveMenuModel: Equatable {
     /// slot would stack into one overlapping pile.
     var includesPlacement: Bool { isAvailable && targetCount == 1 }
 
+    /// The anchor display is unpickable only for a single-window menu. A
+    /// multi-selection can span monitors, so its members may legitimately
+    /// gather onto the clicked window's display; it stays checked as the
+    /// anchor but remains selectable.
+    func isDisabled(_ display: Display) -> Bool {
+        display.isCurrent && targetCount == 1
+    }
+
     func moveAccessibilityLabel(to display: Display) -> String {
         targetCount > 1
             ? "Move \(targetCount) windows to \(display.name)"
@@ -135,13 +143,6 @@ enum WindowMovementService {
             displays: displays(anchorScreen: WindowTiler.screenForWindowFrame(windowFrame)),
             targets: targets
         )
-    }
-
-    /// Menu model anchored on an `NSScreen.screens` index (Studio entries).
-    static func menuModel(nsScreenIndex: Int, targets: [WindowMoveMenuModel.Target]) -> WindowMoveMenuModel {
-        let screens = NSScreen.screens
-        let anchor = screens.indices.contains(nsScreenIndex) ? screens[nsScreenIndex] : nil
-        return WindowMoveMenuModel(displays: displays(anchorScreen: anchor), targets: targets)
     }
 
     /// Move each target to `display`, preserving each window's own normalized
@@ -277,7 +278,7 @@ struct WindowMovementMenuSection: View {
                             Text(display.name)
                         }
                     }
-                    .disabled(display.isCurrent)
+                    .disabled(model.isDisabled(display))
                     .accessibilityLabel(model.moveAccessibilityLabel(to: display))
                 }
             }
@@ -340,17 +341,19 @@ enum WindowMovementMenuBuilder {
         let moveItem = NSMenuItem(title: model.moveToMonitorTitle, action: nil, keyEquivalent: "")
         let moveSubmenu = NSMenu()
         for display in model.displays {
-            if display.isCurrent {
+            if model.isDisabled(display) {
                 // No action → auto-disabled; checkmark marks the current display.
                 let item = NSMenuItem(title: display.name, action: nil, keyEquivalent: "")
                 item.state = .on
                 item.setAccessibilityLabel("\(display.name), current display")
                 moveSubmenu.addItem(item)
             } else {
-                moveSubmenu.addItem(actionItem(
+                let item = actionItem(
                     title: display.name,
                     accessibilityLabel: model.moveAccessibilityLabel(to: display)
-                ) { onMove(display) })
+                ) { onMove(display) }
+                if display.isCurrent { item.state = .on }
+                moveSubmenu.addItem(item)
             }
         }
         moveItem.submenu = moveSubmenu
