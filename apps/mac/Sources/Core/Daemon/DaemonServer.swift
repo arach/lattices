@@ -21,6 +21,10 @@ final class DaemonServer: ObservableObject {
         qos: .userInitiated,
         attributes: .concurrent
     )
+    private static let blockingMethods: Set<String> = [
+        "window.pick.start",
+        "session.launch",
+    ]
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private var acceptSource: DispatchSourceRead?
@@ -331,10 +335,9 @@ final class DaemonServer: ObservableObject {
             return
         }
 
-        // Interactive window picking can wait for user input for up to five
-        // minutes. Keep that wait off the daemon's serial socket queue so other
-        // clients, events, handshakes, and RPCs continue flowing.
-        if request.method == "window.pick.start" {
+        // These handlers can sleep or wait for the user. Keep them off the
+        // serial socket queue so other clients, events, and RPCs still flow.
+        if Self.blockingMethods.contains(request.method) {
             blockingRequestQueue.async { [weak self] in
                 let response = LatticesApi.shared.handle(request)
                 self?.queue.async { [weak self] in

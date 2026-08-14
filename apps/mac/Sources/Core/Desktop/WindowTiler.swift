@@ -934,8 +934,8 @@ enum WindowTiler {
     // MARK: - Move Window Between Spaces
 
     enum MoveResult {
-        case success(method: String)
-        case alreadyOnSpace
+        case success(method: String, wid: UInt32)
+        case alreadyOnSpace(wid: UInt32)
         case windowNotFound
         case failed(reason: String)
     }
@@ -965,7 +965,7 @@ enum WindowTiler {
         if currentSpaces.contains(spaceId) {
             diag.info("moveWindowToSpace: already on target space — switching view")
             switchToSpace(spaceId: spaceId)
-            return .alreadyOnSpace
+            return .alreadyOnSpace(wid: wid)
         }
 
         // Try CGS direct move (works on older macOS, silently denied on 14.5+)
@@ -976,7 +976,7 @@ enum WindowTiler {
         // CGS unavailable — just switch the user's view
         diag.info("moveWindowToSpace: CGS unavailable, switching view to space")
         switchToSpace(spaceId: spaceId)
-        return .success(method: "switch-view")
+        return .success(method: "switch-view", wid: wid)
     }
 
     /// Attempt CGS-based window move. Returns nil if APIs are unavailable.
@@ -1003,13 +1003,13 @@ enum WindowTiler {
         let newSpaces = getSpacesForWindow(wid)
         if newSpaces.contains(toSpace) && !fromSpaces.allSatisfy({ newSpaces.contains($0) }) {
             diag.success("moveViaCGS: successfully moved wid=\(wid) to space \(toSpace)")
-            return .success(method: "CGS")
+            return .success(method: "CGS", wid: wid)
         }
 
         // CGS was silently denied — switch the view instead
         diag.warn("moveViaCGS: silently denied (macOS 14.5+ restriction) — switching view")
         switchToSpace(spaceId: toSpace)
-        return .success(method: "switch-view")
+        return .success(method: "switch-view", wid: wid)
     }
 
     /// Navigate to a session's window: switch to its Space, raise it, highlight it

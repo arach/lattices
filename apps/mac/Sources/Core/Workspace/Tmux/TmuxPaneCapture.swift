@@ -112,7 +112,10 @@ enum TmuxPaneCapture {
         in sessions: [TmuxSession],
         ttyIndex: [String: (session: String, paneId: String)]
     ) -> [Target] {
-        let ttyByPane = Dictionary(uniqueKeysWithValues: ttyIndex.map { ($0.value.paneId, $0.key) })
+        var ttyByPane: [String: String] = [:]
+        for (tty, link) in ttyIndex {
+            ttyByPane[link.paneId] = tty
+        }
         return sessions.flatMap { session in
             session.panes.map { pane in
                 Target(

@@ -204,7 +204,6 @@ struct AppShellView: View {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    /// Routine warn counts are not an alarm. Color only if something actually failed.
     private var quietLogStatus: some View {
         let summary = activityLog.summary
         return HStack(spacing: 6) {

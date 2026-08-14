@@ -44,10 +44,16 @@ enum DesktopSnapshot {
 
     private static func currentSpaceId(for front: WindowEntry?, displays: JSON) -> Int? {
         guard case .array(let items) = displays else { return nil }
-        if let spaceId = front?.spaceIds.first {
-            return spaceId
+        let displayCurrentIds: [Int] = items.compactMap { item in
+            guard case .object(let obj) = item else { return nil }
+            return obj["currentSpaceId"]?.intValue
         }
-        guard case .object(let first) = items.first else { return nil }
-        return first["currentSpaceId"]?.intValue
+        if let frontIds = front?.spaceIds, !frontIds.isEmpty {
+            if let match = frontIds.first(where: { displayCurrentIds.contains($0) }) {
+                return match
+            }
+            return frontIds.first
+        }
+        return displayCurrentIds.first
     }
 }

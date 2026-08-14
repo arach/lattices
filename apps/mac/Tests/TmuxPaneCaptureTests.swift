@@ -84,4 +84,24 @@ final class TmuxPaneCaptureTests: XCTestCase {
         XCTAssertEqual(target.paneId, "%3")
         XCTAssertEqual(target.tty, "/dev/ttys012")
     }
+
+    func testDuplicateTTYsForSamePaneDoNotTrap() throws {
+        let sessions = [
+            session("lattices-aaaaaa", panes: [("%3", "claude")]),
+        ]
+        let target = try TmuxPaneCapture.resolve(
+            session: nil,
+            pane: nil,
+            paneId: "%3",
+            tty: nil,
+            sessions: sessions,
+            ttyIndex: [
+                "ttys012": (session: "lattices-aaaaaa", paneId: "%3"),
+                "ttys013": (session: "lattices-aaaaaa", paneId: "%3"),
+            ]
+        )
+        XCTAssertEqual(target.paneId, "%3")
+        XCTAssertEqual(target.session, "lattices-aaaaaa")
+        XCTAssertNotNil(target.tty)
+    }
 }
