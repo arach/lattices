@@ -99,6 +99,17 @@ enum TmuxQuery {
         return sessions
     }
 
+    /// Last `lineLimit` lines of a pane. `includeEscapes` keeps SGR via `-e`.
+    static func capturePane(paneId: String, lineLimit: Int = 80, includeEscapes: Bool = false) -> String? {
+        guard let tmux = resolvedPath else { return nil }
+        let clamped = max(1, min(lineLimit, 500))
+        var args = [tmux, "capture-pane", "-p", "-S", "-\(clamped)", "-t", paneId]
+        if includeEscapes {
+            args.insert("-e", at: 3)
+        }
+        return shell(args)
+    }
+
     private static func shell(_ args: [String]) -> String {
         ProcessQuery.shell(args)
     }

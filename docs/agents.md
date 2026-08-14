@@ -51,8 +51,15 @@ Useful CLI discovery commands:
 ```bash
 lattices help
 lattices call api.schema
+lattices call desktop.snapshot
+lattices map
+lattices call terminals.capture '{"session":"<live-session>","lines":40}'
 lattices voice intents
 ```
+
+`desktop.snapshot` is the structured “what is in front of the user?” read.
+`lattices map` draws that same current-space view as ASCII. `terminals.capture`
+is exact tmux pane text — not OCR.
 
 For window actions, resolve before mutating when target identity matters:
 

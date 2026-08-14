@@ -416,6 +416,8 @@ final class LatticesApi {
             Field(name: "version", type: "string", required: true, description: "Daemon version"),
             Field(name: "windowCount", type: "int", required: true, description: "Tracked window count"),
             Field(name: "tmuxSessionCount", type: "int", required: true, description: "Active tmux session count"),
+            Field(name: "permissions", type: "object", required: true, description: "Accessibility and screen-recording grant state"),
+            Field(name: "frontmostWid", type: "int", required: false, description: "Frontmost placeable window id"),
         ]))
 
         api.model(ApiModel(name: "OverlayLayer", fields: [
@@ -538,6 +540,19 @@ final class LatticesApi {
             handler: { _ in
                 let entries = DesktopModel.shared.allWindows()
                 return .array(entries.map { Encoders.window($0) })
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "desktop.snapshot",
+            description: "One-call read of the current desktop: frontmost window, layer, displays, sessions, and permissions",
+            access: .read,
+            params: [
+                Param(name: "includeOffscreen", type: "bool", required: false, description: "Include off-screen windows (default false)"),
+            ],
+            returns: .custom("Desktop snapshot object"),
+            handler: { params in
+                DesktopSnapshot.build(includeOffscreen: params?["includeOffscreen"]?.boolValue ?? false)
             }
         ))
 
@@ -982,46 +997,7 @@ final class LatticesApi {
             params: [],
             returns: .array(model: "Display"),
             handler: { _ in
-                let displays = WindowTiler.getDisplaySpaces()
-                let screens: [NSScreen]
-                if Thread.isMainThread {
-                    screens = NSScreen.screens
-                } else {
-                    screens = DispatchQueue.main.sync { NSScreen.screens }
-                }
-                let primaryHeight = screens.first?.frame.height ?? 0
-                return .array(displays.map { display in
-                    let screen = DisplayGeometryMapper.screen(for: display, in: screens)
-                    func topLeftFrame(_ frame: CGRect?) -> JSON {
-                        guard let frame else {
-                            return .object(["x": .double(0), "y": .double(0), "w": .double(0), "h": .double(0)])
-                        }
-                        let converted = DisplayGeometryMapper.topLeftFrame(frame, primaryHeight: primaryHeight)
-                        return .object([
-                            "x": .double(converted.origin.x),
-                            "y": .double(converted.origin.y),
-                            "w": .double(converted.width),
-                            "h": .double(converted.height),
-                        ])
-                    }
-                    return .object([
-                        "displayIndex": .int(display.displayIndex),
-                        "displayId": .string(display.displayId),
-                        "name": .string(screen?.localizedName ?? display.displayId),
-                        "frame": topLeftFrame(screen?.frame),
-                        "visibleFrame": topLeftFrame(screen?.visibleFrame),
-                        "currentSpaceId": .int(display.currentSpaceId),
-                        "spaces": .array(display.spaces.map { space in
-                            .object([
-                                "id": .int(space.id),
-                                "index": .int(space.index),
-                                "name": .string(Self.defaultSpaceName(for: space.index)),
-                                "display": .int(space.display),
-                                "isCurrent": .bool(space.isCurrent)
-                            ])
-                        })
-                    ])
-                })
+                Encoders.displays()
             }
         ))
 
@@ -1305,13 +1281,18 @@ final class LatticesApi {
             returns: .object(model: "DaemonStatus"),
             handler: { _ in
                 let uptime = Date().timeIntervalSince(api.startTime)
-                return .object([
+                var obj: [String: JSON] = [
                     "uptime": .double(uptime),
                     "clientCount": .int(DaemonServer.shared.clientCount),
                     "version": .string("1.0.0"),
                     "windowCount": .int(DesktopModel.shared.windows.count),
-                    "tmuxSessionCount": .int(TmuxModel.shared.sessions.count)
-                ])
+                    "tmuxSessionCount": .int(TmuxModel.shared.sessions.count),
+                    "permissions": PermissionChecker.shared.snapshotJSON(),
+                ]
+                if let front = DesktopModel.shared.frontmostWindow() {
+                    obj["frontmostWid"] = .int(Int(front.wid))
+                }
+                return .object(obj)
             }
         ))
 
@@ -1433,6 +1414,31 @@ final class LatticesApi {
                 }
 
                 return .array(instances.map { Encoders.terminalInstance($0) })
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "terminals.capture",
+            description: "Read exact tmux pane text (not OCR)",
+            access: .read,
+            params: [
+                Param(name: "session", type: "string", required: false, description: "tmux or lattices session name"),
+                Param(name: "pane", type: "string", required: false, description: "Pane name or %id"),
+                Param(name: "paneId", type: "string", required: false, description: "tmux pane id (%12)"),
+                Param(name: "tty", type: "string", required: false, description: "TTY such as /dev/ttys003"),
+                Param(name: "lines", type: "int", required: false, description: "Last N lines (default 80, max 500)"),
+                Param(name: "escape", type: "bool", required: false, description: "Keep ANSI escapes (default false)"),
+            ],
+            returns: .custom("Captured pane text and identity"),
+            handler: { params in
+                try TmuxPaneCapture.capture(
+                    session: params?["session"]?.stringValue,
+                    pane: params?["pane"]?.stringValue,
+                    paneId: params?["paneId"]?.stringValue,
+                    tty: params?["tty"]?.stringValue,
+                    lines: params?["lines"]?.intValue ?? 80,
+                    includeEscapes: params?["escape"]?.boolValue ?? false
+                )
             }
         ))
 
@@ -2749,7 +2755,7 @@ final class LatticesApi {
                         let result = Self.syncOnMain {
                             WindowTiler.moveViaCGS(wid: wid, fromSpaces: fromSpaces, toSpace: spaceId)
                         }
-                        guard let result, case .success(let method) = result else {
+                        guard let result, case .success(let method, _) = result else {
                             throw RouterError.custom("Space moves are unavailable: CGS APIs could not be loaded")
                         }
                         return .object([
@@ -2762,15 +2768,14 @@ final class LatticesApi {
                             "targetResolution": .string("wid"),
                         ])
                     }
-                    // Legacy contract: session + spaceId, fire-and-forget.
                     if params?["dryRun"]?.boolValue == true {
                         return .object(["ok": .bool(true), "status": .string("planned"), "dryRun": .bool(true)])
                     }
                     let terminal = Preferences.shared.terminal
-                    DispatchQueue.main.async {
-                        _ = WindowTiler.moveWindowToSpace(session: session!, terminal: terminal, spaceId: spaceId)
+                    let result = Self.syncOnMain {
+                        WindowTiler.moveWindowToSpace(session: session!, terminal: terminal, spaceId: spaceId)
                     }
-                    return .object(["ok": .bool(true)])
+                    return Self.moveReceipt(result, spaceId: spaceId, session: session)
                 }
 
                 guard hasDisplay || hasPlacement else {
@@ -2785,7 +2790,7 @@ final class LatticesApi {
             description: "Launch a project's tmux session",
             access: .mutate,
             params: [Param(name: "path", type: "string", required: true, description: "Absolute project path")],
-            returns: .ok,
+            returns: .custom("Launch receipt with session, wid, alreadyRunning, verified"),
             handler: { params in
                 guard let path = params?["path"]?.stringValue else {
                     throw RouterError.missingParam("path")
@@ -2793,10 +2798,18 @@ final class LatticesApi {
                 guard let project = ProjectScanner.shared.projects.first(where: { $0.path == path }) else {
                     throw RouterError.notFound("project at \(path)")
                 }
-                DispatchQueue.main.async {
+                let alreadyRunning = TmuxQuery.listSessions().contains { $0.name == project.sessionName }
+                Self.syncOnMain {
                     SessionManager.launch(project: project)
                 }
-                return .object(["ok": .bool(true)])
+                let waited = Self.waitForSession(name: project.sessionName, timeout: 4)
+                return .object([
+                    "ok": .bool(waited.verified),
+                    "session": .string(project.sessionName),
+                    "alreadyRunning": .bool(alreadyRunning),
+                    "verified": .bool(waited.verified),
+                    "wid": waited.wid.map { .int(Int($0)) } ?? .null,
+                ])
             }
         ))
 
@@ -2805,13 +2818,18 @@ final class LatticesApi {
             description: "Kill a tmux session by name",
             access: .mutate,
             params: [Param(name: "name", type: "string", required: true, description: "Session name")],
-            returns: .ok,
+            returns: .custom("Kill receipt with verified"),
             handler: { params in
                 guard let name = params?["name"]?.stringValue else {
                     throw RouterError.missingParam("name")
                 }
                 SessionManager.killByName(name)
-                return .object(["ok": .bool(true)])
+                let gone = !TmuxQuery.listSessions().contains { $0.name == name }
+                return .object([
+                    "ok": .bool(gone),
+                    "session": .string(name),
+                    "verified": .bool(gone),
+                ])
             }
         ))
 
@@ -4613,6 +4631,67 @@ private extension LatticesApi {
         return try DispatchQueue.main.sync(execute: work)
     }
 
+    static func waitForSession(name: String, timeout: TimeInterval) -> (wid: UInt32?, verified: Bool) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let window = DesktopModel.shared.windowForSession(name) {
+                return (window.wid, true)
+            }
+            if TmuxQuery.listSessions().contains(where: { $0.name == name }) {
+                return (nil, true)
+            }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        let wid = DesktopModel.shared.windowForSession(name)?.wid
+        let hasSession = TmuxQuery.listSessions().contains(where: { $0.name == name })
+        return (wid, wid != nil || hasSession)
+    }
+
+    static func moveReceipt(
+        _ result: WindowTiler.MoveResult,
+        spaceId: Int,
+        session: String?
+    ) -> JSON {
+        let wid: UInt32?
+        switch result {
+        case .success(_, let located), .alreadyOnSpace(let located):
+            wid = located
+        case .windowNotFound, .failed:
+            wid = nil
+        }
+
+        var obj: [String: JSON] = [
+            "spaceId": .int(spaceId),
+        ]
+        if let wid {
+            obj["wid"] = .int(Int(wid))
+        }
+        if let session {
+            obj["session"] = .string(session)
+            obj["targetResolution"] = .string("session")
+        }
+        switch result {
+        case .success(let method, _):
+            obj["ok"] = .bool(true)
+            obj["moved"] = .bool(method == "CGS")
+            obj["method"] = .string(method)
+        case .alreadyOnSpace:
+            obj["ok"] = .bool(true)
+            obj["moved"] = .bool(false)
+            obj["method"] = .string("already-on-space")
+        case .windowNotFound:
+            obj["ok"] = .bool(false)
+            obj["moved"] = .bool(false)
+            obj["method"] = .string("window-not-found")
+        case .failed(let reason):
+            obj["ok"] = .bool(false)
+            obj["moved"] = .bool(false)
+            obj["method"] = .string("failed")
+            obj["error"] = .string(reason)
+        }
+        return .object(obj)
+    }
+
     static func windowEntry(forSession session: String) -> WindowEntry? {
         if let entry = DesktopModel.shared.windowForSession(session) {
             return entry
@@ -4933,6 +5012,87 @@ private extension LatticesApi {
 // MARK: - Encoders
 
 enum Encoders {
+    static func displays() -> JSON {
+        let displays = WindowTiler.getDisplaySpaces()
+        let screens: [NSScreen]
+        if Thread.isMainThread {
+            screens = NSScreen.screens
+        } else {
+            screens = DispatchQueue.main.sync { NSScreen.screens }
+        }
+        let primaryHeight = screens.first?.frame.height ?? 0
+        return .array(displays.map { display in
+            let screen = DisplayGeometryMapper.screen(for: display, in: screens)
+            func topLeftFrame(_ frame: CGRect?) -> JSON {
+                guard let frame else {
+                    return .object(["x": .double(0), "y": .double(0), "w": .double(0), "h": .double(0)])
+                }
+                let converted = DisplayGeometryMapper.topLeftFrame(frame, primaryHeight: primaryHeight)
+                return .object([
+                    "x": .double(converted.origin.x),
+                    "y": .double(converted.origin.y),
+                    "w": .double(converted.width),
+                    "h": .double(converted.height),
+                ])
+            }
+            return .object([
+                "displayIndex": .int(display.displayIndex),
+                "displayId": .string(display.displayId),
+                "name": .string(screen?.localizedName ?? display.displayId),
+                "frame": topLeftFrame(screen?.frame),
+                "visibleFrame": topLeftFrame(screen?.visibleFrame),
+                "currentSpaceId": .int(display.currentSpaceId),
+                "spaces": .array(display.spaces.map { space in
+                    .object([
+                        "id": .int(space.id),
+                        "index": .int(space.index),
+                        "name": .string(LatticesApi.defaultSpaceName(for: space.index)),
+                        "display": .int(space.display),
+                        "isCurrent": .bool(space.isCurrent)
+                    ])
+                })
+            ])
+        })
+    }
+
+    static func frontmost(_ w: WindowEntry) -> JSON {
+        return .object([
+            "wid": .int(Int(w.wid)),
+            "app": .string(w.app),
+            "title": .string(w.title),
+            "pid": .int(Int(w.pid)),
+        ])
+    }
+
+    static func snapshotWindow(_ w: WindowEntry, focusedWid: UInt32?) -> JSON {
+        var obj: [String: JSON] = [
+            "wid": .int(Int(w.wid)),
+            "app": .string(w.app),
+            "pid": .int(Int(w.pid)),
+            "title": .string(w.title),
+            "frame": .object([
+                "x": .double(w.frame.x),
+                "y": .double(w.frame.y),
+                "w": .double(w.frame.w),
+                "h": .double(w.frame.h)
+            ]),
+            "spaceIds": .array(w.spaceIds.map { .int($0) }),
+            "isOnScreen": .bool(w.isOnScreen),
+            "zIndex": .int(w.zIndex),
+            "focused": .bool(focusedWid == w.wid),
+        ]
+        if let session = w.latticesSession {
+            obj["latticesSession"] = .string(session)
+        }
+        if let layerTag = DesktopModel.shared.windowLayerTags[w.wid] {
+            obj["layerTag"] = .string(layerTag)
+        }
+        if let date = DesktopModel.shared.lastInteractionDate(for: w.wid) {
+            obj["lastInteraction"] = .string(ISO8601DateFormatter().string(from: date))
+        }
+        return .object(obj)
+    }
+
     static func window(_ w: WindowEntry) -> JSON {
         var obj: [String: JSON] = [
             "wid": .int(Int(w.wid)),

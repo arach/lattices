@@ -11,9 +11,11 @@ import HudsonVoice
 struct SettingsContentView: View {
     private enum SettingsSection: String, CaseIterable, Identifiable {
         case general
+        case permissions
         case shortcuts
         case keyboard
         case mouse
+        case eventViewer
         case hyperspace
         case voice
         case ai
@@ -25,10 +27,12 @@ struct SettingsContentView: View {
 
         var title: String {
             switch self {
-            case .general: return "General"
+            case .general: return "About"
+            case .permissions: return "Permissions"
             case .shortcuts: return "Shortcuts"
             case .keyboard: return "Keyboard"
             case .mouse: return "Mouse"
+            case .eventViewer: return "Event Viewer"
             case .hyperspace: return "Hyperspace"
             case .voice: return "Voice"
             case .ai: return "AI"
@@ -40,10 +44,12 @@ struct SettingsContentView: View {
 
         var icon: String {
             switch self {
-            case .general: return "slider.horizontal.3"
+            case .general: return "info.circle"
+            case .permissions: return "checkmark.shield"
             case .shortcuts: return "command"
             case .keyboard: return "keyboard"
             case .mouse: return "computermouse"
+            case .eventViewer: return "waveform.path.ecg"
             case .hyperspace: return "square.grid.3x3.fill"
             case .voice: return "waveform.badge.mic"
             case .ai: return "sparkles"
@@ -55,10 +61,12 @@ struct SettingsContentView: View {
 
         var eyebrow: String {
             switch self {
-            case .general: return "Workspace"
+            case .general: return "About"
+            case .permissions: return "Access"
             case .shortcuts: return "Controls"
             case .keyboard: return "Keys"
             case .mouse: return "Input"
+            case .eventViewer: return "Inspect"
             case .hyperspace: return "Survey"
             case .voice: return "Capture"
             case .ai: return "Agents"
@@ -71,13 +79,17 @@ struct SettingsContentView: View {
         var summary: String {
             switch self {
             case .general:
-                return "App updates, permissions, terminal defaults, project discovery, and interaction behavior."
+                return "Version, updates, terminal defaults, project discovery, and detach behavior."
+            case .permissions:
+                return "macOS grants for window control, OCR, gestures, and voice."
             case .shortcuts:
                 return "A full map of global hotkeys for workspace movement and tmux flow."
             case .keyboard:
                 return "Caps Lock to Hyper, tap-for-Escape, and key-state recovery."
             case .mouse:
-                return "Cursor marker defaults, middle-click gestures, HUD confirmation, and rule configuration."
+                return "Cursor marker defaults, middle-click gestures, HUD confirmation, and mappings."
+            case .eventViewer:
+                return "Live input events — what this machine’s mouse actually emits."
             case .hyperspace:
                 return "Per-display window surveys, lighting, zoom, and layout for Hyperspace."
             case .voice:
@@ -95,9 +107,9 @@ struct SettingsContentView: View {
 
         var group: String {
             switch self {
-            case .general, .shortcuts:
-                return "Workspace"
-            case .keyboard, .mouse, .hyperspace, .voice:
+            case .general, .permissions, .shortcuts:
+                return "General"
+            case .keyboard, .mouse, .eventViewer, .hyperspace, .voice:
                 return "Control"
             case .ai, .search:
                 return "Intelligence"
@@ -107,7 +119,7 @@ struct SettingsContentView: View {
         }
 
         static var groupedCases: [(String, [SettingsSection])] {
-            ["Workspace", "Control", "Intelligence", "Devices"].compactMap { group in
+            ["General", "Control", "Intelligence", "Devices"].compactMap { group in
                 let sections = allCases.filter { $0.group == group }
                 return sections.isEmpty ? nil : (group, sections)
             }
@@ -130,6 +142,18 @@ struct SettingsContentView: View {
 
     @State private var selectedTab: SettingsSection = .general
     @State private var keyboardRecoveryStatus: String?
+    @State private var shortcutScope: ShortcutScope = .assigned
+
+    private enum ShortcutScope: String, CaseIterable {
+        case assigned
+        case all
+        var label: String {
+            switch self {
+            case .assigned: return "Assigned"
+            case .all: return "All"
+            }
+        }
+    }
     @FocusState private var assistantAuthFieldFocused: Bool
 
     // Hyperspace survey dials — same UserDefaults keys (and defaults) the in-survey
@@ -180,10 +204,6 @@ struct SettingsContentView: View {
 
     // MARK: - Back Bar
 
-    private var currentTabLabel: String {
-        page == .docs ? "Docs" : selectedTab.title
-    }
-
     private var snapModifierBinding: Binding<SnapModifierKey> {
         Binding(
             get: { workspaceManager.snapZonesConfig.modifier ?? .command },
@@ -218,7 +238,7 @@ struct SettingsContentView: View {
                     .onHover { h in if h { NSCursor.pointingHand.push() } else { NSCursor.pop() } }
                 }
 
-                Text(page == .docs ? "Docs" : currentTabLabel)
+                Text(page == .docs ? "Docs" : "Settings")
                     .font(Typo.heading(13))
                     .foregroundColor(Palette.text)
 
@@ -242,14 +262,8 @@ struct SettingsContentView: View {
             HudDivider(color: HudHairline.standard, axis: .vertical)
                 .frame(maxHeight: .infinity)
 
-            VStack(spacing: 0) {
-                settingsSectionHero(selectedTab)
-
-                HudDivider(color: HudHairline.standard)
-
-                selectedSectionContent
-                    .background(Palette.bg)
-            }
+            selectedSectionContent
+                .background(Palette.bg)
         }
         .background(Palette.bg)
     }
@@ -260,51 +274,23 @@ struct SettingsContentView: View {
         // (~480pt) overflows short windows and pushes the shell's status bar off
         // the bottom — every section pane already scrolls, so the rail must too.
         ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .top, spacing: 10) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 7)
-                            .fill(Palette.running.opacity(0.12))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 7)
-                                    .strokeBorder(Palette.running.opacity(0.24), lineWidth: 0.5)
-                            )
-                        Image(systemName: "gearshape")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(Palette.running)
-                    }
-                    .frame(width: 28, height: 28)
+            VStack(alignment: .leading, spacing: 18) {
+                ForEach(SettingsSection.groupedCases, id: \.0) { group, sections in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(group)
+                            .font(Typo.caption(10))
+                            .foregroundColor(Palette.textMuted)
+                            .padding(.horizontal, 10)
+                            .padding(.bottom, 2)
 
-                    Text("Settings")
-                        .font(Typo.heading(14))
-                        .foregroundColor(Palette.text)
-                }
-
-                VStack(alignment: .leading, spacing: 14) {
-                    ForEach(SettingsSection.groupedCases, id: \.0) { group, sections in
-                        VStack(alignment: .leading, spacing: 7) {
-                            HStack(spacing: 8) {
-                                Text(group.uppercased())
-                                    .font(Typo.pixel(10))
-                                    .foregroundColor(Palette.textDim.opacity(0.82))
-                                    .tracking(1.15)
-
-                                Rectangle()
-                                    .fill(Palette.border.opacity(0.65))
-                                    .frame(height: 0.5)
-                            }
-                            .padding(.horizontal, 4)
-
-                            VStack(spacing: 5) {
-                                ForEach(sections) { section in
-                                    settingsTab(section)
-                                }
-                            }
+                        ForEach(sections) { section in
+                            settingsTab(section)
                         }
                     }
                 }
             }
-            .padding(14)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 16)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(Palette.bg.opacity(0.55))
@@ -314,30 +300,10 @@ struct SettingsContentView: View {
         SettingsSidebarRow(
             icon: section.icon,
             title: section.title,
-            eyebrow: section.eyebrow,
-            isActive: selectedTab == section,
-            accent: Palette.running
+            isActive: selectedTab == section
         ) {
             selectedTab = section
         }
-    }
-
-    private func settingsSectionHero(_ section: SettingsSection) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: section.icon)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(Palette.textMuted.opacity(0.82))
-
-            Text(section.title)
-                .font(Typo.heading(14))
-                .foregroundColor(Palette.text)
-
-            Spacer(minLength: 0)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 20)
-        .padding(.vertical, 10)
-        .background(Palette.bg)
     }
 
     @ViewBuilder
@@ -345,12 +311,16 @@ struct SettingsContentView: View {
         switch selectedTab {
         case .general:
             generalContent
+        case .permissions:
+            permissionsContent
         case .shortcuts:
             shortcutsContent
         case .keyboard:
             keyboardContent
         case .mouse:
             mouseGesturesContent
+        case .eventViewer:
+            eventViewerContent
         case .hyperspace:
             hyperspaceContent
         case .voice:
@@ -399,373 +369,167 @@ struct SettingsContentView: View {
 
     // MARK: - General
 
-    private var permissionsAssistantCard: some View {
-        let missing = Capability.allCases.filter { !$0.isGranted }
-        return settingsCard {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Permissions")
-                            .font(Typo.monoBold(12))
+    private var appUpdateCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 8) {
+                        Text("App")
+                            .font(Typo.heading(13))
                             .foregroundColor(Palette.text)
-                        Text(missing.isEmpty ? "Ready for window control, OCR, and voice" : "\(missing.count) permission \(missing.count == 1 ? "needs" : "need") attention")
-                            .font(Typo.mono(9.5))
+                        Text(LatticesRuntime.buildChannelLabel)
+                            .font(Typo.caption(10))
                             .foregroundColor(Palette.textMuted)
                     }
 
-                    Spacer()
-
-                    statusToken(missing.isEmpty ? "All on" : "\(missing.count) off", color: missing.isEmpty ? Palette.running : Palette.detach)
-                }
-
-                Text("Lattices uses these macOS grants for window control, OCR, gestures, shortcuts, and local voice capture.")
-                    .font(Typo.caption(10))
-                    .foregroundColor(Palette.textMuted)
-
-                HStack(spacing: 12) {
-                    ForEach(Capability.allCases) { cap in
-                        HStack(spacing: 4) {
-                            Circle()
-                                .fill(cap.isGranted ? Palette.running : Palette.detach)
-                                .frame(width: 5, height: 5)
-                            Text(cap.title)
-                                .font(Typo.mono(9))
+                    HStack(spacing: 8) {
+                        Text(appUpdater.currentDisplayVersion)
+                            .font(Typo.body(12))
+                            .foregroundColor(Palette.textDim)
+                        if let update = appUpdater.availableUpdate {
+                            Text("v\(update.version) ready")
+                                .font(Typo.caption(11))
+                                .foregroundColor(Palette.detach)
+                        } else if appUpdater.isChecking {
+                            Text("Checking…")
+                                .font(Typo.caption(11))
+                                .foregroundColor(Palette.textMuted)
+                        } else if let error = appUpdater.lastError {
+                            Text(error)
+                                .font(Typo.caption(11))
+                                .foregroundColor(Palette.detach)
+                                .lineLimit(1)
+                        } else if let checked = appUpdater.lastChecked {
+                            Text("Checked \(checked, style: .relative)")
+                                .font(Typo.caption(11))
                                 .foregroundColor(Palette.textMuted)
                         }
                     }
-                    Spacer(minLength: 0)
                 }
 
-                HStack(spacing: 8) {
-                    Button {
-                        PermissionsAssistantWindowController.shared.show(focus: missing.first)
-                    } label: {
-                        Text(missing.isEmpty ? "Open Assistant" : "Set Up")
-                            .font(Typo.monoBold(10))
-                            .foregroundColor(Palette.text)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 5)
-                            .background(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(Palette.surfaceHov)
-                                    .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
-                            )
-                    }
-                    .buttonStyle(.plain)
+                Spacer(minLength: 12)
 
-                    Button {
-                        permChecker.check()
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(Palette.textDim)
-                            .frame(width: 24, height: 22)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Refresh permission status")
+                Toggle("Auto", isOn: $appUpdater.autoCheckEnabled)
+                    .font(Typo.caption(11))
+                    .toggleStyle(.checkbox)
+                    .foregroundColor(Palette.textDim)
 
-                    Spacer()
-
-                    Button {
-                        permChecker.openAutomationSettings()
-                    } label: {
-                        Text("Automation")
-                            .font(Typo.caption(9))
-                            .foregroundColor(Palette.textMuted.opacity(0.9))
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        permChecker.openInputMonitoringSettings()
-                    } label: {
-                        Text("Input Monitoring")
-                            .font(Typo.caption(9))
-                            .foregroundColor(Palette.textMuted.opacity(0.9))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-    }
-
-    private var permissionsDetailCard: some View {
-        let allCapabilitiesGranted = Capability.allCases.allSatisfy(\.isGranted)
-        return settingsCard {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .center, spacing: 8) {
-                    Image(systemName: allCapabilitiesGranted ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(allCapabilitiesGranted ? Palette.running : Palette.detach)
-                    Text("macOS permissions")
-                        .font(Typo.mono(12))
-                        .foregroundColor(Palette.text)
-                    Spacer()
-                    Button {
-                        permChecker.check()
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(Palette.textDim)
-                            .frame(width: 24, height: 22)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Refresh permission status")
-                }
-
-                Text("Window discovery, gestures, remaps, OCR, voice capture, and synthetic shortcuts all depend on these macOS grants.")
-                    .font(Typo.caption(10))
-                    .foregroundColor(Palette.textMuted)
-
-                VStack(alignment: .leading, spacing: 6) {
-                    permissionSettingsRow(
-                        "Accessibility",
-                        granted: permChecker.accessibility,
-                        detail: "Required for mouse gestures, keyboard remaps, window movement, and focusing windows."
-                    ) {
-                        permChecker.requestAccessibility()
-                    }
-
-                    permissionSettingsRow(
-                        "Screen Recording",
-                        granted: permChecker.screenRecording,
-                        detail: "Required for reliable window titles, OCR, and Space-aware window discovery."
-                    ) {
-                        permChecker.requestScreenRecording()
-                    }
-
-                    permissionSettingsRow(
-                        "Microphone",
-                        granted: permChecker.microphoneGranted,
-                        detail: "Required for local dictation and voice commands hosted by Lattices."
-                    ) {
-                        permChecker.requestMicrophone()
-                    }
-
-                    permissionReviewRow(
-                        "Automation",
-                        detail: "Needed when Lattices sends shortcuts through System Events, including gesture-triggered dictation."
-                    ) {
-                        permChecker.openAutomationSettings()
-                    }
-
-                    permissionReviewRow(
-                        "Input Monitoring",
-                        detail: "Useful to review if global input capture or synthetic shortcut behavior starts failing."
-                    ) {
-                        permChecker.openInputMonitoringSettings()
-                    }
-                }
-            }
-        }
-    }
-
-    private var appUpdateCard: some View {
-        settingsCard {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 8) {
-                            Text("Lattices app")
-                                .font(Typo.monoBold(12))
-                                .foregroundColor(Palette.text)
-                            buildChannelBadge
-                        }
-
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Text(appUpdater.currentDisplayVersion)
-                                .font(Typo.monoBold(13))
-                                .foregroundColor(Palette.text)
-                            Text(LatticesRuntime.buildStatusLabel)
-                                .font(Typo.monoBold(9.5))
-                                .foregroundColor(Palette.textMuted)
-                        }
-                    }
-
-                    Spacer()
-
-                    Toggle("Auto", isOn: $appUpdater.autoCheckEnabled)
-                        .font(Typo.caption(9))
-                        .toggleStyle(.checkbox)
-                        .foregroundColor(Palette.textMuted.opacity(0.9))
-                }
-
-                if let update = appUpdater.availableUpdate {
-                    Text("New version v\(update.version) is ready")
-                        .font(Typo.monoBold(10))
-                        .foregroundColor(Palette.detach)
-                } else if appUpdater.isChecking {
-                    Text("Checking for updates...")
-                        .font(Typo.caption(9))
-                        .foregroundColor(Palette.textMuted)
-                } else if let error = appUpdater.lastError {
-                    Text(error)
-                        .font(Typo.caption(9))
-                        .foregroundColor(Palette.detach.opacity(0.9))
-                } else if let checked = appUpdater.lastChecked {
-                    Text("Last checked \(checked, style: .relative)")
-                        .font(Typo.caption(9))
-                        .foregroundColor(Palette.textMuted.opacity(0.8))
-                }
-
-                HStack(spacing: 10) {
-                    Button {
-                        appUpdater.promptForUpdate()
-                    } label: {
-                        Text(appUpdater.isUpdating ? "Preparing..." : (appUpdater.availableUpdate == nil ? "Check for Updates" : "Update to v\(appUpdater.availableUpdate?.version ?? "")"))
-                            .font(Typo.monoBold(10))
-                            .foregroundColor(Palette.text)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 5)
-                            .background(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(Palette.surfaceHov)
-                                    .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(appUpdater.isUpdating)
-
-                    Button {
+                Button {
+                    if appUpdater.availableUpdate == nil {
                         Task { await appUpdater.check() }
-                    } label: {
-                        Text(appUpdater.isChecking ? "Checking..." : "Check Now")
-                            .font(Typo.caption(9))
-                            .foregroundColor(Palette.textMuted.opacity(0.9))
+                    } else {
+                        appUpdater.promptForUpdate()
                     }
-                    .buttonStyle(.plain)
-                    .disabled(appUpdater.isChecking)
-
-                    Spacer()
+                } label: {
+                    Text(appUpdater.isUpdating
+                         ? "Preparing…"
+                         : (appUpdater.availableUpdate == nil
+                            ? (appUpdater.isChecking ? "Checking…" : "Check")
+                            : "Update"))
+                        .font(Typo.caption(11))
+                        .foregroundColor(Palette.textDim)
                 }
+                .buttonStyle(.plain)
+                .disabled(appUpdater.isUpdating || appUpdater.isChecking)
             }
         }
     }
 
     private var interactionBehaviorCard: some View {
-        settingsCard {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Session behavior")
-                    .font(Typo.monoBold(12))
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 12) {
+                Text("Detach")
+                    .font(Typo.heading(13))
                     .foregroundColor(Palette.text)
-
-                HStack {
-                    Text("Detach mode")
-                        .font(Typo.mono(10))
-                        .foregroundColor(Palette.textDim)
-                    Spacer()
-                    Picker("", selection: $prefs.mode) {
-                        Text("Learning").tag(InteractionMode.learning)
-                        Text("Auto").tag(InteractionMode.auto)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .frame(width: 160)
-                }
-
-                Text(prefs.mode == .learning
-                    ? "Shows keybinding hints when you detach from a tmux session."
-                    : "Detaches sessions quietly once Lattices has done the workspace handoff.")
-                    .font(Typo.caption(9.5))
-                    .foregroundColor(Palette.textMuted.opacity(0.75))
+                Spacer(minLength: 12)
+                SettingsChoiceBar(
+                    selection: $prefs.mode,
+                    options: [
+                        (.learning, "Learning"),
+                        (.auto, "Auto"),
+                    ]
+                )
             }
+
+            Text(prefs.mode == .learning
+                 ? "Shows keybinding hints when you detach from a tmux session."
+                 : "Detaches quietly after Lattices hands off the workspace.")
+                .font(Typo.caption(11))
+                .foregroundColor(Palette.textMuted)
         }
     }
 
     private var terminalSettingsCard: some View {
-        settingsCard {
-            VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 12) {
                 Text("Terminal")
-                    .font(Typo.monoBold(12))
+                    .font(Typo.heading(13))
                     .foregroundColor(Palette.text)
-
-                Picker("", selection: $prefs.terminal) {
-                    ForEach(Terminal.installed) { t in
-                        Text(t.rawValue).tag(t)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-
-                Text("Used when Lattices attaches to tmux sessions.")
-                    .font(Typo.caption(9.5))
-                    .foregroundColor(Palette.textMuted.opacity(0.75))
+                Spacer(minLength: 12)
+                SettingsChoiceBar(
+                    selection: $prefs.terminal,
+                    options: Terminal.installed.map { ($0, $0.rawValue) }
+                )
             }
+
+            Text("Used when Lattices attaches to tmux sessions.")
+                .font(Typo.caption(11))
+                .foregroundColor(Palette.textMuted)
         }
     }
 
     private var projectDiscoveryCard: some View {
-        settingsCard {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Project discovery")
-                    .font(Typo.monoBold(12))
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 10) {
+                Text("Projects")
+                    .font(Typo.heading(13))
                     .foregroundColor(Palette.text)
 
-                Text("Project scan root")
-                    .font(Typo.mono(10))
-                    .foregroundColor(Palette.textDim)
+                TextField("~/dev", text: $prefs.scanRoot)
+                    .textFieldStyle(.plain)
+                    .font(Typo.body(12))
+                    .foregroundColor(Palette.text)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(HudSurface.control)
+                            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(HudHairline.subtle, lineWidth: 0.5))
+                    )
 
-                HStack(spacing: 6) {
-                    TextField("~/dev", text: $prefs.scanRoot)
-                        .textFieldStyle(.plain)
-                        .font(Typo.mono(11))
-                        .foregroundColor(Palette.text)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .background(
-                            RoundedRectangle(cornerRadius: 5)
-                                .fill(HudSurface.control)
-                                .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(HudHairline.standard, lineWidth: 0.5))
-                        )
-
-                    Button {
-                        let panel = NSOpenPanel()
-                        panel.canChooseDirectories = true
-                        panel.canChooseFiles = false
-                        panel.allowsMultipleSelection = false
-                        if !prefs.scanRoot.isEmpty {
-                            panel.directoryURL = URL(fileURLWithPath: prefs.scanRoot)
-                        }
-                        if panel.runModal() == .OK, let url = panel.url {
-                            prefs.scanRoot = url.path
-                        }
-                    } label: {
-                        Image(systemName: "folder")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(Palette.textDim)
-                            .frame(width: 26, height: 24)
-                            .background(
-                                RoundedRectangle(cornerRadius: 5)
-                                    .fill(HudSurface.control)
-                                    .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(HudHairline.standard, lineWidth: 0.5))
-                            )
+                Button {
+                    let panel = NSOpenPanel()
+                    panel.canChooseDirectories = true
+                    panel.canChooseFiles = false
+                    panel.allowsMultipleSelection = false
+                    if !prefs.scanRoot.isEmpty {
+                        panel.directoryURL = URL(fileURLWithPath: prefs.scanRoot)
                     }
-                    .buttonStyle(.plain)
-                    .help("Choose scan root")
-                }
-
-                HStack {
-                    Text("Scans for .lattices.json project configs.")
-                        .font(Typo.caption(9))
-                        .foregroundColor(Palette.textMuted.opacity(0.7))
-                    Spacer()
-                    Button {
-                        scanner.updateRoot(prefs.scanRoot)
-                        scanner.scan()
-                    } label: {
-                        Text("Rescan")
-                            .font(Typo.monoBold(10))
-                            .foregroundColor(Palette.text)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 4)
-                            .background(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(Palette.surfaceHov)
-                                    .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
-                            )
+                    if panel.runModal() == .OK, let url = panel.url {
+                        prefs.scanRoot = url.path
                     }
-                    .buttonStyle(.plain)
+                } label: {
+                    Image(systemName: "folder")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(Palette.textMuted)
                 }
+                .buttonStyle(.plain)
+                .help("Choose scan root")
+
+                Button {
+                    scanner.updateRoot(prefs.scanRoot)
+                    scanner.scan()
+                } label: {
+                    Text("Rescan")
+                        .font(Typo.caption(11))
+                        .foregroundColor(Palette.textDim)
+                }
+                .buttonStyle(.plain)
             }
+
+            Text("Scans this folder for .lattices.json configs.")
+                .font(Typo.caption(11))
+                .foregroundColor(Palette.textMuted)
         }
     }
 
@@ -775,63 +539,42 @@ struct SettingsContentView: View {
             eyebrow: "Gestures",
             summary: "Mouse gestures and drag snapping live alongside the shortcuts they trigger."
         ) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .top, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("Drag-to-snap")
-                            .font(Typo.monoBold(11))
-                            .foregroundColor(Palette.text)
-                        Text("Hold a modifier while dragging a window to reveal snap targets.")
-                            .font(Typo.caption(10))
-                            .foregroundColor(Palette.textMuted)
-                    }
-
-                    Spacer()
-
-                    Toggle("", isOn: $prefs.dragSnapEnabled)
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
-                        .labelsHidden()
+            VStack(alignment: .leading, spacing: 14) {
+                settingsPrefRow(
+                    "Drag-to-snap",
+                    caption: "Hold a modifier while dragging a window to reveal snap targets."
+                ) {
+                    SettingsSwitch(isOn: $prefs.dragSnapEnabled)
                 }
 
-                HStack {
-                    Text("Snap modifier")
-                        .font(Typo.mono(10))
-                        .foregroundColor(Palette.textDim)
-                    Spacer()
-                    Picker("", selection: snapModifierBinding) {
-                        ForEach(SnapModifierKey.allCases) { modifier in
-                            Text(modifier.shortLabel).tag(modifier)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .frame(width: 220)
+                settingsPrefRow("Snap modifier") {
+                    SettingsChoiceBar(
+                        selection: snapModifierBinding,
+                        options: SnapModifierKey.allCases.map { ($0, $0.shortLabel) }
+                    )
                 }
 
-                cardDivider
-
-                HStack(alignment: .top, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("Middle-click gestures")
-                            .font(Typo.monoBold(11))
-                            .foregroundColor(Palette.text)
-                        Text("Directional mouse gestures can switch Spaces, open the Screen Map, or trigger dictation.")
-                            .font(Typo.caption(10))
-                            .foregroundColor(Palette.textMuted)
-                    }
-
-                    Spacer()
-
-                    Toggle("", isOn: $prefs.mouseGesturesEnabled)
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
-                        .labelsHidden()
+                settingsPrefRow(
+                    "Middle-click gestures",
+                    caption: "Switch Spaces, open the Screen Map, or trigger dictation."
+                ) {
+                    SettingsSwitch(isOn: $prefs.mouseGesturesEnabled)
                 }
 
-                cardDivider
+                settingsPrefRow("Visual confirmation") {
+                    SettingsSwitch(isOn: $prefs.mouseGestureHUDVisualEnabled)
+                }
 
-                mouseGestureHUDSettingsControls
+                settingsPrefRow("Audio confirmation") {
+                    SettingsSwitch(isOn: $prefs.mouseGestureHUDAudioEnabled)
+                }
+
+                settingsPrefRow("HUD style") {
+                    SettingsChoiceBar(
+                        selection: $prefs.mouseGestureHUDStyle,
+                        options: MouseGestureHUDStyle.allCases.map { ($0, $0.label) }
+                    )
+                }
 
                 breakerStatusRow(
                     state: mouseGestureController.breakerState,
@@ -845,7 +588,7 @@ struct SettingsContentView: View {
 
     private var keyboardContent: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 20) {
                 settingsCard {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack(alignment: .top, spacing: 12) {
@@ -860,10 +603,7 @@ struct SettingsContentView: View {
 
                             Spacer()
 
-                            Toggle("", isOn: $prefs.keyboardRemapsEnabled)
-                                .toggleStyle(.switch)
-                                .controlSize(.small)
-                                .labelsHidden()
+                            SettingsSwitch(isOn: $prefs.keyboardRemapsEnabled)
                         }
 
                         HStack(spacing: 10) {
@@ -957,59 +697,28 @@ struct SettingsContentView: View {
                     }
                 }
             }
-            .padding(16)
-            .frame(maxWidth: 760, alignment: .leading)
+            .padding(.horizontal, 28)
+            .padding(.vertical, 22)
+            .frame(maxWidth: 680, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
     private var mouseGestureHUDSettingsControls: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Gesture confirmation HUD")
-                .font(Typo.monoBold(10.5))
-                .foregroundColor(Palette.text)
-
-            HStack(spacing: 12) {
-                HStack {
-                    Text("Visual")
-                        .font(Typo.mono(10))
-                        .foregroundColor(Palette.textDim)
-                    Spacer()
-                    Toggle("", isOn: $prefs.mouseGestureHUDVisualEnabled)
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
-                        .labelsHidden()
-                }
-
-                HStack {
-                    Text("Audio")
-                        .font(Typo.mono(10))
-                        .foregroundColor(Palette.textDim)
-                    Spacer()
-                    Toggle("", isOn: $prefs.mouseGestureHUDAudioEnabled)
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
-                        .labelsHidden()
-                }
+        VStack(alignment: .leading, spacing: 14) {
+            settingsPrefRow("Visual confirmation") {
+                SettingsSwitch(isOn: $prefs.mouseGestureHUDVisualEnabled)
             }
-
-            HStack {
-                Text("Style")
-                    .font(Typo.mono(10))
-                    .foregroundColor(Palette.textDim)
-                Spacer()
-                Picker("", selection: $prefs.mouseGestureHUDStyle) {
-                    ForEach(MouseGestureHUDStyle.allCases) { style in
-                        Text(style.label).tag(style)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 210)
+            settingsPrefRow("Audio confirmation") {
+                SettingsSwitch(isOn: $prefs.mouseGestureHUDAudioEnabled)
+            }
+            settingsPrefRow("HUD style") {
+                SettingsChoiceBar(
+                    selection: $prefs.mouseGestureHUDStyle,
+                    options: MouseGestureHUDStyle.allCases.map { ($0, $0.label) }
+                )
             }
         }
-        .padding(10)
-        .background(shortcutsInsetPanel)
     }
 
     private var cursorMarkerSettingsControls: some View {
@@ -1024,58 +733,32 @@ struct SettingsContentView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            HStack {
-                Text("Shape")
-                    .font(Typo.mono(10))
-                    .foregroundColor(Palette.textDim)
-                Spacer()
-                Picker("", selection: $prefs.cursorMarkerShape) {
-                    ForEach(CursorMarkerShape.settingsOptions) { shape in
-                        Text(shape.label).tag(shape)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 210)
+            settingsPrefRow("Shape") {
+                SettingsChoiceBar(
+                    selection: $prefs.cursorMarkerShape,
+                    options: CursorMarkerShape.settingsOptions.map { ($0, $0.label) }
+                )
             }
 
-            HStack {
-                Text("Rotation")
-                    .font(Typo.mono(10))
-                    .foregroundColor(Palette.textDim)
-                Spacer()
-                Picker("", selection: $prefs.cursorMarkerAngleDeg) {
-                    ForEach([-8, -16], id: \.self) { angle in
-                        Text("\(angle)deg").tag(angle)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 160)
+            settingsPrefRow("Rotation") {
+                SettingsChoiceBar(
+                    selection: $prefs.cursorMarkerAngleDeg,
+                    options: [(-8, "−8°"), (-16, "−16°")]
+                )
             }
 
-            HStack {
-                Text("Size")
-                    .font(Typo.mono(10))
-                    .foregroundColor(Palette.textDim)
-                Spacer()
-                Picker("", selection: $prefs.cursorMarkerSize) {
-                    ForEach(CursorMarkerSize.settingsOptions) { size in
-                        Text(size.label).tag(size)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 210)
+            settingsPrefRow("Size") {
+                SettingsChoiceBar(
+                    selection: $prefs.cursorMarkerSize,
+                    options: CursorMarkerSize.settingsOptions.map { ($0, $0.label) }
+                )
             }
         }
-        .padding(10)
-        .background(shortcutsInsetPanel)
     }
 
     private var mouseGesturesContent: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 20) {
                 settingsCard {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(spacing: 12) {
@@ -1083,10 +766,7 @@ struct SettingsContentView: View {
                                 .font(Typo.monoBold(11))
                                 .foregroundColor(Palette.text)
                             Spacer()
-                            Toggle("", isOn: $prefs.mouseGesturesEnabled)
-                                .toggleStyle(.switch)
-                                .controlSize(.small)
-                                .labelsHidden()
+                            SettingsSwitch(isOn: $prefs.mouseGesturesEnabled)
                         }
 
                         cardDivider
@@ -1101,8 +781,6 @@ struct SettingsContentView: View {
 
                         mouseShortcutMappingMatrix(title: "Active mappings", limit: 8)
 
-                        cardDivider
-
                         breakerStatusRow(
                             state: mouseGestureController.breakerState,
                             label: "Mouse gestures"
@@ -1110,10 +788,7 @@ struct SettingsContentView: View {
                             mouseGestureController.reArmAfterBreakerTrip()
                         }
 
-                        mouseShortcutManagementPanel(
-                            detail: "Rules live in ~/.lattices/mouse-shortcuts.json. Use Event Viewer to discover what buttons your mouse emits.",
-                            showHistorySummary: true
-                        )
+                        mouseMappingsFooter
                     }
                 }
             }
@@ -1233,6 +908,43 @@ struct SettingsContentView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
+    }
+
+    private var eventViewerContent: some View {
+        MouseInputEventViewerView()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onAppear { MouseInputEventViewer.shared.setEmbeddedCaptureActive(true) }
+            .onDisappear { MouseInputEventViewer.shared.setEmbeddedCaptureActive(false) }
+    }
+
+    private var mouseMappingsFooter: some View {
+        HStack(spacing: 14) {
+            Button("Event Viewer") {
+                selectedTab = .eventViewer
+            }
+            .buttonStyle(.plain)
+            .font(Typo.caption(11))
+            .foregroundColor(Palette.textDim)
+
+            if mouseShortcutStore.hasHistory {
+                Button("Undo last change") {
+                    mouseShortcutStore.restoreLatestHistory()
+                }
+                .buttonStyle(.plain)
+                .font(Typo.caption(11))
+                .foregroundColor(Palette.textDim)
+            }
+
+            Button("Reset mappings") {
+                mouseShortcutStore.restoreDefaults()
+            }
+            .buttonStyle(.plain)
+            .font(Typo.caption(11))
+            .foregroundColor(Palette.textMuted)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.top, 4)
     }
 
     private func mouseShortcutManagementPanel(detail: String, showHistorySummary: Bool) -> some View {
@@ -1402,109 +1114,102 @@ struct SettingsContentView: View {
 
     private var generalContent: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 0) {
                 appUpdateCard
-
-                permissionsAssistantCard
-
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 12) {
-                        terminalSettingsCard
-                        interactionBehaviorCard
-                    }
-
-                    VStack(alignment: .leading, spacing: 12) {
-                        terminalSettingsCard
-                        interactionBehaviorCard
-                    }
-                }
-
+                generalRule
+                terminalSettingsCard
+                generalRule
+                interactionBehaviorCard
+                generalRule
                 projectDiscoveryCard
             }
-            .padding(16)
-            .frame(maxWidth: 760, alignment: .leading)
+            .padding(.horizontal, 28)
+            .padding(.vertical, 22)
+            .frame(maxWidth: 640, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
+    private var generalRule: some View {
+        HudDivider(color: HudHairline.subtle)
+            .padding(.vertical, 16)
+    }
+
     private var permissionsContent: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                permissionsAssistantCard
+        let missing = Capability.allCases.filter { !$0.isGranted }
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                settingsPrefRow(
+                    "Status",
+                    caption: "Needed for tiling, OCR, gestures, remaps, and voice."
+                ) {
+                    HStack(spacing: 12) {
+                        Text(missing.isEmpty ? "All on" : "\(missing.count) off")
+                            .font(Typo.caption(11))
+                            .foregroundColor(missing.isEmpty ? Palette.textDim : Palette.detach)
 
-                let allCapabilitiesGranted = Capability.allCases.allSatisfy(\.isGranted)
-                settingsCard {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(alignment: .center, spacing: 8) {
-                            Image(systemName: allCapabilitiesGranted ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(allCapabilitiesGranted ? Palette.running : Palette.detach)
-                            Text("Permissions")
-                                .font(Typo.mono(12))
-                                .foregroundColor(Palette.text)
-                            Spacer()
-                            Button {
-                                permChecker.check()
-                            } label: {
-                                Image(systemName: "arrow.clockwise")
-                                    .font(.system(size: 10, weight: .semibold))
-                                    .foregroundColor(Palette.textDim)
-                                    .frame(width: 24, height: 22)
-                            }
-                            .buttonStyle(.plain)
-                            .help("Refresh permission status")
+                        Button(missing.isEmpty ? "Assistant" : "Set Up") {
+                            PermissionsAssistantWindowController.shared.show(focus: missing.first)
                         }
+                        .buttonStyle(.plain)
+                        .font(Typo.caption(11))
+                        .foregroundColor(Palette.textDim)
 
-                        Text("Lattices uses macOS privacy permissions for window discovery, tiling, gestures, remaps, voice capture, and synthetic shortcuts.")
-                            .font(Typo.caption(10))
-                            .foregroundColor(Palette.textMuted)
-
-                        VStack(alignment: .leading, spacing: 6) {
-                            permissionSettingsRow(
-                                "Accessibility",
-                                granted: permChecker.accessibility,
-                                detail: "Required for mouse gestures, keyboard remaps, window movement, and focusing windows."
-                            ) {
-                                permChecker.requestAccessibility()
-                            }
-
-                            permissionSettingsRow(
-                                "Screen Recording",
-                                granted: permChecker.screenRecording,
-                                detail: "Required for reliable window titles, OCR, and Space-aware window discovery."
-                            ) {
-                                permChecker.requestScreenRecording()
-                            }
-
-                            permissionSettingsRow(
-                                "Microphone",
-                                granted: permChecker.microphoneGranted,
-                                detail: "Required for local dictation and voice commands hosted by Lattices."
-                            ) {
-                                permChecker.requestMicrophone()
-                            }
-
-                            permissionReviewRow(
-                                "Automation",
-                                detail: "Needed when Lattices sends shortcuts through System Events, including gesture-triggered dictation."
-                            ) {
-                                permChecker.openAutomationSettings()
-                            }
-
-                            permissionReviewRow(
-                                "Input Monitoring",
-                                detail: "Useful to review if global input capture or synthetic shortcut behavior starts failing."
-                            ) {
-                                permChecker.openInputMonitoringSettings()
-                            }
+                        Button("Recheck") {
+                            permChecker.check()
                         }
+                        .buttonStyle(.plain)
+                        .font(Typo.caption(11))
+                        .foregroundColor(Palette.textMuted)
                     }
                 }
+
+                generalRule
+
+                permissionSettingsRow(
+                    "Accessibility",
+                    granted: permChecker.accessibility,
+                    detail: "Mouse gestures, remaps, window movement, and focus."
+                ) {
+                    permChecker.requestAccessibility()
+                }
+                generalRule
+                permissionSettingsRow(
+                    "Screen Recording",
+                    granted: permChecker.screenRecording,
+                    detail: "Window titles, OCR, and Space-aware discovery."
+                ) {
+                    permChecker.requestScreenRecording()
+                }
+                generalRule
+                permissionSettingsRow(
+                    "Microphone",
+                    granted: permChecker.microphoneGranted,
+                    detail: "Local dictation and voice commands."
+                ) {
+                    permChecker.requestMicrophone()
+                }
+                generalRule
+                permissionReviewRow(
+                    "Automation",
+                    detail: "System Events shortcuts, including gesture-triggered dictation."
+                ) {
+                    permChecker.openAutomationSettings()
+                }
+                generalRule
+                permissionReviewRow(
+                    "Input Monitoring",
+                    detail: "Review if global input capture or synthetic shortcuts fail."
+                ) {
+                    permChecker.openInputMonitoringSettings()
+                }
             }
-            .padding(16)
-            .frame(maxWidth: 760, alignment: .leading)
+            .padding(.horizontal, 28)
+            .padding(.vertical, 22)
+            .frame(maxWidth: 640, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .onAppear { permChecker.check() }
     }
 
     private var appContent: some View {
@@ -1680,13 +1385,13 @@ struct SettingsContentView: View {
                                 .font(Typo.mono(10))
                                 .foregroundColor(Palette.textDim)
                             Spacer()
-                            Picker("", selection: $prefs.mode) {
-                                Text("Learning").tag(InteractionMode.learning)
-                                Text("Auto").tag(InteractionMode.auto)
-                            }
-                            .pickerStyle(.segmented)
-                            .labelsHidden()
-                            .frame(width: 160)
+                            SettingsChoiceBar(
+                                selection: $prefs.mode,
+                                options: [
+                                    (.learning, "Learning"),
+                                    (.auto, "Auto"),
+                                ]
+                            )
                         }
 
                         Text(prefs.mode == .learning
@@ -1708,10 +1413,7 @@ struct SettingsContentView: View {
                                 .font(Typo.mono(10))
                                 .foregroundColor(Palette.textDim)
                             Spacer()
-                            Toggle("", isOn: $prefs.dragSnapEnabled)
-                                .toggleStyle(.switch)
-                                .controlSize(.small)
-                                .labelsHidden()
+                            SettingsSwitch(isOn: $prefs.dragSnapEnabled)
                         }
 
                         HStack {
@@ -1719,14 +1421,10 @@ struct SettingsContentView: View {
                                 .font(Typo.mono(10))
                                 .foregroundColor(Palette.textDim)
                             Spacer()
-                            Picker("", selection: snapModifierBinding) {
-                                ForEach(SnapModifierKey.allCases) { modifier in
-                                    Text(modifier.shortLabel).tag(modifier)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-                            .labelsHidden()
-                            .frame(width: 220)
+                            SettingsChoiceBar(
+                                selection: snapModifierBinding,
+                                options: SnapModifierKey.allCases.map { ($0, $0.shortLabel) }
+                            )
                         }
 
                         Text("Dragging stays normal until you hold \(snapModifierBinding.wrappedValue.label). While that key is down, Lattices reveals snap targets and a live preview for the window you’re moving.")
@@ -1752,10 +1450,7 @@ struct SettingsContentView: View {
                                 .font(Typo.mono(10))
                                 .foregroundColor(Palette.textDim)
                             Spacer()
-                            Toggle("", isOn: $prefs.mouseGesturesEnabled)
-                                .toggleStyle(.switch)
-                                .controlSize(.small)
-                                .labelsHidden()
+                            SettingsSwitch(isOn: $prefs.mouseGesturesEnabled)
                         }
 
                         Text("Rules live in ~/.lattices/mouse-shortcuts.json. Defaults include middle-click drag left/right for Spaces, down for Screen Map, and up for the Voice Command hotkey.")
@@ -1777,10 +1472,7 @@ struct SettingsContentView: View {
                             mouseGestureController.reArmAfterBreakerTrip()
                         }
 
-                        mouseShortcutManagementPanel(
-                            detail: "Use Event Viewer to discover what your mouse emits on this machine. The config schema accepts device selectors; live gesture matching falls back to global rules when macOS does not expose the source device.",
-                            showHistorySummary: false
-                        )
+                        mouseMappingsFooter
                     }
                 }
 
@@ -1795,10 +1487,7 @@ struct SettingsContentView: View {
                                 .font(Typo.mono(10))
                                 .foregroundColor(Palette.textDim)
                             Spacer()
-                            Toggle("", isOn: $prefs.keyboardRemapsEnabled)
-                                .toggleStyle(.switch)
-                                .controlSize(.small)
-                                .labelsHidden()
+                            SettingsSwitch(isOn: $prefs.keyboardRemapsEnabled)
                         }
 
                         Text("Rules live in ~/.lattices/keyboard-remaps.json. The default maps hold Caps Lock to Hyper and tap Caps Lock to Escape. While enabled, Lattices temporarily maps physical Caps Lock through a private F18 transport so the lock state does not latch.")
@@ -1878,7 +1567,7 @@ struct SettingsContentView: View {
 
     private var companionContent: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 22) {
                 companionBridgeOverviewCard
                 companionTrustedDevicesCard
                 companionCockpitCard
@@ -1916,10 +1605,7 @@ struct SettingsContentView: View {
 
                     Spacer()
 
-                    Toggle("", isOn: $prefs.companionBridgeEnabled)
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
-                        .labelsHidden()
+                    SettingsSwitch(isOn: $prefs.companionBridgeEnabled)
                 }
 
                 cardDivider
@@ -2215,7 +1901,7 @@ struct SettingsContentView: View {
 
     private var hyperspaceContent: some View {
         ScrollView {
-            VStack(spacing: 12) {
+            VStack(spacing: 22) {
                 // ── Displays ──
                 settingsCard {
                     VStack(alignment: .leading, spacing: 12) {
@@ -2277,10 +1963,7 @@ struct SettingsContentView: View {
                                     .foregroundColor(Palette.textMuted)
                             }
                             Spacer()
-                            Toggle("", isOn: $hsSizeAuto)
-                                .toggleStyle(.switch)
-                                .controlSize(.small)
-                                .labelsHidden()
+                            SettingsSwitch(isOn: $hsSizeAuto)
                         }
 
                         // Manual zoom — active when auto is off. Lower = more room.
@@ -2308,24 +1991,18 @@ struct SettingsContentView: View {
 
                         // Lattice growth: scan wide vs. grow into the vertical.
                         hsSegmentRow("rectangle.grid.2x2", "Lattice") {
-                            Picker("", selection: $hsLayoutTall) {
-                                Text("Scan").tag(false)
-                                Text("Tall").tag(true)
-                            }
-                            .pickerStyle(.segmented)
-                            .labelsHidden()
-                            .frame(width: 150)
+                            SettingsChoiceBar(
+                                selection: $hsLayoutTall,
+                                options: [(false, "Scan"), (true, "Tall")]
+                            )
                         }
 
                         // Hint keys: full keyboard vs. hand-split assignment.
                         hsSegmentRow("keyboard", "Hint keys") {
-                            Picker("", selection: $hsHandKeys) {
-                                Text("Standard").tag(false)
-                                Text("Hand split").tag(true)
-                            }
-                            .pickerStyle(.segmented)
-                            .labelsHidden()
-                            .frame(width: 150)
+                            SettingsChoiceBar(
+                                selection: $hsHandKeys,
+                                options: [(false, "Standard"), (true, "Hand split")]
+                            )
                         }
                     }
                 }
@@ -2370,14 +2047,10 @@ struct SettingsContentView: View {
             Slider(value: $hsKeyLight, in: 0...1)
                 .controlSize(.small)
                 .tint(Palette.running)
-            Picker("", selection: $hsKeyAngle) {
-                Text("◤").tag(0)
-                Text("▲").tag(1)
-                Text("◥").tag(2)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(width: 96)
+            SettingsChoiceBar(
+                selection: $hsKeyAngle,
+                options: [(0, "◤"), (1, "▲"), (2, "◥")]
+            )
         }
     }
 
@@ -2404,90 +2077,18 @@ struct SettingsContentView: View {
 
     private var voiceContent: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 0) {
                 voiceMicrophoneAccessCard
-
-                #if LATTICES_VOICE && canImport(HudsonVoice)
-                settingsCard {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(spacing: 10) {
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(Palette.running.opacity(0.12))
-                                .overlay(
-                                    Image(systemName: "waveform")
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .foregroundColor(Palette.running)
-                                )
-                                .frame(width: 30, height: 30)
-
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("HudsonVoice runtime")
-                                    .font(Typo.mono(12))
-                                    .foregroundColor(Palette.text)
-                                Text("Lattices hosts the voice engine in-process on a fixed loopback port. The Workspace Assistant mic, Hands-Off, and voice commands all use that session.")
-                                    .font(Typo.caption(9.5))
-                                    .foregroundColor(Palette.textMuted)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                        }
-
-                        Text("Well-known endpoint: \(LatticesLocalEndpoints.voiceRuntimeWebSocketURL)")
-                            .font(Typo.mono(10))
-                            .foregroundColor(Palette.textDim)
-
-                        if LatticesVoiceRuntime.isRunning {
-                            Text("Host: running")
-                                .font(Typo.mono(10))
-                                .foregroundColor(Palette.running)
-                        } else {
-                            Text("Host: not running — restart Lattices if dictation fails")
-                                .font(Typo.mono(10))
-                                .foregroundColor(Palette.kill)
-                        }
-
-                        if let runtime = HudsonVoiceRuntimeResolver.resolve(clientId: "lattices") {
-                            Text("Resolved: \(runtime.endpoint.url.absoluteString) (\(runtime.source))")
-                                .font(Typo.mono(10))
-                                .foregroundColor(Palette.textDim)
-                        }
-                    }
-                }
-                #else
-                settingsCard {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(spacing: 10) {
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(Palette.surfaceHov)
-                                .overlay(
-                                    Image(systemName: "waveform.slash")
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .foregroundColor(Palette.textMuted)
-                                )
-                                .frame(width: 30, height: 30)
-
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("Voice runtime")
-                                    .font(Typo.mono(12))
-                                    .foregroundColor(Palette.text)
-                                Text("Lattices' embedded voice runtime isn't compiled into this build.")
-                                    .font(Typo.caption(9.5))
-                                    .foregroundColor(Palette.textMuted)
-                            }
-                        }
-
-                        Text("Build with HUDSONKIT_WITH_VOICE=1 to host the voice runtime and reveal its settings.")
-                            .font(Typo.caption(10))
-                            .foregroundColor(Palette.textMuted)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                #endif
-
+                generalRule
+                voiceRuntimeBlock
+                generalRule
                 voiceModelCard
+                generalRule
                 voiceShortcutsCard
             }
-            .padding(16)
-            .frame(maxWidth: 760, alignment: .leading)
+            .padding(.horizontal, 28)
+            .padding(.vertical, 22)
+            .frame(maxWidth: 680, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .onAppear {
@@ -2495,262 +2096,118 @@ struct SettingsContentView: View {
         }
     }
 
-    private var voiceModelCard: some View {
-        settingsCard {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .center, spacing: 10) {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(voiceProviderTint.opacity(0.13))
-                        .overlay(
-                            Image(systemName: "brain.head.profile")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(voiceProviderTint)
-                        )
-                        .frame(width: 30, height: 30)
-
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Voice model")
-                            .font(Typo.mono(12))
-                            .foregroundColor(Palette.text)
-                        Text("Local resolver first; an optional voice-only provider handles language interpretation and speech services.")
-                            .font(Typo.caption(9.5))
-                            .foregroundColor(Palette.textMuted)
-                    }
-
-                    Spacer()
-
-                    aiStatusPill(voiceProviderStatusLabel, tint: voiceProviderTint)
-                }
-
-                HStack(spacing: 8) {
-                    Text("Voice provider")
-                        .font(Typo.mono(10))
-                        .foregroundColor(Palette.textDim)
-
-                    Picker("", selection: $assistantSession.authProviderID) {
-                        ForEach(assistantSession.providerOptions) { provider in
-                            Text(provider.name).tag(provider.id)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                    .frame(minWidth: 190)
-
-                    aiStatusPill(
-                        "API KEY",
-                        tint: Palette.running
-                    )
-
-                    Spacer()
-                }
-
-                Text(assistantSession.currentProvider.helpText)
-                    .font(Typo.caption(9.5))
-                    .foregroundColor(Palette.textMuted.opacity(0.78))
-                    .fixedSize(horizontal: false, vertical: true)
-
-                cardDivider
-
-                assistantCredentialControls
-
-                assistantAuthMessage
-
-                cardDivider
-
-                VStack(alignment: .leading, spacing: 8) {
-                    voiceFactRow("Command path", value: "Local intents", detail: "Fast phrase matching handles common tiling, focus, launch, and search commands.")
-                    voiceFactRow("Fallback path", value: assistantSession.currentProvider.name, detail: "Advisor, resolver, repair, and voice questions use the selected voice provider.")
-                    voiceFactRow("Runtime", value: "HudsonAI direct", detail: "Voice interpretation uses the native provider adapter with no intermediary process.")
-                }
-                .padding(10)
-                .background(shortcutsInsetPanel)
-
-                HStack(spacing: 8) {
-                    aiActionButton("Refresh Credentials", tint: Palette.textMuted) {
-                        assistantSession.refreshCredentialAvailability()
-                    }
-
-                    Spacer()
-                }
+    private var voiceRuntimeBlock: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            settingsPrefRow("Runtime") {
+                #if LATTICES_VOICE && canImport(HudsonVoice)
+                Text(LatticesVoiceRuntime.isRunning ? "Running" : "Not running")
+                    .font(Typo.caption(11))
+                    .foregroundColor(LatticesVoiceRuntime.isRunning ? Palette.textDim : Palette.kill)
+                #else
+                Text("Not in this build")
+                    .font(Typo.caption(11))
+                    .foregroundColor(Palette.textMuted)
+                #endif
             }
+
+            #if LATTICES_VOICE && canImport(HudsonVoice)
+            Text(LatticesLocalEndpoints.voiceRuntimeWebSocketURL)
+                .font(Typo.caption(11))
+                .foregroundColor(Palette.textMuted)
+            if !LatticesVoiceRuntime.isRunning {
+                Text("Restart Lattices if dictation fails.")
+                    .font(Typo.caption(11))
+                    .foregroundColor(Palette.textMuted)
+            }
+            #else
+            Text("Build with HUDSONKIT_WITH_VOICE=1 to host the voice runtime.")
+                .font(Typo.caption(11))
+                .foregroundColor(Palette.textMuted)
+            #endif
+        }
+    }
+
+    private var voiceModelCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            settingsPrefRow("Provider") {
+                SettingsChoiceBar(
+                    selection: $assistantSession.authProviderID,
+                    options: assistantSession.providerOptions.map { ($0.id, $0.name) }
+                )
+            }
+
+            Text(assistantSession.currentProvider.helpText)
+                .font(Typo.caption(11))
+                .foregroundColor(Palette.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+
+            assistantCredentialControls
+            assistantAuthMessage
         }
     }
 
     private var voiceShortcutsCard: some View {
-        shortcutSectionCard(
-            title: "Voice Entry Points",
-            eyebrow: "Controls",
-            summary: "Voice capture, hands-off turns, and the Workspace Assistant each keep their own binding."
-        ) {
-            VStack(alignment: .leading, spacing: 8) {
-                compactKeyRecorder(action: .voiceCommand)
-                compactKeyRecorder(action: .handsOff)
-                compactKeyRecorder(action: .workspaceAssistant)
-            }
-        }
-    }
-
-    private func voiceFactRow(_ label: String, value: String, detail: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Text(label)
-                .font(Typo.mono(10))
-                .foregroundColor(Palette.textDim)
-                .frame(width: 116, alignment: .leading)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(value)
-                    .font(Typo.monoBold(10.5))
-                    .foregroundColor(Palette.text)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-
-                Text(detail)
-                    .font(Typo.caption(9.5))
-                    .foregroundColor(Palette.textMuted.opacity(0.75))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer(minLength: 0)
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Shortcuts")
+                .font(Typo.heading(13))
+                .foregroundColor(Palette.text)
+            ShortcutMapRow(action: .voiceCommand, store: hotkeyStore)
+            ShortcutMapRow(action: .handsOff, store: hotkeyStore)
+            ShortcutMapRow(action: .workspaceAssistant, store: hotkeyStore)
         }
     }
 
     private var voiceMicrophoneAccessCard: some View {
-        settingsCard {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Voice access")
-                            .font(Typo.monoBold(12))
-                            .foregroundColor(Palette.text)
-                        Text(voiceMicrophoneSummary)
-                            .font(Typo.mono(9.5))
-                            .foregroundColor(Palette.textMuted)
-                    }
+        VStack(alignment: .leading, spacing: 8) {
+            settingsPrefRow("Microphone", caption: voiceMicrophoneDetail) {
+                voiceMicrophoneTrailing
+            }
 
-                    Spacer()
-
-                    statusToken(voiceMicrophoneStatusLabel, color: voiceMicrophoneStatusColor)
-                }
-
-                voiceMicrophonePermissionRow
-
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text("Lattices hosts the embedded voice engine, so macOS Microphone access belongs to Lattices.")
-                        .font(Typo.caption(9.5))
-                        .foregroundColor(Palette.textMuted.opacity(0.8))
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Spacer(minLength: 0)
-
-                    Button {
-                        PermissionsAssistantWindowController.shared.show(focus: .voiceCapture)
-                    } label: {
-                        settingsActionLabel("Permissions", icon: "slider.horizontal.3")
+            HStack(spacing: 14) {
+                if voiceMicrophoneNeedsAttention {
+                    Button(voiceMicrophonePrimaryLabel) {
+                        voiceMicrophonePrimaryAction()
                     }
                     .buttonStyle(.plain)
-
-                    if voiceMicrophoneShowsSettings {
-                        Button {
-                            permChecker.openMicrophoneSettings()
-                        } label: {
-                            settingsActionLabel("System Settings", icon: "arrow.up.forward.app")
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    Button {
-                        permChecker.check()
-                    } label: {
-                        settingsActionLabel("Recheck", icon: "checkmark.shield")
-                    }
-                    .buttonStyle(.plain)
-
-                    Spacer(minLength: 0)
+                    .font(Typo.caption(11))
+                    .foregroundColor(Palette.textDim)
                 }
+
+                Button("Recheck") {
+                    permChecker.check()
+                }
+                .buttonStyle(.plain)
+                .font(Typo.caption(11))
+                .foregroundColor(Palette.textMuted)
+
+                Spacer(minLength: 0)
             }
         }
     }
 
     @ViewBuilder
-    private var voiceMicrophonePermissionRow: some View {
-        HStack(alignment: .center, spacing: 10) {
-            RoundedRectangle(cornerRadius: 6)
-                .fill(voiceMicrophoneStatusColor.opacity(0.14))
-                .overlay(
-                    Image(systemName: voiceMicrophoneIcon)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(voiceMicrophoneStatusColor)
-                )
-                .frame(width: 30, height: 30)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Microphone")
-                    .font(Typo.monoBold(11))
-                    .foregroundColor(Palette.text)
-                Text(voiceMicrophoneDetail)
-                    .font(Typo.caption(9.5))
-                    .foregroundColor(Palette.textMuted.opacity(0.82))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer(minLength: 12)
-
-            voiceMicrophonePrimaryAction
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 9)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Palette.surfaceHov.opacity(0.32))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(voiceMicrophoneStatusColor.opacity(voiceMicrophoneNeedsAttention ? 0.24 : 0.12), lineWidth: 0.5)
-                )
-        )
+    private var voiceMicrophoneTrailing: some View {
+        Text(voiceMicrophoneStatusLabel.capitalized)
+            .font(Typo.caption(11))
+            .foregroundColor(voiceMicrophoneNeedsAttention ? Palette.detach : Palette.textDim)
     }
 
-    @ViewBuilder
-    private var voiceMicrophonePrimaryAction: some View {
+    private var voiceMicrophonePrimaryLabel: String {
+        switch permChecker.microphone {
+        case .notDetermined: return "Request access"
+        case .denied, .restricted: return "Open System Settings"
+        default: return "Permissions"
+        }
+    }
+
+    private func voiceMicrophonePrimaryAction() {
         switch permChecker.microphone {
         case .notDetermined:
-            Button {
-                permChecker.requestMicrophone()
-            } label: {
-                settingsActionLabel("Request Access", icon: "mic.badge.plus", emphasized: true)
-            }
-            .buttonStyle(.plain)
+            permChecker.requestMicrophone()
         case .denied, .restricted:
-            Button {
-                permChecker.openMicrophoneSettings()
-            } label: {
-                settingsActionLabel("Open Settings", icon: "arrow.up.forward.app", emphasized: true)
-            }
-            .buttonStyle(.plain)
-        case .authorized:
-            HStack(spacing: 4) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 10, weight: .semibold))
-                Text("Ready")
-                    .font(Typo.monoBold(10))
-            }
-            .foregroundColor(Palette.running)
-        @unknown default:
-            EmptyView()
-        }
-    }
-
-    private var voiceMicrophoneSummary: String {
-        switch permChecker.microphone {
-        case .authorized:
-            return "Ready for dictation and voice commands"
-        case .notDetermined:
-            return "Not requested yet"
-        case .denied:
-            return "Needs macOS approval"
-        case .restricted:
-            return "Blocked by device policy"
-        @unknown default:
-            return "Microphone status is unknown"
+            permChecker.openMicrophoneSettings()
+        default:
+            PermissionsAssistantWindowController.shared.show(focus: .voiceCapture)
         }
     }
 
@@ -2766,32 +2223,6 @@ struct SettingsContentView: View {
             return "restricted"
         @unknown default:
             return "unknown"
-        }
-    }
-
-    private var voiceMicrophoneStatusColor: Color {
-        switch permChecker.microphone {
-        case .authorized:
-            return Palette.running
-        case .notDetermined:
-            return Palette.textMuted
-        case .denied, .restricted:
-            return Palette.detach
-        @unknown default:
-            return Palette.textDim
-        }
-    }
-
-    private var voiceMicrophoneIcon: String {
-        switch permChecker.microphone {
-        case .authorized:
-            return "checkmark.circle.fill"
-        case .notDetermined:
-            return "mic"
-        case .denied, .restricted:
-            return "exclamationmark.circle.fill"
-        @unknown default:
-            return "questionmark.circle.fill"
         }
     }
 
@@ -2819,23 +2250,15 @@ struct SettingsContentView: View {
         }
     }
 
-    private var voiceMicrophoneShowsSettings: Bool {
-        switch permChecker.microphone {
-        case .denied, .restricted:
-            return true
-        default:
-            return false
-        }
-    }
-
     // MARK: - AI
 
     private var aiContent: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                assistantProviderCard
-            }
-            .padding(16)
+            assistantProviderCard
+                .padding(.horizontal, 28)
+                .padding(.vertical, 22)
+                .frame(maxWidth: 680, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .onAppear {
             assistantSession.prepareForDisplay()
@@ -2843,79 +2266,35 @@ struct SettingsContentView: View {
     }
 
     private var assistantProviderCard: some View {
-        settingsCard {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .center, spacing: 10) {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(chatTransportTint.opacity(0.13))
-                        .overlay(
-                            Image(systemName: "bubble.left.and.bubble.right")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(chatTransportTint)
-                        )
-                        .frame(width: 30, height: 30)
-
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Workspace Assistant")
-                            .font(Typo.mono(12))
-                            .foregroundColor(Palette.text)
-
-                        Text(assistantSession.setupStatusSummary)
-                            .font(Typo.caption(9.5))
-                            .foregroundColor(Palette.textMuted)
-                    }
-
-                    Spacer()
-
-                    aiStatusPill(chatTransportStatusLabel, tint: chatTransportTint)
-                }
-
-                Text("Chat prefers a local agent runtime (Claude Code, Codex, Pi, OpenCode — ACP when the harness uses it). Falls back to a saved API key (HudsonAI), then Scout.")
-                    .font(Typo.caption(10))
-                    .foregroundColor(Palette.textMuted)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                cardDivider
-
-                VStack(alignment: .leading, spacing: 8) {
-                    voiceFactRow(
-                        "Transport",
-                        value: assistantSession.chatTransportSummary,
-                        detail: "Order: agent-runtime → API key → Scout."
-                    )
-                    voiceFactRow(
-                        "Preferred harness",
-                        value: assistantSession.preferredAgentHarness ?? "auto",
-                        detail: "Auto picks pi, then claude-code, codex, opencode."
-                    )
-                    voiceFactRow("API fallback", value: assistantSession.currentProvider.name, detail: "Used when no local harness is available and a key is saved.")
-                    voiceFactRow("API credential", value: assistantSession.selectedCredentialSummary, detail: "Optional for chat; used for HudsonAI API fallback and voice interpretation.")
-                }
-                .padding(10)
-                .background(shortcutsInsetPanel)
-
-                HStack(spacing: 8) {
-                    ForEach(["auto", "claude-code", "codex", "pi", "opencode"], id: \.self) { harness in
-                        aiActionButton(
-                            harness,
-                            tint: (assistantSession.preferredAgentHarness ?? "auto") == harness
-                                || (harness == "auto" && assistantSession.preferredAgentHarness == nil)
-                                ? Palette.running
-                                : Palette.textMuted
-                        ) {
-                            assistantSession.preferredAgentHarness = harness == "auto" ? nil : harness
-                        }
-                    }
-                    Spacer()
-                }
-
-                HStack {
-                    aiActionButton("Refresh Scout", tint: Palette.running) {
-                        assistantSession.refreshScoutAvailability()
-                    }
-                    Spacer()
-                }
+        VStack(alignment: .leading, spacing: 10) {
+            settingsPrefRow("Assistant", caption: assistantSession.setupStatusSummary) {
+                Text(chatTransportStatusLabel.capitalized)
+                    .font(Typo.caption(11))
+                    .foregroundColor(Palette.textDim)
             }
+
+            Text("Local runtime first (Claude Code, Codex, Pi, OpenCode). Then the saved API key, then Scout.")
+                .font(Typo.caption(11))
+                .foregroundColor(Palette.textMuted)
+
+            settingsPrefRow("Harness") {
+                SettingsChoiceBar(
+                    selection: Binding(
+                        get: { assistantSession.preferredAgentHarness ?? "auto" },
+                        set: { assistantSession.preferredAgentHarness = $0 == "auto" ? nil : $0 }
+                    ),
+                    options: ["auto", "claude-code", "codex", "pi", "opencode"].map { ($0, $0) }
+                )
+            }
+
+            settingsPrefRow("API fallback") {
+                Text(assistantSession.currentProvider.name)
+                    .font(Typo.caption(11))
+                    .foregroundColor(Palette.textDim)
+            }
+
+            assistantCredentialControls
+            assistantAuthMessage
         }
     }
 
@@ -2925,58 +2304,67 @@ struct SettingsContentView: View {
     }
 
     private var assistantApiKeyControls: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .center, spacing: 8) {
-                Circle()
-                    .fill(assistantSession.hasSelectedCredential ? Palette.running : Palette.detach)
-                    .frame(width: 6, height: 6)
+        VStack(alignment: .leading, spacing: 8) {
+            settingsPrefRow("API key") {
+                HStack(spacing: 12) {
+                    Text(assistantSession.hasSelectedCredential ? "Saved" : "Needed")
+                        .font(Typo.caption(11))
+                        .foregroundColor(assistantSession.hasSelectedCredential ? Palette.textDim : Palette.detach)
 
-                Text(assistantSession.hasSelectedCredential ? "credential saved" : "credential needed")
-                    .font(Typo.mono(10))
-                    .foregroundColor(Palette.textMuted)
+                    if assistantSession.hasSelectedCredential && !assistantSession.isEditingStoredCredential {
+                        Button("Replace") {
+                            assistantSession.beginReplacingSelectedCredential()
+                            assistantAuthFieldFocused = true
+                        }
+                        .buttonStyle(.plain)
+                        .font(Typo.caption(11))
+                        .foregroundColor(Palette.textDim)
 
-                Spacer()
-
-                if assistantSession.hasSelectedCredential && !assistantSession.isEditingStoredCredential {
-                    aiActionButton("Replace", tint: Palette.detach) {
-                        assistantSession.beginReplacingSelectedCredential()
-                        assistantAuthFieldFocused = true
-                    }
-
-                    aiActionButton("Clear", tint: Palette.textMuted) {
-                        assistantSession.removeSelectedCredential()
+                        Button("Clear") {
+                            assistantSession.removeSelectedCredential()
+                        }
+                        .buttonStyle(.plain)
+                        .font(Typo.caption(11))
+                        .foregroundColor(Palette.textMuted)
                     }
                 }
             }
 
             if !assistantSession.hasSelectedCredential || assistantSession.isEditingStoredCredential {
-                HStack(spacing: 8) {
+                HStack(spacing: 10) {
                     SecureField(assistantTokenPlaceholder, text: $assistantSession.authToken)
                         .textFieldStyle(.plain)
-                        .font(Typo.mono(11))
+                        .font(Typo.body(12))
                         .foregroundColor(Palette.text)
                         .focused($assistantAuthFieldFocused)
                         .onSubmit {
                             assistantSession.saveSelectedToken()
                         }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5)
+                                .fill(HudSurface.control)
+                                .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(HudHairline.subtle, lineWidth: 0.5))
+                        )
 
-                    aiActionButton(
-                        "Save Key",
-                        tint: Palette.running,
-                        disabled: assistantSession.authToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    ) {
+                    Button("Save") {
                         assistantSession.saveSelectedToken()
                     }
+                    .buttonStyle(.plain)
+                    .font(Typo.caption(11))
+                    .foregroundColor(Palette.textDim)
+                    .disabled(assistantSession.authToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
                     if assistantSession.hasSelectedCredential {
-                        aiActionButton("Cancel", tint: Palette.textMuted) {
+                        Button("Cancel") {
                             assistantSession.cancelReplacingSelectedCredential()
                         }
+                        .buttonStyle(.plain)
+                        .font(Typo.caption(11))
+                        .foregroundColor(Palette.textMuted)
                     }
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .background(shortcutsInsetPanel)
             }
         }
     }
@@ -2996,83 +2384,21 @@ struct SettingsContentView: View {
         }
     }
 
-    private var voiceProviderTint: Color {
-        if assistantSession.needsProviderSetup { return Palette.detach }
-        return Palette.running
-    }
-
-    private var voiceProviderStatusLabel: String {
-        if assistantSession.needsProviderSetup { return "VOICE KEY NEEDED" }
-        return "VOICE READY"
-    }
-
-    private var scoutTint: Color {
-        assistantSession.isScoutAvailable == false ? Palette.detach : Palette.running
-    }
-
-    private var scoutStatusLabel: String {
-        switch assistantSession.isScoutAvailable {
-        case true: return "SCOUT READY"
-        case false: return "SCOUT OFFLINE"
-        case nil: return "CHECKING"
-        }
-    }
-
-    private var chatTransportTint: Color {
-        Palette.running
-    }
-
     private var chatTransportStatusLabel: String {
         if let harness = assistantSession.agentRuntimeHarnessLabel {
-            return harness.uppercased()
+            return harness
         }
-        if assistantSession.hasSelectedCredential { return "API READY" }
+        if assistantSession.hasSelectedCredential { return "API" }
         switch assistantSession.isScoutAvailable {
-        case true: return "SCOUT FALLBACK"
-        case false: return "SCOUT OFFLINE"
-        case nil: return "RUNTIME"
+        case true: return "Scout"
+        case false: return "Offline"
+        case nil: return "Runtime"
         }
     }
 
     private var assistantTokenPlaceholder: String {
         let placeholder = assistantSession.currentProvider.tokenPlaceholder
         return placeholder.isEmpty ? "Paste \(assistantSession.currentProvider.tokenLabel.lowercased())" : placeholder
-    }
-
-    private func aiStatusPill(_ text: String, tint: Color) -> some View {
-        Text(text)
-            .font(Typo.monoBold(9.5))
-            .foregroundColor(tint.opacity(0.95))
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
-            .background(
-                Capsule()
-                    .fill(tint.opacity(0.10))
-                    .overlay(Capsule().strokeBorder(tint.opacity(0.20), lineWidth: 0.5))
-            )
-    }
-
-    private func aiActionButton(
-        _ label: String,
-        tint: Color = Palette.text,
-        disabled: Bool = false,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Text(label)
-                .font(Typo.monoBold(10))
-                .foregroundColor(disabled ? Palette.textMuted : tint)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Palette.surfaceHov)
-                        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
-                )
-        }
-        .buttonStyle(.plain)
-        .disabled(disabled)
-        .opacity(disabled ? 0.65 : 1)
     }
 
     private var buildChannelBadge: some View {
@@ -3147,7 +2473,7 @@ struct SettingsContentView: View {
 
     private var searchOcrContent: some View {
         ScrollView {
-            VStack(spacing: 12) {
+            VStack(spacing: 22) {
                 // ── Screen Text Recognition Card ──
                 settingsCard {
                     VStack(alignment: .leading, spacing: 10) {
@@ -3173,13 +2499,10 @@ struct SettingsContentView: View {
                                 }
                             }
                             Spacer()
-                            Toggle("", isOn: Binding(
+                            SettingsSwitch(isOn: Binding(
                                 get: { prefs.ocrEnabled },
                                 set: { OcrModel.shared.setEnabled($0) }
                             ))
-                            .toggleStyle(.switch)
-                            .controlSize(.small)
-                            .labelsHidden()
                         }
 
                         // Accuracy
@@ -3187,13 +2510,10 @@ struct SettingsContentView: View {
                             Text("Accuracy")
                                 .font(Typo.mono(10))
                                 .foregroundColor(Palette.textDim)
-                            Picker("", selection: $prefs.ocrAccuracy) {
-                                Text("Accurate").tag("accurate")
-                                Text("Fast").tag("fast")
-                            }
-                            .pickerStyle(.segmented)
-                            .labelsHidden()
-                            .frame(width: 140)
+                            SettingsChoiceBar(
+                                selection: $prefs.ocrAccuracy,
+                                options: [("accurate", "Accurate"), ("fast", "Fast")]
+                            )
                             Spacer()
                         }
                         .padding(.leading, 32)
@@ -3488,14 +2808,30 @@ struct SettingsContentView: View {
     // MARK: - Settings Card
 
     private func settingsCard<Content: View>(@ViewBuilder content: @escaping () -> Content) -> some View {
-        HudCard(
-            padding: 12,
-            radius: HudRadius.card,
-            fill: Palette.surface,
-            stroke: Palette.border
-        ) {
-            content()
-                .frame(maxWidth: .infinity, alignment: .leading)
+        content()
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func settingsPrefRow<Control: View>(
+        _ title: String,
+        caption: String? = nil,
+        @ViewBuilder control: () -> Control
+    ) -> some View {
+        HStack(alignment: caption == nil ? .center : .firstTextBaseline, spacing: 16) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(Typo.body(12))
+                    .foregroundColor(Palette.text)
+                if let caption {
+                    Text(caption)
+                        .font(Typo.caption(11))
+                        .foregroundColor(Palette.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            control()
         }
     }
 
@@ -3608,16 +2944,7 @@ struct SettingsContentView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 7)
-        .background(
-            RoundedRectangle(cornerRadius: 5)
-                .fill(Palette.surfaceHov.opacity(status == "not set" ? 0.75 : 0.35))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 5)
-                        .strokeBorder(status == "not set" ? Palette.detach.opacity(0.22) : Palette.borderLit.opacity(0.6), lineWidth: 0.5)
-                )
-        )
+        .padding(.vertical, 6)
     }
 
     @ViewBuilder
@@ -3672,10 +2999,7 @@ struct SettingsContentView: View {
     private var shortcutsContent: some View {
         VStack(spacing: 0) {
             GeometryReader { geo in
-                let contentWidth = max(geo.size.width - 40, 320)
-                let sectionColumns = [
-                    GridItem(.adaptive(minimum: min(320, contentWidth), maximum: 440), spacing: 16, alignment: .top)
-                ]
+                let contentWidth = max(geo.size.width - 56, 320)
                 let tilingColumns = contentWidth > 860
                     ? [
                         GridItem(.flexible(minimum: 280, maximum: 360), spacing: 16, alignment: .top),
@@ -3685,29 +3009,47 @@ struct SettingsContentView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        VStack(alignment: .leading, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 22) {
                             inputControlsCard
 
-                            LazyVGrid(columns: sectionColumns, alignment: .leading, spacing: 16) {
-                                shortcutsAppCard
-                                shortcutsLayersCard
-                            }
+                            shortcutMapHeader
+
+                            shortcutMapSection(
+                                "App",
+                                actions: HotkeyAction.allCases.filter { $0.group == .app }
+                            )
+
+                            shortcutMapSection(
+                                "Layers",
+                                actions: HotkeyAction.layerActions + [.layerPrev, .layerNext, .layerTag]
+                            )
 
                             shortcutSectionCard(
-                                title: "Window Tiling",
+                                title: "Tiling",
                                 eyebrow: "Desktop Layout",
-                                summary: "See the directional map first, then edit the matching global shortcuts below."
+                                summary: "The grid is the placement map. Click a cell or a row to rebind."
                             ) {
-                                LazyVGrid(columns: tilingColumns, alignment: .leading, spacing: 16) {
+                                LazyVGrid(columns: tilingColumns, alignment: .leading, spacing: 20) {
                                     shortcutsTilingVisualizer
-                                    shortcutsTilingEditors
+                                    shortcutMapSection(
+                                        "Bindings",
+                                        actions: [
+                                            .tileLeft, .tileRight, .tileTop, .tileBottom,
+                                            .tileTopLeft, .tileTopRight, .tileBottomLeft, .tileBottomRight,
+                                            .tileLeftThird, .tileCenterThird, .tileRightThird,
+                                            .tileCenter, .tileMaximize, .tileOpenCell,
+                                            .tileDistribute, .tileTypeGrid, .tileOrganize,
+                                            .motionMode,
+                                        ],
+                                        showTitle: false
+                                    )
                                 }
                             }
 
                             shortcutsTmuxCard
                         }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 16)
+                        .padding(.horizontal, 28)
+                        .padding(.vertical, 22)
                     }
                 }
             }
@@ -3732,19 +3074,9 @@ struct SettingsContentView: View {
                 Button {
                     hotkeyStore.resetAll()
                 } label: {
-                    Text("Reset All to Defaults")
+                    Text("Reset all to defaults")
                         .font(Typo.caption(11))
-                        .foregroundColor(Palette.textDim)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 5)
-                        .background(
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(Palette.surface)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 3)
-                                        .strokeBorder(Palette.border, lineWidth: 0.5)
-                                )
-                        )
+                        .foregroundColor(Palette.textMuted)
                 }
                 .buttonStyle(.plain)
             }
@@ -3801,9 +3133,7 @@ struct SettingsContentView: View {
 
                     Spacer()
 
-                    Toggle("", isOn: companionTrackpadBinding)
-                        .toggleStyle(.switch)
-                        .labelsHidden()
+                    SettingsSwitch(isOn: companionTrackpadBinding)
                         .disabled(!prefs.companionBridgeEnabled)
                         .opacity(prefs.companionBridgeEnabled ? 1 : 0.45)
                 }
@@ -3862,46 +3192,78 @@ struct SettingsContentView: View {
         }
     }
 
-    // MARK: - Shortcuts: App
+    // MARK: - Shortcuts: map
 
-    private var shortcutsAppCard: some View {
-        shortcutSectionCard(
-            title: "App & Workspace",
-            eyebrow: "Global",
-            summary: "Commands for opening primary surfaces and navigating the desktop companion."
-        ) {
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach(HotkeyAction.allCases.filter { $0.group == .app }, id: \.rawValue) { action in
-                    compactKeyRecorder(action: action)
-                }
+    private var shortcutMapHeader: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 16) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Shortcuts")
+                    .font(Typo.heading(13))
+                    .foregroundColor(Palette.text)
+                Text("Click a shortcut to rebind it.")
+                    .font(Typo.caption(11))
+                    .foregroundColor(Palette.textMuted)
             }
+            Spacer(minLength: 12)
+            SettingsChoiceBar(
+                selection: $shortcutScope,
+                options: ShortcutScope.allCases.map { ($0, $0.label) }
+            )
         }
     }
 
-    // MARK: - Shortcuts: Layers
+    private func visibleShortcutActions(_ actions: [HotkeyAction]) -> [HotkeyAction] {
+        switch shortcutScope {
+        case .all:
+            return actions
+        case .assigned:
+            return actions.filter { hotkeyStore.bindings[$0] != nil }
+        }
+    }
 
-    private var shortcutsLayersCard: some View {
-        shortcutSectionCard(
-            title: "Layers",
-            eyebrow: "Workspace Stack",
-            summary: "Direct jumps stay grouped separately from layer cycling so the numeric map is easier to scan."
-        ) {
-            VStack(alignment: .leading, spacing: 12) {
-                shortcutSubsectionLabel("Jump to a Layer")
-
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(HotkeyAction.layerActions, id: \.rawValue) { action in
-                        compactKeyRecorder(action: action)
+    private func shortcutMapSection(
+        _ title: String,
+        actions: [HotkeyAction],
+        showTitle: Bool = true
+    ) -> some View {
+        let visible = visibleShortcutActions(actions)
+        let hidden = max(actions.count - visible.count, 0)
+        return VStack(alignment: .leading, spacing: 6) {
+            if showTitle {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(title)
+                        .font(Typo.heading(13))
+                        .foregroundColor(Palette.text)
+                    Spacer(minLength: 8)
+                    if shortcutScope == .assigned && hidden > 0 {
+                        Button {
+                            shortcutScope = .all
+                        } label: {
+                            Text("\(hidden) unassigned")
+                                .font(Typo.caption(11))
+                                .foregroundColor(Palette.textMuted)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
+            }
 
-                cardDivider
-
-                shortcutSubsectionLabel("Cycle & Tag")
-
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach([HotkeyAction.layerPrev, .layerNext, .layerTag], id: \.rawValue) { action in
-                        compactKeyRecorder(action: action)
+            if visible.isEmpty {
+                Text(shortcutScope == .assigned ? "None assigned" : "None")
+                    .font(Typo.caption(11))
+                    .foregroundColor(Palette.textMuted)
+                    .padding(.vertical, 4)
+            } else {
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(minimum: 180), spacing: 28, alignment: .leading),
+                        GridItem(.flexible(minimum: 180), spacing: 28, alignment: .leading),
+                    ],
+                    alignment: .leading,
+                    spacing: 0
+                ) {
+                    ForEach(visible, id: \.rawValue) { action in
+                        ShortcutMapRow(action: action, store: hotkeyStore)
                     }
                 }
             }
@@ -3957,61 +3319,32 @@ struct SettingsContentView: View {
         }
     }
 
-    private var shortcutsTilingEditors: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            shortcutSubsectionLabel("Editable Bindings")
-
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach([
-                    HotkeyAction.tileLeft, .tileRight, .tileTop, .tileBottom,
-                    .tileTopLeft, .tileTopRight, .tileBottomLeft, .tileBottomRight
-                ], id: \.rawValue) { action in
-                    compactKeyRecorder(action: action)
-                }
-            }
-
-            cardDivider
-
-            shortcutSubsectionLabel("Layout Helpers")
-
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach([
-                    HotkeyAction.tileLeftThird, .tileCenterThird, .tileRightThird,
-                    .tileCenter, .tileMaximize, .tileOpenCell, .tileDistribute, .tileTypeGrid
-                ], id: \.rawValue) { action in
-                    compactKeyRecorder(action: action)
-                }
-            }
-        }
-    }
-
     // MARK: - Shortcuts: tmux
 
     private var shortcutsTmuxCard: some View {
-        shortcutSectionCard(
-            title: "Pane Controls",
-            eyebrow: "Reference",
-            summary: "Terminal pane controls, shown here for fast recall. They are not edited by the app."
-        ) {
-            VStack(alignment: .leading, spacing: 10) {
-                VStack(alignment: .leading, spacing: 8) {
-                    shortcutRow("Detach", keys: ["Ctrl+B", "D"])
-                    shortcutRow("Kill pane", keys: ["Ctrl+B", "X"])
-                    shortcutRow("Pane left", keys: ["Ctrl+B", "\u{2190}"])
-                    shortcutRow("Pane right", keys: ["Ctrl+B", "\u{2192}"])
-                    shortcutRow("Zoom toggle", keys: ["Ctrl+B", "Z"])
-                    shortcutRow("Scroll mode", keys: ["Ctrl+B", "["])
-                }
-                .padding(12)
-                .background(shortcutsInsetPanel)
+        VStack(alignment: .leading, spacing: 6) {
+            Text("tmux panes")
+                .font(Typo.heading(13))
+                .foregroundColor(Palette.text)
+            Text("Reference only — not edited here.")
+                .font(Typo.caption(11))
+                .foregroundColor(Palette.textMuted)
 
-                Text("Tip: use this as your quick memory jogger while editing the global shortcuts above.")
-                    .font(Typo.caption(10.5))
-                    .foregroundColor(Palette.textMuted)
-                    .fixedSize(horizontal: false, vertical: true)
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(minimum: 180), spacing: 28, alignment: .leading),
+                    GridItem(.flexible(minimum: 180), spacing: 28, alignment: .leading),
+                ],
+                alignment: .leading,
+                spacing: 0
+            ) {
+                shortcutRow("Detach", keys: ["⌃B", "D"])
+                shortcutRow("Kill pane", keys: ["⌃B", "X"])
+                shortcutRow("Pane left", keys: ["⌃B", "←"])
+                shortcutRow("Pane right", keys: ["⌃B", "→"])
+                shortcutRow("Zoom", keys: ["⌃B", "Z"])
+                shortcutRow("Scroll", keys: ["⌃B", "["])
             }
-
-            compactKeyRecorder(action: .tileOrganize)
         }
     }
 
@@ -4023,26 +3356,19 @@ struct SettingsContentView: View {
         summary: String,
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
-        settingsCard {
-            VStack(alignment: .leading, spacing: 12) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(eyebrow.uppercased())
-                        .font(Typo.pixel(12))
-                        .foregroundColor(Palette.textDim)
-                        .tracking(1)
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(Typo.heading(13))
+                    .foregroundColor(Palette.text)
 
-                    Text(title)
-                        .font(Typo.monoBold(12))
-                        .foregroundColor(Palette.text)
-
-                    Text(summary)
-                        .font(Typo.caption(10.5))
-                        .foregroundColor(Palette.textMuted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                content()
+                Text(summary)
+                    .font(Typo.caption(11))
+                    .foregroundColor(Palette.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+
+            content()
         }
     }
 
@@ -4062,24 +3388,18 @@ struct SettingsContentView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(shortcutsInsetPanel)
+        .padding(.vertical, 4)
     }
 
     private func shortcutSubsectionLabel(_ title: String) -> some View {
-        Text(title.uppercased())
-            .font(Typo.pixel(11))
-            .foregroundColor(Palette.textDim)
-            .tracking(1)
+        Text(title)
+            .font(Typo.caption(11))
+            .foregroundColor(Palette.textMuted)
     }
 
     private var shortcutsInsetPanel: some View {
-        RoundedRectangle(cornerRadius: 8)
-            .fill(Color.black.opacity(0.22))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .strokeBorder(Palette.border, lineWidth: 0.5)
-            )
+        RoundedRectangle(cornerRadius: 6)
+            .fill(Palette.surface.opacity(0.55))
     }
 
     private func relativeTimestamp(_ date: Date) -> String {
@@ -4227,21 +3547,27 @@ struct SettingsContentView: View {
     // MARK: - Shortcut row (read-only, for tmux)
 
     private func shortcutRow(_ label: String, keys: [String]) -> some View {
-        HStack {
+        HStack(spacing: 8) {
             Text(label)
-                .font(Typo.caption(11))
-                .foregroundColor(Palette.textDim)
-                .frame(width: 80, alignment: .trailing)
-
-            HStack(spacing: 4) {
+                .font(Typo.body(12))
+                .foregroundColor(Palette.text)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            HStack(spacing: 3) {
                 ForEach(keys, id: \.self) { key in
-                    keyBadge(key)
+                    Text(key)
+                        .font(Typo.geistMonoBold(10))
+                        .foregroundColor(Palette.text)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(Palette.surfaceHov)
+                        )
                 }
             }
-            .padding(.leading, 8)
-
-            Spacer()
         }
+        .padding(.vertical, 5)
     }
 
     // MARK: - Docs
@@ -4372,17 +3698,7 @@ struct SettingsContentView: View {
             Text(label)
                 .font(Typo.caption(11))
         }
-        .foregroundColor(Palette.textDim)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(
-            RoundedRectangle(cornerRadius: 3)
-                .fill(Palette.surface)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 3)
-                        .strokeBorder(Palette.border, lineWidth: 0.5)
-                )
-        )
+        .foregroundColor(Palette.textMuted)
     }
 
     private func resolveDocsFile(_ file: String) -> String {
@@ -4417,21 +3733,6 @@ struct SettingsContentView: View {
         }
     }
 
-    private func keyBadge(_ key: String) -> some View {
-        Text(key)
-            .font(Typo.geistMonoBold(10))
-            .foregroundColor(Palette.text)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .background(
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(Palette.surface)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 3)
-                            .strokeBorder(Palette.border, lineWidth: 0.5)
-                    )
-            )
-    }
 }
 
 /// Keeps the 1.5-second desktop inventory publisher local to the Hyperspace
@@ -4499,59 +3800,38 @@ private struct HyperspaceDisplayTile: View {
 private struct SettingsSidebarRow: View {
     let icon: String
     let title: String
-    let eyebrow: String
     let isActive: Bool
-    let accent: Color
     let action: () -> Void
 
     @State private var isHovering = false
 
-    private var iconTint: Color {
-        if isActive || isHovering { return Palette.textDim }
-        return Palette.textMuted
-    }
-
     private var titleTint: Color {
-        if isActive || isHovering { return Palette.text }
+        if isActive { return Palette.text }
+        if isHovering { return Palette.text }
         return Palette.textDim
     }
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 8) {
-                Capsule()
-                    .fill(isActive ? accent : Color.clear)
-                    .frame(width: 2, height: 22)
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(isActive ? Palette.textDim : Palette.textMuted)
+                    .frame(width: 16, height: 16)
 
-                HStack(alignment: .center, spacing: 9) {
-                    Image(systemName: icon)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(iconTint)
-                        .frame(width: 16, height: 20, alignment: .center)
+                Text(title)
+                    .font(isActive ? Typo.body(12) : Typo.body(12))
+                    .fontWeight(isActive ? .semibold : .regular)
+                    .foregroundColor(titleTint)
 
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(title)
-                            .font(isActive ? Typo.monoBold(11) : Typo.mono(11))
-                            .foregroundColor(titleTint)
-
-                        Text(eyebrow)
-                            .font(Typo.mono(8.5))
-                            .foregroundColor(Palette.textMuted.opacity(isActive ? 0.82 : 0.62))
-                    }
-
-                    Spacer(minLength: 0)
-                }
+                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 7)
-            .contentShape(RoundedRectangle(cornerRadius: HudRadius.standard))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
             .background(
-                RoundedRectangle(cornerRadius: HudRadius.standard)
-                    .fill(isActive ? Palette.surface.opacity(0.95) : (isHovering ? Palette.surface.opacity(0.62) : Color.clear))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: HudRadius.standard)
-                    .stroke(isActive ? Palette.borderLit : Color.clear, lineWidth: 0.5)
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(isActive ? Palette.surfaceHov.opacity(0.7) : (isHovering ? Palette.surface.opacity(0.45) : Color.clear))
             )
         }
         .buttonStyle(.plain)
