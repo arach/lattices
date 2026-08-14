@@ -2812,7 +2812,6 @@ struct SettingsContentView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// Title + optional caption on the left, control on the shared trailing edge.
     private func settingsPrefRow<Control: View>(
         _ title: String,
         caption: String? = nil,

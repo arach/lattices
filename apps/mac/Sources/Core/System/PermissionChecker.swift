@@ -29,10 +29,10 @@ final class PermissionChecker: ObservableObject {
 
     /// Read-only permission truth for daemon clients. Omits fields we cannot know.
     func snapshotJSON() -> JSON {
-        check()
+        let simulating = isSimulatingMissingPermissions
         return .object([
-            "accessibility": .bool(accessibility),
-            "screenRecording": .bool(screenRecording),
+            "accessibility": .bool(simulating ? false : AXIsProcessTrusted()),
+            "screenRecording": .bool(simulating ? false : CGPreflightScreenCaptureAccess()),
         ])
     }
     var microphoneGranted: Bool { microphone == .authorized }

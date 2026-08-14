@@ -2755,7 +2755,7 @@ final class LatticesApi {
                         let result = Self.syncOnMain {
                             WindowTiler.moveViaCGS(wid: wid, fromSpaces: fromSpaces, toSpace: spaceId)
                         }
-                        guard let result, case .success(let method) = result else {
+                        guard let result, case .success(let method, _) = result else {
                             throw RouterError.custom("Space moves are unavailable: CGS APIs could not be loaded")
                         }
                         return .object([
@@ -2775,8 +2775,7 @@ final class LatticesApi {
                     let result = Self.syncOnMain {
                         WindowTiler.moveWindowToSpace(session: session!, terminal: terminal, spaceId: spaceId)
                     }
-                    let wid = DesktopModel.shared.windowForSession(session!)?.wid
-                    return Self.moveReceipt(result, wid: wid, spaceId: spaceId, session: session)
+                    return Self.moveReceipt(result, spaceId: spaceId, session: session)
                 }
 
                 guard hasDisplay || hasPlacement else {
@@ -2799,7 +2798,7 @@ final class LatticesApi {
                 guard let project = ProjectScanner.shared.projects.first(where: { $0.path == path }) else {
                     throw RouterError.notFound("project at \(path)")
                 }
-                let alreadyRunning = project.isRunning
+                let alreadyRunning = TmuxQuery.listSessions().contains { $0.name == project.sessionName }
                 Self.syncOnMain {
                     SessionManager.launch(project: project)
                 }
@@ -4639,8 +4638,7 @@ private extension LatticesApi {
                 return (window.wid, true)
             }
             if TmuxQuery.listSessions().contains(where: { $0.name == name }) {
-                Thread.sleep(forTimeInterval: 0.1)
-                continue
+                return (nil, true)
             }
             Thread.sleep(forTimeInterval: 0.1)
         }
@@ -4651,10 +4649,17 @@ private extension LatticesApi {
 
     static func moveReceipt(
         _ result: WindowTiler.MoveResult,
-        wid: UInt32?,
         spaceId: Int,
         session: String?
     ) -> JSON {
+        let wid: UInt32?
+        switch result {
+        case .success(_, let located), .alreadyOnSpace(let located):
+            wid = located
+        case .windowNotFound, .failed:
+            wid = nil
+        }
+
         var obj: [String: JSON] = [
             "spaceId": .int(spaceId),
         ]
@@ -4666,7 +4671,7 @@ private extension LatticesApi {
             obj["targetResolution"] = .string("session")
         }
         switch result {
-        case .success(let method):
+        case .success(let method, _):
             obj["ok"] = .bool(true)
             obj["moved"] = .bool(method == "CGS")
             obj["method"] = .string(method)
