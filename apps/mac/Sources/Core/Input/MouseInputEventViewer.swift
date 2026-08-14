@@ -41,7 +41,7 @@ final class MouseInputEventViewer: ObservableObject {
         let view = MouseInputEventViewerView()
         let window = AppWindowShell.makeWindow(
             config: .init(
-                title: "Mouse Shortcut Event Viewer",
+                title: "Event Viewer",
                 initialSize: NSSize(width: 980, height: 620),
                 minSize: NSSize(width: 840, height: 460)
             ),
@@ -61,6 +61,14 @@ final class MouseInputEventViewer: ObservableObject {
         self.window = window
         isCaptureActive = true
         DiagnosticLog.shared.info("Mouse shortcuts event viewer opened")
+    }
+
+    func setEmbeddedCaptureActive(_ active: Bool) {
+        if active {
+            isCaptureActive = true
+        } else if !isVisible {
+            isCaptureActive = false
+        }
     }
 
     func dismiss() {
@@ -115,7 +123,7 @@ final class MouseInputEventViewer: ObservableObject {
     }
 }
 
-private struct MouseInputEventViewerView: View {
+struct MouseInputEventViewerView: View {
     @ObservedObject private var viewer = MouseInputEventViewer.shared
     @ObservedObject private var devices = MouseInputDeviceStore.shared
 
@@ -151,12 +159,12 @@ private struct MouseInputEventViewerView: View {
     private var header: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Mouse Shortcut Event Viewer")
-                    .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.95))
-                Text("Watching extra mouse buttons and drag candidates for configurable shortcuts.")
-                    .font(.system(size: 11))
-                    .foregroundColor(.white.opacity(0.6))
+                Text("Event Viewer")
+                    .font(Typo.heading(13))
+                    .foregroundColor(Palette.text)
+                Text("Live mouse buttons, drags, and devices on this machine.")
+                    .font(Typo.caption(11))
+                    .foregroundColor(Palette.textMuted)
             }
 
             Spacer()

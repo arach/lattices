@@ -157,6 +157,66 @@ struct AngularButton: ViewModifier {
     }
 }
 
+/// Neutral switch. System `.switch` uses the macOS accent (blue) and fights the palette.
+struct SettingsSwitch: View {
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Button {
+            withAnimation(.easeOut(duration: 0.14)) { isOn.toggle() }
+        } label: {
+            ZStack(alignment: isOn ? .trailing : .leading) {
+                Capsule()
+                    .fill(isOn ? Palette.text.opacity(0.20) : Palette.surface)
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(Palette.borderLit, lineWidth: 0.5)
+                    )
+                Circle()
+                    .fill(isOn ? Palette.text : Palette.textDim)
+                    .padding(2)
+            }
+            .frame(width: 32, height: 18)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isOn ? "On" : "Off")
+        .accessibilityAddTraits(.isButton)
+    }
+}
+
+/// Quiet segmented control. Selected is lifted white, never system blue.
+struct SettingsChoiceBar<Value: Hashable>: View {
+    @Binding var selection: Value
+    let options: [(Value, String)]
+
+    var body: some View {
+        HStack(spacing: 1) {
+            ForEach(Array(options.enumerated()), id: \.offset) { _, option in
+                let selected = selection == option.0
+                Button {
+                    selection = option.0
+                } label: {
+                    Text(option.1)
+                        .font(Typo.caption(11))
+                        .foregroundColor(selected ? Palette.text : Palette.textMuted)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(selected ? Palette.surfaceHov : Color.clear)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(2)
+        .background(
+            RoundedRectangle(cornerRadius: 5)
+                .fill(Palette.surface.opacity(0.85))
+        )
+    }
+}
+
 extension View {
     func glassCard(hovered: Bool = false) -> some View {
         modifier(GlassCard(isHovered: hovered))
