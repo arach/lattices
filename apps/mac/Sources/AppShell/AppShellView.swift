@@ -180,7 +180,7 @@ struct AppShellView: View {
             Button {
                 showingActivityLog = true
             } label: {
-                HudLoggerStatusItem(store: activityLog, label: "Logs", showCounts: true)
+                quietLogStatus
             }
             .buttonStyle(.plain)
             .help("Open activity log")
@@ -196,11 +196,32 @@ struct AppShellView: View {
         .background(Palette.bg)
     }
 
+    /// Warnings stay in the log. Only errors belong in the status strip.
     private var activityPreviewMessage: String? {
         guard let entry = activityLog.summary.lastEntry else { return nil }
-        guard entry.level == .warning || entry.level == .error || entry.level == .fault else { return nil }
+        guard entry.level == .error || entry.level == .fault else { return nil }
         let trimmed = entry.message.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private var quietLogStatus: some View {
+        let summary = activityLog.summary
+        return HStack(spacing: 6) {
+            Text("Logs")
+                .font(Typo.geistMonoBold(9))
+                .foregroundColor(Palette.textMuted)
+            if summary.errors > 0 {
+                Text("\(summary.errors) err")
+                    .font(Typo.geistMonoBold(9))
+                    .foregroundColor(Palette.kill)
+                    .monospacedDigit()
+            } else if summary.warnings > 0 {
+                Text("\(summary.warnings)")
+                    .font(Typo.geistMonoBold(9))
+                    .foregroundColor(Palette.textMuted)
+                    .monospacedDigit()
+            }
+        }
     }
 
     @ViewBuilder

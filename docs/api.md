@@ -7,7 +7,9 @@ order: 5
 The lattices menu bar app runs a WebSocket server on `ws://127.0.0.1:9399`
 (agent API). The same process also hosts the voice live-session runtime on
 `ws://127.0.0.1:9398` (see [Voice](/docs/voice) — deterministic Lattices ports).
-35+ RPC methods and 5 real-time events.
+~120 RPC methods and real-time events. Prefer `desktop.snapshot` when you
+need to know what is in front of the user, and `lattices map` when you want
+that same state drawn as ASCII.
 
 ## Quick start
 
@@ -1348,7 +1350,12 @@ Health check and basic stats.
   "clientCount": 2,
   "version": "1.0.0",
   "windowCount": 12,
-  "tmuxSessionCount": 3
+  "tmuxSessionCount": 3,
+  "frontmostWid": 1234,
+  "permissions": {
+    "accessibility": true,
+    "screenRecording": true
+  }
 }
 ```
 
@@ -1443,6 +1450,7 @@ Supported action types:
 
 | Method | Type | Description |
 |--------|------|-------------|
+| `desktop.snapshot` | read | One-call current desktop: frontmost, layer, displays, windows, sessions, permissions |
 | `windows.list` | read | All visible windows |
 | `windows.get` | read | Single window by ID |
 | `windows.preview` | read | Cached PNG preview for a window |
@@ -1458,6 +1466,53 @@ Supported action types:
 | `window.layerMap` | read | All window→layer assignments |
 | `space.optimize` | write | Optimize a set of windows using an explicit scope and strategy |
 | `layout.distribute` | write | Compatibility wrapper for visible-window balancing |
+
+#### `desktop.snapshot`
+
+One call for “what is in front of the user?” Structured state — not a drawing.
+`lattices map` is the ASCII render of this same current-space view (it now
+reads `desktop.snapshot` when the app is new enough).
+
+**Params**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `includeOffscreen` | boolean | no | Include off-screen windows. Default `false`. |
+
+**Returns**:
+
+```json
+{
+  "frontmost": { "wid": 1234, "app": "iTerm2", "title": "…", "pid": 1 },
+  "activeLayer": { "id": "web", "index": 0 },
+  "displays": [ { "displayIndex": 0, "name": "Built-in", "frame": {}, "visibleFrame": {}, "currentSpaceId": 1, "spaces": [] } ],
+  "currentSpaceId": 1,
+  "windows": [
+    {
+      "wid": 1234,
+      "app": "iTerm2",
+      "title": "…",
+      "pid": 5678,
+      "frame": { "x": 0, "y": 25, "w": 960, "h": 1050 },
+      "spaceIds": [1],
+      "isOnScreen": true,
+      "zIndex": 0,
+      "focused": true,
+      "latticesSession": "lattices-a1b2c3"
+    }
+  ],
+  "sessions": [ { "name": "lattices-a1b2c3", "attached": true, "windowCount": 1 } ],
+  "permissions": { "accessibility": true, "screenRecording": true }
+}
+```
+
+Window frames are top-left global, same as `windows.list`. Does not recapture
+windows or run OCR.
+
+```bash
+lattices call desktop.snapshot
+lattices map
+```
 
 #### `windows.list`
 
@@ -1715,7 +1770,8 @@ synchronously:
 - `display` **with** `placement` (or `placement` alone) — routes through the
   canonical `window.place` execution path; the receipt carries
   `compatibilityMethod: "window.move"`.
-- `session` + `spaceId` — legacy Space move, fire-and-forget `{ ok: true }`.
+- `session` + `spaceId` — waits for `moveWindowToSpace` and returns
+  `{ ok, wid, spaceId, moved, method }` instead of fire-and-forget.
 - `wid` + `spaceId` — synchronous Space move through the CGS primitive. Returns
   `{ ok, moved, method, fromSpaceIds }`; `method` is `"CGS"` when the window
   actually moved or `"switch-view"` when macOS denied the move and only the
@@ -1881,8 +1937,21 @@ call `projects.list` to check, or `projects.scan` to refresh.
 |--------|--------|----------|----------------------------------|
 | `path` | string | yes      | Absolute path to project directory |
 
-**Returns**: `{ "ok": true }`
-**Errors**: `Not found` if the path isn't in the scanned project list.
+**Returns**: a receipt, not a queued ok:
+
+```json
+{
+  "ok": true,
+  "session": "myapp-a1b2c3",
+  "alreadyRunning": false,
+  "wid": 1234,
+  "verified": true
+}
+```
+
+`ok` / `verified` are false if no tagged window and no tmux session appeared
+within ~4s. **Errors**: `Not found` if the path isn't in the scanned project
+list.
 
 #### `session.kill`
 
@@ -1893,6 +1962,9 @@ Kill a tmux session by name.
 | Field  | Type   | Required | Description         |
 |--------|--------|----------|---------------------|
 | `name` | string | yes      | Session name        |
+
+**Returns**: `{ "ok": true, "session": "…", "verified": true }` when the
+session is gone. `ok` / `verified` are false if it is still listed.
 
 #### `session.detach`
 
@@ -2120,6 +2192,45 @@ Get the process tree rooted at a given PID.
 | `pid` | number | yes      | Root PID      |
 
 **Returns**: array of process objects (same shape as `processes.list`).
+
+#### `terminals.capture`
+
+Exact tmux pane text. Not OCR, not a screenshot.
+
+Provide one of `session`, `paneId`, or `tty`. If a session has more than one
+pane, also pass `pane` or `paneId`.
+
+**Params**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `session` | string | one of session / paneId / tty | tmux or lattices session name |
+| `pane` | string | no | Pane title or `%id` |
+| `paneId` | string | no | tmux pane id (`%12`) |
+| `tty` | string | no | `/dev/ttys003` or `ttys003` |
+| `lines` | number | no | Last N lines. Default 80, max 500 |
+| `escape` | boolean | no | Keep ANSI. Default `false` (`tmux capture-pane -p`) |
+
+**Returns**:
+
+```json
+{
+  "ok": true,
+  "session": "lattices-a1b2c3",
+  "paneId": "%3",
+  "paneName": "claude",
+  "tty": "/dev/ttys012",
+  "text": "…last N lines…",
+  "lineCount": 80
+}
+```
+
+Ambiguous targets return an error listing candidates. Missing tmux returns a
+clear error. Never falls back to pixels.
+
+```bash
+lattices call terminals.capture '{"session":"lattices-c36f74","lines":40}'
+```
 
 #### `terminals.list`
 

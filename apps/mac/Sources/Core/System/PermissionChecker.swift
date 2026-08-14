@@ -26,6 +26,15 @@ final class PermissionChecker: ObservableObject {
     private static let microphoneUsageDescriptionKey = "NSMicrophoneUsageDescription"
 
     var allGranted: Bool { accessibility && screenRecording && microphoneGranted }
+
+    /// Read-only permission truth for daemon clients. Omits fields we cannot know.
+    func snapshotJSON() -> JSON {
+        let simulating = isSimulatingMissingPermissions
+        return .object([
+            "accessibility": .bool(simulating ? false : AXIsProcessTrusted()),
+            "screenRecording": .bool(simulating ? false : CGPreflightScreenCaptureAccess()),
+        ])
+    }
     var microphoneGranted: Bool { microphone == .authorized }
 
     var isSimulatingMissingPermissions: Bool {

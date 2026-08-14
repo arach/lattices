@@ -4,10 +4,11 @@ description: Read-only terminal and JSON views of the current macOS workspace
 order: 5.5
 ---
 
-`lattices map` is a read-only view of the current desktop. It joins
-`spaces.list` and `windows.list` from the localhost daemon, then either draws a
-proportional terminal diagram or returns a versioned JSON snapshot for an
-agent.
+`lattices map` is a read-only **drawing** of the current desktop. The structured
+read is `desktop.snapshot` (one call: frontmost, layer, displays, windows,
+sessions, permissions). Map prefers that payload, then falls back to joining
+`spaces.list` and `windows.list` on older app builds. It either draws a
+proportional terminal diagram or returns a versioned JSON projection.
 
 It does **not** open, focus, move, resize, or capture a macOS window. Its box
 drawing exists only in the invoking terminal. This is separate from the

@@ -75,6 +75,35 @@ before(async () => {
 test("daemon.status RPC returns healthy counts", async () => {
   const status = await daemonCall("daemon.status");
   assertStatusShape(status);
+  assert.equal(typeof status.permissions, "object");
+  assert.equal(typeof status.permissions.accessibility, "boolean");
+  assert.equal(typeof status.permissions.screenRecording, "boolean");
+});
+
+test("desktop.snapshot returns frontmost, displays, and windows", async () => {
+  const snap = await daemonCall("desktop.snapshot");
+  assert.equal(typeof snap, "object");
+  assert.ok(Array.isArray(snap.displays));
+  assert.ok(snap.displays.length > 0);
+  assert.ok(Array.isArray(snap.windows));
+  assert.ok(Array.isArray(snap.sessions));
+  assert.equal(typeof snap.permissions, "object");
+  assert.equal(typeof snap.permissions.accessibility, "boolean");
+  if (snap.frontmost) {
+    assert.equal(typeof snap.frontmost.wid, "number");
+    assert.equal(typeof snap.frontmost.app, "string");
+  }
+  if (snap.windows.length > 0) {
+    assert.equal(typeof snap.windows[0].zIndex, "number");
+    assert.equal(typeof snap.windows[0].focused, "boolean");
+  }
+});
+
+test("terminals.capture requires a target", async () => {
+  await assert.rejects(
+    () => daemonCall("terminals.capture", {}),
+    /session, paneId, or tty|Missing parameter/i,
+  );
 });
 
 test("CLI daemon status call returns JSON status payload", () => {
