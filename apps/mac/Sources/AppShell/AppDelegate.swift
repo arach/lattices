@@ -12,6 +12,7 @@ extension Notification.Name {
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var notificationObservers: [NSObjectProtocol] = []
     private var systemSettingsWasFrontmost = false
+    private var terminationSignalSources: [DispatchSourceSignal] = []
 
     static func updateActivationPolicy() {
         AppActivationCoordinator.shared.refresh()
@@ -45,6 +46,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         MouseGestureController.shared.start()
         KeyboardRemapController.shared.start()
         SecureEventInputMonitor.shared.start()
+        installTerminationSignalHandlers()
 
         if !OnboardingWindowController.shared.showIfNeeded() {
             PermissionChecker.shared.check()
@@ -95,6 +97,31 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let trace = "BUILD TRACE | channel=\(LatticesRuntime.buildChannel) version=\(version) build=\(build) revision=\(revision) builtAt=\(timestamp) pid=\(ProcessInfo.processInfo.processIdentifier) bundleID=\(bundleID) bundle=\(bundlePath) executable=\(executablePath)"
         HudLogger(category: "build").info(trace)
         NSLog("%@", trace)
+    }
+
+    /// `applicationWillTerminate` only runs for a graceful quit. The dev loop
+    /// (`bin/lattices-app.ts`) stops the app with `pkill -x Lattices`, i.e.
+    /// SIGTERM, whose default disposition kills us without ever reaching
+    /// AppKit's terminate path — so global input state we set is left behind.
+    /// The visible symptom is a Caps Lock latch that survives the rebuild and
+    /// reads as "the Hyper key is stuck".
+    ///
+    /// SIGKILL (the `pkill -9` escalation) is uncatchable by design; nothing
+    /// can be done for that case, which is the more reason to make the
+    /// catchable one clean.
+    private func installTerminationSignalHandlers() {
+        for sig in [SIGTERM, SIGINT] {
+            // Ignore the default disposition so the process survives long
+            // enough for the dispatch source below to run.
+            signal(sig, SIG_IGN)
+            let source = DispatchSource.makeSignalSource(signal: sig, queue: .global(qos: .userInitiated))
+            source.setEventHandler {
+                KeyboardRemapController.shared.flushGlobalStateForAbruptTermination()
+                exit(128 + sig)
+            }
+            source.resume()
+            terminationSignalSources.append(source)
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
