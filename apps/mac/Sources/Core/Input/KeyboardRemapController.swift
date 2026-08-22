@@ -80,10 +80,35 @@ final class KeyboardRemapController: ObservableObject {
     }
 
     func stop() {
+        let hadCapsLayer = capsLayerActive
+        let hyperEnabled = readTapConfig().hyper
         removeEventTap()
         capsLockTransport.disable()
         capsLockTransportActive = capsLockTransport.isActive
         clearCapsLayer()
+        // clearCapsLayer() only resets process-local bookkeeping. The IOHID Caps
+        // Lock latch is global state that outlives the process: tear down with it
+        // set and it stays set, with no tap left to translate it into Hyper.
+        // Synchronous on purpose — latchQueue will not drain during termination.
+        if hyperEnabled || hadCapsLayer {
+            clearCapsLockLatch(reason: "shutdown")
+        }
+    }
+
+    /// Last-ditch cleanup for paths that bypass `applicationWillTerminate`
+    /// (SIGTERM/SIGINT from a dev rebuild). Deliberately does one thing: drop
+    /// the IOHID Caps Lock latch, which is a single IOKit call touching no
+    /// shared mutable state and is therefore safe from a signal-source queue.
+    ///
+    /// The HID transport remap is *not* torn down here — `disable()` mutates
+    /// non-atomic instance state with no queue guarantee, and racing it during
+    /// termination risks a torn write to the system-wide mapping. It does not
+    /// need us: ownership and the original mappings are persisted to
+    /// UserDefaults, so the next launch restores them via `enable()`. The latch
+    /// has no such recovery path, which is why it is the one thing worth doing
+    /// on the way out.
+    func flushGlobalStateForAbruptTermination() {
+        clearCapsLockLatch(reason: "signal")
     }
 
     func resetForSystemInputBoundary(reason: String) {
