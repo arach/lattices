@@ -1,12 +1,12 @@
 # action
 
-**[arach.github.io/action](https://arach.github.io/action/)** · Native-first macOS automation, capture, and review.
+**[lattices.dev/action](https://lattices.dev/action)** · Native-first macOS automation, capture, and review from Lattices.
 
 `action` is a local runtime for observing a Mac surface, executing deterministic actions, recording what happened, and preserving the result as inspectable session artifacts.
 
 The project is built around a signed AppKit application, a local agent runtime, and shared CLI/MCP interfaces. Its strongest path today is native capture and replay; live inspection and durable companion jobs are the active development edge.
 
-Demo: [Watch Action record the work](https://arach.github.io/action/#demo) · [MP4](https://arach.github.io/action/assets/action-record-the-work.mp4)
+Source lives in the Lattices monorepo at [`products/action`](https://github.com/arach/lattices/tree/main/products/action).
 
 ## Status At A Glance
 
@@ -154,7 +154,7 @@ lightweight DOM actions, and PNG screenshots through MCP.
 Install it from the Action plugin marketplace in Codex:
 
 ```bash
-codex plugin marketplace add arach/action
+codex plugin marketplace add arach/lattices
 codex plugin add action-browser@action
 ```
 
@@ -166,7 +166,7 @@ Claude Code uses its own plugin marketplace format. Install the same MCP bundle
 with the Claude Code CLI:
 
 ```bash
-claude plugin marketplace add arach/action
+claude plugin marketplace add arach/lattices
 claude plugin install action-browser@action --scope user
 ```
 
@@ -179,7 +179,7 @@ directly from the GitHub repository. Pin the default branch — a bare
 repository URL installs the latest release, which may predate the manifest:
 
 ```
-/plugins install https://github.com/arach/action/tree/main
+/plugins install https://github.com/arach/lattices/tree/main
 /reload
 ```
 
@@ -251,10 +251,10 @@ The output is `Installer/Action-for-Mac.dmg`.
 Ship a public GitHub release from `main`:
 
 ```bash
-bun run release:ship -- 0.1.0 --watch
+bun run release:ship -- 0.3.0 --watch
 ```
 
-The release workflow builds, signs, notarizes, verifies, and uploads generic and versioned DMG assets. It creates the `vX.Y.Z` tag only after verification passes. Add `--no-publish` for an artifact-only run.
+The release workflow builds, signs, notarizes, verifies, and uploads generic and versioned DMG assets. It creates the `action-vX.Y.Z` tag only after verification passes and never replaces the repository-wide Lattices “Latest” release. Add `--no-publish` for an artifact-only run.
 
 ## Repository Layout
 

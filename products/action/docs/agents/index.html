@@ -9,9 +9,10 @@
   <meta property="og:type" content="website">
   <meta property="og:title" content="Action for agents — start here">
   <meta property="og:description" content="What Action gives an AI agent, how to connect it, and which browser to drive.">
-  <meta property="og:image" content="https://arach.github.io/action/assets/brand/action-og.jpg">
-  <meta property="og:url" content="https://arach.github.io/action/agents/">
+  <meta property="og:image" content="https://lattices.dev/og.png">
+  <meta property="og:url" content="https://lattices.dev/action/agents/">
   <meta name="twitter:card" content="summary_large_image">
+  <link rel="canonical" href="https://lattices.dev/action/agents/">
   <link rel="alternate" type="text/plain" href="../llms.txt" title="llms.txt">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -274,14 +275,14 @@
 
   <header class="site-nav">
     <nav class="shell nav-inner" aria-label="Primary navigation">
-      <a class="brand" href="../" aria-label="Action home">
-        <img src="../assets/brand/action-mark.svg" alt="">
+      <a class="brand" href="https://lattices.dev/action" aria-label="Action home">
+        <img src="/action/action-mark.svg" alt="">
         action<span>.app</span>
       </a>
       <ul class="nav-links">
-        <li><a href="../#install">Install</a></li>
+        <li><a href="#connect-title">Install</a></li>
         <li><a href="./" aria-current="page">For agents</a></li>
-        <li><a href="https://github.com/arach/action">GitHub</a></li>
+        <li><a href="https://github.com/arach/lattices/tree/main/products/action">GitHub</a></li>
       </ul>
     </nav>
   </header>
@@ -295,7 +296,7 @@
       <div class="canonical-bar">
         <strong>Machine-readable</strong>
         <a href="../llms.txt">llms.txt</a>
-        <a href="https://github.com/arach/action/blob/main/AGENTS.md">AGENTS.md</a>
+        <a href="https://github.com/arach/lattices/blob/main/products/action/AGENTS.md">AGENTS.md</a>
         <a href="../browser-profiles.md">browser-profiles.md</a>
         <a href="../api.md">api.md</a>
       </div>
@@ -393,7 +394,7 @@
           <div class="step">
             <h3>Codex</h3>
             <div class="code-block">
-              <pre class="code" id="codex-install">codex plugin marketplace add arach/action
+              <pre class="code" id="codex-install">codex plugin marketplace add arach/lattices
   codex plugin add action-browser@action</pre>
               <button class="copy-button" type="button" data-copy-target="codex-install" aria-label="Copy the Codex install commands">Copy</button>
             </div>
@@ -402,7 +403,7 @@
           <div class="step">
             <h3>Claude Code</h3>
             <div class="code-block">
-              <pre class="code" id="claude-install">claude plugin marketplace add arach/action
+              <pre class="code" id="claude-install">claude plugin marketplace add arach/lattices
   claude plugin install action-browser@action --scope user</pre>
               <button class="copy-button" type="button" data-copy-target="claude-install" aria-label="Copy the Claude Code install commands">Copy</button>
             </div>
@@ -411,7 +412,7 @@
           <div class="step">
             <h3>Kimi Code</h3>
             <div class="code-block">
-              <pre class="code" id="kimi-install">/plugins install https://github.com/arach/action/tree/main
+              <pre class="code" id="kimi-install">/plugins install https://github.com/arach/lattices/tree/main
   /reload</pre>
               <button class="copy-button" type="button" data-copy-target="kimi-install" aria-label="Copy the Kimi Code install commands">Copy</button>
             </div>
@@ -419,12 +420,14 @@
           </div>
           <div class="step">
             <h3>Native runtime</h3>
-            <p>Clone the repo, build the signed app, and grant Accessibility plus Screen Recording. <code>native:doctor</code> reports the current permission state.</p>
+            <p>Clone Lattices, install the Action product dependencies, build the signed app, and grant Accessibility plus Screen Recording. <code>native:doctor</code> reports the current permission state.</p>
             <div class="code-block">
-              <pre class="code" id="native-install">bun install
-  bun run native:app:build
-  bun run native:doctor
-  bun run mcp</pre>
+              <pre class="code" id="native-install">git clone https://github.com/arach/lattices.git
+  cd lattices
+  bun --cwd products/action install
+  bun --cwd products/action native:app:build
+  bun --cwd products/action native:doctor
+  bun --cwd products/action mcp</pre>
               <button class="copy-button" type="button" data-copy-target="native-install" aria-label="Copy the native runtime setup commands">Copy</button>
             </div>
           </div>
@@ -440,7 +443,7 @@
         <p class="lead">Plain markdown at stable URLs, safe to fetch and quote.</p>
         <ul class="doc-list">
           <li><a href="../llms.txt">/action/llms.txt</a><span>Index of everything below, in one file.</span></li>
-          <li><a href="https://github.com/arach/action/blob/main/AGENTS.md">AGENTS.md</a><span>Repo rules, structure, and navigation for agents working on Action itself.</span></li>
+          <li><a href="https://github.com/arach/lattices/blob/main/products/action/AGENTS.md">AGENTS.md</a><span>Repo rules, structure, and navigation for agents working on Action itself.</span></li>
           <li><a href="../browser-profiles.md">browser-profiles.md</a><span>The three browsers, cookie seeding, identities, and plugin versioning.</span></li>
           <li><a href="../api.md">api.md</a><span>The local WebSocket agent protocol.</span></li>
           <li><a href="../getting-started.md">getting-started.md</a><span>Shortest path to a working local loop.</span></li>
@@ -456,10 +459,10 @@
     <div class="shell footer-inner">
       <p>Action · native macOS automation, capture, and review.</p>
       <div class="footer-links">
-        <a href="../">Home</a>
+        <a href="https://lattices.dev/action">Home</a>
         <a href="../llms.txt">llms.txt</a>
         <a href="../browser-profiles.md">Browsers</a>
-        <a href="https://github.com/arach/action">GitHub</a>
+        <a href="https://github.com/arach/lattices/tree/main/products/action">GitHub</a>
       </div>
     </div>
   </footer>

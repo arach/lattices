@@ -87,10 +87,10 @@ spctl --assess --type open --context context:primary-signature -vv Installer/Act
 
 ## GitHub Release Workflow
 
-The Talkie-style workflow lives at:
+The monorepo-root release workflow lives at:
 
 ```text
-.github/workflows/release-mac.yml
+../../.github/workflows/release-action-macos.yml
 ```
 
 It expects these release environment secrets:

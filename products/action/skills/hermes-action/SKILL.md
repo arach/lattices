@@ -12,11 +12,12 @@ Use Action as Hermes' native macOS hands.
 Connect Hermes to the Action MCP server:
 
 ```bash
-bun --cwd /Users/art/dev/action packages/mcp/src/index.ts
+ACTION_ROOT="$(git rev-parse --show-toplevel)/products/action"
+ACTION_ROOT="$ACTION_ROOT" bun --cwd "$ACTION_ROOT" packages/mcp/src/index.ts
 ```
 
-If the repo path differs, set `ACTION_ROOT` to the repo root before launching the
-server.
+Run the command from any directory inside a Lattices checkout. `ACTION_ROOT`
+must identify the Action product root, not the Lattices repository root.
 
 ## Operating Loop
 

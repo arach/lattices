@@ -4,7 +4,7 @@
 > record the run as video plus a structured trace, and drive a real Chrome it
 > owns. Everything runs on the user's machine; nothing is hosted.
 
-Start here: https://arach.github.io/action/agents/
+Start here: https://lattices.dev/action/agents/
 
 ## Surfaces
 
@@ -41,22 +41,23 @@ default profile, and Action does not attempt to bypass that.
 
 ## Install
 
-- Codex: `codex plugin marketplace add arach/action` then `codex plugin add action-browser@action`
-- Claude Code: `claude plugin marketplace add arach/action` then `claude plugin install action-browser@action --scope user`
-- Kimi Code: `/plugins install https://github.com/arach/action/tree/main`
-- Native runtime: clone the repo, `bun install`, `bun run native:app:build`, `bun run native:doctor`, `bun run mcp`
+- Codex: `codex plugin marketplace add arach/lattices` then `codex plugin add action-browser@action`
+- Claude Code: `claude plugin marketplace add arach/lattices` then `claude plugin install action-browser@action --scope user`
+- Kimi Code: `/plugins install https://github.com/arach/lattices/tree/main`
+- Native runtime: clone `https://github.com/arach/lattices`, then run `bun --cwd products/action install`, `bun --cwd products/action native:app:build`, `bun --cwd products/action native:doctor`, and `bun --cwd products/action mcp`
 
 Requires macOS on Apple Silicon, Google Chrome, and Bun. The native runtime needs
 Accessibility and Screen Recording permission.
 
 ## Docs
 
-- [Agent start here](https://arach.github.io/action/agents/): capabilities, connection, browser decision guide
-- [Browser profiles](https://arach.github.io/action/browser-profiles.md): the three browsers, cookie seeding, identities, plugin versioning
-- [Agent protocol](https://arach.github.io/action/api.md): local WebSocket agent protocol
-- [Getting started](https://arach.github.io/action/getting-started.md): shortest path to a working local loop
-- [Overview](https://arach.github.io/action/overview.md): what exists today and where the edges are
-- [Architecture](https://arach.github.io/action/ARCHITECTURE.md): app / agent / runtime split
-- [Recording](https://arach.github.io/action/recording.md): recording lifecycle and the finished-marker contract
-- [AGENTS.md](https://github.com/arach/action/blob/main/AGENTS.md): repo rules for agents working on Action itself
-- [Source](https://github.com/arach/action)
+- [Action home](https://lattices.dev/action): product and install overview
+- [Agent start here](https://lattices.dev/action/agents/): capabilities, connection, browser decision guide
+- [Browser profiles](https://lattices.dev/action/browser-profiles.md): the three browsers, cookie seeding, identities, plugin versioning
+- [Agent protocol](https://lattices.dev/action/api.md): local WebSocket agent protocol
+- [Getting started](https://lattices.dev/action/getting-started.md): shortest path to a working local loop
+- [Overview](https://lattices.dev/action/overview.md): what exists today and where the edges are
+- [Architecture](https://lattices.dev/action/ARCHITECTURE.md): app / agent / runtime split
+- [Recording](https://lattices.dev/action/recording.md): recording lifecycle and the finished-marker contract
+- [AGENTS.md](https://github.com/arach/lattices/blob/main/products/action/AGENTS.md): repo rules for agents working on Action itself
+- [Source](https://github.com/arach/lattices/tree/main/products/action)

@@ -12,6 +12,13 @@ in one keystroke.
 
 **[lattices.dev](https://lattices.dev)** · [Docs](https://lattices.dev/docs/overview) · [Download app](https://github.com/arach/lattices/releases/latest)
 
+## Product family
+
+**Lattices** organizes and drives the workspace. **[Action](https://lattices.dev/action)**
+is the focused computer-use product for observing a Mac surface, acting on explicit
+targets, recording the run, and verifying what changed. Action lives in
+[`products/action`](products/action) and remains a separate signed app and runtime.
+
 ## What you can do
 
 **Spin up a project in seconds** — `lattices start` opens a tmux layout from

@@ -4,8 +4,8 @@ import SwiftUI
 // MARK: - Product links
 
 enum ActionDocs {
-    static let siteURL = URL(string: "https://arach.github.io/action/")!
-    static let siteHostLabel = "arach.github.io/action"
+    static let siteURL = URL(string: "https://lattices.dev/action")!
+    static let siteHostLabel = "lattices.dev/action"
 }
 
 extension Notification.Name {

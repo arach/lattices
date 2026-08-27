@@ -10,6 +10,7 @@ export default {
   agent: {
     criticalContext: [
       'Use bun as the JavaScript package manager for this repo.',
+      'Action lives under products/action in the Lattices monorepo; run these commands from the product directory.',
       'The native product lives in native/engine and builds a signed Action.app bundle.',
       'Action.app owns AppKit lifecycle, menus, WebKit, permissions UX, and the recording probe path.',
       'The local Action agent exposes WebSocket methods and should not own fragile AppKit lifecycle responsibilities directly.',
@@ -59,7 +60,7 @@ export default {
       'Accessibility and Screen Recording permissions may be required for capture and automation smoke tests',
     ],
     steps: [
-      { description: 'Clone the repository', command: 'git clone <your-action-repo-url> && cd action' },
+      { description: 'Clone the repository', command: 'git clone https://github.com/arach/lattices.git && cd lattices/products/action' },
       { description: 'Install JavaScript dependencies', command: 'bun install' },
       { description: 'Build and sign the native app', command: 'bun run native:app:build' },
       { description: 'Verify the native host and current permission state', command: 'bun run native:doctor' },

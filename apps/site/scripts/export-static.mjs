@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
+import { copyFile, cp, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 import { marked } from 'marked'
 import { createElement } from 'react'
@@ -21,6 +21,7 @@ const siteDir = resolve(import.meta.dirname, '..')
 const repoRoot = resolve(siteDir, '..', '..')
 const distDir = join(siteDir, 'dist')
 const SITE_URL = 'https://lattices.dev'
+const ACTION_DOWNLOAD_URL = 'https://github.com/arach/action/releases/latest/download/Action.dmg'
 const template = await readFile(join(distDir, 'index.html'), 'utf8')
 const shikiTheme = JSON.parse(await readFile(join(siteDir, 'src', 'data', 'lattices-shiki-theme.json'), 'utf8'))
 const highlighter = await createHighlighterCore({
@@ -66,6 +67,8 @@ await writeRoute(
   'Action is the focused computer-use product from Lattices: native macOS automation, capture, and review for agents.',
   renderToString(createElement(ActionPage)),
 )
+await copyActionDocs()
+await writeRedirect('/action/download', ACTION_DOWNLOAD_URL, 'Downloading Action')
 
 await writeRoute('/docs', 'Docs — Lattices', 'Lattices documentation', renderDoc(docs.find((doc) => doc.slug === 'overview') || docs[0]))
 
@@ -131,6 +134,7 @@ async function writeSitemap() {
   const urls = [
     { loc: `${SITE_URL}/`, priority: '1.0' },
     { loc: `${SITE_URL}/action`, priority: '0.9' },
+    { loc: `${SITE_URL}/action/agents`, priority: '0.7' },
     { loc: `${SITE_URL}/blog`, priority: '0.8' },
     ...docs.map((doc) => ({
       loc: `${SITE_URL}/docs/${doc.slug}`,
@@ -265,6 +269,29 @@ async function writeRoute(route, title, description, appHtml) {
     )
 
   const filePath = route === '/' ? join(distDir, 'index.html') : join(distDir, route.slice(1), 'index.html')
+  await mkdir(dirname(filePath), { recursive: true })
+  await writeFile(filePath, html)
+}
+
+async function writeRedirect(route, target, title) {
+  const filePath = join(distDir, route.slice(1), 'index.html')
+  const safeTarget = escapeHtml(target)
+  const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <meta http-equiv="refresh" content="0;url=${safeTarget}" />
+    <link rel="canonical" href="${SITE_URL}${route}" />
+    <title>${escapeHtml(title)}…</title>
+  </head>
+  <body>
+    <p>Starting the download. <a href="${safeTarget}">Download Action manually</a>.</p>
+    <script>window.location.replace(${JSON.stringify(target)})</script>
+  </body>
+</html>
+`
   await mkdir(dirname(filePath), { recursive: true })
   await writeFile(filePath, html)
 }
@@ -444,6 +471,20 @@ async function copyDocsAssets() {
     } catch {
       // Optional compatibility copy for historical /docs/* asset URLs.
     }
+  }
+}
+
+async function copyActionDocs() {
+  const sourceDir = join(repoRoot, 'products', 'action', 'docs')
+  const targetDir = join(distDir, 'action')
+  const entries = await readdir(sourceDir, { withFileTypes: true })
+
+  await mkdir(targetDir, { recursive: true })
+  for (const entry of entries) {
+    // The React product page owns /action. The old landing media is intentionally
+    // not published with the reference docs.
+    if (entry.name === 'index.html' || entry.name === 'assets') continue
+    await cp(join(sourceDir, entry.name), join(targetDir, entry.name), { recursive: true })
   }
 }
 

@@ -9,9 +9,10 @@
   <meta property="og:type" content="website">
   <meta property="og:title" content="Action — An API for agents to record and share computer use">
   <meta property="og:description" content="Action gives agents an API to record and share computer use on macOS.">
-  <meta property="og:image" content="https://arach.github.io/action/assets/brand/action-og.jpg">
-  <meta property="og:url" content="https://arach.github.io/action/">
+  <meta property="og:image" content="https://lattices.dev/og.png">
+  <meta property="og:url" content="https://lattices.dev/action">
   <meta name="twitter:card" content="summary_large_image">
+  <link rel="canonical" href="https://lattices.dev/action">
   <link rel="alternate" type="text/plain" href="llms.txt" title="llms.txt">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -106,6 +107,24 @@
     .brand img { width: 31px; height: 31px; border-radius: 8px; }
     .brand span { color: var(--slate); font-weight: 400; }
 
+    .brand-lockup {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .family-link {
+      padding-left: 14px;
+      border-left: 1px solid var(--rule);
+      color: var(--slate);
+      font: 500 0.58rem var(--mono);
+      letter-spacing: 0.04em;
+      text-decoration: none;
+      text-transform: uppercase;
+    }
+
+    .family-link:hover { color: var(--coral); }
+
     .nav-links {
       display: flex;
       align-items: center;
@@ -121,6 +140,14 @@
       text-decoration: none;
     }
     .nav-links a:hover { color: var(--coral); }
+
+    .eyebrow a {
+      color: inherit;
+      text-decoration-color: rgb(32 40 43 / 0.35);
+      text-underline-offset: 3px;
+    }
+
+    .eyebrow a:hover { color: var(--coral); }
 
     .hero {
       position: relative;
@@ -595,13 +622,6 @@
     .manifest .value { color: #f1a284; }
     .manifest .muted { color: rgb(243 235 221 / 0.5); }
 
-    .mira-section { background: var(--paper-light); }
-    .mira-grid { display: grid; grid-template-columns: 0.72fr 1.28fr; gap: 60px; align-items: center; }
-    .mira-copy h2 { max-width: 9ch; }
-    .mira-copy .lead { margin-bottom: 26px; }
-    .mira-art { border: 1px solid var(--rule); background: var(--paper); }
-    .mira-art img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
-
     .developer-grid { display: grid; grid-template-columns: 0.72fr 1.28fr; gap: 60px; align-items: start; }
     .terminal {
       border: 1px solid rgb(243 235 221 / 0.15);
@@ -639,10 +659,8 @@
       .proof-items span:nth-child(3) { border-top: 1px solid var(--rule); }
       .proof-items span:nth-child(4) { border-top: 1px solid var(--rule); }
       .capability-grid { grid-template-columns: repeat(2, 1fr); }
-      .install-grid, .demo-grid, .artifact-grid, .mira-grid, .developer-grid { grid-template-columns: 1fr; }
+      .install-grid, .demo-grid, .artifact-grid, .developer-grid { grid-template-columns: 1fr; }
       .install-copy h2 { max-width: 13ch; }
-      .mira-copy h2 { max-width: 13ch; }
-      .mira-art { order: -1; }
     }
 
     @media (max-width: 620px) {
@@ -651,6 +669,7 @@
       .nav-inner { min-height: 64px; }
       .nav-links { gap: 14px; }
       .nav-links li:nth-child(2) { display: none; }
+      .family-link { display: none; }
       .hero { min-height: 760px; }
       .hero-art { inset: 0 -56%; 250px -22%; }
       .hero-art img { object-position: 70% center; }
@@ -677,7 +696,7 @@
       .trace-steps { grid-template-columns: 1fr; }
       .trace-step { min-height: 122px; }
       .manifest { padding: 24px 18px; box-shadow: 8px 8px 0 var(--paper-deep); font-size: 0.58rem; }
-      .mira-grid, .developer-grid { gap: 36px; }
+      .developer-grid { gap: 36px; }
       .terminal { box-shadow: 8px 8px 0 var(--paper-deep); }
       .terminal-body { padding: 20px 14px; font-size: 0.58rem; }
       .footer-inner { align-items: flex-start; flex-direction: column; }
@@ -694,16 +713,19 @@
 
   <header class="site-nav">
     <nav class="shell nav-inner" aria-label="Primary navigation">
-      <a class="brand" href="./" aria-label="Action home">
-        <img src="assets/brand/action-mark.svg" alt="">
-        action<span>.app</span>
-      </a>
+      <div class="brand-lockup">
+        <a class="brand" href="https://lattices.dev/action" aria-label="Action home">
+          <img src="assets/brand/action-mark.svg" alt="">
+          action<span>.app</span>
+        </a>
+        <a class="family-link" href="https://lattices.dev/action">A Lattices product</a>
+      </div>
       <ul class="nav-links">
         <li><a href="#download">Install</a></li>
         <li><a href="#install">Plugin</a></li>
         <li><a href="#demo">Demo</a></li>
         <li><a class="nav-agents" href="agents/">For agents</a></li>
-        <li><a href="https://github.com/arach/action">GitHub</a></li>
+        <li><a href="https://github.com/arach/lattices/tree/main/products/action">GitHub</a></li>
       </ul>
     </nav>
   </header>
@@ -715,7 +737,7 @@
       </div>
       <div class="shell">
         <div class="hero-copy">
-          <p class="eyebrow">Native macOS automation</p>
+          <p class="eyebrow"><a href="https://lattices.dev/action">A Lattices product</a> · Native macOS automation</p>
           <h1 id="hero-title">Action gives agents an API to record and share computer use.</h1>
           <p class="hero-lead">Each macOS run can include video, screenshots, accessibility context, and traces.</p>
           <div class="actions">
@@ -752,8 +774,8 @@
         </div>
 
         <div class="actions">
-          <a class="button" href="https://github.com/arach/action/releases/latest/download/Action.dmg">Download for macOS <span aria-hidden="true">↓</span></a>
-          <a class="button secondary" href="https://github.com/arach/action/releases/latest">All releases</a>
+          <a class="button" href="https://lattices.dev/action/download">Download for macOS <span aria-hidden="true">↓</span></a>
+          <a class="button secondary" href="https://github.com/arach/lattices/releases?q=action-v">All releases</a>
         </div>
 
         <ul class="install-facts">
@@ -768,12 +790,13 @@
         </div>
 
         <div class="prompt-block">
-          <pre id="mcp-connect-command">claude mcp add action -s user -e ACTION_ROOT=~/dev/action \
-  -- bun --cwd ~/dev/action packages/mcp/src/index.ts</pre>
+          <pre id="mcp-connect-command">ACTION_ROOT=/path/to/lattices/products/action
+claude mcp add action -s user -e ACTION_ROOT="$ACTION_ROOT" \
+  -- bun --cwd "$ACTION_ROOT" packages/mcp/src/index.ts</pre>
           <button class="copy-button" type="button" data-copy-target="mcp-connect-command" aria-label="Copy the MCP setup command">Copy</button>
         </div>
 
-        <p class="lead" style="margin-top: 16px;">The runtime server currently runs from a source checkout, so this line needs the repository and <a href="https://bun.sh">Bun</a>. A self-contained server that ships inside the app is the next step — until then, <a href="https://github.com/arach/action">clone the repo</a> alongside the app.</p>
+        <p class="lead" style="margin-top: 16px;">The runtime server currently runs from a source checkout, so this line needs the repository and <a href="https://bun.sh">Bun</a>. A self-contained server that ships inside the app is the next step — until then, <a href="https://github.com/arach/lattices">clone Lattices</a> alongside the app.</p>
       </div>
     </section>
 
@@ -809,12 +832,12 @@
                 <h3>Ask Codex to install it</h3>
                 <p>Paste this into Codex. The agent can run the marketplace commands for you.</p>
                 <div class="prompt-block">
-                  <pre id="codex-install-prompt">Install the Action plugin marketplace from arach/action, then install action-browser@action. When installation finishes, tell me to start a new task so the browser tools can load.</pre>
+                  <pre id="codex-install-prompt">Install the Action plugin marketplace from arach/lattices, then install action-browser@action. When installation finishes, tell me to start a new task so the browser tools can load.</pre>
                   <button class="copy-button" type="button" data-copy-target="codex-install-prompt" aria-label="Copy Codex install prompt">Copy</button>
                 </div>
                 <details class="cli-fallback">
                   <summary>Or install from the terminal</summary>
-                  <pre>codex plugin marketplace add arach/action
+                  <pre>codex plugin marketplace add arach/lattices
 codex plugin add action-browser@action</pre>
                 </details>
               </div>
@@ -840,12 +863,12 @@ codex plugin add action-browser@action</pre>
                 <h3>Ask Claude Code to install it</h3>
                 <p>Claude Code uses its own marketplace manifest and can reload the MCP without starting a new session.</p>
                 <div class="prompt-block">
-                  <pre id="claude-install-prompt">Install Action Browser for Claude Code. Run `claude plugin marketplace add arach/action`, then `claude plugin install action-browser@action --scope user`. When both commands finish, tell me to run `/reload-plugins`.</pre>
+                  <pre id="claude-install-prompt">Install Action Browser for Claude Code. Run `claude plugin marketplace add arach/lattices`, then `claude plugin install action-browser@action --scope user`. When both commands finish, tell me to run `/reload-plugins`.</pre>
                   <button class="copy-button" type="button" data-copy-target="claude-install-prompt" aria-label="Copy Claude Code install prompt">Copy</button>
                 </div>
                 <details class="cli-fallback">
                   <summary>Or install from the terminal</summary>
-                  <pre>claude plugin marketplace add arach/action
+                  <pre>claude plugin marketplace add arach/lattices
 claude plugin install action-browser@action --scope user</pre>
                 </details>
               </div>
@@ -905,7 +928,7 @@ claude plugin install action-browser@action --scope user</pre>
         <div class="section-heading">
           <p class="section-label">Product film</p>
           <h2 id="demo-title">The work stays visible from run to review.</h2>
-          <p class="lead">A 21-second tour of Action running in real Chrome and native macOS, preserving evidence, and handing the result to Mira for review.</p>
+          <p class="lead">A 21-second tour of Action running in real Chrome and native macOS, preserving evidence, and handing the result off for review.</p>
         </div>
         <div class="demo-grid">
           <div class="video-frame">
@@ -969,20 +992,6 @@ claude plugin install action-browser@action --scope user</pre>
       </div>
     </section>
 
-    <section class="section mira-section" aria-labelledby="mira-title">
-      <div class="shell mira-grid">
-        <div class="mira-copy">
-          <p class="section-label">Field companion</p>
-          <h2 id="mira-title">A second set of eyes on every take.</h2>
-          <p class="lead">Mira is the companion direction for following a session, surfacing what changed, and turning raw capture into an inspectable handoff.</p>
-          <a class="text-link" href="LIVE_INSPECTION_RUNTIME.md">Read the inspection direction <span aria-hidden="true">→</span></a>
-        </div>
-        <div class="mira-art">
-          <img src="assets/brand/landing-mira.webp" alt="Mira, a compact cat-like field companion, monitoring a technical capture console">
-        </div>
-      </div>
-    </section>
-
     <section class="section" aria-labelledby="developer-title">
       <div class="shell developer-grid">
         <div>
@@ -1002,6 +1011,7 @@ claude plugin install action-browser@action --scope user</pre>
             <span class="terminal-title">action / quick-start</span>
           </div>
           <div class="terminal-body">
+            <div><span class="prompt">$ </span>cd lattices/products/action</div>
             <div><span class="prompt">$ </span>bun install</div>
             <div><span class="prompt">$ </span>bun run native:app:build</div>
             <div class="output">Action.app signed and ready</div>
@@ -1017,14 +1027,15 @@ claude plugin install action-browser@action --scope user</pre>
 
   <footer class="site-footer">
     <div class="shell footer-inner">
-      <p>Action · native macOS automation, capture, and review.</p>
+      <p>Action is the focused computer-use product from Lattices.</p>
       <div class="footer-links">
+        <a href="https://lattices.dev/action">Lattices</a>
         <a href="#install">Install plugin</a>
         <a href="agents/">For agents</a>
         <a href="llms.txt">llms.txt</a>
         <a href="getting-started.md">Getting started</a>
         <a href="ARCHITECTURE.md">Architecture</a>
-        <a href="https://github.com/arach/action">GitHub</a>
+        <a href="https://github.com/arach/lattices/tree/main/products/action">GitHub</a>
       </div>
     </div>
   </footer>

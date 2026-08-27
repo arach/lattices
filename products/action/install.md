@@ -32,7 +32,7 @@ Build the signed Action.app bundle and verify the native host is in a healthy st
 ## Step 1: Clone the repository
 
 ```bash
-git clone <your-action-repo-url> && cd action
+git clone https://github.com/arach/lattices.git && cd lattices/products/action
 ```
 
 ## Step 2: Install JavaScript dependencies

@@ -12,23 +12,21 @@ same Action MCP tools that other harnesses can call.
 
 ## MCP Server
 
-Launch the server from this repo:
+Launch the server from the Lattices repository root:
 
 ```bash
-bun run mcp
+bun --cwd products/action mcp
 ```
 
-Or directly:
+Or launch it from any directory inside the Lattices checkout:
 
 ```bash
-bun --cwd /Users/art/dev/action packages/mcp/src/index.ts
+ACTION_ROOT="$(git rev-parse --show-toplevel)/products/action"
+ACTION_ROOT="$ACTION_ROOT" bun --cwd "$ACTION_ROOT" packages/mcp/src/index.ts
 ```
 
-If the server is launched from another working directory, set:
-
-```bash
-ACTION_ROOT=/Users/art/dev/action
-```
+`ACTION_ROOT` must identify the Action product root, not the Lattices repository
+root.
 
 ## Initial Tools
 
@@ -95,7 +93,7 @@ Hermes should preserve the returned `recordingId`, `outputPath`, `stopFile`, and
 The bundled skill lives at:
 
 ```text
-skills/hermes-action/SKILL.md
+products/action/skills/hermes-action/SKILL.md
 ```
 
 Use it as the harness-side doctrine for Action workflows.

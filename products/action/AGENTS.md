@@ -7,6 +7,9 @@
 **IMPORTANT:** Read these rules before making any changes:
 
 - Use bun as the JavaScript package manager for this repo.
+- Action lives at `products/action/` inside the Lattices monorepo. Run product-local commands from this directory or use the root `action:*` scripts.
+- The public product page and published Action documentation live at `https://lattices.dev/action`; source links point into `arach/lattices`.
+- Action releases use `action-vX.Y.Z` tags so they cannot collide with Lattices app tags.
 - The native product lives in native/engine and builds a signed Action.app bundle.
 - Action.app owns AppKit lifecycle, menus, WebKit, permissions UX, and the recording probe path.
 - The local Action agent exposes WebSocket methods and should not own fragile AppKit lifecycle responsibilities directly.

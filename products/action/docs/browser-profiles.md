@@ -86,7 +86,7 @@ one. Shipped conventions:
 Create and prepare one with the companion extension loaded:
 
 ```bash
-# from repo root
+# from the Action product root (`products/action`)
 bun run chrome:companion:profile -- setup work
 ```
 
@@ -110,7 +110,7 @@ Environment aliases (shared between companion tooling and Action Browser MCP):
 | `ACTION_BROWSER_PROFILE_DIR` / `ACTION_CHROME_COMPANION_PROFILE_DIR` | Absolute user-data-dir override |
 | `ACTION_BROWSER_PROFILE_ROOT` / `ACTION_CHROME_COMPANION_PROFILE_ROOT` | Root for named identities |
 | `ACTION_BROWSER_DEBUG_PORT` | CDP port (MCP default `9334`) |
-| `ACTION_ROOT` | Monorepo root (needed for cookie tools when MCP is not cwd-rooted) |
+| `ACTION_ROOT` | Action product root (`<lattices-checkout>/products/action`); cookie tools use it when the MCP process starts elsewhere |
 
 ## Cookie seeding
 
@@ -196,18 +196,19 @@ Server: `plugins/action-browser/server/index.ts`
 Install the browser plugin from the marketplace:
 
 ```bash
-claude plugin marketplace add arach/action
+claude plugin marketplace add arach/lattices
 claude plugin install action-browser@action --scope user
 ```
 
-Or point Claude at the local server with a default identity (replace the paths
-with your own checkout and `bun` location):
+Or point Claude at the local server with a default identity. Run these commands
+from any directory inside a Lattices checkout:
 
 ```bash
+ACTION_ROOT="$(git rev-parse --show-toplevel)/products/action"
 claude mcp add action-browser -s user \
-  -e ACTION_ROOT="$HOME/dev/action" \
+  -e ACTION_ROOT="$ACTION_ROOT" \
   -e ACTION_BROWSER_PROFILE=work \
-  -- "$(which bun)" "$HOME/dev/action/plugins/action-browser/server/index.ts"
+  -- "$(command -v bun)" "$ACTION_ROOT/plugins/action-browser/server/index.ts"
 ```
 
 ### Agent workflow
