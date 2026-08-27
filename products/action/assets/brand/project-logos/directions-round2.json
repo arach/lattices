@@ -1,0 +1,65 @@
+[
+  {
+    "project": "ATELIER",
+    "directionId": "atelier-worklight",
+    "title": "Worklight Grid",
+    "rationale": "A drafting-grid square with one lit cell marks Atelier as the bench where Hudson apps are composed under a worklight.",
+    "mjPrompt": "Minimal flat vector app icon of a square drafting grid with one illuminated cell at center, warm paper-cream field with graphite grid lines and a single copper-ember lit square, geometric, centered, developer workshop aesthetic, readable at 16px, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient"
+  },
+  {
+    "project": "OPENSCOUT",
+    "directionId": "openscout-signal-trail",
+    "title": "Signal Trail",
+    "rationale": "A dashed channel between two nodes with one live red endpoint reads as routed dispatch, not a closed loop.",
+    "mjPrompt": "Minimal flat vector app icon of two nodes connected by a dashed channel path with one live red node at the end, steel-gray and near-black ink with a single red accent, geometric, centered, broker control-plane aesthetic, crisp at small sizes, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient"
+  },
+  {
+    "project": "STUDIO",
+    "directionId": "studio-stamp-notch",
+    "title": "Stamp Notch",
+    "rationale": "A registry stamp silhouette with one index notch says numbered proposals without looking like generic design software.",
+    "mjPrompt": "Minimal flat vector app icon of a rounded stamp silhouette with one clean index notch cut from the edge, blueprint-indigo and cream palette with a single cyan registration tick, geometric, centered, internal design-studio aesthetic, readable at 16px, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient"
+  },
+  {
+    "project": "HUDSON",
+    "directionId": "hudson-corner-bracket",
+    "title": "Corner Bracket",
+    "rationale": "A single viewport corner bracket with one active edge captures shared chrome framing a canvas without a full window cliché.",
+    "mjPrompt": "Minimal flat vector app icon of one bold viewport corner bracket with a second faint bracket echo, slate chrome with a single electric-blue accent on the active corner, geometric, centered, app-shell aesthetic, readable at small sizes, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient"
+  },
+  {
+    "project": "TALKIE",
+    "directionId": "talkie-wave-line",
+    "title": "Wave Line",
+    "rationale": "One horizontal listening line terminating in a Hot Mic dot signals capture as signal, never as a microphone object.",
+    "mjPrompt": "Minimal flat vector app icon of a single horizontal listening waveform line ending in one Hot-Mic red dot, ribbon-black field with studio-cream line and FF5346 accent, geometric, centered, absolutely no microphone, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, microphone, gradient"
+  },
+  {
+    "project": "LATTICES",
+    "directionId": "lattices-layer-stack",
+    "title": "Layer Stack",
+    "rationale": "Three offset layers with one active green layer reads as screen-map depth rather than a flat spreadsheet grid.",
+    "mjPrompt": "Minimal flat vector app icon of three offset rectangular layers stacked with the top layer highlighted green, charcoal field with soft-gray layers and one green accent hex 3FB950, geometric, centered, macOS workspace-manager aesthetic, readable at 16px, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient"
+  },
+  {
+    "project": "MISSION WRITER",
+    "directionId": "missionwriter-brief-clip",
+    "title": "Brief Clip",
+    "rationale": "A clipped mission brief with a forward caret says authored dispatch without rocket or quill nostalgia.",
+    "mjPrompt": "Minimal flat vector app icon of a clipped paper brief with one forward caret cut into the page edge, ink-navy and parchment with a dispatch-red accent clip, geometric, centered, CLI mission aesthetic, readable at small sizes, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient"
+  },
+  {
+    "project": "LINEA",
+    "directionId": "linea-serif-lane",
+    "title": "Serif Lane",
+    "rationale": "One elegant reading lane with a margin tick expresses quiet folio reading without an open-book cliché.",
+    "mjPrompt": "Minimal flat vector app icon of one calm horizontal reading lane with a vertical margin tick, bone-white and graphite with a muted sage accent, geometric, generous negative space, centered, reading-first app aesthetic, readable at 16px, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient"
+  },
+  {
+    "project": "FABRIC",
+    "directionId": "fabric-thread-loop",
+    "title": "Thread Loop",
+    "rationale": "A continuous thread loop forming a portable boundary reads as ambient compute envelope, not sewing craft.",
+    "mjPrompt": "Minimal flat vector app icon of one continuous thread loop forming a square boundary around a soft center node, deep-indigo field with two muted thread hues and one warm glow accent, geometric, centered, sandbox-runtime aesthetic, readable at small sizes, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient"
+  }
+]

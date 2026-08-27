@@ -1,0 +1,9 @@
+An agent can do the work. But can it show you what happened?
+
+Action gives agents a real Chrome and a native mac O S runtime to observe, resolve, act, and record.
+
+Every run leaves evidence: the capture, the trace, the snapshot, the accessibility tree, and the manifest.
+
+One run. Every artifact. Ready to review, replay, and share.
+
+Action. Record the work.

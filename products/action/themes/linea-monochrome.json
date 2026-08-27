@@ -1,0 +1,53 @@
+{
+  "id": "linea-monochrome",
+  "name": "Quiet Monochrome",
+  "author": "linea",
+  "summary": "Near-white paper \u00b7 graphite ink",
+  "extends": "action",
+  "surfaces": {
+    "chrome": {
+      "seed": {
+        "ground": {
+          "light": "#FBFAF7",
+          "dark": "#121210"
+        },
+        "ink": {
+          "light": "#1A1A17",
+          "dark": "#F5F3EE"
+        },
+        "accent": {
+          "light": "#1A1A17",
+          "dark": "#F5F3EE"
+        }
+      },
+      "tokens": {
+        "panel": {
+          "light": "#FFFFFF",
+          "dark": "#201F1D"
+        }
+      }
+    },
+    "field": {
+      "seed": {
+        "ground": {
+          "light": "#FBFAF7",
+          "dark": "#121210"
+        },
+        "ink": {
+          "light": "#1A1A17",
+          "dark": "#F5F3EE"
+        },
+        "accent": {
+          "light": "#1A1A17",
+          "dark": "#F5F3EE"
+        }
+      },
+      "tokens": {
+        "panel": {
+          "light": "#FFFFFF",
+          "dark": "#201F1D"
+        }
+      }
+    }
+  }
+}

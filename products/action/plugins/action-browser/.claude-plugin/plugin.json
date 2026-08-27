@@ -1,0 +1,11 @@
+{
+  "name": "action-browser",
+  "version": "0.3.0",
+  "description": "Open pages, inspect them, and capture screenshots in a real background Chrome session.",
+  "author": {
+    "name": "Arach",
+    "url": "https://github.com/arach"
+  },
+  "homepage": "https://arach.github.io/action/#install",
+  "repository": "https://github.com/arach/action"
+}

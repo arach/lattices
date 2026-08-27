@@ -1,0 +1,791 @@
+{
+  "schemaVersion": 5,
+  "purpose": "portrait-cast-roster",
+  "recipe": "midjourney-create",
+  "description": "Portrait cast roster — original animals, adventure, manga, plus expanded animal zoo cast.",
+  "style": "pixel-art-portrait",
+  "aspectRatio": "1:1",
+  "reference": null,
+  "templates": {
+    "portrait": "pixel art character portrait, {subject}{poseClause}, isolated figure on solid black empty background, no scenery no ground no extra props around the character, retro game sprite asset style, consistent scale{accessory} --ar 1:1 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, props"
+  },
+  "species": [
+    {
+      "id": "terrier",
+      "label": "Terrier scout",
+      "kind": "animal",
+      "subject": "a small, scruffy tan terrier dog with a copper collar, tiny explorer pack, and eager bright eyes",
+      "format": "portrait"
+    },
+    {
+      "id": "rabbit",
+      "label": "Messenger rabbit",
+      "kind": "animal",
+      "subject": "a soft grey lop-eared rabbit with a tiny messenger satchel and copper buckle",
+      "format": "portrait"
+    },
+    {
+      "id": "owl",
+      "label": "Scholar owl",
+      "kind": "animal",
+      "subject": "a small, round barn owl with a brass monocle and miniature compass pendant",
+      "format": "portrait"
+    },
+    {
+      "id": "fox",
+      "label": "Trail fox",
+      "kind": "animal",
+      "subject": "a rust-red fox with an explorer scarf and a compact field journal on its belt",
+      "format": "portrait"
+    },
+    {
+      "id": "red-panda",
+      "label": "Forest ranger",
+      "kind": "animal",
+      "subject": "a fluffy red panda with a tiny green ranger bandana and a miniature walking stick",
+      "format": "portrait"
+    },
+    {
+      "id": "sea-otter",
+      "label": "Dock mechanic",
+      "kind": "animal",
+      "subject": "a playful sea otter with rolled-up work overalls, a tiny wrench, and a dock rope coil",
+      "format": "portrait"
+    },
+    {
+      "id": "trail-scout",
+      "label": "Trail scout",
+      "kind": "adventure",
+      "subject": "a young woman trail scout with braided chestnut hair, olive hiking jacket, canvas backpack, and brass compass on a lanyard",
+      "format": "portrait"
+    },
+    {
+      "id": "cartographer",
+      "label": "Desert cartographer",
+      "kind": "adventure",
+      "subject": "an older desert cartographer with sun-worn face, sandy duster coat, wide hat, and rolled parchment maps under one arm",
+      "format": "portrait"
+    },
+    {
+      "id": "arctic-researcher",
+      "label": "Arctic researcher",
+      "kind": "adventure",
+      "subject": "a cheerful arctic researcher in a white parka with fur trim, snow goggles pushed up on forehead, and a specimen satchel",
+      "format": "portrait"
+    },
+    {
+      "id": "skyship-deckhand",
+      "label": "Skyship deckhand",
+      "kind": "adventure",
+      "subject": "a daring skyship deckhand with leather flight coat, brass goggles around the neck, rope coil on belt, and wind-tousled hair",
+      "format": "portrait"
+    },
+    {
+      "id": "jungle-guide",
+      "label": "Jungle guide",
+      "kind": "adventure",
+      "subject": "a calm jungle guide with short curly hair, khaki shirt, machete on hip, and a lantern hook on the backpack",
+      "format": "portrait"
+    },
+    {
+      "id": "magical-girl",
+      "label": "Magical girl",
+      "kind": "manga",
+      "subject": "a cheerful magical girl with big expressive eyes, pink pleated skirt, star wand, and ribbon bows in twin ponytails",
+      "format": "portrait"
+    },
+    {
+      "id": "sword-student",
+      "label": "Sword student",
+      "kind": "manga",
+      "subject": "a stoic young sword student in dark hakama, white training gi, wooden bokken held at rest, and focused calm expression",
+      "format": "portrait"
+    },
+    {
+      "id": "mecha-pilot",
+      "label": "Mecha pilot",
+      "kind": "manga",
+      "subject": "a confident mecha pilot in a bright orange flight jumpsuit, helmet tucked under one arm, and subtle cockpit HUD glow on the chest panel",
+      "format": "portrait"
+    },
+    {
+      "id": "school-walker",
+      "label": "After-school walker",
+      "kind": "manga",
+      "subject": "a relaxed manga schoolgirl with shoulder-length hair, navy sailor uniform, canvas tote bag, and loafers mid-step",
+      "format": "portrait"
+    },
+    {
+      "id": "hooded-rogue",
+      "label": "Hooded rogue",
+      "kind": "manga",
+      "subject": "a tiny chibi hooded rogue with an oversized dark cloak, soft glowing eyes, small dagger at the belt, and mischievous half-smile",
+      "format": "portrait"
+    },
+    {
+      "id": "elf-archer",
+      "label": "Elf archer",
+      "kind": "fantasy",
+      "subject": "an elegant elf archer with pointed ears, forest-green cloak, leather bracer, and a compact recurve bow slung on the back",
+      "format": "portrait"
+    },
+    {
+      "id": "retro-robot",
+      "label": "Retro robot",
+      "kind": "sci-fi",
+      "subject": "a friendly retro robot companion with copper rivets, round glowing eyes, small antenna, and a patched utility satchel",
+      "format": "portrait"
+    },
+    {
+      "id": "hamster",
+      "label": "Pantry hamster",
+      "kind": "animal",
+      "subject": "a chubby golden hamster with stuffed cheek pouches, tiny apron, and a seed scoop",
+      "format": "portrait"
+    },
+    {
+      "id": "brown-bear",
+      "label": "Honey bear",
+      "kind": "animal",
+      "subject": "a sturdy brown bear with a honey pot satchel and a wooden honey dipper",
+      "format": "portrait"
+    },
+    {
+      "id": "polar-bear",
+      "label": "Polar courier",
+      "kind": "animal",
+      "subject": "a fluffy polar bear with a blue ice-pack harness and a small parcel satchel",
+      "format": "portrait"
+    },
+    {
+      "id": "crocodile",
+      "label": "Swamp guard",
+      "kind": "animal",
+      "subject": "a green crocodile with a swamp ranger bandolier and a tiny lantern hook",
+      "format": "portrait"
+    },
+    {
+      "id": "alligator",
+      "label": "Bayou ranger",
+      "kind": "animal",
+      "subject": "a moss-green alligator with a bayou scout hat and coiled rope on its back",
+      "format": "portrait"
+    },
+    {
+      "id": "giraffe",
+      "label": "Lookout giraffe",
+      "kind": "animal",
+      "subject": "a tall friendly giraffe with a brass lookout monocle and a messenger satchel on its neck",
+      "format": "portrait"
+    },
+    {
+      "id": "elephant",
+      "label": "Trail elephant",
+      "kind": "animal",
+      "subject": "a gentle grey elephant with a canvas trail pack and a copper bell on its collar",
+      "format": "portrait"
+    },
+    {
+      "id": "lion",
+      "label": "Savanna sentinel",
+      "kind": "animal",
+      "subject": "a proud lion with a savanna scout sash and a small signal drum",
+      "format": "portrait"
+    },
+    {
+      "id": "tiger",
+      "label": "Jungle stalker",
+      "kind": "animal",
+      "subject": "a striped orange tiger with a jungle tracker scarf and a compact map case",
+      "format": "portrait"
+    },
+    {
+      "id": "wolf",
+      "label": "Night runner",
+      "kind": "animal",
+      "subject": "a grey timber wolf with a night courier cloak and a small lantern pendant",
+      "format": "portrait"
+    },
+    {
+      "id": "deer",
+      "label": "Meadow wanderer",
+      "kind": "animal",
+      "subject": "a soft brown deer with a meadow forager basket and a leaf crown",
+      "format": "portrait"
+    },
+    {
+      "id": "moose",
+      "label": "Pine trailblazer",
+      "kind": "animal",
+      "subject": "a broad moose with a pine trail pack and a carved wooden badge",
+      "format": "portrait"
+    },
+    {
+      "id": "badger",
+      "label": "Burrow digger",
+      "kind": "animal",
+      "subject": "a stout black-and-white badger with a miner's headlamp and a tiny shovel",
+      "format": "portrait"
+    },
+    {
+      "id": "penguin",
+      "label": "Ice dockhand",
+      "kind": "animal",
+      "subject": "a cheerful emperor penguin with a dock worker vest and a fish crate trolley strap",
+      "format": "portrait"
+    },
+    {
+      "id": "raccoon",
+      "label": "Alley mechanic",
+      "kind": "animal",
+      "subject": "a masked raccoon with grease-stained overalls and a pocket wrench roll",
+      "format": "portrait"
+    },
+    {
+      "id": "hedgehog",
+      "label": "Garden scholar",
+      "kind": "animal",
+      "subject": "a tiny hedgehog with round spectacles and a miniature herb satchel",
+      "format": "portrait"
+    },
+    {
+      "id": "capybara",
+      "label": "River lounger",
+      "kind": "animal",
+      "subject": "a calm capybara with a river guide bandana and a tiny paddle tied to its back",
+      "format": "portrait"
+    },
+    {
+      "id": "eagle",
+      "label": "Cliff scout",
+      "kind": "animal",
+      "subject": "a bold golden eagle with a scout harness and a message tube on its leg",
+      "format": "portrait"
+    },
+    {
+      "id": "frog",
+      "label": "Pond caller",
+      "kind": "animal",
+      "subject": "a bright green tree frog with a pond musician drum and a copper bell",
+      "format": "portrait"
+    },
+    {
+      "id": "turtle",
+      "label": "Shell courier",
+      "kind": "animal",
+      "subject": "a patient tortoise with a courier shell pack and a wax-sealed letter slot",
+      "format": "portrait"
+    },
+    {
+      "id": "zebra",
+      "label": "Plains messenger",
+      "kind": "animal",
+      "subject": "a striped zebra with a plains messenger satchel and a brass route bell",
+      "format": "portrait"
+    },
+    {
+      "id": "koala",
+      "label": "Eucalyptus ranger",
+      "kind": "animal",
+      "subject": "a sleepy koala with a eucalyptus ranger pouch and a tiny climbing claw glove",
+      "format": "portrait"
+    },
+    {
+      "id": "flamingo",
+      "label": "Salt flat guide",
+      "kind": "animal",
+      "subject": "a pink flamingo with a salt flat guide sash and a compact sun compass",
+      "format": "portrait"
+    },
+    {
+      "id": "goat",
+      "label": "Mountain climber",
+      "kind": "animal",
+      "subject": "a scruffy mountain goat with a climbing rope coil and a chalk bag",
+      "format": "portrait"
+    }
+  ],
+  "exercises": [
+    {
+      "id": "cast-terrier",
+      "label": "Terrier scout",
+      "tests": [
+        "reference-attach",
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "terrier",
+      "pose": "standing alert with tail up",
+      "status": "generated",
+      "jobHint": "ca697e04-a9f7-475f-a5ab-dd3eba3fa60d"
+    },
+    {
+      "id": "cast-rabbit",
+      "label": "Messenger rabbit",
+      "tests": [
+        "reference-attach",
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "rabbit",
+      "pose": "mid-hop with ears flopping",
+      "status": "generated"
+    },
+    {
+      "id": "cast-owl",
+      "label": "Scholar owl",
+      "tests": [
+        "reference-attach",
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "owl",
+      "pose": "perched upright on a small wooden crate",
+      "status": "generated"
+    },
+    {
+      "id": "cast-fox",
+      "label": "Trail fox",
+      "tests": [
+        "reference-attach",
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "fox",
+      "pose": "walking with nose forward, scarf trailing",
+      "status": "generated"
+    },
+    {
+      "id": "cast-red-panda",
+      "label": "Forest ranger",
+      "tests": [
+        "reference-attach",
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "red-panda",
+      "pose": "standing proudly with walking stick",
+      "status": "queued"
+    },
+    {
+      "id": "cast-sea-otter",
+      "label": "Dock mechanic",
+      "tests": [
+        "reference-attach",
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "sea-otter",
+      "pose": "floating on back while holding a wrench",
+      "status": "queued"
+    },
+    {
+      "id": "cast-trail-scout",
+      "label": "Trail scout",
+      "tests": [
+        "reference-attach",
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "trail-scout",
+      "pose": "standing on a trail marker stone, looking ahead",
+      "status": "queued"
+    },
+    {
+      "id": "cast-cartographer",
+      "label": "Desert cartographer",
+      "tests": [
+        "reference-attach",
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "cartographer",
+      "pose": "unrolling a map with one hand",
+      "status": "queued"
+    },
+    {
+      "id": "cast-arctic-researcher",
+      "label": "Arctic researcher",
+      "tests": [
+        "reference-attach",
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "arctic-researcher",
+      "pose": "holding a sample jar up to the light",
+      "status": "queued"
+    },
+    {
+      "id": "cast-skyship-deckhand",
+      "label": "Skyship deckhand",
+      "tests": [
+        "reference-attach",
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "skyship-deckhand",
+      "pose": "leaning into the wind on a deck rail",
+      "status": "queued"
+    },
+    {
+      "id": "cast-jungle-guide",
+      "label": "Jungle guide",
+      "tests": [
+        "reference-attach",
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "jungle-guide",
+      "pose": "parting vines with one hand, lantern raised",
+      "status": "queued"
+    },
+    {
+      "id": "cast-magical-girl",
+      "label": "Magical girl",
+      "tests": [
+        "reference-attach",
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "magical-girl",
+      "pose": "raising a star wand with a bright smile",
+      "status": "queued"
+    },
+    {
+      "id": "cast-sword-student",
+      "label": "Sword student",
+      "tests": [
+        "reference-attach",
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "sword-student",
+      "pose": "formal bow with bokken at side",
+      "status": "queued"
+    },
+    {
+      "id": "cast-mecha-pilot",
+      "label": "Mecha pilot",
+      "tests": [
+        "reference-attach",
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "mecha-pilot",
+      "pose": "confident stance, helmet under arm",
+      "status": "queued"
+    },
+    {
+      "id": "cast-school-walker",
+      "label": "After-school walker",
+      "tests": [
+        "reference-attach",
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "school-walker",
+      "pose": "walking mid-step with tote bag swinging",
+      "status": "queued"
+    },
+    {
+      "id": "cast-hooded-rogue",
+      "label": "Hooded rogue",
+      "tests": [
+        "reference-attach",
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "hooded-rogue",
+      "pose": "peeking out from hood with playful grin",
+      "status": "queued"
+    },
+    {
+      "id": "cast-elf-archer",
+      "label": "Elf archer",
+      "tests": [
+        "reference-attach",
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "elf-archer",
+      "pose": "drawing an arrow with calm focus",
+      "status": "queued"
+    },
+    {
+      "id": "cast-retro-robot",
+      "label": "Retro robot",
+      "tests": [
+        "reference-attach",
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "retro-robot",
+      "pose": "waving one claw hand in greeting",
+      "status": "queued"
+    },
+    {
+      "id": "cast-hamster",
+      "label": "Pantry hamster",
+      "tests": [
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "hamster",
+      "pose": "standing on hind legs holding a sunflower seed",
+      "status": "queued"
+    },
+    {
+      "id": "cast-brown-bear",
+      "label": "Honey bear",
+      "tests": [
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "brown-bear",
+      "pose": "sniffing upward with one paw raised",
+      "status": "queued"
+    },
+    {
+      "id": "cast-polar-bear",
+      "label": "Polar courier",
+      "tests": [
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "polar-bear",
+      "pose": "walking steadily through snow with parcel secured",
+      "status": "queued"
+    },
+    {
+      "id": "cast-crocodile",
+      "label": "Swamp guard",
+      "tests": [
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "crocodile",
+      "pose": "low alert stance with tail curved",
+      "status": "queued"
+    },
+    {
+      "id": "cast-alligator",
+      "label": "Bayou ranger",
+      "tests": [
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "alligator",
+      "pose": "crawling forward with head raised",
+      "status": "queued"
+    },
+    {
+      "id": "cast-giraffe",
+      "label": "Lookout giraffe",
+      "tests": [
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "giraffe",
+      "pose": "peering over the horizon with long neck stretched",
+      "status": "queued"
+    },
+    {
+      "id": "cast-elephant",
+      "label": "Trail elephant",
+      "tests": [
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "elephant",
+      "pose": "walking with trunk curled around a supply crate",
+      "status": "queued"
+    },
+    {
+      "id": "cast-lion",
+      "label": "Savanna sentinel",
+      "tests": [
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "lion",
+      "pose": "standing guard with chest out and tail flick",
+      "status": "queued"
+    },
+    {
+      "id": "cast-tiger",
+      "label": "Jungle stalker",
+      "tests": [
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "tiger",
+      "pose": "crouched mid-prowl with focused eyes",
+      "status": "queued"
+    },
+    {
+      "id": "cast-wolf",
+      "label": "Night runner",
+      "tests": [
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "wolf",
+      "pose": "trotting at night with ears forward",
+      "status": "queued"
+    },
+    {
+      "id": "cast-deer",
+      "label": "Meadow wanderer",
+      "tests": [
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "deer",
+      "pose": "graceful step with head turned slightly",
+      "status": "queued"
+    },
+    {
+      "id": "cast-moose",
+      "label": "Pine trailblazer",
+      "tests": [
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "moose",
+      "pose": "standing tall among implied pines",
+      "status": "queued"
+    },
+    {
+      "id": "cast-badger",
+      "label": "Burrow digger",
+      "tests": [
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "badger",
+      "pose": "digging pose with dirt on paws",
+      "status": "queued"
+    },
+    {
+      "id": "cast-penguin",
+      "label": "Ice dockhand",
+      "tests": [
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "penguin",
+      "pose": "waddling with flippers out for balance",
+      "status": "queued"
+    },
+    {
+      "id": "cast-raccoon",
+      "label": "Alley mechanic",
+      "tests": [
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "raccoon",
+      "pose": "peeking from behind a crate with wrench in paw",
+      "status": "queued"
+    },
+    {
+      "id": "cast-hedgehog",
+      "label": "Garden scholar",
+      "tests": [
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "hedgehog",
+      "pose": "reading a small scroll with quill tucked behind ear",
+      "status": "queued"
+    },
+    {
+      "id": "cast-capybara",
+      "label": "River lounger",
+      "tests": [
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "capybara",
+      "pose": "relaxed sit near water with paddle resting",
+      "status": "queued"
+    },
+    {
+      "id": "cast-eagle",
+      "label": "Cliff scout",
+      "tests": [
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "eagle",
+      "pose": "wings half spread on a perch",
+      "status": "queued"
+    },
+    {
+      "id": "cast-frog",
+      "label": "Pond caller",
+      "tests": [
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "frog",
+      "pose": "mid-croak on a lily pad with cheeks puffed",
+      "status": "queued"
+    },
+    {
+      "id": "cast-turtle",
+      "label": "Shell courier",
+      "tests": [
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "turtle",
+      "pose": "steady walk with letter peeking from pack",
+      "status": "queued"
+    },
+    {
+      "id": "cast-zebra",
+      "label": "Plains messenger",
+      "tests": [
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "zebra",
+      "pose": "cantering with satchel bouncing",
+      "status": "queued"
+    },
+    {
+      "id": "cast-koala",
+      "label": "Eucalyptus ranger",
+      "tests": [
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "koala",
+      "pose": "hugging a branch with one eye open",
+      "status": "queued"
+    },
+    {
+      "id": "cast-flamingo",
+      "label": "Salt flat guide",
+      "tests": [
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "flamingo",
+      "pose": "balanced on one leg with compass raised",
+      "status": "queued"
+    },
+    {
+      "id": "cast-goat",
+      "label": "Mountain climber",
+      "tests": [
+        "portrait-harvest",
+        "sync"
+      ],
+      "species": "goat",
+      "pose": "perched on a rocky ledge looking upward",
+      "status": "queued"
+    }
+  ]
+}

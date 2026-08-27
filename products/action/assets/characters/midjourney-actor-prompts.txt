@@ -1,0 +1,26 @@
+Action actor sprite rows — pixel-art-row, --ar 48:13, black background
+Reference: assets/pets/explorer-cat/sprites/explorer-cat.v0.frames.png
+
+01 Mira (Action.app)
+four pixel art depictions arranged horizontally of the same cute grey-white striped explorer cat, steampunk aviator goggles orange scarf brown satchel, black background, consistent scale, panel 1 idle still panel 2 thinking look up panel 3 typing focused panel 4 success smile --ar 48:13 --no logo letter typography abstract icon
+
+02 Director (recording-probe)
+four pixel art depictions arranged horizontally of the same cute grey-white striped explorer cat, steampunk aviator goggles orange scarf brown satchel, black background, consistent scale, panel 1 idle ready panel 2 countdown tense panel 3 recording with red tally light on ear panel 4 wrap relaxed, tiny copper clapper pin on jacket, red record dot on ear in panel 3 --ar 48:13 --no logo letter typography abstract icon
+
+03 Scout (inspection)
+four pixel art depictions arranged horizontally of the same cute grey-white striped explorer cat, steampunk aviator goggles orange scarf brown satchel, black background, consistent scale, panel 1 observe alert panel 2 analyze thinking with monocle panel 3 finding pleased nod panel 4 await decision calm, small clipboard, subtle cyan glow on goggles --ar 48:13 --no logo letter typography abstract icon
+
+04 Relay (chrome-companion)
+four pixel art depictions arranged horizontally of the same cute grey-white striped explorer cat, steampunk aviator goggles orange scarf brown satchel, black background, consistent scale, panel 1 idle compact panel 2 bridge connected panel 3 navigate stepping right panel 4 act typing lean, slightly smaller cat, cyan orbital ring collar, compact side pack --ar 48:13 --no logo letter typography abstract icon
+
+05 Compositor (composer)
+four pixel art depictions arranged horizontally of the same cute grey-white striped explorer cat, steampunk aviator goggles orange scarf brown satchel, black background, consistent scale, panel 1 idle calm panel 2 timeline thinking panel 3 render busy panel 4 done satisfied, film reel on backpack, warm copper tint on scarf --ar 48:13 --no logo letter typography abstract icon
+
+06 Stagehand (HUD)
+four pixel art depictions arranged horizontally of the same cute grey-white striped explorer cat, steampunk aviator goggles orange scarf brown satchel, black background, consistent scale, panel 1 silhouette bust panel 2 silhouette with copper brackets panel 3 silhouette wave panel 4 silhouette nod, minimal dark silhouette readable at 24px, copper corner brackets in panels 2-4 --ar 48:13 --no logo letter typography abstract icon
+
+07 Terminal (action-cli / action-mcp)
+four pixel art depictions arranged horizontally of the same cute grey-white striped explorer cat, steampunk aviator goggles orange scarf brown satchel, black background, consistent scale, panel 1 neutral bust panel 2 busy bust panel 3 error bust panel 4 ok bust, 1-bit pixel bust only shoulders up, copper accent pixels, no body below chest --ar 48:13 --no logo letter typography abstract icon
+
+08 Dock (desktop-pet)
+four pixel art depictions arranged horizontally of the same cute grey-white striped explorer cat, steampunk aviator goggles orange scarf brown satchel, black background, consistent scale, panel 1 idle sit panel 2 blink eyes closed panel 3 walk right profile panel 4 sleep curled, soft shadow under paws, classic desktop pet proportions --ar 48:13 --no logo letter typography abstract icon

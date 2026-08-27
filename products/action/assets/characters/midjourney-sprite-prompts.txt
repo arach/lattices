@@ -1,0 +1,16 @@
+Action sprite rows — anchored to explorer-cat v0, NOT logos
+
+Use reference: assets/pets/explorer-cat/sprites/explorer-cat.v0.frames.png
+Contract: 4 equal horizontal panels, same chibi cat, full body, black background, no text, no logos
+
+01 Director idle row (recording HUD)
+sprite sheet strip with four equal horizontal panels left to right, same cute chibi anthropomorphic explorer cat in every panel, full body visible head to tail, beige gray fur white muzzle pink ears, blue explorer jacket orange knit scarf, brown aviator goggles on forehead, brown leather satchel, striped tail, soft cel shading, game character asset, consistent scale and facing across panels, panel 1 standing idle neutral, panel 2 countdown tense ready, panel 3 recording active with tiny red tally light on ear, panel 4 wrap relaxed success, add small copper clapper pin on jacket, black background -- NOT a logo NOT letter A NOT abstract symbol NOT icon mark NOT typography --no logo letter typography abstract icon symbol mark emblem --ar 4:1 --style raw --no logo letter typography abstract icon
+
+02 Scout inspect row (inspection)
+sprite sheet strip four equal horizontal panels, same chibi explorer cat mascot full body, beige gray fur blue jacket orange scarf aviator goggles satchel striped tail, soft cel shading game asset, consistent proportions, panel 1 observe alert looking around, panel 2 analyze thinking monocle over one eye, panel 3 finding pleased nod with clipboard, panel 4 await decision calm attentive, subtle cyan scan glow on goggles, black background -- NOT a logo NOT abstract mark --no logo letter typography abstract icon symbol --ar 4:1 --style raw --no logo letter typography abstract icon
+
+03 Relay agent row (chrome companion)
+sprite sheet strip four equal horizontal panels, slightly smaller chibi explorer cat same design full body, blue jacket orange scarf goggles satchel, orbital ring collar accessory cyan motion dash near feet, panel 1 idle ready, panel 2 bridge connected thinking, panel 3 navigate stepping right, panel 4 act typing forward lean, flat cel shaded game sprite, black background -- NOT a logo NOT letter A --no logo letter typography abstract icon symbol mark --ar 4:1 --style raw --no logo letter typography abstract icon
+
+04 Explorer baseline row (mira launcher)
+sprite sheet strip four equal horizontal panels, cute chibi explorer cat mascot full body, match classic explorer pet proportions, beige gray fur blue jacket orange scarf brown aviator goggles brown satchel striped tail, panel 1 idle blink, panel 2 thinking look up, panel 3 typing focused, panel 4 success smile, soft cel shading wholesome game asset, black background -- NOT a logo NOT icon --no logo letter typography abstract symbol mark --ar 4:1 --style raw --no logo letter typography abstract icon

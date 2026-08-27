@@ -1,0 +1,43 @@
+"use client";
+
+/**
+ * Mira, the app's companion, as flat vector.
+ *
+ * The Swift draws her from a pet sprite sheet at 12fps (`MiraSpriteView` →
+ * `ActionPetSpriteFrameView`), which the browser has no equivalent of and
+ * should not fake with a GIF: an animation invented for the study would be a
+ * claim about how she moves that the sprite sheet does not make. This is her
+ * own avatar art from `assets/characters/avatars/mira.svg`, transcribed rather
+ * than redrawn, so the study is showing the project's character and not a
+ * designer's idea of one.
+ *
+ * She earns a place on Home because Home's job is presence, and presence is
+ * the one thing a page of hairlines cannot do on its own. An earlier pass
+ * deleted her as decoration, which was right about cards and wrong about her:
+ * on the surface that answers "who has this Mac", the answer when nobody is
+ * driving is you *and* her, and a companion drawn nowhere is a companion the
+ * app does not have.
+ */
+export function Mira({ size = 76 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 48 48"
+      fill="none"
+      aria-label="Mira"
+      role="img"
+    >
+      <ellipse cx="24" cy="30" rx="12" ry="13" fill="#C9B8A8" />
+      <circle cx="24" cy="19" r="10" fill="#C9B8A8" />
+      <ellipse cx="24" cy="22" rx="8" ry="6" fill="#F4EFE6" />
+      <rect x="13" y="14" width="22" height="8" rx="4" fill="#6B4F3A" />
+      <circle cx="18" cy="18" r="3.5" fill="#8A5A44" stroke="#3D2A20" strokeWidth="1" />
+      <circle cx="30" cy="18" r="3.5" fill="#8A5A44" stroke="#3D2A20" strokeWidth="1" />
+      <path fill="#5A6B7D" d="M14 28h20l-3 12H17z" />
+      <path fill="#E07A5F" d="M16 27h16l-1 4H17z" />
+      <circle cx="38" cy="10" r="2.5" fill="#C8854A" opacity="0.9" />
+      <path stroke="#C8854A" strokeWidth="1" opacity="0.5" d="M36 10h4M38 8v4" />
+    </svg>
+  );
+}

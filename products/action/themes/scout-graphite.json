@@ -1,0 +1,107 @@
+{
+  "id": "scout-graphite",
+  "name": "Graphite",
+  "author": "openscout",
+  "summary": "Higher-contrast neutral. Hueless canvas, cards clearly lifted off it, brighter secondary text.",
+  "extends": "action",
+  "surfaces": {
+    "chrome": {
+      "seed": {
+        "ground": {
+          "light": "#F2F3F4",
+          "dark": "#121214"
+        },
+        "ink": {
+          "light": "#131416",
+          "dark": "#F8F8F8"
+        },
+        "accent": {
+          "light": "#3E66CC",
+          "dark": "#5585E6"
+        }
+      },
+      "tokens": {
+        "panel": {
+          "light": "#FCFCFD",
+          "dark": "#242428"
+        },
+        "band": {
+          "light": "#E6E8EA",
+          "dark": "#08080A"
+        },
+        "inkSecondary": {
+          "light": "#5C6167",
+          "dark": "#B6B6B6"
+        },
+        "inkMeta": {
+          "light": "#858A90",
+          "dark": "#868687"
+        },
+        "edge": {
+          "light": "#CCD0D5",
+          "dark": "#3A3A3C"
+        },
+        "rule": {
+          "light": "#DEE0E4",
+          "dark": "#2A2A2B"
+        }
+      }
+    },
+    "field": {
+      "seed": {
+        "ground": {
+          "light": "#F2F3F4",
+          "dark": "#121214"
+        },
+        "ink": {
+          "light": "#131416",
+          "dark": "#F8F8F8"
+        },
+        "accent": {
+          "light": "#3E66CC",
+          "dark": "#5585E6"
+        }
+      },
+      "tokens": {
+        "panel": {
+          "light": "#FCFCFD",
+          "dark": "#242428"
+        },
+        "band": {
+          "light": "#E6E8EA",
+          "dark": "#08080A"
+        },
+        "inkSecondary": {
+          "light": "#5C6167",
+          "dark": "#B6B6B6"
+        },
+        "inkMeta": {
+          "light": "#858A90",
+          "dark": "#868687"
+        },
+        "edge": {
+          "light": "#CCD0D5",
+          "dark": "#3A3A3C"
+        },
+        "rule": {
+          "light": "#DEE0E4",
+          "dark": "#2A2A2B"
+        }
+      }
+    }
+  },
+  "status": {
+    "ok": {
+      "light": "#2F7D55",
+      "dark": "#54C98E"
+    },
+    "running": {
+      "light": "#A66112",
+      "dark": "#EFA044"
+    },
+    "failed": {
+      "light": "#B83845",
+      "dark": "#F15A60"
+    }
+  }
+}

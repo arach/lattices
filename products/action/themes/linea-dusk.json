@@ -1,0 +1,53 @@
+{
+  "id": "linea-dusk",
+  "name": "Dusk",
+  "author": "linea",
+  "summary": "Stone paper \u00b7 ember accent",
+  "extends": "action",
+  "surfaces": {
+    "chrome": {
+      "seed": {
+        "ground": {
+          "light": "#EAE7E1",
+          "dark": "#161618"
+        },
+        "ink": {
+          "light": "#161618",
+          "dark": "#EFECE4"
+        },
+        "accent": {
+          "light": "#A34827",
+          "dark": "#EB8E57"
+        }
+      },
+      "tokens": {
+        "panel": {
+          "light": "#F3F1EC",
+          "dark": "#29282A"
+        }
+      }
+    },
+    "field": {
+      "seed": {
+        "ground": {
+          "light": "#EAE7E1",
+          "dark": "#161618"
+        },
+        "ink": {
+          "light": "#161618",
+          "dark": "#EFECE4"
+        },
+        "accent": {
+          "light": "#A34827",
+          "dark": "#EB8E57"
+        }
+      },
+      "tokens": {
+        "panel": {
+          "light": "#F3F1EC",
+          "dark": "#29282A"
+        }
+      }
+    }
+  }
+}

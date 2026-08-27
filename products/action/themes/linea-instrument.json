@@ -1,0 +1,53 @@
+{
+  "id": "linea-instrument",
+  "name": "Instrument",
+  "author": "linea",
+  "summary": "Cool paper \u00b7 signal green",
+  "extends": "action",
+  "surfaces": {
+    "chrome": {
+      "seed": {
+        "ground": {
+          "light": "#F4F4F4",
+          "dark": "#0A0A0A"
+        },
+        "ink": {
+          "light": "#171717",
+          "dark": "#E5E5E5"
+        },
+        "accent": {
+          "light": "#047857",
+          "dark": "#10B981"
+        }
+      },
+      "tokens": {
+        "panel": {
+          "light": "#FFFFFF",
+          "dark": "#171717"
+        }
+      }
+    },
+    "field": {
+      "seed": {
+        "ground": {
+          "light": "#F4F4F4",
+          "dark": "#0A0A0A"
+        },
+        "ink": {
+          "light": "#171717",
+          "dark": "#E5E5E5"
+        },
+        "accent": {
+          "light": "#047857",
+          "dark": "#10B981"
+        }
+      },
+      "tokens": {
+        "panel": {
+          "light": "#FFFFFF",
+          "dark": "#171717"
+        }
+      }
+    }
+  }
+}

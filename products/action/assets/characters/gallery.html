@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Action — companion dogfood</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=EB+Garamond:wght@0,500&display=swap" rel="stylesheet">
+  <style>
+    :root { --bg:#0e0f0d; --panel:#181916; --text:#f0ece4; --muted:#a09890; --accent:#c8854a; --cyan:#22d3ee; --good:#5ec4a8; --warn:#e6b84a; --bad:#e63946; --border:#2e2d28; --mono:'JetBrains Mono',monospace; --serif:'EB Garamond',Georgia,serif; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    html { background:var(--bg); color:var(--text); font-family:var(--serif); }
+    body { min-height:100vh; background-image:linear-gradient(hsla(28,60%,55%,.03) 1px,transparent 1px),linear-gradient(90deg,hsla(28,60%,55%,.03) 1px,transparent 1px); background-size:28px 28px; padding-bottom:5.5rem; }
+    header { border-bottom:1px solid var(--border); background:rgba(14,15,13,.94); backdrop-filter:blur(10px); position:sticky; top:0; z-index:20; }
+    .bar { max-width:90rem; margin:0 auto; padding:1rem 1.4rem; display:flex; justify-content:space-between; align-items:end; gap:1rem; flex-wrap:wrap; }
+    .bar h1 { font-size:1.35rem; font-weight:500; }
+    .bar p { font-family:var(--mono); font-size:.68rem; color:var(--muted); margin-top:.25rem; }
+    nav a { font-family:var(--mono); font-size:.65rem; color:var(--accent); text-decoration:none; margin-left:.8rem; }
+    .hero { max-width:90rem; margin:0 auto; padding:1.6rem 1.4rem .4rem; display:grid; grid-template-columns:1.4fr 1fr; gap:1.2rem; }
+    @media (max-width:900px) { .hero { grid-template-columns:1fr; } }
+    .hero-copy h2 { font-size:clamp(1.8rem,3vw,2.4rem); font-weight:500; line-height:1.05; margin-bottom:.6rem; }
+    .hero-copy p { color:var(--muted); max-width:56ch; line-height:1.5; }
+    .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:.55rem; }
+    @media (max-width:700px) { .stats { grid-template-columns:repeat(2,1fr); } }
+    .stat { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:.75rem .85rem; }
+    .stat strong { display:block; font-family:var(--mono); font-size:1.1rem; }
+    .stat span { font-family:var(--mono); font-size:.58rem; color:var(--muted); }
+    .wrap { max-width:90rem; margin:0 auto; padding:.8rem 1.4rem 1rem; display:grid; grid-template-columns:320px 1fr; gap:1.2rem; }
+    @media (max-width:900px) { .wrap { grid-template-columns:1fr; } }
+    .sidebar { display:grid; gap:1rem; align-content:start; position:sticky; top:5.2rem; }
+    .panel { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:1rem; }
+    .panel h2 { font-family:var(--mono); font-size:.72rem; color:var(--accent); margin-bottom:.7rem; letter-spacing:.08em; text-transform:uppercase; }
+    .exercise-list { list-style:none; display:grid; gap:.35rem; max-height:24rem; overflow:auto; }
+    .exercise-btn { width:100%; text-align:left; font-family:var(--mono); font-size:.62rem; padding:.45rem .55rem; border:1px solid var(--border); border-radius:6px; background:#111; color:var(--muted); cursor:pointer; }
+    .exercise-btn.active { color:var(--text); border-color:var(--accent); background:hsla(28,60%,55%,.1); }
+    .exercise-btn .top { display:flex; justify-content:space-between; gap:.4rem; margin-bottom:.15rem; }
+    .exercise-btn .sub { font-size:.56rem; color:var(--muted); }
+    .badge { font-size:.56rem; padding:.1rem .35rem; border-radius:999px; border:1px solid var(--border); }
+    .badge.ok { color:var(--good); border-color:var(--good); }
+    .badge.queued { color:var(--warn); border-color:var(--warn); }
+    .test-tags { display:flex; flex-wrap:wrap; gap:.25rem; margin-top:.45rem; }
+    .test-tag { font-family:var(--mono); font-size:.54rem; padding:.12rem .35rem; border-radius:4px; background:#111; border:1px solid var(--border); color:var(--cyan); }
+    .filters { display:flex; flex-wrap:wrap; gap:.4rem; margin-bottom:1rem; }
+    .filter { font-family:var(--mono); font-size:.62rem; padding:.3rem .55rem; border:1px solid var(--border); border-radius:999px; background:transparent; color:var(--muted); cursor:pointer; }
+    .filter.active { color:var(--text); border-color:var(--cyan); }
+    .grid { display:grid; gap:1rem; }
+    .card { background:var(--panel); border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+    .card.selected { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
+    .card-head { padding:.85rem 1rem; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; gap:.6rem; flex-wrap:wrap; align-items:center; }
+    .card-head h3 { font-family:var(--mono); font-size:.75rem; }
+    .pill { font-family:var(--mono); font-size:.58rem; padding:.15rem .4rem; border-radius:999px; border:1px solid var(--border); }
+    .pill.sprite-row { color:var(--good); border-color:var(--good); }
+    .pill.square { color:var(--warn); border-color:var(--warn); }
+    .pill.failed { color:var(--bad); border-color:var(--bad); }
+    .strip { background:#0a0a0a; padding:1rem; overflow:auto; }
+    .strip img { width:100%; max-height:220px; object-fit:contain; image-rendering:pixelated; }
+    .variants { display:grid; grid-template-columns:repeat(4,1fr); gap:.35rem; padding:.7rem 1rem 1rem; }
+    .variants img { width:100%; aspect-ratio:1; object-fit:cover; border-radius:4px; border:1px solid var(--border); cursor:pointer; background:#111; image-rendering:pixelated; }
+    .variants img.active { border-color:var(--accent); }
+    .meta { padding:0 1rem 1rem; font-family:var(--mono); font-size:.62rem; color:var(--muted); line-height:1.5; }
+    .meta a { color:var(--accent); }
+    .prompt-box { margin-top:.5rem; padding:.55rem; background:#111; border-radius:6px; color:var(--text); font-size:.6rem; max-height:5rem; overflow:auto; }
+    .queue-item { padding:.55rem 0; border-bottom:1px solid var(--border); font-family:var(--mono); font-size:.62rem; color:var(--muted); }
+    .queue-item strong { color:var(--text); display:block; margin-bottom:.2rem; }
+    .queue-item button { margin-top:.35rem; font-family:var(--mono); font-size:.58rem; padding:.2rem .45rem; border:1px solid var(--border); border-radius:4px; background:#111; color:var(--accent); cursor:pointer; }
+    .empty { padding:3rem; text-align:center; color:var(--muted); font-family:var(--mono); font-size:.75rem; }
+    .roster { max-width:90rem; margin:0 auto; padding:0 1.4rem 1rem; display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:.55rem; }
+    .roster-card { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:.7rem .8rem; cursor:pointer; }
+    .roster-card:hover, .roster-card.active { border-color:var(--accent); }
+    .roster-card h4 { font-family:var(--mono); font-size:.68rem; margin-bottom:.2rem; }
+    .roster-card p { font-family:var(--mono); font-size:.56rem; color:var(--muted); }
+    .pick-tray { position:fixed; left:0; right:0; bottom:0; z-index:30; border-top:1px solid var(--border); background:rgba(14,15,13,.96); backdrop-filter:blur(10px); }
+    .pick-inner { max-width:90rem; margin:0 auto; padding:.75rem 1.4rem; display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap; font-family:var(--mono); font-size:.65rem; color:var(--muted); }
+    .pick-inner strong { color:var(--accent); }
+    .pick-inner a { color:var(--accent); }
+    .pick-tray[hidden] { display:none; }
+    .cmd { margin-top:.6rem; font-family:var(--mono); font-size:.58rem; color:var(--muted); line-height:1.45; }
+    .cmd code { color:var(--cyan); }
+    .pipeline { font-family:var(--mono); font-size:.58rem; color:var(--muted); margin-top:.5rem; }
+    .pipeline span { color:var(--cyan); }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="bar">
+      <div>
+        <h1>Companion dogfood</h1>
+        <p>Midjourney Create recipe — exercise submit · wait · harvest · sync</p>
+      </div>
+      <nav>
+        <a href="preview.html">Treatments</a>
+        <a href="examples/examples.html">Examples</a>
+      </nav>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="hero-copy">
+      <h2>One character. One row.</h2>
+      <p>Explorer cat, four panels — dogfood the companion loop before adding species or prompt variety. Get submit → harvest → sync solid on a single sprite row first.</p>
+      <p class="pipeline">Pipeline: <span>cast.json</span> → <span>submit</span> → <span>wait-new</span> → <span>harvest</span> → <span>sync</span> → this page</p>
+      <p class="cmd">Re-run: <code>bun run chrome:companion:cast:prompts --only 01</code> · Sync: <code>bun run chrome:companion:mj:sync</code></p>
+    </div>
+    <div class="stats" id="stats"></div>
+  </section>
+
+  <section class="roster" id="roster"></section>
+
+  <div class="wrap">
+    <aside class="sidebar">
+      <div class="panel">
+        <h2>Exercises</h2>
+        <ul class="exercise-list" id="exercise-list"></ul>
+      </div>
+      <div class="panel" id="detail-panel" hidden>
+        <h2>Exercise detail</h2>
+        <div id="exercise-detail" style="font-family:var(--mono);font-size:.62rem;color:var(--muted);line-height:1.55"></div>
+      </div>
+      <div class="panel">
+        <h2>Run next</h2>
+        <div id="queue"></div>
+      </div>
+    </aside>
+
+    <main>
+      <div class="filters" id="filters">
+        <button class="filter active" data-kind="sprite-row">Sprite rows</button>
+        <button class="filter" data-kind="all">All</button>
+        <button class="filter" data-kind="failed">Failed</button>
+      </div>
+      <div class="grid" id="gallery"></div>
+    </main>
+  </div>
+
+  <div class="pick-tray" id="pick-tray" hidden>
+    <div class="pick-inner" id="pick-inner"></div>
+  </div>
+
+  <script>
+    let cast = {};
+    let speciesById = {};
+    let exercises = [];
+    let jobs = [];
+    let activeExercise = 'all';
+    let activeKind = 'sprite-row';
+    let selected = null;
+
+    function buildPrompt(exercise) {
+      const species = speciesById[exercise.species];
+      const poseSet = cast.poses?.[exercise.poseSet];
+      const format = poseSet?.format ?? species?.format ?? 'full-body';
+      const template = cast.templates?.[format] ?? '';
+      const [p1, p2, p3, p4] = poseSet?.poses ?? [];
+      return template
+        .replace('{subject}', species?.subject ?? '')
+        .replace('{pose1}', p1 ?? 'idle')
+        .replace('{pose2}', p2 ?? 'thinking')
+        .replace('{pose3}', p3 ?? 'working')
+        .replace('{pose4}', p4 ?? 'done')
+        .replace('{accessory}', poseSet?.accessory ?? '');
+    }
+
+    function exerciseStatus(ex) {
+      const rows = jobs.filter(j => (j.exerciseId ?? j.castId) === ex.id && j.status === 'ok' && j.kind === 'sprite-row');
+      if (rows.length || ex.status === 'generated') return 'ok';
+      return 'queued';
+    }
+
+    async function load() {
+      [cast, jobs] = await Promise.all([
+        fetch('cast.json').then(r => r.json()),
+        fetch('midjourney/page-review/manifest.json').then(r => r.ok ? r.json() : []).catch(() => []),
+      ]);
+      speciesById = Object.fromEntries(cast.species.map(s => [s.id, s]));
+      exercises = cast.exercises ?? [];
+      renderStats();
+      renderRoster();
+      renderExerciseList();
+      renderQueue();
+      renderGallery();
+    }
+
+    function renderStats() {
+      const rows = jobs.filter(j => j.kind === 'sprite-row' && j.status === 'ok');
+      const done = exercises.filter(e => exerciseStatus(e) === 'ok').length;
+      const queued = exercises.length - done;
+      const failed = jobs.filter(j => j.status === 'failed').length;
+      document.getElementById('stats').innerHTML = `
+        <div class="stat"><strong>${rows.length}</strong><span>harvested rows</span></div>
+        <div class="stat"><strong>${done}/${exercises.length}</strong><span>exercises passed</span></div>
+        <div class="stat"><strong>${queued}</strong><span>still queued</span></div>
+        <div class="stat"><strong>${failed}</strong><span>failed jobs</span></div>
+      `;
+    }
+
+    function renderRoster() {
+      const el = document.getElementById('roster');
+      el.innerHTML = exercises.map(ex => {
+        const sp = speciesById[ex.species];
+        const st = exerciseStatus(ex);
+        return `
+          <article class="roster-card${activeExercise === ex.id ? ' active' : ''}" data-exercise="${ex.id}">
+            <h4>${ex.label}</h4>
+            <p>${sp?.label ?? ex.species} · ${st} · ${(ex.tests ?? []).slice(0,2).join(', ')}</p>
+          </article>
+        `;
+      }).join('');
+      el.onclick = e => {
+        const card = e.target.closest('[data-exercise]');
+        if (!card) return;
+        activeExercise = activeExercise === card.dataset.exercise ? 'all' : card.dataset.exercise;
+        renderRoster();
+        renderExerciseList();
+        renderDetail();
+        renderGallery();
+      };
+    }
+
+    function renderDetail() {
+      const panel = document.getElementById('detail-panel');
+      const el = document.getElementById('exercise-detail');
+      if (activeExercise === 'all') { panel.hidden = true; return; }
+      const ex = exercises.find(e => e.id === activeExercise);
+      if (!ex) { panel.hidden = true; return; }
+      panel.hidden = false;
+      el.innerHTML = `
+        <strong style="color:var(--text);display:block;margin-bottom:.4rem">${ex.label}</strong>
+        ${ex.notes ?? ''}
+        <div class="test-tags">${(ex.tests ?? []).map(t => `<span class="test-tag">${t}</span>`).join('')}</div>
+        <div class="prompt-box" style="margin-top:.6rem">${buildPrompt(ex)}</div>
+      `;
+    }
+
+    function renderExerciseList() {
+      const el = document.getElementById('exercise-list');
+      const items = [{ id: 'all', label: 'All exercises' }, ...exercises];
+      el.innerHTML = items.map(ex => {
+        if (ex.id === 'all') {
+          return `<li><button class="exercise-btn${activeExercise === 'all' ? ' active' : ''}" data-exercise="all"><span class="top"><span>All exercises</span><span>${jobs.length}</span></span></button></li>`;
+        }
+        const st = exerciseStatus(ex);
+        return `
+          <li>
+            <button class="exercise-btn${activeExercise === ex.id ? ' active' : ''}" data-exercise="${ex.id}">
+              <span class="top"><span>${ex.label}</span><span class="badge ${st}">${st}</span></span>
+              <span class="sub">${(ex.tests ?? []).join(' · ')}</span>
+            </button>
+          </li>
+        `;
+      }).join('');
+      el.onclick = e => {
+        const btn = e.target.closest('[data-exercise]');
+        if (!btn) return;
+        activeExercise = btn.dataset.exercise;
+        renderRoster();
+        renderExerciseList();
+        renderDetail();
+        renderGallery();
+      };
+      renderDetail();
+    }
+
+    function renderQueue() {
+      const el = document.getElementById('queue');
+      const queued = exercises.filter(e => exerciseStatus(e) !== 'ok');
+      el.innerHTML = queued.slice(0, 6).map((ex, i) => {
+        const num = String(exercises.indexOf(ex) + 1).padStart(2, '0');
+        return `
+          <div class="queue-item">
+            <strong>${num} ${ex.label}</strong>
+            ${ex.notes ?? ''}
+            <button type="button" data-copy="${ex.id}">Copy prompt</button>
+          </div>
+        `;
+      }).join('') || '<div class="queue-item">All exercises have a harvested row.</div>';
+      el.onclick = async e => {
+        const btn = e.target.closest('[data-copy]');
+        if (!btn) return;
+        const ex = exercises.find(x => x.id === btn.dataset.copy);
+        if (!ex) return;
+        await navigator.clipboard.writeText(buildPrompt(ex));
+        btn.textContent = 'Copied';
+        setTimeout(() => { btn.textContent = 'Copy prompt'; }, 1200);
+      };
+    }
+
+    function filteredJobs() {
+      return jobs.filter(j => {
+        const id = j.exerciseId ?? j.castId;
+        if (activeExercise !== 'all' && id !== activeExercise) return false;
+        if (activeKind === 'failed') return j.status === 'failed';
+        if (activeKind === 'all') return true;
+        return j.kind === activeKind;
+      });
+    }
+
+    function updateSelection(jobId, idx) {
+      const job = jobs.find(j => j.id === jobId);
+      if (!job) return;
+      selected = { jobId, idx };
+      const tile = job.tiles[idx] || job.tiles[0];
+      const cardEl = document.getElementById('gallery').querySelector(`[data-job="${jobId}"]`);
+      const heroImg = cardEl?.querySelector('[data-hero]');
+      if (heroImg && tile) heroImg.src = `midjourney/page-review/${tile.file}`;
+      cardEl?.querySelectorAll('.variants img').forEach((v, i) => v.classList.toggle('active', i === idx));
+      document.querySelectorAll('.card').forEach(c => c.classList.toggle('selected', c.dataset.job === jobId));
+      document.getElementById('pick-tray').hidden = false;
+      document.getElementById('pick-inner').innerHTML = `
+        <span>Selected <strong>${job.label ?? job.exerciseId ?? 'job'}</strong> · variant ${idx + 1} · ${tile?.size}</span>
+        <span><a href="${tile?.url}" target="_blank">CDN</a> · <a href="${job.jobUrl}" target="_blank">MJ job</a></span>
+      `;
+    }
+
+    function renderGallery() {
+      const list = filteredJobs();
+      const grid = document.getElementById('gallery');
+      if (!list.length) {
+        grid.innerHTML = '<div class="empty">No harvested jobs for this filter. Run cast prompts or sync the MJ page.</div>';
+        return;
+      }
+      grid.innerHTML = list.map(job => {
+        const selIdx = selected?.jobId === job.id ? selected.idx : 0;
+        const hero = job.tiles?.[selIdx] || job.tiles?.[0];
+        const kind = job.kind || hero?.kind || 'unknown';
+        const ex = exercises.find(e => e.id === (job.exerciseId ?? job.castId));
+        return `
+          <article class="card${selected?.jobId === job.id ? ' selected' : ''}" data-job="${job.id}">
+            <div class="card-head">
+              <h3>${job.label ?? ex?.label ?? job.exerciseId ?? 'unknown'}</h3>
+              <span class="pill ${job.status === 'failed' ? 'failed' : kind}">${job.status === 'failed' ? 'failed' : kind}</span>
+            </div>
+            <div class="strip"><img src="midjourney/page-review/${hero?.file ?? ''}" data-hero="${job.id}"></div>
+            <div class="variants">
+              ${(job.tiles ?? []).map((t, i) => `
+                <img src="midjourney/page-review/${t.file}" data-job="${job.id}" data-idx="${i}" class="${i === selIdx ? 'active' : ''}">
+              `).join('')}
+            </div>
+            <div class="meta">
+              ${hero?.size ?? ''} · <a href="${job.jobUrl ?? '#'}" target="_blank">Midjourney</a>
+              ${(job.tests ?? ex?.tests ?? []).length ? `<div class="test-tags" style="margin-top:.4rem">${(job.tests ?? ex?.tests ?? []).map(t => `<span class="test-tag">${t}</span>`).join('')}</div>` : ''}
+              <div class="prompt-box">${job.prompt || (ex ? buildPrompt(ex) : '')}</div>
+            </div>
+          </article>
+        `;
+      }).join('');
+      grid.onclick = e => {
+        const img = e.target.closest('img[data-job]');
+        const card = e.target.closest('[data-job]');
+        if (!img && !card) return;
+        const jobId = img?.dataset.job || card?.dataset.job;
+        const idx = Number(img?.dataset.idx ?? (selected?.jobId === jobId ? selected.idx : 0));
+        updateSelection(jobId, idx);
+      };
+    }
+
+    document.getElementById('filters').onclick = e => {
+      const btn = e.target.closest('[data-kind]');
+      if (!btn) return;
+      activeKind = btn.dataset.kind;
+      document.querySelectorAll('#filters .filter').forEach(b => b.classList.toggle('active', b === btn));
+      renderGallery();
+    };
+
+    load();
+  </script>
+</body>
+</html>

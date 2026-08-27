@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-05-08",
+  "packs": [
+    {
+      "id": "typing.grcekh.keyboard-typing",
+      "version": "1.0.0",
+      "kind": "typing-sounds",
+      "name": "Keyboard Typing by grcekh",
+      "manifest": "packs/typing/grcekh-keyboard-typing.json"
+    }
+  ]
+}
+

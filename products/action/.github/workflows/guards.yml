@@ -1,0 +1,29 @@
+name: Guards
+
+# Rules that are cheap to check and expensive to regress. Each one exists because it
+# already went wrong once.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  guards:
+    name: Repository guards
+    runs-on: macos-26
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Action composites on top of the screen and never mutates persistent user state
+      # to get a visual effect. A wallpaper has no reliable restore: a staging script
+      # set the desktop picture for a clean recording background and the original was
+      # lost for good. stage.backdrop is a drape — an overlay window — and must stay one.
+      - name: No desktop wallpaper writes
+        shell: bash
+        run: zsh scripts/check-no-wallpaper-writes.sh

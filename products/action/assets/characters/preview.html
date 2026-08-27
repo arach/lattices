@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Action — character treatments</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=EB+Garamond:wght@0,500&display=swap" rel="stylesheet">
+  <style>
+    :root { --bg:#0e0f0d; --panel:#181916; --text:#f0ece4; --muted:#a09890; --accent:#c8854a; --border:#2e2d28; --mono:'JetBrains Mono',monospace; --serif:'EB Garamond',Georgia,serif; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    html { background:var(--bg); color:var(--text); font-family:var(--serif); }
+    body { padding:3rem 2rem 5rem; background-image:linear-gradient(hsla(28,60%,55%,.035) 1px,transparent 1px),linear-gradient(90deg,hsla(28,60%,55%,.035) 1px,transparent 1px); background-size:32px 32px; }
+    .wrap { max-width:82rem; margin:0 auto; }
+    .eyebrow { font-family:var(--mono); font-size:.7rem; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); margin-bottom:1rem; }
+    h1 { font-size:clamp(2.2rem,4vw,3.2rem); font-weight:500; max-width:18ch; margin-bottom:1rem; line-height:1.05; }
+    .lede { color:var(--muted); max-width:62ch; margin-bottom:2rem; font-size:1.1rem; }
+    .composer { display:grid; grid-template-columns:1fr 1.2fr; gap:1.5rem; margin-bottom:2.5rem; }
+    @media (max-width:800px) { .composer { grid-template-columns:1fr; } }
+    .panel { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:1.2rem; }
+    .panel h3 { font-family:var(--mono); font-size:.75rem; color:var(--accent); margin-bottom:1rem; }
+    .rig-stage { aspect-ratio:1; background:#111; border-radius:6px; position:relative; display:grid; place-items:center; overflow:hidden; }
+    .rig-stage img { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; padding:1.5rem; }
+    .rig-stage img.layer { pointer-events:none; }
+    .tabs { display:flex; flex-wrap:wrap; gap:.4rem; margin-bottom:1rem; }
+    .tab { font-family:var(--mono); font-size:.68rem; padding:.35rem .65rem; border:1px solid var(--border); border-radius:999px; background:transparent; color:var(--muted); cursor:pointer; }
+    .tab.active { color:var(--text); border-color:var(--accent); background:hsla(28,60%,55%,.12); }
+    .state-row { display:flex; flex-wrap:wrap; gap:.35rem; margin-top:.8rem; }
+    .state-btn { font-family:var(--mono); font-size:.62rem; padding:.25rem .5rem; border:1px solid var(--border); border-radius:4px; background:#111; color:var(--muted); cursor:pointer; }
+    .state-btn.active { color:var(--accent); border-color:var(--accent); }
+    .meta-line { font-family:var(--mono); font-size:.68rem; color:var(--muted); margin-top:.6rem; line-height:1.5; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:1rem; }
+    .card { background:var(--panel); border:1px solid var(--border); border-radius:8px; overflow:hidden; cursor:pointer; transition:border-color .15s; }
+    .card:hover, .card.selected { border-color:var(--accent); }
+    .mark { aspect-ratio:1; display:grid; place-items:center; padding:1.2rem; background:#111; }
+    .mark.wide { aspect-ratio:4/1; }
+    .mark img { max-width:100%; max-height:100%; }
+    .meta { padding:1rem 1.1rem 1.2rem; }
+    .meta h2 { font-family:var(--mono); font-size:.78rem; margin-bottom:.35rem; }
+    .meta p { color:var(--muted); font-size:.88rem; line-height:1.45; }
+    .tag { display:inline-block; font-family:var(--mono); font-size:.6rem; color:var(--accent); border:1px solid var(--border); border-radius:999px; padding:.18rem .45rem; margin:.25rem .2rem 0 0; }
+    table { width:100%; border-collapse:collapse; margin-top:2rem; font-family:var(--mono); font-size:.72rem; }
+    th,td { text-align:left; padding:.55rem .7rem; border-bottom:1px solid var(--border); }
+    th { color:var(--accent); font-weight:500; }
+    td { color:var(--muted); }
+    .app-map { margin-top:2rem; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <p class="eyebrow">Characters / one rig, many treatments</p>
+    <h1>Same explorer. Different jobs.</h1>
+    <p class="lede">One base rig plus swappable accessory layers. Each application surface picks a treatment — launcher, recording HUD, inspection, browser agent, compose, CLI — with its own motion vocabulary.</p>
+    <p class="lede" style="margin-top:-1rem"><a href="gallery.html" style="font-family:var(--mono);font-size:.72rem;color:var(--accent)">→ Companion dogfood — Midjourney exercise results</a></p>
+
+    <div class="composer">
+      <div class="panel">
+        <h3>Live rig composer</h3>
+        <div class="rig-stage" id="rig-stage"></div>
+        <div class="meta-line" id="rig-meta"></div>
+      </div>
+      <div class="panel">
+        <h3>Treatment + state</h3>
+        <div class="tabs" id="treatment-tabs"></div>
+        <div class="state-row" id="state-row"></div>
+        <div class="meta-line" id="treatment-detail"></div>
+      </div>
+    </div>
+
+    <div class="grid" id="treatment-grid"></div>
+
+    <div class="app-map panel" style="margin-top:2rem">
+      <h3>Application bindings</h3>
+      <table>
+        <thead><tr><th>Application</th><th>Treatment</th><th>Surface</th><th>Format</th></tr></thead>
+        <tbody id="app-rows"></tbody>
+      </table>
+    </div>
+
+    <table style="margin-top:1.5rem">
+      <thead><tr><th>Session phase</th><th>Treatment</th><th>State</th></tr></thead>
+      <tbody id="phase-rows"></tbody>
+    </table>
+
+    <div class="grid" style="margin-top:2rem" id="mj-characters"></div>
+  </div>
+  <script>
+    let catalog = null;
+    let rig = null;
+    let activeId = 'director';
+    let activeState = 'idle';
+
+    const variantBase = {
+      'full-color': 'rig/base.svg',
+      'silhouette': 'rig/base-silhouette.svg',
+      'pixel': 'rig/base-pixel.svg'
+    };
+
+    async function load() {
+      [catalog, rig] = await Promise.all([
+        fetch('treatments.json').then(r => r.json()),
+        fetch('rig/rig.json').then(r => r.json())
+      ]);
+      renderTabs();
+      renderGrid();
+      renderAppMap();
+      renderPhaseMap();
+      selectTreatment(activeId);
+      loadMj();
+    }
+
+    function treatment(id) {
+      return catalog.treatments.find(t => t.id === id);
+    }
+
+    function renderTabs() {
+      const el = document.getElementById('treatment-tabs');
+      el.innerHTML = catalog.treatments.map(t =>
+        `<button class="tab${t.id === activeId ? ' active' : ''}" data-id="${t.id}">${t.displayName}</button>`
+      ).join('');
+      el.onclick = e => {
+        const btn = e.target.closest('[data-id]');
+        if (!btn) return;
+        selectTreatment(btn.dataset.id);
+      };
+    }
+
+    function selectTreatment(id) {
+      activeId = id;
+      const t = treatment(id);
+      activeState = t.states?.[0] ?? 'idle';
+      document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.id === id));
+      document.querySelectorAll('.card').forEach(c => c.classList.toggle('selected', c.dataset.id === id));
+      renderStates();
+      renderRig();
+      renderDetail();
+    }
+
+    function renderStates() {
+      const t = treatment(activeId);
+      const el = document.getElementById('state-row');
+      if (!t.states?.length) {
+        el.innerHTML = '<span class="meta-line">Static avatar — no sprite states.</span>';
+        return;
+      }
+      el.innerHTML = t.states.map(s =>
+        `<button class="state-btn${s === activeState ? ' active' : ''}" data-state="${s}">${s}</button>`
+      ).join('');
+      el.onclick = e => {
+        const btn = e.target.closest('[data-state]');
+        if (!btn) return;
+        activeState = btn.dataset.state;
+        renderStates();
+        renderDetail();
+      };
+    }
+
+    function renderRig() {
+      const t = treatment(activeId);
+      const stage = document.getElementById('rig-stage');
+      const base = variantBase[t.variant] ?? 'rig/base.svg';
+      const sorted = [...t.accessories].sort((a, b) => (rig.accessories[a]?.z ?? 0) - (rig.accessories[b]?.z ?? 0));
+      stage.innerHTML = `<img class="layer" src="${base}" alt="base">` +
+        sorted.map(id => {
+          const acc = rig.accessories[id];
+          return acc ? `<img class="layer" src="rig/${acc.file}" alt="${id}">` : '';
+        }).join('');
+      const scale = t.scale !== 1 ? `scale(${t.scale})` : 'none';
+      stage.style.transform = scale === 'none' ? '' : '';
+      stage.firstElementChild?.style && sorted.forEach(img => { img.style.transform = scale; });
+      document.getElementById('rig-meta').textContent =
+        `${t.displayName} · ${t.variant} · ${t.accessories.length ? t.accessories.join(', ') : 'no accessories'}`;
+    }
+
+    function renderDetail() {
+      const t = treatment(activeId);
+      const hint = t.rowHints?.[activeState];
+      document.getElementById('treatment-detail').innerHTML =
+        `Surface: <strong style="color:var(--text)">${t.surface}</strong><br>` +
+        `Format: ${t.format}${t.petId ? ` · pet:${t.petId}` : ''}<br>` +
+        (hint ? `State <em>${activeState}</em> · row hint <em>${hint}</em>` : `State: ${activeState}`);
+    }
+
+    function renderGrid() {
+      const grid = document.getElementById('treatment-grid');
+      grid.innerHTML = catalog.treatments.map(t => `
+        <article class="card${t.id === activeId ? ' selected' : ''}" data-id="${t.id}">
+          <div class="mark"><img src="avatars/${t.id}.svg" alt="${t.displayName}" onerror="this.style.opacity=0.3"></div>
+          <div class="meta">
+            <h2>${t.displayName}</h2>
+            <p>${t.notes ?? ''}</p>
+            <span class="tag">${t.surface}</span>
+            <span class="tag">${t.format}</span>
+          </div>
+        </article>
+      `).join('');
+      grid.onclick = e => {
+        const card = e.target.closest('[data-id]');
+        if (!card) return;
+        selectTreatment(card.dataset.id);
+      };
+    }
+
+    function renderAppMap() {
+      document.getElementById('app-rows').innerHTML = Object.entries(catalog.applications).map(([app, tid]) => {
+        const t = treatment(tid);
+        return `<tr><td>${app}</td><td>${t?.displayName ?? tid}</td><td>${t?.surface ?? '—'}</td><td>${t?.format ?? '—'}</td></tr>`;
+      }).join('');
+    }
+
+    function renderPhaseMap() {
+      document.getElementById('phase-rows').innerHTML = Object.entries(catalog.stateMap).map(([phase, b]) =>
+        `<tr><td>${phase}</td><td>${b.treatment}</td><td>${b.state}</td></tr>`
+      ).join('');
+    }
+
+    function loadMj() {
+      fetch('midjourney/manifest.json').then(r => r.ok ? r.json() : []).then(items => {
+        const grid = document.getElementById('mj-characters');
+        for (const item of items) {
+          const file = item.saved?.[0]?.filename;
+          if (!file) continue;
+          grid.insertAdjacentHTML('beforeend', `<article class="card"><div class="mark wide"><img src="midjourney/${file}" alt="${item.title}"></div><div class="meta"><h2>MJ ${item.id} — ${item.title}</h2><p>Sprite row from mira CDP run.</p></div></article>`);
+        }
+      }).catch(() => {});
+    }
+
+    load();
+  </script>
+</body>
+</html>

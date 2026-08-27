@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="520" height="360" viewBox="0 0 520 360">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="520" y2="360" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f8fafc"/>
+      <stop offset="1" stop-color="#eef5f4"/>
+    </linearGradient>
+    <linearGradient id="line" x1="150" y1="0" x2="370" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2f7d75"/>
+      <stop offset="1" stop-color="#455a64"/>
+    </linearGradient>
+  </defs>
+  <rect width="520" height="360" rx="0" fill="url(#bg)"/>
+  <text x="40" y="58" fill="#263238" font-family="-apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif" font-size="28" font-weight="700">Action</text>
+  <text x="40" y="84" fill="#54666f" font-family="-apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif" font-size="13">Drag Action to Applications</text>
+  <path d="M188 214 C238 178 292 178 342 214" fill="none" stroke="url(#line)" stroke-width="4" stroke-linecap="round"/>
+  <path d="M332 196 L354 216 L326 223" fill="none" stroke="#455a64" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="34" y="302" width="452" height="1" fill="#d8e0e3"/>
+  <text x="40" y="326" fill="#6d7d84" font-family="-apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif" font-size="11">macOS 14+ · Developer ID signed · Notarized for distribution</text>
+</svg>

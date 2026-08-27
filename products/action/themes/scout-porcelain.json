@@ -1,0 +1,107 @@
+{
+  "id": "scout-porcelain",
+  "name": "Porcelain",
+  "author": "openscout",
+  "summary": "Neutral warm-white. Paper's temperature with none of its tint.",
+  "extends": "action",
+  "surfaces": {
+    "chrome": {
+      "seed": {
+        "ground": {
+          "light": "#F8F8F7",
+          "dark": "#161514"
+        },
+        "ink": {
+          "light": "#161514",
+          "dark": "#E8E6E0"
+        },
+        "accent": {
+          "light": "#3E66CC",
+          "dark": "#5585E6"
+        }
+      },
+      "tokens": {
+        "panel": {
+          "light": "#FFFFFF",
+          "dark": "#21201E"
+        },
+        "band": {
+          "light": "#EEEEEC",
+          "dark": "#100F0E"
+        },
+        "inkSecondary": {
+          "light": "#666461",
+          "dark": "#AAA69F"
+        },
+        "inkMeta": {
+          "light": "#8F8D88",
+          "dark": "#74716B"
+        },
+        "edge": {
+          "light": "#DBDAD7",
+          "dark": "#2B2A29"
+        },
+        "rule": {
+          "light": "#E6E4E2",
+          "dark": "#232221"
+        }
+      }
+    },
+    "field": {
+      "seed": {
+        "ground": {
+          "light": "#F8F8F7",
+          "dark": "#161514"
+        },
+        "ink": {
+          "light": "#161514",
+          "dark": "#E8E6E0"
+        },
+        "accent": {
+          "light": "#3E66CC",
+          "dark": "#5585E6"
+        }
+      },
+      "tokens": {
+        "panel": {
+          "light": "#FFFFFF",
+          "dark": "#21201E"
+        },
+        "band": {
+          "light": "#EEEEEC",
+          "dark": "#100F0E"
+        },
+        "inkSecondary": {
+          "light": "#666461",
+          "dark": "#AAA69F"
+        },
+        "inkMeta": {
+          "light": "#8F8D88",
+          "dark": "#74716B"
+        },
+        "edge": {
+          "light": "#DBDAD7",
+          "dark": "#2B2A29"
+        },
+        "rule": {
+          "light": "#E6E4E2",
+          "dark": "#232221"
+        }
+      }
+    }
+  },
+  "status": {
+    "ok": {
+      "light": "#2F7D55",
+      "dark": "#4CB782"
+    },
+    "running": {
+      "light": "#A86211",
+      "dark": "#E89A3C"
+    },
+    "failed": {
+      "light": "#B93642",
+      "dark": "#E5484D"
+    }
+  }
+}

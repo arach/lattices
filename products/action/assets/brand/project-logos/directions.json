@@ -1,0 +1,164 @@
+[
+  {
+    "project": "ATELIER",
+    "directionId": "atelier-forge",
+    "title": "Forge Ember",
+    "rationale": "An abstract anvil carrying a single ember marks Atelier as the hot workbench where Hudson's tools (Hero, Shaper, OG, Day Stack) are forged.",
+    "keywords": ["anvil", "ember", "forge", "workbench", "graphite", "spark", "warm"],
+    "avoid": ["realistic hammer", "literal flames", "blacksmith scene", "factory", "gradient glow"],
+    "mjPrompt": "Minimal flat vector app icon of an abstract anvil silhouette holding a single glowing ember dot, warm graphite and paper-cream palette with one ember-orange accent, geometric, clean negative space, centered symbol, soft rounded-square containment, developer tool aesthetic, readable at 16px, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient"
+  },
+  {
+    "project": "ATELIER",
+    "directionId": "atelier-dovetail",
+    "title": "Dovetail",
+    "rationale": "An interlocking dovetail joint says craft and precise assembly — parts fitted into a whole, the workshop's core promise.",
+    "keywords": ["dovetail", "joinery", "interlock", "craft", "fit", "graphite", "paper"],
+    "avoid": ["wood grain texture", "saw", "realistic carpentry", "drop shadow", "skeuomorphism"],
+    "mjPrompt": "Minimal flat vector app icon of two interlocking dovetail joint shapes forming one tight square, warm paper-cream and graphite with a subtle ember accent edge, geometric precision, balanced negative space, centered, developer tool aesthetic, readable at small sizes, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient"
+  },
+  {
+    "project": "OPENSCOUT",
+    "directionId": "openscout-open-ring",
+    "title": "Open Ring",
+    "rationale": "The canonical broken O-ring with a live red node sitting in the gap reads instantly as an open channel ready to dispatch.",
+    "keywords": ["ring", "gap", "live node", "broker", "open channel", "red node", "steel"],
+    "avoid": ["closed unbroken ring", "globe", "generic wifi arcs", "gears", "many colors"],
+    "mjPrompt": "Minimal flat vector app icon of a bold circular ring with one clean break and a single live red node resting in the gap, cool steel-gray ring on a near-black ink field with one warm-red accent, geometric, centered, developer tool aesthetic, crisp at 16px, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient"
+  },
+  {
+    "project": "OPENSCOUT",
+    "directionId": "openscout-dispatch-hub",
+    "title": "Dispatch Hub",
+    "rationale": "A central node fanning a few short channels outward — one lit red — frames OpenScout as the routing hub that dispatches to the fleet.",
+    "keywords": ["hub", "spokes", "dispatch", "routing", "node", "fan-out", "channel"],
+    "avoid": ["dense network mesh", "globe", "org chart", "rainbow palette", "arrows everywhere"],
+    "mjPrompt": "Minimal flat vector app icon of a central node with a few short radiating channel spokes, one spoke ending in a live red node, steel-gray and near-black with a single red accent and a faint teal channel, geometric, centered, balanced, developer tool aesthetic, readable small, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient"
+  },
+  {
+    "project": "STUDIO",
+    "directionId": "studio-index",
+    "title": "Index Cards",
+    "rationale": "Offset stacked index cards with a single protruding tab evoke the numbered-proposal registry (STU-###) as a tidy, browsable catalog.",
+    "keywords": ["index card", "stack", "tab", "catalog", "registry", "offset", "blueprint"],
+    "avoid": ["literal numbers or text", "filing cabinet", "folder cliché", "skeuomorphic paper", "shadow"],
+    "mjPrompt": "Minimal flat vector app icon of three offset stacked index cards with one protruding tab, blueprint-indigo and cream palette with a faint cyan rule, geometric, clean, centered, soft rounded-square containment, developer tool aesthetic, readable at 16px, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient"
+  },
+  {
+    "project": "STUDIO",
+    "directionId": "studio-blueprint-rail",
+    "title": "Blueprint Rail",
+    "rationale": "A vertical registration rail of measured ticks with one marked node casts Studio as the structured spine that indexes every proposal.",
+    "keywords": ["rail", "ticks", "registration", "blueprint", "measure", "node", "spine"],
+    "avoid": ["photoreal ruler", "text labels", "busy gridlines", "gauge dial", "3d"],
+    "mjPrompt": "Minimal flat vector app icon of a vertical measured tick-rail with one highlighted node marker, blueprint blue on cream with a single accent tick, geometric, precise, centered, generous negative space, developer tool aesthetic, crisp at small sizes, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient"
+  },
+  {
+    "project": "HUDSON",
+    "directionId": "hudson-dock",
+    "title": "Modular Dock",
+    "rationale": "A modular dock bar with one segment lifted reads as Hudson's shared chrome where app panels mount and rearrange.",
+    "keywords": ["dock", "modules", "chrome", "panel", "mount", "modular", "slate"],
+    "avoid": ["macOS dock copy", "app store grid", "realistic glass", "traffic-light buttons", "many colors"],
+    "mjPrompt": "Minimal flat vector app icon of a horizontal modular dock of rounded segments with one segment raised above the row, slate and muted blue-gray with a single electric-blue accent, geometric, centered, clean negative space, developer tool aesthetic, readable at small sizes, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient"
+  },
+  {
+    "project": "HUDSON",
+    "directionId": "hudson-dotted-canvas",
+    "title": "Dotted Canvas",
+    "rationale": "A rounded window frame enclosing a sparse dotted workspace grid with one active cell captures Hudson's native canvas inside shared chrome.",
+    "keywords": ["window frame", "dotted grid", "canvas", "workspace", "active cell", "chrome"],
+    "avoid": ["browser address bar", "traffic-light buttons", "screenshot realism", "dense grid", "shadow"],
+    "mjPrompt": "Minimal flat vector app icon of a rounded window frame enclosing a sparse dotted workspace grid with one filled accent cell, slate chrome with a muted dot grid and a single electric-blue active dot, geometric, centered, developer tool aesthetic, crisp at 16px, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient"
+  },
+  {
+    "project": "TALKIE",
+    "directionId": "talkie-beam",
+    "title": "Capture Beam",
+    "rationale": "A converging beam narrowing to a single Hot-Mic capture dot signals active dictation without ever drawing a microphone.",
+    "keywords": ["beam", "converge", "capture dot", "hot mic", "ribbon black", "studio cream"],
+    "avoid": ["microphone", "mic grille", "headphones", "waveform bars", "cassette"],
+    "mjPrompt": "Minimal flat vector app icon of a converging triangular beam narrowing toward a single bright capture dot, ribbon-black field with a studio-cream beam and a Hot-Mic red dot (hex FF5346), geometric, centered, bold negative space, developer tool aesthetic, readable at 16px, absolutely no microphone, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, microphone, gradient"
+  },
+  {
+    "project": "TALKIE",
+    "directionId": "talkie-memo-card",
+    "title": "Memo Card",
+    "rationale": "A memo card with a folded corner and one red active-capture dot frames Talkie as captured speech, not a recording device.",
+    "keywords": ["memo card", "folded corner", "capture dot", "active", "studio cream", "hot mic"],
+    "avoid": ["microphone", "cassette", "audio bars", "realistic paper shadow", "headphones"],
+    "mjPrompt": "Minimal flat vector app icon of a memo card with one folded corner and a single Hot-Mic red recording dot, studio-cream card on ribbon-black with an FF5346 accent, geometric, centered, clean, developer tool aesthetic, crisp at small sizes, absolutely no microphone, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, microphone, gradient"
+  },
+  {
+    "project": "LATTICES",
+    "directionId": "lattices-tiling-grid",
+    "title": "Tiling Grid",
+    "rationale": "A refined irregular 3x3 tiling with one green active tile keeps Lattices' canonical screen-map identity sharp at icon scale.",
+    "keywords": ["irregular grid", "tiling", "tiles", "active tile", "green accent", "workspace map"],
+    "avoid": ["perfectly even grid", "spreadsheet", "rubik cube", "gradient tiles", "3d perspective"],
+    "mjPrompt": "Minimal flat vector app icon of an irregular three-by-three tiling of rounded rectangles in varied sizes with one green active tile, charcoal field with soft-gray tiles and a single green accent (hex 3FB950), geometric, centered, developer tool aesthetic, readable at 16px, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient"
+  },
+  {
+    "project": "LATTICES",
+    "directionId": "lattices-split-map",
+    "title": "Split Map",
+    "rationale": "An asymmetric split-pane frame with the focused pane lit green reads as the tiling map itself — division and focus over a plain grid of squares.",
+    "keywords": ["split panes", "screen map", "asymmetric", "focus pane", "tiling", "green"],
+    "avoid": ["even 3x3 grid", "window traffic lights", "desktop wallpaper", "photorealism", "many colors"],
+    "mjPrompt": "Minimal flat vector app icon of a rounded frame divided into asymmetric tiling panes with one focused pane filled green, charcoal and soft-gray with a single green accent (hex 3FB950), geometric, centered, clean negative space, developer tool aesthetic, crisp at small sizes, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient"
+  },
+  {
+    "project": "MISSION WRITER",
+    "directionId": "missionwriter-dispatch-stamp",
+    "title": "Dispatch Stamp",
+    "rationale": "A wax-seal stamp ring around a forward caret casts each mission as authored, sealed, and dispatched.",
+    "keywords": ["stamp", "seal", "dispatch", "caret", "mission brief", "authority"],
+    "avoid": ["realistic wax texture", "postage cliché", "mail envelope", "text inside seal", "ribbon"],
+    "mjPrompt": "Minimal flat vector app icon of a circular dispatch-stamp ring enclosing a single forward caret mark, ink-navy and parchment with a dispatch-red accent, geometric, centered, clean, developer tool aesthetic, readable at 16px, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient"
+  },
+  {
+    "project": "MISSION WRITER",
+    "directionId": "missionwriter-synthesis",
+    "title": "Synthesis Nib",
+    "rationale": "Several lines converging into one nib point depict Mission Writer's job: many sources reviewed and synthesized into a single written output.",
+    "keywords": ["converge", "synthesis", "lines merge", "nib", "brief", "write", "review"],
+    "avoid": ["photoreal pen", "feather quill", "document stack", "text", "ink splatter"],
+    "mjPrompt": "Minimal flat vector app icon of three short lines converging into a single nib point, ink-navy on parchment with one amber accent line, geometric, centered, balanced negative space, developer tool aesthetic, crisp at small sizes, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient"
+  },
+  {
+    "project": "LINEA",
+    "directionId": "linea-margin",
+    "title": "Margin Line",
+    "rationale": "A paper folio with a single vertical margin rule and one reading line embodies Linea's quiet, reading-first character (linea = line).",
+    "keywords": ["margin rule", "folio", "reading line", "paper", "quiet", "line"],
+    "avoid": ["paragraphs of text", "open book cliché", "pencil", "busy text lines", "device bezel"],
+    "mjPrompt": "Minimal flat vector app icon of a paper folio with a single vertical margin rule and one short reading line, bone-white and graphite with a muted sage accent, geometric, calm, centered, generous negative space, developer tool aesthetic, readable at 16px, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient"
+  },
+  {
+    "project": "LINEA",
+    "directionId": "linea-folio-leaf",
+    "title": "Folio Leaf",
+    "rationale": "Two gently leaning folio leaves meeting at a spine line read as a quiet reader holding paper, scan, and voice in one calm surface.",
+    "keywords": ["folio", "leaf", "spine", "fold", "paper", "reader", "calm"],
+    "avoid": ["open book with pages", "e-reader device", "photoreal paper", "text", "dog-ear cliché"],
+    "mjPrompt": "Minimal flat vector app icon of two gently leaning folio leaves meeting at a central spine line, bone-white and soft graphite with a single muted-amber margin accent, geometric, centered, quiet negative space, developer tool aesthetic, crisp at small sizes, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient"
+  },
+  {
+    "project": "FABRIC",
+    "directionId": "fabric-weave",
+    "title": "Woven Boundary",
+    "rationale": "An over-under woven boundary forming a square frames Fabric as the safe, interlaced sandbox that holds agents across providers.",
+    "keywords": ["weave", "interlace", "over-under", "boundary", "sandbox", "lattice"],
+    "avoid": ["cloth texture", "basket photorealism", "knot", "busy pattern", "3d threads"],
+    "mjPrompt": "Minimal flat vector app icon of four threads interlaced over-under into a clean woven square boundary, deep-indigo field with two muted thread hues and a soft glow node at center, geometric, centered, balanced, developer tool aesthetic, readable at 16px, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient"
+  },
+  {
+    "project": "FABRIC",
+    "directionId": "fabric-envelope",
+    "title": "Portable Envelope",
+    "rationale": "A portable parcel-envelope cradling a soft compute node depicts Fabric as a runtime you can carry between providers.",
+    "keywords": ["envelope", "parcel", "portable", "container", "ambient node", "runtime"],
+    "avoid": ["mail envelope cliché", "shipping box realism", "cloud icon", "text", "barcode"],
+    "mjPrompt": "Minimal flat vector app icon of an abstract portable envelope-parcel with a woven seam cradling a soft ambient compute node, deep-indigo and violet with a single warm glow accent, geometric, centered, clean negative space, developer tool aesthetic, crisp at small sizes, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient"
+  }
+]

@@ -1,0 +1,128 @@
+{
+  "meta": {
+    "purpose": "Logo/icon exploration sprint — pre-processing for Narrative Studio + Midjourney",
+    "createdAt": "2026-06-13",
+    "projects": 9,
+    "notes": "mission-rider maps to missionwriter (CLI writing/review missions). studio is the shared design-studio package, not a consumer product."
+  },
+  "projects": [
+    {
+      "id": "atelier",
+      "name": "Atelier",
+      "path": "~/dev/atelier",
+      "category": "Hudson app-builder host",
+      "truth": "Standalone Vite host for extracted Hudson apps — Hero font studio, Shaper vector, OG generator, Day Stack, Assets. Workshop surface for building and dogfooding Hudson apps.",
+      "audience": "Arach + agent builders shipping Hudson-powered tools",
+      "keywords": ["workshop", "bench", "craft", "extracted apps", "vite host", "maker table", "tool forge"],
+      "themes": ["creative bench", "many tools one chrome", "precision craft", "studio worklight"],
+      "paletteHints": ["warm paper field", "graphite ink", "copper accent", "craftsman neutral"],
+      "avoid": ["generic paint palette cliché", "easel literalism", "busy multi-icon collage"],
+      "existingMark": "Scout O-ring lives in atelier/assets/scout-icon (OpenScout derivative)"
+    },
+    {
+      "id": "openscout",
+      "name": "OpenScout",
+      "path": "~/dev/openscout",
+      "category": "Agent control plane",
+      "truth": "Local-first broker/runtime for AI agents — discover, address, observe, compose harnesses (Claude, Codex) without reinventing state per surface.",
+      "audience": "Developers running multi-agent workflows on one machine",
+      "keywords": ["broker", "routing", "channel", "scout", "mesh", "durable ids", "control plane", "open channel"],
+      "themes": ["structural ring", "live node", "routing graph", "field ops", "trustworthy dispatch"],
+      "paletteHints": ["warm charcoal squircle", "off-white ring", "live red node", "structural crisp"],
+      "avoid": ["binoculars", "boy scout figurative", "chat bubble clutter"],
+      "existingMark": "O-ring with gap + red live node (atelier scout-icon canon)"
+    },
+    {
+      "id": "studio",
+      "name": "Studio",
+      "path": "~/dev/studio",
+      "category": "Design-studio primitives",
+      "truth": "Shared registry/shell/doc/code primitives extracted from OpenScout, Talkie, Hudson design studios — internal devtools for numbered proposals and studies.",
+      "audience": "Internal product/design engineers documenting decisions",
+      "keywords": ["registry", "proposals", "STU", "studies", "shell", "page strip", "foundations"],
+      "themes": ["index card", "numbered proposal", "drafting table", "structured catalog", "blueprint rail"],
+      "paletteHints": ["Hudson token aliases", "status pill tones", "editor dark", "paper + graphite"],
+      "avoid": ["film camera", "Hollywood cliché", "generic sparkle wand"],
+      "existingMark": "None — inherits Hudson/studio CSS tokens"
+    },
+    {
+      "id": "hudson",
+      "name": "Hudson",
+      "path": "~/dev/hudson",
+      "category": "App shell framework",
+      "truth": "Opinionated browser shell — nav, panels, command palette, terminal, canvas. AppShell for single products; WorkspaceShell for multi-app dotted-grid canvas. Also native macOS Canvas for tmux/terminals.",
+      "audience": "Builders who want chrome once and apps that plug in",
+      "keywords": ["shell", "chrome", "workspace", "canvas", "dotted grid", "dock", "multi-app", "frame"],
+      "themes": ["window frame", "shared chrome", "spatial canvas", "modular dock", "calm infrastructure"],
+      "paletteHints": ["soft cream workspace", "graphite chrome", "subtle grid dots", "copper highlight"],
+      "avoid": ["river/Hudson Bay literal", "enterprise blue gradient", "overbuilt skyline"],
+      "existingMark": "Hudson workspace hero screenshot; no single canonical app icon yet"
+    },
+    {
+      "id": "talkie",
+      "name": "Talkie",
+      "path": "~/dev/talkie",
+      "category": "Voice memo + dictation",
+      "truth": "Voice memo and dictation workspace for Apple platforms — record, sync, transcribe, AI workflows on transcripts. MemoCard mark, Hot Mic dot, beam/wordmark system from Narrative Studio commissions.",
+      "audience": "Operators capturing speech and turning it into durable text/workflows",
+      "keywords": ["voice", "memo", "beam", "hot mic", "transcript", "dictation", "listening", "cassette"],
+      "themes": ["horizontal beam", "active capture dot", "memo card fold", "broadcast instrument", "ribbon black + studio cream"],
+      "paletteHints": ["Hot Mic #FF5346", "Ribbon Black #0E0D0A", "Studio Cream", "Cassette Orange for processing"],
+      "avoid": ["microphone literal as decoration", "purple gradients", "pure #000/#FFF backgrounds"],
+      "existingMark": "MemoCard + beam tracks from narrative-studio talkie commissions"
+    },
+    {
+      "id": "lattices",
+      "name": "Lattices",
+      "path": "~/dev/lattices",
+      "category": "macOS workspace manager",
+      "truth": "Agentic workspace manager — screen map, window tiling, terminal sessions, OCR scan, layouts via .lattices.json. Mac menu bar + CLI.",
+      "audience": "macOS developers who want their desktop as a coherent API",
+      "keywords": ["lattice", "grid", "tiling", "screen map", "layers", "monitors", "spread", "tile", "workspace API"],
+      "themes": ["irregular window grid", "layer stack", "green active state", "developer HUD", "spatial map"],
+      "paletteHints": ["near-black field", "white/gray grid squares", "bright green accent line", "dark macOS UI"],
+      "avoid": ["crystal lattice science stock", "generic green terminal hacker"],
+      "existingMark": "3x3 stepped grid squares on lattices.dev OG"
+    },
+    {
+      "id": "missionwriter",
+      "name": "Mission Writer",
+      "slug": "mission-rider",
+      "path": "~/dev/missionwriter",
+      "category": "Writing/review CLI",
+      "truth": "Light CLI for writing and review missions on Cursor SDK — markdown mission files, spawn agents, optional multi-LLM contributor synthesis for review-rewrite flows.",
+      "audience": "Operators commissioning structured writing/review runs",
+      "keywords": ["mission", "brief", "dispatch", "writer", "review", "synthesis", "contributors", "mw"],
+      "themes": ["mission packet", "dispatch stamp", "manuscript + checklist", "multi-voice synthesis", "field orders"],
+      "paletteHints": ["paper brief", "ink stamp", "signal red accent", "mono typography"],
+      "avoid": ["rocket/space mission cliché", "military camo", "feather quill nostalgia"],
+      "existingMark": "None"
+    },
+    {
+      "id": "linea",
+      "name": "Linea",
+      "path": "~/dev/linea",
+      "category": "Reading-first document app",
+      "truth": "Reading-first experience — PDFs, scans, OCR, voice, document chat. Paper themes (Monochrome, Dusk, Paper). iOS + macOS + web moving to Hudson.",
+      "audience": "Readers who want listen, explain, and chat on documents",
+      "keywords": ["line", "margin", "page", "reader", "paper", "voice", "scan", "paragraph", "folio"],
+      "themes": ["text line / margin rhythm", "paper sheet", "reading lane", "quiet folio", "voice underline"],
+      "paletteHints": ["warm paper", "ink line", "soft dusk lavender-gray", "minimal serif/sans pairing"],
+      "avoid": ["notebook spiral cliché", "library bookshelf", "over-ornate book"],
+      "existingMark": "Paper themes in iOS; no canonical logo mark"
+    },
+    {
+      "id": "fabric",
+      "name": "Fabric",
+      "path": "~/dev/fabric",
+      "category": "Agent sandbox runtime",
+      "truth": "Lightweight sandboxes for agentic workloads — one Sandbox interface across local, Daytona, E2B, exe.dev. exec, runCode, snapshot, handoff.",
+      "audience": "Agent builders needing portable compute envelopes",
+      "keywords": ["sandbox", "runtime", "envelope", "weave", "thread", "container", "handoff", "ambient compute"],
+      "themes": ["woven boundary", "soft container", "portable shell", "thread crossing providers", "minimal cube"],
+      "paletteHints": ["neutral tech gray", "single accent thread", "flat vector", "infra calm"],
+      "avoid": ["literal fabric bolt texture", "sewing needle", "cloud logo sameness"],
+      "existingMark": "fabric.arach.dev landing — ambient compute positioning"
+    }
+  ]
+}

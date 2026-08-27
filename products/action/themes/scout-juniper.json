@@ -1,0 +1,107 @@
+{
+  "id": "scout-juniper",
+  "name": "Nocturne",
+  "author": "openscout",
+  "summary": "True charcoal \u2014 genuinely neutral greys, so royal blue is the only hue in the window.",
+  "extends": "action",
+  "surfaces": {
+    "chrome": {
+      "seed": {
+        "ground": {
+          "light": "#F4F5F7",
+          "dark": "#191919"
+        },
+        "ink": {
+          "light": "#121418",
+          "dark": "#F5F5F5"
+        },
+        "accent": {
+          "light": "#3E66CC",
+          "dark": "#5585E6"
+        }
+      },
+      "tokens": {
+        "panel": {
+          "light": "#FDFDFE",
+          "dark": "#292929"
+        },
+        "band": {
+          "light": "#E7E9ED",
+          "dark": "#0F0F0F"
+        },
+        "inkSecondary": {
+          "light": "#585F6B",
+          "dark": "#B6B6B6"
+        },
+        "inkMeta": {
+          "light": "#828895",
+          "dark": "#868686"
+        },
+        "edge": {
+          "light": "#CDD2DB",
+          "dark": "#B4B4B4"
+        },
+        "rule": {
+          "light": "#DFE3E9",
+          "dark": "#B4B4B4"
+        }
+      }
+    },
+    "field": {
+      "seed": {
+        "ground": {
+          "light": "#F4F5F7",
+          "dark": "#191919"
+        },
+        "ink": {
+          "light": "#121418",
+          "dark": "#F5F5F5"
+        },
+        "accent": {
+          "light": "#3E66CC",
+          "dark": "#5585E6"
+        }
+      },
+      "tokens": {
+        "panel": {
+          "light": "#FDFDFE",
+          "dark": "#292929"
+        },
+        "band": {
+          "light": "#E7E9ED",
+          "dark": "#0F0F0F"
+        },
+        "inkSecondary": {
+          "light": "#585F6B",
+          "dark": "#B6B6B6"
+        },
+        "inkMeta": {
+          "light": "#828895",
+          "dark": "#868686"
+        },
+        "edge": {
+          "light": "#CDD2DB",
+          "dark": "#B4B4B4"
+        },
+        "rule": {
+          "light": "#DFE3E9",
+          "dark": "#B4B4B4"
+        }
+      }
+    }
+  },
+  "status": {
+    "ok": {
+      "light": "#2F7D55",
+      "dark": "#54C98E"
+    },
+    "running": {
+      "light": "#A66112",
+      "dark": "#EFA044"
+    },
+    "failed": {
+      "light": "#B83845",
+      "dark": "#F15A60"
+    }
+  }
+}

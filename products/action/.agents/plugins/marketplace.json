@@ -1,0 +1,20 @@
+{
+  "name": "action",
+  "interface": {
+    "displayName": "Action"
+  },
+  "plugins": [
+    {
+      "name": "action-browser",
+      "source": {
+        "source": "local",
+        "path": "./plugins/action-browser"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "DeveloperTools"
+    }
+  ]
+}

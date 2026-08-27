@@ -1,0 +1,47 @@
+{
+  "name": "action-browser",
+  "version": "0.3.0",
+  "description": "Open pages, inspect them, and capture screenshots in a real background Chrome session.",
+  "author": {
+    "name": "Arach",
+    "url": "https://github.com/arach"
+  },
+  "homepage": "https://arach.github.io/action/#install",
+  "repository": "https://github.com/arach/action",
+  "keywords": [
+    "browser",
+    "chrome",
+    "screenshots",
+    "computer-use",
+    "mcp"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Action Browser",
+    "shortDescription": "Real Chrome screenshots and simple browser actions",
+    "longDescription": "Action Browser gives agents a small browser-use surface backed by a real, isolated Chrome profile. Open a page without stealing focus, inspect its interactive elements, click or fill a field, and receive a PNG screenshot directly in the tool result.",
+    "developerName": "Arach",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://arach.github.io/action/#install",
+    "defaultPrompt": [
+      "Open example.com in Chrome and show me a screenshot",
+      "Inspect the current page and list its interactive elements",
+      "Open my local site and capture a full-page screenshot"
+    ],
+    "brandColor": "#EF6A47"
+  },
+  "mcpServers": {
+    "action-browser": {
+      "command": "/bin/bash",
+      "args": [
+        "./scripts/run-action-browser-mcp.sh"
+      ],
+      "cwd": "."
+    }
+  }
+}

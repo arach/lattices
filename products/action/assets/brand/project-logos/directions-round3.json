@@ -1,0 +1,56 @@
+[
+  {
+    "project": "ATELIER",
+    "directionId": "atelier-bench-vise",
+    "title": "Bench Vise",
+    "mjPrompt": "Minimal flat vector app icon of an abstract bench vise with two clamp jaws gripping a single small square workpiece at center, warm paper-cream and graphite palette with one copper-ember accent on the workpiece, geometric, centered, developer workshop aesthetic, readable at 16px, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient"
+  },
+  {
+    "project": "OPENSCOUT",
+    "directionId": "openscout-scout-reticle",
+    "title": "Scout Reticle",
+    "mjPrompt": "Minimal flat vector app icon of a targeting reticle ring with four short tick marks and a single live red lock node at center, cool steel-gray on near-black ink with one warm-red accent, geometric, centered, broker control-plane and recon aesthetic, crisp at 16px, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient"
+  },
+  {
+    "project": "STUDIO",
+    "directionId": "studio-pinned-proposal",
+    "title": "Pinned Proposal",
+    "mjPrompt": "Minimal flat vector app icon of a single proposal card with one registration pin dot in the top corner, blueprint-indigo and cream palette with a single cyan pin accent, geometric, centered, internal design-studio registry aesthetic, readable at small sizes, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient"
+  },
+  {
+    "project": "HUDSON",
+    "directionId": "hudson-tab-strip",
+    "title": "Tab Strip",
+    "mjPrompt": "Minimal flat vector app icon of a browser tab strip with one active tab raised and joined to the content edge below, slate chrome and muted blue-gray with a single electric-blue accent on the active tab, geometric, centered, browser app-shell aesthetic, readable at 16px, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient"
+  },
+  {
+    "project": "TALKIE",
+    "directionId": "talkie-quote-capture",
+    "title": "Quote Capture",
+    "mjPrompt": "Minimal flat vector app icon of a pair of bold quotation-mark ticks cradling a single Hot-Mic red capture dot, ribbon-black field with studio-cream quote marks and an FF5346 dot, geometric, centered, dictation-to-text aesthetic, readable at 16px, absolutely no microphone, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, microphone, gradient"
+  },
+  {
+    "project": "LATTICES",
+    "directionId": "lattices-snap-zone",
+    "title": "Snap Zone",
+    "mjPrompt": "Minimal flat vector app icon of an L-shaped snap-guide corner with one rectangular tile docked into it, charcoal field with a soft-gray guide and a single green accent (hex 3FB950) on the snapped tile, geometric, centered, macOS tiling workspace-manager aesthetic, readable at small sizes, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient"
+  },
+  {
+    "project": "MISSION WRITER",
+    "directionId": "missionwriter-objective-flag",
+    "title": "Objective Flag",
+    "mjPrompt": "Minimal flat vector app icon of a chevron-notched pennant flag on a short staff marking a single target node, ink-navy and parchment with a dispatch-red accent on the pennant, geometric, centered, CLI mission aesthetic, readable at 16px, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient"
+  },
+  {
+    "project": "LINEA",
+    "directionId": "linea-bookmark-ribbon",
+    "title": "Bookmark Ribbon",
+    "mjPrompt": "Minimal flat vector app icon of a paper page corner with a single slim bookmark ribbon hanging from the top edge, bone-white and graphite with a muted-amber ribbon accent, geometric, generous negative space, centered, quiet reading-first aesthetic, readable at small sizes, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient"
+  },
+  {
+    "project": "FABRIC",
+    "directionId": "fabric-sandbox-field",
+    "title": "Sandbox Field",
+    "mjPrompt": "Minimal flat vector app icon of a rounded square boundary drawn as a soft stitched dotted edge enclosing one ambient glow node, deep-indigo and violet field with two muted hues and a single warm glow accent, geometric, centered, sandbox-runtime aesthetic, readable at 16px, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient"
+  }
+]

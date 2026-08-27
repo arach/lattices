@@ -1,0 +1,44 @@
+{
+  "id": "notes-demo",
+  "title": "Notes Guided Capture Demo",
+  "targetApp": {
+    "name": "Notes",
+    "bundleId": "com.apple.Notes"
+  },
+  "run": {
+    "initialActionDelayMs": 1200,
+    "actionCadenceMs": 1800
+  },
+  "stage": {
+    "backdrop": "matte",
+    "viewport": {
+      "id": "main",
+      "bounds": {
+        "x": 180,
+        "y": 120,
+        "width": 960,
+        "height": 700
+      },
+      "dimming": "surround"
+    }
+  },
+  "scene": {
+    "goal": "Create a clean Notes demo with a visible shortcut and readable typing cadence",
+    "sequence": [
+      {
+        "action": "type",
+        "description": "Type the demo note",
+        "input": {
+          "text": "Action demo notes\n\n- Native capture is stable\n- Notes now has a typing scenario\n- Shortcut overlays make the flow feel deliberate\n- Composition polish is the next pass",
+          "delayMs": 55,
+          "style": "notes"
+        },
+        "cue": {
+          "kind": "chapter",
+          "text": "Type the note live",
+          "atMs": 400
+        }
+      }
+    ]
+  }
+}

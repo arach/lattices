@@ -1,0 +1,19 @@
+Action character sprite explorations — mira profile, 4-frame expression rows
+
+01 Mira director (recording HUD)
+character sprite sheet row, chibi explorer cat mascot, aviator helmet goggles, orange scarf, tiny red tally light on ear, copper clapper pin on jacket, four poses idle countdown recording wrap, flat illustration, soft shading, warm beige gray fur, black background, game asset, consistent proportions, no text --ar 4:1 --style raw
+
+02 Scout analyst (inspection)
+character sprite sheet row, chibi explorer cat mascot, monocle over one eye, holding small clipboard, cyan scan glow on goggles, four poses observe analyze finding nod, flat illustration, inspection agent aesthetic, black background, game asset, no text --ar 4:1 --style raw
+
+03 Relay browser agent (chrome companion)
+character sprite sheet row, smaller chibi explorer cat, orbital ring collar accessory, cyan dashed motion trail, compact backpack, four poses idle bridge navigate act, flat vector game asset, deep charcoal background, friendly precise agent, no text --ar 4:1 --style raw
+
+04 Stagehand HUD glyph (corner avatar)
+four tiny bust avatars same cat character, silhouette first then copper outline bracket frame, minimal 24px readable shapes, flat icon set, dark stage background, HUD companion marks, no text --ar 4:1 --style raw
+
+05 Compositor (post-capture)
+character sprite sheet row, chibi explorer cat, film reel on backpack, warm copper color grade on outfit, clapper cap tilted on helmet, calm four poses idle timeline render done, cinematic post-production vibe, black background, no text --ar 4:1 --style raw
+
+06 Terminal pixel (CLI MCP)
+four 16-bit pixel art busts same explorer cat, 1-bit monochrome with copper accent pixels, blocky readable at tiny size, retro mac developer tool mascot, black background, sprite row, no text --ar 4:1 --style raw

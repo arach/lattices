@@ -1,0 +1,19 @@
+Action brand explorations — paste into Midjourney (mira profile)
+
+01 Capture A (evolve poster)
+refined logo mark for Action macOS app, flat vector symbol, abstract capital A formed by cursor arrow negative space, one electric cyan stroke, tiny coral recording dot, four subtle capture-corner ticks, warm off-white field, graphite black, minimal memorable developer tool, no text, no mockup, no shadows --ar 1:1 --style raw
+
+02 Stage frame (dark cinematic)
+minimal app icon, dark charcoal square, copper viewport corner brackets, soft ivory play triangle at center, tiny coral record dot, native macOS developer tool aesthetic, flat vector, precise geometry, no text, no photo mockup --ar 1:1 --style raw
+
+03 Clapper cursor
+logo mark merging cinema clapper angle and mouse cursor tip, copper and ivory on deep charcoal, single confident geometric symbol, flat vector, macOS automation product, no words, no gradients, centered --ar 1:1 --style raw
+
+04 Mira orbit (companion identity)
+friendly but precise agent browser mark, orbital ring around abstract A cursor glyph, copper satellite dot, cyan dashed path, deep blue-black background, flat vector app icon, no text --ar 1:1 --style raw
+
+05 Wordmark study (site nav)
+wordmark "action" in jetbrains mono lowercase with subtle copper dot recorder above the x-height, dark editorial layout, cinematic demo workstation, no icon, typography only --ar 3:1 --style raw
+
+06 App tile on Tahoe
+macOS app icon tile, Action capture-A symbol centered, warm paper inner field, graphite symbol, subtle corner ticks, tasteful squircle, flat vector, Apple HIG compliant, no text --ar 1:1 --style raw

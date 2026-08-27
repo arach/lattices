@@ -1,0 +1,14 @@
+{
+  "id": "scout",
+  "displayName": "Scout",
+  "description": "Inspection treatment — explorer-cat sheet with scout state names.",
+  "inherits": "mira",
+  "spritesheetPath": "spritesheet.webp",
+  "states": {
+    "idle": { "row": 0, "frames": 8, "frameWidth": 192, "frameHeight": 208, "fps": 6 },
+    "observe": { "row": 0, "frames": 8, "frameWidth": 192, "frameHeight": 208, "fps": 6 },
+    "analyze": { "row": 4, "frames": 8, "frameWidth": 192, "frameHeight": 208, "fps": 6 },
+    "finding": { "row": 6, "frames": 8, "frameWidth": 192, "frameHeight": 208, "fps": 12 },
+    "await-decision": { "row": 4, "frames": 8, "frameWidth": 192, "frameHeight": 208, "fps": 4 }
+  }
+}

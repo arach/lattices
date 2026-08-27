@@ -1,0 +1,263 @@
+{
+  "schemaVersion": 1,
+  "style": "pixel-art-row",
+  "aspectRatio": "48:13",
+  "template": "four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, {panels} --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props",
+  "variationPrefix": "same character as the reference portrait, pose change only, isolated on black with no scenery:",
+  "actionSets": [
+    {
+      "id": "locomotion",
+      "label": "Locomotion",
+      "panels": "panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch"
+    },
+    {
+      "id": "emotes",
+      "label": "Emotes",
+      "panels": "panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh"
+    },
+    {
+      "id": "react",
+      "label": "React",
+      "panels": "panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised"
+    },
+    {
+      "id": "idle-cycle",
+      "label": "Idle cycle",
+      "panels": "panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed"
+    },
+    {
+      "id": "work",
+      "label": "Work",
+      "panels": "panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod"
+    },
+    {
+      "id": "social",
+      "label": "Social",
+      "panels": "panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow"
+    }
+  ],
+  "signatureActions": {
+    "terrier": {
+      "id": "scout-trail",
+      "label": "Scout trail",
+      "panels": "panel 1 sniff low panel 2 paw scratch panel 3 bark alert panel 4 proud tail wag"
+    },
+    "rabbit": {
+      "id": "messenger",
+      "label": "Messenger",
+      "panels": "panel 1 ears perk panel 2 hop fast panel 3 wave forward panel 4 rest ears down"
+    },
+    "owl": {
+      "id": "scholar",
+      "label": "Scholar",
+      "panels": "panel 1 look down panel 2 head tilt panel 3 eureka wing flap panel 4 sleep perch"
+    },
+    "fox": {
+      "id": "trail",
+      "label": "Trail",
+      "panels": "panel 1 look ahead panel 2 trot forward panel 3 sniff low panel 4 sit rest"
+    },
+    "red-panda": {
+      "id": "ranger",
+      "label": "Ranger",
+      "panels": "panel 1 look up panel 2 reach upward panel 3 arm signal panel 4 salute"
+    },
+    "sea-otter": {
+      "id": "dock",
+      "label": "Dock",
+      "panels": "panel 1 float on back panel 2 arm turn panel 3 toss motion panel 4 happy bounce"
+    },
+    "trail-scout": {
+      "id": "trek",
+      "label": "Trek",
+      "panels": "panel 1 look down panel 2 hike stride panel 3 wipe brow panel 4 arms raised cheer"
+    },
+    "cartographer": {
+      "id": "map",
+      "label": "Map",
+      "panels": "panel 1 look down panel 2 focused lean panel 3 measure gesture panel 4 nod complete"
+    },
+    "arctic-researcher": {
+      "id": "field",
+      "label": "Field",
+      "panels": "panel 1 reach down panel 2 look close panel 3 note gesture panel 4 warm hands"
+    },
+    "skyship-deckhand": {
+      "id": "deck",
+      "label": "Deck",
+      "panels": "panel 1 pull gesture panel 2 lean forward panel 3 wave alert panel 4 salute"
+    },
+    "jungle-guide": {
+      "id": "jungle",
+      "label": "Jungle",
+      "panels": "panel 1 push aside panel 2 arm raised panel 3 slash gesture panel 4 look down"
+    },
+    "magical-girl": {
+      "id": "transform",
+      "label": "Transform",
+      "panels": "panel 1 casual stand panel 2 sparkle spin panel 3 wand raise panel 4 victory pose"
+    },
+    "sword-student": {
+      "id": "kata",
+      "label": "Kata",
+      "panels": "panel 1 bow formal panel 2 strike diagonal panel 3 block guard panel 4 sheath rest"
+    },
+    "mecha-pilot": {
+      "id": "cockpit",
+      "label": "Cockpit",
+      "panels": "panel 1 helmet on panel 2 reach forward panel 3 glance aside panel 4 fist pump"
+    },
+    "school-walker": {
+      "id": "commute",
+      "label": "Commute",
+      "panels": "panel 1 adjust bag panel 2 walk stride panel 3 wave hello panel 4 pause look"
+    },
+    "hooded-rogue": {
+      "id": "sneak",
+      "label": "Sneak",
+      "panels": "panel 1 crouch low panel 2 creep tip-toe panel 3 arm ready panel 4 crouch hide"
+    },
+    "elf-archer": {
+      "id": "archery",
+      "label": "Archery",
+      "panels": "panel 1 nock arrow panel 2 draw aim panel 3 release follow-through panel 4 inspect fletching"
+    },
+    "retro-robot": {
+      "id": "servo",
+      "label": "Servo",
+      "panels": "panel 1 boot whirr panel 2 wave claw panel 3 recharge glow panel 4 dance spin"
+    },
+    "hamster": {
+      "id": "pantry",
+      "label": "Pantry",
+      "panels": "panel 1 stuff cheeks panel 2 cheek puff panel 3 nap curl panel 4 proud stand"
+    },
+    "brown-bear": {
+      "id": "honey",
+      "label": "Honey",
+      "panels": "panel 1 sniff up panel 2 lick paw panel 3 arms wide panel 4 stretch roar"
+    },
+    "polar-bear": {
+      "id": "arctic",
+      "label": "Arctic",
+      "panels": "panel 1 slide pose panel 2 arm toss panel 3 shake fur panel 4 steady march"
+    },
+    "crocodile": {
+      "id": "swamp",
+      "label": "Swamp",
+      "panels": "panel 1 snap pose panel 2 alert scan panel 3 bask still panel 4 tail flick"
+    },
+    "alligator": {
+      "id": "bayou",
+      "label": "Bayou",
+      "panels": "panel 1 hat tip panel 2 toss gesture panel 3 low crawl panel 4 look down"
+    },
+    "giraffe": {
+      "id": "lookout",
+      "label": "Lookout",
+      "panels": "panel 1 neck stretch panel 2 peer horizon panel 3 neck extend panel 4 chew motion"
+    },
+    "elephant": {
+      "id": "trail",
+      "label": "Trail",
+      "panels": "panel 1 trunk lift panel 2 trunk raised panel 3 steady march panel 4 trunk curl"
+    },
+    "lion": {
+      "id": "savanna",
+      "label": "Savanna",
+      "panels": "panel 1 paw tap panel 2 mane shake panel 3 proud roar panel 4 regal lounge"
+    },
+    "tiger": {
+      "id": "jungle",
+      "label": "Jungle",
+      "panels": "panel 1 stalk low panel 2 pounce burst panel 3 crouch still panel 4 stretch yawn"
+    },
+    "wolf": {
+      "id": "night",
+      "label": "Night",
+      "panels": "panel 1 howl up panel 2 sprint stride panel 3 alert look panel 4 pack nod"
+    },
+    "deer": {
+      "id": "meadow",
+      "label": "Meadow",
+      "panels": "panel 1 graze pose panel 2 leap bound panel 3 reach down panel 4 soft bow"
+    },
+    "moose": {
+      "id": "pine",
+      "label": "Pine",
+      "panels": "panel 1 antler shake panel 2 heavy stomp panel 3 chest puff panel 4 head down drink"
+    },
+    "badger": {
+      "id": "burrow",
+      "label": "Burrow",
+      "panels": "panel 1 dig pose panel 2 look alert panel 3 lean forward panel 4 emerge proud"
+    },
+    "penguin": {
+      "id": "ice",
+      "label": "Ice",
+      "panels": "panel 1 belly slide panel 2 juggle motion panel 3 vest flap panel 4 waddle huddle"
+    },
+    "raccoon": {
+      "id": "alley",
+      "label": "Alley",
+      "panels": "panel 1 arm turn panel 2 sneak peek panel 3 climb pose panel 4 wave hello"
+    },
+    "hedgehog": {
+      "id": "garden",
+      "label": "Garden",
+      "panels": "panel 1 look down panel 2 sniff low panel 3 paw up panel 4 curl ball"
+    },
+    "capybara": {
+      "id": "river",
+      "label": "River",
+      "panels": "panel 1 arm dip panel 2 lounge zen panel 3 adjust collar panel 4 wave hello"
+    },
+    "eagle": {
+      "id": "cliff",
+      "label": "Cliff",
+      "panels": "panel 1 wings spread panel 2 dive swoop panel 3 leg tuck panel 4 perch scan"
+    },
+    "frog": {
+      "id": "pond",
+      "label": "Pond",
+      "panels": "panel 1 croak loud panel 2 tap motion panel 3 hop burst panel 4 tongue out"
+    },
+    "turtle": {
+      "id": "shell",
+      "label": "Shell",
+      "panels": "panel 1 tuck inward panel 2 steady plod panel 3 shell hide panel 4 peek out"
+    },
+    "zebra": {
+      "id": "plains",
+      "label": "Plains",
+      "panels": "panel 1 head toss panel 2 canter fast panel 3 trot stride panel 4 call pose"
+    },
+    "koala": {
+      "id": "eucalyptus",
+      "label": "Eucalyptus",
+      "panels": "panel 1 cling pose panel 2 chew motion panel 3 climb reach panel 4 drowsy yawn"
+    },
+    "flamingo": {
+      "id": "salt-flat",
+      "label": "Salt flat",
+      "panels": "panel 1 one-leg balance panel 2 look down panel 3 sash flutter panel 4 wing stretch"
+    },
+    "goat": {
+      "id": "climb",
+      "label": "Climb",
+      "panels": "panel 1 ledge leap panel 2 toss gesture panel 3 shake off panel 4 summit bleat"
+    }
+  },
+  "variationPoses": [
+    "three-quarter view waving hello",
+    "sitting relaxed looking upward",
+    "dynamic mid-action leap",
+    "profile view walking forward"
+  ],
+  "motionPrompts": [
+    "gentle idle breathing loop, isolated on black, pixel art game character",
+    "walking forward smoothly, isolated figure side view, retro game sprite",
+    "happy wave and small hop, isolated on black, pixel art",
+    "focused lean motion, isolated character, short loop"
+  ]
+}

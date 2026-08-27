@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Action — brand explorations</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,500;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0e0f0d;
+      --panel: #181916;
+      --text: #f0ece4;
+      --muted: #a09890;
+      --accent: #c8854a;
+      --cyan: #22d3ee;
+      --border: #2e2d28;
+      --serif: 'EB Garamond', Georgia, serif;
+      --mono: 'JetBrains Mono', Menlo, monospace;
+    }
+    html { color-scheme: only dark; background: var(--bg); color: var(--text); font-family: var(--serif); }
+    body {
+      min-height: 100vh;
+      background-image:
+        linear-gradient(hsla(28, 60%, 55%, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, hsla(28, 60%, 55%, 0.035) 1px, transparent 1px);
+      background-size: 32px 32px;
+      padding: 3rem 2rem 5rem;
+    }
+    .wrap { max-width: 72rem; margin: 0 auto; }
+    .eyebrow {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 1rem;
+    }
+    h1 {
+      font-size: clamp(2.2rem, 4vw, 3.4rem);
+      font-weight: 500;
+      line-height: 1.05;
+      max-width: 14ch;
+      margin-bottom: 1rem;
+    }
+    .lede { color: var(--muted); max-width: 52ch; font-size: 1.15rem; margin-bottom: 3rem; }
+    .palette {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      margin-bottom: 3rem;
+    }
+    .swatch {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.45rem 0.7rem;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--panel);
+    }
+    .swatch i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.25rem;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .card:hover { border-color: hsla(28, 60%, 55%, 0.45); transform: translateY(-2px); }
+    .mark {
+      aspect-ratio: 1;
+      display: grid;
+      place-items: center;
+      padding: 2rem;
+      background: #111;
+    }
+    .mark img { width: min(220px, 70%); height: auto; }
+    .meta { padding: 1.1rem 1.2rem 1.3rem; }
+    .meta h2 {
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      font-weight: 500;
+      margin-bottom: 0.45rem;
+    }
+    .meta p { color: var(--muted); font-size: 0.95rem; line-height: 1.5; }
+    .poster {
+      margin-top: 2rem;
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 1.25rem;
+      align-items: stretch;
+    }
+    @media (max-width: 800px) { .poster { grid-template-columns: 1fr; } }
+    .poster .card .mark { min-height: 320px; }
+    .poster img { max-width: 100%; border-radius: 4px; }
+    .prompts {
+      margin-top: 3rem;
+      padding: 1.4rem 1.5rem;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .prompts h3 {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--accent);
+      margin-bottom: 0.8rem;
+    }
+    .prompts pre {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      line-height: 1.55;
+      color: var(--muted);
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <p class="eyebrow">Brand / v0 explorations</p>
+    <h1>Four marks, one runtime.</h1>
+    <p class="lede">
+      Vector directions for Action and Mira — capture, stage, cinema, and agent browser.
+      The Mira poster remains the anchor; these push app icon, site, and companion identity.
+    </p>
+
+    <div class="palette">
+      <span class="swatch"><i style="background:#0e0f0d"></i> stage #0e0f0d</span>
+      <span class="swatch"><i style="background:#c8854a"></i> copper #c8854a</span>
+      <span class="swatch"><i style="background:#22d3ee"></i> cyan #22d3ee</span>
+      <span class="swatch"><i style="background:#e07a5f"></i> record #e07a5f</span>
+      <span class="swatch"><i style="background:#f4efe6"></i> paper #f4efe6</span>
+    </div>
+
+    <div class="grid">
+      <article class="card">
+        <div class="mark"><img src="01-capture-a.svg" alt="Capture A"></div>
+        <div class="meta">
+          <h2>01 — Capture A</h2>
+          <p>Evolution of the Mira poster. Cursor-in-A, cyan stroke, coral record dot, viewfinder ticks. Best primary app mark.</p>
+        </div>
+      </article>
+      <article class="card">
+        <div class="mark"><img src="02-stage-frame.svg" alt="Stage frame"></div>
+        <div class="meta">
+          <h2>02 — Stage frame</h2>
+          <p>Viewport HUD on dark stage. Copper brackets, ivory play, record dot. Matches the docs site cinematic palette.</p>
+        </div>
+      </article>
+      <article class="card">
+        <div class="mark"><img src="03-clapper-cursor.svg" alt="Clapper cursor"></div>
+        <div class="meta">
+          <h2>03 — Clapper cursor</h2>
+          <p>Cinema meets automation. Clapper angle becomes pointer. Bold, memorable, slightly theatrical.</p>
+        </div>
+      </article>
+      <article class="card">
+        <div class="mark"><img src="04-mira-orbit.svg" alt="Mira orbit"></div>
+        <div class="meta">
+          <h2>04 — Mira orbit</h2>
+          <p>Companion / browser-agent identity. Orbital ring, copper satellite, softer than the host app.</p>
+        </div>
+      </article>
+    </div>
+
+    <div class="grid" style="margin-top:1.25rem" id="midjourney-grid">
+      <article class="card">
+        <div class="mark" style="padding:1rem;background:#f4efe6"><img src="midjourney/01-capture-a-evolve-poster-1.webp" alt="MJ 01 variant 1" style="width:100%;border-radius:8px"></div>
+        <div class="meta">
+          <h2>MJ 01 — Capture A</h2>
+          <p>Driven via mira CDP. Four variants saved under <code style="font-family:var(--mono);font-size:0.75rem">midjourney/</code>.</p>
+        </div>
+      </article>
+    </div>
+
+    <div class="grid" style="margin-top:1.25rem">
+      <article class="card">
+        <div class="mark" style="padding:1rem"><img src="05-stage-frame-concept.jpg" alt="Stage frame concept" style="width:100%;border-radius:8px"></div>
+        <div class="meta">
+          <h2>05 — Stage frame (render)</h2>
+          <p>Generated concept push for the dark HUD / copper bracket direction.</p>
+        </div>
+      </article>
+      <article class="card">
+        <div class="mark" style="padding:1rem;background:#f4efe6"><img src="06-capture-a-concept.jpg" alt="Capture A concept" style="width:100%;border-radius:8px"></div>
+        <div class="meta">
+          <h2>06 — Capture A (render)</h2>
+          <p>Generated riff on the Mira poster — good fodder for Midjourney iteration.</p>
+        </div>
+      </article>
+    </div>
+
+    <div class="poster">
+      <article class="card">
+        <div class="mark" style="background:#111;padding:1.5rem">
+          <img src="../../../docs/assets/action-mira-logo-poster.png" alt="Mira poster anchor" style="width:100%;max-width:420px;border-radius:6px">
+        </div>
+        <div class="meta">
+          <h2>Anchor — Mira poster</h2>
+          <p>Current north star from the logo demo recording. 01 Capture A is a simplified squircle-ready take on this.</p>
+        </div>
+      </article>
+      <article class="card">
+        <div class="meta" style="padding-top:1.4rem;height:100%;display:flex;flex-direction:column;justify-content:space-between">
+          <div>
+            <h2>Next in Midjourney</h2>
+            <p style="margin-bottom:1rem">You're logged into mira on /imagine. Paste prompts from <code style="font-family:var(--mono);font-size:0.8rem;color:var(--cyan)">midjourney-prompts.txt</code> to riff on any direction — or ask Action to submit them via the companion bridge.</p>
+          </div>
+          <p style="font-family:var(--mono);font-size:0.72rem;color:var(--muted)">open assets/brand/explorations/preview.html</p>
+        </div>
+      </article>
+    </div>
+
+    <section class="prompts">
+      <h3>Midjourney prompt 01</h3>
+      <pre>refined logo mark for Action macOS app, flat vector symbol, abstract capital A formed by cursor arrow negative space, one electric cyan stroke, tiny coral recording dot, four subtle capture-corner ticks, warm off-white field, graphite black, minimal memorable developer tool, no text, no mockup, no shadows --ar 1:1 --style raw</pre>
+    </section>
+  </div>
+</body>
+</html>
