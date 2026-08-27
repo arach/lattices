@@ -269,10 +269,12 @@ jobs:
           if gh release view "$release_tag" >/dev/null 2>&1; then
             gh release upload "$release_tag" "$dmg_path" "$versioned_dmg_path" --clobber
             gh release edit "$release_tag" \
+              --latest \
               --title "Lattices $VERSION" \
               --notes-file "$notes_path"
           else
             gh release create "$release_tag" "$dmg_path" "$versioned_dmg_path" \
+              --latest \
               --title "Lattices $VERSION" \
               --notes-file "$notes_path"
           fi

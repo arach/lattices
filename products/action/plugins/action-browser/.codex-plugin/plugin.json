@@ -6,8 +6,8 @@
     "name": "Arach",
     "url": "https://github.com/arach"
   },
-  "homepage": "https://arach.github.io/action/#install",
-  "repository": "https://github.com/arach/action",
+  "homepage": "https://lattices.dev/action",
+  "repository": "https://github.com/arach/lattices/tree/main/products/action",
   "keywords": [
     "browser",
     "chrome",
@@ -27,7 +27,7 @@
       "Read",
       "Write"
     ],
-    "websiteURL": "https://arach.github.io/action/#install",
+    "websiteURL": "https://lattices.dev/action",
     "defaultPrompt": [
       "Open example.com in Chrome and show me a screenshot",
       "Inspect the current page and list its interactive elements",

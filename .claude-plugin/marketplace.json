@@ -1,0 +1,21 @@
+{
+  "name": "action",
+  "owner": {
+    "name": "Arach",
+    "url": "https://github.com/arach"
+  },
+  "description": "Agent-facing tools from Action for native macOS automation and capture.",
+  "plugins": [
+    {
+      "name": "action-browser",
+      "source": "./products/action/plugins/action-browser",
+      "description": "Open pages, inspect them, and capture screenshots in an isolated real Chrome profile.",
+      "version": "0.3.0",
+      "author": {
+        "name": "Arach",
+        "url": "https://github.com/arach"
+      },
+      "category": "development"
+    }
+  ]
+}

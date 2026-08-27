@@ -13,10 +13,10 @@ Usage:
   scripts/tag-release <version> [options]
 
 Examples:
-  scripts/tag-release 0.1.0
-  scripts/tag-release 0.1.0 --dry-run
-  scripts/tag-release 0.1.0 --upload-bin
-  scripts/tag-release 0.1.0 --upload-bin Installer/Action-for-Mac.dmg
+  scripts/tag-release 0.3.0
+  scripts/tag-release 0.3.0 --dry-run
+  scripts/tag-release 0.3.0 --upload-bin
+  scripts/tag-release 0.3.0 --upload-bin Installer/Action-for-Mac.dmg
 
 Options:
   --allow-dirty       Allow tagging while the working tree has local changes
@@ -115,12 +115,12 @@ if [[ ! "$VERSION" =~ '^[0-9]+\.[0-9]+\.[0-9]+$' ]]; then
   exit 1
 fi
 
-TAG="v$VERSION"
+TAG="action-v$VERSION"
 
 cd "$ROOT_DIR"
 
-if [[ ! -d .git ]]; then
-  echo "Not running inside the Action git repository: $ROOT_DIR" >&2
+if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
+  echo "Action is not inside a Git repository: $ROOT_DIR" >&2
   exit 1
 fi
 
@@ -210,13 +210,20 @@ EOF
   cp "$BIN_PATH" "$VERSIONED_ASSET"
 
   if [[ "$DRY_RUN" == "1" ]]; then
-    echo "+ gh release view $TAG || gh release create $TAG ..."
+    echo "+ gh release view $TAG || gh release create $TAG --latest=false ..."
     echo "+ gh release upload $TAG $GENERIC_ASSET $VERSIONED_ASSET --clobber"
   else
     if gh release view "$TAG" >/dev/null 2>&1; then
-      gh release edit "$TAG" --title "$RELEASE_TITLE" --notes-file "$NOTES_FILE"
+      gh release edit "$TAG" \
+        --latest=false \
+        --title "$RELEASE_TITLE" \
+        --notes-file "$NOTES_FILE"
     else
-      gh release create "$TAG" --title "$RELEASE_TITLE" --notes-file "$NOTES_FILE"
+      gh release create "$TAG" \
+        --verify-tag \
+        --latest=false \
+        --title "$RELEASE_TITLE" \
+        --notes-file "$NOTES_FILE"
     fi
 
     gh release upload "$TAG" "$GENERIC_ASSET" "$VERSIONED_ASSET" --clobber

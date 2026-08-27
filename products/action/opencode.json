@@ -3,7 +3,7 @@
   "mcp": {
     "action": {
       "type": "local",
-      "command": ["/Users/art/.bun/bin/bun", "/Users/art/dev/action/packages/mcp/src/index.ts"]
+      "command": ["/bin/zsh", "-lc", "ACTION_ROOT=\"$(git rev-parse --show-toplevel)/products/action\"; export ACTION_ROOT; exec bun --cwd \"$ACTION_ROOT\" packages/mcp/src/index.ts"]
     }
   }
 }

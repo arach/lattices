@@ -1,4 +1,4 @@
-name: Guards
+name: Action Guards
 
 # Rules that are cheap to check and expensive to regress. Each one exists because it
 # already went wrong once.
@@ -7,14 +7,23 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'products/action/**'
+      - '.github/workflows/action-guards.yml'
   pull_request:
+    paths:
+      - 'products/action/**'
+      - '.github/workflows/action-guards.yml'
   workflow_dispatch:
 
 jobs:
   guards:
-    name: Repository guards
+    name: Action repository guards
     runs-on: macos-26
     timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: products/action
 
     steps:
       - name: Checkout

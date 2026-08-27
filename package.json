@@ -48,6 +48,11 @@
   "scripts": {
     "dev": "bun --cwd apps/site dev",
     "site:build": "bun --cwd apps/site build",
+    "action": "bun --cwd products/action action",
+    "action:dev": "bun --cwd products/action action-dev",
+    "action:check": "bun --cwd products/action typecheck && bun --cwd products/action check:no-wallpaper-writes",
+    "action:native:build": "bun --cwd products/action native:app:build",
+    "action:native:doctor": "bun --cwd products/action native:doctor",
     "studio:dev": "bun --cwd apps/studio dev",
     "studio:build": "bun --cwd apps/studio build",
     "docs:agent": "bun --cwd apps/site agent-docs",

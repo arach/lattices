@@ -6,6 +6,6 @@
     "name": "Arach",
     "url": "https://github.com/arach"
   },
-  "homepage": "https://arach.github.io/action/#install",
-  "repository": "https://github.com/arach/action"
+  "homepage": "https://lattices.dev/action",
+  "repository": "https://github.com/arach/lattices/tree/main/products/action"
 }

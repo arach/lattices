@@ -13,8 +13,8 @@ Usage:
   scripts/ship-release <version> [options]
 
 Examples:
-  scripts/ship-release 0.1.0 --watch
-  scripts/ship-release 0.1.0 --no-publish
+  scripts/ship-release 0.3.0 --watch
+  scripts/ship-release 0.3.0 --no-publish
 
 Options:
   --dry-run       Print the workflow dispatch command without running it
@@ -115,7 +115,7 @@ echo "  publish: $PUBLISH_RELEASE"
 echo
 
 cmd=(
-  gh workflow run release-mac.yml
+  gh workflow run release-action-macos.yml
   --repo "$REPO"
   --ref "$REF"
   -f "version=$VERSION"
@@ -132,7 +132,7 @@ fi
 echo "Release workflow dispatched."
 
 if [[ "$WATCH" != "1" ]]; then
-  echo "Open runs: https://github.com/$REPO/actions/workflows/release-mac.yml"
+  echo "Open runs: https://github.com/$REPO/actions/workflows/release-action-macos.yml"
   exit 0
 fi
 
@@ -140,7 +140,7 @@ sleep 5
 run_id="$(
   gh run list \
     --repo "$REPO" \
-    --workflow release-mac.yml \
+    --workflow release-action-macos.yml \
     --branch "$REF" \
     --event workflow_dispatch \
     --json databaseId \
@@ -150,7 +150,7 @@ run_id="$(
 
 if [[ -z "$run_id" || "$run_id" == "null" ]]; then
   echo "Unable to find the dispatched workflow run yet." >&2
-  echo "Open runs: https://github.com/$REPO/actions/workflows/release-mac.yml" >&2
+  echo "Open runs: https://github.com/$REPO/actions/workflows/release-action-macos.yml" >&2
   exit 1
 fi
 

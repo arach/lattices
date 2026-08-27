@@ -15,10 +15,12 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const actionRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 /** Every file that carries the plugin version, and how to read/write it. */
 const targets = [
+  jsonTarget("../../.claude-plugin/marketplace.json", ["plugins", 0, "version"]),
+  jsonTarget("../../kimi.plugin.json", ["version"]),
   jsonTarget(".claude-plugin/marketplace.json", ["plugins", 0, "version"]),
   jsonTarget("plugins/action-browser/.claude-plugin/plugin.json", ["version"]),
   jsonTarget("plugins/action-browser/.codex-plugin/plugin.json", ["version"]),
@@ -51,7 +53,7 @@ function sourceTarget(path, pattern, read) {
 }
 
 function load(target) {
-  const absolute = join(repoRoot, target.path);
+  const absolute = join(actionRoot, target.path);
   const text = readFileSync(absolute, "utf8");
   return { ...target, absolute, text, version: target.read(text) };
 }
@@ -86,7 +88,7 @@ const versions = [...new Set(entries.map((entry) => entry.version))];
 if (versions.length > 1) {
   console.error("action-browser plugin versions disagree:\n");
   for (const entry of entries) {
-    console.error(`  ${entry.version.padEnd(24)} ${relative(repoRoot, entry.absolute)}`);
+    console.error(`  ${entry.version.padEnd(24)} ${relative(actionRoot, entry.absolute)}`);
   }
   console.error("\nHarnesses cache plugin metadata by version, so a partial bump ships stale");
   console.error("tool descriptions. Set them all: bun run plugin:version -- <version>");

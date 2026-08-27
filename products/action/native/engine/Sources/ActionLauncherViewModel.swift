@@ -339,8 +339,7 @@ final class ActionLauncherViewModel: ObservableObject {
     }
 
     func openScenariosFolder() {
-        let scenariosURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-            .appendingPathComponent("scenarios", isDirectory: true)
+        let scenariosURL = repositoryRoot.appendingPathComponent("scenarios", isDirectory: true)
         NSWorkspace.shared.open(scenariosURL)
     }
 

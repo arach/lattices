@@ -1,9 +1,9 @@
-name: Release Mac DMG
+name: Release Action macOS
 
 on:
   push:
     tags:
-      - 'v*'
+      - 'action-v*'
   workflow_dispatch:
     inputs:
       version:
@@ -11,9 +11,9 @@ on:
         required: true
         type: string
       publish_release:
-        description: 'Create/update the vX.Y.Z tag and public GitHub Release after the DMG verifies'
+        description: 'Create/update the action-vX.Y.Z tag and public GitHub Release after the DMG verifies'
         required: true
-        default: true
+        default: false
         type: boolean
 
 permissions:
@@ -21,26 +21,32 @@ permissions:
 
 jobs:
   release:
-    name: Build, notarize, and publish
+    name: Build, notarize, and publish Action
     runs-on: macos-26
     environment: release
     timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: products/action
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Select Xcode
+      - name: Select Xcode 26
         shell: bash
         run: |
           set -euo pipefail
 
-          if [ -d /Applications/Xcode_26.4.0.app ]; then
-            sudo xcode-select -s /Applications/Xcode_26.4.0.app
-          else
-            sudo xcode-select -s /Applications/Xcode.app
+          xcode="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -n 1)"
+          if [[ -z "$xcode" ]]; then
+            echo "No Xcode 26 found on this runner:" >&2
+            ls -d /Applications/Xcode_*.app >&2
+            exit 1
           fi
 
+          echo "Using $xcode"
+          sudo xcode-select -s "$xcode/Contents/Developer"
           xcodebuild -version
           swift --version
 
@@ -56,7 +62,12 @@ jobs:
           set -euo pipefail
 
           if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
-            version="${GITHUB_REF_NAME#v}"
+            tag="${GITHUB_REF_NAME}"
+            if [[ "$tag" != action-v* ]]; then
+              echo "Unexpected Action release tag: $tag" >&2
+              exit 1
+            fi
+            version="${tag#action-v}"
             publish_release="true"
           else
             version="${{ inputs.version }}"
@@ -74,7 +85,7 @@ jobs:
           fi
 
           build_number="${GITHUB_RUN_NUMBER:-1}"
-          release_tag="v$version"
+          release_tag="action-v$version"
 
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "build_number=$build_number" >> "$GITHUB_OUTPUT"
@@ -104,7 +115,7 @@ jobs:
             exit 1
           fi
 
-      - name: Install dependencies
+      - name: Install Action dependencies
         shell: bash
         run: bun install --frozen-lockfile
 
@@ -171,11 +182,11 @@ jobs:
 
           echo "ACTION_NOTARY_PROFILE=notarytool" >> "$GITHUB_ENV"
 
-      - name: Build signed and notarized DMG
+      - name: Build signed and notarized Action DMG
         shell: bash
         run: bun run native:dmg:build -- --version "$VERSION" --build "$BUILD_NUMBER"
 
-      - name: Verify DMG
+      - name: Verify Action DMG
         shell: bash
         run: |
           set -euo pipefail
@@ -186,7 +197,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Action-${{ steps.version.outputs.version }}-dmg
-          path: Installer/Action-for-Mac.dmg
+          path: products/action/Installer/Action-for-Mac.dmg
           if-no-files-found: error
 
       - name: Create release tag
@@ -234,10 +245,13 @@ jobs:
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "$dmg_path" "$versioned_dmg_path" --clobber
             gh release edit "$RELEASE_TAG" \
+              --latest=false \
               --title "Action $VERSION" \
               --notes-file "$notes_path"
           else
             gh release create "$RELEASE_TAG" "$dmg_path" "$versioned_dmg_path" \
+              --verify-tag \
+              --latest=false \
               --title "Action $VERSION" \
               --notes-file "$notes_path"
           fi
