@@ -1,6 +1,8 @@
 import { copyFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 import { marked } from 'marked'
+import { createElement } from 'react'
+import { renderToString } from 'react-dom/server'
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript'
 import { createHighlighterCore } from 'shiki/core'
 import bash from 'shiki/langs/sh.mjs'
@@ -13,6 +15,7 @@ import typescript from 'shiki/langs/ts.mjs'
 import { writeAgentArtifacts } from './agent-docs.mjs'
 import { renderMdxComponent } from './render-mdx.mjs'
 import { getLastUpdatedBatch, repoInfo } from './git-meta.mjs'
+import ActionPage from '../src/components/ActionPage.tsx'
 
 const siteDir = resolve(import.meta.dirname, '..')
 const repoRoot = resolve(siteDir, '..', '..')
@@ -55,6 +58,13 @@ const postUpdated = await getLastUpdatedBatch(
     slug: post.slug,
     path: join('apps', 'site', 'content', 'blog', `${post.slug}.mdx`),
   })),
+)
+
+await writeRoute(
+  '/action',
+  'Action — computer use from Lattices',
+  'Action is the focused computer-use product from Lattices: native macOS automation, capture, and review for agents.',
+  renderToString(createElement(ActionPage)),
 )
 
 await writeRoute('/docs', 'Docs — Lattices', 'Lattices documentation', renderDoc(docs.find((doc) => doc.slug === 'overview') || docs[0]))
@@ -120,6 +130,7 @@ await writeNotFound()
 async function writeSitemap() {
   const urls = [
     { loc: `${SITE_URL}/`, priority: '1.0' },
+    { loc: `${SITE_URL}/action`, priority: '0.9' },
     { loc: `${SITE_URL}/blog`, priority: '0.8' },
     ...docs.map((doc) => ({
       loc: `${SITE_URL}/docs/${doc.slug}`,
@@ -220,6 +231,26 @@ async function writeRoute(route, title, description, appHtml) {
     .replace(
       /<link rel="canonical" href=".*?" \/>/,
       `<link rel="canonical" href="${SITE_URL}${route}" />`,
+    )
+    .replace(
+      /<meta property="og:title" content=".*?" \/>/,
+      `<meta property="og:title" content="${escapeHtml(title)}" />`,
+    )
+    .replace(
+      /<meta property="og:description" content=".*?" \/>/,
+      `<meta property="og:description" content="${escapeHtml(description)}" />`,
+    )
+    .replace(
+      /<meta property="og:url" content=".*?" \/>/,
+      `<meta property="og:url" content="${SITE_URL}${route}" />`,
+    )
+    .replace(
+      /<meta property="twitter:title" content=".*?" \/>/,
+      `<meta property="twitter:title" content="${escapeHtml(title)}" />`,
+    )
+    .replace(
+      /<meta property="twitter:description" content=".*?" \/>/,
+      `<meta property="twitter:description" content="${escapeHtml(description)}" />`,
     )
     .replace(
       /<link rel="alternate" type="application\/rss\+xml".*?\/>/,

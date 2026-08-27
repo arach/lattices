@@ -4,7 +4,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ThemeToggle } from "./ThemeToggle";
 import { GestureMatrix } from "./GestureMatrix";
 
-function LatticesLogo({ size = 20 }: { size?: number }) {
+export function LatticesLogo({ size = 20 }: { size?: number }) {
   // 3×3 grid with L-shape pattern (left column + bottom row bright, rest dim)
   const cells = [
     true, false, false,
@@ -638,8 +638,8 @@ export default function App() {
             <a href="/docs/api" className="nav-link">
               API
             </a>
-            <a href="#cua" className="nav-link">
-              CUA
+            <a href="/action" className="nav-link">
+              Action
             </a>
             <a href="#hands" className="nav-link nav-optional-mobile">
               Keys
@@ -732,11 +732,12 @@ export default function App() {
         {/* Computer use (CUA) */}
         <section className="section cua-section" id="cua">
           <div className="cua-head fade-in">
-            <div className="cua-kicker">On-device automation</div>
-            <h2>Safe computer use, built for agents</h2>
+            <div className="cua-kicker">Action · a Lattices product</div>
+            <h2>Computer use you can inspect</h2>
             <p>
+              Action is the focused computer-use product in the Lattices family.
               Observe the screen, stage each action for review, execute on-device,
-              then verify the result — and loop.
+              then verify the result.
             </p>
           </div>
 
@@ -787,9 +788,14 @@ export default function App() {
                   <span>browser</span>
                   <span>local verify</span>
                 </div>
-                <a href="/docs/api" className="agent-api-link cua-stage-api-link">
-                  Computer-use API &rarr;
-                </a>
+                <div className="cua-stage-links">
+                  <a href="/action" className="agent-api-link cua-stage-api-link">
+                    Meet Action &rarr;
+                  </a>
+                  <a href="/docs/api" className="agent-api-link cua-stage-api-link cua-stage-api-secondary">
+                    Computer-use API &rarr;
+                  </a>
+                </div>
               </div>
             </div>
           </div>
