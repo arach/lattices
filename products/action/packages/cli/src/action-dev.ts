@@ -199,7 +199,7 @@ async function politeQuitAction(timeoutMs = 2500): Promise<boolean> {
   }
 
   try {
-    await execFileAsync("osascript", ["-e", 'tell application id "dev.action.Action" to quit']);
+    await execFileAsync("osascript", ["-e", 'tell application id "dev.lattices.Action" to quit']);
   } catch {}
 
   const startedAt = Date.now();
@@ -226,7 +226,7 @@ async function streamLogs(): Promise<void> {
       "--level",
       "debug",
       "--predicate",
-      'process == "Action" AND subsystem == "dev.action.Action"',
+      'process == "Action" AND subsystem == "dev.lattices.Action"',
     ], {
       cwd: rootDir,
       stdio: "inherit",

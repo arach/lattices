@@ -10,7 +10,7 @@ picks it up within a fraction of a second — no restart, no protocol call. Sele
 it in **Settings ▸ Appearance ▸ Palette**, or set it directly before launching the app (changing this default while Action is running requires a relaunch):
 
 ```bash
-defaults write dev.action.Action Action.ThemeID "reading-room"
+defaults write dev.lattices.Action Action.ThemeID "reading-room"
 ```
 
 A theme is a **patch**, not a palette. Everything is optional, and what you do

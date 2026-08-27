@@ -118,5 +118,5 @@ export const TOOL_GROUPS: { title: string; items: { name: string; count: number 
 
 export const MCP_COMMAND = [
   "claude mcp add action -- action-agent stdio",
-  "~/dev/action · dev.action.Action",
+  "~/dev/lattices/products/action · dev.lattices.Action",
 ];

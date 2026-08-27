@@ -9,7 +9,7 @@
   <key>CFBundleExecutable</key>
   <string>ActionAgent</string>
   <key>CFBundleIdentifier</key>
-  <string>dev.action.ActionAgent</string>
+  <string>dev.lattices.ActionAgent</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>

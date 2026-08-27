@@ -1,4 +1,5 @@
 import AppKit
+import ActionCore
 import SwiftUI
 
 struct ActionLauncherRootView: View {
@@ -2403,6 +2404,8 @@ struct ActionLauncherRootView: View {
     private var settingsPermissionsPage: some View {
         let axGranted = model.accessibilityStatus.lowercased() == "granted"
         let screenGranted = model.screenRecordingStatus.lowercased() == "granted"
+        let hasAgentIdentityMismatch = model.hasAgentIdentityMismatch
+        let needsIdentityRegrant = model.needsBundleIdentityPermissionReview
 
         return VStack(alignment: .leading, spacing: 18) {
             if !permissionsReady {
@@ -2410,11 +2413,23 @@ struct ActionLauncherRootView: View {
                     ActionSettingsRow(
                         icon: "exclamationmark.triangle.fill",
                         iconColor: StageHUDTheme.hudAmber,
-                        title: "Some permissions are missing",
-                        subtitle: "Accessibility and Screen Recording"
+                        title: hasAgentIdentityMismatch
+                            ? "An older Action agent is still running"
+                            : needsIdentityRegrant
+                                ? "Permissions need to be granted again"
+                                : "Some permissions are missing",
+                        subtitle: hasAgentIdentityMismatch
+                            ? "Quit older Action copies, then reopen Action."
+                            : needsIdentityRegrant
+                                ? "This version of Action has a new app identity, so macOS requires fresh Accessibility and Screen Recording access."
+                                : "Accessibility and Screen Recording"
                     ) {
-                        Button("Request access") {
-                            model.requestPermissions()
+                        Button(hasAgentIdentityMismatch ? "Check again" : "Request access") {
+                            if hasAgentIdentityMismatch {
+                                model.refreshPermissions()
+                            } else {
+                                model.requestPermissions()
+                            }
                         }
                         .buttonStyle(ActionSettingsPillButtonStyle(primary: true))
                     }
@@ -2448,7 +2463,7 @@ struct ActionLauncherRootView: View {
             HStack(spacing: 8) {
                 Button("Check again", action: model.refreshPermissions)
                     .buttonStyle(ActionSettingsPillButtonStyle())
-                if !permissionsReady {
+                if !permissionsReady && !hasAgentIdentityMismatch {
                     Button("Request all", action: model.requestPermissions)
                         .buttonStyle(ActionSettingsPillButtonStyle(primary: true))
                 }
@@ -2646,7 +2661,7 @@ struct ActionLauncherRootView: View {
     private var settingsAboutPage: some View {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
-        let bundleId = Bundle.main.bundleIdentifier ?? "dev.action.Action"
+        let bundleId = Bundle.main.bundleIdentifier ?? ActionAppIdentity.mainBundleIdentifier
 
         return VStack(alignment: .leading, spacing: 18) {
             ActionSettingsSection(title: "Action") {

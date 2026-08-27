@@ -238,7 +238,7 @@ private struct GuidedCaptureLauncherResult: Decodable {
 
 @MainActor
 final class ActionLauncherViewModel: ObservableObject {
-    private let logger = Logger(subsystem: "dev.action.Action", category: "Launcher")
+    private let logger = Logger(subsystem: ActionAppIdentity.mainBundleIdentifier, category: "Launcher")
     private let agentProcess = ActionAgentProcessController()
     private let agentClient = ActionAgentClient()
 
@@ -282,6 +282,32 @@ final class ActionLauncherViewModel: ObservableObject {
             return step
         }
         return scenario.steps.first
+    }
+
+    var needsBundleIdentityPermissionReview: Bool {
+        guard UserDefaults.standard.bool(
+            forKey: ActionPreferenceMigration.permissionRegrantPendingMarkerKey
+        ) else {
+            return false
+        }
+
+        return [accessibilityStatus, screenRecordingStatus]
+            .contains { $0.lowercased() == "denied" }
+    }
+
+    private var expectedAgentBundlePath: String? {
+        guard Bundle.main.bundleIdentifier == ActionAppIdentity.mainBundleIdentifier else {
+            return nil
+        }
+
+        return Bundle.main.bundleURL
+            .appendingPathComponent("Contents/Helpers/ActionAgent.app", isDirectory: true)
+            .resolvingSymlinksInPath()
+            .path
+    }
+
+    var hasAgentIdentityMismatch: Bool {
+        agentStatus == "Agent instance mismatch"
     }
 
     init() {
@@ -756,35 +782,83 @@ final class ActionLauncherViewModel: ObservableObject {
     }
 
     private func refreshPermissionsViaAgent() async {
-        await updatePermissions(using: .permissionsSnapshot)
+        _ = await updatePermissions(using: .permissionsSnapshot)
     }
 
     private func requestPermissionsViaAgent() async {
-        await updatePermissions(using: .permissionsRequest)
+        // A previous Action install can leave its helper listening on the
+        // well-known port. Verify the responder before asking macOS to prompt,
+        // otherwise the user could grant access to the retired identity.
+        guard await updatePermissions(using: .permissionsSnapshot) else {
+            return
+        }
+        _ = await updatePermissions(using: .permissionsRequest)
     }
 
-    private func updatePermissions(using method: ActionAgentMethod) async {
+    @discardableResult
+    private func updatePermissions(using method: ActionAgentMethod) async -> Bool {
         do {
             let response = try await agentClient.send(method: method)
             if let result = response.result {
+                let bundleId = result["bundleId"] ?? "unknown"
+                let bundlePath = result["bundlePath"] ?? "unknown"
+                var updatedNotes = notes.filter {
+                    !$0.hasPrefix("agentBundleId=")
+                        && !$0.hasPrefix("agentBundlePath=")
+                        && !$0.hasPrefix("agentIdentityError=")
+                }
+                updatedNotes.append("agentBundleId=\(bundleId)")
+                updatedNotes.append("agentBundlePath=\(bundlePath)")
+
+                let receivedBundlePath = URL(fileURLWithPath: bundlePath)
+                    .resolvingSymlinksInPath()
+                    .path
+                if let expectedAgentBundlePath,
+                   bundleId != ActionAppIdentity.agentBundleIdentifier
+                       || receivedBundlePath != expectedAgentBundlePath {
+                    accessibilityStatus = "Unknown"
+                    screenRecordingStatus = "Unknown"
+                    agentStatus = "Agent instance mismatch"
+                    updatedNotes.append(
+                        "agentIdentityError=Expected \(ActionAppIdentity.agentBundleIdentifier) at \(expectedAgentBundlePath); received \(bundleId) at \(receivedBundlePath). Quit older Action copies, then reopen Action."
+                    )
+                    notes = updatedNotes
+                    agentProcess.stopIfNeeded()
+                    logger.error(
+                        "Rejected ActionAgent \(bundleId, privacy: .public) at \(receivedBundlePath, privacy: .public); expected \(ActionAppIdentity.agentBundleIdentifier, privacy: .public) at \(expectedAgentBundlePath, privacy: .public)"
+                    )
+                    return false
+                }
+
                 accessibilityStatus = (result["accessibility"] ?? "unknown").capitalized
                 screenRecordingStatus = (result["screenRecording"] ?? "unknown").capitalized
-                var updatedNotes = notes.filter { !$0.hasPrefix("agentBundlePath=") }
-                if let bundlePath = result["bundlePath"] {
-                    updatedNotes.append("agentBundlePath=\(bundlePath)")
-                }
+                clearPermissionRegrantMarkerIfComplete()
                 notes = updatedNotes
                 agentStatus = "Connected"
+                return true
             } else {
                 agentStatus = response.error ?? "Agent error"
+                return false
             }
         } catch {
             agentStatus = "Disconnected"
             logger.error("Agent permissions call failed: \(error.localizedDescription, privacy: .public)")
+            return false
         }
     }
 
+    private func clearPermissionRegrantMarkerIfComplete() {
+        ActionPreferenceMigration.completePermissionRegrantIfReady(
+            accessibilityGranted: accessibilityStatus.lowercased() == "granted",
+            screenRecordingGranted: screenRecordingStatus.lowercased() == "granted"
+        )
+    }
+
     private func openSettingsViaAgent(_ method: ActionAgentMethod) async {
+        guard await updatePermissions(using: .permissionsSnapshot) else {
+            return
+        }
+
         do {
             _ = try await agentClient.send(method: method)
             agentStatus = "Connected"

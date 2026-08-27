@@ -1,10 +1,11 @@
 import AppKit
+import ActionCore
 import OSLog
 import WebKit
 
 final class WebKitSmokeAppRunner: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate {
     private static var retainedRunner: WebKitSmokeAppRunner?
-    private let logger = Logger(subsystem: "dev.action.Action", category: "WebKitSmoke")
+    private let logger = Logger(subsystem: ActionAppIdentity.mainBundleIdentifier, category: "WebKitSmoke")
     private let url: URL
 
     private var window: NSWindow?

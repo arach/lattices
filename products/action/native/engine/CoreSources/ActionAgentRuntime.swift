@@ -225,12 +225,14 @@ final class ActionAgentRuntimeServer: @unchecked Sendable {
             return [
                 "accessibility": actionAgentAccessibilityStatus().rawValue,
                 "screenRecording": actionAgentScreenRecordingStatus().rawValue,
+                "bundleId": Bundle.main.bundleIdentifier ?? "unknown",
                 "bundlePath": Bundle.main.bundlePath,
             ]
         case .permissionsRequest:
             return [
                 "accessibility": actionAgentAccessibilityStatus(prompt: true).rawValue,
                 "screenRecording": actionAgentRequestScreenRecording().rawValue,
+                "bundleId": Bundle.main.bundleIdentifier ?? "unknown",
                 "bundlePath": Bundle.main.bundlePath,
             ]
         case .openAccessibilitySettings:

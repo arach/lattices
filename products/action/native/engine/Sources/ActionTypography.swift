@@ -249,7 +249,7 @@ private final class ActionTypeScale: @unchecked Sendable {
     /// bookish anywhere says `"type": {"editorial": "none"}`.
     static let noEditorialFace = "none"
 
-    /// Still honours `defaults write dev.action.Action ActionEditorialFont
+    /// Still honours `defaults write dev.lattices.Action ActionEditorialFont
     /// "<family>"` so the choice can be judged in the real UI rather than in a
     /// specimen. The default write wins over the theme, because it exists for
     /// exactly that kind of one-off comparison.

@@ -3837,11 +3837,11 @@ func waitForFinishedSignal(at path: String) throws {
 /// runs out. A single healthy instance answers in about 0.15s; the long tail is
 /// an instance that is wedged, and forcing that one is the point.
 func terminateRunningActionApps(timeout: TimeInterval = 6) -> Bool {
-    let bundleId = "dev.action.Action"
+    let bundleId = ActionAppIdentity.mainBundleIdentifier
 
     // Everything except this process. `action-dev host quit-app` runs the same
     // executable out of the same bundle, so it is itself an instance of
-    // dev.action.Action: without this filter the command terminates itself
+    // dev.lattices.Action: without this filter the command terminates itself
     // before it can write its reply, and the caller sees a hang followed by
     // "ActionHost did not write a reply file".
     let selfPid = ProcessInfo.processInfo.processIdentifier
@@ -4523,6 +4523,10 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
 @main
 struct ActionHostMain {
     static func main() {
+        if Bundle.main.bundleIdentifier == ActionAppIdentity.mainBundleIdentifier {
+            ActionPreferenceMigration.migrateIfNeeded()
+        }
+
         let options = CommandOptions(arguments: CommandLine.arguments)
         let writer = ResponseWriter(replyFile: options.options["reply-file"])
         let logger = DebugLogger(path: options.options["debug-log"])

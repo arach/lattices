@@ -4,7 +4,7 @@ import OSLog
 
 @MainActor
 final class ActionAgentProcessController {
-    private let logger = Logger(subsystem: "dev.action.Action", category: "AgentProcess")
+    private let logger = Logger(subsystem: ActionAppIdentity.mainBundleIdentifier, category: "AgentProcess")
     private let port: UInt16
     private var process: Process?
 
@@ -46,7 +46,7 @@ final class ActionAgentProcessController {
     /// process table. macOS then counts it as a second instance of the app, so
     /// a quit Apple Event is addressed to it as well; it has no run loop to
     /// answer one, and every caller that waits for "all instances of
-    /// dev.action.Action to go away" times out and reports that the app
+    /// dev.lattices.Action to go away" times out and reports that the app
     /// refused to quit — when in fact the window had closed immediately. That
     /// is what made `pkill` look like the only reliable way to stop Action.
     ///

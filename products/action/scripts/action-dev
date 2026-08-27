@@ -163,7 +163,7 @@ case "$cmd" in
     exec bun run hud
     ;;
   logs)
-    exec /usr/bin/log stream --style compact --level debug --predicate 'process == "Action" AND subsystem == "dev.action.Action"'
+    exec /usr/bin/log stream --style compact --level debug --predicate 'process == "Action" AND subsystem == "dev.lattices.Action"'
     ;;
   host)
     "$ENGINE_SCRIPTS_DIR/run-app-host.sh" "$@"

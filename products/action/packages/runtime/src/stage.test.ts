@@ -80,7 +80,7 @@ describe("evaluateStageScene", () => {
   const drape = win({
     owner: "Action",
     title: "Action Drape",
-    bundleId: "dev.action.Action",
+    bundleId: "dev.lattices.Action",
     pid: 64405,
     bounds: { x: 0, y: 0, width: 1440, height: 900 },
   });
@@ -178,7 +178,7 @@ describe("StageDirector.set scene proof", () => {
               },
               {
                 pid: 64405,
-                bundleId: "dev.action.Action",
+                bundleId: "dev.lattices.Action",
                 owner: "Action",
                 title: "Action Drape",
                 layer: 0,

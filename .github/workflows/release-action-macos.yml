@@ -190,8 +190,31 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          codesign --verify --verbose Installer/Action-for-Mac.dmg
-          spctl --assess --type open --context context:primary-signature --verbose Installer/Action-for-Mac.dmg
+          dmg_path="Installer/Action-for-Mac.dmg"
+          mount_dir="$(mktemp -d "$RUNNER_TEMP/action-dmg.XXXXXX")"
+
+          cleanup() {
+            hdiutil detach "$mount_dir" >/dev/null 2>&1 || true
+            rmdir "$mount_dir" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          hdiutil verify "$dmg_path"
+          xcrun stapler validate "$dmg_path"
+          codesign --verify --verbose "$dmg_path"
+          spctl --assess --type open --context context:primary-signature --verbose "$dmg_path"
+
+          hdiutil attach "$dmg_path" -readonly -nobrowse -mountpoint "$mount_dir"
+          app_path="$mount_dir/Action.app"
+          helper_path="$app_path/Contents/Helpers/ActionAgent.app"
+
+          test "$(plutil -extract CFBundleIdentifier raw "$app_path/Contents/Info.plist")" = "dev.lattices.Action"
+          test "$(plutil -extract CFBundleIdentifier raw "$helper_path/Contents/Info.plist")" = "dev.lattices.ActionAgent"
+          test "$(plutil -extract CFBundleURLTypes.0.CFBundleURLSchemes.0 raw "$app_path/Contents/Info.plist")" = "action"
+
+          codesign --verify --deep --strict --verbose=2 "$app_path"
+          codesign --verify --strict --verbose=2 "$helper_path"
+          spctl --assess --type execute --verbose "$app_path"
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4

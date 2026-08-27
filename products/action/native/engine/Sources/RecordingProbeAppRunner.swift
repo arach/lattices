@@ -1,4 +1,5 @@
 import AppKit
+import ActionCore
 import OSLog
 
 @available(macOS 15.0, *)
@@ -21,7 +22,7 @@ final class RecordingProbeAppRunner: NSObject, NSApplicationDelegate, NSWindowDe
         let includeSupervisionOverlay: Bool
     }
 
-    private let logger = Logger(subsystem: "dev.action.Action", category: "RecordingProbe")
+    private let logger = Logger(subsystem: ActionAppIdentity.mainBundleIdentifier, category: "RecordingProbe")
     private let configuration: Configuration
     private let writer: ResponseWriter
     private let debugLogger: DebugLogger

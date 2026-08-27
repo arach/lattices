@@ -1979,8 +1979,8 @@ const COLOPHON: { label: string; value: string; mono?: boolean }[] = [
   // What the app actually reports: `Info.plist` ships 0.0.0 (1) and
   // `build-app.sh` only overwrites it when ACTION_VERSION is exported.
   { label: "Version", value: "0.0.0 (1)", mono: true },
-  { label: "Bundle", value: "dev.action.Action", mono: true },
-  { label: "Docs", value: "arach.github.io/action", mono: true },
+  { label: "Bundle", value: "dev.lattices.Action", mono: true },
+  { label: "Docs", value: "lattices.dev/action", mono: true },
   // The store's own directory, from ActionScenarioModels — not the
   // process-relative path `openScenariosFolder` reveals. No button: the Swift
   // makes the whole row the target and draws none.
