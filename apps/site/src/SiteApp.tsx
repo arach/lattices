@@ -45,6 +45,10 @@ export default function SiteApp() {
   }, [])
 
   if (route.kind === 'home') return <LandingPage />
+  if (route.kind === 'action') {
+    window.location.replace('/action/index.html')
+    return null
+  }
   if (route.kind === 'docs') return <DocsPage slug={route.slug} />
   if (route.kind === 'blog-index') return <BlogIndex />
   if (route.kind === 'blog-post') return <BlogPostPage slug={route.slug} />
@@ -84,6 +88,7 @@ export default function SiteApp() {
 
 type Route =
   | { kind: 'home'; title: string; description: string }
+  | { kind: 'action'; title: string; description: string }
   | { kind: 'docs'; slug?: string; title: string; description: string }
   | { kind: 'blog-index'; title: string; description: string }
   | { kind: 'blog-post'; slug: string; title: string; description: string }
@@ -95,6 +100,14 @@ function resolveRoute(path: string): Route {
       kind: 'home',
       title: 'lattices — agentic window management',
       description: 'When your desktop is full of windows, terminals, and agents, Lattices gives you one place to arrange, launch, and control all of it — by hand or from code.',
+    }
+  }
+
+  if (path === '/action') {
+    return {
+      kind: 'action',
+      title: 'Action — An API for agents to record and share computer use',
+      description: 'Action gives agents an API to record and share computer use on macOS.',
     }
   }
 
