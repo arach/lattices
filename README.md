@@ -1,5 +1,3 @@
-
-
 ![lattices](https://lattices.dev/og.png)
 
 # lattices
