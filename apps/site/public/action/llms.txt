@@ -1,0 +1,62 @@
+# Action
+
+> A local macOS runtime that lets an AI agent observe a Mac surface, act on it,
+> record the run as video plus a structured trace, and drive a real Chrome it
+> owns. Everything runs on the user's machine; nothing is hosted.
+
+Start here: https://arach.github.io/action/agents/
+
+## Surfaces
+
+Action exposes two MCP servers.
+
+- `action` — native macOS runtime. Tool families: `action.observe.*` (screenshot,
+  accessibility tree, Apple Vision OCR, provider vision), `action.resolve.target`,
+  `action.act.execute`, `action.record.*`, `action.drive.*`, `action.artifacts.list`.
+  Works on any app on screen, including the user's own browser window.
+- `action-browser` — plugin. Tools: `browser_open`, `browser_snapshot`,
+  `browser_click`, `browser_fill`, `browser_screenshot`, `browser_tabs`,
+  `browser_profiles`, `browser_use_profile`, `browser_import_cookies`,
+  `browser_companion_status`, `browser_close`. Drives a real, non-headless
+  Chrome that Action owns.
+
+## Browser modes
+
+Three different browsers can be meant by "open it in Chrome":
+
+1. The user's regular Chrome — their everyday browser and real profiles
+   (`Default`, `Profile 1` / "Work"). `browser_open { mode: "regular" }` opens a
+   URL there and stops. No DOM tools. Control that window with the native
+   surface: `action.observe.snapshot` then `action.act.execute`.
+2. An Action browser — Action-owned Chrome on its own user-data-dir; the default
+   identity `agent-browser` is blank. Full DOM tooling.
+3. An Action identity seeded from a regular Chrome profile — the same
+   Action-owned Chrome carrying cookies copied from one of the user's real
+   profiles for an explicit domain allowlist. Full DOM tooling, already signed in.
+
+Regular Chrome gives you their session but only screen-and-accessibility control;
+an Action browser gives you DOM control but starts as a stranger. Seeding is how
+you get both. Chrome 136 and later ignore remote-debugging switches for the
+default profile, and Action does not attempt to bypass that.
+
+## Install
+
+- Codex: `codex plugin marketplace add arach/action` then `codex plugin add action-browser@action`
+- Claude Code: `claude plugin marketplace add arach/action` then `claude plugin install action-browser@action --scope user`
+- Kimi Code: `/plugins install https://github.com/arach/action/tree/main`
+- Native runtime: clone the repo, `bun install`, `bun run native:app:build`, `bun run native:doctor`, `bun run mcp`
+
+Requires macOS on Apple Silicon, Google Chrome, and Bun. The native runtime needs
+Accessibility and Screen Recording permission.
+
+## Docs
+
+- [Agent start here](https://arach.github.io/action/agents/): capabilities, connection, browser decision guide
+- [Browser profiles](https://arach.github.io/action/browser-profiles.md): the three browsers, cookie seeding, identities, plugin versioning
+- [Agent protocol](https://arach.github.io/action/api.md): local WebSocket agent protocol
+- [Getting started](https://arach.github.io/action/getting-started.md): shortest path to a working local loop
+- [Overview](https://arach.github.io/action/overview.md): what exists today and where the edges are
+- [Architecture](https://arach.github.io/action/ARCHITECTURE.md): app / agent / runtime split
+- [Recording](https://arach.github.io/action/recording.md): recording lifecycle and the finished-marker contract
+- [AGENTS.md](https://github.com/arach/action/blob/main/AGENTS.md): repo rules for agents working on Action itself
+- [Source](https://github.com/arach/action)

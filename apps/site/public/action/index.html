@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Action — An API for agents to record and share computer use</title>
+  <meta name="description" content="Action gives agents an API to record and share computer use on macOS.">
+  <meta name="theme-color" content="#f3ebdd">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Action — An API for agents to record and share computer use">
+  <meta property="og:description" content="Action gives agents an API to record and share computer use on macOS.">
+  <meta property="og:image" content="https://arach.github.io/action/assets/brand/action-og.jpg">
+  <meta property="og:url" content="https://lattices.dev/action">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="canonical" href="https://lattices.dev/action">
+  <link rel="alternate" type="text/plain" href="llms.txt" title="llms.txt">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
+    :root {
+      --paper: #f3ebdd;
+      --paper-deep: #dccfb9;
+      --paper-light: #faf5eb;
+      --ink: #20282b;
+      --slate: #596261;
+      --coral: #ef6a47;
+      --cyan: #1fb9c6;
+      --tan: #a77850;
+      --rule: rgb(32 40 43 / 0.22);
+      --rule-light: rgb(243 235 221 / 0.17);
+      --serif: "EB Garamond", Georgia, serif;
+      --mono: "JetBrains Mono", Menlo, Monaco, monospace;
+      --shell: min(1180px, calc(100vw - 48px));
+    }
+
+    html {
+      scroll-behavior: smooth;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: var(--serif);
+      font-size: 18px;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      overflow-x: hidden;
+      background:
+        linear-gradient(90deg, transparent 0 31px, rgb(32 40 43 / 0.025) 32px, transparent 33px) 0 0 / 64px 64px,
+        var(--paper);
+    }
+
+    img, video { display: block; max-width: 100%; }
+    a { color: inherit; }
+    button, a { -webkit-tap-highlight-color: transparent; }
+
+    :focus-visible {
+      outline: 3px solid var(--cyan);
+      outline-offset: 3px;
+    }
+
+    .skip-link {
+      position: fixed;
+      z-index: 100;
+      top: 12px;
+      left: 12px;
+      transform: translateY(-160%);
+      padding: 10px 14px;
+      background: var(--ink);
+      color: var(--paper-light);
+      font: 600 0.72rem var(--mono);
+      text-decoration: none;
+    }
+    .skip-link:focus { transform: translateY(0); }
+
+    .shell { width: var(--shell); margin-inline: auto; }
+
+    .site-nav {
+      position: absolute;
+      z-index: 20;
+      inset: 0 0 auto;
+      border-bottom: 1px solid rgb(32 40 43 / 0.16);
+    }
+
+    .nav-inner {
+      min-height: 76px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--ink);
+      font: 600 0.78rem var(--mono);
+      letter-spacing: -0.02em;
+      text-decoration: none;
+    }
+    .brand img { width: 31px; height: 31px; border-radius: 8px; }
+    .brand span { color: var(--slate); font-weight: 400; }
+
+    .brand-lockup {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .family-link {
+      padding-left: 14px;
+      border-left: 1px solid var(--rule);
+      color: var(--slate);
+      font: 500 0.58rem var(--mono);
+      letter-spacing: 0.04em;
+      text-decoration: none;
+      text-transform: uppercase;
+    }
+
+    .family-link:hover { color: var(--coral); }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 28px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .nav-links a {
+      color: var(--slate);
+      font: 500 0.67rem var(--mono);
+      letter-spacing: 0.02em;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .nav-links a:hover { color: var(--coral); }
+
+    .hero {
+      position: relative;
+      min-height: min(860px, 100svh);
+      display: grid;
+      align-items: center;
+      isolation: isolate;
+      overflow: hidden;
+      background: var(--paper);
+    }
+
+    .hero-art {
+      position: absolute;
+      z-index: -2;
+      inset: 0;
+    }
+    .hero-art img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center center;
+    }
+    .hero-art::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(90deg, var(--paper) 0%, rgb(243 235 221 / 0.98) 23%, rgb(243 235 221 / 0.72) 43%, transparent 65%),
+        linear-gradient(0deg, rgb(243 235 221 / 0.9) 0%, transparent 22%);
+    }
+
+    .hero-copy {
+      width: min(620px, 54%);
+      padding: 150px 0 110px;
+    }
+
+    .eyebrow, .section-label {
+      margin: 0 0 18px;
+      color: var(--coral);
+      font: 600 0.65rem var(--mono);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    .eyebrow::before, .section-label::before {
+      content: "";
+      display: inline-block;
+      width: 26px;
+      height: 1px;
+      margin: 0 10px 3px 0;
+      background: currentColor;
+    }
+
+    h1, h2, h3, p { margin-top: 0; }
+    h1 {
+      max-width: 10.5ch;
+      margin-bottom: 24px;
+      font-size: clamp(3.5rem, 6.5vw, 6.3rem);
+      font-weight: 500;
+      letter-spacing: -0.055em;
+      line-height: 0.91;
+    }
+    h1 em { color: var(--coral); font-weight: 400; }
+
+    .hero-lead {
+      max-width: 48ch;
+      margin-bottom: 34px;
+      color: var(--slate);
+      font-size: clamp(1.08rem, 1.6vw, 1.28rem);
+      line-height: 1.46;
+    }
+
+    .actions { display: flex; flex-wrap: wrap; gap: 12px; }
+    .button {
+      min-height: 48px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+      padding: 0 18px;
+      border: 1px solid var(--ink);
+      background: var(--ink);
+      color: var(--paper-light);
+      font: 600 0.68rem var(--mono);
+      text-decoration: none;
+      transition: transform 160ms ease, background 160ms ease, color 160ms ease;
+    }
+    .button:hover { transform: translateY(-2px); background: var(--coral); border-color: var(--coral); }
+    .button.secondary { background: rgb(243 235 221 / 0.66); color: var(--ink); }
+    .button.secondary:hover { background: var(--paper-light); color: var(--coral); border-color: var(--coral); }
+
+    .agent-entry {
+      max-width: 46ch;
+      margin: 22px 0 0;
+      padding: 12px 16px;
+      border-left: 2px solid var(--cyan);
+      background: rgb(250 245 235 / 0.7);
+      color: var(--slate);
+      font: 500 0.68rem/1.6 var(--mono);
+    }
+    .agent-entry a {
+      color: var(--ink);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+    .agent-entry a:hover { color: var(--coral); }
+
+    .nav-links a.nav-agents { color: var(--ink); }
+    .nav-links a.nav-agents::before {
+      content: "";
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      margin: 0 7px 1px 0;
+      border-radius: 50%;
+      background: var(--cyan);
+    }
+
+    .hero-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 20px;
+      margin-top: 34px;
+      color: var(--slate);
+      font: 500 0.61rem var(--mono);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .hero-meta span::before { content: "•"; margin-right: 9px; color: var(--coral); }
+
+    .proof-rail {
+      border-block: 1px solid var(--rule);
+      background: rgb(250 245 235 / 0.76);
+    }
+    .proof-items {
+      min-height: 78px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      align-items: center;
+    }
+    .proof-items span {
+      padding: 10px 20px;
+      border-left: 1px solid var(--rule);
+      color: var(--slate);
+      font: 500 0.63rem var(--mono);
+      letter-spacing: 0.04em;
+      text-align: center;
+      text-transform: uppercase;
+    }
+    .proof-items span:last-child { border-right: 1px solid var(--rule); }
+
+    .install-section {
+      position: relative;
+      padding: 112px 0;
+      overflow: hidden;
+      border-bottom: 1px solid var(--rule);
+      background: var(--ink);
+      color: var(--paper-light);
+    }
+    .install-section::after {
+      content: "";
+      position: absolute;
+      right: -180px;
+      bottom: -220px;
+      width: 520px;
+      height: 520px;
+      border: 1px solid rgb(31 185 198 / 0.22);
+      border-radius: 50%;
+      box-shadow:
+        0 0 0 54px rgb(31 185 198 / 0.035),
+        0 0 0 108px rgb(31 185 198 / 0.025);
+      pointer-events: none;
+    }
+    .install-grid {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: minmax(280px, 0.72fr) minmax(0, 1.28fr);
+      gap: 72px;
+      align-items: start;
+    }
+    .install-copy h2 { max-width: 10ch; }
+    .install-copy .lead {
+      margin-bottom: 30px;
+      color: rgb(243 235 221 / 0.66);
+    }
+    .install-facts {
+      margin: 0;
+      padding: 0;
+      border-top: 1px solid var(--rule-light);
+      list-style: none;
+    }
+    .install-facts li {
+      display: grid;
+      grid-template-columns: 74px 1fr;
+      gap: 16px;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--rule-light);
+    }
+    .install-facts strong {
+      color: var(--coral);
+      font: 600 0.58rem var(--mono);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .install-facts span {
+      color: rgb(243 235 221 / 0.72);
+      font-size: 0.89rem;
+      line-height: 1.4;
+    }
+    .install-workbench {
+      border: 1px solid rgb(243 235 221 / 0.2);
+      background: #141a1c;
+      box-shadow: 16px 16px 0 rgb(239 106 71 / 0.18);
+    }
+    .workbench-bar {
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 18px;
+      border-bottom: 1px solid rgb(243 235 221 / 0.13);
+      color: rgb(243 235 221 / 0.48);
+      font: 0.57rem var(--mono);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .workbench-light {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--coral);
+    }
+    .workbench-status { margin-left: auto; color: var(--cyan); }
+    .platform-switch {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1px;
+      padding: 10px;
+      border-bottom: 1px solid rgb(243 235 221 / 0.13);
+      background: rgb(243 235 221 / 0.04);
+    }
+    .platform-tab {
+      min-height: 38px;
+      border: 1px solid rgb(243 235 221 / 0.14);
+      background: transparent;
+      color: rgb(243 235 221 / 0.58);
+      cursor: pointer;
+      font: 600 0.6rem var(--mono);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .platform-tab[aria-selected="true"] {
+      border-color: var(--cyan);
+      background: rgb(73 199 211 / 0.1);
+      color: var(--paper-light);
+    }
+    .platform-tab:hover { color: var(--paper-light); }
+    .platform-tab:focus-visible,
+    .copy-button:focus-visible {
+      outline: 2px solid var(--cyan);
+      outline-offset: 2px;
+    }
+    .platform-panel[hidden] { display: none; }
+    .install-step {
+      display: grid;
+      grid-template-columns: 38px 1fr;
+      gap: 14px;
+      padding: 26px 24px;
+      border-bottom: 1px solid rgb(243 235 221 / 0.13);
+    }
+    .install-step:last-child { border-bottom: 0; }
+    .step-number {
+      color: var(--coral);
+      font: 500 0.61rem var(--mono);
+    }
+    .step-body h3 {
+      margin-bottom: 6px;
+      color: var(--paper-light);
+      font: 600 0.69rem var(--mono);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .step-body > p {
+      margin-bottom: 16px;
+      color: rgb(243 235 221 / 0.58);
+      font-size: 0.88rem;
+    }
+    .prompt-block {
+      position: relative;
+      padding: 17px 94px 17px 18px;
+      border-left: 2px solid var(--cyan);
+      background: rgb(243 235 221 / 0.065);
+    }
+    .prompt-block pre {
+      margin: 0;
+      color: var(--paper-light);
+      font: 0.66rem/1.65 var(--mono);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .copy-button {
+      position: absolute;
+      top: 11px;
+      right: 11px;
+      min-width: 68px;
+      min-height: 34px;
+      padding: 0 10px;
+      border: 1px solid rgb(243 235 221 / 0.28);
+      background: transparent;
+      color: var(--paper-light);
+      cursor: pointer;
+      font: 600 0.56rem var(--mono);
+      text-transform: uppercase;
+    }
+    .copy-button:hover { border-color: var(--coral); color: var(--coral); }
+    .copy-status {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+    .cli-fallback {
+      margin-top: 18px;
+      padding-top: 16px;
+      border-top: 1px dashed rgb(243 235 221 / 0.16);
+    }
+    .cli-fallback summary {
+      color: rgb(243 235 221 / 0.62);
+      cursor: pointer;
+      font: 500 0.6rem var(--mono);
+    }
+    .cli-fallback pre {
+      margin: 14px 0 0;
+      color: var(--cyan);
+      font: 0.61rem/1.8 var(--mono);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .section { padding: 112px 0; border-bottom: 1px solid var(--rule); }
+    .section-heading { max-width: 720px; margin-bottom: 54px; }
+    h2 {
+      margin-bottom: 18px;
+      font-size: clamp(2.35rem, 4.6vw, 4.4rem);
+      font-weight: 500;
+      letter-spacing: -0.045em;
+      line-height: 0.98;
+    }
+    .lead {
+      max-width: 58ch;
+      margin-bottom: 0;
+      color: var(--slate);
+      font-size: 1.08rem;
+    }
+
+    .capability-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      border-top: 1px solid var(--rule);
+      border-left: 1px solid var(--rule);
+    }
+    .capability {
+      min-height: 250px;
+      padding: 26px;
+      border-right: 1px solid var(--rule);
+      border-bottom: 1px solid var(--rule);
+      background: rgb(250 245 235 / 0.45);
+    }
+    .capability-index {
+      display: block;
+      margin-bottom: 68px;
+      color: var(--coral);
+      font: 500 0.62rem var(--mono);
+    }
+    .capability h3 { margin-bottom: 9px; font: 600 0.76rem var(--mono); text-transform: uppercase; }
+    .capability p { margin: 0; color: var(--slate); font-size: 0.95rem; line-height: 1.5; }
+
+    .demo-section { background: var(--ink); color: var(--paper-light); }
+    .demo-section .section-label { color: var(--coral); }
+    .demo-section .lead { color: rgb(243 235 221 / 0.66); }
+    .demo-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.65fr);
+      gap: 42px;
+      align-items: center;
+    }
+    .video-frame { position: relative; padding: 10px; border: 1px solid var(--rule-light); }
+    .video-frame::before, .video-frame::after {
+      content: "";
+      position: absolute;
+      width: 28px;
+      height: 28px;
+      border-color: var(--coral);
+    }
+    .video-frame::before { top: -1px; left: -1px; border-top: 2px solid var(--coral); border-left: 2px solid var(--coral); }
+    .video-frame::after { right: -1px; bottom: -1px; border-right: 2px solid var(--coral); border-bottom: 2px solid var(--coral); }
+    .demo-video { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: #0c1113; }
+    .demo-copy blockquote {
+      margin: 0 0 28px;
+      color: var(--paper-light);
+      font-size: clamp(1.5rem, 2.4vw, 2.2rem);
+      line-height: 1.16;
+    }
+    .demo-copy p { color: rgb(243 235 221 / 0.62); font-size: 0.95rem; }
+    .text-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--coral);
+      font: 600 0.66rem var(--mono);
+      text-decoration: none;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .text-link:hover { color: var(--cyan); }
+
+    .trace-section {
+      position: relative;
+      min-height: 790px;
+      display: grid;
+      align-items: center;
+      overflow: hidden;
+      background: var(--paper-light);
+    }
+    .trace-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .trace-content { position: relative; z-index: 1; width: min(660px, 62%); margin-inline: auto; text-align: center; }
+    .trace-content .section-label::before { display: none; }
+    .trace-content .lead { margin-inline: auto; }
+    .trace-steps {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1px;
+      margin-top: 42px;
+      border: 1px solid var(--rule);
+      background: var(--rule);
+      text-align: left;
+    }
+    .trace-step { min-height: 150px; padding: 20px; background: rgb(250 245 235 / 0.92); backdrop-filter: blur(6px); }
+    .trace-step span { color: var(--coral); font: 500 0.58rem var(--mono); }
+    .trace-step h3 { margin: 25px 0 6px; font: 600 0.72rem var(--mono); text-transform: uppercase; }
+    .trace-step p { margin: 0; color: var(--slate); font-size: 0.88rem; line-height: 1.4; }
+
+    .artifact-grid { display: grid; grid-template-columns: 0.78fr 1.22fr; gap: 64px; align-items: center; }
+    .artifact-list { display: grid; gap: 0; border-top: 1px solid var(--rule); }
+    .artifact-row {
+      display: grid;
+      grid-template-columns: 42px 1fr auto;
+      align-items: center;
+      gap: 12px;
+      min-height: 62px;
+      border-bottom: 1px solid var(--rule);
+      font: 500 0.67rem var(--mono);
+    }
+    .artifact-row span:first-child { color: var(--coral); }
+    .artifact-row small { color: var(--slate); font: 400 0.58rem var(--mono); }
+    .manifest {
+      position: relative;
+      padding: 34px;
+      background: var(--ink);
+      color: var(--paper-light);
+      box-shadow: 18px 18px 0 var(--paper-deep);
+      font: 0.68rem/1.9 var(--mono);
+      overflow-x: auto;
+    }
+    .manifest::before { content: "session.json"; display: block; margin-bottom: 25px; color: var(--coral); font-weight: 600; }
+    .manifest .key { color: #8dd8df; }
+    .manifest .value { color: #f1a284; }
+    .manifest .muted { color: rgb(243 235 221 / 0.5); }
+
+    .developer-grid { display: grid; grid-template-columns: 0.72fr 1.28fr; gap: 60px; align-items: start; }
+    .terminal {
+      border: 1px solid rgb(243 235 221 / 0.15);
+      background: #141a1c;
+      color: var(--paper-light);
+      box-shadow: 14px 14px 0 var(--paper-deep);
+    }
+    .terminal-bar { display: flex; align-items: center; gap: 7px; min-height: 46px; padding: 0 16px; border-bottom: 1px solid rgb(243 235 221 / 0.12); }
+    .terminal-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--slate); }
+    .terminal-dot:first-child { background: var(--coral); }
+    .terminal-title { margin-left: auto; color: rgb(243 235 221 / 0.45); font: 0.58rem var(--mono); }
+    .terminal-body { padding: 24px; overflow-x: auto; font: 0.67rem/2 var(--mono); }
+    .terminal-body div { white-space: nowrap; }
+    .prompt { color: var(--coral); user-select: none; }
+    .output { padding-left: 18px; color: rgb(243 235 221 / 0.48); }
+    .requirements { margin: 32px 0 0; padding: 0; list-style: none; }
+    .requirements li { padding: 9px 0; border-bottom: 1px solid var(--rule); color: var(--slate); font: 0.66rem var(--mono); }
+    .requirements li::before { content: "+"; margin-right: 10px; color: var(--coral); }
+
+    .site-footer { padding: 42px 0; background: var(--ink); color: var(--paper-light); }
+    .footer-inner { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+    .footer-inner p { margin: 0; color: rgb(243 235 221 / 0.5); font: 0.61rem var(--mono); }
+    .footer-links { display: flex; flex-wrap: wrap; gap: 22px; }
+    .footer-links a { color: var(--paper-light); font: 0.61rem var(--mono); text-decoration: none; }
+    .footer-links a:hover { color: var(--coral); }
+
+    @media (max-width: 940px) {
+      :root { --shell: min(100% - 36px, 760px); }
+      .hero { min-height: 820px; align-items: end; }
+      .hero-art { inset: 0 0 auto; height: 372px; border-bottom: 1px solid var(--rule); }
+      .hero-art img { object-position: 66% 46%; }
+      .hero-art::after {
+        background:
+          linear-gradient(0deg, rgb(243 235 221 / 0.82) 0%, rgb(243 235 221 / 0.34) 30%, transparent 66%),
+          linear-gradient(180deg, rgb(243 235 221 / 0.88) 0%, rgb(243 235 221 / 0.55) 64px, transparent 132px);
+      }
+      .hero-copy { width: 100%; padding: 414px 0 78px; }
+      h1 { max-width: 12ch; font-size: clamp(3rem, 8.4vw, 4.6rem); }
+      .proof-items { grid-template-columns: repeat(2, 1fr); }
+      .proof-items span:nth-child(3) { border-top: 1px solid var(--rule); }
+      .proof-items span:nth-child(4) { border-top: 1px solid var(--rule); }
+      .capability-grid { grid-template-columns: repeat(2, 1fr); }
+      .install-grid, .demo-grid, .artifact-grid, .developer-grid { grid-template-columns: 1fr; }
+      .install-copy h2 { max-width: 13ch; }
+    }
+
+    @media (max-width: 620px) {
+      :root { --shell: calc(100vw - 28px); }
+      html { font-size: 17px; }
+      .nav-inner { min-height: 64px; }
+      .nav-links { gap: 15px; }
+      .nav-links a { font-size: 0.6rem; }
+      .nav-links li:nth-child(2), .nav-links li:nth-child(3) { display: none; }
+      .family-link { display: none; }
+      .hero { min-height: 700px; }
+      .hero-art { height: 296px; }
+      h1 { max-width: none; font-size: clamp(2.5rem, 9.4vw, 3.3rem); line-height: 0.97; letter-spacing: -0.04em; }
+      h2 { font-size: clamp(1.95rem, 7.4vw, 2.6rem); }
+      .hero-art img { object-position: 68% center; }
+      .hero-copy { padding: 332px 0 56px; }
+      .hero-lead { font-size: 1rem; }
+      .hero-meta { gap: 7px 14px; }
+      .proof-items { width: 100%; grid-template-columns: 1fr 1fr; }
+      .proof-items span { padding: 13px 6px; font-size: 0.54rem; }
+      .install-section { padding: 78px 0; }
+      .install-grid { gap: 42px; }
+      .install-workbench { box-shadow: 8px 8px 0 rgb(239 106 71 / 0.18); }
+      .install-step { grid-template-columns: 28px 1fr; gap: 8px; padding: 22px 16px; }
+      .prompt-block { padding: 16px; }
+      .copy-button { position: static; margin-top: 14px; }
+      .section { padding: 78px 0; }
+      .section-heading { margin-bottom: 36px; }
+      .capability-grid { grid-template-columns: 1fr; }
+      .capability { min-height: 190px; }
+      .capability-index { margin-bottom: 40px; }
+      .demo-grid { gap: 28px; }
+      .trace-section { min-height: 920px; }
+      .trace-art { width: 160%; max-width: none; left: -30%; opacity: 0.72; }
+      .trace-content { width: 100%; }
+      .trace-steps { grid-template-columns: 1fr; }
+      .trace-step { min-height: 122px; }
+      .manifest { padding: 24px 18px; box-shadow: 8px 8px 0 var(--paper-deep); font-size: 0.58rem; }
+      .developer-grid { gap: 36px; }
+      .terminal { box-shadow: 8px 8px 0 var(--paper-deep); }
+      .terminal-body { padding: 20px 14px; font-size: 0.58rem; }
+      .footer-inner { align-items: flex-start; flex-direction: column; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .button { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-nav">
+    <nav class="shell nav-inner" aria-label="Primary navigation">
+      <div class="brand-lockup">
+        <a class="brand" href="./" aria-label="Action home">
+          <img src="assets/brand/action-mark.svg" alt="">
+          action<span>.app</span>
+        </a>
+        <a class="family-link" href="https://lattices.dev">A Lattices product</a>
+      </div>
+      <ul class="nav-links">
+        <li><a href="#download">Install</a></li>
+        <li><a href="#install">Plugin</a></li>
+        <li><a href="#demo">Demo</a></li>
+        <li><a class="nav-agents" href="agents/">For agents</a></li>
+        <li><a href="https://github.com/arach/action">GitHub</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-art" aria-hidden="true">
+        <img src="assets/brand/landing-hero.webp" alt="">
+      </div>
+      <div class="shell">
+        <div class="hero-copy">
+          <p class="eyebrow">Native macOS automation</p>
+          <h1 id="hero-title">Action gives agents an API to record and share computer use.</h1>
+          <p class="hero-lead">Each macOS run can include video, screenshots, accessibility context, and traces.</p>
+          <div class="actions">
+            <a class="button" href="#download">Download for macOS <span aria-hidden="true">↓</span></a>
+            <a class="button secondary" href="#install">Install for agents</a>
+          </div>
+          <p class="agent-entry">
+            Reading this as an agent? <a href="agents/">Start here</a> — capabilities, connection, and which browser to drive.
+          </p>
+          <div class="hero-meta" aria-label="Project status">
+            <span>macOS native</span>
+            <span>local first</span>
+            <span>early project</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="proof-rail" aria-label="Core technologies">
+      <div class="shell proof-items">
+        <span>AppKit lifecycle</span>
+        <span>ScreenCaptureKit</span>
+        <span>AX + OCR</span>
+        <span>CLI + MCP</span>
+      </div>
+    </div>
+
+    <section class="section" id="download" aria-labelledby="download-title">
+      <div class="shell">
+        <div class="section-heading">
+          <p class="section-label">Install</p>
+          <h2 id="download-title">Get Action on your Mac.</h2>
+          <p class="lead">A signed, notarized build. Download it, drag it to Applications, and grant the two permissions macOS asks for the first time you record.</p>
+        </div>
+
+        <div class="actions">
+          <a class="button" href="https://github.com/arach/action/releases/latest/download/Action.dmg">Download for macOS <span aria-hidden="true">↓</span></a>
+          <a class="button secondary" href="https://github.com/arach/action/releases/latest">All releases</a>
+        </div>
+
+        <ul class="install-facts">
+          <li><strong>Requires</strong><span>macOS 14 or newer, Apple silicon.</span></li>
+          <li><strong>Permissions</strong><span>Accessibility to read and drive controls, Screen Recording to capture. Both are asked for on first use and can be revoked in System Settings.</span></li>
+          <li><strong>Local</strong><span>Runs and recordings stay on your Mac. Nothing is uploaded.</span></li>
+        </ul>
+
+        <div class="section-heading" style="margin-top: 48px;">
+          <h3 id="download-agent-title">Then connect an agent</h3>
+          <p class="lead">Action speaks MCP over stdio. Hand this to the agent once and the tools appear on its next task.</p>
+        </div>
+
+        <div class="prompt-block">
+          <pre id="mcp-connect-command">claude mcp add action -s user -e ACTION_ROOT=~/dev/action \
+  -- bun --cwd ~/dev/action packages/mcp/src/index.ts</pre>
+          <button class="copy-button" type="button" data-copy-target="mcp-connect-command" aria-label="Copy the MCP setup command">Copy</button>
+        </div>
+
+        <p class="lead" style="margin-top: 16px;">The runtime server currently runs from a source checkout, so this line needs the repository and <a href="https://bun.sh">Bun</a>. A self-contained server that ships inside the app is the next step — until then, <a href="https://github.com/arach/action">clone the repo</a> alongside the app.</p>
+      </div>
+    </section>
+
+    <section class="install-section" id="install" aria-labelledby="install-title">
+      <div class="shell install-grid">
+        <div class="install-copy">
+          <p class="section-label">Action Browser plugin</p>
+          <h2 id="install-title">Give your agent a real Chrome camera.</h2>
+          <p class="lead">Action Browser opens a separate, non-headless Chrome profile on demand. Your agent can navigate, inspect, click, fill, and return screenshots without taking over your personal browser.</p>
+          <ul class="install-facts">
+            <li><strong>Runtime</strong><span>Real Google Chrome, kept out of the foreground while the agent works.</span></li>
+            <li><strong>Privacy</strong><span>An isolated profile with no access to your personal cookies, tabs, or signed-in sessions.</span></li>
+            <li><strong>Requires</strong><span>macOS, Google Chrome, and Bun.</span></li>
+          </ul>
+        </div>
+
+        <div class="install-workbench" aria-label="Agent plugin installation">
+          <div class="workbench-bar">
+            <span class="workbench-light" aria-hidden="true"></span>
+            Agent marketplace
+            <span class="workbench-status">MCP ready</span>
+          </div>
+
+          <div class="platform-switch" role="tablist" aria-label="Choose your agent">
+            <button class="platform-tab" type="button" role="tab" id="codex-tab" aria-controls="codex-install" aria-selected="true" data-platform="codex-install">Codex</button>
+            <button class="platform-tab" type="button" role="tab" id="claude-tab" aria-controls="claude-install" aria-selected="false" data-platform="claude-install">Claude Code</button>
+          </div>
+
+          <div class="platform-panel" id="codex-install" role="tabpanel" aria-labelledby="codex-tab">
+            <div class="install-step">
+              <span class="step-number" aria-hidden="true">01</span>
+              <div class="step-body">
+                <h3>Ask Codex to install it</h3>
+                <p>Paste this into Codex. The agent can run the marketplace commands for you.</p>
+                <div class="prompt-block">
+                  <pre id="codex-install-prompt">Install the Action plugin marketplace from arach/action, then install action-browser@action. When installation finishes, tell me to start a new task so the browser tools can load.</pre>
+                  <button class="copy-button" type="button" data-copy-target="codex-install-prompt" aria-label="Copy Codex install prompt">Copy</button>
+                </div>
+                <details class="cli-fallback">
+                  <summary>Or install from the terminal</summary>
+                  <pre>codex plugin marketplace add arach/action
+codex plugin add action-browser@action</pre>
+                </details>
+              </div>
+            </div>
+
+            <div class="install-step">
+              <span class="step-number" aria-hidden="true">02</span>
+              <div class="step-body">
+                <h3>Start a new task and try it</h3>
+                <p>A new Codex task loads the plugin’s MCP tools. This prompt exercises the shortest useful loop.</p>
+                <div class="prompt-block">
+                  <pre id="codex-first-task-prompt">Open https://example.com in Action Browser, take a screenshot, and show it to me.</pre>
+                  <button class="copy-button" type="button" data-copy-target="codex-first-task-prompt" aria-label="Copy first Codex task prompt">Copy</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="platform-panel" id="claude-install" role="tabpanel" aria-labelledby="claude-tab" hidden>
+            <div class="install-step">
+              <span class="step-number" aria-hidden="true">01</span>
+              <div class="step-body">
+                <h3>Ask Claude Code to install it</h3>
+                <p>Claude Code uses its own marketplace manifest and can reload the MCP without starting a new session.</p>
+                <div class="prompt-block">
+                  <pre id="claude-install-prompt">Install Action Browser for Claude Code. Run `claude plugin marketplace add arach/action`, then `claude plugin install action-browser@action --scope user`. When both commands finish, tell me to run `/reload-plugins`.</pre>
+                  <button class="copy-button" type="button" data-copy-target="claude-install-prompt" aria-label="Copy Claude Code install prompt">Copy</button>
+                </div>
+                <details class="cli-fallback">
+                  <summary>Or install from the terminal</summary>
+                  <pre>claude plugin marketplace add arach/action
+claude plugin install action-browser@action --scope user</pre>
+                </details>
+              </div>
+            </div>
+
+            <div class="install-step">
+              <span class="step-number" aria-hidden="true">02</span>
+              <div class="step-body">
+                <h3>Reload and try it</h3>
+                <p>Run <code>/reload-plugins</code> inside Claude Code. If needed, run <code>/mcp</code> and confirm that <code>action-browser</code> is connected.</p>
+                <div class="prompt-block">
+                  <pre id="claude-first-task-prompt">Open https://example.com in Action Browser, take a screenshot, and show it to me.</pre>
+                  <button class="copy-button" type="button" data-copy-target="claude-first-task-prompt" aria-label="Copy first Claude Code task prompt">Copy</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="copy-status" id="copy-status" aria-live="polite"></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="runtime-title">
+      <div class="shell">
+        <div class="section-heading">
+          <p class="section-label">Built for agent runs</p>
+          <h2 id="runtime-title">A native recording layer for agents at work.</h2>
+          <p class="lead">Action lets agents use the real interface and records the run as it happens. The finished session is ready to review or replay.</p>
+        </div>
+        <div class="capability-grid">
+          <article class="capability">
+            <span class="capability-index">01 / OBSERVE</span>
+            <h3>See the surface</h3>
+            <p>Capture the active window, screenshot, accessibility tree, and Apple Vision OCR.</p>
+          </article>
+          <article class="capability">
+            <span class="capability-index">02 / RESOLVE</span>
+            <h3>Find a stable target</h3>
+            <p>Prefer semantic, DOM, or AX evidence before falling back to coordinates.</p>
+          </article>
+          <article class="capability">
+            <span class="capability-index">03 / ACT</span>
+            <h3>Execute deliberately</h3>
+            <p>Run deterministic actions through native controls with explicit runtime state.</p>
+          </article>
+          <article class="capability">
+            <span class="capability-index">04 / RECORD</span>
+            <h3>Package the run</h3>
+            <p>Write the video, trace, screenshots, manifest, and finished marker as one session.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section demo-section" id="demo" aria-labelledby="demo-title">
+      <div class="shell">
+        <div class="section-heading">
+          <p class="section-label">Product film</p>
+          <h2 id="demo-title">The work stays visible from run to review.</h2>
+          <p class="lead">A 21-second tour of Action running in real Chrome and native macOS, preserving evidence, and handing the result off for review.</p>
+        </div>
+        <div class="demo-grid">
+          <div class="video-frame">
+            <video class="demo-video" controls playsinline preload="metadata" poster="assets/action-record-the-work-poster.jpg" aria-label="Action product film: Record the work">
+              <source src="assets/action-record-the-work.mp4" type="video/mp4">
+              <track kind="captions" srclang="en" label="English" src="assets/action-record-the-work.vtt">
+              Your browser does not support embedded video.
+            </video>
+          </div>
+          <div class="demo-copy">
+            <blockquote>“An agent can do the work. Action shows what happened.”</blockquote>
+            <p>Observe, resolve, act, and record through a real browser and a native macOS runtime.</p>
+            <p>Every run preserves the capture, trace, snapshot, accessibility tree, and manifest so the result is ready to review, replay, and share.</p>
+            <a class="text-link" href="assets/action-record-the-work.mp4">Open the MP4 <span aria-hidden="true">↗</span></a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="trace-section" aria-labelledby="trace-title">
+      <img class="trace-art" src="assets/brand/landing-trace-field.webp" alt="" aria-hidden="true">
+      <div class="shell trace-content">
+        <p class="section-label">One session, end to end</p>
+        <h2 id="trace-title">The path stays inspectable.</h2>
+        <p class="lead">No daemon mystery state. No UI-only source of truth. Each transition has a reason, an owner, and an artifact trail.</p>
+        <div class="trace-steps">
+          <article class="trace-step"><span>01</span><h3>Preflight</h3><p>Resolve permissions, process state, and the target surface.</p></article>
+          <article class="trace-step"><span>02</span><h3>Running</h3><p>Act, observe, and capture under explicit session state.</p></article>
+          <article class="trace-step"><span>03</span><h3>Completing</h3><p>Stop cleanly and wait for the runtime’s finished marker.</p></article>
+          <article class="trace-step"><span>04</span><h3>Review</h3><p>Reopen the session with its media, trace, and context intact.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="artifacts-title">
+      <div class="shell artifact-grid">
+        <div>
+          <p class="section-label">Durable output</p>
+          <h2 id="artifacts-title">More than pixels.</h2>
+          <p class="lead">A capture should explain itself later. Action preserves the media alongside the runtime context that produced it.</p>
+          <div class="artifact-list" aria-label="Session artifacts">
+            <div class="artifact-row"><span>01</span><strong>capture.mov</strong><small>raw media</small></div>
+            <div class="artifact-row"><span>02</span><strong>trace.json</strong><small>runtime events</small></div>
+            <div class="artifact-row"><span>03</span><strong>snapshot.png</strong><small>visual state</small></div>
+            <div class="artifact-row"><span>04</span><strong>ax-snapshot.json</strong><small>interface context</small></div>
+            <div class="artifact-row"><span>05</span><strong>manifest.json</strong><small>artifact index</small></div>
+          </div>
+        </div>
+        <div class="manifest" aria-label="Example session manifest">
+          <div>{</div>
+          <div>&nbsp;&nbsp;<span class="key">"mode"</span>: <span class="value">"inspection"</span>,</div>
+          <div>&nbsp;&nbsp;<span class="key">"state"</span>: <span class="value">"completed"</span>,</div>
+          <div>&nbsp;&nbsp;<span class="key">"surface"</span>: {</div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"kind"</span>: <span class="value">"window"</span>,</div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"bundleId"</span>: <span class="value">"com.apple.Calculator"</span></div>
+          <div>&nbsp;&nbsp;},</div>
+          <div>&nbsp;&nbsp;<span class="key">"artifacts"</span>: <span class="muted">["screenshot", "ax", "ocr", "trace"]</span>,</div>
+          <div>&nbsp;&nbsp;<span class="key">"recordingFinished"</span>: <span class="value">true</span></div>
+          <div>}</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="developer-title">
+      <div class="shell developer-grid">
+        <div>
+          <p class="section-label">Developer loop</p>
+          <h2 id="developer-title">Build it. Launch it. Prove it.</h2>
+          <p class="lead">The local workflow builds and signs a real app bundle, reports native permission state, and keeps recording completion explicit.</p>
+          <ul class="requirements">
+            <li>macOS on Apple Silicon</li>
+            <li>Bun and the Swift toolchain</li>
+            <li>Accessibility permission</li>
+            <li>Screen Recording permission</li>
+          </ul>
+        </div>
+        <div class="terminal" aria-label="Action quick start commands">
+          <div class="terminal-bar">
+            <span class="terminal-dot"></span><span class="terminal-dot"></span><span class="terminal-dot"></span>
+            <span class="terminal-title">action / quick-start</span>
+          </div>
+          <div class="terminal-body">
+            <div><span class="prompt">$ </span>bun install</div>
+            <div><span class="prompt">$ </span>bun run native:app:build</div>
+            <div class="output">Action.app signed and ready</div>
+            <div><span class="prompt">$ </span>bun run native:doctor</div>
+            <div class="output">Accessibility: granted · Screen Recording: granted</div>
+            <div><span class="prompt">$ </span>bun run action-dev -- launch</div>
+            <div class="output">Action.app running</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="shell footer-inner">
+      <p>Action is a Lattices product.</p>
+      <div class="footer-links">
+        <a href="https://lattices.dev">Lattices</a>
+        <a href="#install">Install plugin</a>
+        <a href="agents/">For agents</a>
+        <a href="llms.txt">llms.txt</a>
+        <a href="getting-started.md">Getting started</a>
+        <a href="ARCHITECTURE.md">Architecture</a>
+        <a href="https://github.com/arach/action">GitHub</a>
+      </div>
+    </div>
+  </footer>
+  <script>
+    const copyStatus = document.querySelector("#copy-status");
+
+    async function copyPrompt(button) {
+      const target = document.getElementById(button.dataset.copyTarget);
+      if (!target) return;
+
+      const text = target.textContent.trim();
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        textarea.remove();
+      }
+
+      const previousLabel = button.textContent;
+      button.textContent = "Copied";
+      copyStatus.textContent = "Prompt copied to clipboard.";
+      window.setTimeout(() => {
+        button.textContent = previousLabel;
+        copyStatus.textContent = "";
+      }, 1800);
+    }
+
+    document.querySelectorAll("[data-copy-target]").forEach((button) => {
+      button.addEventListener("click", () => copyPrompt(button));
+    });
+
+    const platformTabs = document.querySelectorAll("[data-platform]");
+    const platformPanels = document.querySelectorAll(".platform-panel");
+
+    platformTabs.forEach((tab) => {
+      tab.addEventListener("click", () => {
+        platformTabs.forEach((candidate) => {
+          candidate.setAttribute("aria-selected", String(candidate === tab));
+        });
+        platformPanels.forEach((panel) => {
+          panel.hidden = panel.id !== tab.dataset.platform;
+        });
+      });
+    });
+  </script>
+</body>
+</html>
