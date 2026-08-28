@@ -26,7 +26,7 @@ export function DocsPage({ slug }: DocsPageProps) {
 
   if (!doc) {
     return (
-      <>
+      <div className="docs-page">
         <SiteHeader />
         <main className="not-found-shell" data-pagefind-ignore>
           <div className="not-found-card">
@@ -38,14 +38,14 @@ export function DocsPage({ slug }: DocsPageProps) {
             </p>
           </div>
         </main>
-      </>
+      </div>
     )
   }
 
   const updatedLabel = formatBuildDate(meta?.updatedAt)
 
   return (
-    <>
+    <div className="docs-page">
       <SiteHeader />
       <main className="docs-shell" data-pagefind-body>
         <aside className="docs-sidebar" data-pagefind-ignore>
@@ -55,18 +55,20 @@ export function DocsPage({ slug }: DocsPageProps) {
           <header className="docs-article-header">
             <h1>{doc.title}</h1>
             {doc.description && <p>{doc.description}</p>}
-            <div className="docs-meta">
-              {updatedLabel && <span>Updated {updatedLabel}</span>}
-              {meta?.editUrl && (
-                <a
-                  href={meta.editUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Edit on GitHub →
-                </a>
-              )}
-            </div>
+            {(updatedLabel || meta?.editUrl) && (
+              <div className="docs-meta">
+                {updatedLabel && <span>Updated {updatedLabel}</span>}
+                {meta?.editUrl && (
+                  <a
+                    href={meta.editUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Edit on GitHub →
+                  </a>
+                )}
+              </div>
+            )}
           </header>
           <MarkdownRenderer content={doc.content} />
         </article>
@@ -74,7 +76,7 @@ export function DocsPage({ slug }: DocsPageProps) {
           <TableOfContents doc={doc} />
         </aside>
       </main>
-    </>
+    </div>
   )
 }
 
@@ -121,7 +123,11 @@ function NavGroups({ currentSlug, compact = false }: { currentSlug: string; comp
           <ul>
             {group.items.map((item) => (
               <li key={item.id}>
-                <a className={currentSlug === item.id ? 'active' : undefined} href={item.href}>
+                <a
+                  className={currentSlug === item.id ? 'active' : undefined}
+                  href={item.href}
+                  aria-current={currentSlug === item.id ? 'page' : undefined}
+                >
                   {item.title}
                 </a>
               </li>
