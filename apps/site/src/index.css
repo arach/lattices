@@ -30,6 +30,10 @@
   --hero-ink-dim: rgba(236, 229, 214, 0.66);
   --hero-rule: rgba(236, 229, 214, 0.18);
   --hero-dither: rgba(236, 229, 214, 0.3);
+  --hero-etch: rgba(236, 229, 214, 0.14);
+  --hero-etch-faint: rgba(236, 229, 214, 0.065);
+  --hero-bloom: rgba(185, 210, 197, 0.075);
+  --hero-charcoal: rgba(0, 0, 0, 0.34);
   --hero-accent: #38d17c;
   --slab-bg: #ece5d6;
   --slab-fg: #12181a;
@@ -65,6 +69,10 @@
   --hero-ink-dim: rgba(16, 22, 23, 0.68);
   --hero-rule: rgba(16, 22, 23, 0.18);
   --hero-dither: rgba(16, 22, 23, 0.32);
+  --hero-etch: rgba(16, 22, 23, 0.15);
+  --hero-etch-faint: rgba(16, 22, 23, 0.07);
+  --hero-bloom: rgba(61, 78, 68, 0.085);
+  --hero-charcoal: rgba(106, 79, 44, 0.1);
   --hero-accent: #0a6b3a;
   --slab-bg: #12181a;
   --slab-fg: #ece5d6;
@@ -914,6 +922,9 @@ button.nav-link {
 /* ── Narrative spine ──────────────────────────────── */
 
 .shared-state-section {
+  position: relative;
+  z-index: 0;
+  overflow: hidden;
   padding: 92px 24px 88px;
   border-bottom: 1px solid var(--hero-rule);
   background: var(--hero-ground);
@@ -921,12 +932,49 @@ button.nav-link {
 }
 
 .shared-state-inner {
+  position: relative;
+  isolation: isolate;
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(300px, 0.95fr);
   gap: 60px;
   align-items: center;
   max-width: 1280px;
   margin: 0 auto;
+  padding: clamp(26px, 3.4vw, 46px);
+  border: 1px solid var(--hero-rule);
+}
+
+.shared-state-inner::before {
+  content: "";
+  position: absolute;
+  z-index: -2;
+  inset: -22% -5% -28% 44%;
+  background-image:
+    radial-gradient(circle, var(--hero-dither) 0 0.65px, transparent 0.85px),
+    radial-gradient(circle, var(--hero-etch-faint) 0 0.55px, transparent 0.75px);
+  background-position: 1px 2px, 5px 4px;
+  background-size: 6px 6px, 9px 9px;
+  opacity: 0.5;
+  -webkit-mask-image: radial-gradient(ellipse 63% 68% at 69% 46%, #000 3%, rgba(0, 0, 0, 0.7) 46%, transparent 78%);
+  mask-image: radial-gradient(ellipse 63% 68% at 69% 46%, #000 3%, rgba(0, 0, 0, 0.7) 46%, transparent 78%);
+  pointer-events: none;
+}
+
+.shared-state-inner::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: 5px;
+  right: -6px;
+  bottom: -6px;
+  left: 5px;
+  border-right: 1px solid var(--hero-etch-faint);
+  border-bottom: 1px solid var(--hero-etch);
+  background:
+    linear-gradient(90deg, var(--hero-etch-faint), transparent 38%) 0 19% / 44% 1px no-repeat,
+    repeating-linear-gradient(90deg, var(--hero-etch-faint) 0 2px, transparent 2px 9px) 74% 88% / 23% 1px no-repeat,
+    linear-gradient(0deg, transparent 0 35%, var(--hero-etch-faint) 35% 82%, transparent 82%) 93% 0 / 1px 100% no-repeat;
+  pointer-events: none;
 }
 
 .shared-state-copy h2,
@@ -950,8 +998,28 @@ button.nav-link {
 }
 
 .operator-rows {
+  position: relative;
+  z-index: 0;
   display: grid;
   gap: 12px;
+}
+
+.operator-rows::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: -22px;
+  right: -18px;
+  width: 56%;
+  height: 72%;
+  border-top: 1px solid var(--hero-etch-faint);
+  border-right: 1px solid var(--hero-etch);
+  background:
+    repeating-linear-gradient(135deg, transparent 0 7px, var(--hero-etch-faint) 7px 8px, transparent 8px 13px);
+  opacity: 0.5;
+  -webkit-mask-image: linear-gradient(135deg, transparent 5%, #000 42%, transparent 94%);
+  mask-image: linear-gradient(135deg, transparent 5%, #000 42%, transparent 94%);
+  pointer-events: none;
 }
 
 .operator-row {
@@ -2755,6 +2823,7 @@ button.nav-link {
 .hero {
   position: relative;
   z-index: 0;
+  overflow: hidden;
   padding: 76px 24px 68px;
   border-bottom: 1px solid var(--hero-rule);
   background: var(--hero-ground);
@@ -2763,6 +2832,7 @@ button.nav-link {
 }
 
 .hero-editorial {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 0.84fr) minmax(0, 1.16fr);
   gap: clamp(36px, 4.4vw, 76px);
@@ -2772,6 +2842,8 @@ button.nav-link {
 }
 
 .hero-copy {
+  position: relative;
+  z-index: 2;
   max-width: none;
   margin: 0;
 }
@@ -2878,11 +2950,58 @@ button.nav-link {
 .hero-apparatus {
   position: relative;
   z-index: 0;
+  isolation: isolate;
+}
+
+/* The drawing is precise, but not digitally sterile. These two static layers
+   make an uneven field of printer dots, rubbed graphite, and partial drafting
+   marks around the apparatus only. */
+
+.hero-apparatus::before {
+  content: "";
+  position: absolute;
+  z-index: -2;
+  inset: -18% -10% -24% -20%;
+  background-image:
+    radial-gradient(circle, var(--hero-dither) 0 0.7px, transparent 0.9px),
+    radial-gradient(circle, var(--hero-etch) 0 0.55px, transparent 0.8px),
+    radial-gradient(circle, var(--hero-etch-faint) 0 0.65px, transparent 0.85px);
+  background-position: 1px 2px, 4px 1px, -3px 5px;
+  background-size: 5px 5px, 7px 7px, 11px 11px;
+  opacity: 0.72;
+  -webkit-mask-image:
+    radial-gradient(ellipse 42% 50% at 31% 28%, #000 8%, rgba(0, 0, 0, 0.74) 44%, transparent 77%),
+    radial-gradient(ellipse 48% 54% at 76% 58%, #000 3%, rgba(0, 0, 0, 0.62) 41%, transparent 79%),
+    radial-gradient(ellipse 28% 24% at 58% 92%, rgba(0, 0, 0, 0.74), transparent 76%);
+  mask-image:
+    radial-gradient(ellipse 42% 50% at 31% 28%, #000 8%, rgba(0, 0, 0, 0.74) 44%, transparent 77%),
+    radial-gradient(ellipse 48% 54% at 76% 58%, #000 3%, rgba(0, 0, 0, 0.62) 41%, transparent 79%),
+    radial-gradient(ellipse 28% 24% at 58% 92%, rgba(0, 0, 0, 0.74), transparent 76%);
+  pointer-events: none;
+}
+
+.hero-apparatus::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -14% -8% -18% -14%;
+  background:
+    linear-gradient(90deg, transparent 0 7%, var(--hero-etch) 7% 42%, transparent 42%) 0 11% / 100% 1px no-repeat,
+    linear-gradient(90deg, transparent 0 25%, var(--hero-etch-faint) 25% 87%, transparent 87%) 0 17% / 100% 1px no-repeat,
+    repeating-linear-gradient(90deg, var(--hero-etch) 0 2px, transparent 2px 9px) 18% 78% / 47% 1px no-repeat,
+    linear-gradient(90deg, transparent 0 58%, var(--hero-etch) 58% 98%, transparent 98%) 0 92% / 100% 1px no-repeat,
+    linear-gradient(0deg, transparent 0 18%, var(--hero-etch-faint) 18% 74%, transparent 74%) 18% 0 / 1px 100% no-repeat,
+    linear-gradient(0deg, transparent 0 7%, var(--hero-etch) 7% 48%, transparent 48%) 56% 0 / 1px 100% no-repeat,
+    repeating-linear-gradient(0deg, var(--hero-etch) 0 2px, transparent 2px 10px) 93% 13% / 1px 69% no-repeat,
+    radial-gradient(ellipse 56% 62% at 53% 51%, var(--hero-bloom), transparent 72%),
+    radial-gradient(ellipse 38% 30% at 66% 83%, var(--hero-charcoal), transparent 78%);
+  opacity: 0.92;
+  pointer-events: none;
 }
 
 .hero-rail {
   position: relative;
-  z-index: 0;
+  z-index: 1;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   padding-top: 44px;
@@ -2894,12 +3013,24 @@ button.nav-link {
   content: "";
   position: absolute;
   z-index: -1;
-  inset: 0;
-  background-image: radial-gradient(var(--hero-dither) 0.8px, transparent 0.9px);
-  background-size: 5px 5px;
-  opacity: 0.45;
-  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 30%);
-  mask-image: linear-gradient(90deg, transparent 0%, #000 30%);
+  inset: 7px -2% -4px -4%;
+  background:
+    linear-gradient(90deg, transparent 0 3%, var(--hero-etch) 3% 31%, transparent 31%) 0 8px / 100% 1px no-repeat,
+    repeating-linear-gradient(90deg, var(--hero-etch-faint) 0 1px, transparent 1px 7px) 26% 24px / 62% 1px no-repeat,
+    linear-gradient(90deg, transparent 0 48%, var(--hero-etch) 48% 100%) 0 33px / 100% 1px no-repeat;
+  opacity: 0.88;
+  pointer-events: none;
+}
+
+.hero-rail::after {
+  content: "";
+  position: absolute;
+  right: 6%;
+  bottom: 3px;
+  left: 11%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--hero-etch) 12% 72%, transparent);
+  opacity: 0.66;
   pointer-events: none;
 }
 
@@ -2927,6 +3058,7 @@ button.nav-link {
 
 .hero-apparatus-body {
   position: relative;
+  z-index: 1;
 }
 
 .hero-index {
@@ -2957,10 +3089,12 @@ button.nav-link {
 }
 
 .hero-plinth {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 18px;
-  margin-top: 20px;
+  margin-top: 38px;
   padding-top: 13px;
   border-top: 1px solid var(--hero-rule);
   color: var(--hero-ink-dim);
@@ -2968,6 +3102,34 @@ button.nav-link {
   font-size: 9.5px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+}
+
+.hero-plinth::before {
+  content: "";
+  position: absolute;
+  right: 3%;
+  bottom: calc(100% + 9px);
+  left: 4%;
+  height: 17px;
+  border: 1px solid var(--hero-etch);
+  background:
+    repeating-linear-gradient(135deg, transparent 0 5px, var(--hero-etch-faint) 5px 6px, transparent 6px 10px),
+    color-mix(in srgb, var(--hero-ground) 82%, transparent);
+  clip-path: polygon(0 0, 100% 0, 100% 48%, 88% 48%, 88% 100%, 13% 100%, 13% 58%, 0 58%);
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+.hero-plinth::after {
+  content: "";
+  position: absolute;
+  right: 17%;
+  bottom: calc(100% + 4px);
+  left: 18%;
+  height: 1px;
+  background: var(--hero-etch);
+  box-shadow: 19px 4px 0 var(--hero-etch-faint);
+  pointer-events: none;
 }
 
 .hero-plinth-state {
@@ -2991,7 +3153,21 @@ button.nav-link {
   border-radius: 12px;
   box-shadow:
     0 30px 70px rgba(0, 0, 0, 0.42),
+    -3px 4px 0 -2px var(--hero-etch),
+    4px -3px 0 -3px var(--hero-etch-faint),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.hero-apparatus .hero-workspace-stage::before {
+  content: "";
+  position: absolute;
+  z-index: 99;
+  inset: 4px;
+  border-top: 1px solid var(--hero-etch-faint);
+  border-left: 1px solid var(--hero-etch-faint);
+  border-radius: 8px 0 0;
+  opacity: 0.78;
+  pointer-events: none;
 }
 
 .hero-apparatus .hero-agent-harness {
@@ -3062,8 +3238,19 @@ button.nav-link {
 }
 
 .shared-state-section .operator-row {
+  position: relative;
   border-color: var(--hero-rule);
   background: color-mix(in srgb, var(--hero-ink) 5%, transparent);
+}
+
+.shared-state-section .operator-row.is-you::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 3px -4px -4px 3px;
+  border-right: 1px solid var(--hero-etch-faint);
+  border-bottom: 1px solid var(--hero-etch);
+  pointer-events: none;
 }
 
 .shared-state-section .operator-row-action,
@@ -3108,6 +3295,11 @@ button.nav-link {
   .hero-index {
     display: none;
   }
+
+  .hero-apparatus::before,
+  .hero-apparatus::after {
+    inset-inline: -7%;
+  }
 }
 
 @media (max-width: 640px) {
@@ -3125,6 +3317,14 @@ button.nav-link {
 
   .hero-desktop-comparison {
     align-self: stretch;
+  }
+
+  .hero-apparatus::before {
+    opacity: 0.54;
+  }
+
+  .hero-apparatus::after {
+    opacity: 0.7;
   }
 }
 
