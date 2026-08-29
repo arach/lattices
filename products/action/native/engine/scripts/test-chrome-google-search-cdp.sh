@@ -314,4 +314,3 @@ console.log(JSON.stringify({ status: 'replay-written', reportPath }, null, 2));
 NODE
 
 ls -lh "$POINT_JSON" "$VERIFY_JSON" "$TRACE_LOG" "$OUTPUT_PREFIX-window.png" "$OUTPUT_PREFIX-replay.html"
-

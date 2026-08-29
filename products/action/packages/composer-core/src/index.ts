@@ -6,11 +6,9 @@ export interface FocusWindow {
   width: number;
   height: number;
 }
-
 export interface RenderManifest {
   sourceVideo: string;
   subtitles?: string;
   focusWindows?: FocusWindow[];
   chapters?: Array<{ title: string; atMs: number }>;
 }
-

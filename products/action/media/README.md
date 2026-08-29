@@ -13,4 +13,3 @@ The intended release path is:
 Small metadata can be served through raw GitHub URLs. Larger or frequently
 changing media should stay in release assets so clone size and git history stay
 small.
-

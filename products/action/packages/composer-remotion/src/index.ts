@@ -2,7 +2,6 @@ export interface RemotionRenderOptions {
   template?: string;
   quality?: "draft" | "final";
 }
-
 export function renderWithRemotion(manifestPath: string, options: RemotionRenderOptions = {}): {
   backend: "remotion";
   manifestPath: string;
@@ -14,4 +13,3 @@ export function renderWithRemotion(manifestPath: string, options: RemotionRender
     options,
   };
 }
-
