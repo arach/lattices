@@ -21,7 +21,8 @@ const siteDir = resolve(import.meta.dirname, '..')
 const repoRoot = resolve(siteDir, '..', '..')
 const distDir = join(siteDir, 'dist')
 const SITE_URL = 'https://lattices.dev'
-const ACTION_DOWNLOAD_URL = 'https://github.com/arach/action/releases/latest/download/Action.dmg'
+const ACTION_RELEASES_API_URL = 'https://api.github.com/repos/arach/lattices/releases?per_page=100'
+const ACTION_LEGACY_DOWNLOAD_URL = 'https://github.com/arach/action/releases/latest/download/Action.dmg'
 const template = await readFile(join(distDir, 'index.html'), 'utf8')
 const shikiTheme = JSON.parse(await readFile(join(siteDir, 'src', 'data', 'lattices-shiki-theme.json'), 'utf8'))
 const highlighter = await createHighlighterCore({
@@ -68,7 +69,7 @@ await writeRoute(
   renderToString(createElement(ActionPage)),
 )
 await copyActionDocs()
-await writeRedirect('/action/download', ACTION_DOWNLOAD_URL, 'Downloading Action')
+await writeActionDownloadRedirect()
 
 await writeRoute('/docs', 'Docs — Lattices', 'Lattices documentation', renderDoc(docs.find((doc) => doc.slug === 'overview') || docs[0]))
 
@@ -273,22 +274,59 @@ async function writeRoute(route, title, description, appHtml) {
   await writeFile(filePath, html)
 }
 
-async function writeRedirect(route, target, title) {
+async function writeActionDownloadRedirect() {
+  const route = '/action/download'
   const filePath = join(distDir, route.slice(1), 'index.html')
-  const safeTarget = escapeHtml(target)
   const html = `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex" />
-    <meta http-equiv="refresh" content="0;url=${safeTarget}" />
     <link rel="canonical" href="${SITE_URL}${route}" />
-    <title>${escapeHtml(title)}…</title>
+    <title>Downloading Action…</title>
   </head>
   <body>
-    <p>Starting the download. <a href="${safeTarget}">Download Action manually</a>.</p>
-    <script>window.location.replace(${JSON.stringify(target)})</script>
+    <p id="download-status">Finding the latest Action release…</p>
+    <p><a id="download-link" href="${escapeHtml(ACTION_LEGACY_DOWNLOAD_URL)}">Download the current Action release manually</a>.</p>
+    <script>
+      const releasesUrl = ${JSON.stringify(ACTION_RELEASES_API_URL)}
+      const legacyUrl = ${JSON.stringify(ACTION_LEGACY_DOWNLOAD_URL)}
+      const status = document.getElementById('download-status')
+      const link = document.getElementById('download-link')
+
+      async function startDownload() {
+        try {
+          const response = await fetch(releasesUrl, {
+            headers: { Accept: 'application/vnd.github+json' },
+          })
+          if (!response.ok) throw new Error(\`GitHub returned \${response.status}\`)
+
+          const releases = await response.json()
+          const release = releases.find((candidate) =>
+            !candidate.draft &&
+            !candidate.prerelease &&
+            typeof candidate.tag_name === 'string' &&
+            candidate.tag_name.startsWith('action-v')
+          )
+          const asset = release?.assets?.find((candidate) => candidate.name === 'Action.dmg')
+
+          if (asset?.browser_download_url) {
+            link.href = asset.browser_download_url
+            link.textContent = 'Download Action manually'
+            window.location.replace(asset.browser_download_url)
+            return
+          }
+        } catch (error) {
+          console.warn('Could not resolve the latest monorepo Action release', error)
+        }
+
+        status.textContent = 'Starting the current Action download…'
+        window.location.replace(legacyUrl)
+      }
+
+      void startDownload()
+    </script>
   </body>
 </html>
 `
