@@ -3,6 +3,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ThemeToggle } from "./ThemeToggle";
 import { GestureMatrix } from "./GestureMatrix";
+import { ProductsMenu } from "./SiteChrome";
 
 function LatticesLogo({ size = 20 }: { size?: number }) {
   // 3×3 grid with L-shape pattern (left column + bottom row bright, rest dim)
@@ -660,31 +661,13 @@ export default function App() {
             <span className="nav-name">lattices</span>
           </a>
           <div className="nav-links">
-            <a href="/blog" className="nav-link">
+            <a href="/blog" className="nav-link nav-blog-link">
               Blog
             </a>
             <a href="/docs/overview" className="nav-link">
               Docs
             </a>
-            <a href="/docs/api" className="nav-link">
-              API
-            </a>
-            <a href="#cua" className="nav-link">
-              CUA
-            </a>
-            <a href="#hands" className="nav-link nav-optional-mobile">
-              Keys
-            </a>
-            <a href="#config" className="nav-link nav-optional-mobile">
-              Config
-            </a>
-            <a href="#app" className="nav-link nav-optional-mobile">
-              App
-            </a>
-            <ThemeToggle
-              theme={theme}
-              onToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
-            />
+            <ProductsMenu />
             <a
               href="https://github.com/arach/lattices"
               target="_blank"
@@ -694,6 +677,10 @@ export default function App() {
               <GitHubIcon />
               <span className="github-label">GitHub</span>
             </a>
+            <ThemeToggle
+              theme={theme}
+              onToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
+            />
           </div>
         </div>
       </nav>
