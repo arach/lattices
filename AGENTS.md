@@ -15,6 +15,8 @@
 - Voice runtime is hosted in-process by the menu bar app on ws://127.0.0.1:9398 (deterministic Lattices port family: 9399 agent API, 9398 voice; see `LatticesLocalEndpoints` / `docs/voice.md`)
 - Bare `lattices` (no args) shows a home/status screen — use `lattices start` (alias: `lattices tmux`) to create or attach a session
 - `lattices search <q> --deep` and `--all` both request all search sources (index + live terminal inspection)
+- Action is a separate Lattices product under `products/action/`; it keeps its own Bun workspace, signed `Action.app`, local agent runtime, and nested `AGENTS.md` contract.
+- Keep Action's AppKit and recording lifecycle separate from the Lattices menu bar app even though both products share this repository and website.
 
 ## Project Structure
 
@@ -28,6 +30,8 @@
 | Tests | `tests/` | CLI (node:test), dependency-free (bun test), e2e daemon |
 | Docs | `docs/` | User + agent documentation |
 | Site | `apps/site/` | Vite website, docs, and blog |
+| Action | `products/action/` | Native computer-use app, agent runtime, CLI/MCP surfaces, and release tooling |
+| Action Native | `products/action/native/engine/` | Signed Action.app, local agent, recording probe, and native scripts |
 
 ## Commands
 
@@ -47,6 +51,8 @@ swift test --package-path swift    # Swift package tests
 lattices app build              # Rebuild the menu bar app from source
 scripts/build.sh                # Signed + notarized release DMG (--local to skip notarization)
 scripts/build.sh package        # npm/package app bundle
+bun run action:check            # Action TypeScript + safety guard
+bun run action:native:doctor    # Build and verify Action.app from the monorepo
 ```
 
 ## Quick Navigation
@@ -60,6 +66,7 @@ scripts/build.sh package        # npm/package app bundle
 - Working with **daemon**? → Check apps/mac/Sources/Core/Daemon/DaemonServer.swift and apps/mac/Sources/Core/Daemon/LatticesApi.swift for WebSocket API
 - Working with **api**? → Check docs/api.md for the daemon RPC reference
 - Working with **agent docs**? → Check docs/agents.md and apps/site/scripts/agent-docs.mjs for raw markdown, prompt, and context artifacts
+- Working with **Action**? → Read products/action/AGENTS.md before changing its app, runtime, capture, plugins, or release path
 
 ## Documentation
 

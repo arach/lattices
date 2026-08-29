@@ -1,0 +1,69 @@
+{
+  "id": "calculator-demo",
+  "title": "Calculator Guided Capture Demo",
+  "targetApp": {
+    "name": "Calculator",
+    "bundleId": "com.apple.calculator"
+  },
+  "stage": {
+    "backdrop": "studio",
+    "viewport": {
+      "id": "main",
+      "bounds": {
+        "x": 220,
+        "y": 150,
+        "width": 420,
+        "height": 620
+      },
+      "dimming": "surround"
+    }
+  },
+  "scene": {
+    "goal": "Show a short Calculator demo with keyboard and click input",
+    "sequence": [
+      {
+        "action": "type",
+        "description": "Enter 12",
+        "input": {
+          "text": "12"
+        },
+        "cue": {
+          "kind": "chapter",
+          "text": "Enter first value",
+          "atMs": 0
+        }
+      },
+      {
+        "action": "click",
+        "description": "Click plus",
+        "target": {
+          "semanticId": "calculator.operator.plus",
+          "text": "+"
+        },
+        "cue": {
+          "kind": "label",
+          "text": "Add values",
+          "atMs": 500
+        }
+      },
+      {
+        "action": "type",
+        "description": "Enter 30",
+        "input": {
+          "text": "30"
+        }
+      },
+      {
+        "action": "press-key",
+        "description": "Press equals",
+        "input": {
+          "key": "="
+        },
+        "target": {
+          "semanticId": "calculator.operator.equals",
+          "text": "="
+        }
+      }
+    ]
+  }
+}

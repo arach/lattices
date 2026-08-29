@@ -1,0 +1,14 @@
+{
+  "id": "director",
+  "displayName": "Director",
+  "description": "Recording HUD treatment — explorer-cat sheet with director state names.",
+  "inherits": "mira",
+  "spritesheetPath": "spritesheet.webp",
+  "states": {
+    "idle": { "row": 0, "frames": 8, "frameWidth": 192, "frameHeight": 208, "fps": 6 },
+    "countdown": { "row": 4, "frames": 8, "frameWidth": 192, "frameHeight": 208, "fps": 6 },
+    "recording": { "row": 5, "frames": 8, "frameWidth": 192, "frameHeight": 208, "fps": 10 },
+    "interrupt": { "row": 7, "frames": 5, "frameWidth": 192, "frameHeight": 208, "fps": 8 },
+    "wrap": { "row": 6, "frames": 8, "frameWidth": 192, "frameHeight": 208, "fps": 12 }
+  }
+}

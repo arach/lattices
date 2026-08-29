@@ -1,0 +1,150 @@
+{
+  "schemaVersion": 1,
+  "description": "Animal cast expansion — portrait roster beyond the original six. Same pixel-art portrait template as cast.json.",
+  "animals": [
+    {
+      "id": "hamster",
+      "label": "Pantry hamster",
+      "subject": "a chubby golden hamster with stuffed cheek pouches, tiny apron, and a seed scoop",
+      "pose": "standing on hind legs holding a sunflower seed"
+    },
+    {
+      "id": "brown-bear",
+      "label": "Honey bear",
+      "subject": "a sturdy brown bear with a honey pot satchel and a wooden honey dipper",
+      "pose": "sniffing upward with one paw raised"
+    },
+    {
+      "id": "polar-bear",
+      "label": "Polar courier",
+      "subject": "a fluffy polar bear with a blue ice-pack harness and a small parcel satchel",
+      "pose": "walking steadily through snow with parcel secured"
+    },
+    {
+      "id": "crocodile",
+      "label": "Swamp guard",
+      "subject": "a green crocodile with a swamp ranger bandolier and a tiny lantern hook",
+      "pose": "low alert stance with tail curved"
+    },
+    {
+      "id": "alligator",
+      "label": "Bayou ranger",
+      "subject": "a moss-green alligator with a bayou scout hat and coiled rope on its back",
+      "pose": "crawling forward with head raised"
+    },
+    {
+      "id": "giraffe",
+      "label": "Lookout giraffe",
+      "subject": "a tall friendly giraffe with a brass lookout monocle and a messenger satchel on its neck",
+      "pose": "peering over the horizon with long neck stretched"
+    },
+    {
+      "id": "elephant",
+      "label": "Trail elephant",
+      "subject": "a gentle grey elephant with a canvas trail pack and a copper bell on its collar",
+      "pose": "walking with trunk curled around a supply crate"
+    },
+    {
+      "id": "lion",
+      "label": "Savanna sentinel",
+      "subject": "a proud lion with a savanna scout sash and a small signal drum",
+      "pose": "standing guard with chest out and tail flick"
+    },
+    {
+      "id": "tiger",
+      "label": "Jungle stalker",
+      "subject": "a striped orange tiger with a jungle tracker scarf and a compact map case",
+      "pose": "crouched mid-prowl with focused eyes"
+    },
+    {
+      "id": "wolf",
+      "label": "Night runner",
+      "subject": "a grey timber wolf with a night courier cloak and a small lantern pendant",
+      "pose": "trotting at night with ears forward"
+    },
+    {
+      "id": "deer",
+      "label": "Meadow wanderer",
+      "subject": "a soft brown deer with a meadow forager basket and a leaf crown",
+      "pose": "graceful step with head turned slightly"
+    },
+    {
+      "id": "moose",
+      "label": "Pine trailblazer",
+      "subject": "a broad moose with a pine trail pack and a carved wooden badge",
+      "pose": "standing tall among implied pines"
+    },
+    {
+      "id": "badger",
+      "label": "Burrow digger",
+      "subject": "a stout black-and-white badger with a miner's headlamp and a tiny shovel",
+      "pose": "digging pose with dirt on paws"
+    },
+    {
+      "id": "penguin",
+      "label": "Ice dockhand",
+      "subject": "a cheerful emperor penguin with a dock worker vest and a fish crate trolley strap",
+      "pose": "waddling with flippers out for balance"
+    },
+    {
+      "id": "raccoon",
+      "label": "Alley mechanic",
+      "subject": "a masked raccoon with grease-stained overalls and a pocket wrench roll",
+      "pose": "peeking from behind a crate with wrench in paw"
+    },
+    {
+      "id": "hedgehog",
+      "label": "Garden scholar",
+      "subject": "a tiny hedgehog with round spectacles and a miniature herb satchel",
+      "pose": "reading a small scroll with quill tucked behind ear"
+    },
+    {
+      "id": "capybara",
+      "label": "River lounger",
+      "subject": "a calm capybara with a river guide bandana and a tiny paddle tied to its back",
+      "pose": "relaxed sit near water with paddle resting"
+    },
+    {
+      "id": "eagle",
+      "label": "Cliff scout",
+      "subject": "a bold golden eagle with a scout harness and a message tube on its leg",
+      "pose": "wings half spread on a perch"
+    },
+    {
+      "id": "frog",
+      "label": "Pond caller",
+      "subject": "a bright green tree frog with a pond musician drum and a copper bell",
+      "pose": "mid-croak on a lily pad with cheeks puffed"
+    },
+    {
+      "id": "turtle",
+      "label": "Shell courier",
+      "subject": "a patient tortoise with a courier shell pack and a wax-sealed letter slot",
+      "pose": "steady walk with letter peeking from pack"
+    },
+    {
+      "id": "zebra",
+      "label": "Plains messenger",
+      "subject": "a striped zebra with a plains messenger satchel and a brass route bell",
+      "pose": "cantering with satchel bouncing"
+    },
+    {
+      "id": "koala",
+      "label": "Eucalyptus ranger",
+      "subject": "a sleepy koala with a eucalyptus ranger pouch and a tiny climbing claw glove",
+      "pose": "hugging a branch with one eye open"
+    },
+    {
+      "id": "flamingo",
+      "label": "Salt flat guide",
+      "subject": "a pink flamingo with a salt flat guide sash and a compact sun compass",
+      "pose": "balanced on one leg with compass raised"
+    },
+    {
+      "id": "goat",
+      "label": "Mountain climber",
+      "subject": "a scruffy mountain goat with a climbing rope coil and a chalk bag",
+      "pose": "perched on a rocky ledge looking upward"
+    }
+  ]
+}

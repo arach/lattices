@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Action — Record the work</title>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <style>
+    html, body { margin:0; width:1920px; height:1080px; overflow:hidden; background:#0c1113; }
+    [data-composition-id="action-site-refresh"] { position:relative; width:1920px; height:1080px; overflow:hidden; background:#f3ebdd; }
+    .transition-veil { position:absolute; z-index:1000; inset:-40px; width:2000px; height:1160px; pointer-events:none; opacity:0; background:#f3ebdd; box-shadow:-22px 0 0 #ef6a47; will-change:transform,opacity; }
+    .transition-rule { position:absolute; z-index:1001; top:0; bottom:0; left:50%; width:1px; background:#20282b; opacity:0; pointer-events:none; }
+  </style>
+</head>
+<body>
+  <div data-hf-id="hf-isew" data-composition-id="action-site-refresh" data-width="1920" data-height="1080" data-start="0" data-duration="21">
+    <div data-hf-id="hf-mtnw" id="beat-1" data-composition-id="action-beat-1" data-composition-src="compositions/beat-1-hook.html" data-start="0" data-duration="3.39" data-track-index="1"></div>
+    <div data-hf-id="hf-2h33" id="beat-2" data-composition-id="action-beat-2" data-composition-src="compositions/beat-2-live-run.html" data-start="3.39" data-duration="5.86" data-track-index="1"></div>
+    <div data-hf-id="hf-3kny" id="beat-3" data-composition-id="action-beat-3" data-composition-src="compositions/beat-3-evidence.html" data-start="9.25" data-duration="5" data-track-index="1"></div>
+    <div data-hf-id="hf-ao2g" id="beat-4" data-composition-id="action-beat-4" data-composition-src="compositions/beat-4-inspect.html" data-start="14.25" data-duration="4.36" data-track-index="1"></div>
+    <div data-hf-id="hf-l2he" id="beat-5" data-composition-id="action-beat-5" data-composition-src="compositions/beat-5-close.html" data-start="18.61" data-duration="2.39" data-track-index="1"></div>
+    <audio data-hf-id="hf-wmy4" id="narration" src="narration.wav" data-start="0" data-duration="19.8" data-track-index="0" data-volume="1"></audio>
+    <audio data-hf-id="hf-f5gx" id="underscore" src="underscore.wav" data-start="0" data-duration="21" data-track-index="3" data-volume="0.24"></audio>
+    <div data-hf-id="hf-iuzb" class="transition-veil" data-layout-ignore=""></div>
+    <div data-hf-id="hf-gbzh" class="transition-rule" data-layout-ignore=""></div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    var tl = gsap.timeline({ paused:true });
+    [3.39, 9.25, 14.25, 18.61].forEach(function(cut, index) {
+      var fromX = index % 2 === 0 ? -104 : 104;
+      var toX = index % 2 === 0 ? 104 : -104;
+      tl.fromTo('.transition-veil', { xPercent:fromX, opacity:1 }, { xPercent:0, opacity:1, duration:.18, ease:'power3.in' }, cut - .18);
+      tl.fromTo('.transition-rule', { opacity:0, scaleY:.2 }, { opacity:.7, scaleY:1, duration:.12, ease:'power4.out' }, cut - .1);
+      tl.to('.transition-veil', { xPercent:toX, opacity:1, duration:.22, ease:'power3.out' }, cut);
+      tl.to('.transition-rule', { opacity:0, scaleY:.25, duration:.16, ease:'power2.in' }, cut + .02);
+      tl.set('.transition-veil', { opacity:0 }, cut + .23);
+    });
+    window.__timelines['action-site-refresh'] = tl;
+  </script>
+</body>
+</html>

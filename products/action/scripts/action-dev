@@ -1,0 +1,183 @@
+#!/bin/zsh
+
+set -euo pipefail
+
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+ROOT_DIR=$(cd "$SCRIPT_DIR/.." && pwd)
+ENGINE_DIR="$ROOT_DIR/native/engine"
+ENGINE_SCRIPTS_DIR="$ENGINE_DIR/scripts"
+APP_DIR="$ROOT_DIR/native/dist/Action.app"
+APP_EXECUTABLE="$APP_DIR/Contents/MacOS/Action"
+
+usage() {
+  cat <<'EOF'
+action-dev: local developer CLI for the native Action app
+
+Usage:
+  action-dev help
+  action-dev path
+  action-dev alias
+  action-dev build
+  action-dev rebuild
+  action-dev launch [--no-build]
+  action-dev relaunch [--no-build]
+  action-dev quit
+  action-dev status
+  action-dev doctor
+  action-dev verify
+  action-dev hud
+  action-dev logs
+  action-dev host <args...>
+  action-dev agent <args...>
+  action-dev agent-cli <args...>
+
+Examples:
+  action-dev build
+  action-dev relaunch
+  action-dev host guided-calculator-demo
+  action-dev agent-cli status
+  action-dev logs
+EOF
+}
+
+app_needs_build() {
+  local package_swift="$ENGINE_DIR/Package.swift"
+  local app_plist="$ENGINE_DIR/App/Info.plist"
+  local agent_plist="$ENGINE_DIR/AgentApp/Info.plist"
+
+  if [[ ! -x "$APP_EXECUTABLE" ]]; then
+    return 0
+  fi
+
+  if [[ "$package_swift" -nt "$APP_EXECUTABLE" || "$app_plist" -nt "$APP_EXECUTABLE" || "$agent_plist" -nt "$APP_EXECUTABLE" ]]; then
+    return 0
+  fi
+
+  if find "$ENGINE_DIR/Sources" "$ENGINE_DIR/CoreSources" "$ENGINE_DIR/AgentSources" "$ENGINE_DIR/AgentCLISources" -type f -newer "$APP_EXECUTABLE" -print -quit | grep -q .; then
+    return 0
+  fi
+
+  return 1
+}
+
+ensure_built_if_needed() {
+  if app_needs_build; then
+    "$ENGINE_SCRIPTS_DIR/build-app.sh" >/dev/stderr
+  fi
+}
+
+# Ask Action to quit, and only kill what refuses.
+#
+# `pkill` alone is a SIGTERM: the app never runs applicationWillTerminate, so it
+# never stops its agent child, and anything mid-write is cut off. The host's
+# quit-app command sends the quit Apple Event, waits, and escalates on its own;
+# a healthy instance is gone in well under a second. The pkill afterwards is the
+# backstop for a wedged process and for a build that predates this command.
+quit_action_processes() {
+  if [[ -x "$APP_EXECUTABLE" ]]; then
+    "$ENGINE_SCRIPTS_DIR/run-app-host.sh" quit-app >/dev/null 2>&1 || true
+  fi
+
+  if pgrep -x Action >/dev/null 2>&1 || pgrep -x ActionAgent >/dev/null 2>&1; then
+    pkill -x Action 2>/dev/null || true
+    pkill -x ActionAgent 2>/dev/null || true
+  fi
+}
+
+# Wait for the process table to be clear before anything relaunches, so a new
+# instance never comes up beside a dying one.
+wait_for_action_exit() {
+  local waited=0
+  while (( waited < 60 )); do
+    if ! pgrep -x Action >/dev/null 2>&1 && ! pgrep -x ActionAgent >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  echo "action-dev: Action is still running after 6s" >&2
+  return 1
+}
+
+kill_action_processes() {
+  quit_action_processes
+  wait_for_action_exit || true
+}
+
+open_launcher() {
+  open -n "$APP_DIR" --args launcher >/dev/null
+}
+
+cmd="${1:-help}"
+shift || true
+
+case "$cmd" in
+  help|-h|--help)
+    usage
+    ;;
+  path)
+    printf '%s\n' "$SCRIPT_DIR/action-dev"
+    ;;
+  alias)
+    printf "alias action-dev='%s'\n" "$SCRIPT_DIR/action-dev"
+    ;;
+  build)
+    "$ENGINE_SCRIPTS_DIR/build-app.sh"
+    ;;
+  rebuild)
+    rm -rf "$ROOT_DIR/native/.action-build.lock" "$APP_DIR"
+    swift package --package-path "$ENGINE_DIR" reset
+    "$ENGINE_SCRIPTS_DIR/build-app.sh"
+    ;;
+  launch)
+    if [[ "${1:-}" != "--no-build" ]]; then
+      ensure_built_if_needed
+    else
+      shift
+    fi
+    open_launcher
+    ;;
+  relaunch)
+    if [[ "${1:-}" != "--no-build" ]]; then
+      ensure_built_if_needed
+    else
+      shift
+    fi
+    kill_action_processes
+    open_launcher
+    ;;
+  quit)
+    kill_action_processes
+    ;;
+  status)
+    "$ENGINE_SCRIPTS_DIR/run-app-host.sh" status
+    ;;
+  doctor)
+    "$ENGINE_SCRIPTS_DIR/doctor.sh"
+    ;;
+  verify)
+    "$ENGINE_SCRIPTS_DIR/verify-app.sh"
+    ;;
+  hud)
+    cd "$ROOT_DIR"
+    exec bun run hud
+    ;;
+  logs)
+    exec /usr/bin/log stream --style compact --level debug --predicate 'process == "Action" AND subsystem == "dev.lattices.Action"'
+    ;;
+  host)
+    "$ENGINE_SCRIPTS_DIR/run-app-host.sh" "$@"
+    ;;
+  agent)
+    "$ENGINE_SCRIPTS_DIR/run-agent.sh" "$@"
+    ;;
+  agent-cli)
+    "$ENGINE_SCRIPTS_DIR/run-agent-cli.sh" "$@"
+    ;;
+  *)
+    echo "Unknown action-dev command: $cmd" >&2
+    echo >&2
+    usage >&2
+    exit 1
+    ;;
+esac

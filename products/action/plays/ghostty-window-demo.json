@@ -1,0 +1,34 @@
+{
+  "title": "ghostty-window-demo",
+  "goal": "New Ghostty window, drag, type, drag again. This Space only.",
+  "rules": [
+    "Do not change Spaces.",
+    "Do not Hyper+P or Hyper+J. Do not paste into Herdr.",
+    "Do not click the titlebar folder/path chip (center).",
+    "Do not click traffic lights (left ~80px).",
+    "Titlebar drag handle: window.x + window.width - 70, window.y + 12.",
+    "Do not resize the 1720-wide tiles. Only the new ~800-wide window moves.",
+    "Type only into the new window after clicking its body."
+  ],
+  "beats": [
+    { "do": "note", "line": "1/6 Focus Ghostty" },
+    { "do": "act", "kind": "focus-ghostty" },
+    { "do": "note", "line": "2/6 New window (Cmd+N)" },
+    { "do": "act", "kind": "press-key", "key": "n", "modifiers": ["command"] },
+    { "do": "wait", "ms": 500 },
+    { "do": "act", "kind": "pick-new-ghostty" },
+    { "do": "note", "line": "3/6 Dismiss any folder menu" },
+    { "do": "act", "kind": "press-key", "key": "escape" },
+    { "do": "wait", "ms": 200 },
+    { "do": "note", "line": "4/6 Drag from trailing titlebar" },
+    { "do": "drag-titlebar-trailing", "to": { "x": 360, "y": 180 }, "durationMs": 800 },
+    { "do": "wait", "ms": 300 },
+    { "do": "note", "line": "5/6 Type in the new window" },
+    { "do": "act", "kind": "click-window-body" },
+    { "do": "wait", "ms": 200 },
+    { "do": "act", "kind": "type", "text": "hello action" },
+    { "do": "wait", "ms": 400 },
+    { "do": "note", "line": "6/6 Drag again" },
+    { "do": "drag-titlebar-trailing", "to": { "x": 980, "y": 420 }, "durationMs": 800 }
+  ]
+}

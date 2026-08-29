@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Action for agents — start here</title>
+  <meta name="description" content="What Action gives an AI agent, how to connect it, and which browser to drive.">
+  <meta name="theme-color" content="#f3ebdd">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Action for agents — start here">
+  <meta property="og:description" content="What Action gives an AI agent, how to connect it, and which browser to drive.">
+  <meta property="og:image" content="https://lattices.dev/og.png">
+  <meta property="og:url" content="https://lattices.dev/action/agents/">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="canonical" href="https://lattices.dev/action/agents/">
+  <link rel="alternate" type="text/plain" href="../llms.txt" title="llms.txt">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
+    :root {
+      --paper: #f3ebdd;
+      --paper-deep: #dccfb9;
+      --paper-light: #faf5eb;
+      --ink: #20282b;
+      --slate: #596261;
+      --coral: #ef6a47;
+      --cyan: #1fb9c6;
+      --rule: rgb(32 40 43 / 0.22);
+      --rule-light: rgb(243 235 221 / 0.17);
+      --serif: "EB Garamond", Georgia, serif;
+      --mono: "JetBrains Mono", Menlo, Monaco, monospace;
+      --shell: min(1020px, calc(100vw - 48px));
+    }
+
+    html {
+      scroll-behavior: smooth;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: var(--serif);
+      font-size: 18px;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      overflow-x: hidden;
+      background:
+        linear-gradient(90deg, transparent 0 31px, rgb(32 40 43 / 0.025) 32px, transparent 33px) 0 0 / 64px 64px,
+        var(--paper);
+    }
+
+    img { display: block; max-width: 100%; }
+    a { color: inherit; }
+    :focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
+
+    .skip-link {
+      position: fixed;
+      z-index: 100;
+      top: 12px;
+      left: 12px;
+      transform: translateY(-160%);
+      padding: 10px 14px;
+      background: var(--ink);
+      color: var(--paper-light);
+      font: 600 0.72rem var(--mono);
+      text-decoration: none;
+    }
+    .skip-link:focus { transform: translateY(0); }
+
+    .shell { width: var(--shell); margin-inline: auto; }
+
+    .site-nav { border-bottom: 1px solid rgb(32 40 43 / 0.16); }
+    .nav-inner {
+      min-height: 76px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--ink);
+      font: 600 0.78rem var(--mono);
+      letter-spacing: -0.02em;
+      text-decoration: none;
+    }
+    .brand img { width: 31px; height: 31px; border-radius: 8px; }
+    .brand span { color: var(--slate); font-weight: 400; }
+    .nav-links { display: flex; align-items: center; gap: 24px; margin: 0; padding: 0; list-style: none; }
+    .nav-links a { color: var(--slate); font: 500 0.67rem var(--mono); letter-spacing: 0.02em; text-decoration: none; }
+    .nav-links a:hover { color: var(--coral); }
+    .nav-links a[aria-current="page"] { color: var(--ink); }
+
+    h1, h2, h3, p, ul, ol, table, pre { margin-top: 0; }
+
+    .page-head { padding: 78px 0 54px; border-bottom: 1px solid var(--rule); }
+    .eyebrow, .section-label {
+      margin: 0 0 18px;
+      color: var(--coral);
+      font: 600 0.65rem var(--mono);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    .eyebrow::before, .section-label::before {
+      content: "";
+      display: inline-block;
+      width: 26px;
+      height: 1px;
+      margin: 0 10px 3px 0;
+      background: currentColor;
+    }
+    h1 {
+      max-width: 16ch;
+      margin-bottom: 22px;
+      font-size: clamp(2.8rem, 6vw, 4.6rem);
+      font-weight: 500;
+      letter-spacing: -0.05em;
+      line-height: 0.95;
+    }
+    .lead { max-width: 62ch; margin-bottom: 0; color: var(--slate); font-size: 1.08rem; }
+    .lead + .lead { margin-top: 14px; }
+    .lead code, p code, li code, td code { font: 0.82em var(--mono); color: var(--ink); }
+
+    .canonical-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px 22px;
+      margin-top: 30px;
+      padding: 16px 20px;
+      border-left: 2px solid var(--cyan);
+      background: rgb(250 245 235 / 0.8);
+      font: 500 0.66rem var(--mono);
+    }
+    .canonical-bar strong { color: var(--coral); letter-spacing: 0.06em; text-transform: uppercase; }
+    .canonical-bar a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+    .canonical-bar a:hover { color: var(--coral); }
+
+    .section { padding: 66px 0; border-bottom: 1px solid var(--rule); }
+    h2 {
+      margin-bottom: 16px;
+      font-size: clamp(1.9rem, 3.4vw, 2.8rem);
+      font-weight: 500;
+      letter-spacing: -0.04em;
+      line-height: 1.02;
+    }
+    h3 { margin-bottom: 8px; font: 600 0.72rem var(--mono); letter-spacing: 0.04em; text-transform: uppercase; }
+
+    table { width: 100%; border-collapse: collapse; margin: 30px 0 0; }
+    caption { margin-bottom: 14px; color: var(--slate); font: 500 0.63rem var(--mono); text-align: left; }
+    th, td { padding: 15px 16px; border-bottom: 1px solid var(--rule); text-align: left; vertical-align: top; }
+    thead th {
+      border-bottom: 1px solid var(--ink);
+      color: var(--coral);
+      font: 600 0.6rem var(--mono);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    td { color: var(--slate); font-size: 0.93rem; line-height: 1.45; }
+    td:first-child, th:first-child { width: 24%; }
+    td strong { color: var(--ink); font-weight: 600; }
+    .table-scroll { overflow-x: auto; }
+
+    .surface-note {
+      margin: 26px 0 0;
+      padding: 18px 22px;
+      background: var(--ink);
+      color: var(--paper-light);
+      font-size: 0.97rem;
+    }
+    .surface-note strong { color: var(--cyan); }
+    .surface-note code { color: var(--paper-light); }
+
+    .steps { display: grid; gap: 1px; margin-top: 30px; border: 1px solid var(--rule); background: var(--rule); }
+    .step { padding: 22px 24px; background: rgb(250 245 235 / 0.75); }
+    .step p { margin-bottom: 14px; color: var(--slate); font-size: 0.93rem; }
+    .step p:last-child { margin-bottom: 0; }
+
+    .code-block { position: relative; margin-bottom: 14px; }
+    .code {
+      margin: 0;
+      padding: 16px 92px 16px 18px;
+      border-left: 2px solid var(--cyan);
+      background: #141a1c;
+      color: var(--paper-light);
+      font: 0.66rem/1.75 var(--mono);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .copy-button {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      min-width: 66px;
+      min-height: 32px;
+      padding: 0 10px;
+      border: 1px solid rgb(243 235 221 / 0.28);
+      background: transparent;
+      color: var(--paper-light);
+      cursor: pointer;
+      font: 600 0.56rem var(--mono);
+      text-transform: uppercase;
+    }
+    .copy-button:hover { border-color: var(--coral); color: var(--coral); }
+    .copy-button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+    .copy-status {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    .doc-list { margin: 30px 0 0; padding: 0; border-top: 1px solid var(--rule); list-style: none; }
+    .doc-list li {
+      display: grid;
+      grid-template-columns: minmax(210px, 0.5fr) 1fr;
+      gap: 10px 20px;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--rule);
+    }
+    .doc-list a { font: 600 0.68rem var(--mono); text-decoration: none; }
+    .doc-list a:hover { color: var(--coral); }
+    .doc-list span { color: var(--slate); font-size: 0.9rem; }
+
+    .site-footer { padding: 38px 0; background: var(--ink); color: var(--paper-light); }
+    .footer-inner { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+    .footer-inner p { margin: 0; color: rgb(243 235 221 / 0.5); font: 0.61rem var(--mono); }
+    .footer-links { display: flex; flex-wrap: wrap; gap: 20px; }
+    .footer-links a { color: var(--paper-light); font: 0.61rem var(--mono); text-decoration: none; }
+    .footer-links a:hover { color: var(--coral); }
+
+    @media (max-width: 780px) {
+      :root { --shell: calc(100vw - 32px); }
+      html { font-size: 17px; }
+      .nav-inner { min-height: 64px; }
+      .nav-links { gap: 14px; }
+      .page-head { padding: 52px 0 40px; }
+      .section { padding: 48px 0; }
+      table, thead, tbody, tr, th, td { display: block; }
+      thead { display: none; }
+      tr { padding: 6px 0 14px; border-bottom: 1px solid var(--rule); }
+      th, td { padding: 6px 0; border: 0; width: auto; }
+      td::before {
+        display: block;
+        margin-bottom: 4px;
+        color: var(--coral);
+        content: attr(data-label);
+        font: 600 0.58rem var(--mono);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .doc-list li { grid-template-columns: 1fr; }
+      .code { padding: 16px; }
+      .copy-button { position: static; margin-top: 12px; }
+      .footer-inner { align-items: flex-start; flex-direction: column; }
+    }
+
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-nav">
+    <nav class="shell nav-inner" aria-label="Primary navigation">
+      <a class="brand" href="https://lattices.dev/action" aria-label="Action home">
+        <img src="/action/action-mark.svg" alt="">
+        action<span>.app</span>
+      </a>
+      <ul class="nav-links">
+        <li><a href="#connect-title">Install</a></li>
+        <li><a href="./" aria-current="page">For agents</a></li>
+        <li><a href="https://github.com/arach/lattices/tree/main/products/action">GitHub</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main id="main">
+    <div class="shell page-head">
+      <p class="eyebrow">Agent start here</p>
+      <h1>You can see the Mac, and drive it.</h1>
+      <p class="lead">Action is a local macOS runtime. It gives an agent two connected surfaces: native control of the machine — observe a window, resolve a target, act, record the run as video plus a trace — and a real Chrome the agent owns, with DOM-level tools.</p>
+      <p class="lead">Everything runs on the user's Mac. Nothing is hosted.</p>
+      <div class="canonical-bar">
+        <strong>Machine-readable</strong>
+        <a href="../llms.txt">llms.txt</a>
+        <a href="https://github.com/arach/lattices/blob/main/products/action/AGENTS.md">AGENTS.md</a>
+        <a href="../browser-profiles.md">browser-profiles.md</a>
+        <a href="../api.md">api.md</a>
+      </div>
+    </div>
+
+    <section class="section" aria-labelledby="capabilities-title">
+      <div class="shell">
+        <h2 id="capabilities-title">What you get</h2>
+        <p class="lead">Two MCP servers. Ask for both when the work crosses between the browser and the rest of the desktop.</p>
+        <div class="table-scroll">
+          <table>
+            <caption>Capability discovery — tool families per surface</caption>
+            <thead>
+              <tr><th scope="col">Server</th><th scope="col">Tools</th><th scope="col">Use it for</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td data-label="Server"><strong><code>action</code></strong><br>native runtime</td>
+                <td data-label="Tools"><code>action.observe.*</code> (screenshot, accessibility tree, OCR, vision), <code>action.resolve.target</code>, <code>action.act.execute</code>, <code>action.record.*</code>, <code>action.drive.*</code>, <code>action.artifacts.list</code></td>
+                <td data-label="Use it for">Any native macOS app — including the user's own Chrome window. Recording a run as <code>.mov</code> plus trace, screenshots, AX snapshot, and a manifest.</td>
+              </tr>
+              <tr>
+                <td data-label="Server"><strong><code>action-browser</code></strong><br>plugin</td>
+                <td data-label="Tools"><code>browser_open</code>, <code>browser_snapshot</code>, <code>browser_click</code>, <code>browser_fill</code>, <code>browser_screenshot</code>, <code>browser_tabs</code>, <code>browser_profiles</code>, <code>browser_use_profile</code>, <code>browser_import_cookies</code>, <code>browser_close</code></td>
+                <td data-label="Use it for">Web work in a real, non-headless Chrome that Action owns. Stable CSS selectors instead of pixel-hunting.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="surface-note">Action separates the two on purpose. Native control works on <strong>anything on screen</strong> but reasons about pixels and accessibility. Browser control gives you <strong>the DOM</strong>, but only inside a browser Action owns. Which one you need is usually decided by the next section.</p>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="browser-title">
+      <div class="shell">
+        <h2 id="browser-title">Which browser am I driving?</h2>
+        <p class="lead">Three different browsers can be meant by "open it in Chrome". They are not interchangeable, and the difference is what kind of control you get.</p>
+        <div class="table-scroll">
+          <table>
+            <caption>Browser mode decision guide</caption>
+            <thead>
+              <tr><th scope="col">Browser</th><th scope="col">What it is</th><th scope="col">What you can do</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td data-label="Browser"><strong>The user's regular Chrome</strong></td>
+                <td data-label="What it is">Their everyday browser and its real profiles — <code>Default</code>, <code>Profile 1</code> / “Work” — with their tabs, history, extensions, and logins.</td>
+                <td data-label="What you can do"><code>browser_open { mode: "regular" }</code> opens a URL there and stops. <strong>No DOM tools.</strong> To act on that window, use native control: <code>action.observe.snapshot</code> → <code>action.resolve.target</code> → <code>action.act.execute</code>.</td>
+              </tr>
+              <tr>
+                <td data-label="Browser"><strong>An Action browser</strong></td>
+                <td data-label="What it is">A real Chrome that Action owns, on its own user-data-dir. The default identity <code>agent-browser</code> is blank and signed into nothing.</td>
+                <td data-label="What you can do">Full DOM tooling — snapshot, click, fill, screenshot. This is the default and the right answer for anything public.</td>
+              </tr>
+              <tr>
+                <td data-label="Browser"><strong>An Action identity seeded from a Chrome profile</strong></td>
+                <td data-label="What it is">The same Action-owned Chrome under a name you choose, carrying cookies copied from one of the user's real profiles for an explicit list of domains.</td>
+                <td data-label="What you can do">Full DOM tooling, on sites the user is already signed in to. This is how you get both.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="surface-note">The tradeoff in one line: the user's Chrome has <strong>their session</strong> but only screen-and-accessibility control; an Action browser has <strong>DOM control</strong> but starts as a stranger. Seeding is how you get both — and it is a boundary Action does not cross, because Chrome 136+ ignores remote-debugging switches for the default profile.</p>
+
+        <div class="steps">
+          <div class="step">
+            <h3>Seed, then drive</h3>
+            <p>The user's “Work” browser is a display name; the directory behind it is usually <code>Profile 1</code>. Map it, preview the cookies, get approval, then write.</p>
+            <div class="code-block">
+              <pre class="code" id="seed-example">browser_import_cookies { listSourceProfiles: true }
+  // -&gt; [{ dir: "Default", name: "Personal" }, { dir: "Profile 1", name: "Work" }]
+
+  browser_import_cookies { into: "work", source: "Profile 1", domains: ["github.com"] }
+  // dry run: lists exactly which cookies would be copied
+
+  browser_import_cookies { into: "work", source: "Profile 1", domains: ["github.com"], confirm: true }
+
+  browser_open { url: "https://github.com/notifications", profile: "work" }
+  browser_snapshot
+  browser_screenshot</pre>
+              <button class="copy-button" type="button" data-copy-target="seed-example" aria-label="Copy the seed-then-drive example">Copy</button>
+            </div>
+            <p>Always pass a domain allowlist, never the whole cookie jar. <code>confirm: true</code> needs the user's approval, and cookies alone may not carry passkeys or SSO device trust — observe the page before claiming it is signed in.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="connect-title">
+      <div class="shell">
+        <h2 id="connect-title">Connect</h2>
+        <p class="lead">Requires macOS on Apple Silicon, Google Chrome, and Bun. The browser plugin installs from the Action marketplace; the native runtime needs the app built locally.</p>
+
+        <div class="steps">
+          <div class="step">
+            <h3>Codex</h3>
+            <div class="code-block">
+              <pre class="code" id="codex-install">codex plugin marketplace add arach/lattices
+  codex plugin add action-browser@action</pre>
+              <button class="copy-button" type="button" data-copy-target="codex-install" aria-label="Copy the Codex install commands">Copy</button>
+            </div>
+            <p>Start a new task afterwards so the MCP tools load.</p>
+          </div>
+          <div class="step">
+            <h3>Claude Code</h3>
+            <div class="code-block">
+              <pre class="code" id="claude-install">claude plugin marketplace add arach/lattices
+  claude plugin install action-browser@action --scope user</pre>
+              <button class="copy-button" type="button" data-copy-target="claude-install" aria-label="Copy the Claude Code install commands">Copy</button>
+            </div>
+            <p>Then <code>/reload-plugins</code>, and <code>/mcp</code> to confirm <code>action-browser</code> is connected. After a plugin version bump, reinstall so cached metadata is replaced.</p>
+          </div>
+          <div class="step">
+            <h3>Kimi Code</h3>
+            <div class="code-block">
+              <pre class="code" id="kimi-install">/plugins install https://github.com/arach/lattices/tree/main
+  /reload</pre>
+              <button class="copy-button" type="button" data-copy-target="kimi-install" aria-label="Copy the Kimi Code install commands">Copy</button>
+            </div>
+            <p>Pin the branch — a bare repository URL installs the latest release, which may predate the manifest.</p>
+          </div>
+          <div class="step">
+            <h3>Native runtime</h3>
+            <p>Clone Lattices, install the Action product dependencies, build the signed app, and grant Accessibility plus Screen Recording. <code>native:doctor</code> reports the current permission state.</p>
+            <div class="code-block">
+              <pre class="code" id="native-install">git clone https://github.com/arach/lattices.git
+  cd lattices
+  bun --cwd products/action install
+  bun --cwd products/action native:app:build
+  bun --cwd products/action native:doctor
+  bun --cwd products/action mcp</pre>
+              <button class="copy-button" type="button" data-copy-target="native-install" aria-label="Copy the native runtime setup commands">Copy</button>
+            </div>
+          </div>
+        </div>
+
+        <p class="surface-note">First move once connected: <code>browser_open</code> then <code>browser_screenshot</code> for the browser, or <code>action.health</code> then <code>action.observe.snapshot</code> for the desktop. Before multi-step UI work, call <code>action.drive.begin</code> so the operator can see who is driving and why.</p>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="docs-title">
+      <div class="shell">
+        <h2 id="docs-title">Canonical docs</h2>
+        <p class="lead">Plain markdown at stable URLs, safe to fetch and quote.</p>
+        <ul class="doc-list">
+          <li><a href="../llms.txt">/action/llms.txt</a><span>Index of everything below, in one file.</span></li>
+          <li><a href="https://github.com/arach/lattices/blob/main/products/action/AGENTS.md">AGENTS.md</a><span>Repo rules, structure, and navigation for agents working on Action itself.</span></li>
+          <li><a href="../browser-profiles.md">browser-profiles.md</a><span>The three browsers, cookie seeding, identities, and plugin versioning.</span></li>
+          <li><a href="../api.md">api.md</a><span>The local WebSocket agent protocol.</span></li>
+          <li><a href="../getting-started.md">getting-started.md</a><span>Shortest path to a working local loop.</span></li>
+          <li><a href="../overview.md">overview.md</a><span>What exists today and where the edges are.</span></li>
+          <li><a href="../ARCHITECTURE.md">ARCHITECTURE.md</a><span>How the app, agent, and runtime split responsibilities.</span></li>
+          <li><a href="../recording.md">recording.md</a><span>Recording lifecycle and the finished-marker contract.</span></li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="shell footer-inner">
+      <p>Action · native macOS automation, capture, and review.</p>
+      <div class="footer-links">
+        <a href="https://lattices.dev/action">Home</a>
+        <a href="../llms.txt">llms.txt</a>
+        <a href="../browser-profiles.md">Browsers</a>
+        <a href="https://github.com/arach/lattices/tree/main/products/action">GitHub</a>
+      </div>
+    </div>
+  </footer>
+
+  <p class="copy-status" id="copy-status" aria-live="polite"></p>
+
+  <script>
+    const copyStatus = document.querySelector("#copy-status");
+
+    async function copySnippet(button) {
+      const target = document.getElementById(button.dataset.copyTarget);
+      if (!target) return;
+
+      const text = target.textContent.trim();
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        textarea.remove();
+      }
+
+      const previousLabel = button.textContent;
+      button.textContent = "Copied";
+      copyStatus.textContent = "Copied to clipboard.";
+      window.setTimeout(() => {
+        button.textContent = previousLabel;
+        copyStatus.textContent = "";
+      }, 1800);
+    }
+
+    document.querySelectorAll("[data-copy-target]").forEach((button) => {
+      button.addEventListener("click", () => copySnippet(button));
+    });
+  </script>
+</body>
+</html>

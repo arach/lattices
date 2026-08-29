@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BlogIndex, BlogPostPage } from './components/Blog'
+import ActionPage from './components/ActionPage'
 import { DocsPage } from './components/Docs'
 import LandingPage from './components/LandingPage'
 import { defaultDoc, getBlogPost, getDoc } from './lib/content'
@@ -45,10 +46,7 @@ export default function SiteApp() {
   }, [])
 
   if (route.kind === 'home') return <LandingPage />
-  if (route.kind === 'action') {
-    window.location.replace('/action/index.html')
-    return null
-  }
+  if (route.kind === 'action') return <ActionPage />
   if (route.kind === 'docs') return <DocsPage slug={route.slug} />
   if (route.kind === 'blog-index') return <BlogIndex />
   if (route.kind === 'blog-post') return <BlogPostPage slug={route.slug} />
@@ -106,8 +104,8 @@ function resolveRoute(path: string): Route {
   if (path === '/action') {
     return {
       kind: 'action',
-      title: 'Action — An API for agents to record and share computer use',
-      description: 'Action gives agents an API to record and share computer use on macOS.',
+      title: 'Action — computer use from Lattices',
+      description: 'Action is the focused computer-use product from Lattices: native macOS automation, capture, and review for agents.',
     }
   }
 

@@ -1,0 +1,20 @@
+Action
+An API for agents to record and share computer use
+
+Action gives agents an API to record and share computer use.
+
+Action Browser plugin
+A real, separate, non-headless Chrome with an isolated agent profile.
+
+Observe. Resolve. Act. Record.
+A native macOS runtime for deterministic computer-use sessions.
+
+One run. Every artifact.
+capture.mov
+trace.json
+snapshot.png
+ax-snapshot.json
+manifest.json
+
+A field companion for the work.
+Mira keeps the recording state visible while Action does the work.

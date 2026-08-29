@@ -1,0 +1,32 @@
+[
+  {
+    "project": "ATELIER",
+    "directionId": "atelier-forge-refine",
+    "parentDirectionId": "atelier-forge",
+    "parentEntryId": "01-atelier-forge",
+    "title": "Flat Profile Anvil",
+    "rationale": "To fix the 'unrecognizable anvil' issue, the prompt now specifies a 'side-profile silhouette,' which is the most iconic representation of an anvil. It strictly mandates 'solid fills' and 'flat color' to eliminate the value-stepping and gradient glows found in the previous tile. The palette is reinforced with specific 'graphite' and 'paper-cream' descriptors to steer away from the unintended purple hues, and visual noise (dots/textures) is explicitly moved to the negative prompt to ensure a clean developer-tool aesthetic.",
+    "keywords": [
+      "anvil silhouette",
+      "solid graphite",
+      "paper-cream",
+      "flat design",
+      "geometric",
+      "ember-orange",
+      "developer tool"
+    ],
+    "avoid": [
+      "gradients",
+      "glows",
+      "shadows",
+      "dotted lines",
+      "purple",
+      "value-stepping",
+      "translucency"
+    ],
+    "mjPrompt": "Minimal flat vector app icon, bold side-profile silhouette of a heavy anvil, solid graphite grey, a single sharp ember-orange square resting on the anvil's top surface, paper-cream background, extreme flat design, geometric minimalism, solid fills only, no shading, clean thick lines, soft rounded-square containment, developer tool aesthetic, high contrast --ar 1:1 --style raw --no gradient, glow, shadow, blur, 3d, dither, dots, texture, lines, text, mockup, photorealistic",
+    "source": "logo-analyze-loop",
+    "winnerScore": 7.4,
+    "createdAt": "2026-06-13T20:13:41.927Z"
+  }
+]

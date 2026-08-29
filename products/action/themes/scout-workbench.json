@@ -1,0 +1,107 @@
+{
+  "id": "scout-workbench",
+  "name": "Mist",
+  "author": "openscout",
+  "summary": "The cool option. Blue-grey canvas, the one preset that does not pretend to be paper.",
+  "extends": "action",
+  "surfaces": {
+    "chrome": {
+      "seed": {
+        "ground": {
+          "light": "#F5F7FA",
+          "dark": "#111418"
+        },
+        "ink": {
+          "light": "#111419",
+          "dark": "#E6E9ED"
+        },
+        "accent": {
+          "light": "#3E66CC",
+          "dark": "#5585E6"
+        }
+      },
+      "tokens": {
+        "panel": {
+          "light": "#FDFEFF",
+          "dark": "#191E24"
+        },
+        "band": {
+          "light": "#E9EDF2",
+          "dark": "#0B0D10"
+        },
+        "inkSecondary": {
+          "light": "#545D6A",
+          "dark": "#9EA8B2"
+        },
+        "inkMeta": {
+          "light": "#808895",
+          "dark": "#697480"
+        },
+        "edge": {
+          "light": "#D3D9E2",
+          "dark": "#282A2E"
+        },
+        "rule": {
+          "light": "#E0E6EC",
+          "dark": "#1F2226"
+        }
+      }
+    },
+    "field": {
+      "seed": {
+        "ground": {
+          "light": "#F5F7FA",
+          "dark": "#111418"
+        },
+        "ink": {
+          "light": "#111419",
+          "dark": "#E6E9ED"
+        },
+        "accent": {
+          "light": "#3E66CC",
+          "dark": "#5585E6"
+        }
+      },
+      "tokens": {
+        "panel": {
+          "light": "#FDFEFF",
+          "dark": "#191E24"
+        },
+        "band": {
+          "light": "#E9EDF2",
+          "dark": "#0B0D10"
+        },
+        "inkSecondary": {
+          "light": "#545D6A",
+          "dark": "#9EA8B2"
+        },
+        "inkMeta": {
+          "light": "#808895",
+          "dark": "#697480"
+        },
+        "edge": {
+          "light": "#D3D9E2",
+          "dark": "#282A2E"
+        },
+        "rule": {
+          "light": "#E0E6EC",
+          "dark": "#1F2226"
+        }
+      }
+    }
+  },
+  "status": {
+    "ok": {
+      "light": "#2F7D55",
+      "dark": "#4CB782"
+    },
+    "running": {
+      "light": "#A66112",
+      "dark": "#E89A3C"
+    },
+    "failed": {
+      "light": "#B83845",
+      "dark": "#E5484D"
+    }
+  }
+}

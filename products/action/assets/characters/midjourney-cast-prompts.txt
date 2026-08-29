@@ -1,0 +1,170 @@
+Animal cast one-offs — midjourney-create · pixel-art-portrait, --ar 1:1
+Portrait cast roster — original animals, adventure, manga, plus expanded animal zoo cast.
+
+01 Terrier scout · Terrier scout
+pixel art illustration featuring a small, scruffy tan terrier dog with a copper collar, tiny explorer pack, and eager bright eyes, standing alert with tail up. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: reference-attach, portrait-harvest, sync
+
+02 Messenger rabbit · Messenger rabbit
+pixel art illustration featuring a soft grey lop-eared rabbit with a tiny messenger satchel and copper buckle, mid-hop with ears flopping. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: reference-attach, portrait-harvest, sync
+
+03 Scholar owl · Scholar owl
+pixel art illustration featuring a small, round barn owl with a brass monocle and miniature compass pendant, perched upright on a small wooden crate. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: reference-attach, portrait-harvest, sync
+
+04 Trail fox · Trail fox
+pixel art illustration featuring a rust-red fox with an explorer scarf and a compact field journal on its belt, walking with nose forward, scarf trailing. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: reference-attach, portrait-harvest, sync
+
+05 Forest ranger · Forest ranger
+pixel art illustration featuring a fluffy red panda with a tiny green ranger bandana and a miniature walking stick, standing proudly with walking stick. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: reference-attach, portrait-harvest, sync
+
+06 Dock mechanic · Dock mechanic
+pixel art illustration featuring a playful sea otter with rolled-up work overalls, a tiny wrench, and a dock rope coil, floating on back while holding a wrench. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: reference-attach, portrait-harvest, sync
+
+07 Trail scout · Trail scout
+pixel art illustration featuring a young woman trail scout with braided chestnut hair, olive hiking jacket, canvas backpack, and brass compass on a lanyard, standing on a trail marker stone, looking ahead. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: reference-attach, portrait-harvest, sync
+
+08 Desert cartographer · Desert cartographer
+pixel art illustration featuring an older desert cartographer with sun-worn face, sandy duster coat, wide hat, and rolled parchment maps under one arm, unrolling a map with one hand. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: reference-attach, portrait-harvest, sync
+
+09 Arctic researcher · Arctic researcher
+pixel art illustration featuring a cheerful arctic researcher in a white parka with fur trim, snow goggles pushed up on forehead, and a specimen satchel, holding a sample jar up to the light. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: reference-attach, portrait-harvest, sync
+
+10 Skyship deckhand · Skyship deckhand
+pixel art illustration featuring a daring skyship deckhand with leather flight coat, brass goggles around the neck, rope coil on belt, and wind-tousled hair, leaning into the wind on a deck rail. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: reference-attach, portrait-harvest, sync
+
+11 Jungle guide · Jungle guide
+pixel art illustration featuring a calm jungle guide with short curly hair, khaki shirt, machete on hip, and a lantern hook on the backpack, parting vines with one hand, lantern raised. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: reference-attach, portrait-harvest, sync
+
+12 Magical girl · Magical girl
+pixel art illustration featuring a cheerful magical girl with big expressive eyes, pink pleated skirt, star wand, and ribbon bows in twin ponytails, raising a star wand with a bright smile. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: reference-attach, portrait-harvest, sync
+
+13 Sword student · Sword student
+pixel art illustration featuring a stoic young sword student in dark hakama, white training gi, wooden bokken held at rest, and focused calm expression, formal bow with bokken at side. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: reference-attach, portrait-harvest, sync
+
+14 Mecha pilot · Mecha pilot
+pixel art illustration featuring a confident mecha pilot in a bright orange flight jumpsuit, helmet tucked under one arm, and subtle cockpit HUD glow on the chest panel, confident stance, helmet under arm. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: reference-attach, portrait-harvest, sync
+
+15 After-school walker · After-school walker
+pixel art illustration featuring a relaxed manga schoolgirl with shoulder-length hair, navy sailor uniform, canvas tote bag, and loafers mid-step, walking mid-step with tote bag swinging. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: reference-attach, portrait-harvest, sync
+
+16 Hooded rogue · Hooded rogue
+pixel art illustration featuring a tiny chibi hooded rogue with an oversized dark cloak, soft glowing eyes, small dagger at the belt, and mischievous half-smile, peeking out from hood with playful grin. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: reference-attach, portrait-harvest, sync
+
+17 Elf archer · Elf archer
+pixel art illustration featuring an elegant elf archer with pointed ears, forest-green cloak, leather bracer, and a compact recurve bow slung on the back, drawing an arrow with calm focus. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: reference-attach, portrait-harvest, sync
+
+18 Retro robot · Retro robot
+pixel art illustration featuring a friendly retro robot companion with copper rivets, round glowing eyes, small antenna, and a patched utility satchel, waving one claw hand in greeting. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: reference-attach, portrait-harvest, sync
+
+19 Pantry hamster · Pantry hamster
+pixel art illustration featuring a chubby golden hamster with stuffed cheek pouches, tiny apron, and a seed scoop, standing on hind legs holding a sunflower seed. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: portrait-harvest, sync
+
+20 Honey bear · Honey bear
+pixel art illustration featuring a sturdy brown bear with a honey pot satchel and a wooden honey dipper, sniffing upward with one paw raised. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: portrait-harvest, sync
+
+21 Polar courier · Polar courier
+pixel art illustration featuring a fluffy polar bear with a blue ice-pack harness and a small parcel satchel, walking steadily through snow with parcel secured. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: portrait-harvest, sync
+
+22 Swamp guard · Swamp guard
+pixel art illustration featuring a green crocodile with a swamp ranger bandolier and a tiny lantern hook, low alert stance with tail curved. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: portrait-harvest, sync
+
+23 Bayou ranger · Bayou ranger
+pixel art illustration featuring a moss-green alligator with a bayou scout hat and coiled rope on its back, crawling forward with head raised. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: portrait-harvest, sync
+
+24 Lookout giraffe · Lookout giraffe
+pixel art illustration featuring a tall friendly giraffe with a brass lookout monocle and a messenger satchel on its neck, peering over the horizon with long neck stretched. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: portrait-harvest, sync
+
+25 Trail elephant · Trail elephant
+pixel art illustration featuring a gentle grey elephant with a canvas trail pack and a copper bell on its collar, walking with trunk curled around a supply crate. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: portrait-harvest, sync
+
+26 Savanna sentinel · Savanna sentinel
+pixel art illustration featuring a proud lion with a savanna scout sash and a small signal drum, standing guard with chest out and tail flick. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: portrait-harvest, sync
+
+27 Jungle stalker · Jungle stalker
+pixel art illustration featuring a striped orange tiger with a jungle tracker scarf and a compact map case, crouched mid-prowl with focused eyes. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: portrait-harvest, sync
+
+28 Night runner · Night runner
+pixel art illustration featuring a grey timber wolf with a night courier cloak and a small lantern pendant, trotting at night with ears forward. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: portrait-harvest, sync
+
+29 Meadow wanderer · Meadow wanderer
+pixel art illustration featuring a soft brown deer with a meadow forager basket and a leaf crown, graceful step with head turned slightly. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: portrait-harvest, sync
+
+30 Pine trailblazer · Pine trailblazer
+pixel art illustration featuring a broad moose with a pine trail pack and a carved wooden badge, standing tall among implied pines. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: portrait-harvest, sync
+
+31 Burrow digger · Burrow digger
+pixel art illustration featuring a stout black-and-white badger with a miner's headlamp and a tiny shovel, digging pose with dirt on paws. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: portrait-harvest, sync
+
+32 Ice dockhand · Ice dockhand
+pixel art illustration featuring a cheerful emperor penguin with a dock worker vest and a fish crate trolley strap, waddling with flippers out for balance. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: portrait-harvest, sync
+
+33 Alley mechanic · Alley mechanic
+pixel art illustration featuring a masked raccoon with grease-stained overalls and a pocket wrench roll, peeking from behind a crate with wrench in paw. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: portrait-harvest, sync
+
+34 Garden scholar · Garden scholar
+pixel art illustration featuring a tiny hedgehog with round spectacles and a miniature herb satchel, reading a small scroll with quill tucked behind ear. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: portrait-harvest, sync
+
+35 River lounger · River lounger
+pixel art illustration featuring a calm capybara with a river guide bandana and a tiny paddle tied to its back, relaxed sit near water with paddle resting. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: portrait-harvest, sync
+
+36 Cliff scout · Cliff scout
+pixel art illustration featuring a bold golden eagle with a scout harness and a message tube on its leg, wings half spread on a perch. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: portrait-harvest, sync
+
+37 Pond caller · Pond caller
+pixel art illustration featuring a bright green tree frog with a pond musician drum and a copper bell, mid-croak on a lily pad with cheeks puffed. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: portrait-harvest, sync
+
+38 Shell courier · Shell courier
+pixel art illustration featuring a patient tortoise with a courier shell pack and a wax-sealed letter slot, steady walk with letter peeking from pack. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: portrait-harvest, sync
+
+39 Plains messenger · Plains messenger
+pixel art illustration featuring a striped zebra with a plains messenger satchel and a brass route bell, cantering with satchel bouncing. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: portrait-harvest, sync
+
+40 Eucalyptus ranger · Eucalyptus ranger
+pixel art illustration featuring a sleepy koala with a eucalyptus ranger pouch and a tiny climbing claw glove, hugging a branch with one eye open. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: portrait-harvest, sync
+
+41 Salt flat guide · Salt flat guide
+pixel art illustration featuring a pink flamingo with a salt flat guide sash and a compact sun compass, balanced on one leg with compass raised. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: portrait-harvest, sync
+
+42 Mountain climber · Mountain climber
+pixel art illustration featuring a scruffy mountain goat with a climbing rope coil and a chalk bag, perched on a rocky ledge looking upward. The image is against a solid black background, retro game character asset style, consistent scale --ar 1:1 --no profile, cat, logo letter typography abstract icon
+# tests: portrait-harvest, sync

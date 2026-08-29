@@ -1,0 +1,16 @@
+{
+  "title": "Guided capture — recording take",
+  "sessionId": "demo-recording-001",
+  "application": "recording-probe",
+  "phases": [
+    { "phase": "session.staging", "treatment": "mira", "state": "idle", "summary": "Launcher idle while operator stages Calculator" },
+    { "phase": "session.countdown", "treatment": "director", "state": "countdown", "summary": "3-2-1 countdown, tally light arms" },
+    { "phase": "session.recording", "treatment": "director", "state": "recording", "summary": "Live take — Director HUD, red tally on" },
+    { "phase": "session.completed", "treatment": "mira", "state": "success", "summary": "Wrap — back to Mira success pose" }
+  ],
+  "assets": {
+    "spritesheetRow": "../midjourney/01-mira-director-recording-hud-1.webp",
+    "avatar": "../avatars/director.svg",
+    "petId": "director"
+  }
+}

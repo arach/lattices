@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "id": "typing.grcekh.keyboard-typing",
+  "version": "1.0.0",
+  "kind": "typing-sounds",
+  "name": "Keyboard Typing by grcekh",
+  "description": "A ten-track typing sound medley with HHKB Topre and WhiteFox mechanical recordings.",
+  "license": {
+    "name": "Creative Commons 0",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/"
+  },
+  "source": {
+    "name": "Freesound pack 30755",
+    "url": "https://freesound.org/people/grcekh/packs/30755/"
+  },
+  "releaseAsset": {
+    "name": "action-typing-grcekh-keyboard-typing-1.0.0.zip",
+    "url": "https://github.com/arach/action-media/releases/latest/download/action-typing-grcekh-keyboard-typing-1.0.0.zip",
+    "sha256": null
+  },
+  "install": {
+    "cachePath": "~/Library/Application Support/Action/Typing",
+    "previewSamples": "grcekh-key-*.wav"
+  },
+  "appPalettes": {
+    "default": ["hhkb-topre", "whitefox-mechanical"],
+    "com.google.Chrome": ["whitefox-mechanical", "hhkb-topre"],
+    "com.googlecode.iterm2": ["hhkb-topre"]
+  }
+}

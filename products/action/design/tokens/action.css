@@ -1,0 +1,146 @@
+/*
+ * Action's palette and type scale, for the web.
+ *
+ * SOURCE OF TRUTH IS SWIFT. Every value here is transcribed from
+ * native/engine/Sources/ActionThemeBuiltin.swift (the `action` built-in theme,
+ * light appearance) and native/engine/Sources/ActionTypography.swift. When a
+ * value changes there, change it here — nothing generates this file, and a
+ * design study drawn in stale colours is worse than no study.
+ *
+ * Three surfaces, each with its own ink ramp, exactly as the app has them:
+ *
+ *   chrome  — the frame around the work: rail, footer, cards, ledgers. Neutral.
+ *   field   — Home. The brand's own voice: paper and graphite, coral for live.
+ *   review  — a cool neutral sheet, where warm paper would fight the take.
+ *
+ * Consumed by design/studio (imported in globals.css) and inlined into the
+ * Claude Design previews by design/kit/build.ts. One source, two consumers.
+ */
+
+:root {
+  /* ---- chrome ---------------------------------------------------------- */
+  --act-canvas: #F3EBDD;
+  --act-band: #ECE2CF;
+  --act-panel: #FAF5EB;
+  --act-panel-raised: #FFFDF6;
+  --act-deep: #25231F;
+
+  --act-ink: #20282B;
+  --act-ink-2: #596261;
+  --act-ink-row: #3D4241;
+  --act-ink-muted: #877F76;
+  --act-ink-meta: #8A8175;
+
+  --act-on-deep: #F3EBDD;
+  --act-on-deep-meta: #8D9997;
+
+  --act-rule: rgba(32, 40, 43, 0.12);
+  --act-rule-soft: rgba(32, 40, 43, 0.07);
+  --act-grid: rgba(32, 40, 43, 0.025);
+
+  /* Row states. Both are ink, not accent: the app spends colour on meaning,
+     never on "this is the one you are pointing at". */
+  --act-row-hover: rgba(32, 40, 43, 0.035);
+  --act-row-open: rgba(32, 40, 43, 0.035);
+  --act-border-quiet: rgba(32, 40, 43, 0.24);
+
+  /* Named for where they are used, because the window draws them by role:
+     the rail and the footer are the same band, and a card is a panel. */
+  --act-rail: #ECE2CF;
+  --act-footer: #ECE2CF;
+  --act-card: #FAF5EB;
+  --act-card-hover: #FFFDF6;
+
+  /* ---- field (Home) ---------------------------------------------------- */
+  --act-field-canvas: #F3EBDD;
+  --act-field-panel: #FAF5EB;
+  --act-field-recess: #EDE4D3;
+  --act-field-ink-muted: #A77850; /* field tan — an accent voice, not a demotion */
+  --act-field-console: #EDE4D3;
+  --act-field-edge: rgba(32, 40, 43, 0.12);
+  --act-field-rule: rgba(32, 40, 43, 0.22);
+  --act-field-ink: #20282B;
+  --act-field-ink-2: #596261;
+  --act-field-ink-meta: #8A8175;
+  --act-field-deep: #25231F;
+  --act-field-deep-text: #F3EBDD;
+  --act-field-deep-meta: #8D9997;
+  --act-field-deep-chip: rgba(243, 235, 221, 0.10);
+  /* Home's accent is the same coral, because a live drive is a live drive
+     whichever surface reports it. */
+  --act-field-accent: #EF6A47;
+
+  /* ---- the three colours ----------------------------------------------- */
+  /* Coral: a drive is live. The one signal that must read the same in both
+     appearances, so it never depends on the operator's theme. */
+  --act-coral: #EF6A47;
+  --act-coral-soft: rgba(239, 106, 71, 0.16);
+  /* Blue: selection, and only selection — the 2pt rail in the sidebar. */
+  --act-review-accent: #3078E6;
+  /* Cyan: a result. */
+  --act-signal: #1FB9C6;
+
+  /* ---- status ----------------------------------------------------------- */
+  /* Status is its own family, separate from the three meaning colours above:
+     these say how a run ended, not what a mark means. Transcribed from
+     ActionStatusPalette.action in ActionThemeBuiltin.swift — note that a
+     running job is amber, not coral. Coral means a drive holds the machine
+     right now; amber means a row in a list is still open. */
+  --act-status-ok: #218C54;
+  --act-status-running: #B8800F;
+  --act-status-failed: #C73630;
+  --act-status-stopped: #858585;
+
+  /* ---- type ------------------------------------------------------------ */
+  /* Mono is JetBrains Mono in the app and on the web. Sans is SF Pro in the
+     app, so the web stack leads with the system face rather than shipping a
+     lookalike. Serif sets exactly one line in the app and none of the studies. */
+  --act-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --act-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+
+  /* The named roles are the whole scale. Reaching past them for an ad-hoc size
+     is how a surface ends up with ten sizes that are each two points apart and
+     none of which mean anything. */
+  --act-headline: 34px;   /* light 300 · tracking -0.7 — the one line a page opens with */
+  --act-display: 28px;    /* medium */
+  --act-title: 22px;      /* regular · tracking -0.25 */
+  --act-subhead: 15px;    /* semibold */
+  --act-row: 13px;        /* content: a step, a take — the thing itself */
+  --act-nav: 13px;        /* medium — chrome the eye scans */
+  --act-body: 12px;       /* chrome prose */
+  --act-caption: 11px;
+  --act-micro: 10px;      /* semibold; at 10px regular is mush */
+  --act-label: 9px;       /* mono semibold, tracked — eyebrows, column headers */
+
+  --act-track-label: 0.9px;
+  --act-track-eyebrow: 1.3px;
+  --act-track-title: -0.25px;
+  --act-track-headline: -0.7px;
+
+  /* ---- geometry -------------------------------------------------------- */
+  /* The plan table's columns, stated once. The moment a column header sits over
+     a different edge than its values, the table stops being a table. */
+  --act-col-index: 26px;
+  --act-col-verb: 86px;
+  --act-col-target: 176px;
+  --act-col-notes: 78px;
+  --act-page-width: 760px;
+  /* The ledger's measure. Wider than a reading page because it carries four
+     right-aligned columns, but still a measure: rows that stretch to any width
+     let the outcome badge drift until it stops belonging to its title. */
+  --act-ledger-width: 900px;
+  /* The Scenarios aside. Stated so the page's own max width can be composed
+     from its parts rather than written as a magic 1040. */
+  --act-aside-width: 240px;
+  /* Settings' pane measure — `.frame(maxWidth: 720)` in settingsShell. */
+  --act-settings-width: 720px;
+  --act-hairline: 1px;
+
+  /* Window chrome, from ActionWindowChrome.swift and ActionLauncherController. */
+  --act-titlebar-h: 38px;
+  --act-footer-h: 36px;
+  --act-traffic-inset: 78px;
+  --act-sidebar-w: 200px;
+  --act-sidebar-compact-w: 56px;
+  --act-sidebar-rail-w: 22px;
+}

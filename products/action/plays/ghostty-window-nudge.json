@@ -1,0 +1,25 @@
+{
+  "title": "ghostty-window-nudge",
+  "goal": "Move the extra Ghostty, type, move again. This Space only.",
+  "rules": [
+    "Do not change Spaces.",
+    "Do not Hyper+P or Hyper+J. Do not paste into Herdr.",
+    "Do not click the titlebar folder/path chip (center).",
+    "Do not click traffic lights (left ~80px).",
+    "Titlebar drag handle: window.x + window.width - 70, window.y + 12.",
+    "Do not resize the 1720-wide tiles. Only the ~800-wide window moves."
+  ],
+  "beats": [
+    { "do": "act", "kind": "focus-ghostty" },
+    { "do": "act", "kind": "pick-new-ghostty" },
+    { "do": "act", "kind": "press-key", "key": "escape" },
+    { "do": "wait", "ms": 200 },
+    { "do": "drag-titlebar-trailing", "to": { "x": 420, "y": 200 }, "durationMs": 800 },
+    { "do": "wait", "ms": 250 },
+    { "do": "act", "kind": "click-window-body" },
+    { "do": "wait", "ms": 200 },
+    { "do": "act", "kind": "type", "text": "action play" },
+    { "do": "wait", "ms": 350 },
+    { "do": "drag-titlebar-trailing", "to": { "x": 1080, "y": 460 }, "durationMs": 800 }
+  ]
+}

@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "style": "pixel-art-row",
+  "reference": "assets/pets/explorer-cat/sprites/explorer-cat.v0.frames.png",
+  "aspectRatio": "48:13",
+  "template": "four pixel art depictions arranged horizontally of the same cute grey-white striped explorer cat, steampunk aviator goggles orange scarf brown satchel, black background, consistent scale, panel 1 {pose1} panel 2 {pose2} panel 3 {pose3} panel 4 {pose4}{accessory} --ar 48:13 --no logo letter typography abstract icon",
+  "actors": [
+    {
+      "id": "mira",
+      "displayName": "Mira",
+      "project": "Action.app",
+      "surface": "launcher-lockup",
+      "status": "generated",
+      "poses": ["idle still", "thinking look up", "typing focused", "success smile"],
+      "accessory": "",
+      "jobHint": "9da79858-c4bd-46f9-ba90-03c6376e599a"
+    },
+    {
+      "id": "director",
+      "displayName": "Director",
+      "project": "recording-probe",
+      "surface": "recording-hud",
+      "status": "queued",
+      "poses": ["idle ready", "countdown tense", "recording with red tally light on ear", "wrap relaxed"],
+      "accessory": ", tiny copper clapper pin on jacket, red record dot on ear in panel 3"
+    },
+    {
+      "id": "scout",
+      "displayName": "Scout",
+      "project": "inspection",
+      "surface": "inspection",
+      "status": "queued",
+      "poses": ["observe alert", "analyze thinking with monocle", "finding pleased nod", "await decision calm"],
+      "accessory": ", small clipboard, subtle cyan glow on goggles"
+    },
+    {
+      "id": "relay",
+      "displayName": "Relay",
+      "project": "chrome-companion",
+      "surface": "browser-agent",
+      "status": "queued",
+      "poses": ["idle compact", "bridge connected", "navigate stepping right", "act typing lean"],
+      "accessory": ", slightly smaller cat, cyan orbital ring collar, compact side pack"
+    },
+    {
+      "id": "compositor",
+      "displayName": "Compositor",
+      "project": "composer",
+      "surface": "post-capture",
+      "status": "queued",
+      "poses": ["idle calm", "timeline thinking", "render busy", "done satisfied"],
+      "accessory": ", film reel on backpack, warm copper tint on scarf"
+    },
+    {
+      "id": "stagehand",
+      "displayName": "Stagehand",
+      "project": "HUD",
+      "surface": "hud-glyph",
+      "status": "queued",
+      "poses": ["silhouette bust", "silhouette with copper brackets", "silhouette wave", "silhouette nod"],
+      "accessory": ", minimal dark silhouette readable at 24px, copper corner brackets in panels 2-4",
+      "format": "bust-row"
+    },
+    {
+      "id": "terminal",
+      "displayName": "Terminal",
+      "project": "action-cli / action-mcp",
+      "surface": "cli-mcp",
+      "status": "queued",
+      "poses": ["neutral bust", "busy bust", "error bust", "ok bust"],
+      "accessory": ", 1-bit pixel bust only shoulders up, copper accent pixels, no body below chest",
+      "format": "bust-row"
+    },
+    {
+      "id": "dock",
+      "displayName": "Dock",
+      "project": "desktop-pet",
+      "surface": "desktop-pet",
+      "status": "queued",
+      "poses": ["idle sit", "blink eyes closed", "walk right profile", "sleep curled"],
+      "accessory": ", soft shadow under paws, classic desktop pet proportions"
+    }
+  ]
+}

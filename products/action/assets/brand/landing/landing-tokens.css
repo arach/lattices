@@ -1,0 +1,16 @@
+:root {
+  --action-paper: #f3ebdd;
+  --action-paper-shadow: #dccfb9;
+  --action-graphite: #20282b;
+  --action-slate: #596261;
+  --action-coral: #ef6a47;
+  --action-cyan: #1fb9c6;
+  --action-field-tan: #a77850;
+
+  --action-font-editorial: "EB Garamond", Georgia, serif;
+  --action-font-technical: "JetBrains Mono", Menlo, Monaco, monospace;
+
+  --action-rule: color-mix(in srgb, var(--action-graphite) 24%, transparent);
+  --action-card: color-mix(in srgb, var(--action-paper) 88%, white);
+  --action-card-dark: color-mix(in srgb, var(--action-graphite) 94%, black);
+}

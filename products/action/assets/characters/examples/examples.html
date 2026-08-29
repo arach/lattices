@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Action — character treatment examples</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=EB+Garamond:wght@0,500&display=swap" rel="stylesheet">
+  <style>
+    :root { --bg:#0e0f0d; --panel:#181916; --text:#f0ece4; --muted:#a09890; --accent:#c8854a; --cyan:#22d3ee; --record:#e63946; --border:#2e2d28; --mono:'JetBrains Mono',monospace; --serif:'EB Garamond',Georgia,serif; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    html { background:var(--bg); color:var(--text); font-family:var(--serif); }
+    body { padding:2.5rem 1.5rem 4rem; }
+    .wrap { max-width:72rem; margin:0 auto; }
+    .eyebrow { font-family:var(--mono); font-size:.68rem; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); margin-bottom:.8rem; }
+    h1 { font-size:clamp(1.8rem,3vw,2.6rem); font-weight:500; margin-bottom:.6rem; }
+    .lede { color:var(--muted); max-width:52ch; margin-bottom:2rem; }
+    .examples { display:grid; gap:1.5rem; }
+    .example { background:var(--panel); border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+    .example-head { padding:1rem 1.2rem; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; gap:1rem; flex-wrap:wrap; align-items:baseline; }
+    .example-head h2 { font-family:var(--mono); font-size:.82rem; }
+    .example-head span { font-family:var(--mono); font-size:.65rem; color:var(--muted); }
+    .example-body { display:grid; grid-template-columns:1.1fr 1fr; gap:0; }
+    @media (max-width:760px) { .example-body { grid-template-columns:1fr; } }
+    .hero { background:#111; padding:1.2rem; display:grid; place-items:center; min-height:280px; }
+    .hero img { max-width:100%; max-height:260px; border-radius:6px; }
+    .side { padding:1.2rem; border-left:1px solid var(--border); }
+    @media (max-width:760px) { .side { border-left:none; border-top:1px solid var(--border); } }
+    .bust { width:56px; height:56px; margin-bottom:1rem; }
+    .phase { list-style:none; margin-top:.8rem; }
+    .phase li { font-family:var(--mono); font-size:.68rem; color:var(--muted); padding:.45rem 0; border-bottom:1px solid var(--border); display:grid; grid-template-columns:1fr auto; gap:.5rem; }
+    .phase li strong { color:var(--text); font-weight:500; }
+    .phase li.active strong { color:var(--accent); }
+    .phase li .state { color:var(--cyan); }
+    .tag { display:inline-block; font-family:var(--mono); font-size:.6rem; border:1px solid var(--border); border-radius:999px; padding:.15rem .45rem; margin-right:.3rem; color:var(--accent); }
+    .hud-mock { margin-top:1rem; background:#0a0b0a; border:1px solid var(--border); border-radius:8px; padding:.8rem; font-family:var(--mono); font-size:.62rem; color:var(--muted); }
+    .hud-mock .row { display:flex; align-items:center; gap:.6rem; margin-bottom:.5rem; }
+    .tally { width:8px; height:8px; border-radius:50%; background:var(--record); box-shadow:0 0 8px var(--record); }
+    .footer { margin-top:2rem; font-family:var(--mono); font-size:.68rem; color:var(--muted); }
+    .footer a { color:var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <p class="eyebrow">Examples</p>
+    <h1>Two sessions, two treatments.</h1>
+    <p class="lede">Same explorer-cat rig. Accessories and motion states swap per surface — recording HUD vs live inspection.</p>
+
+    <div class="examples">
+      <article class="example" id="ex-recording">
+        <div class="example-head">
+          <h2>Example 1 — Recording take</h2>
+          <span>recording-probe · Director</span>
+        </div>
+        <div class="example-body">
+          <div class="hero">
+            <img src="../midjourney/01-mira-director-recording-hud-1.webp" alt="Director sprite from Midjourney">
+          </div>
+          <div class="side">
+            <img class="bust" src="../avatars/director.svg" alt="Director bust">
+            <span class="tag">spritesheet</span><span class="tag">tally-light</span><span class="tag">clapper-pin</span>
+            <p style="color:var(--muted);font-size:.95rem;margin-top:.6rem;line-height:1.45">When capture goes live, the launcher hands off to <strong style="color:var(--text)">Director</strong> — tally on, clapper pin, recording-specific poses.</p>
+            <ul class="phase" id="phases-recording"></ul>
+            <div class="hud-mock">
+              <div class="row"><span class="tally"></span><span style="color:var(--record)">REC</span> <span>00:42</span></div>
+              <div class="row"><img src="../avatars/director.svg" width="20" height="20" alt=""> <span>Director · recording</span></div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="example" id="ex-inspection">
+        <div class="example-head">
+          <h2>Example 2 — Live inspection</h2>
+          <span>Action.app · Scout → Relay</span>
+        </div>
+        <div class="example-body">
+          <div class="hero">
+            <img src="../midjourney/02-scout-analyst-inspection-1.webp" alt="Scout sprite from Midjourney">
+          </div>
+          <div class="side">
+            <img class="bust" src="../avatars/scout.svg" alt="Scout bust">
+            <span class="tag">spritesheet</span><span class="tag">monocle</span><span class="tag">clipboard</span>
+            <p style="color:var(--muted);font-size:.95rem;margin-top:.6rem;line-height:1.45">Inspection sessions wear <strong style="color:var(--text)">Scout</strong> — observe, analyze, await decision. Browser follow-up shifts to <strong style="color:var(--text)">Relay</strong>.</p>
+            <ul class="phase" id="phases-inspection"></ul>
+            <div class="hud-mock">
+              <div class="row"><img src="../avatars/scout.svg" width="20" height="20" alt=""> <span style="color:var(--cyan)">analyzing</span> <span>ui-critique preset</span></div>
+              <div class="row"><img src="../avatars/relay.svg" width="20" height="20" alt=""> <span>→ relay.act when approved</span></div>
+            </div>
+          </div>
+        </div>
+      </article>
+    </div>
+
+    <p class="footer">Run the resolver demo: <code>bun packages/chrome-companion/scripts/character-examples.mjs</code> · <a href="../preview.html">full treatment catalog</a></p>
+  </div>
+  <script>
+    async function loadPhases(file, elId, activePhase) {
+      const data = await fetch(file).then(r => r.json());
+      const el = document.getElementById(elId);
+      el.innerHTML = data.phases.map(p => `
+        <li class="${p.phase === activePhase ? 'active' : ''}">
+          <strong>${p.summary}</strong>
+          <span class="state">${p.treatment} · ${p.state}</span>
+        </li>
+      `).join('');
+    }
+    loadPhases('recording-session.example.json', 'phases-recording', 'session.recording');
+    loadPhases('inspection-session.example.json', 'phases-inspection', 'session.analyzing');
+  </script>
+</body>
+</html>

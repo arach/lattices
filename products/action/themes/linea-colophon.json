@@ -1,0 +1,53 @@
+{
+  "id": "linea-colophon",
+  "name": "Colophon",
+  "author": "linea",
+  "summary": "Warm paper \u00b7 forest accent",
+  "extends": "action",
+  "surfaces": {
+    "chrome": {
+      "seed": {
+        "ground": {
+          "light": "#F6F1E7",
+          "dark": "#161310"
+        },
+        "ink": {
+          "light": "#211D17",
+          "dark": "#ECE3D2"
+        },
+        "accent": {
+          "light": "#2F5747",
+          "dark": "#86B09A"
+        }
+      },
+      "tokens": {
+        "panel": {
+          "light": "#FFFDF8",
+          "dark": "#221D15"
+        }
+      }
+    },
+    "field": {
+      "seed": {
+        "ground": {
+          "light": "#F6F1E7",
+          "dark": "#161310"
+        },
+        "ink": {
+          "light": "#211D17",
+          "dark": "#ECE3D2"
+        },
+        "accent": {
+          "light": "#2F5747",
+          "dark": "#86B09A"
+        }
+      },
+      "tokens": {
+        "panel": {
+          "light": "#FFFDF8",
+          "dark": "#221D15"
+        }
+      }
+    }
+  }
+}

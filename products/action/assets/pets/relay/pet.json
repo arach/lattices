@@ -1,0 +1,14 @@
+{
+  "id": "relay",
+  "displayName": "Relay",
+  "description": "Chrome companion treatment — compact explorer-cat sheet states.",
+  "inherits": "mira",
+  "spritesheetPath": "spritesheet.webp",
+  "states": {
+    "idle": { "row": 0, "frames": 8, "frameWidth": 192, "frameHeight": 208, "fps": 6 },
+    "bridge": { "row": 4, "frames": 8, "frameWidth": 192, "frameHeight": 208, "fps": 6 },
+    "navigate": { "row": 2, "frames": 8, "frameWidth": 192, "frameHeight": 208, "fps": 12 },
+    "act": { "row": 5, "frames": 8, "frameWidth": 192, "frameHeight": 208, "fps": 10 },
+    "offline": { "row": 8, "frames": 8, "frameWidth": 192, "frameHeight": 208, "fps": 4 }
+  }
+}

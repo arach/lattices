@@ -1,0 +1,10 @@
+Project logo sprint batch
+
+28-atelier-bench-vise ATELIER — Bench Vise
+Minimal flat vector app icon of an abstract bench vise with two clamp jaws gripping a single small square workpiece at center, warm paper-cream and graphite palette with one copper-ember accent on the workpiece, geometric, centered, developer workshop aesthetic, readable at 16px, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient
+
+29-openscout-scout-reticle OPENSCOUT — Scout Reticle
+Minimal flat vector app icon of a targeting reticle ring with four short tick marks and a single live red lock node at center, cool steel-gray on near-black ink with one warm-red accent, geometric, centered, broker control-plane and recon aesthetic, crisp at 16px, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient
+
+30-studio-pinned-proposal STUDIO — Pinned Proposal
+Minimal flat vector app icon of a single proposal card with one registration pin dot in the top corner, blueprint-indigo and cream palette with a single cyan pin accent, geometric, centered, internal design-studio registry aesthetic, readable at small sizes, no text, no device mockup, flat color --ar 1:1 --style raw --no text, words, mockup, photorealism, gradient

@@ -1,6 +1,8 @@
-import { copyFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
+import { copyFile, cp, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 import { marked } from 'marked'
+import { createElement } from 'react'
+import { renderToString } from 'react-dom/server'
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript'
 import { createHighlighterCore } from 'shiki/core'
 import bash from 'shiki/langs/sh.mjs'
@@ -13,11 +15,14 @@ import typescript from 'shiki/langs/ts.mjs'
 import { writeAgentArtifacts } from './agent-docs.mjs'
 import { renderMdxComponent } from './render-mdx.mjs'
 import { getLastUpdatedBatch, repoInfo } from './git-meta.mjs'
+import ActionPage from '../src/components/ActionPage.tsx'
 
 const siteDir = resolve(import.meta.dirname, '..')
 const repoRoot = resolve(siteDir, '..', '..')
 const distDir = join(siteDir, 'dist')
 const SITE_URL = 'https://lattices.dev'
+const ACTION_RELEASES_API_URL = 'https://api.github.com/repos/arach/lattices/releases?per_page=100'
+const ACTION_LEGACY_DOWNLOAD_URL = 'https://github.com/arach/action/releases/latest/download/Action.dmg'
 const template = await readFile(join(distDir, 'index.html'), 'utf8')
 const shikiTheme = JSON.parse(await readFile(join(siteDir, 'src', 'data', 'lattices-shiki-theme.json'), 'utf8'))
 const highlighter = await createHighlighterCore({
@@ -56,6 +61,15 @@ const postUpdated = await getLastUpdatedBatch(
     path: join('apps', 'site', 'content', 'blog', `${post.slug}.mdx`),
   })),
 )
+
+await writeRoute(
+  '/action',
+  'Action — computer use from Lattices',
+  'Action is the focused computer-use product from Lattices: native macOS automation, capture, and review for agents.',
+  renderToString(createElement(ActionPage)),
+)
+await copyActionDocs()
+await writeActionDownloadRedirect()
 
 await writeRoute('/docs', 'Docs — Lattices', 'Lattices documentation', renderDoc(docs.find((doc) => doc.slug === 'overview') || docs[0]))
 
@@ -120,6 +134,8 @@ await writeNotFound()
 async function writeSitemap() {
   const urls = [
     { loc: `${SITE_URL}/`, priority: '1.0' },
+    { loc: `${SITE_URL}/action`, priority: '0.9' },
+    { loc: `${SITE_URL}/action/agents`, priority: '0.7' },
     { loc: `${SITE_URL}/blog`, priority: '0.8' },
     ...docs.map((doc) => ({
       loc: `${SITE_URL}/docs/${doc.slug}`,
@@ -222,6 +238,26 @@ async function writeRoute(route, title, description, appHtml) {
       `<link rel="canonical" href="${SITE_URL}${route}" />`,
     )
     .replace(
+      /<meta property="og:title" content=".*?" \/>/,
+      `<meta property="og:title" content="${escapeHtml(title)}" />`,
+    )
+    .replace(
+      /<meta property="og:description" content=".*?" \/>/,
+      `<meta property="og:description" content="${escapeHtml(description)}" />`,
+    )
+    .replace(
+      /<meta property="og:url" content=".*?" \/>/,
+      `<meta property="og:url" content="${SITE_URL}${route}" />`,
+    )
+    .replace(
+      /<meta property="twitter:title" content=".*?" \/>/,
+      `<meta property="twitter:title" content="${escapeHtml(title)}" />`,
+    )
+    .replace(
+      /<meta property="twitter:description" content=".*?" \/>/,
+      `<meta property="twitter:description" content="${escapeHtml(description)}" />`,
+    )
+    .replace(
       /<link rel="alternate" type="application\/rss\+xml".*?\/>/,
       '',
     )
@@ -234,6 +270,66 @@ async function writeRoute(route, title, description, appHtml) {
     )
 
   const filePath = route === '/' ? join(distDir, 'index.html') : join(distDir, route.slice(1), 'index.html')
+  await mkdir(dirname(filePath), { recursive: true })
+  await writeFile(filePath, html)
+}
+
+async function writeActionDownloadRedirect() {
+  const route = '/action/download'
+  const filePath = join(distDir, route.slice(1), 'index.html')
+  const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <link rel="canonical" href="${SITE_URL}${route}" />
+    <title>Downloading Action…</title>
+  </head>
+  <body>
+    <p id="download-status">Finding the latest Action release…</p>
+    <p><a id="download-link" href="${escapeHtml(ACTION_LEGACY_DOWNLOAD_URL)}">Download the current Action release manually</a>.</p>
+    <script>
+      const releasesUrl = ${JSON.stringify(ACTION_RELEASES_API_URL)}
+      const legacyUrl = ${JSON.stringify(ACTION_LEGACY_DOWNLOAD_URL)}
+      const status = document.getElementById('download-status')
+      const link = document.getElementById('download-link')
+
+      async function startDownload() {
+        try {
+          const response = await fetch(releasesUrl, {
+            headers: { Accept: 'application/vnd.github+json' },
+          })
+          if (!response.ok) throw new Error(\`GitHub returned \${response.status}\`)
+
+          const releases = await response.json()
+          const release = releases.find((candidate) =>
+            !candidate.draft &&
+            !candidate.prerelease &&
+            typeof candidate.tag_name === 'string' &&
+            candidate.tag_name.startsWith('action-v')
+          )
+          const asset = release?.assets?.find((candidate) => candidate.name === 'Action.dmg')
+
+          if (asset?.browser_download_url) {
+            link.href = asset.browser_download_url
+            link.textContent = 'Download Action manually'
+            window.location.replace(asset.browser_download_url)
+            return
+          }
+        } catch (error) {
+          console.warn('Could not resolve the latest monorepo Action release', error)
+        }
+
+        status.textContent = 'Starting the current Action download…'
+        window.location.replace(legacyUrl)
+      }
+
+      void startDownload()
+    </script>
+  </body>
+</html>
+`
   await mkdir(dirname(filePath), { recursive: true })
   await writeFile(filePath, html)
 }
@@ -413,6 +509,20 @@ async function copyDocsAssets() {
     } catch {
       // Optional compatibility copy for historical /docs/* asset URLs.
     }
+  }
+}
+
+async function copyActionDocs() {
+  const sourceDir = join(repoRoot, 'products', 'action', 'docs')
+  const targetDir = join(distDir, 'action')
+  const entries = await readdir(sourceDir, { withFileTypes: true })
+
+  await mkdir(targetDir, { recursive: true })
+  for (const entry of entries) {
+    // The React product page owns /action. The old landing media is intentionally
+    // not published with the reference docs.
+    if (entry.name === 'index.html' || entry.name === 'assets') continue
+    await cp(join(sourceDir, entry.name), join(targetDir, entry.name), { recursive: true })
   }
 }
 

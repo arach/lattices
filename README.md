@@ -1,3 +1,5 @@
+
+
 ![lattices](https://lattices.dev/og.png)
 
 # lattices
@@ -9,6 +11,13 @@ sessions alive, search what's on screen, and switch whole project contexts
 in one keystroke.
 
 **[lattices.dev](https://lattices.dev)** · [Docs](https://lattices.dev/docs/overview) · [Download app](https://github.com/arach/lattices/releases/latest)
+
+## Product family
+
+**Lattices** organizes and drives the workspace. **[Action](https://lattices.dev/action)**
+is the focused computer-use product for observing a Mac surface, acting on explicit
+targets, recording the run, and verifying what changed. Action lives in
+[`products/action`](products/action) and remains a separate signed app and runtime.
 
 ## What you can do
 
@@ -39,7 +48,7 @@ Launch sessions, tile windows, switch layers, subscribe to live events.
 npm install -g @arach/lattices
 ```
 
-Also on npm as `@lattices/cli`. macOS only. Optional: `brew install tmux` for
+Also on npm as `@lattices/cli`. macOS only. Requires Node 18+ or Bun. Optional: `brew install tmux` for
 persistent sessions; [download the app](https://github.com/arach/lattices/releases/latest)
 for palette, layers, and voice.
 

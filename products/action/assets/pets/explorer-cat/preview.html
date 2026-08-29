@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Explorer Cat Preview</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #141414;
+        color: #f4efe4;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background:
+          linear-gradient(90deg, rgb(255 255 255 / 0.04) 1px, transparent 1px),
+          linear-gradient(rgb(255 255 255 / 0.04) 1px, transparent 1px),
+          radial-gradient(circle at 50% 20%, #403626, #141414 62%);
+        background-size: 32px 32px, 32px 32px, auto;
+      }
+
+      main {
+        display: grid;
+        gap: 18px;
+        justify-items: center;
+      }
+
+      canvas {
+        width: 384px;
+        height: 416px;
+        image-rendering: auto;
+        border: 1px solid rgb(255 255 255 / 0.18);
+        background:
+          linear-gradient(45deg, #d7d7d7 25%, transparent 25%),
+          linear-gradient(-45deg, #d7d7d7 25%, transparent 25%),
+          linear-gradient(45deg, transparent 75%, #d7d7d7 75%),
+          linear-gradient(-45deg, transparent 75%, #d7d7d7 75%),
+          #f5f5f5;
+        background-position: 0 0, 0 12px, 12px -12px, -12px 0;
+        background-size: 24px 24px;
+      }
+
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: center;
+        max-width: 560px;
+      }
+
+      button {
+        appearance: none;
+        border: 1px solid rgb(255 255 255 / 0.18);
+        border-radius: 6px;
+        background: rgb(255 255 255 / 0.08);
+        color: inherit;
+        padding: 7px 10px;
+        font: inherit;
+        cursor: pointer;
+      }
+
+      button[aria-pressed="true"] {
+        background: #c88339;
+        border-color: #f0be75;
+        color: #1c1208;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <canvas width="192" height="208" aria-label="Explorer Cat sprite preview"></canvas>
+      <div class="controls"></div>
+    </main>
+    <script>
+      const pet = await fetch("./pet.json").then((response) => response.json());
+      const image = new Image();
+      image.src = pet.spritesheet.path;
+      await image.decode();
+
+      const canvas = document.querySelector("canvas");
+      const context = canvas.getContext("2d");
+      const controls = document.querySelector(".controls");
+      let stateName = pet.behavior.defaultState;
+      let frame = 0;
+      let lastFrameAt = performance.now();
+
+      for (const name of Object.keys(pet.states)) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = name;
+        button.addEventListener("click", () => {
+          stateName = name;
+          frame = 0;
+          lastFrameAt = performance.now();
+          syncButtons();
+        });
+        controls.append(button);
+      }
+
+      function syncButtons() {
+        for (const button of controls.querySelectorAll("button")) {
+          button.setAttribute("aria-pressed", String(button.textContent === stateName));
+        }
+      }
+
+      function tick(now) {
+        const state = pet.states[stateName];
+        const duration = 1000 / state.fps;
+        if (now - lastFrameAt >= duration) {
+          frame += 1;
+          if (frame >= state.frames) {
+            if (state.loop) {
+              frame = 0;
+            } else {
+              stateName = state.returnTo || pet.behavior.fallbackState;
+              frame = 0;
+              syncButtons();
+            }
+          }
+          lastFrameAt = now;
+        }
+
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        context.drawImage(
+          image,
+          frame * pet.spritesheet.cellWidth,
+          state.row * pet.spritesheet.cellHeight,
+          pet.spritesheet.cellWidth,
+          pet.spritesheet.cellHeight,
+          0,
+          0,
+          canvas.width,
+          canvas.height,
+        );
+        requestAnimationFrame(tick);
+      }
+
+      syncButtons();
+      requestAnimationFrame(tick);
+    </script>
+  </body>
+</html>

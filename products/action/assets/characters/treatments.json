@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 2,
+  "baseRig": "explorer-cat",
+  "palette": {
+    "fur": "#c9b8a8",
+    "muzzle": "#f4efe6",
+    "scarf": "#e07a5f",
+    "gear": "#6b4f3a",
+    "tunic": "#5a6b7d",
+    "accent": "#c8854a",
+    "cyan": "#22d3ee",
+    "record": "#e63946"
+  },
+  "applications": {
+    "Action.app": "mira",
+    "recording-probe": "director",
+    "chrome-companion": "relay",
+    "action-cli": "terminal",
+    "action-mcp": "terminal",
+    "composer": "compositor",
+    "desktop-pet": "dock"
+  },
+  "treatments": [
+    {
+      "id": "mira",
+      "displayName": "Mira",
+      "surface": "launcher-lockup",
+      "format": "spritesheet",
+      "petId": "mira",
+      "variant": "full-color",
+      "accessories": [],
+      "scale": 1,
+      "states": ["idle", "blink", "thinking", "typing", "success", "error", "sleep"],
+      "notes": "Default lattice guide. Full 9-row sheet, 192x208 cells."
+    },
+    {
+      "id": "director",
+      "displayName": "Director",
+      "surface": "recording-hud",
+      "format": "spritesheet",
+      "petId": "director",
+      "variant": "full-color",
+      "accessories": ["tally-light", "clapper-pin"],
+      "scale": 1,
+      "states": ["idle", "countdown", "recording", "interrupt", "wrap"],
+      "rowHints": { "countdown": "thinking", "recording": "typing", "interrupt": "error", "wrap": "success" },
+      "notes": "Recording probe + native HUD. Red tally when live."
+    },
+    {
+      "id": "scout",
+      "displayName": "Scout",
+      "surface": "inspection",
+      "format": "spritesheet",
+      "petId": "scout",
+      "variant": "full-color",
+      "accessories": ["monocle", "clipboard", "scan-sweep"],
+      "scale": 1,
+      "states": ["idle", "observe", "analyze", "finding", "await-decision"],
+      "rowHints": { "observe": "idle", "analyze": "thinking", "finding": "success", "await-decision": "thinking" },
+      "notes": "Live inspection sessions. Thinking row maps to analyze."
+    },
+    {
+      "id": "relay",
+      "displayName": "Relay",
+      "surface": "chrome-companion",
+      "format": "spritesheet",
+      "petId": "relay",
+      "variant": "full-color",
+      "accessories": ["orbital-ring", "compact-pack"],
+      "scale": 0.85,
+      "states": ["idle", "bridge", "navigate", "act", "offline"],
+      "rowHints": { "bridge": "thinking", "navigate": "walk_right", "act": "typing", "offline": "sleep" },
+      "notes": "Browser-agent identity in mira profile. ~85% scale."
+    },
+    {
+      "id": "stagehand",
+      "displayName": "Stagehand",
+      "surface": "hud-glyph",
+      "format": "avatar",
+      "petId": null,
+      "variant": "silhouette",
+      "accessories": ["copper-brackets"],
+      "scale": 1,
+      "sizes": [24, 32, 48],
+      "notes": "Corner HUD bust. Silhouette + copper bracket frame only."
+    },
+    {
+      "id": "compositor",
+      "displayName": "Compositor",
+      "surface": "compose-export",
+      "format": "spritesheet",
+      "petId": "compositor",
+      "variant": "full-color",
+      "accessories": ["film-reel", "clapper-cap"],
+      "scale": 1,
+      "states": ["idle", "timeline", "render", "done"],
+      "rowHints": { "timeline": "thinking", "render": "typing", "done": "success" },
+      "notes": "Post-capture phase. Slower fps, calmer motion."
+    },
+    {
+      "id": "terminal",
+      "displayName": "Terminal",
+      "surface": "cli-mcp",
+      "format": "avatar",
+      "petId": null,
+      "variant": "pixel",
+      "accessories": [],
+      "scale": 1,
+      "sizes": [16, 24],
+      "notes": "Block pixel bust for CLI/MCP surfaces. 1-bit friendly."
+    },
+    {
+      "id": "dock",
+      "displayName": "Dock",
+      "surface": "desktop-pet",
+      "format": "spritesheet",
+      "petId": "mira",
+      "variant": "full-color",
+      "accessories": [],
+      "scale": 1,
+      "states": ["idle", "walk_right", "walk_left", "sleep", "blink"],
+      "notes": "Classic explorer-cat desktop pet path. Existing sheet is v0."
+    }
+  ],
+  "stateMap": {
+    "session.staging": { "treatment": "mira", "state": "idle" },
+    "session.countdown": { "treatment": "director", "state": "countdown" },
+    "session.recording": { "treatment": "director", "state": "recording" },
+    "session.observing": { "treatment": "scout", "state": "observe" },
+    "session.analyzing": { "treatment": "scout", "state": "analyze" },
+    "session.awaiting-decision": { "treatment": "scout", "state": "await-decision" },
+    "session.acting": { "treatment": "relay", "state": "act" },
+    "session.composing": { "treatment": "compositor", "state": "timeline" },
+    "session.completed": { "treatment": "mira", "state": "success" },
+    "session.failed": { "treatment": "mira", "state": "error" }
+  }
+}

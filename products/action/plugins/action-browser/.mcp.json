@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "action-browser": {
+      "command": "/bin/bash",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/scripts/run-action-browser-mcp.sh"
+      ]
+    }
+  }
+}

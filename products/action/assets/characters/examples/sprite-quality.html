@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sprite quality — target vs drift</title>
+  <style>
+    :root { --bg:#0e0f0d; --panel:#181916; --text:#f0ece4; --muted:#a09890; --accent:#c8854a; --bad:#e63946; --good:#22d3ee; --border:#2e2d28; --mono:ui-monospace,monospace; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { font-family:Georgia,serif; background:var(--bg); color:var(--text); padding:2rem 1.2rem 3rem; }
+    .wrap { max-width:70rem; margin:0 auto; }
+    h1 { font-size:1.8rem; margin-bottom:.5rem; }
+    p { color:var(--muted); max-width:58ch; line-height:1.5; margin-bottom:1.5rem; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:1rem; }
+    .card { background:var(--panel); border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+    .card.good { border-color:var(--good); }
+    .card.bad { border-color:var(--bad); }
+    .img { background:#111; padding:1rem; min-height:180px; display:grid; place-items:center; }
+    .img img { max-width:100%; max-height:200px; }
+    .meta { padding:.9rem; font-family:var(--mono); font-size:.68rem; }
+    .meta h2 { font-size:.75rem; margin-bottom:.35rem; }
+    .meta p { font-size:.68rem; margin:0; max-width:none; }
+    ul { margin-top:1.5rem; font-family:var(--mono); font-size:.72rem; color:var(--muted); line-height:1.6; padding-left:1.2rem; }
+    code { color:var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Sprite quality target</h1>
+    <p>Logo prompts drift to abstract marks. Sprite prompts anchor on the explorer-cat v0 row: four full-body panels, same character, black background.</p>
+    <div class="grid">
+      <article class="card good">
+        <div class="img"><img src="../../pets/explorer-cat/sprites/explorer-cat.v0.frames.png" alt="Target"></div>
+        <div class="meta"><h2>Target — explorer-cat v0</h2><p>4:1 strip · full body · consistent scale</p></div>
+      </article>
+      <article class="card bad">
+        <div class="img"><img src="../midjourney/01-mira-director-recording-hud-1.webp" alt="Logo drift"></div>
+        <div class="meta"><h2>Drift — old character prompt</h2><p>1:1 logo · letter A · HUD marks</p></div>
+      </article>
+      <article class="card bad">
+        <div class="img"><img src="../midjourney/02-scout-analyst-inspection-1.webp" alt="Logo drift"></div>
+        <div class="meta"><h2>Drift — scout prompt</h2><p>Abstract triangle · pencil icon</p></div>
+      </article>
+    </div>
+    <h2 style="font-family:var(--mono);font-size:.85rem;margin:1.5rem 0 .6rem;color:var(--accent)">Why MJ drifted to logos</h2>
+    <ul>
+      <li>Brand prompts and <code>ph39jen</code> personalize profile bias toward flat logo marks</li>
+      <li>Old character prompts reused logo language ("flat vector", "no text") without a character reference</li>
+      <li>Harvest saved single 1:1 grid cells, not 4:1 sprite strips</li>
+    </ul>
+    <h2 style="font-family:var(--mono);font-size:.85rem;margin:1.5rem 0 .6rem;color:var(--good)">Sprite pipeline (new)</h2>
+    <ul>
+      <li>Target: <code>explorer-cat.v0.frames.png</code> — already a good 4-panel row</li>
+      <li>Prompts: <code>midjourney-sprite-prompts.txt</code> — full-body panels, anti-logo negatives, global profile</li>
+      <li>Run: <code>bun run chrome:companion:sprite:prompts --only 04</code></li>
+      <li>Runner flags square outputs as <code>logo-like</code> in manifest</li>
+      <li>Best near-term path: rig overlays on v0 sheet + hand-cleaned frames per treatment</li>
+    </ul>
+  </div>
+</body>
+</html>

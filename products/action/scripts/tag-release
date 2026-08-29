@@ -1,0 +1,234 @@
+#!/bin/zsh
+
+set -euo pipefail
+
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+ROOT_DIR=$(cd "$SCRIPT_DIR/.." && pwd)
+
+usage() {
+  cat <<'EOF'
+tag-release: create and push an Action release tag
+
+Usage:
+  scripts/tag-release <version> [options]
+
+Examples:
+  scripts/tag-release 0.3.0
+  scripts/tag-release 0.3.0 --dry-run
+  scripts/tag-release 0.3.0 --upload-bin
+  scripts/tag-release 0.3.0 --upload-bin Installer/Action-for-Mac.dmg
+
+Options:
+  --allow-dirty       Allow tagging while the working tree has local changes
+  --bin <path>        DMG or binary asset to upload; implies --upload-bin
+  --dry-run           Print what would happen without changing anything
+  --no-push           Create the local tag but do not push it
+  --remote <name>     Git remote to push to; defaults to origin
+  --upload-bin [path] Upload the built DMG to the GitHub release
+  -y, --yes           Skip confirmation prompts
+  -h, --help          Show this help
+EOF
+}
+
+VERSION=""
+ALLOW_DIRTY=0
+DRY_RUN=0
+PUSH_TAG=1
+REMOTE="origin"
+UPLOAD_BIN=0
+BIN_PATH="$ROOT_DIR/Installer/Action-for-Mac.dmg"
+YES=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --allow-dirty)
+      ALLOW_DIRTY=1
+      shift
+      ;;
+    --bin)
+      if [[ $# -lt 2 ]]; then
+        echo "--bin requires a path" >&2
+        exit 1
+      fi
+      BIN_PATH="$2"
+      UPLOAD_BIN=1
+      shift 2
+      ;;
+    --dry-run)
+      DRY_RUN=1
+      shift
+      ;;
+    --no-push)
+      PUSH_TAG=0
+      shift
+      ;;
+    --remote)
+      if [[ $# -lt 2 ]]; then
+        echo "--remote requires a value" >&2
+        exit 1
+      fi
+      REMOTE="$2"
+      shift 2
+      ;;
+    --upload-bin)
+      UPLOAD_BIN=1
+      shift
+      if [[ $# -gt 0 && "${1:-}" != --* ]]; then
+        BIN_PATH="$1"
+        shift
+      fi
+      ;;
+    -y|--yes)
+      YES=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -*)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+    *)
+      if [[ -n "$VERSION" ]]; then
+        echo "Unexpected argument: $1" >&2
+        usage >&2
+        exit 1
+      fi
+      VERSION="$1"
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$VERSION" ]]; then
+  echo "Version is required" >&2
+  usage >&2
+  exit 1
+fi
+
+if [[ ! "$VERSION" =~ '^[0-9]+\.[0-9]+\.[0-9]+$' ]]; then
+  echo "Invalid version: $VERSION" >&2
+  echo "Expected semver like 0.1.0" >&2
+  exit 1
+fi
+
+TAG="action-v$VERSION"
+
+cd "$ROOT_DIR"
+
+if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
+  echo "Action is not inside a Git repository: $ROOT_DIR" >&2
+  exit 1
+fi
+
+if [[ -n "$(git status --porcelain)" && "$ALLOW_DIRTY" != "1" ]]; then
+  echo "Working tree has local changes. Commit/stash them or pass --allow-dirty." >&2
+  git status --short >&2
+  exit 1
+fi
+
+if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+  echo "Local tag already exists: $TAG" >&2
+  exit 1
+fi
+
+if git ls-remote --exit-code --tags "$REMOTE" "refs/tags/$TAG" >/dev/null 2>&1; then
+  echo "Remote tag already exists on $REMOTE: $TAG" >&2
+  exit 1
+fi
+
+if [[ "$UPLOAD_BIN" == "1" ]]; then
+  if [[ "$PUSH_TAG" != "1" ]]; then
+    echo "--upload-bin requires pushing the tag so GitHub releases the intended commit." >&2
+    echo "Remove --no-push, or upload assets manually to an existing release." >&2
+    exit 1
+  fi
+
+  if ! command -v gh >/dev/null 2>&1; then
+    echo "GitHub CLI is required for --upload-bin" >&2
+    exit 1
+  fi
+
+  if [[ ! -f "$BIN_PATH" ]]; then
+    echo "Binary asset does not exist: $BIN_PATH" >&2
+    echo "Build one first with: bun run native:dmg:build" >&2
+    exit 1
+  fi
+fi
+
+echo "Action release tag"
+echo "  version: $VERSION"
+echo "  tag:     $TAG"
+echo "  commit:  $(git rev-parse --short HEAD)"
+echo "  remote:  $REMOTE"
+echo "  push:    $PUSH_TAG"
+if [[ "$UPLOAD_BIN" == "1" ]]; then
+  echo "  upload:  $BIN_PATH"
+fi
+echo
+
+if [[ "$YES" != "1" && "$DRY_RUN" != "1" ]]; then
+  printf "Continue? [y/N] "
+  read -r reply
+  if [[ ! "$reply" =~ '^[Yy]$' ]]; then
+    echo "Aborted."
+    exit 0
+  fi
+fi
+
+run() {
+  echo "+ $*"
+  if [[ "$DRY_RUN" != "1" ]]; then
+    "$@"
+  fi
+}
+
+run git tag -a "$TAG" -m "Action $VERSION"
+
+if [[ "$PUSH_TAG" == "1" ]]; then
+  run git push "$REMOTE" "$TAG"
+fi
+
+if [[ "$UPLOAD_BIN" == "1" ]]; then
+  RELEASE_TITLE="Action $VERSION"
+  NOTES_FILE=$(mktemp /tmp/action-release-notes.XXXXXX.md)
+  TMP_DIR=$(mktemp -d /tmp/action-release-assets.XXXXXX)
+  trap 'rm -rf "$TMP_DIR" "$NOTES_FILE"' EXIT
+
+  cat > "$NOTES_FILE" <<EOF
+Release $VERSION
+
+Download and install Action for Mac.
+EOF
+
+  GENERIC_ASSET="$TMP_DIR/Action.dmg"
+  VERSIONED_ASSET="$TMP_DIR/Action-$VERSION.dmg"
+  cp "$BIN_PATH" "$GENERIC_ASSET"
+  cp "$BIN_PATH" "$VERSIONED_ASSET"
+
+  if [[ "$DRY_RUN" == "1" ]]; then
+    echo "+ gh release view $TAG || gh release create $TAG --latest=false ..."
+    echo "+ gh release upload $TAG $GENERIC_ASSET $VERSIONED_ASSET --clobber"
+  else
+    if gh release view "$TAG" >/dev/null 2>&1; then
+      gh release edit "$TAG" \
+        --latest=false \
+        --title "$RELEASE_TITLE" \
+        --notes-file "$NOTES_FILE"
+    else
+      gh release create "$TAG" \
+        --verify-tag \
+        --latest=false \
+        --title "$RELEASE_TITLE" \
+        --notes-file "$NOTES_FILE"
+    fi
+
+    gh release upload "$TAG" "$GENERIC_ASSET" "$VERSIONED_ASSET" --clobber
+  fi
+fi
+
+echo
+echo "Release tag ready: $TAG"

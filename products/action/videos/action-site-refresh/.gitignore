@@ -1,0 +1,7 @@
+.venv/
+.uv-cache/
+.thumbnails/
+.waveform-cache/
+auditions/
+capture/screenshots/
+renders/

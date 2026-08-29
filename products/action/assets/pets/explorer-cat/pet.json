@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "id": "explorer-cat",
+  "displayName": "Explorer Cat",
+  "description": "A tiny explorer mascot for Action desktop-pet experiments.",
+  "authoring": {
+    "source": "generated-reference-plus-deterministic-cleanup",
+    "referenceImage": "source/explorer-cat.reference.alpha.png",
+    "sourceSheet": "source/explorer-cat.generated-4frame.alpha.png",
+    "notes": [
+      "v0 pack is built from four generated source poses.",
+      "Rows are expanded deterministically so the runtime can consume a stable row-per-state spritesheet.",
+      "Future packs should replace repeated frames with hand-cleaned animation frames while preserving the same metadata contract."
+    ]
+  },
+  "spritesheet": {
+    "path": "sprites/explorer-cat.sheet.webp",
+    "sourcePng": "sprites/explorer-cat.sheet.png",
+    "format": "webp",
+    "cellWidth": 192,
+    "cellHeight": 208,
+    "columns": 8,
+    "rows": 9,
+    "scale": 1,
+    "anchor": {
+      "x": 96,
+      "y": 194
+    },
+    "baselineY": 194,
+    "defaultFps": 8
+  },
+  "states": {
+    "idle": {
+      "row": 0,
+      "frames": 8,
+      "fps": 6,
+      "loop": true
+    },
+    "blink": {
+      "row": 1,
+      "frames": 4,
+      "fps": 12,
+      "loop": false,
+      "returnTo": "idle"
+    },
+    "walk_right": {
+      "row": 2,
+      "frames": 8,
+      "fps": 12,
+      "loop": true,
+      "velocity": {
+        "x": 80,
+        "y": 0
+      }
+    },
+    "walk_left": {
+      "row": 3,
+      "frames": 8,
+      "fps": 12,
+      "loop": true,
+      "velocity": {
+        "x": -80,
+        "y": 0
+      }
+    },
+    "thinking": {
+      "row": 4,
+      "frames": 8,
+      "fps": 6,
+      "loop": true
+    },
+    "typing": {
+      "row": 5,
+      "frames": 8,
+      "fps": 10,
+      "loop": true
+    },
+    "success": {
+      "row": 6,
+      "frames": 8,
+      "fps": 12,
+      "loop": false,
+      "returnTo": "idle"
+    },
+    "error": {
+      "row": 7,
+      "frames": 5,
+      "fps": 8,
+      "loop": false,
+      "holdLastFrameMs": 700,
+      "returnTo": "idle"
+    },
+    "sleep": {
+      "row": 8,
+      "frames": 8,
+      "fps": 4,
+      "loop": true
+    }
+  },
+  "behavior": {
+    "defaultState": "idle",
+    "fallbackState": "idle",
+    "blink": {
+      "state": "blink",
+      "minIntervalMs": 3500,
+      "maxIntervalMs": 9000
+    }
+  },
+  "hitArea": {
+    "shape": "ellipse",
+    "x": 38,
+    "y": 28,
+    "width": 116,
+    "height": 162
+  },
+  "preview": {
+    "path": "explorer-cat.preview.gif",
+    "alphaDebug": "masks/alpha-debug.png",
+    "normalizedFrames": "sprites/explorer-cat.v0.frames.png"
+  }
+}

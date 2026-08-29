@@ -1,7 +1,7 @@
 # Repository Structure
 
-Lattices is a small project with several real product surfaces. The root should
-make those surfaces obvious.
+Lattices is a monorepo with two product boundaries. The root should make the
+Lattices workspace surfaces and the focused Action product obvious.
 
 This document is the current maintainer-facing map and the proposed direction
 for keeping file structure as architecture.
@@ -16,6 +16,7 @@ for keeping file structure as architecture.
 | `apps/ios/` | iOS companion app experiments and local build state. |
 | `apps/site/` | Vite website, documentation, and blog content. |
 | `apps/site/scripts/agent-docs.mjs` | Agent-facing docs collector and static artifact writer. |
+| `products/action/` | Action computer-use product. Contains its own Bun workspace, native app, runtime, plugins, and docs. |
 | `docs/` | Markdown docs and engineering proposals. |
 | `tools/agents/skills/` | Agent skill pack for driving Lattices. |
 | `assets/` | Shared release/app assets. |
@@ -27,7 +28,8 @@ for keeping file structure as architecture.
 
 The root currently mixes categories:
 
-- shipped product surfaces: `apps/mac/`, `bin/`, `swift/`
+- shipped Lattices surfaces: `apps/mac/`, `bin/`, `swift/`
+- focused product surface: `products/action/`
 - website/docs: `apps/site/`
 - companion experiments: `apps/ios/`
 - generated or release output: `dist/`
@@ -50,6 +52,9 @@ packages/
   cli/            # current bin/ plus TypeScript package surface
   swift/          # current swift/
 
+products/
+  action/         # Action app, runtime, plugins, and product docs
+
 docs/
   proposals/
 
@@ -67,6 +72,8 @@ shape.
 - Move one category at a time.
 - Keep published npm entry points stable.
 - Keep app bundle and release scripts working after each move.
+- Keep `products/action/` as an explicit product root with its own package and
+  agent instructions.
 - Update docs and agent instructions in the same PR as any move.
 - Avoid renames that only satisfy aesthetics without reducing ambiguity.
 - Keep generated output ignored and out of the architectural map.

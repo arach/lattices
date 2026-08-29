@@ -1,0 +1,21 @@
+{
+  "name": "action-browser",
+  "version": "0.3.0",
+  "description": "Open pages, inspect them, and capture screenshots in a real background Chrome session.",
+  "keywords": ["browser", "chrome", "screenshots", "computer-use", "mcp"],
+  "author": "Arach",
+  "homepage": "https://lattices.dev/action",
+  "skills": ["./plugins/action-browser/skills/"],
+  "interface": {
+    "displayName": "Action Browser",
+    "shortDescription": "Real Chrome screenshots and simple browser actions",
+    "longDescription": "Action Browser gives agents a small browser-use surface backed by a real, isolated Chrome profile. Open a page without stealing focus, inspect its interactive elements, click or fill a field, and receive a PNG screenshot directly in the tool result.",
+    "developerName": "Arach",
+    "websiteURL": "https://lattices.dev/action"
+  },
+  "mcpServers": {
+    "action-browser": {
+      "command": "./plugins/action-browser/scripts/run-action-browser-mcp.sh"
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "baseUrl": ".",
+    "paths": {
+      "@action/protocol": [
+        "packages/protocol/src/index.ts"
+      ],
+      "@action/runtime": [
+        "packages/runtime/src/index.ts"
+      ],
+      "@action/compiler": [
+        "packages/compiler/src/index.ts"
+      ]
+    },
+    "types": [
+      "node"
+    ],
+    "strict": true,
+    "declaration": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": [
+    "packages/**/*.ts"
+  ]
+}

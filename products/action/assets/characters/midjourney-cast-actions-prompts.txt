@@ -1,0 +1,884 @@
+Cast action sprite rows — pixel-art-row, --ar 48:13
+Reference: canonical portrait per character (--cref --cw 100), same identity across all action rows
+
+01-locomotion Terrier scout · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+01-emotes Terrier scout · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+01-react Terrier scout · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+01-idle-cycle Terrier scout · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+01-work Terrier scout · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+01-social Terrier scout · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+01-scout-trail Terrier scout · Scout trail
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 sniff low panel 2 paw scratch panel 3 bark alert panel 4 proud tail wag --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+02-locomotion Messenger rabbit · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+02-emotes Messenger rabbit · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+02-react Messenger rabbit · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+02-idle-cycle Messenger rabbit · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+02-work Messenger rabbit · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+02-social Messenger rabbit · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+02-messenger Messenger rabbit · Messenger
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 ears perk panel 2 hop fast panel 3 wave forward panel 4 rest ears down --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+03-locomotion Scholar owl · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+03-emotes Scholar owl · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+03-react Scholar owl · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+03-idle-cycle Scholar owl · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+03-work Scholar owl · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+03-social Scholar owl · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+03-scholar Scholar owl · Scholar
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 look down panel 2 head tilt panel 3 eureka wing flap panel 4 sleep perch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+04-locomotion Trail fox · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+04-emotes Trail fox · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+04-react Trail fox · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+04-idle-cycle Trail fox · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+04-work Trail fox · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+04-social Trail fox · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+04-trail Trail fox · Trail
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 look ahead panel 2 trot forward panel 3 sniff low panel 4 sit rest --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+05-locomotion Forest ranger · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+05-emotes Forest ranger · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+05-react Forest ranger · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+05-idle-cycle Forest ranger · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+05-work Forest ranger · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+05-social Forest ranger · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+05-ranger Forest ranger · Ranger
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 look up panel 2 reach upward panel 3 arm signal panel 4 salute --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+06-locomotion Dock mechanic · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+06-emotes Dock mechanic · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+06-react Dock mechanic · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+06-idle-cycle Dock mechanic · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+06-work Dock mechanic · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+06-social Dock mechanic · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+06-dock Dock mechanic · Dock
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 float on back panel 2 arm turn panel 3 toss motion panel 4 happy bounce --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+07-locomotion Trail scout · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+07-emotes Trail scout · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+07-react Trail scout · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+07-idle-cycle Trail scout · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+07-work Trail scout · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+07-social Trail scout · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+07-trek Trail scout · Trek
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 look down panel 2 hike stride panel 3 wipe brow panel 4 arms raised cheer --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+08-locomotion Desert cartographer · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+08-emotes Desert cartographer · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+08-react Desert cartographer · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+08-idle-cycle Desert cartographer · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+08-work Desert cartographer · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+08-social Desert cartographer · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+08-map Desert cartographer · Map
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 look down panel 2 focused lean panel 3 measure gesture panel 4 nod complete --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+09-locomotion Arctic researcher · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+09-emotes Arctic researcher · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+09-react Arctic researcher · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+09-idle-cycle Arctic researcher · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+09-work Arctic researcher · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+09-social Arctic researcher · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+09-field Arctic researcher · Field
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 reach down panel 2 look close panel 3 note gesture panel 4 warm hands --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+10-locomotion Skyship deckhand · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+10-emotes Skyship deckhand · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+10-react Skyship deckhand · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+10-idle-cycle Skyship deckhand · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+10-work Skyship deckhand · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+10-social Skyship deckhand · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+10-deck Skyship deckhand · Deck
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 pull gesture panel 2 lean forward panel 3 wave alert panel 4 salute --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+11-locomotion Jungle guide · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+11-emotes Jungle guide · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+11-react Jungle guide · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+11-idle-cycle Jungle guide · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+11-work Jungle guide · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+11-social Jungle guide · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+11-jungle Jungle guide · Jungle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 push aside panel 2 arm raised panel 3 slash gesture panel 4 look down --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+12-locomotion Magical girl · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+12-emotes Magical girl · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+12-react Magical girl · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+12-idle-cycle Magical girl · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+12-work Magical girl · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+12-social Magical girl · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+12-transform Magical girl · Transform
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 casual stand panel 2 sparkle spin panel 3 wand raise panel 4 victory pose --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+13-locomotion Sword student · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+13-emotes Sword student · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+13-react Sword student · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+13-idle-cycle Sword student · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+13-work Sword student · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+13-social Sword student · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+13-kata Sword student · Kata
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 bow formal panel 2 strike diagonal panel 3 block guard panel 4 sheath rest --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+14-locomotion Mecha pilot · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+14-emotes Mecha pilot · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+14-react Mecha pilot · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+14-idle-cycle Mecha pilot · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+14-work Mecha pilot · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+14-social Mecha pilot · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+14-cockpit Mecha pilot · Cockpit
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 helmet on panel 2 reach forward panel 3 glance aside panel 4 fist pump --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+15-locomotion After-school walker · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+15-emotes After-school walker · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+15-react After-school walker · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+15-idle-cycle After-school walker · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+15-work After-school walker · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+15-social After-school walker · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+15-commute After-school walker · Commute
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 adjust bag panel 2 walk stride panel 3 wave hello panel 4 pause look --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+16-locomotion Hooded rogue · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+16-emotes Hooded rogue · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+16-react Hooded rogue · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+16-idle-cycle Hooded rogue · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+16-work Hooded rogue · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+16-social Hooded rogue · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+16-sneak Hooded rogue · Sneak
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 crouch low panel 2 creep tip-toe panel 3 arm ready panel 4 crouch hide --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+17-locomotion Elf archer · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+17-emotes Elf archer · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+17-react Elf archer · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+17-idle-cycle Elf archer · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+17-work Elf archer · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+17-social Elf archer · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+17-archery Elf archer · Archery
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 nock arrow panel 2 draw aim panel 3 release follow-through panel 4 inspect fletching --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+18-locomotion Retro robot · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+18-emotes Retro robot · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+18-react Retro robot · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+18-idle-cycle Retro robot · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+18-work Retro robot · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+18-social Retro robot · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+18-servo Retro robot · Servo
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 boot whirr panel 2 wave claw panel 3 recharge glow panel 4 dance spin --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+19-locomotion Pantry hamster · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+19-emotes Pantry hamster · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+19-react Pantry hamster · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+19-idle-cycle Pantry hamster · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+19-work Pantry hamster · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+19-social Pantry hamster · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+19-pantry Pantry hamster · Pantry
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 stuff cheeks panel 2 cheek puff panel 3 nap curl panel 4 proud stand --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+20-locomotion Honey bear · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+20-emotes Honey bear · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+20-react Honey bear · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+20-idle-cycle Honey bear · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+20-work Honey bear · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+20-social Honey bear · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+20-honey Honey bear · Honey
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 sniff up panel 2 lick paw panel 3 arms wide panel 4 stretch roar --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+21-locomotion Polar courier · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+21-emotes Polar courier · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+21-react Polar courier · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+21-idle-cycle Polar courier · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+21-work Polar courier · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+21-social Polar courier · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+21-arctic Polar courier · Arctic
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 slide pose panel 2 arm toss panel 3 shake fur panel 4 steady march --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+22-locomotion Swamp guard · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+22-emotes Swamp guard · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+22-react Swamp guard · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+22-idle-cycle Swamp guard · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+22-work Swamp guard · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+22-social Swamp guard · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+22-swamp Swamp guard · Swamp
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 snap pose panel 2 alert scan panel 3 bask still panel 4 tail flick --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+23-locomotion Bayou ranger · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+23-emotes Bayou ranger · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+23-react Bayou ranger · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+23-idle-cycle Bayou ranger · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+23-work Bayou ranger · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+23-social Bayou ranger · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+23-bayou Bayou ranger · Bayou
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 hat tip panel 2 toss gesture panel 3 low crawl panel 4 look down --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+24-locomotion Lookout giraffe · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+24-emotes Lookout giraffe · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+24-react Lookout giraffe · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+24-idle-cycle Lookout giraffe · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+24-work Lookout giraffe · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+24-social Lookout giraffe · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+24-lookout Lookout giraffe · Lookout
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neck stretch panel 2 peer horizon panel 3 neck extend panel 4 chew motion --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+25-locomotion Trail elephant · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+25-emotes Trail elephant · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+25-react Trail elephant · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+25-idle-cycle Trail elephant · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+25-work Trail elephant · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+25-social Trail elephant · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+25-trail Trail elephant · Trail
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 trunk lift panel 2 trunk raised panel 3 steady march panel 4 trunk curl --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+26-locomotion Savanna sentinel · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+26-emotes Savanna sentinel · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+26-react Savanna sentinel · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+26-idle-cycle Savanna sentinel · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+26-work Savanna sentinel · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+26-social Savanna sentinel · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+26-savanna Savanna sentinel · Savanna
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 paw tap panel 2 mane shake panel 3 proud roar panel 4 regal lounge --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+27-locomotion Jungle stalker · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+27-emotes Jungle stalker · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+27-react Jungle stalker · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+27-idle-cycle Jungle stalker · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+27-work Jungle stalker · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+27-social Jungle stalker · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+27-jungle Jungle stalker · Jungle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 stalk low panel 2 pounce burst panel 3 crouch still panel 4 stretch yawn --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+28-locomotion Night runner · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+28-emotes Night runner · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+28-react Night runner · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+28-idle-cycle Night runner · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+28-work Night runner · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+28-social Night runner · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+28-night Night runner · Night
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 howl up panel 2 sprint stride panel 3 alert look panel 4 pack nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+29-locomotion Meadow wanderer · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+29-emotes Meadow wanderer · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+29-react Meadow wanderer · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+29-idle-cycle Meadow wanderer · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+29-work Meadow wanderer · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+29-social Meadow wanderer · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+29-meadow Meadow wanderer · Meadow
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 graze pose panel 2 leap bound panel 3 reach down panel 4 soft bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+30-locomotion Pine trailblazer · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+30-emotes Pine trailblazer · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+30-react Pine trailblazer · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+30-idle-cycle Pine trailblazer · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+30-work Pine trailblazer · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+30-social Pine trailblazer · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+30-pine Pine trailblazer · Pine
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 antler shake panel 2 heavy stomp panel 3 chest puff panel 4 head down drink --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+31-locomotion Burrow digger · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+31-emotes Burrow digger · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+31-react Burrow digger · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+31-idle-cycle Burrow digger · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+31-work Burrow digger · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+31-social Burrow digger · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+31-burrow Burrow digger · Burrow
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 dig pose panel 2 look alert panel 3 lean forward panel 4 emerge proud --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+32-locomotion Ice dockhand · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+32-emotes Ice dockhand · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+32-react Ice dockhand · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+32-idle-cycle Ice dockhand · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+32-work Ice dockhand · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+32-social Ice dockhand · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+32-ice Ice dockhand · Ice
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 belly slide panel 2 juggle motion panel 3 vest flap panel 4 waddle huddle --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+33-locomotion Alley mechanic · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+33-emotes Alley mechanic · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+33-react Alley mechanic · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+33-idle-cycle Alley mechanic · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+33-work Alley mechanic · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+33-social Alley mechanic · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+33-alley Alley mechanic · Alley
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 arm turn panel 2 sneak peek panel 3 climb pose panel 4 wave hello --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+34-locomotion Garden scholar · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+34-emotes Garden scholar · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+34-react Garden scholar · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+34-idle-cycle Garden scholar · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+34-work Garden scholar · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+34-social Garden scholar · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+34-garden Garden scholar · Garden
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 look down panel 2 sniff low panel 3 paw up panel 4 curl ball --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+35-locomotion River lounger · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+35-emotes River lounger · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+35-react River lounger · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+35-idle-cycle River lounger · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+35-work River lounger · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+35-social River lounger · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+35-river River lounger · River
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 arm dip panel 2 lounge zen panel 3 adjust collar panel 4 wave hello --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+36-locomotion Cliff scout · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+36-emotes Cliff scout · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+36-react Cliff scout · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+36-idle-cycle Cliff scout · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+36-work Cliff scout · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+36-social Cliff scout · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+36-cliff Cliff scout · Cliff
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wings spread panel 2 dive swoop panel 3 leg tuck panel 4 perch scan --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+37-locomotion Pond caller · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+37-emotes Pond caller · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+37-react Pond caller · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+37-idle-cycle Pond caller · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+37-work Pond caller · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+37-social Pond caller · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+37-pond Pond caller · Pond
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 croak loud panel 2 tap motion panel 3 hop burst panel 4 tongue out --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+38-locomotion Shell courier · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+38-emotes Shell courier · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+38-react Shell courier · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+38-idle-cycle Shell courier · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+38-work Shell courier · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+38-social Shell courier · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+38-shell Shell courier · Shell
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 tuck inward panel 2 steady plod panel 3 shell hide panel 4 peek out --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+39-locomotion Plains messenger · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+39-emotes Plains messenger · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+39-react Plains messenger · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+39-idle-cycle Plains messenger · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+39-work Plains messenger · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+39-social Plains messenger · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+39-plains Plains messenger · Plains
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 head toss panel 2 canter fast panel 3 trot stride panel 4 call pose --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+40-locomotion Eucalyptus ranger · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+40-emotes Eucalyptus ranger · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+40-react Eucalyptus ranger · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+40-idle-cycle Eucalyptus ranger · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+40-work Eucalyptus ranger · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+40-social Eucalyptus ranger · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+40-eucalyptus Eucalyptus ranger · Eucalyptus
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 cling pose panel 2 chew motion panel 3 climb reach panel 4 drowsy yawn --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+41-locomotion Salt flat guide · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+41-emotes Salt flat guide · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+41-react Salt flat guide · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+41-idle-cycle Salt flat guide · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+41-work Salt flat guide · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+41-social Salt flat guide · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+41-salt-flat Salt flat guide · Salt flat
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 one-leg balance panel 2 look down panel 3 sash flutter panel 4 wing stretch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+42-locomotion Mountain climber · Locomotion
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 idle still panel 2 walk right mid-stride panel 3 run burst panel 4 jump landing crouch --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+42-emotes Mountain climber · Emotes
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 neutral idle panel 2 happy bounce panel 3 surprised hop panel 4 tired slump sigh --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+42-react Mountain climber · React
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert ears up panel 2 dodge sidestep panel 3 point forward panel 4 cheer arms raised --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+42-idle-cycle Mountain climber · Idle cycle
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 breathe in panel 2 blink eyes closed panel 3 shift weight panel 4 breathe out relaxed --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+42-work Mountain climber · Work
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 alert still panel 2 focused lean panel 3 frustrated huff panel 4 success nod --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+42-social Mountain climber · Social
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 wave hello panel 2 listen attentive panel 3 laugh panel 4 goodbye small bow --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props
+
+42-climb Mountain climber · Climb
+four pixel art sprite poses in a horizontal row, same character as the reference image only, identical outfit colors face markings and proportions in every panel, isolated figure centered on pure black empty background, no scenery no ground no extra props around the character, consistent scale, panel 1 ledge leap panel 2 toss gesture panel 3 shake off panel 4 summit bleat --ar 48:13 --no cat, logo, text, watermark, scenery, ground, floor, shadow, particles, environment, furniture, landscape, platform, grass, rocks, trees, props

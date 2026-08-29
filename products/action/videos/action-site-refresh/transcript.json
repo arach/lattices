@@ -1,0 +1,302 @@
+[
+  {
+    "text": "An",
+    "start": 0.05,
+    "end": 0.14
+  },
+  {
+    "text": "agent",
+    "start": 0.14,
+    "end": 0.49
+  },
+  {
+    "text": "can",
+    "start": 0.54,
+    "end": 0.72
+  },
+  {
+    "text": "do",
+    "start": 0.72,
+    "end": 0.86
+  },
+  {
+    "text": "the",
+    "start": 0.86,
+    "end": 1.08
+  },
+  {
+    "text": "work,",
+    "start": 1.08,
+    "end": 1.51
+  },
+  {
+    "text": "but",
+    "start": 1.58,
+    "end": 1.7
+  },
+  {
+    "text": "can",
+    "start": 1.7,
+    "end": 1.88
+  },
+  {
+    "text": "it",
+    "start": 1.88,
+    "end": 2
+  },
+  {
+    "text": "show",
+    "start": 2,
+    "end": 2.23
+  },
+  {
+    "text": "you",
+    "start": 2.23,
+    "end": 2.33
+  },
+  {
+    "text": "what",
+    "start": 2.43,
+    "end": 2.64
+  },
+  {
+    "text": "happened?",
+    "start": 3.05,
+    "end": 3.34
+  },
+  {
+    "text": "Action",
+    "start": 3.39,
+    "end": 3.64
+  },
+  {
+    "text": "gives",
+    "start": 3.68,
+    "end": 3.89
+  },
+  {
+    "text": "agents",
+    "start": 3.92,
+    "end": 4.23
+  },
+  {
+    "text": "a",
+    "start": 4.24,
+    "end": 4.29
+  },
+  {
+    "text": "real",
+    "start": 4.29,
+    "end": 4.43
+  },
+  {
+    "text": "chrome",
+    "start": 4.52,
+    "end": 4.82
+  },
+  {
+    "text": "and",
+    "start": 4.82,
+    "end": 4.98
+  },
+  {
+    "text": "a",
+    "start": 4.98,
+    "end": 5.03
+  },
+  {
+    "text": "native",
+    "start": 5.03,
+    "end": 5.35
+  },
+  {
+    "text": "macOS",
+    "start": 5.35,
+    "end": 5.66
+  },
+  {
+    "text": "runtime",
+    "start": 5.66,
+    "end": 5.98
+  },
+  {
+    "text": "to",
+    "start": 5.98,
+    "end": 6.39
+  },
+  {
+    "text": "observe,",
+    "start": 6.39,
+    "end": 7.04
+  },
+  {
+    "text": "resolve,",
+    "start": 7.04,
+    "end": 7.69
+  },
+  {
+    "text": "act",
+    "start": 7.76,
+    "end": 7.95
+  },
+  {
+    "text": "and",
+    "start": 7.95,
+    "end": 8.2
+  },
+  {
+    "text": "record.",
+    "start": 8.25,
+    "end": 9.2
+  },
+  {
+    "text": "Every",
+    "start": 9.25,
+    "end": 9.42
+  },
+  {
+    "text": "run",
+    "start": 9.42,
+    "end": 9.55
+  },
+  {
+    "text": "leaves",
+    "start": 9.55,
+    "end": 9.81
+  },
+  {
+    "text": "evidence,",
+    "start": 9.81,
+    "end": 10.24
+  },
+  {
+    "text": "the",
+    "start": 10.24,
+    "end": 10.29
+  },
+  {
+    "text": "capture,",
+    "start": 10.38,
+    "end": 10.71
+  },
+  {
+    "text": "the",
+    "start": 10.78,
+    "end": 10.89
+  },
+  {
+    "text": "trace,",
+    "start": 10.89,
+    "end": 11.19
+  },
+  {
+    "text": "the",
+    "start": 11.19,
+    "end": 11.32
+  },
+  {
+    "text": "snapshot,",
+    "start": 11.32,
+    "end": 11.75
+  },
+  {
+    "text": "the",
+    "start": 11.75,
+    "end": 11.84
+  },
+  {
+    "text": "accessibility",
+    "start": 12.25,
+    "end": 12.45
+  },
+  {
+    "text": "tree",
+    "start": 12.45,
+    "end": 12.69
+  },
+  {
+    "text": "and",
+    "start": 12.77,
+    "end": 12.98
+  },
+  {
+    "text": "the",
+    "start": 12.98,
+    "end": 13.21
+  },
+  {
+    "text": "manifest.",
+    "start": 13.26,
+    "end": 14.2
+  },
+  {
+    "text": "One",
+    "start": 14.25,
+    "end": 14.38
+  },
+  {
+    "text": "run,",
+    "start": 14.38,
+    "end": 14.68
+  },
+  {
+    "text": "every",
+    "start": 14.68,
+    "end": 14.98
+  },
+  {
+    "text": "artifact,",
+    "start": 14.98,
+    "end": 15.58
+  },
+  {
+    "text": "ready",
+    "start": 15.66,
+    "end": 15.88
+  },
+  {
+    "text": "to",
+    "start": 15.88,
+    "end": 16
+  },
+  {
+    "text": "review,",
+    "start": 16,
+    "end": 16.48
+  },
+  {
+    "text": "replay",
+    "start": 16.48,
+    "end": 16.83
+  },
+  {
+    "text": "and",
+    "start": 16.83,
+    "end": 16.85
+  },
+  {
+    "text": "share.",
+    "start": 17.25,
+    "end": 18.55
+  },
+  {
+    "text": "Action,",
+    "start": 18.61,
+    "end": 18.93
+  },
+  {
+    "text": "record",
+    "start": 18.93,
+    "end": 19.21
+  },
+  {
+    "text": "the",
+    "start": 19.21,
+    "end": 19.34
+  },
+  {
+    "text": "work.",
+    "start": 19.38,
+    "end": 19.75
+  }
+]

@@ -1,0 +1,11 @@
+{
+  "name": "action-browser",
+  "version": "0.3.0",
+  "description": "Open pages, inspect them, and capture screenshots in a real background Chrome session.",
+  "author": {
+    "name": "Arach",
+    "url": "https://github.com/arach"
+  },
+  "homepage": "https://lattices.dev/action",
+  "repository": "https://github.com/arach/lattices/tree/main/products/action"
+}

@@ -1,0 +1,71 @@
+{
+  "id": "mira",
+  "displayName": "Mira",
+  "description": "Action's lattice-native companion character.",
+  "spritesheetPath": "spritesheet.webp",
+  "states": {
+    "idle": {
+      "row": 0,
+      "frames": 8,
+      "frameWidth": 192,
+      "frameHeight": 208,
+      "fps": 6
+    },
+    "blink": {
+      "row": 1,
+      "frames": 4,
+      "frameWidth": 192,
+      "frameHeight": 208,
+      "fps": 12
+    },
+    "run_right": {
+      "row": 2,
+      "frames": 8,
+      "frameWidth": 192,
+      "frameHeight": 208,
+      "fps": 12
+    },
+    "run_left": {
+      "row": 3,
+      "frames": 8,
+      "frameWidth": 192,
+      "frameHeight": 208,
+      "fps": 12
+    },
+    "thinking": {
+      "row": 4,
+      "frames": 8,
+      "frameWidth": 192,
+      "frameHeight": 208,
+      "fps": 6
+    },
+    "typing": {
+      "row": 5,
+      "frames": 8,
+      "frameWidth": 192,
+      "frameHeight": 208,
+      "fps": 10
+    },
+    "success": {
+      "row": 6,
+      "frames": 8,
+      "frameWidth": 192,
+      "frameHeight": 208,
+      "fps": 12
+    },
+    "error": {
+      "row": 7,
+      "frames": 5,
+      "frameWidth": 192,
+      "frameHeight": 208,
+      "fps": 8
+    },
+    "sleep": {
+      "row": 8,
+      "frames": 8,
+      "frameWidth": 192,
+      "frameHeight": 208,
+      "fps": 4
+    }
+  }
+}

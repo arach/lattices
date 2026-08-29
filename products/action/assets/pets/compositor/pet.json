@@ -1,0 +1,13 @@
+{
+  "id": "compositor",
+  "displayName": "Compositor",
+  "description": "Post-capture treatment — calmer motion on explorer-cat sheet.",
+  "inherits": "mira",
+  "spritesheetPath": "spritesheet.webp",
+  "states": {
+    "idle": { "row": 0, "frames": 8, "frameWidth": 192, "frameHeight": 208, "fps": 4 },
+    "timeline": { "row": 4, "frames": 8, "frameWidth": 192, "frameHeight": 208, "fps": 4 },
+    "render": { "row": 5, "frames": 8, "frameWidth": 192, "frameHeight": 208, "fps": 6 },
+    "done": { "row": 6, "frames": 8, "frameWidth": 192, "frameHeight": 208, "fps": 8 }
+  }
+}

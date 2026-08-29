@@ -1,0 +1,19 @@
+{
+  "id": "reading-room",
+  "name": "Reading Room",
+  "author": "Action",
+  "summary": "One step larger and one step calmer, for a screen recording an audience watches from across a room.",
+  "extends": "action",
+
+  "metrics": {
+    "density": 1.12,
+    "cornerRadius": 10,
+    "grain": 0.6
+  },
+
+  "type": { "scale": 1.12 },
+
+  "overrides": {
+    "rowAlternate": { "light": "#00000008", "dark": "#FFFFFF0A" }
+  }
+}

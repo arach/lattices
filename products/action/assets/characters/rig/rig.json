@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "viewBox": "0 0 48 48",
+  "base": "base.svg",
+  "accessories": {
+    "tally-light": { "file": "accessories/tally-light.svg", "z": 10 },
+    "clapper-pin": { "file": "accessories/clapper-pin.svg", "z": 5 },
+    "monocle": { "file": "accessories/monocle.svg", "z": 10 },
+    "clipboard": { "file": "accessories/clipboard.svg", "z": 5 },
+    "orbital-ring": { "file": "accessories/orbital-ring.svg", "z": 0 },
+    "film-reel": { "file": "accessories/film-reel.svg", "z": 0 },
+    "copper-brackets": { "file": "accessories/copper-brackets.svg", "z": 0 },
+    "scan-sweep": { "file": "accessories/scan-sweep.svg", "z": 8 },
+    "clapper-cap": { "file": "accessories/clapper-cap.svg", "z": 12 },
+    "compact-pack": { "file": "accessories/compact-pack.svg", "z": 3 }
+  },
+  "variants": {
+    "full-color": { "base": "base.svg", "tint": null },
+    "silhouette": { "base": "base-silhouette.svg", "tint": "#1C2228" },
+    "pixel": { "base": "base-pixel.svg", "tint": null }
+  }
+}

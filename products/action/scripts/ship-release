@@ -1,0 +1,157 @@
+#!/bin/zsh
+
+set -euo pipefail
+
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+ROOT_DIR=$(cd "$SCRIPT_DIR/.." && pwd)
+
+usage() {
+  cat <<'EOF'
+ship-release: dispatch the smart GitHub release workflow
+
+Usage:
+  scripts/ship-release <version> [options]
+
+Examples:
+  scripts/ship-release 0.3.0 --watch
+  scripts/ship-release 0.3.0 --no-publish
+
+Options:
+  --dry-run       Print the workflow dispatch command without running it
+  --no-publish    Build/upload a workflow artifact without creating a tag or GitHub Release
+  --ref <ref>     Git ref to run the workflow on; defaults to main
+  --repo <repo>   GitHub repo; defaults to the current repository
+  --watch         Watch the dispatched workflow run
+  -h, --help      Show this help
+EOF
+}
+
+VERSION=""
+DRY_RUN=0
+PUBLISH_RELEASE=true
+REF="main"
+REPO=""
+WATCH=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dry-run)
+      DRY_RUN=1
+      shift
+      ;;
+    --no-publish)
+      PUBLISH_RELEASE=false
+      shift
+      ;;
+    --ref)
+      if [[ $# -lt 2 ]]; then
+        echo "--ref requires a value" >&2
+        exit 1
+      fi
+      REF="$2"
+      shift 2
+      ;;
+    --repo)
+      if [[ $# -lt 2 ]]; then
+        echo "--repo requires a value" >&2
+        exit 1
+      fi
+      REPO="$2"
+      shift 2
+      ;;
+    --watch)
+      WATCH=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -*)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+    *)
+      if [[ -n "$VERSION" ]]; then
+        echo "Unexpected argument: $1" >&2
+        usage >&2
+        exit 1
+      fi
+      VERSION="$1"
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$VERSION" ]]; then
+  echo "Version is required" >&2
+  usage >&2
+  exit 1
+fi
+
+if [[ ! "$VERSION" =~ '^[0-9]+\.[0-9]+\.[0-9]+$' ]]; then
+  echo "Invalid version: $VERSION" >&2
+  echo "Expected semver like 0.1.0" >&2
+  exit 1
+fi
+
+if ! command -v gh >/dev/null 2>&1; then
+  echo "GitHub CLI is required for release workflow dispatch." >&2
+  exit 1
+fi
+
+cd "$ROOT_DIR"
+
+if [[ -z "$REPO" ]]; then
+  REPO="$(gh repo view --json nameWithOwner --jq .nameWithOwner)"
+fi
+
+echo "Action release workflow"
+echo "  version: $VERSION"
+echo "  ref:     $REF"
+echo "  repo:    $REPO"
+echo "  publish: $PUBLISH_RELEASE"
+echo
+
+cmd=(
+  gh workflow run release-action-macos.yml
+  --repo "$REPO"
+  --ref "$REF"
+  -f "version=$VERSION"
+  -f "publish_release=$PUBLISH_RELEASE"
+)
+
+echo "+ ${cmd[*]}"
+if [[ "$DRY_RUN" == "1" ]]; then
+  exit 0
+fi
+
+"${cmd[@]}"
+
+echo "Release workflow dispatched."
+
+if [[ "$WATCH" != "1" ]]; then
+  echo "Open runs: https://github.com/$REPO/actions/workflows/release-action-macos.yml"
+  exit 0
+fi
+
+sleep 5
+run_id="$(
+  gh run list \
+    --repo "$REPO" \
+    --workflow release-action-macos.yml \
+    --branch "$REF" \
+    --event workflow_dispatch \
+    --json databaseId \
+    --limit 1 \
+    --jq '.[0].databaseId'
+)"
+
+if [[ -z "$run_id" || "$run_id" == "null" ]]; then
+  echo "Unable to find the dispatched workflow run yet." >&2
+  echo "Open runs: https://github.com/$REPO/actions/workflows/release-action-macos.yml" >&2
+  exit 1
+fi
+
+gh run watch "$run_id" --repo "$REPO" --exit-status

@@ -1,0 +1,16 @@
+{
+  "title": "Live inspection — observe then analyze",
+  "sessionId": "demo-inspection-001",
+  "application": "Action.app",
+  "phases": [
+    { "phase": "session.observing", "treatment": "scout", "state": "observe", "summary": "Screenshot + AX snapshot captured" },
+    { "phase": "session.analyzing", "treatment": "scout", "state": "analyze", "summary": "Provider reflection running" },
+    { "phase": "session.awaiting-decision", "treatment": "scout", "state": "await-decision", "summary": "Findings ready — operator decides next" },
+    { "phase": "session.acting", "treatment": "relay", "state": "act", "summary": "Follow-up action via browser companion" }
+  ],
+  "assets": {
+    "spritesheetRow": "../midjourney/02-scout-analyst-inspection-1.webp",
+    "avatar": "../avatars/scout.svg",
+    "petId": "scout"
+  }
+}
