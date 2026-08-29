@@ -113,15 +113,16 @@ code {
   position: sticky;
   top: 0;
   z-index: 10;
+  padding-inline: clamp(20px, 3.2vw, 48px);
   backdrop-filter: blur(16px);
   background: color-mix(in srgb, var(--hero-ground) 92%, transparent);
   border-bottom: 1px solid var(--hero-rule);
 }
 
 .nav-inner {
-  max-width: 960px;
+  max-width: 1200px;
   margin: 0 auto;
-  padding: 14px 24px;
+  padding: 16px 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -842,10 +843,17 @@ button.nav-link {
   display: grid;
   align-content: start;
   gap: 6px;
-  min-height: 248px;
+  /* Agent-turn rows stay in flow (opacity only) so the last beat cannot
+     grow the apparatus and shove the left CTA. */
+  min-height: calc(1.5em * 6 + 6px * 5 + 11px + 13px);
   padding: 11px 13px 13px;
   font-size: 11px;
   line-height: 1.5;
+}
+
+.hero-harness-body > [aria-hidden="true"] {
+  pointer-events: none;
+  user-select: none;
 }
 
 .hero-harness-user {
@@ -893,10 +901,16 @@ button.nav-link {
   padding: 8px 10px;
   background: color-mix(in srgb, var(--text) 4%, var(--bg));
   color: var(--text);
-  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 10px;
+  /* System mono so box-drawing and ASCII share one advance.
+     Google Fonts JetBrains latin omits U+2500, so those glyphs
+     used to fall back and the right wall wobbled. */
+  font-family: ui-monospace, "SF Mono", Menlo, "Cascadia Mono", Consolas, monospace;
+  font-size: 8px;
+  font-kerning: none;
   font-variant-ligatures: none;
-  line-height: 1.22;
+  font-feature-settings: "liga" 0, "calt" 0;
+  letter-spacing: 0;
+  line-height: 1.28;
   white-space: pre;
   -webkit-overflow-scrolling: touch;
 }
@@ -2824,35 +2838,45 @@ button.nav-link {
   position: relative;
   z-index: 0;
   overflow: hidden;
-  padding: 76px 24px 68px;
+  padding: 76px clamp(20px, 3.2vw, 48px) 68px;
   border-bottom: 1px solid var(--hero-rule);
   background: var(--hero-ground);
   color: var(--hero-ink);
   text-align: left;
 }
 
+/* Two columns, independent height. Copy is one reading group;
+   the apparatus is the product next to it. */
 .hero-editorial {
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 0.84fr) minmax(0, 1.16fr);
-  gap: clamp(36px, 4.4vw, 76px);
-  align-items: center;
-  max-width: 1280px;
+  column-gap: clamp(36px, 4vw, 64px);
+  align-items: start;
+  max-width: 1200px;
   margin: 0 auto;
 }
 
 .hero-copy {
   position: relative;
   z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
   max-width: none;
   margin: 0;
+  padding: 0;
 }
 
 .hero-eyebrow {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
+  align-self: stretch;
   gap: 13px;
-  margin: 0 0 26px;
+  margin: 0;
+  padding-top: 14px;
+  padding-bottom: 28px;
   color: var(--hero-accent);
   font-family: "JetBrains Mono", monospace;
   font-size: 10.5px;
@@ -2865,67 +2889,93 @@ button.nav-link {
   content: "";
   width: 32px;
   height: 1px;
+  margin-bottom: 0.45em;
   background: currentColor;
+}
+
+.hero-copy-main {
+  flex: 0 0 auto;
+  align-self: stretch;
+  min-width: 0;
+}
+
+.hero-copy-foot {
+  flex: 0 0 auto;
+  align-self: stretch;
+  min-width: 0;
+  margin-top: 28px;
 }
 
 .hero h1 {
   max-width: 15ch;
-  margin: 0 0 24px;
+  margin: 0 0 16px;
   color: var(--hero-ink);
   font-size: clamp(2.5rem, 4.1vw, 3.9rem);
   font-weight: 700;
-  line-height: 0.98;
-  letter-spacing: -0.045em;
+  line-height: 1.02;
+  letter-spacing: -0.032em;
   text-wrap: balance;
 }
 
 .hero-sub {
-  max-width: 42ch;
-  margin: 0 0 32px;
+  max-width: 40ch;
+  margin: 0;
   color: var(--hero-ink-dim);
-  font-size: clamp(1rem, 1.4vw, 1.06rem);
-  line-height: 1.6;
+  font-size: clamp(1.02rem, 1.35vw, 1.12rem);
+  line-height: 1.5;
   text-wrap: pretty;
 }
 
 .hero-actions {
+  margin-top: 0;
   justify-content: flex-start;
 }
 
 .hero-primary-cta,
 .hero-secondary-cta {
+  min-height: 42px;
   border-radius: 2px;
+  padding: 0 18px;
   font-size: 13px;
+  font-weight: 600;
   letter-spacing: 0.01em;
 }
 
 .hero-primary-cta {
-  border-color: var(--green);
+  border-color: var(--hero-accent);
+  background: var(--hero-accent);
+  color: var(--hero-ground);
   box-shadow: none;
+}
+
+.hero-primary-cta:hover {
+  background: color-mix(in srgb, var(--hero-accent) 82%, var(--hero-ink));
+  border-color: color-mix(in srgb, var(--hero-accent) 82%, var(--hero-ink));
 }
 
 .hero-secondary-cta {
   border-color: var(--hero-rule);
-  background: transparent;
+  background: color-mix(in srgb, var(--hero-ink) 4%, transparent);
   color: var(--hero-ink);
 }
 
 .hero-secondary-cta:hover {
   border-color: var(--hero-ink);
+  background: color-mix(in srgb, var(--hero-ink) 7%, transparent);
   color: var(--hero-ink);
 }
 
 .hero-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 0 18px;
-  margin: 34px 0 0;
+  gap: 0 14px;
+  margin: 14px 0 0;
   padding: 0;
   list-style: none;
 }
 
 .hero-meta li {
-  padding-right: 18px;
+  padding-right: 14px;
   border-right: 1px solid var(--hero-rule);
   color: var(--hero-ink-dim);
   font-family: "JetBrains Mono", monospace;
@@ -2950,6 +3000,8 @@ button.nav-link {
 .hero-apparatus {
   position: relative;
   z-index: 0;
+  display: flex;
+  flex-direction: column;
   isolation: isolate;
 }
 
@@ -2986,74 +3038,67 @@ button.nav-link {
   z-index: -1;
   inset: -14% -8% -18% -14%;
   background:
-    linear-gradient(90deg, transparent 0 7%, var(--hero-etch) 7% 42%, transparent 42%) 0 11% / 100% 1px no-repeat,
-    linear-gradient(90deg, transparent 0 25%, var(--hero-etch-faint) 25% 87%, transparent 87%) 0 17% / 100% 1px no-repeat,
-    repeating-linear-gradient(90deg, var(--hero-etch) 0 2px, transparent 2px 9px) 18% 78% / 47% 1px no-repeat,
-    linear-gradient(90deg, transparent 0 58%, var(--hero-etch) 58% 98%, transparent 98%) 0 92% / 100% 1px no-repeat,
-    linear-gradient(0deg, transparent 0 18%, var(--hero-etch-faint) 18% 74%, transparent 74%) 18% 0 / 1px 100% no-repeat,
-    linear-gradient(0deg, transparent 0 7%, var(--hero-etch) 7% 48%, transparent 48%) 56% 0 / 1px 100% no-repeat,
-    repeating-linear-gradient(0deg, var(--hero-etch) 0 2px, transparent 2px 10px) 93% 13% / 1px 69% no-repeat,
     radial-gradient(ellipse 56% 62% at 53% 51%, var(--hero-bloom), transparent 72%),
     radial-gradient(ellipse 38% 30% at 66% 83%, var(--hero-charcoal), transparent 78%);
-  opacity: 0.92;
+  opacity: 0.85;
   pointer-events: none;
 }
 
+/* One register above the labels, one baseline through the stations.
+   Ticks sit on the intersections — no extra graphite on this instrument. */
 .hero-rail {
   position: relative;
   z-index: 1;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  padding-top: 44px;
-  margin-bottom: 22px;
-  border-bottom: 1px solid var(--hero-rule);
+  padding-top: 18px;
+  padding-bottom: 4px;
+  margin-bottom: 0;
 }
 
 .hero-rail::before {
   content: "";
   position: absolute;
-  z-index: -1;
-  inset: 7px -2% -4px -4%;
-  background:
-    linear-gradient(90deg, transparent 0 3%, var(--hero-etch) 3% 31%, transparent 31%) 0 8px / 100% 1px no-repeat,
-    repeating-linear-gradient(90deg, var(--hero-etch-faint) 0 1px, transparent 1px 7px) 26% 24px / 62% 1px no-repeat,
-    linear-gradient(90deg, transparent 0 48%, var(--hero-etch) 48% 100%) 0 33px / 100% 1px no-repeat;
-  opacity: 0.88;
-  pointer-events: none;
-}
-
-.hero-rail::after {
-  content: "";
-  position: absolute;
-  right: 6%;
-  bottom: 3px;
-  left: 11%;
+  left: 0;
+  right: 0;
+  top: 0;
   height: 1px;
-  background: linear-gradient(90deg, transparent, var(--hero-etch) 12% 72%, transparent);
-  opacity: 0.66;
+  background: var(--hero-etch);
   pointer-events: none;
 }
 
 .hero-rail span {
   position: relative;
-  padding: 0 0 13px 11px;
-  border-left: 1px solid var(--hero-rule);
+  padding: 0 12px 16px 8px;
+  border-bottom: 1px solid var(--hero-rule);
   color: var(--hero-ink-dim);
   font-family: "JetBrains Mono", monospace;
-  font-size: 9.5px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
+.hero-rail span::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 1px;
+  height: 8px;
+  background: var(--hero-rule);
+  pointer-events: none;
+}
+
 .hero-rail span::after {
   content: "";
   position: absolute;
+  left: -2px;
   bottom: -3px;
-  left: 11px;
   width: 5px;
   height: 5px;
   background: var(--hero-ink-dim);
+  pointer-events: none;
 }
 
 .hero-apparatus-body {
@@ -3093,43 +3138,16 @@ button.nav-link {
   z-index: 1;
   display: flex;
   align-items: center;
+  align-self: stretch;
   gap: 18px;
-  margin-top: 38px;
-  padding-top: 13px;
+  margin-top: 2px;
+  padding-top: 16px;
   border-top: 1px solid var(--hero-rule);
   color: var(--hero-ink-dim);
   font-family: "JetBrains Mono", monospace;
-  font-size: 9.5px;
+  font-size: 10px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-}
-
-.hero-plinth::before {
-  content: "";
-  position: absolute;
-  right: 3%;
-  bottom: calc(100% + 9px);
-  left: 4%;
-  height: 17px;
-  border: 1px solid var(--hero-etch);
-  background:
-    repeating-linear-gradient(135deg, transparent 0 5px, var(--hero-etch-faint) 5px 6px, transparent 6px 10px),
-    color-mix(in srgb, var(--hero-ground) 82%, transparent);
-  clip-path: polygon(0 0, 100% 0, 100% 48%, 88% 48%, 88% 100%, 13% 100%, 13% 58%, 0 58%);
-  opacity: 0.9;
-  pointer-events: none;
-}
-
-.hero-plinth::after {
-  content: "";
-  position: absolute;
-  right: 17%;
-  bottom: calc(100% + 4px);
-  left: 18%;
-  height: 1px;
-  background: var(--hero-etch);
-  box-shadow: 19px 4px 0 var(--hero-etch-faint);
-  pointer-events: none;
 }
 
 .hero-plinth-state {
@@ -3141,21 +3159,37 @@ button.nav-link {
   margin-right: 8px;
 }
 
+.pixel-mascot-wrap {
+  margin-left: auto;
+  display: block;
+  padding: 6px;
+  transform: translate3d(var(--cat-x, 0px), var(--cat-y, 0px), 0)
+    rotate(var(--cat-rotate, 0deg));
+  transform-origin: 50% 100%;
+}
+
 .pixel-mascot {
+  display: block;
   width: 24px;
   height: auto;
-  margin-left: auto;
   color: var(--hero-ink-dim);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pixel-mascot-wrap {
+    transform: none;
+  }
 }
 
 .hero-apparatus .hero-workspace-stage {
   margin: 0;
+  aspect-ratio: 1505 / 448;
   border-radius: 12px;
   box-shadow:
-    0 30px 70px rgba(0, 0, 0, 0.42),
+    0 18px 40px color-mix(in srgb, var(--hero-ink) 14%, transparent),
     -3px 4px 0 -2px var(--hero-etch),
     4px -3px 0 -3px var(--hero-etch-faint),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    inset 0 1px 0 color-mix(in srgb, var(--hero-ground) 55%, transparent);
 }
 
 .hero-apparatus .hero-workspace-stage::before {
@@ -3172,10 +3206,26 @@ button.nav-link {
 
 .hero-apparatus .hero-agent-harness {
   width: 100%;
-  margin: 18px 0 0;
+  margin: 14px 0 0;
   border-color: var(--hero-rule);
   border-radius: 2px;
-  background: color-mix(in srgb, var(--hero-ink) 5%, transparent);
+  background: color-mix(in srgb, var(--hero-ink) 4%, transparent);
+}
+
+.hero-apparatus .hero-harness-body {
+  gap: 4px;
+  min-height: calc(1.45em * 6 + 4px * 5 + 8px + 10px);
+  padding: 8px 10px 10px;
+  font-size: 10.5px;
+}
+
+.hero-apparatus .hero-harness-map {
+  padding: 7px 9px;
+  border-radius: 2px;
+  border-color: var(--hero-rule);
+  background: color-mix(in srgb, var(--hero-ink) 5%, var(--hero-ground));
+  font-size: 8px;
+  line-height: 1.28;
 }
 
 .hero-apparatus .hero-harness-head {
@@ -3194,7 +3244,8 @@ button.nav-link {
 
 .hero-desktop-comparison {
   align-self: flex-end;
-  margin-bottom: 14px;
+  margin-bottom: 8px;
+  padding: 0;
   border-radius: 0;
   border-color: var(--hero-rule);
   background: transparent;
@@ -3202,12 +3253,17 @@ button.nav-link {
 }
 
 .hero-desktop-comparison button {
+  min-height: 28px;
   border-radius: 0;
+  padding: 0 11px;
   color: var(--hero-ink-dim);
 }
 
-.hero-desktop-comparison button.is-active {
+.hero-desktop-comparison button.is-active,
+.hero-desktop-comparison button.is-active:last-child {
   color: var(--hero-ink);
+  background: color-mix(in srgb, var(--hero-ink) 6%, transparent);
+  box-shadow: inset 0 -1px 0 var(--hero-accent);
 }
 
 .hero-agent-harness {
@@ -3284,8 +3340,36 @@ button.nav-link {
 
 @media (max-width: 1080px) {
   .hero-editorial {
-    grid-template-columns: 1fr;
+    display: flex;
+    flex-direction: column;
     gap: 44px;
+  }
+
+  .hero-copy,
+  .hero-apparatus {
+    display: flex;
+    flex-direction: column;
+    grid-row: auto;
+  }
+
+  .hero-eyebrow {
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-bottom: 26px;
+    align-items: center;
+  }
+
+  .hero-eyebrow::before {
+    margin-bottom: 0;
+  }
+
+  .hero-copy-main {
+    align-self: stretch;
+  }
+
+  .hero-copy-foot {
+    align-self: stretch;
+    margin-top: 32px;
   }
 
   .hero h1 {
@@ -3296,6 +3380,15 @@ button.nav-link {
     display: none;
   }
 
+  .hero-rail {
+    margin-bottom: 18px;
+  }
+
+  .hero-plinth {
+    align-self: stretch;
+    margin-top: 28px;
+  }
+
   .hero-apparatus::before,
   .hero-apparatus::after {
     inset-inline: -7%;
@@ -3303,16 +3396,21 @@ button.nav-link {
 }
 
 @media (max-width: 640px) {
+  .nav-optional-mobile {
+    display: none;
+  }
+
   .hero {
     padding: 52px 20px 48px;
   }
 
   .hero-rail {
     grid-template-columns: repeat(2, 1fr);
+    row-gap: 12px;
   }
 
   .hero-rail span:nth-child(n + 3) {
-    padding-top: 13px;
+    padding-top: 8px;
   }
 
   .hero-desktop-comparison {
@@ -3421,7 +3519,7 @@ button.nav-link {
   }
 
   .nav-inner {
-    padding: 12px 16px;
+    padding: 12px 0;
   }
 
   .nav-links {
@@ -3451,12 +3549,12 @@ button.nav-link {
   }
 
   .hero-rail span {
-    padding-left: 9px;
+    padding-left: 8px;
     font-size: 9px;
   }
 
   .hero-rail span::after {
-    left: 9px;
+    left: -2px;
   }
 
   .shared-state-section {
@@ -3486,7 +3584,7 @@ button.nav-link {
   }
 
   .hero-harness-map {
-    font-size: 7.5px;
+    font-size: 8px;
     padding: 7px 8px;
   }
 

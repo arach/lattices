@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { ThemeToggle } from "./ThemeToggle";
 import { GestureMatrix } from "./GestureMatrix";
 
@@ -58,34 +58,159 @@ function trackCta(action: string, destination: string) {
   }
 }
 
-const MASCOT_ROWS = [
-  "#.....#...",
-  "##...##...",
-  "##########",
-  "#.##.##..#",
-  "##########",
-  ".########.",
-  ".#######.#",
-  ".#######.#",
-  ".#######.#",
-  ".#.....#..",
+// 12x12 pixel cat: solid body, eyes cut as negative space, tail drawn separately
+// so it can flick without disturbing the silhouette.
+const MASCOT_BODY = [
+  "#....#......",
+  "##..##......",
+  "######......",
+  "#.##.#......",
+  "######......",
+  ".####.......",
+  ".#####......",
+  ".######.....",
+  ".######.....",
+  ".#######....",
+  ".#######....",
+  ".##..##.....",
 ];
 
+const MASCOT_EYES: Array<[number, number]> = [
+  [1, 3],
+  [4, 3],
+];
+
+const MASCOT_TAILS: Array<Array<[number, number]>> = [
+  [[8, 10], [9, 10], [10, 10], [10, 9]],
+  [[8, 10], [9, 10], [10, 9], [10, 8]],
+  [[8, 10], [9, 9], [10, 8], [10, 7], [10, 6]],
+];
+
+const MASCOT_W = MASCOT_BODY[0].length;
+const MASCOT_H = MASCOT_BODY.length;
+
 function PixelMascot() {
+  const wrapRef = useRef<HTMLSpanElement>(null);
+  const reducedMotion = useReducedMotion() ?? false;
+  const [blinking, setBlinking] = useState(false);
+  const [tail, setTail] = useState(0);
+
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap || reducedMotion) return;
+
+    const maxLeft = 8;
+    const maxRight = 2;
+    const maxY = 4;
+    const ease = 0.14;
+    let targetX = 0;
+    let targetY = 0;
+    let currentX = 0;
+    let currentY = 0;
+    let raf = 0;
+
+    const tick = () => {
+      currentX += (targetX - currentX) * ease;
+      currentY += (targetY - currentY) * ease;
+      wrap.style.setProperty("--cat-x", `${currentX.toFixed(2)}px`);
+      wrap.style.setProperty("--cat-y", `${currentY.toFixed(2)}px`);
+      wrap.style.setProperty("--cat-rotate", `${(currentX * 0.4).toFixed(2)}deg`);
+      if (Math.abs(targetX - currentX) > 0.04 || Math.abs(targetY - currentY) > 0.04) {
+        raf = requestAnimationFrame(tick);
+      } else {
+        raf = 0;
+      }
+    };
+
+    const kick = () => {
+      if (!raf) raf = requestAnimationFrame(tick);
+    };
+
+    const onMove = (event: PointerEvent) => {
+      const rect = wrap.getBoundingClientRect();
+      const nx = (event.clientX - (rect.left + rect.width / 2)) / Math.max(window.innerWidth * 0.5, 1);
+      const ny = (event.clientY - (rect.top + rect.height / 2)) / Math.max(window.innerHeight * 0.5, 1);
+      targetX = Math.max(-maxLeft, Math.min(maxRight, nx * 7));
+      targetY = Math.max(-maxY, Math.min(maxY, ny * maxY));
+      kick();
+    };
+
+    window.addEventListener("pointermove", onMove, { passive: true });
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("pointermove", onMove);
+    };
+  }, [reducedMotion]);
+
+  useEffect(() => {
+    if (reducedMotion) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const queue = (delay: number, fn: () => void) => {
+      timer = setTimeout(fn, delay);
+    };
+    const shut = (remaining: number) => {
+      setBlinking(true);
+      queue(110, () => {
+        setBlinking(false);
+        if (remaining > 0) queue(150, () => shut(remaining - 1));
+        else schedule();
+      });
+    };
+    const schedule = () => {
+      queue(3200 + Math.random() * 5600, () => shut(Math.random() < 0.18 ? 1 : 0));
+    };
+    schedule();
+    return () => clearTimeout(timer);
+  }, [reducedMotion]);
+
+  useEffect(() => {
+    if (reducedMotion) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const run = (steps: Array<[number, number]>, i: number) => {
+      if (i >= steps.length) {
+        schedule();
+        return;
+      }
+      const [pose, hold] = steps[i];
+      setTail(pose);
+      timer = setTimeout(() => run(steps, i + 1), hold);
+    };
+    const schedule = () => {
+      timer = setTimeout(() => {
+        const big = Math.random() < 0.45;
+        run(
+          big
+            ? [[1, 130], [2, 210], [1, 120], [2, 170], [1, 150], [0, 0]]
+            : [[1, 190], [0, 0]],
+          0,
+        );
+      }, 4200 + Math.random() * 7000);
+    };
+    schedule();
+    return () => clearTimeout(timer);
+  }, [reducedMotion]);
+
   return (
-    <svg
-      aria-hidden="true"
-      className="pixel-mascot"
-      viewBox={`0 0 ${MASCOT_ROWS[0].length} ${MASCOT_ROWS.length}`}
-      shapeRendering="crispEdges"
-      fill="currentColor"
-    >
-      {MASCOT_ROWS.flatMap((row, y) =>
-        [...row].map((cell, x) =>
-          cell === "#" ? <rect key={`${x}-${y}`} x={x} y={y} width={1} height={1} /> : null,
-        ),
-      )}
-    </svg>
+    <span ref={wrapRef} className="pixel-mascot-wrap" aria-hidden="true">
+      <svg
+        className="pixel-mascot"
+        viewBox={`0 0 ${MASCOT_W} ${MASCOT_H}`}
+        shapeRendering="crispEdges"
+        fill="currentColor"
+      >
+        {MASCOT_BODY.flatMap((row, y) =>
+          [...row].map((cell, x) =>
+            cell === "#" ? <rect key={`b${x}-${y}`} x={x} y={y} width={1} height={1} /> : null,
+          ),
+        )}
+        {blinking
+          ? MASCOT_EYES.map(([x, y]) => <rect key={`e${x}`} x={x} y={y} width={1} height={1} />)
+          : null}
+        {MASCOT_TAILS[tail].map(([x, y]) => (
+          <rect key={`t${x}-${y}`} x={x} y={y} width={1} height={1} />
+        ))}
+      </svg>
+    </span>
   );
 }
 
@@ -270,21 +395,20 @@ const heroWindowMeta: Record<HeroWindowId, { app: string; title: string; tint: s
 const heroDesktopMaps: Record<HeroDesktopPhase, string> = {
   messy: `\
 ┌ Display 0 · MacBook Pro · Space 1 ───────────────────────────────┐
-│                                                                  │
-│    ┌3 Code · session.ts───┐       ┌4 Browser · localhost─────┐   │
-│    │       ┌1 Terminal · codex────┼────────┐                 │   │
-│    │       │                               │                 │   │
-│    └───────┼                               │                 │   │
-│            │                               │          ┬──────┘   │
-│            │                               │          │          │
-│            └─────────────────┼─────────────┘          │          │
-│                              └────────────────────────┘          │
-│                                                                  │
+│    ┌3 Code · session.ts──────┐┌4 Browser · localhost─────────┐   │
+│    │     ┌1 Terminal · codex─┼───────────────────────────────┤   │
+│    │     │                   │                               │   │
+│    │     │                   │                               │   │
+│    └─────┤                   │                               │   │
+│          │                   ├2 Terminal · bun dev───────────┤   │
+│          │                   │                               │   │
+│          └───────────────────┘                               │   │
+│                               └──────────────────────────────┘   │
 └──────────────────────────────────────────────────────────────────┘`,
   organized: `\
 ┌ Display 0 · MacBook Pro · Space 1 ───────────────────────────────┐
-│                                                                  │
 │ ┌1 Terminal · codex───────────────────┐┌3 Code · session.ts────┐ │
+│ │                                     ││                       │ │
 │ │                                     ││                       │ │
 │ │                                     │└───────────────────────┘ │
 │ │                                     │┌4 Browser · localhost──┐ │
@@ -538,44 +662,45 @@ function HeroWorkspaceStage() {
             </span>
             <pre className="hero-harness-map" aria-hidden="true">{heroDesktopMaps[phase]}</pre>
           </motion.div>
-          <AnimatePresence>
-            {driver === "agent" && (
-              <motion.span
-                key="turn2-user"
-                className="hero-harness-user"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0, transition: { duration: 0.25, delay: 0 } }}
-                transition={{ duration: 0.3, delay: 0.9 }}
-              >
-                <b>&gt;</b> put codex on the left half, stack the rest on the right
-              </motion.span>
-            )}
-            {driver === "agent" && (
-              <motion.span
-                key="turn2-tool"
-                className="hero-harness-tool"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0, transition: { duration: 0.25, delay: 0 } }}
-                transition={{ duration: 0.3, delay: 2.1 }}
-              >
-                <i aria-hidden="true">⏺</i> lattices — space.optimize
-              </motion.span>
-            )}
-            {driver === "agent" && organized && (
-              <motion.span
-                key="turn2-result"
-                className="hero-harness-result"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0, transition: { duration: 0.25, delay: 0 } }}
-                transition={{ duration: 0.3, delay: 0.9 }}
-              >
-                <b aria-hidden="true">⎿</b> codex left half · 3 stacked right · done
-              </motion.span>
-            )}
-          </AnimatePresence>
+          <motion.span
+            className="hero-harness-user"
+            initial={false}
+            animate={{ opacity: driver === "agent" ? 1 : 0 }}
+            transition={
+              prefersReducedMotion
+                ? { duration: 0 }
+                : { duration: 0.28, delay: driver === "agent" ? 0.9 : 0 }
+            }
+            aria-hidden={driver !== "agent"}
+          >
+            <b>&gt;</b> put codex on the left half, stack the rest on the right
+          </motion.span>
+          <motion.span
+            className="hero-harness-tool"
+            initial={false}
+            animate={{ opacity: driver === "agent" ? 1 : 0 }}
+            transition={
+              prefersReducedMotion
+                ? { duration: 0 }
+                : { duration: 0.28, delay: driver === "agent" ? 2.1 : 0 }
+            }
+            aria-hidden={driver !== "agent"}
+          >
+            <i aria-hidden="true">⏺</i> lattices — layout.distribute
+          </motion.span>
+          <motion.span
+            className="hero-harness-result"
+            initial={false}
+            animate={{ opacity: driver === "agent" && organized ? 1 : 0 }}
+            transition={
+              prefersReducedMotion
+                ? { duration: 0 }
+                : { duration: 0.28, delay: driver === "agent" && organized ? 0.9 : 0 }
+            }
+            aria-hidden={!(driver === "agent" && organized)}
+          >
+            <b aria-hidden="true">⎿</b> codex left half · 3 stacked right · done
+          </motion.span>
         </div>
       </div>
     </div>
@@ -704,30 +829,34 @@ export default function App() {
          <div className="hero-editorial">
           <div className="hero-copy">
             <p className="hero-eyebrow">Native macOS workspace manager</p>
-            <h1>The workspace manager for you and your agents.</h1>
-            <p className="hero-sub">
-              Every window, terminal, and layout on your Mac organized and
-              accessible, by shortcut, mouse gesture, or API.
-            </p>
-            <div className="hero-actions">
-              <a
-                href="https://github.com/arach/lattices/releases/latest/download/Lattices.dmg"
-                className="hero-primary-cta"
-                onClick={() => trackCta('download_dmg_hero', 'https://github.com/arach/lattices/releases/latest/download/Lattices.dmg')}
-              >
-                <DownloadIcon />
-                Download for macOS
-              </a>
-              <a href="/docs/overview" className="hero-secondary-cta">
-                Read the docs
-              </a>
+            <div className="hero-copy-main">
+              <h1>The workspace manager for you and your agents.</h1>
+              <p className="hero-sub">
+                Every window, terminal, and layout on your Mac organized and
+                accessible, by shortcut, mouse gesture, or API.
+              </p>
             </div>
-            <ul className="hero-meta">
-              <li>5,500+ installs</li>
-              <li>Local first</li>
-              <li>API driven</li>
-              <li>Built for macOS</li>
-            </ul>
+            <div className="hero-copy-foot">
+              <div className="hero-actions">
+                <a
+                  href="https://github.com/arach/lattices/releases/latest/download/Lattices.dmg"
+                  className="hero-primary-cta"
+                  onClick={() => trackCta('download_dmg_hero', 'https://github.com/arach/lattices/releases/latest/download/Lattices.dmg')}
+                >
+                  <DownloadIcon />
+                  Download for macOS
+                </a>
+                <a href="/docs/overview" className="hero-secondary-cta">
+                  Read the docs
+                </a>
+              </div>
+              <ul className="hero-meta">
+                <li>5,500+ installs</li>
+                <li>Local first</li>
+                <li>API driven</li>
+                <li>Built for macOS</li>
+              </ul>
+            </div>
           </div>
 
           <div className="hero-apparatus">
