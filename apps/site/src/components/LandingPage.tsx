@@ -58,6 +58,37 @@ function trackCta(action: string, destination: string) {
   }
 }
 
+const MASCOT_ROWS = [
+  "#.....#...",
+  "##...##...",
+  "##########",
+  "#.##.##..#",
+  "##########",
+  ".########.",
+  ".#######.#",
+  ".#######.#",
+  ".#######.#",
+  ".#.....#..",
+];
+
+function PixelMascot() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="pixel-mascot"
+      viewBox={`0 0 ${MASCOT_ROWS[0].length} ${MASCOT_ROWS.length}`}
+      shapeRendering="crispEdges"
+      fill="currentColor"
+    >
+      {MASCOT_ROWS.flatMap((row, y) =>
+        [...row].map((cell, x) =>
+          cell === "#" ? <rect key={`${x}-${y}`} x={x} y={y} width={1} height={1} /> : null,
+        ),
+      )}
+    </svg>
+  );
+}
+
 function GitHubIcon() {
   return (
     <svg viewBox="0 0 16 16" fill="currentColor">
@@ -668,13 +699,15 @@ export default function App() {
       </nav>
 
       {/* Hero */}
-      <main className="shell">
+      <main>
         <section className="hero fade-in">
+         <div className="hero-editorial">
           <div className="hero-copy">
-            <h1>The workspace manager<br /><span className="accent">for you and your agents.</span></h1>
+            <p className="hero-eyebrow">Native macOS workspace manager</p>
+            <h1>The workspace manager for you and your agents.</h1>
             <p className="hero-sub">
-              Every window, terminal, and layout on your Mac —<br />
-              by shortcut, mouse gesture, or API.
+              Every window, terminal, and layout on your Mac organized and
+              accessible, by shortcut, mouse gesture, or API.
             </p>
             <div className="hero-actions">
               <a
@@ -689,13 +722,40 @@ export default function App() {
                 Read the docs
               </a>
             </div>
-            <p className="hero-proof">5,500+ installs</p>
+            <ul className="hero-meta">
+              <li>5,500+ installs</li>
+              <li>Local first</li>
+              <li>API driven</li>
+              <li>Built for macOS</li>
+            </ul>
           </div>
 
-          <HeroWorkspaceStage />
+          <div className="hero-apparatus">
+            <div className="hero-rail" aria-hidden="true">
+              <span>Windows</span>
+              <span>Terminal</span>
+              <span>Layout</span>
+              <span>Agent API</span>
+            </div>
+            <div className="hero-apparatus-body">
+              <HeroWorkspaceStage />
+              <ol className="hero-index" aria-hidden="true">
+                <li>01</li>
+                <li>02</li>
+                <li>03</li>
+              </ol>
+            </div>
+            <div className="hero-plinth" aria-hidden="true">
+              <span>Lattices engine</span>
+              <span className="hero-plinth-state">state: synced</span>
+              <PixelMascot />
+            </div>
+          </div>
+         </div>
         </section>
 
         <section className="section shared-state-section" id="shared-state">
+         <div className="shared-state-inner">
           <div className="shared-state-copy fade-in">
             <div className="cua-kicker">One state, two operators</div>
             <h2>Same desktop, whether you drive or your agent does.</h2>
@@ -708,14 +768,14 @@ export default function App() {
             </p>
           </div>
           <div className="operator-rows fade-in fade-in-delay-1" aria-label="The same action, by hand and by API">
-            <div className="operator-row">
+            <div className="operator-row is-you">
               <span className="operator-row-label">You</span>
               <span className="operator-row-action">
                 <kbd>⌃</kbd><kbd>⌥</kbd><kbd>G</kbd>
                 <span>— snap the editor to the left half</span>
               </span>
             </div>
-            <div className="operator-row">
+            <div className="operator-row is-agent">
               <span className="operator-row-label">Your agent</span>
               <span className="operator-row-action">
                 <code>window.place {'{'} app: &apos;Code&apos;, placement: &apos;left&apos; {'}'}</code>
@@ -725,10 +785,12 @@ export default function App() {
               <i aria-hidden="true" /> Same window, same spot — one live state.
             </p>
           </div>
+         </div>
         </section>
 
         <HandsOnSection />
 
+        <div className="shell">
         {/* Computer use (CUA) */}
         <section className="section cua-section" id="cua">
           <div className="cua-head fade-in">
@@ -1156,6 +1218,7 @@ export default function App() {
             </a>
           </nav>
         </footer>
+        </div>
       </main>
     </>
   );

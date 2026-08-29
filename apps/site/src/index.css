@@ -23,6 +23,22 @@
   --syntax-key: #7ec8e3;
   --syntax-kw: #c792ea;
 
+  /* Editorial hero: a warm ink ground with paper-coloured type, plus the
+     inverted slab used for the agent's half of the two-operator proof. */
+  --hero-ground: #0a0f0e;
+  --hero-ink: #ece5d6;
+  --hero-ink-dim: rgba(236, 229, 214, 0.66);
+  --hero-rule: rgba(236, 229, 214, 0.18);
+  --hero-dither: rgba(236, 229, 214, 0.3);
+  --hero-etch: rgba(236, 229, 214, 0.14);
+  --hero-etch-faint: rgba(236, 229, 214, 0.065);
+  --hero-bloom: rgba(185, 210, 197, 0.075);
+  --hero-charcoal: rgba(0, 0, 0, 0.34);
+  --hero-accent: #38d17c;
+  --slab-bg: #ece5d6;
+  --slab-fg: #12181a;
+  --slab-accent: #0a5f34;
+
   font-family: "Space Grotesk", -apple-system, sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -46,6 +62,21 @@
   --logo-dim: rgba(16, 21, 24, 0.22);
   --syntax-key: #2f7895;
   --syntax-kw: #8e59b5;
+  /* Same material logic reinterpreted: paper ground, ink type, and the slab
+     inverts to ink so the agent's half still reads as the other material. */
+  --hero-ground: #f2eee3;
+  --hero-ink: #101617;
+  --hero-ink-dim: rgba(16, 22, 23, 0.68);
+  --hero-rule: rgba(16, 22, 23, 0.18);
+  --hero-dither: rgba(16, 22, 23, 0.32);
+  --hero-etch: rgba(16, 22, 23, 0.15);
+  --hero-etch-faint: rgba(16, 22, 23, 0.07);
+  --hero-bloom: rgba(61, 78, 68, 0.085);
+  --hero-charcoal: rgba(106, 79, 44, 0.1);
+  --hero-accent: #0a6b3a;
+  --slab-bg: #12181a;
+  --slab-fg: #ece5d6;
+  --slab-accent: #4bd88b;
   color-scheme: light;
 }
 
@@ -83,8 +114,8 @@ code {
   top: 0;
   z-index: 10;
   backdrop-filter: blur(16px);
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--hero-ground) 92%, transparent);
+  border-bottom: 1px solid var(--hero-rule);
 }
 
 .nav-inner {
@@ -404,7 +435,7 @@ button.nav-link {
 
 .hero-workspace-stage {
   position: relative;
-  width: min(1000px, calc(100vw - 48px));
+  width: 100%;
   aspect-ratio: 1505 / 614;
   margin: 14px 0 0 50%;
   padding: 0;
@@ -884,18 +915,66 @@ button.nav-link {
 }
 
 @keyframes heroDesktopArrive {
-  from { opacity: 0; transform: translateX(-50%) translateY(24px) scale(0.987); }
-  to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  from { opacity: 0; transform: translateY(24px) scale(0.987); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 /* ── Narrative spine ──────────────────────────────── */
 
 .shared-state-section {
+  position: relative;
+  z-index: 0;
+  overflow: hidden;
+  padding: 92px 24px 88px;
+  border-bottom: 1px solid var(--hero-rule);
+  background: var(--hero-ground);
+  color: var(--hero-ink);
+}
+
+.shared-state-inner {
+  position: relative;
+  isolation: isolate;
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(300px, 0.95fr);
   gap: 60px;
   align-items: center;
-  padding: 84px 0;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: clamp(26px, 3.4vw, 46px);
+  border: 1px solid var(--hero-rule);
+}
+
+.shared-state-inner::before {
+  content: "";
+  position: absolute;
+  z-index: -2;
+  inset: -22% -5% -28% 44%;
+  background-image:
+    radial-gradient(circle, var(--hero-dither) 0 0.65px, transparent 0.85px),
+    radial-gradient(circle, var(--hero-etch-faint) 0 0.55px, transparent 0.75px);
+  background-position: 1px 2px, 5px 4px;
+  background-size: 6px 6px, 9px 9px;
+  opacity: 0.5;
+  -webkit-mask-image: radial-gradient(ellipse 63% 68% at 69% 46%, #000 3%, rgba(0, 0, 0, 0.7) 46%, transparent 78%);
+  mask-image: radial-gradient(ellipse 63% 68% at 69% 46%, #000 3%, rgba(0, 0, 0, 0.7) 46%, transparent 78%);
+  pointer-events: none;
+}
+
+.shared-state-inner::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: 5px;
+  right: -6px;
+  bottom: -6px;
+  left: 5px;
+  border-right: 1px solid var(--hero-etch-faint);
+  border-bottom: 1px solid var(--hero-etch);
+  background:
+    linear-gradient(90deg, var(--hero-etch-faint), transparent 38%) 0 19% / 44% 1px no-repeat,
+    repeating-linear-gradient(90deg, var(--hero-etch-faint) 0 2px, transparent 2px 9px) 74% 88% / 23% 1px no-repeat,
+    linear-gradient(0deg, transparent 0 35%, var(--hero-etch-faint) 35% 82%, transparent 82%) 93% 0 / 1px 100% no-repeat;
+  pointer-events: none;
 }
 
 .shared-state-copy h2,
@@ -919,8 +998,28 @@ button.nav-link {
 }
 
 .operator-rows {
+  position: relative;
+  z-index: 0;
   display: grid;
   gap: 12px;
+}
+
+.operator-rows::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: -22px;
+  right: -18px;
+  width: 56%;
+  height: 72%;
+  border-top: 1px solid var(--hero-etch-faint);
+  border-right: 1px solid var(--hero-etch);
+  background:
+    repeating-linear-gradient(135deg, transparent 0 7px, var(--hero-etch-faint) 7px 8px, transparent 8px 13px);
+  opacity: 0.5;
+  -webkit-mask-image: linear-gradient(135deg, transparent 5%, #000 42%, transparent 94%);
+  mask-image: linear-gradient(135deg, transparent 5%, #000 42%, transparent 94%);
+  pointer-events: none;
 }
 
 .operator-row {
@@ -3140,6 +3239,520 @@ button.nav-link {
   }
 }
 
+
+/* ── Editorial hero ────────────────────────────────────
+   An authored spread rather than a centred stack: the proposition on the
+   left, the live workspace proof on the right read as a measured apparatus
+   — rail, index marks, plinth — on a warm ink ground. */
+
+.hero {
+  position: relative;
+  z-index: 0;
+  overflow: hidden;
+  padding: 76px 24px 68px;
+  border-bottom: 1px solid var(--hero-rule);
+  background: var(--hero-ground);
+  color: var(--hero-ink);
+  text-align: left;
+}
+
+.hero-editorial {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 0.84fr) minmax(0, 1.16fr);
+  gap: clamp(36px, 4.4vw, 76px);
+  align-items: center;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.hero-copy {
+  position: relative;
+  z-index: 2;
+  max-width: none;
+  margin: 0;
+}
+
+.hero-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  margin: 0 0 26px;
+  color: var(--hero-accent);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.hero-eyebrow::before {
+  content: "";
+  width: 32px;
+  height: 1px;
+  background: currentColor;
+}
+
+.hero h1 {
+  max-width: 15ch;
+  margin: 0 0 24px;
+  color: var(--hero-ink);
+  font-size: clamp(2.5rem, 4.1vw, 3.9rem);
+  font-weight: 700;
+  line-height: 0.98;
+  letter-spacing: -0.045em;
+  text-wrap: balance;
+}
+
+.hero-sub {
+  max-width: 42ch;
+  margin: 0 0 32px;
+  color: var(--hero-ink-dim);
+  font-size: clamp(1rem, 1.4vw, 1.06rem);
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+.hero-actions {
+  justify-content: flex-start;
+}
+
+.hero-primary-cta,
+.hero-secondary-cta {
+  border-radius: 2px;
+  font-size: 13px;
+  letter-spacing: 0.01em;
+}
+
+.hero-primary-cta {
+  border-color: var(--green);
+  box-shadow: none;
+}
+
+.hero-secondary-cta {
+  border-color: var(--hero-rule);
+  background: transparent;
+  color: var(--hero-ink);
+}
+
+.hero-secondary-cta:hover {
+  border-color: var(--hero-ink);
+  color: var(--hero-ink);
+}
+
+.hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 18px;
+  margin: 34px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hero-meta li {
+  padding-right: 18px;
+  border-right: 1px solid var(--hero-rule);
+  color: var(--hero-ink-dim);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.hero-meta li:last-child {
+  padding-right: 0;
+  border-right: 0;
+}
+
+.hero-meta li:first-child::before {
+  content: "\25CF";
+  margin-right: 9px;
+  color: var(--hero-accent);
+}
+
+/* Apparatus scaffolding — measurement, not ornament. */
+
+.hero-apparatus {
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
+}
+
+/* The drawing is precise, but not digitally sterile. These two static layers
+   make an uneven field of printer dots, rubbed graphite, and partial drafting
+   marks around the apparatus only. */
+
+.hero-apparatus::before {
+  content: "";
+  position: absolute;
+  z-index: -2;
+  inset: -18% -10% -24% -20%;
+  background-image:
+    radial-gradient(circle, var(--hero-dither) 0 0.7px, transparent 0.9px),
+    radial-gradient(circle, var(--hero-etch) 0 0.55px, transparent 0.8px),
+    radial-gradient(circle, var(--hero-etch-faint) 0 0.65px, transparent 0.85px);
+  background-position: 1px 2px, 4px 1px, -3px 5px;
+  background-size: 5px 5px, 7px 7px, 11px 11px;
+  opacity: 0.72;
+  -webkit-mask-image:
+    radial-gradient(ellipse 42% 50% at 31% 28%, #000 8%, rgba(0, 0, 0, 0.74) 44%, transparent 77%),
+    radial-gradient(ellipse 48% 54% at 76% 58%, #000 3%, rgba(0, 0, 0, 0.62) 41%, transparent 79%),
+    radial-gradient(ellipse 28% 24% at 58% 92%, rgba(0, 0, 0, 0.74), transparent 76%);
+  mask-image:
+    radial-gradient(ellipse 42% 50% at 31% 28%, #000 8%, rgba(0, 0, 0, 0.74) 44%, transparent 77%),
+    radial-gradient(ellipse 48% 54% at 76% 58%, #000 3%, rgba(0, 0, 0, 0.62) 41%, transparent 79%),
+    radial-gradient(ellipse 28% 24% at 58% 92%, rgba(0, 0, 0, 0.74), transparent 76%);
+  pointer-events: none;
+}
+
+.hero-apparatus::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -14% -8% -18% -14%;
+  background:
+    linear-gradient(90deg, transparent 0 7%, var(--hero-etch) 7% 42%, transparent 42%) 0 11% / 100% 1px no-repeat,
+    linear-gradient(90deg, transparent 0 25%, var(--hero-etch-faint) 25% 87%, transparent 87%) 0 17% / 100% 1px no-repeat,
+    repeating-linear-gradient(90deg, var(--hero-etch) 0 2px, transparent 2px 9px) 18% 78% / 47% 1px no-repeat,
+    linear-gradient(90deg, transparent 0 58%, var(--hero-etch) 58% 98%, transparent 98%) 0 92% / 100% 1px no-repeat,
+    linear-gradient(0deg, transparent 0 18%, var(--hero-etch-faint) 18% 74%, transparent 74%) 18% 0 / 1px 100% no-repeat,
+    linear-gradient(0deg, transparent 0 7%, var(--hero-etch) 7% 48%, transparent 48%) 56% 0 / 1px 100% no-repeat,
+    repeating-linear-gradient(0deg, var(--hero-etch) 0 2px, transparent 2px 10px) 93% 13% / 1px 69% no-repeat,
+    radial-gradient(ellipse 56% 62% at 53% 51%, var(--hero-bloom), transparent 72%),
+    radial-gradient(ellipse 38% 30% at 66% 83%, var(--hero-charcoal), transparent 78%);
+  opacity: 0.92;
+  pointer-events: none;
+}
+
+.hero-rail {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  padding-top: 44px;
+  margin-bottom: 22px;
+  border-bottom: 1px solid var(--hero-rule);
+}
+
+.hero-rail::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 7px -2% -4px -4%;
+  background:
+    linear-gradient(90deg, transparent 0 3%, var(--hero-etch) 3% 31%, transparent 31%) 0 8px / 100% 1px no-repeat,
+    repeating-linear-gradient(90deg, var(--hero-etch-faint) 0 1px, transparent 1px 7px) 26% 24px / 62% 1px no-repeat,
+    linear-gradient(90deg, transparent 0 48%, var(--hero-etch) 48% 100%) 0 33px / 100% 1px no-repeat;
+  opacity: 0.88;
+  pointer-events: none;
+}
+
+.hero-rail::after {
+  content: "";
+  position: absolute;
+  right: 6%;
+  bottom: 3px;
+  left: 11%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--hero-etch) 12% 72%, transparent);
+  opacity: 0.66;
+  pointer-events: none;
+}
+
+.hero-rail span {
+  position: relative;
+  padding: 0 0 13px 11px;
+  border-left: 1px solid var(--hero-rule);
+  color: var(--hero-ink-dim);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.hero-rail span::after {
+  content: "";
+  position: absolute;
+  bottom: -3px;
+  left: 11px;
+  width: 5px;
+  height: 5px;
+  background: var(--hero-ink-dim);
+}
+
+.hero-apparatus-body {
+  position: relative;
+  z-index: 1;
+}
+
+.hero-index {
+  position: absolute;
+  top: 16%;
+  right: -30px;
+  display: grid;
+  gap: 44px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hero-index li {
+  color: var(--hero-ink-dim);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+}
+
+.hero-index li::before {
+  content: "";
+  display: block;
+  width: 5px;
+  height: 5px;
+  margin-bottom: 7px;
+  background: var(--hero-rule);
+}
+
+.hero-plinth {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-top: 38px;
+  padding-top: 13px;
+  border-top: 1px solid var(--hero-rule);
+  color: var(--hero-ink-dim);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.hero-plinth::before {
+  content: "";
+  position: absolute;
+  right: 3%;
+  bottom: calc(100% + 9px);
+  left: 4%;
+  height: 17px;
+  border: 1px solid var(--hero-etch);
+  background:
+    repeating-linear-gradient(135deg, transparent 0 5px, var(--hero-etch-faint) 5px 6px, transparent 6px 10px),
+    color-mix(in srgb, var(--hero-ground) 82%, transparent);
+  clip-path: polygon(0 0, 100% 0, 100% 48%, 88% 48%, 88% 100%, 13% 100%, 13% 58%, 0 58%);
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+.hero-plinth::after {
+  content: "";
+  position: absolute;
+  right: 17%;
+  bottom: calc(100% + 4px);
+  left: 18%;
+  height: 1px;
+  background: var(--hero-etch);
+  box-shadow: 19px 4px 0 var(--hero-etch-faint);
+  pointer-events: none;
+}
+
+.hero-plinth-state {
+  color: var(--hero-accent);
+}
+
+.hero-plinth-state::before {
+  content: "\25CF";
+  margin-right: 8px;
+}
+
+.pixel-mascot {
+  width: 24px;
+  height: auto;
+  margin-left: auto;
+  color: var(--hero-ink-dim);
+}
+
+.hero-apparatus .hero-workspace-stage {
+  margin: 0;
+  border-radius: 12px;
+  box-shadow:
+    0 30px 70px rgba(0, 0, 0, 0.42),
+    -3px 4px 0 -2px var(--hero-etch),
+    4px -3px 0 -3px var(--hero-etch-faint),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.hero-apparatus .hero-workspace-stage::before {
+  content: "";
+  position: absolute;
+  z-index: 99;
+  inset: 4px;
+  border-top: 1px solid var(--hero-etch-faint);
+  border-left: 1px solid var(--hero-etch-faint);
+  border-radius: 8px 0 0;
+  opacity: 0.78;
+  pointer-events: none;
+}
+
+.hero-apparatus .hero-agent-harness {
+  width: 100%;
+  margin: 18px 0 0;
+  border-color: var(--hero-rule);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--hero-ink) 5%, transparent);
+}
+
+.hero-apparatus .hero-harness-head {
+  border-bottom-color: var(--hero-rule);
+  color: var(--hero-ink-dim);
+}
+
+/* The comparison control keeps its job and loses the floating pill. */
+
+.hero-desktop-demo {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  margin-top: 0;
+}
+
+.hero-desktop-comparison {
+  align-self: flex-end;
+  margin-bottom: 14px;
+  border-radius: 0;
+  border-color: var(--hero-rule);
+  background: transparent;
+  box-shadow: none;
+}
+
+.hero-desktop-comparison button {
+  border-radius: 0;
+  color: var(--hero-ink-dim);
+}
+
+.hero-desktop-comparison button.is-active {
+  color: var(--hero-ink);
+}
+
+.hero-agent-harness {
+  border-radius: 2px;
+}
+
+/* Two operators, two materials. */
+
+.shared-state-copy .cua-kicker {
+  color: var(--hero-accent);
+  letter-spacing: 0.13em;
+}
+
+.shared-state-section .operator-row-label {
+  color: var(--hero-accent);
+}
+
+.hero-apparatus .hero-harness-user b {
+  color: var(--hero-ink-dim);
+}
+
+.shared-state-copy h2 {
+  color: var(--hero-ink);
+}
+
+.shared-state-copy p {
+  color: var(--hero-ink-dim);
+}
+
+.shared-state-section .operator-row {
+  position: relative;
+  border-color: var(--hero-rule);
+  background: color-mix(in srgb, var(--hero-ink) 5%, transparent);
+}
+
+.shared-state-section .operator-row.is-you::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 3px -4px -4px 3px;
+  border-right: 1px solid var(--hero-etch-faint);
+  border-bottom: 1px solid var(--hero-etch);
+  pointer-events: none;
+}
+
+.shared-state-section .operator-row-action,
+.shared-state-section .operator-result {
+  color: var(--hero-ink);
+}
+
+.shared-state-section .operator-row-action kbd {
+  border-color: var(--hero-rule);
+  background: color-mix(in srgb, var(--hero-ink) 9%, transparent);
+  color: var(--hero-ink);
+}
+
+.operator-row {
+  border-radius: 2px;
+}
+
+.operator-row.is-agent {
+  border-color: transparent;
+  background: var(--slab-bg);
+}
+
+.operator-row.is-agent .operator-row-label {
+  color: var(--slab-accent);
+}
+
+.operator-row.is-agent .operator-row-action,
+.operator-row.is-agent .operator-row-action code {
+  color: var(--slab-fg);
+}
+
+@media (max-width: 1080px) {
+  .hero-editorial {
+    grid-template-columns: 1fr;
+    gap: 44px;
+  }
+
+  .hero h1 {
+    max-width: 18ch;
+  }
+
+  .hero-index {
+    display: none;
+  }
+
+  .hero-apparatus::before,
+  .hero-apparatus::after {
+    inset-inline: -7%;
+  }
+}
+
+@media (max-width: 640px) {
+  .hero {
+    padding: 52px 20px 48px;
+  }
+
+  .hero-rail {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .hero-rail span:nth-child(n + 3) {
+    padding-top: 13px;
+  }
+
+  .hero-desktop-comparison {
+    align-self: stretch;
+  }
+
+  .hero-apparatus::before {
+    opacity: 0.54;
+  }
+
+  .hero-apparatus::after {
+    opacity: 0.7;
+  }
+}
+
 /* ── Responsive ────────────────────────────────────── */
 
 @media (max-width: 900px) {
@@ -3170,7 +3783,7 @@ button.nav-link {
 }
 
 @media (max-width: 720px) {
-  .shared-state-section,
+  .shared-state-inner,
   .local-trust,
   .hands-stage {
     grid-template-columns: 1fr;
@@ -3188,7 +3801,7 @@ button.nav-link {
   }
 
   .shared-state-section {
-    padding: 64px 0;
+    padding: 64px 20px 60px;
   }
 
   .install-chooser-grid {
@@ -3372,12 +3985,25 @@ button.nav-link {
   }
 
   .hero {
-    padding: 40px 0 32px;
+    padding: 40px 16px 34px;
   }
 
   .hero h1 {
     font-size: 2.2rem;
     line-height: 1.02;
+  }
+
+  .hero-rail span {
+    padding-left: 9px;
+    font-size: 9px;
+  }
+
+  .hero-rail span::after {
+    left: 9px;
+  }
+
+  .shared-state-section {
+    padding-inline: 16px;
   }
 
   .hero-sub {
@@ -3419,7 +4045,7 @@ button.nav-link {
   }
 
   .hero-workspace-stage {
-    width: calc(100vw - 20px);
+    width: 100%;
     aspect-ratio: 16 / 9;
     margin-top: 12px;
     padding: 0;
@@ -3608,6 +4234,5 @@ button.nav-link {
   .hero-workspace-stage {
     animation: none;
     opacity: 1;
-    transform: translateX(-50%);
   }
 }
