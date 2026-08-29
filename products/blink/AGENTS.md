@@ -1,5 +1,9 @@
 # AGENTS.md
 
+This tree is the Blink product inside the Lattices monorepo (`products/blink`).
+Keep `Blink.app`, NoteStore, and the panel runtime separate from the Lattices
+menu bar app even though they share this repository and website.
+
 ## Blink in 60 seconds
 
 Blink is a native macOS spatial note-taking app. It is not a document library
@@ -120,7 +124,7 @@ Other useful references:
 ## Commands
 
 ```sh
-swift build                  # needs ../hudson checkout (BLINK_HUDSON_SOURCE=git for GitHub)
+swift build                  # needs ../../../hudson from products/blink (BLINK_HUDSON_SOURCE=git for GitHub)
 swift test                   # BlinkCore tests
 swift build --product blink  # notes CLI (docs/cli.md)
 (cd web/editor && bun install && bun run build)   # editor bundle
@@ -148,9 +152,10 @@ swift build --product blink  # notes CLI (docs/cli.md)
 - `AGENTS.md` and `CLAUDE.md` mirror the same instructions (apart from their
   title); keep them in sync.
 - For larger initiatives/features, survey the ecosystem first: check HudsonKit
-  (`../hudson/packages/native/apple/HudsonKit`) for reusable primitives and
-  lattices / talkie / scout (`../lattices`, `../talkie`, `../openscout`) for
-  proven patterns. Small widgets/tweaks do not need the survey.
+  (`../../../hudson/packages/native/apple/HudsonKit`) for reusable primitives and
+  talkie / scout (`../../../talkie`, `../../../openscout`) for proven patterns.
+  Small widgets/tweaks do not need the survey. This tree is already inside
+  lattices at `products/blink`.
 - Log prefix `[BLINK]` via HudLogger (HudsonObservability).
 - Hyper = ⌃⌥⇧⌘. Global hotkeys use Carbon `RegisterEventHotKey` and do not
   require Accessibility permission.

@@ -20,7 +20,7 @@ SIGN_IDENTITY="${BLINK_SIGN_IDENTITY:-$(default_sign_identity || true)}"
 echo "==> Building blink CLI (release)..."
 cd "$ROOT"
 # The CLI target doesn't link Hudson, but resolving the manifest still needs the
-# hudson dependency reachable (../hudson checkout, or BLINK_HUDSON_SOURCE=git).
+# hudson dependency reachable (../../../hudson from products/blink, or BLINK_HUDSON_SOURCE=git).
 swift build -c release --product blink
 BIN_PATH="$(swift build -c release --product blink --show-bin-path)/blink"
 

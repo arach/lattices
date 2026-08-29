@@ -2256,6 +2256,10 @@ button.nav-link {
   min-height: 100vh;
 }
 
+.blink-page {
+  --action-coral: #f0b45a;
+}
+
 .action-page .nav-inner,
 .action-shell,
 .action-footer-inner {

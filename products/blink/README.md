@@ -1,10 +1,16 @@
 # Blink
 
+**[lattices.dev/blink](https://lattices.dev/blink)** · Spatial notes from Lattices.
+
 Spatial note-taking for macOS: notes are first-class floating glass panels you
 arrange on screen. Native Swift/AppKit bones on
 [HudsonKit](https://github.com/arach/hudson), web editor surfaces
 (CodeMirror 6) in WKWebViews. Triad-only: menubar popover · command palette ·
 floating panels — no main window; the desktop is the workspace.
+
+Source lives in the Lattices monorepo at
+[`products/blink`](https://github.com/arach/lattices/tree/main/products/blink).
+Blink remains a separately signed app and runtime.
 
 This is **v2**, a from-scratch native rewrite. The original Tauri + React app
 remains available at the [`v1-final`](https://github.com/arach/blink/tree/v1-final)
@@ -13,7 +19,7 @@ tag.
 ## Build & run
 
 ```sh
-swift build                 # app + CLI; requires a sibling ../hudson checkout
+swift build                 # app + CLI; requires ../../../hudson from products/blink
 (cd web/editor && bun install && bun run build)   # editor bundle (once)
 ./scripts/run-app.sh --debug --restart            # assemble + launch dist/Blink.app
 swift build --product blink                       # notes CLI; see docs/cli.md

@@ -25,7 +25,7 @@ Modeled on `@arach/lattices`' pipeline. All scripts live in `tools/release/`.
    `BLINK_NOTARY_PROFILE`). See `Config/signing.env.example`.
 3. **npm** — `npm login` as `arach` (publishes `@arach/blink` with provenance).
 4. **Hudson** — the app build needs the `hudson` dependency resolvable
-   (`../hudson` checkout, or `BLINK_HUDSON_SOURCE=git` + a read token). The CLI
+   (`../../../hudson` from `products/blink`, or `BLINK_HUDSON_SOURCE=git` + a read token). The CLI
    build doesn't link Hudson but still needs the manifest to resolve.
 
 ## Cutting a release

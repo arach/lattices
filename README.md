@@ -14,10 +14,18 @@ in one keystroke.
 
 ## Product family
 
-**Lattices** organizes and drives the workspace. **[Action](https://lattices.dev/action)**
-is the focused computer-use product for observing a Mac surface, acting on explicit
-targets, recording the run, and verifying what changed. Action lives in
-[`products/action`](products/action) and remains a separate signed app and runtime.
+**Lattices** organizes and drives the workspace.
+
+**[Action](https://lattices.dev/action)** is the focused computer-use product for
+observing a Mac surface, acting on explicit targets, recording the run, and
+verifying what changed. It lives in [`products/action`](products/action).
+
+**[Blink](https://lattices.dev/blink)** is spatial notes: each note is a floating
+panel, and the desktop is the workspace. It lives in
+[`products/blink`](products/blink).
+
+Action and Blink remain separately signed apps. Do not fold them into the
+Lattices menu bar process.
 
 ## What you can do
 

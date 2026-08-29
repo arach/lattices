@@ -8,7 +8,7 @@ packages:
   Blink:
     path: ../..
   Hudson:
-    path: ../../../hudson
+    path: ../../../../../hudson
 targets:
   BlinkMobile:
     type: application

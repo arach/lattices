@@ -10,6 +10,7 @@ Lattices has a few main surfaces:
 - website and docs in `apps/site/`
 - agent-facing docs and skills in `docs/` and `skills/`
 - Action, the focused computer-use product, in `products/action/`
+- Blink, the spatial notes product, in `products/blink/`
 
 The CLI and app share contracts for session names, tmux title tags, daemon methods, project
 discovery, and shortcut behavior. When a change touches one surface, check whether the other surface
@@ -21,8 +22,9 @@ needs to stay in sync.
 bun install
 ```
 
-Action keeps its own Bun workspace and lockfile. Install its dependencies from
-the Lattices repository root:
+Action keeps its own Bun workspace and lockfile. Blink is a Swift package with a
+nested landing workspace. Install Action dependencies from the Lattices
+repository root:
 
 ```sh
 bun --cwd products/action install
@@ -42,6 +44,7 @@ bun run check:app        # Swift package build
 bun run build:app-bundle # Build/sign the local .app bundle
 bun --cwd products/action typecheck      # Action TypeScript type check
 bun --cwd products/action native:doctor  # Action native build and permission status
+bun run blink:check                      # Blink Swift tests
 ```
 
 ## Pull Requests
@@ -60,6 +63,7 @@ Please keep PRs focused. Good PRs usually include:
   product surfaces, packages, docs, content, assets, tests, or tooling.
 - Prefer existing app and CLI patterns over new abstractions.
 - Follow `products/action/AGENTS.md` for changes inside the Action product.
+- Follow `products/blink/AGENTS.md` for changes inside the Blink product.
 - Keep global input handling and action dispatch fast and deterministic.
 - Treat visual customization, animations, and agent integrations as best-effort layers that must not
   block core workspace actions.
@@ -69,6 +73,7 @@ Please keep PRs focused. Good PRs usually include:
 ## Docs
 
 Lattices docs live in `docs/`, `README.md`, and the Vite site under `apps/site`.
-Action docs live in `products/action/docs/` and `products/action/README.md`. For
+Action docs live in `products/action/docs/` and `products/action/README.md`.
+Blink docs live in `products/blink/docs/` and `products/blink/README.md`. For
 design or proposal work, use numbered docs such as `LAT-001` so decisions can be
 discussed and approved before the implementation grows.

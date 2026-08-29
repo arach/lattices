@@ -2,11 +2,12 @@
 import PackageDescription
 
 // Hudson is consumed from the sibling checkout by default (same convention as
-// Scout). Set BLINK_HUDSON_SOURCE=git to resolve it from GitHub instead.
+// Lattices `apps/mac`). From `products/blink/` that is `../../../hudson`.
+// Set BLINK_HUDSON_SOURCE=git to resolve it from GitHub instead.
 let hudsonSource = Context.environment["BLINK_HUDSON_SOURCE"] ?? "path"
 let hudsonDependency: Package.Dependency = hudsonSource == "git"
     ? .package(url: "git@github.com:arach/hudson.git", branch: "main")
-    : .package(path: "../hudson")
+    : .package(path: "../../../hudson")
 
 let package = Package(
     name: "Blink",
