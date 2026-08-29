@@ -1,0 +1,39 @@
+{
+  "etag": "\"demo-workspace\"",
+  "generatedAt": 1785636000000,
+  "issues": [],
+  "notes": [
+    {
+      "id": "launch-checklist",
+      "markdown": "---\nid: launch-checklist\ncreated: 2026-07-31T14:00:00.000Z\nupdated: 2026-08-01T18:40:00.000Z\ntags: [release, ios]\npinned: true\nblink:\n  workspace: Launch\n---\n# Launch checklist\n\n- Verify the encrypted LAN handshake\n- Read notes after the Mac disconnects\n- Check Dynamic Type on the detail view",
+      "pinned": true,
+      "presentation": { "workspace": "Launch" },
+      "revision": "demo-launch-r1",
+      "tags": ["release", "ios"],
+      "title": "Launch checklist",
+      "updatedAt": 1785619200000
+    },
+    {
+      "id": "pairing-notes",
+      "markdown": "---\nid: pairing-notes\ncreated: 2026-07-30T14:00:00.000Z\nupdated: 2026-08-01T16:15:00.000Z\ntags: [security]\npinned: false\nblink:\n  workspace: Hudson\n---\n# Pairing notes\n\nBonjour advertises the Mac public key. Each snapshot request and response is sealed end to end inside the encrypted peer session.",
+      "pinned": false,
+      "presentation": { "workspace": "Hudson" },
+      "revision": "demo-pairing-r1",
+      "tags": ["security"],
+      "title": "Pairing notes",
+      "updatedAt": 1785610500000
+    },
+    {
+      "id": "saturday",
+      "markdown": "---\nid: saturday\ncreated: 2026-07-28T14:00:00.000Z\nupdated: 2026-07-31T21:00:00.000Z\ntags: []\npinned: false\n---\n# Saturday\n\nPick up coffee beans, walk by the canal, and leave enough quiet time to sketch the next workspace.",
+      "pinned": false,
+      "presentation": {},
+      "revision": "demo-saturday-r1",
+      "tags": [],
+      "title": "Saturday",
+      "updatedAt": 1785531600000
+    }
+  ],
+  "tombstones": [],
+  "version": 1
+}

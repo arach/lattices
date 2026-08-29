@@ -1,0 +1,52 @@
+{
+  "name": "@arach/blink",
+  "version": "2.0.5",
+  "description": "Spatial notes for macOS — native floating panels and an agent-first CLI over local Markdown.",
+  "homepage": "https://blink.arach.dev",
+  "bugs": {
+    "url": "https://github.com/arach/blink/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arach/blink.git",
+    "directory": "packages/npm"
+  },
+  "license": "MIT",
+  "type": "module",
+  "os": ["darwin"],
+  "cpu": ["arm64"],
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "bin": {
+    "blink": "bin/blink.mjs",
+    "blink-app": "bin/blink-app.mjs"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "README.md"
+  ],
+  "keywords": [
+    "blink",
+    "notes",
+    "macos",
+    "menubar",
+    "cli",
+    "agents",
+    "ai-agents",
+    "spatial",
+    "markdown",
+    "local-first",
+    "productivity",
+    "swift",
+    "floating-notes"
+  ],
+  "scripts": {
+    "prepack": "bash ../../tools/release/build-cli.sh"
+  }
+}

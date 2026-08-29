@@ -1,0 +1,24 @@
+{
+  "originHash" : "5b0ba95acdcc6a1d71f4773c132ca786cf3dc92fa1581c73929f3e2359d368cf",
+  "pins" : [
+    {
+      "identity" : "swift-argument-parser",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-argument-parser.git",
+      "state" : {
+        "revision" : "6a52f3251125d74daf04fcbd5e6f08a75d074382",
+        "version" : "1.8.2"
+      }
+    },
+    {
+      "identity" : "vox",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/arach/vox.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "20f28ad3401fc8cd45b21f6603191a584a725054"
+      }
+    }
+  ],
+  "version" : 3
+}

@@ -1,0 +1,8 @@
+{
+  "description": "Blink is the companion to Blink on Mac — your spatial notes, with you on iPhone and iPad.\n\nOn the Mac, notes live as floating panels on your desktop. On mobile, the same notes and workspaces are available for quick, read-only recall: browse a chronological log, open a note, filter by workspace, and search — even when your Mac is offline.\n\nPair once with your Mac over your local network. Sync is encrypted end-to-end. Your notes stay files you control; mobile holds a replaceable offline cache, not a second proprietary library.\n\n• Read notes and workspaces from your Mac\n• Offline-first cache for on-the-go recall\n• Secure LAN pairing and encrypted sync\n• Native iPhone and iPad layouts\n• Dynamic Type and VoiceOver friendly\n\nRequires a Mac running Blink for pairing and sync. Mobile is read-only in this release.",
+  "keywords": "notes,markdown,spatial,companion,offline,workspace,read,recall,mac,sync",
+  "marketingUrl": "https://blink.arach.dev",
+  "promotionalText": "Your Mac’s spatial notes — readable on iPhone and iPad, offline-ready after one secure pair.",
+  "supportUrl": "https://blink.arach.dev",
+  "whatsNew": "Initial App Store release of the Blink mobile companion: pair with your Mac, sync notes over the local network, and read your workspaces offline."
+}

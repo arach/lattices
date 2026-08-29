@@ -1,0 +1,72 @@
+# Blink
+
+> Native spatial notes for macOS. Each note is a floating panel on the desktop and a local Markdown file that humans and agents can safely share.
+
+Homepage: https://blink.arach.dev/
+Repository: https://github.com/arach/blink
+Releases: https://github.com/arach/blink/releases/latest
+Agent instructions: https://blink.arach.dev/agents.md
+CLI reference: https://github.com/arach/blink/blob/main/docs/cli.md
+Configuration reference: https://github.com/arach/blink/blob/main/docs/config.md
+Workspace reference: https://github.com/arach/blink/blob/main/docs/workspaces.md
+
+## Product model
+
+- Blink is a macOS 14+ Apple Silicon menubar app built with Swift and AppKit.
+- The note is the window; the desktop is the workspace.
+- There is no main library window, cloud account, side database, or Electron runtime.
+- One note equals one Markdown file with YAML frontmatter.
+- The app, CLI, and external writers converge on the same files.
+
+## Install
+
+```sh
+npm install -g @arach/blink
+blink app install
+blink app open
+```
+
+The npm package requires Node.js 18+ and includes the native `blink` CLI. `blink app install` installs the signed and notarized macOS app.
+
+## Agent entry points
+
+- Use the `blink` CLI for note operations. Prefer it to GUI automation.
+- Edit `~/Library/Application Support/Blink/config.json` for behavior and appearance; valid changes hot-apply.
+- Read `/agents.md` for the complete operating contract, examples, paths, and safety rules.
+- Set `BLINK_HOME` to isolate the file-backed Blink root for tests or automation.
+
+## Core CLI
+
+```text
+blink ls
+blink cat <id>
+blink new [text]
+blink present <id> [text] [--style ... --slot 1-9] [--json]
+blink type <id> [text]
+blink write <id> [text]
+blink search <query>
+blink rm <id>
+blink path [<id>]
+blink workspace <subcommand>
+```
+
+`present` composes content, presentation, and placement. `type` appends an update that an open panel reveals visibly. `write` quietly replaces the body. Use `--json` when structured output is available and stdin for exact multi-line content.
+
+## Paths and truth
+
+```text
+~/Library/Application Support/Blink/
+├── Notes/<id>.md       note content + YAML frontmatter
+├── config.json         behavior, appearance, styles, workspaces
+└── attachments/        note media and installed workspace marks
+```
+
+The Markdown files are note truth. Portable placement intent such as `blink.slot` lives in frontmatter. Exact panel frames, open-panel state, and per-note read/edit mode are device-local state, not part of `BLINK_HOME`.
+
+## Safety and current status
+
+- Prefer CLI writes because they are atomic and preserve Blink and foreign frontmatter.
+- External file edits reconcile live; if an open panel has unsaved user text, the user wins.
+- Use `blink rm` only when deletion is explicitly intended.
+- Workspaces are generic groups and treatments; never hardcode another product's brand into Blink.
+- A Unix socket, MCP server, and streaming live-plane API are proposals, not shipped interfaces. Use the CLI and files today.
