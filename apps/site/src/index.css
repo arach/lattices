@@ -182,31 +182,150 @@ button.nav-link {
   background: color-mix(in srgb, var(--text) 6%, transparent);
 }
 
+.products-menu {
+  position: relative;
+}
+
+.products-menu-trigger {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 5px;
+}
+
+.products-menu-chevron {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+  transition: transform 0.16s ease;
+}
+
+.products-menu-trigger[aria-expanded="true"] .products-menu-chevron {
+  transform: rotate(180deg);
+}
+
+.products-menu-trigger:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 3px;
+}
+
+.products-menu-panel {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 9px);
+  right: 0;
+  width: 292px;
+  padding: 6px;
+  border: 1px solid var(--border-lit);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.18);
+}
+
+.products-menu .products-menu-link {
+  display: block;
+  min-height: 0;
+  padding: 10px 12px;
+  border-radius: 7px;
+  color: var(--text-dim);
+  text-align: left;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.products-menu .products-menu-link:hover,
+.products-menu .products-menu-link:focus-visible {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  outline: none;
+}
+
+.products-menu-link > span,
+.products-menu-link > small {
+  display: block;
+}
+
+.products-menu-link > span {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.products-menu-link > small {
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.35;
+}
+
 .theme-toggle {
   display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
+  position: relative;
+  width: 54px;
   height: 32px;
-  margin-left: 4px;
-  padding: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px;
   border: 1px solid var(--border-lit);
   border-radius: 999px;
-  background: transparent;
-  color: var(--text-dim);
+  padding: 3px;
+  background: color-mix(in srgb, var(--surface) 76%, transparent);
+  color: var(--text-muted);
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s, background-color 0.15s;
+  transition: border-color 0.16s, background-color 0.16s, color 0.16s;
+}
+
+.theme-toggle::before {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--text);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+  content: "";
+  transition: transform 0.18s ease;
+}
+
+.theme-toggle[aria-checked="true"]::before {
+  transform: translateX(24px);
 }
 
 .theme-toggle:hover {
-  color: var(--text);
   border-color: var(--text-muted);
-  background: color-mix(in srgb, var(--text) 6%, transparent);
+  color: var(--text-dim);
 }
 
 .theme-toggle:focus-visible {
   outline: 2px solid var(--green);
-  outline-offset: 2px;
+  outline-offset: 3px;
+}
+
+.theme-toggle-option {
+  z-index: 1;
+  display: grid;
+  width: 22px;
+  height: 24px;
+  place-items: center;
+  color: var(--text-muted);
+}
+
+.theme-toggle-option.is-active {
+  color: var(--surface);
+}
+
+.theme-toggle-option svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
 }
 
 .nav-github {
@@ -885,6 +1004,11 @@ button.nav-link {
   padding-left: 0;
 }
 
+.hero-harness-body > [aria-hidden="true"] {
+  pointer-events: none;
+  user-select: none;
+}
+
 .hero-harness-map {
   margin: 0;
   overflow-x: auto;
@@ -893,10 +1017,15 @@ button.nav-link {
   padding: 8px 10px;
   background: color-mix(in srgb, var(--text) 4%, var(--bg));
   color: var(--text);
-  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  /* Google Fonts' JetBrains Mono subsets omit U+2500–U+257F. Mixing its label
+     metrics with fallback box glyphs leaves stippled vertical joins, so keep
+     the complete map in one box-capable system monospace. */
+  font-family: ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Monaco, monospace;
   font-size: 10px;
+  font-weight: 500;
   font-variant-ligatures: none;
-  line-height: 1.22;
+  letter-spacing: 0;
+  line-height: 1;
   white-space: pre;
   -webkit-overflow-scrolling: touch;
 }
@@ -3566,10 +3695,19 @@ button.nav-link {
   margin-right: 8px;
 }
 
+.pixel-mascot-wrap {
+  margin-left: auto;
+  display: block;
+  padding: 6px;
+  transform: translate3d(var(--cat-x, 0px), var(--cat-y, 0px), 0)
+    rotate(var(--cat-rotate, 0deg));
+  transform-origin: 50% 100%;
+}
+
 .pixel-mascot {
+  display: block;
   width: 24px;
   height: auto;
-  margin-left: auto;
   color: var(--hero-ink-dim);
 }
 
@@ -3728,6 +3866,10 @@ button.nav-link {
 }
 
 @media (max-width: 640px) {
+  .products-menu-panel {
+    width: min(292px, calc(100vw - 24px));
+  }
+
   .hero {
     padding: 52px 20px 48px;
   }
@@ -4215,6 +4357,14 @@ button.nav-link {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .products-menu-chevron,
+  .theme-toggle,
+  .theme-toggle::before,
+  .pixel-mascot-wrap {
+    transition: none;
+    transform: none;
+  }
+
   .fade-in {
     animation: none;
   }

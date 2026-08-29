@@ -8,15 +8,23 @@ export function ThemeToggle({
   onToggle: () => void;
 }) {
   const next = theme === "dark" ? "light" : "dark";
+
   return (
     <button
       type="button"
       className="theme-toggle"
       onClick={onToggle}
-      aria-label={`Switch to ${next} mode`}
-      title={`Switch to ${next} mode`}
+      role="switch"
+      aria-label="Dark theme"
+      aria-checked={theme === "dark"}
+      title={`Switch to ${next} theme`}
     >
-      {theme === "dark" ? <SunIcon /> : <MoonIcon />}
+      <span className={`theme-toggle-option${theme === "light" ? " is-active" : ""}`}>
+        <SunIcon />
+      </span>
+      <span className={`theme-toggle-option${theme === "dark" ? " is-active" : ""}`}>
+        <MoonIcon />
+      </span>
     </button>
   );
 }
