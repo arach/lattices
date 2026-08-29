@@ -42,6 +42,89 @@ export function LatticesMark({ size = 20 }: { size?: number }) {
   )
 }
 
+const productLinks = [
+  {
+    href: '/#app',
+    title: 'Lattices for Mac',
+    description: 'Launch, arrange, and inspect workspaces',
+  },
+  {
+    href: '/action',
+    title: 'Action',
+    description: 'Inspectable computer use on the Mac',
+  },
+  {
+    href: '/blog/lats-dev-ipad-companion',
+    title: 'Companion Deck',
+    description: 'Control your Mac workspace from iPad',
+  },
+  {
+    href: '/docs/api',
+    title: 'Agent API',
+    description: 'Programmatic workspace control',
+  },
+]
+
+export function ProductsMenu() {
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      setOpen(false)
+      triggerRef.current?.focus()
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [open])
+
+  return (
+    <div className="products-menu" ref={rootRef}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="nav-link products-menu-trigger"
+        aria-expanded={open}
+        aria-haspopup="true"
+        aria-controls="products-menu-panel"
+        onClick={() => setOpen((current) => !current)}
+      >
+        Products
+        <svg className="products-menu-chevron" viewBox="0 0 12 12" aria-hidden="true">
+          <path d="m3 4.5 3 3 3-3" />
+        </svg>
+      </button>
+      {open ? (
+        <div id="products-menu-panel" className="products-menu-panel" aria-label="Products">
+          {productLinks.map((product) => (
+            <a
+              key={product.href}
+              href={product.href}
+              className="products-menu-link"
+              onClick={() => setOpen(false)}
+            >
+              <span>{product.title}</span>
+              <small>{product.description}</small>
+            </a>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 export function SiteHeader() {
   const [searchOpen, setSearchOpen] = useState(false)
   // The initial theme is set synchronously by the inline script in index.html
@@ -77,9 +160,9 @@ export function SiteHeader() {
             <span>lattices</span>
           </a>
           <nav className="site-links" aria-label="Primary navigation">
-            <a href="/blog">Blog</a>
+            <a href="/blog" className="nav-blog-link">Blog</a>
             <a href="/docs/overview">Docs</a>
-            <a href="/docs/api">API</a>
+            <ProductsMenu />
             <button type="button" onClick={() => setSearchOpen(true)} aria-label="Open search (Cmd+K)">
               Search
               <span aria-hidden="true">⌘K</span>
