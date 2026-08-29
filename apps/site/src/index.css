@@ -893,9 +893,13 @@ button.nav-link {
   padding-left: 0;
 }
 
+.hero-harness-map-caption {
+  white-space: nowrap;
+}
+
 .hero-harness-map {
   margin: 0;
-  overflow-x: auto;
+  overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 8px 10px;
@@ -912,6 +916,9 @@ button.nav-link {
   letter-spacing: 0;
   line-height: 1.28;
   white-space: pre;
+  /* Both drawings are 12 rows. Lock the box so Without/With cannot
+     nudge the plinth or the cat. */
+  height: calc(1.28em * 12);
   -webkit-overflow-scrolling: touch;
 }
 
@@ -1099,16 +1106,23 @@ button.nav-link {
 }
 
 .hands-section {
-  padding: 84px 0;
+  padding: 84px clamp(20px, 3.2vw, 48px) 88px;
+}
+
+.hands-copy,
+.hands-stage {
+  max-width: 1200px;
+  margin-right: auto;
+  margin-left: auto;
 }
 
 .hands-copy h2 {
-  max-width: 680px;
+  max-width: 18ch;
   margin: 0;
   font-size: clamp(1.7rem, 3.2vw, 2.5rem);
   font-weight: 650;
   line-height: 1.08;
-  letter-spacing: -0.042em;
+  letter-spacing: -0.032em;
   text-wrap: balance;
 }
 
@@ -3190,6 +3204,10 @@ button.nav-link {
     -3px 4px 0 -2px var(--hero-etch),
     4px -3px 0 -3px var(--hero-etch-faint),
     inset 0 1px 0 color-mix(in srgb, var(--hero-ground) 55%, transparent);
+}
+
+.hero-apparatus .hero-desktop-screen {
+  border-radius: 12px;
 }
 
 .hero-apparatus .hero-workspace-stage::before {

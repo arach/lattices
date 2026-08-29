@@ -367,20 +367,20 @@ type HeroWindowLayout = {
 
 const heroWindowLayouts: Record<HeroWindowId, Record<HeroDesktopPhase, HeroWindowLayout>> = {
   agent: {
-    messy: { left: 18, top: 22, width: 49, height: 56, z: 6 },
-    organized: { left: 1.6, top: 10.5, width: 58, height: 86, z: 6 },
+    messy: { left: 17, top: 21, width: 47, height: 52, z: 6 },
+    organized: { left: 2.8, top: 11.5, width: 55, height: 80, z: 6 },
   },
   editor: {
-    messy: { left: 6, top: 14, width: 35, height: 29, z: 3 },
-    organized: { left: 61, top: 10.5, width: 37.4, height: 28, z: 3 },
+    messy: { left: 8, top: 13, width: 32, height: 27, z: 3 },
+    organized: { left: 59.6, top: 11.5, width: 34.4, height: 26, z: 3 },
   },
   browser: {
-    messy: { left: 54, top: 11, width: 41, height: 42, z: 2 },
-    organized: { left: 61, top: 41.5, width: 37.4, height: 32, z: 2 },
+    messy: { left: 51, top: 13, width: 35, height: 38, z: 2 },
+    organized: { left: 59.6, top: 39.2, width: 34.4, height: 30, z: 2 },
   },
   terminal: {
-    messy: { left: 46, top: 55, width: 38, height: 29, z: 4 },
-    organized: { left: 61, top: 76.5, width: 37.4, height: 20, z: 4 },
+    messy: { left: 43, top: 53, width: 35, height: 27, z: 4 },
+    organized: { left: 59.6, top: 70.8, width: 34.4, height: 20.7, z: 4 },
   },
 };
 
@@ -404,6 +404,7 @@ const heroDesktopMaps: Record<HeroDesktopPhase, string> = {
 │          │                   │                               │   │
 │          └───────────────────┘                               │   │
 │                               └──────────────────────────────┘   │
+│                                                                  │
 └──────────────────────────────────────────────────────────────────┘`,
   organized: `\
 ┌ Display 0 · MacBook Pro · Space 1 ───────────────────────────────┐
@@ -651,13 +652,12 @@ function HeroWorkspaceStage() {
             <i aria-hidden="true">⏺</i> lattices — map
           </span>
           <motion.div
-            key={driver === "agent" ? "agent" : phase}
             className="hero-harness-result hero-harness-map-result"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: prefersReducedMotion ? 0 : 0.3, delay: prefersReducedMotion ? 0 : 0.6 }}
           >
-            <span>
+            <span className="hero-harness-map-caption">
               <b aria-hidden="true">⎿</b> 4 windows · {driver === "agent" || !organized ? "3 overlapping" : "tiled main-left"} · focused: atlas — codex
             </span>
             <pre className="hero-harness-map" aria-hidden="true">{heroDesktopMaps[phase]}</pre>
@@ -721,11 +721,11 @@ function HandsOnSection() {
     <section className="hands-section fade-in" id="hands">
       <div className="hands-copy">
         <div className="cua-kicker">Keyboard and mouse</div>
-        <h2>Shortcuts and mouse gestures, not just the palette.</h2>
+        <h2>Tile from a chord, or from a mouse stroke.</h2>
         <p>
           Caps Lock is Hyper. ⌃⌥ tiles halves and grids. Hold a mouse button,
-          draw a direction or a shape, release. The app replays that path in
-          a 3×3 <em>matrix</em> — the same completer as the logo.
+          draw a direction or a shape, and release. The app replays that path
+          in a 3×3 <em>matrix</em>, the same completer as the logo.
         </p>
         <div className="hands-links">
           <a href="/docs/app">Shortcut reference &rarr;</a>
@@ -830,7 +830,7 @@ export default function App() {
           <div className="hero-copy">
             <p className="hero-eyebrow">Native macOS workspace manager</p>
             <div className="hero-copy-main">
-              <h1>The workspace manager for you and your agents.</h1>
+              <h1>A workspace manager for you and your agents.</h1>
               <p className="hero-sub">
                 Every window, terminal, and layout on your Mac organized and
                 accessible, by shortcut, mouse gesture, or API.
