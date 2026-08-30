@@ -44,29 +44,19 @@ export function LatticesMark({ size = 20 }: { size?: number }) {
 
 const productLinks = [
   {
-    href: '/#app',
-    title: 'Lattices for Mac',
-    description: 'Launch, arrange, and inspect workspaces',
+    href: '/docs/api',
+    title: 'API',
+    description: 'Unified workspace control for agents and scripts',
   },
   {
     href: '/action',
     title: 'Action',
-    description: 'Inspectable computer use on the Mac',
+    description: 'Unified computer use on the Mac',
   },
   {
     href: '/blink',
     title: 'Blink',
     description: 'Spatial notes that live on your desktop',
-  },
-  {
-    href: '/blog/lats-dev-ipad-companion',
-    title: 'Companion Deck',
-    description: 'Control your Mac workspace from iPad',
-  },
-  {
-    href: '/docs/api',
-    title: 'Agent API',
-    description: 'Programmatic workspace control',
   },
 ]
 

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { ThemeToggle } from "./ThemeToggle";
 import { GestureMatrix } from "./GestureMatrix";
 import { ProductsMenu } from "./SiteChrome";
@@ -605,44 +605,39 @@ function HeroWorkspaceStage() {
             </span>
             <pre className="hero-harness-map" aria-hidden="true">{heroDesktopMaps[phase]}</pre>
           </motion.div>
-          <AnimatePresence>
-            {driver === "agent" && (
-              <motion.span
-                key="turn2-user"
-                className="hero-harness-user"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0, transition: { duration: 0.25, delay: 0 } }}
-                transition={{ duration: 0.3, delay: 0.9 }}
-              >
-                <b>&gt;</b> put codex on the left half, stack the rest on the right
-              </motion.span>
-            )}
-            {driver === "agent" && (
-              <motion.span
-                key="turn2-tool"
-                className="hero-harness-tool"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0, transition: { duration: 0.25, delay: 0 } }}
-                transition={{ duration: 0.3, delay: 2.1 }}
-              >
-                <i aria-hidden="true">⏺</i> lattices — space.optimize
-              </motion.span>
-            )}
-            {driver === "agent" && organized && (
-              <motion.span
-                key="turn2-result"
-                className="hero-harness-result"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0, transition: { duration: 0.25, delay: 0 } }}
-                transition={{ duration: 0.3, delay: 0.9 }}
-              >
-                <b aria-hidden="true">⎿</b> codex left half · 3 stacked right · done
-              </motion.span>
-            )}
-          </AnimatePresence>
+          <motion.span
+            className="hero-harness-user"
+            initial={false}
+            animate={{ opacity: driver === "agent" ? 1 : 0 }}
+            transition={{ duration: driver === "agent" ? 0.3 : 0.2, delay: driver === "agent" ? 0.9 : 0 }}
+            style={{ visibility: driver === "agent" ? "visible" : "hidden" }}
+            aria-hidden={driver !== "agent"}
+          >
+            <b>&gt;</b> put codex on the left half, stack the rest on the right
+          </motion.span>
+          <motion.span
+            className="hero-harness-tool"
+            initial={false}
+            animate={{ opacity: driver === "agent" ? 1 : 0 }}
+            transition={{ duration: driver === "agent" ? 0.3 : 0.2, delay: driver === "agent" ? 2.1 : 0 }}
+            style={{ visibility: driver === "agent" ? "visible" : "hidden" }}
+            aria-hidden={driver !== "agent"}
+          >
+            <i aria-hidden="true">⏺</i> lattices — space.optimize
+          </motion.span>
+          <motion.span
+            className="hero-harness-result"
+            initial={false}
+            animate={{ opacity: driver === "agent" && organized ? 1 : 0 }}
+            transition={{
+              duration: driver === "agent" && organized ? 0.3 : 0.2,
+              delay: driver === "agent" && organized ? 0.9 : 0,
+            }}
+            style={{ visibility: driver === "agent" && organized ? "visible" : "hidden" }}
+            aria-hidden={driver !== "agent" || !organized}
+          >
+            <b aria-hidden="true">⎿</b> codex left half · 3 stacked right · done
+          </motion.span>
         </div>
       </div>
     </div>
@@ -699,6 +694,52 @@ function HandsOnSection() {
         </div>
       </div>
     </section>
+  );
+}
+
+function HeroGestureDemo() {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const reducedMotion = useReducedMotion() ?? false;
+
+  const playPreview = () => {
+    if (reducedMotion) return;
+    void videoRef.current?.play();
+  };
+
+  const resetPreview = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.pause();
+    video.currentTime = 0;
+  };
+
+  return (
+    <a
+      className="hero-demo-peek"
+      href="/blog/gesture-completion-matrix"
+      aria-label="Watch the 12-second mouse gesture demo"
+      onMouseEnter={playPreview}
+      onMouseLeave={resetPreview}
+      onFocus={playPreview}
+      onBlur={resetPreview}
+    >
+      <video
+        ref={videoRef}
+        className="hero-demo-peek-media"
+        muted
+        playsInline
+        preload="metadata"
+        poster="/blog/gesture-completion-matrix-poster.png"
+        aria-hidden="true"
+      >
+        <source src="/blog/gesture-completion-matrix.mp4" type="video/mp4" />
+      </video>
+      <span className="hero-demo-peek-copy">
+        <span className="hero-demo-peek-label">12 sec demo</span>
+        <strong>Draw a gesture. Lattices does the rest.</strong>
+        <span className="hero-demo-peek-link">Watch the demo &rarr;</span>
+      </span>
+    </a>
   );
 }
 
@@ -781,6 +822,7 @@ export default function App() {
               <li>API driven</li>
               <li>Built for macOS</li>
             </ul>
+            <HeroGestureDemo />
           </div>
 
           <div className="hero-apparatus">
@@ -1000,7 +1042,7 @@ export default function App() {
             <span className="workflow-number">01</span>
             <div>
               <h3>Window manager</h3>
-              <h2>Arrange your whole Mac.</h2>
+              <h2>Put every window in its place.</h2>
               <p>
                 Tile windows, group them into layers, launch whole projects,
                 and switch contexts from the app, a shortcut, or a mouse
@@ -1038,10 +1080,12 @@ export default function App() {
         <section className="section" id="config">
           <div className="config-head fade-in fade-in-delay-2">
             <h2 className="config-title">
-              Managed terminal sessions
+              Managed project layouts
             </h2>
             <p className="config-desc">
-              tmux made easy today — configurable panes, tabs, and layouts that save, restore, and fit your workflow.
+              Define a project scene — terminals, browser and editor windows,
+              commands, and placement — then bring the whole workspace back in
+              one step.
             </p>
           </div>
 
