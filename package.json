@@ -53,6 +53,8 @@
     "action:check": "bun --cwd products/action typecheck && bun --cwd products/action check:no-wallpaper-writes",
     "action:native:build": "bun --cwd products/action native:app:build",
     "action:native:doctor": "bun --cwd products/action native:doctor",
+    "blink:check": "swift test --package-path products/blink",
+    "blink:build": "swift build --package-path products/blink",
     "studio:dev": "bun --cwd apps/studio dev",
     "studio:build": "bun --cwd apps/studio build",
     "docs:agent": "bun --cwd apps/site agent-docs",

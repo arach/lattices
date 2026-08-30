@@ -54,6 +54,11 @@ const productLinks = [
     description: 'Inspectable computer use on the Mac',
   },
   {
+    href: '/blink',
+    title: 'Blink',
+    description: 'Spatial notes that live on your desktop',
+  },
+  {
     href: '/blog/lats-dev-ipad-companion',
     title: 'Companion Deck',
     description: 'Control your Mac workspace from iPad',

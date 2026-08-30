@@ -17,6 +17,8 @@
 - `lattices search <q> --deep` and `--all` both request all search sources (index + live terminal inspection)
 - Action is a separate Lattices product under `products/action/`; it keeps its own Bun workspace, signed `Action.app`, local agent runtime, and nested `AGENTS.md` contract.
 - Keep Action's AppKit and recording lifecycle separate from the Lattices menu bar app even though both products share this repository and website.
+- Blink is a separate Lattices product under `products/blink/`; it keeps its own Swift package, signed `Blink.app`, notes CLI, and nested `AGENTS.md` contract.
+- Keep Blink's note panels and NoteStore separate from the Lattices menu bar app even though both products share this repository and website.
 
 ## Project Structure
 
@@ -32,6 +34,8 @@
 | Site | `apps/site/` | Vite website, docs, and blog |
 | Action | `products/action/` | Native computer-use app, agent runtime, CLI/MCP surfaces, and release tooling |
 | Action Native | `products/action/native/engine/` | Signed Action.app, local agent, recording probe, and native scripts |
+| Blink | `products/blink/` | Spatial notes app, CLI, iOS companion, and landing |
+| Blink Native | `products/blink/Sources/` | Signed Blink.app, BlinkCore, BlinkPeer, and the notes CLI |
 
 ## Commands
 
@@ -53,6 +57,8 @@ scripts/build.sh                # Signed + notarized release DMG (--local to ski
 scripts/build.sh package        # npm/package app bundle
 bun run action:check            # Action TypeScript + safety guard
 bun run action:native:doctor    # Build and verify Action.app from the monorepo
+bun run blink:check             # Blink Swift tests (needs ../../../hudson)
+bun run blink:build             # Blink app + CLI via products/blink Package.swift
 ```
 
 ## Quick Navigation
@@ -67,6 +73,7 @@ bun run action:native:doctor    # Build and verify Action.app from the monorepo
 - Working with **api**? → Check docs/api.md for the daemon RPC reference
 - Working with **agent docs**? → Check docs/agents.md and apps/site/scripts/agent-docs.mjs for raw markdown, prompt, and context artifacts
 - Working with **Action**? → Read products/action/AGENTS.md before changing its app, runtime, capture, plugins, or release path
+- Working with **Blink**? → Read products/blink/AGENTS.md before changing notes, panels, CLI, or the iOS companion
 
 ## Documentation
 

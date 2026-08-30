@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Unsandboxed: Blink is a menubar tool that reads/writes the user's Notes
+         directory and answers a local Unix socket for its own CLI + agents. -->
+    <key>com.apple.security.app-sandbox</key>
+    <false/>
+
+    <!-- The read-mode renderer loads remote images over https (ATS-gated). -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <key>com.apple.security.network.server</key>
+    <true/>
+</dict>
+</plist>

@@ -1253,6 +1253,8 @@ export default function App() {
           <nav className="footer-links" aria-label="Footer">
             <a href="/docs/overview">Docs</a>
             <a href="/blog">Blog</a>
+            <a href="/action">Action</a>
+            <a href="/blink">Blink</a>
             <a href="/rss.xml">RSS</a>
             <a
               href="https://github.com/arach/lattices"

@@ -220,6 +220,7 @@ export default function ActionPage() {
           <span>Action is a focused computer-use product from Lattices.</span>
           <div>
             <a href="/">Lattices</a>
+            <a href="/blink">Blink</a>
             <a href="/action/llms.txt" data-router="reload">Action docs</a>
             <a href={sourceUrl}>GitHub</a>
           </div>

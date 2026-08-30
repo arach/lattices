@@ -1,0 +1,24 @@
+{
+  "name": "blink-editor",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Vanilla CodeMirror 6 editor surface for Blink v2 native panels (WKWebView host).",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@codemirror/commands": "^6.6.0",
+    "@codemirror/lang-markdown": "^6.3.0",
+    "@codemirror/language": "^6.10.2",
+    "@codemirror/state": "^6.4.1",
+    "@codemirror/view": "^6.28.0",
+    "@lezer/highlight": "^1.2.0",
+    "marked": "^18.0.6"
+  },
+  "devDependencies": {
+    "esbuild": "^0.23.0",
+    "typescript": "^5.5.0"
+  }
+}

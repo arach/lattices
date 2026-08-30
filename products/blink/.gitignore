@@ -1,0 +1,44 @@
+# Build artifacts
+.build/
+.swiftpm/
+dist/
+out/
+*.xcodeproj
+apps/ios/BlinkMobile/Info.plist
+*.tsbuildinfo
+
+# Dependencies
+node_modules/
+
+# Logs
+logs
+*.log
+
+# OS / editor
+.DS_Store
+
+# Local App Store Connect build outputs and private signing material.
+.asc/artifacts/
+.asc/signing/
+.vscode/*
+!.vscode/extensions.json
+.idea
+
+# Local state
+.claude/
+.openscout/project.json
+data/.claude/
+
+# Signing secrets (keep the .example, ignore the real one)
+Config/signing.env
+
+# Local planning and design tooling
+design/
+!design/
+design/*
+!design/studio/
+!design/studio/**
+docs/functionality-v1.md
+docs/notes-representation.md
+docs/v2-plan.md
+docs/v2-ui-map.md

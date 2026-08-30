@@ -16,6 +16,7 @@ import { writeAgentArtifacts } from './agent-docs.mjs'
 import { renderMdxComponent } from './render-mdx.mjs'
 import { getLastUpdatedBatch, repoInfo } from './git-meta.mjs'
 import ActionPage from '../src/components/ActionPage.tsx'
+import BlinkPage from '../src/components/BlinkPage.tsx'
 
 const siteDir = resolve(import.meta.dirname, '..')
 const repoRoot = resolve(siteDir, '..', '..')
@@ -25,6 +26,8 @@ const actionMediaPath = '/action/media/'
 const SITE_URL = 'https://lattices.dev'
 const ACTION_RELEASES_API_URL = 'https://api.github.com/repos/arach/lattices/releases?per_page=100'
 const ACTION_LEGACY_DOWNLOAD_URL = 'https://github.com/arach/action/releases/latest/download/Action.dmg'
+const BLINK_RELEASES_API_URL = 'https://api.github.com/repos/arach/lattices/releases?per_page=100'
+const BLINK_LEGACY_DOWNLOAD_URL = 'https://github.com/arach/blink/releases/latest/download/Blink.dmg'
 const template = await readFile(join(distDir, 'index.html'), 'utf8')
 const shikiTheme = JSON.parse(await readFile(join(siteDir, 'src', 'data', 'lattices-shiki-theme.json'), 'utf8'))
 const highlighter = await createHighlighterCore({
@@ -72,6 +75,14 @@ await writeRoute(
 )
 await copyActionDocs()
 await writeActionDownloadRedirect()
+await writeRoute(
+  '/blink',
+  'Blink — spatial notes from Lattices',
+  'Blink is spatial notes from Lattices: each note is a floating panel, and the desktop is the workspace.',
+  renderToString(createElement(BlinkPage)),
+)
+await copyBlinkDocs()
+await writeBlinkDownloadRedirect()
 
 await writeRoute('/docs', 'Docs — Lattices', 'Lattices documentation', renderDoc(docs.find((doc) => doc.slug === 'overview') || docs[0]))
 
@@ -138,6 +149,8 @@ async function writeSitemap() {
     { loc: `${SITE_URL}/`, priority: '1.0' },
     { loc: `${SITE_URL}/action`, priority: '0.9' },
     { loc: `${SITE_URL}/action/agents`, priority: '0.7' },
+    { loc: `${SITE_URL}/blink`, priority: '0.9' },
+    { loc: `${SITE_URL}/blink/agents.md`, priority: '0.7' },
     { loc: `${SITE_URL}/blog`, priority: '0.8' },
     ...docs.map((doc) => ({
       loc: `${SITE_URL}/docs/${doc.slug}`,
@@ -545,6 +558,73 @@ async function copyActionDocs() {
 function renderActionPage() {
   const sourcePrefix = `${actionAssetSourceDir}/`
   return renderToString(createElement(ActionPage)).replaceAll(sourcePrefix, actionMediaPath)
+}
+
+async function copyBlinkDocs() {
+  const targetDir = join(distDir, 'blink')
+  await mkdir(targetDir, { recursive: true })
+  await copyFile(join(repoRoot, 'products', 'blink', 'landing', 'public', 'llms.txt'), join(targetDir, 'llms.txt'))
+  await copyFile(join(repoRoot, 'products', 'blink', 'landing', 'public', 'agents.md'), join(targetDir, 'agents.md'))
+}
+
+async function writeBlinkDownloadRedirect() {
+  const route = '/blink/download'
+  const filePath = join(distDir, route.slice(1), 'index.html')
+  const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <link rel="canonical" href="${SITE_URL}${route}" />
+    <title>Downloading Blink…</title>
+  </head>
+  <body>
+    <p id="download-status">Finding the latest Blink release…</p>
+    <p><a id="download-link" href="${escapeHtml(BLINK_LEGACY_DOWNLOAD_URL)}">Download the current Blink release manually</a>.</p>
+    <script>
+      const releasesUrl = ${JSON.stringify(BLINK_RELEASES_API_URL)}
+      const legacyUrl = ${JSON.stringify(BLINK_LEGACY_DOWNLOAD_URL)}
+      const status = document.getElementById('download-status')
+      const link = document.getElementById('download-link')
+
+      async function startDownload() {
+        try {
+          const response = await fetch(releasesUrl, {
+            headers: { Accept: 'application/vnd.github+json' },
+          })
+          if (!response.ok) throw new Error(\`GitHub returned \${response.status}\`)
+
+          const releases = await response.json()
+          const release = releases.find((candidate) =>
+            !candidate.draft &&
+            !candidate.prerelease &&
+            typeof candidate.tag_name === 'string' &&
+            candidate.tag_name.startsWith('blink-v')
+          )
+          const asset = release?.assets?.find((candidate) => candidate.name === 'Blink.dmg')
+
+          if (asset?.browser_download_url) {
+            link.href = asset.browser_download_url
+            link.textContent = 'Download Blink manually'
+            window.location.replace(asset.browser_download_url)
+            return
+          }
+        } catch (error) {
+          console.warn('Could not resolve the latest monorepo Blink release', error)
+        }
+
+        status.textContent = 'Starting the current Blink download…'
+        window.location.replace(legacyUrl)
+      }
+
+      void startDownload()
+    </script>
+  </body>
+</html>
+`
+  await mkdir(dirname(filePath), { recursive: true })
+  await writeFile(filePath, html)
 }
 
 function titleFromSlug(slug) {

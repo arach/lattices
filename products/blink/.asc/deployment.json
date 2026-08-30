@@ -1,0 +1,13 @@
+{
+  "values": {
+    "bundle_id": "dev.arach.blink.mobile",
+    "app_name": "Blink",
+    "version": "0.1.0",
+    "build_number": "1",
+    "team_id": "2U83JFPW66",
+    "sku": "dev.arach.blink.mobile",
+    "platform": "IOS",
+    "primary_locale": "en-US"
+  },
+  "outputs": []
+}

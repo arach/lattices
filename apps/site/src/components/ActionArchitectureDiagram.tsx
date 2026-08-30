@@ -108,21 +108,18 @@ function createArchitectureConfig(
         elevation: compact ? 54 : 92,
         ...surfaceForTier(1),
         floorOpacity: 0.58,
-        offset: compact ? { x: 18, y: -8 } : { x: 42, y: -16 },
       },
       {
         name: "LOCAL RUNTIME",
         elevation: compact ? 108 : 184,
         ...surfaceForTier(2),
         floorOpacity: 0.46,
-        offset: compact ? { x: 36, y: -14 } : { x: 84, y: -28 },
       },
       {
         name: "REQUEST",
         elevation: compact ? 162 : 276,
         ...surfaceForTier(3),
         floorOpacity: 0.4,
-        offset: compact ? { x: 54, y: -20 } : { x: 126, y: -40 },
       },
     ],
     nodes: compact ? [

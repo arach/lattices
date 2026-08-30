@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { BlogIndex, BlogPostPage } from './components/Blog'
 import ActionPage from './components/ActionPage'
+import BlinkPage from './components/BlinkPage'
 import { DocsPage } from './components/Docs'
 import LandingPage from './components/LandingPage'
 import { defaultDoc, getBlogPost, getDoc } from './lib/content'
@@ -47,6 +48,7 @@ export default function SiteApp() {
 
   if (route.kind === 'home') return <LandingPage />
   if (route.kind === 'action') return <ActionPage />
+  if (route.kind === 'blink') return <BlinkPage />
   if (route.kind === 'docs') return <DocsPage slug={route.slug} />
   if (route.kind === 'blog-index') return <BlogIndex />
   if (route.kind === 'blog-post') return <BlogPostPage slug={route.slug} />
@@ -87,6 +89,7 @@ export default function SiteApp() {
 type Route =
   | { kind: 'home'; title: string; description: string }
   | { kind: 'action'; title: string; description: string }
+  | { kind: 'blink'; title: string; description: string }
   | { kind: 'docs'; slug?: string; title: string; description: string }
   | { kind: 'blog-index'; title: string; description: string }
   | { kind: 'blog-post'; slug: string; title: string; description: string }
@@ -106,6 +109,14 @@ function resolveRoute(path: string): Route {
       kind: 'action',
       title: 'Action — computer use from Lattices',
       description: 'Action is the focused computer-use product from Lattices: native macOS automation, capture, and review for agents.',
+    }
+  }
+
+  if (path === '/blink') {
+    return {
+      kind: 'blink',
+      title: 'Blink — spatial notes from Lattices',
+      description: 'Blink is spatial notes from Lattices: each note is a floating panel, and the desktop is the workspace.',
     }
   }
 

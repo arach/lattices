@@ -1,0 +1,11 @@
+# Next.js / build artifacts
+.next/
+out/
+node_modules/
+
+# annotation sidecars are session state, not source
+.studio/annotations/
+
+# misc
+*.tsbuildinfo
+.DS_Store
