@@ -7,15 +7,15 @@
 Native floating notes for macOS, with an agent-first CLI over the same local Markdown files.
 
 [![npm](https://img.shields.io/npm/v/%40arach%2Fblink?style=flat-square&color=38bdf8&label=npm)](https://www.npmjs.com/package/@arach/blink)
-[![macOS 14+](https://img.shields.io/badge/macOS-14%2B-111827?style=flat-square&logo=apple&logoColor=white)](https://blink.arach.dev)
-[![Apple Silicon](https://img.shields.io/badge/Apple_Silicon-native-111827?style=flat-square)](https://github.com/arach/blink/releases)
-[![MIT](https://img.shields.io/badge/license-MIT-111827?style=flat-square)](https://github.com/arach/blink/blob/main/LICENSE)
+[![macOS 14+](https://img.shields.io/badge/macOS-14%2B-111827?style=flat-square&logo=apple&logoColor=white)](https://lattices.dev/blink)
+[![Apple Silicon](https://img.shields.io/badge/Apple_Silicon-native-111827?style=flat-square)](https://github.com/arach/lattices/releases)
+[![MIT](https://img.shields.io/badge/license-MIT-111827?style=flat-square)](https://github.com/arach/lattices/blob/main/products/blink/LICENSE)
 
 </div>
 
 <p align="center">
-  <a href="https://blink.arach.dev">
-    <img src="https://raw.githubusercontent.com/arach/blink/main/landing/public/hero-desk.png" width="900" alt="A borderless Blink note floating over the macOS desktop" />
+  <a href="https://lattices.dev/blink">
+    <img src="https://raw.githubusercontent.com/arach/lattices/main/products/blink/landing/public/hero-desk.png" width="900" alt="A borderless Blink note floating over the macOS desktop" />
   </a>
 </p>
 
@@ -120,11 +120,11 @@ when another program needs structured output.
 ---
 
 <p align="center">
-  <a href="https://blink.arach.dev">Website</a> ·
-  <a href="https://github.com/arach/blink/blob/main/docs/cli.md">CLI reference</a> ·
-  <a href="https://github.com/arach/blink/blob/main/docs/config.md">Configuration</a> ·
-  <a href="https://github.com/arach/blink/releases">Releases</a> ·
-  <a href="https://github.com/arach/blink/issues">Issues</a>
+  <a href="https://lattices.dev/blink">Website</a> ·
+  <a href="https://github.com/arach/lattices/blob/main/products/blink/docs/cli.md">CLI reference</a> ·
+  <a href="https://github.com/arach/lattices/blob/main/products/blink/docs/config.md">Configuration</a> ·
+  <a href="https://github.com/arach/lattices/releases">Releases</a> ·
+  <a href="https://github.com/arach/lattices/issues">Issues</a>
 </p>
 
 <p align="center"><sub>macOS spatial notes for humans and the agents working beside them.</sub></p>

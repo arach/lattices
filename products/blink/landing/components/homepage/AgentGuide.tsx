@@ -12,7 +12,7 @@ const DOCS = [
     detail: 'complete operating contract',
   },
   {
-    href: 'https://github.com/arach/blink/blob/main/docs/cli.md',
+    href: 'https://github.com/arach/lattices/blob/main/products/blink/docs/cli.md',
     label: 'CLI reference',
     detail: 'commands + JSON shapes',
   },

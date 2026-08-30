@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
-# Build the release assets and publish them to a GitHub release on arach/blink.
+# Build the release assets and publish them to a GitHub release on arach/lattices.
 # Uploads the signed+notarized Blink.dmg (human download) and the blink CLI
 # binary (blink-macos-arm64). The npm package ships its own copy of the CLI.
 #
 #   ./tools/release/ship.sh [--dry-run] [--skip-dmg]
 #
 # Env:
-#   BLINK_RELEASE_REPO    default: arach/blink
+#   BLINK_RELEASE_REPO    default: arach/lattices
 #   BLINK_RELEASE_TARGET  remote ref local HEAD must match (default: main)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 DIST_DIR="$ROOT/dist"
-REPO="${BLINK_RELEASE_REPO:-arach/blink}"
+REPO="${BLINK_RELEASE_REPO:-arach/lattices}"
 TARGET="${BLINK_RELEASE_TARGET:-main}"
 VERSION="${BLINK_VERSION:-$(node -p "require(process.argv[1]).version" "$ROOT/packages/npm/package.json" 2>/dev/null || echo '2.0.0')}"
-TAG="v${VERSION}"
+TAG="blink-v${VERSION}"
 DRY_RUN=0
 SKIP_DMG=0
 TMP=""
@@ -108,7 +108,8 @@ Download **Blink.dmg** for Mac (Apple Silicon), or install the CLI:
 
     npm install -g @arach/blink
 
-Then \`blink ls\`, \`blink present\`, \`blink type\`. See docs/cli.md.
+Then \`blink ls\`, \`blink present\`, \`blink type\`. See the
+[Blink CLI reference](https://github.com/arach/lattices/blob/main/products/blink/docs/cli.md).
 EOF
 
 if [ "$DRY_RUN" -eq 1 ]; then
@@ -122,14 +123,14 @@ elif gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
         exit 1
     fi
     echo "==> Updating release $TAG in $REPO..."
-    EDIT_ARGS=("$TAG" --repo "$REPO" --title "Blink $VERSION" --notes-file "$NOTES")
+    EDIT_ARGS=("$TAG" --repo "$REPO" --latest=false --title "Blink $VERSION" --notes-file "$NOTES")
     if [[ "$VERSION" == *-* ]]; then EDIT_ARGS+=(--prerelease); fi
     gh release edit "${EDIT_ARGS[@]}"
     gh release upload "$TAG" "${ASSETS[@]}" --repo "$REPO" --clobber
 else
     echo "==> Creating release $TAG in $REPO..."
     CREATE_ARGS=("$TAG" "${ASSETS[@]}" --repo "$REPO" --target "$SOURCE_SHA" \
-        --title "Blink $VERSION" --notes-file "$NOTES")
+        --latest=false --title "Blink $VERSION" --notes-file "$NOTES")
     if [[ "$VERSION" == *-* ]]; then CREATE_ARGS+=(--prerelease); fi
     gh release create "${CREATE_ARGS[@]}"
 fi

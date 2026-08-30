@@ -17,7 +17,7 @@ if (process.platform !== "darwin") {
 if (process.arch !== "arm64") {
   console.error(
     "This build of blink is Apple Silicon (arm64) only.\n" +
-      "Intel support is coming; for now build from source: https://github.com/arach/blink"
+      "Intel support is coming; for now build from source: https://github.com/arach/lattices/tree/main/products/blink"
   );
   process.exit(1);
 }

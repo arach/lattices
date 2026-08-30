@@ -1,0 +1,49 @@
+name: Blink Guards
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'products/blink/**'
+      - 'package.json'
+      - '.github/workflows/blink-guards.yml'
+  pull_request:
+    paths:
+      - 'products/blink/**'
+      - 'package.json'
+      - '.github/workflows/blink-guards.yml'
+  workflow_dispatch:
+
+jobs:
+  swift:
+    name: Blink Swift package
+    runs-on: macos-15
+    timeout-minutes: 20
+    env:
+      HUDSON_READ_TOKEN: ${{ secrets.HUDSON_READ_TOKEN }}
+      BLINK_HUDSON_SOURCE: git
+      BLINK_HUDSON_REVISION: 79ca548b2b30335a3c37fb031a753481dedaaf79
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure private Hudson access
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${HUDSON_READ_TOKEN:-}" ]]; then
+            echo "::error::HUDSON_READ_TOKEN secret is not set. Add a read-only PAT for arach/hudson." >&2
+            exit 1
+          fi
+          git config --global url."https://x-access-token:${HUDSON_READ_TOKEN}@github.com/".insteadOf "git@github.com:"
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Check Blink
+        run: bun run blink:check
+
+      - name: Build Blink
+        run: bun run blink:build

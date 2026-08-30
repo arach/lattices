@@ -25,5 +25,8 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  /* Tests run under `bun test`, which supplies its own globals; they are not
+     part of the app bundle. */
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
 }

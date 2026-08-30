@@ -48,7 +48,7 @@ export default function HeroSection() {
             variant="outline"
             className="border-white/15 text-white/80 hover:bg-white/[0.06] hover:text-white px-7 py-4 text-base bg-transparent rounded-xl"
           >
-            <a href="https://github.com/arach/blink" target="_blank" rel="noopener noreferrer">
+            <a href="https://github.com/arach/lattices/tree/main/products/blink" target="_blank" rel="noopener noreferrer">
               <Github className="mr-2 w-4 h-4" />
               View on GitHub
             </a>

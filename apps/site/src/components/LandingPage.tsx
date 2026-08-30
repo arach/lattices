@@ -3,6 +3,9 @@ import type { CSSProperties, ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ThemeToggle } from "./ThemeToggle";
 import { GestureMatrix } from "./GestureMatrix";
+import { ProductsMenu } from "./SiteChrome";
+import { heroDesktopMaps, heroWindowLayouts, heroWindowMeta } from "./heroDesktopMap";
+import type { HeroDesktopPhase, HeroWindowId } from "./heroDesktopMap";
 
 export function LatticesLogo({ size = 20 }: { size?: number }) {
   // 3×3 grid with L-shape pattern (left column + bottom row bright, rest dim)
@@ -58,34 +61,165 @@ function trackCta(action: string, destination: string) {
   }
 }
 
-const MASCOT_ROWS = [
-  "#.....#...",
-  "##...##...",
-  "##########",
-  "#.##.##..#",
-  "##########",
-  ".########.",
-  ".#######.#",
-  ".#######.#",
-  ".#######.#",
-  ".#.....#..",
+// 12x12 pixel cat: solid body, eyes cut as negative space, tail drawn separately
+// so it can flick without disturbing the silhouette.
+const MASCOT_BODY = [
+  "#....#......",
+  "##..##......",
+  "######......",
+  "#.##.#......",
+  "######......",
+  ".####.......",
+  ".#####......",
+  ".######.....",
+  ".######.....",
+  ".#######....",
+  ".#######....",
+  ".##..##.....",
 ];
 
+// Eye holes, filled in to close the lids on a blink.
+const MASCOT_EYES: Array<[number, number]> = [
+  [1, 3],
+  [4, 3],
+];
+
+// Tail poses, low to high. Base pixel stays welded to the haunch.
+const MASCOT_TAILS: Array<Array<[number, number]>> = [
+  [[8, 10], [9, 10], [10, 10], [10, 9]],
+  [[8, 10], [9, 10], [10, 9], [10, 8]],
+  [[8, 10], [9, 9], [10, 8], [10, 7], [10, 6]],
+];
+
+const MASCOT_W = MASCOT_BODY[0].length;
+const MASCOT_H = MASCOT_BODY.length;
+
 function PixelMascot() {
+  const wrapRef = useRef<HTMLSpanElement>(null);
+  const reducedMotion = useReducedMotion() ?? false;
+  const [blinking, setBlinking] = useState(false);
+  const [tail, setTail] = useState(0);
+
+  // Pointer lean — a few pixels, capped hard on the right so the cat stays
+  // on the plinth.
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap || reducedMotion) return;
+
+    const maxLeft = 8;
+    const maxRight = 2;
+    const maxY = 4;
+    const ease = 0.14;
+    let targetX = 0;
+    let targetY = 0;
+    let currentX = 0;
+    let currentY = 0;
+    let raf = 0;
+
+    const tick = () => {
+      currentX += (targetX - currentX) * ease;
+      currentY += (targetY - currentY) * ease;
+      wrap.style.setProperty("--cat-x", `${currentX.toFixed(2)}px`);
+      wrap.style.setProperty("--cat-y", `${currentY.toFixed(2)}px`);
+      wrap.style.setProperty("--cat-rotate", `${(currentX * 0.4).toFixed(2)}deg`);
+      if (Math.abs(targetX - currentX) > 0.04 || Math.abs(targetY - currentY) > 0.04) {
+        raf = requestAnimationFrame(tick);
+      } else {
+        raf = 0;
+      }
+    };
+
+    const kick = () => {
+      if (!raf) raf = requestAnimationFrame(tick);
+    };
+
+    const onMove = (event: PointerEvent) => {
+      const rect = wrap.getBoundingClientRect();
+      const nx = (event.clientX - (rect.left + rect.width / 2)) / Math.max(window.innerWidth * 0.5, 1);
+      const ny = (event.clientY - (rect.top + rect.height / 2)) / Math.max(window.innerHeight * 0.5, 1);
+      targetX = Math.max(-maxLeft, Math.min(maxRight, nx * 7));
+      targetY = Math.max(-maxY, Math.min(maxY, ny * maxY));
+      kick();
+    };
+
+    window.addEventListener("pointermove", onMove, { passive: true });
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("pointermove", onMove);
+    };
+  }, [reducedMotion]);
+
+  // Idle blink — irregular gaps, occasional double blink.
+  useEffect(() => {
+    if (reducedMotion) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const queue = (delay: number, fn: () => void) => {
+      timer = setTimeout(fn, delay);
+    };
+    const shut = (remaining: number) => {
+      setBlinking(true);
+      queue(110, () => {
+        setBlinking(false);
+        if (remaining > 0) queue(150, () => shut(remaining - 1));
+        else schedule();
+      });
+    };
+    const schedule = () => {
+      queue(3200 + Math.random() * 5600, () => shut(Math.random() < 0.18 ? 1 : 0));
+    };
+    schedule();
+    return () => clearTimeout(timer);
+  }, [reducedMotion]);
+
+  // Idle tail — mostly still, then a short flick back down to rest.
+  useEffect(() => {
+    if (reducedMotion) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const run = (steps: Array<[number, number]>, i: number) => {
+      if (i >= steps.length) {
+        schedule();
+        return;
+      }
+      const [pose, hold] = steps[i];
+      setTail(pose);
+      timer = setTimeout(() => run(steps, i + 1), hold);
+    };
+    const schedule = () => {
+      timer = setTimeout(() => {
+        const big = Math.random() < 0.45;
+        run(
+          big
+            ? [[1, 130], [2, 210], [1, 120], [2, 170], [1, 150], [0, 0]]
+            : [[1, 190], [0, 0]],
+          0,
+        );
+      }, 4200 + Math.random() * 7000);
+    };
+    schedule();
+    return () => clearTimeout(timer);
+  }, [reducedMotion]);
+
   return (
-    <svg
-      aria-hidden="true"
-      className="pixel-mascot"
-      viewBox={`0 0 ${MASCOT_ROWS[0].length} ${MASCOT_ROWS.length}`}
-      shapeRendering="crispEdges"
-      fill="currentColor"
-    >
-      {MASCOT_ROWS.flatMap((row, y) =>
-        [...row].map((cell, x) =>
-          cell === "#" ? <rect key={`${x}-${y}`} x={x} y={y} width={1} height={1} /> : null,
-        ),
-      )}
-    </svg>
+    <span ref={wrapRef} className="pixel-mascot-wrap" aria-hidden="true">
+      <svg
+        className="pixel-mascot"
+        viewBox={`0 0 ${MASCOT_W} ${MASCOT_H}`}
+        shapeRendering="crispEdges"
+        fill="currentColor"
+      >
+        {MASCOT_BODY.flatMap((row, y) =>
+          [...row].map((cell, x) =>
+            cell === "#" ? <rect key={`b${x}-${y}`} x={x} y={y} width={1} height={1} /> : null,
+          ),
+        )}
+        {blinking
+          ? MASCOT_EYES.map(([x, y]) => <rect key={`e${x}`} x={x} y={y} width={1} height={1} />)
+          : null}
+        {MASCOT_TAILS[tail].map(([x, y]) => (
+          <rect key={`t${x}-${y}`} x={x} y={y} width={1} height={1} />
+        ))}
+      </svg>
+    </span>
   );
 }
 
@@ -228,73 +362,6 @@ const cuaSteps: Array<{
 ];
 
 const showLatsDevTeaser = import.meta.env.PUBLIC_SHOW_LATS_DEV_TEASER === "true";
-
-type HeroDesktopPhase = "messy" | "organized";
-type HeroWindowId = "agent" | "editor" | "browser" | "terminal";
-
-type HeroWindowLayout = {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-  z: number;
-};
-
-const heroWindowLayouts: Record<HeroWindowId, Record<HeroDesktopPhase, HeroWindowLayout>> = {
-  agent: {
-    messy: { left: 18, top: 22, width: 49, height: 56, z: 6 },
-    organized: { left: 1.6, top: 10.5, width: 58, height: 86, z: 6 },
-  },
-  editor: {
-    messy: { left: 6, top: 14, width: 35, height: 29, z: 3 },
-    organized: { left: 61, top: 10.5, width: 37.4, height: 28, z: 3 },
-  },
-  browser: {
-    messy: { left: 54, top: 11, width: 41, height: 42, z: 2 },
-    organized: { left: 61, top: 41.5, width: 37.4, height: 32, z: 2 },
-  },
-  terminal: {
-    messy: { left: 46, top: 55, width: 38, height: 29, z: 4 },
-    organized: { left: 61, top: 76.5, width: 37.4, height: 20, z: 4 },
-  },
-};
-
-const heroWindowMeta: Record<HeroWindowId, { app: string; title: string; tint: string; focused?: boolean }> = {
-  agent: { app: "Terminal", title: "atlas — codex", tint: "#d277ff", focused: true },
-  editor: { app: "Code", title: "session.ts — atlas", tint: "#62a0ff" },
-  browser: { app: "Browser", title: "localhost:5173", tint: "#f3c969" },
-  terminal: { app: "Terminal", title: "atlas — bun dev", tint: "#34d399" },
-};
-
-// `lattices map` of the fictional hero desktop — same four windows, same frames.
-const heroDesktopMaps: Record<HeroDesktopPhase, string> = {
-  messy: `\
-┌ Display 0 · MacBook Pro · Space 1 ───────────────────────────────┐
-│                                                                  │
-│    ┌3 Code · session.ts───┐       ┌4 Browser · localhost─────┐   │
-│    │       ┌1 Terminal · codex────┼────────┐                 │   │
-│    │       │                               │                 │   │
-│    └───────┼                               │                 │   │
-│            │                               │          ┬──────┘   │
-│            │                               │          │          │
-│            └─────────────────┼─────────────┘          │          │
-│                              └────────────────────────┘          │
-│                                                                  │
-└──────────────────────────────────────────────────────────────────┘`,
-  organized: `\
-┌ Display 0 · MacBook Pro · Space 1 ───────────────────────────────┐
-│                                                                  │
-│ ┌1 Terminal · codex───────────────────┐┌3 Code · session.ts────┐ │
-│ │                                     ││                       │ │
-│ │                                     │└───────────────────────┘ │
-│ │                                     │┌4 Browser · localhost──┐ │
-│ │                                     ││                       │ │
-│ │                                     ││                       │ │
-│ │                                     │├2 Terminal · bun dev───┤ │
-│ │                                     ││                       │ │
-│ └─────────────────────────────────────┘└───────────────────────┘ │
-└──────────────────────────────────────────────────────────────────┘`,
-};
 
 function HeroWindowContent({ id }: { id: HeroWindowId }) {
   if (id === "agent") {
@@ -660,34 +727,13 @@ export default function App() {
             <span className="nav-name">lattices</span>
           </a>
           <div className="nav-links">
-            <a href="/blog" className="nav-link">
+            <a href="/blog" className="nav-link nav-blog-link">
               Blog
             </a>
             <a href="/docs/overview" className="nav-link">
               Docs
             </a>
-            <a href="/docs/api" className="nav-link">
-              API
-            </a>
-            <a href="/action" className="nav-link">
-              Action
-            </a>
-            <a href="/blink" className="nav-link">
-              Blink
-            </a>
-            <a href="#hands" className="nav-link nav-optional-mobile">
-              Keys
-            </a>
-            <a href="#config" className="nav-link nav-optional-mobile">
-              Config
-            </a>
-            <a href="#app" className="nav-link nav-optional-mobile">
-              App
-            </a>
-            <ThemeToggle
-              theme={theme}
-              onToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
-            />
+            <ProductsMenu />
             <a
               href="https://github.com/arach/lattices"
               target="_blank"
@@ -697,6 +743,10 @@ export default function App() {
               <GitHubIcon />
               <span className="github-label">GitHub</span>
             </a>
+            <ThemeToggle
+              theme={theme}
+              onToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
+            />
           </div>
         </div>
       </nav>
@@ -763,42 +813,41 @@ export default function App() {
             <div className="cua-kicker">One state, two operators</div>
             <h2>Same desktop, whether you drive or your agent does.</h2>
             <p>
-              Agents can write your code and run your tests, but they can&apos;t
-              organize where you actually work: your screen. Lattices gives
-              them the same verbs you already use — place, focus, activate a
-              layer, then stage an action before it runs. You watch the receipt
-              land on the same desktop.
+              Agents can write code and run tests, but arranging the Mac around
+              that work is still brittle. Lattices gives you and your agents
+              the same workspace controls, from one-window moves to
+              multi-window layouts. Every change lands visibly on the desktop
+              with a receipt.
             </p>
           </div>
-          <div className="operator-rows fade-in fade-in-delay-1" aria-label="The same action, by hand and by API">
+          <div className="operator-rows fade-in fade-in-delay-1" aria-label="The same workspace request from a person or an agent">
             <div className="operator-row is-you">
               <span className="operator-row-label">You</span>
               <span className="operator-row-action">
-                <kbd>⌃</kbd><kbd>⌥</kbd><kbd>G</kbd>
-                <span>— snap the editor to the left half</span>
+                <span>&ldquo;Put all my terminals in a grid.&rdquo;</span>
               </span>
             </div>
             <div className="operator-row is-agent">
               <span className="operator-row-label">Your agent</span>
               <span className="operator-row-action">
-                <code>window.place {'{'} app: &apos;Code&apos;, placement: &apos;left&apos; {'}'}</code>
+                <code>space.optimize {'{'} app: &apos;iTerm2&apos;, strategy: &apos;mosaic&apos; {'}'}</code>
               </span>
             </div>
             <p className="operator-result">
-              <i aria-hidden="true" /> Same window, same spot — one live state.
+              <i aria-hidden="true" /> All terminals, one grid — one live state.
             </p>
           </div>
          </div>
         </section>
 
+        <div className="shell">
         <HandsOnSection />
 
-        <div className="shell">
         {/* Computer use (CUA) */}
         <section className="section cua-section" id="cua">
           <div className="cua-head fade-in">
             <div className="cua-kicker">Action · a Lattices product</div>
-            <h2>Computer use you can inspect</h2>
+            <h2>Computer use you can control</h2>
             <p>
               Action is the focused computer-use product in the Lattices family.
               Observe the screen, stage each action for review, execute on-device,
@@ -950,37 +999,36 @@ export default function App() {
           <article>
             <span className="workflow-number">01</span>
             <div>
-              <h3>Launch</h3>
-              <h2>Bring a whole project up with one command.</h2>
+              <h3>Window manager</h3>
+              <h2>Arrange your whole Mac.</h2>
               <p>
-                Define its terminals, dev servers, and layout once. Lattices
-                launches the entire environment — panes running, windows placed,
-                ready to work. Durable, so it reattaches when you come back.
+                Tile windows, group them into layers, launch whole projects,
+                and switch contexts from the app, a shortcut, or a mouse
+                gesture.
               </p>
             </div>
           </article>
           <article>
             <span className="workflow-number">02</span>
             <div>
-              <h3>Arrange</h3>
-              <h2>Tile, layer, and switch — from a chord or a mouse shape.</h2>
+              <h3>Computer use</h3>
+              <h2>Give agents fast, inspectable control.</h2>
               <p>
-                ⌃⌥ tiles halves, thirds, and a 4×4 grid. Hold the middle
-                mouse button and draw: left and right for Spaces, down for
-                Screen Map, up for dictation. Caps Lock is Hyper. When things
-                drift, one command rebalances the screen.
+                Agents observe the screen, resolve accessible targets, stage
+                actions, execute on-device, and verify the result before
+                moving on.
               </p>
             </div>
           </article>
           <article>
             <span className="workflow-number">03</span>
             <div>
-              <h3>Automate</h3>
-              <h2>Let agents see the screen and act on it, safely.</h2>
+              <h3>Collaboration</h3>
+              <h2>Share one live workspace.</h2>
               <p>
-                Agents inspect windows through Accessibility, then work in a
-                loop you can trust: observe, stage, execute on-device, and
-                verify the result before moving on.
+                You and your agents work with the same windows and layers.
+                Actions stay visible to both sides, with a receipt for what
+                happened.
               </p>
             </div>
           </article>
@@ -1050,10 +1098,10 @@ export default function App() {
                 Your agents need the same desktop
               </h2>
               <p className="config-desc">
-                Agents start in a terminal. Lattices gives them the workspace
-                verbs on localhost: search, place, activate a layer, then
-                observe / stage / execute / verify before they touch the
-                screen.
+                Agent harnesses can run code, but computer use is still slow
+                and brittle. Lattices adds fast, typed workspace and
+                computer-use tools on localhost: search, place, activate,
+                observe, stage, execute, and verify.
               </p>
               <ul className="agent-methods">
                 <li><code>lattices.search</code> — title, app, session, or cwd</li>
@@ -1086,13 +1134,14 @@ export default function App() {
 
         <section className="local-trust fade-in" id="local-first">
           <div>
-            <div className="cua-kicker">Local-first, and open</div>
-            <h2>It all runs on your machine, in the open.</h2>
+            <div className="cua-kicker">Local core, open source</div>
+            <h2>The core runs on your Mac.</h2>
           </div>
           <p>
-            Lattices runs as a local service on your Mac — no cloud in the
-            loop, nothing leaves the device unless you send it. It speaks a
-            typed API over localhost, the source is open, and agent actions are
+            Lattices runs as a local service and exposes a typed API over
+            localhost. Workspace control and action traces stay on-device.
+            Optional vision-model features may send screen context to the
+            provider you configure. The source is open, and agent actions are
             recorded and verifiable.
           </p>
         </section>
@@ -1136,7 +1185,7 @@ export default function App() {
 
         {/* CTA */}
         <section className="cta">
-          <h2>Same desktop. You or your agent.</h2>
+          <h2>Put your whole desktop to work.</h2>
           <p>Free and open source. Running on your Mac in seconds.</p>
           <div className="cta-download-row">
             <a

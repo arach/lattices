@@ -19,15 +19,16 @@ tag.
 ## Build & run
 
 ```sh
-swift build                 # app + CLI; requires ../../../hudson from products/blink
+swift build                 # app + CLI; resolves the pinned Hudson revision
 (cd web/editor && bun install && bun run build)   # editor bundle (once)
 ./scripts/run-app.sh --debug --restart            # assemble + launch dist/Blink.app
 swift build --product blink                       # notes CLI; see docs/cli.md
 swift test                                        # BlinkCore unit tests
 ```
 
-Set `BLINK_HUDSON_SOURCE=git` to resolve HudsonKit from GitHub instead of the
-sibling checkout.
+Hudson resolves from a pinned Git revision by default. For local Hudson
+development, set `BLINK_HUDSON_SOURCE=path` and optionally set
+`BLINK_HUDSON_PATH` (the default path override is `../../../hudson`).
 
 ## Layout
 

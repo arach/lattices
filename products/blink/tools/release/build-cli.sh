@@ -19,8 +19,9 @@ SIGN_IDENTITY="${BLINK_SIGN_IDENTITY:-$(default_sign_identity || true)}"
 
 echo "==> Building blink CLI (release)..."
 cd "$ROOT"
-# The CLI target doesn't link Hudson, but resolving the manifest still needs the
-# hudson dependency reachable (../../../hudson from products/blink, or BLINK_HUDSON_SOURCE=git).
+# The CLI target does not link Hudson, but SwiftPM still resolves the manifest's
+# pinned Hudson revision. CI therefore needs HUDSON_READ_TOKEN; local Hudson
+# development can opt into BLINK_HUDSON_SOURCE=path with BLINK_HUDSON_PATH.
 swift build -c release --product blink
 BIN_PATH="$(swift build -c release --product blink --show-bin-path)/blink"
 

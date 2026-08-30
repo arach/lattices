@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { get } from "node:https";
 
-const REPO = "arach/blink";
+const REPO = "arach/lattices";
 const APP_PATH = "/Applications/Blink.app";
 const BUNDLE_ID = "dev.arach.blink";
 
@@ -44,7 +44,7 @@ async function downloadTo(url, dest) {
 }
 
 async function latestDmgUrl() {
-  const res = await httpsGet(`https://api.github.com/repos/${REPO}/releases?per_page=30`);
+  const res = await httpsGet(`https://api.github.com/repos/${REPO}/releases?per_page=100`);
   const chunks = [];
   for await (const chunk of res) chunks.push(chunk);
   const releases = JSON.parse(Buffer.concat(chunks).toString());
@@ -52,7 +52,10 @@ async function latestDmgUrl() {
     ? releases
         .filter(
           (candidate) =>
-            !candidate.draft && /^v2(?:\.|$)/.test(candidate.tag_name ?? "")
+            !candidate.draft &&
+            /^blink-v2\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(
+              candidate.tag_name ?? ""
+            )
         )
         // GitHub may surface its "latest" stable release ahead of a newer
         // prerelease, so make recency explicit instead of trusting API order.

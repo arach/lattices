@@ -1,13 +1,27 @@
 // swift-tools-version: 6.0
 import PackageDescription
 
-// Hudson is consumed from the sibling checkout by default (same convention as
-// Lattices `apps/mac`). From `products/blink/` that is `../../../hudson`.
-// Set BLINK_HUDSON_SOURCE=git to resolve it from GitHub instead.
-let hudsonSource = Context.environment["BLINK_HUDSON_SOURCE"] ?? "path"
-let hudsonDependency: Package.Dependency = hudsonSource == "git"
-    ? .package(url: "git@github.com:arach/hudson.git", branch: "main")
-    : .package(path: "../../../hudson")
+// A clean Lattices checkout must resolve the same Hudson contract every time.
+// Keep the revision in this manifest rather than following Hudson's moving
+// `main`: Hudson can raise its deployment floor for products Blink does not use.
+// Local Hudson development remains available as an explicit path override.
+let hudsonSource = Context.environment["BLINK_HUDSON_SOURCE"] ?? "git"
+let hudsonDependency: Package.Dependency
+
+switch hudsonSource {
+case "git":
+    let hudsonRevision = Context.environment["BLINK_HUDSON_REVISION"]
+        ?? "79ca548b2b30335a3c37fb031a753481dedaaf79"
+    hudsonDependency = .package(
+        url: "git@github.com:arach/hudson.git",
+        revision: hudsonRevision
+    )
+case "path":
+    let hudsonPath = Context.environment["BLINK_HUDSON_PATH"] ?? "../../../hudson"
+    hudsonDependency = .package(path: hudsonPath)
+default:
+    fatalError("BLINK_HUDSON_SOURCE must be either 'git' or 'path'")
+}
 
 let package = Package(
     name: "Blink",

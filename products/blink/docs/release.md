@@ -24,9 +24,10 @@ Modeled on `@arach/lattices`' pipeline. All scripts live in `tools/release/`.
    Then the scripts use `--keychain-profile notarytool` (override with
    `BLINK_NOTARY_PROFILE`). See `Config/signing.env.example`.
 3. **npm** — `npm login` as `arach` (publishes `@arach/blink` with provenance).
-4. **Hudson** — the app build needs the `hudson` dependency resolvable
-   (`../../../hudson` from `products/blink`, or `BLINK_HUDSON_SOURCE=git` + a read token). The CLI
-   build doesn't link Hudson but still needs the manifest to resolve.
+4. **Hudson** — the app build resolves the pinned private Hudson revision over
+   git by default, so CI needs `HUDSON_READ_TOKEN`. Local Hudson development can
+   opt into `BLINK_HUDSON_SOURCE=path` with `BLINK_HUDSON_PATH`. The CLI does
+   not link Hudson but still needs the manifest to resolve.
 
 ## Cutting a release
 
@@ -41,11 +42,12 @@ Modeled on `@arach/lattices`' pipeline. All scripts live in `tools/release/`.
 # 2. from a clean, pushed commit: build + sign + notarize + staple the DMG and
 #    CLI, then publish the GH release
 ./tools/release/ship.sh
-#    -> creates/updates tag v<version> on arach/blink with Blink.dmg + blink-macos-arm64
+#    -> creates/updates tag blink-v<version> on arach/lattices with
+#       Blink.dmg + blink-macos-arm64
 
 # 3. publish npm from the signed GitHub CLI asset
-git tag -a npm-v2.0.1 -m "@arach/blink 2.0.1"
-git push origin npm-v2.0.1
+git tag -a blink-npm-v2.0.1 -m "@arach/blink 2.0.1"
+git push origin blink-npm-v2.0.1
 ```
 
 ### Individual steps
@@ -65,13 +67,19 @@ assets.
 
 ## npm CI
 
-`.github/workflows/release-package-npm.yml` publishes on `npm-v*`. It downloads
-the matching signed CLI from the GitHub release, verifies its version and code
-signature, then publishes with provenance without rebuilding.
+The repository-root workflows keep Blink releases namespaced inside the
+Lattices repository:
 
-Configure npm trusted publishing for `arach/blink` and that workflow, or add an
-`NPM_TOKEN` secret to the GitHub `release` environment. The token path is a
-fallback; browser login is not part of the release procedure.
+- `.github/workflows/release-blink-macos.yml` builds and publishes the
+  `blink-v*` GitHub release.
+- `.github/workflows/release-blink-npm.yml` publishes on `blink-npm-v*`. It
+  downloads the signed CLI from the matching `blink-v*` release, verifies its
+  version and code signature, then publishes with provenance without rebuilding.
+
+Configure npm trusted publishing for `@arach/blink` and
+`release-blink-npm.yml` in `arach/lattices`, or add an `NPM_TOKEN` secret to the
+GitHub `release` environment. The token path is a fallback; browser login is
+not part of the release procedure.
 
 ## Known limitations
 

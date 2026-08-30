@@ -40,7 +40,7 @@ export default function DownloadSection() {
             variant="outline"
             className="border-white/15 text-white/80 hover:bg-white/[0.06] hover:text-white px-7 py-4 text-base bg-transparent rounded-xl"
           >
-            <a href="https://github.com/arach/blink" target="_blank" rel="noopener noreferrer">
+            <a href="https://github.com/arach/lattices/tree/main/products/blink" target="_blank" rel="noopener noreferrer">
               <Github className="mr-2 w-4 h-4" />
               View on GitHub
             </a>
@@ -87,7 +87,7 @@ export default function DownloadSection() {
           Blink<span className="text-white/30"> — spatial notes for your Mac</span>
         </div>
         <div className="flex items-center gap-6 font-text text-[13px] text-white/40">
-          <a href="https://github.com/arach/blink" className="hover:text-white/70 transition-colors">
+          <a href="https://github.com/arach/lattices/tree/main/products/blink" className="hover:text-white/70 transition-colors">
             GitHub
           </a>
           <a

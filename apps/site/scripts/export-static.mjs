@@ -21,6 +21,8 @@ import BlinkPage from '../src/components/BlinkPage.tsx'
 const siteDir = resolve(import.meta.dirname, '..')
 const repoRoot = resolve(siteDir, '..', '..')
 const distDir = join(siteDir, 'dist')
+const actionAssetSourceDir = join(repoRoot, 'products', 'action', 'docs', 'assets')
+const actionMediaPath = '/action/media/'
 const SITE_URL = 'https://lattices.dev'
 const ACTION_RELEASES_API_URL = 'https://api.github.com/repos/arach/lattices/releases?per_page=100'
 const ACTION_LEGACY_DOWNLOAD_URL = 'https://github.com/arach/action/releases/latest/download/Action.dmg'
@@ -69,7 +71,7 @@ await writeRoute(
   '/action',
   'Action — computer use from Lattices',
   'Action is the focused computer-use product from Lattices: native macOS automation, capture, and review for agents.',
-  renderToString(createElement(ActionPage)),
+  renderActionPage(),
 )
 await copyActionDocs()
 await writeActionDownloadRedirect()
@@ -537,6 +539,25 @@ async function copyActionDocs() {
     if (entry.name === 'index.html' || entry.name === 'assets') continue
     await cp(join(sourceDir, entry.name), join(targetDir, entry.name), { recursive: true })
   }
+
+  const landingMedia = [
+    'action-record-the-work-poster.jpg',
+    'action-record-the-work.mp4',
+    'action-record-the-work.vtt',
+    join('brand', 'landing-hero.webp'),
+    join('brand', 'landing-trace-field.webp'),
+  ]
+
+  for (const relativePath of landingMedia) {
+    const destination = join(targetDir, 'media', relativePath)
+    await mkdir(dirname(destination), { recursive: true })
+    await copyFile(join(actionAssetSourceDir, relativePath), destination)
+  }
+}
+
+function renderActionPage() {
+  const sourcePrefix = `${actionAssetSourceDir}/`
+  return renderToString(createElement(ActionPage)).replaceAll(sourcePrefix, actionMediaPath)
 }
 
 async function copyBlinkDocs() {

@@ -27,7 +27,7 @@ export default function PrivacyPage() {
             <span>blink</span>
           </a>
           <a
-            href="https://github.com/arach/blink"
+            href="https://github.com/arach/lattices/tree/main/products/blink"
             className="rounded-[4px] py-1 text-[11px] text-dimx transition-colors hover:text-acc"
           >
             source ↗

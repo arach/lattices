@@ -19,7 +19,9 @@ Options:
 
 Environment:
   BLINK_APP_PATH        Override output .app path (default: dist/Blink.app)
-  BLINK_HUDSON_SOURCE   "path" (default, ../../../hudson from products/blink) or "git"
+  BLINK_HUDSON_SOURCE   "git" (default, pinned revision) or "path"
+  BLINK_HUDSON_PATH     Local Hudson checkout used when source is "path"
+                        (default: ../../../hudson from products/blink)
   BLINK_SIGN_IDENTITY   Code-signing identity for the local bundle. Defaults to
                         a "Blink Dev" certificate if one exists. A stable
                         identity stops macOS re-prompting for the login password

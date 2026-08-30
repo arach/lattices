@@ -124,7 +124,7 @@ Other useful references:
 ## Commands
 
 ```sh
-swift build                  # needs ../../../hudson from products/blink (BLINK_HUDSON_SOURCE=git for GitHub)
+swift build                  # resolves pinned Hudson (BLINK_HUDSON_SOURCE=path for local checkout)
 swift test                   # BlinkCore tests
 swift build --product blink  # notes CLI (docs/cli.md)
 (cd web/editor && bun install && bun run build)   # editor bundle

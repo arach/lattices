@@ -39,7 +39,7 @@ export function TopBar() {
         <div className="ml-auto flex shrink-0 items-center gap-2">
           <ThemeSwitcher />
           <a
-            href="https://github.com/arach/blink"
+            href="https://github.com/arach/lattices/tree/main/products/blink"
             target="_blank"
             rel="noreferrer"
             aria-label="GitHub repository"

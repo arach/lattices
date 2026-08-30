@@ -33,7 +33,7 @@ export function Install() {
                     </span>{' '}
                     download for macOS
                   </PrimaryButton>
-                  <GhostButton href="https://github.com/arach/blink">
+                  <GhostButton href="https://github.com/arach/lattices/tree/main/products/blink">
                     source <span className="text-faintx" aria-hidden>↗</span>
                   </GhostButton>
                 </div>
@@ -47,13 +47,13 @@ export function Install() {
 }
 
 const FOOTER_LINKS = [
-  { href: 'https://github.com/arach/blink', label: 'GitHub', external: true },
+  { href: 'https://github.com/arach/lattices/tree/main/products/blink', label: 'GitHub', external: true },
   { href: 'https://github.com/arach/blink/releases/latest', label: 'Releases', external: true },
   { href: '/agents.md', label: 'AGENTS.md', external: false },
   { href: '/llms.txt', label: 'llms.txt', external: false },
   { href: '/privacy/', label: 'Privacy', external: false },
   {
-    href: 'https://github.com/arach/blink/blob/main/docs/cli.md',
+    href: 'https://github.com/arach/lattices/blob/main/products/blink/docs/cli.md',
     label: 'CLI docs',
     external: true,
   },
