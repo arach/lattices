@@ -42,6 +42,24 @@ jobs:
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
 
+      - name: Select Xcode 26
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Vox requires Swift tools 6.2; the macOS 15 runner defaults to
+          # Xcode 16.4 (Swift 6.1). Pick the newest Xcode 26 present.
+          xcode="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -n 1)"
+          if [[ -z "$xcode" ]]; then
+            echo "No Xcode 26 found on this runner:" >&2
+            ls -d /Applications/Xcode_*.app >&2
+            exit 1
+          fi
+
+          echo "Using $xcode"
+          sudo xcode-select -s "$xcode/Contents/Developer"
+          xcodebuild -version
+          swift --version
+
       - name: Check Blink
         run: bun run blink:check
 
