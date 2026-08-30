@@ -1200,7 +1200,10 @@ export default function App() {
               <span className="install-chooser-label">App</span>
               <h3>Native macOS app</h3>
               <p>Manage projects, windows, and layers with a click.</p>
-              <a href="https://github.com/arach/lattices/releases/latest/download/Lattices.dmg">
+              <a
+                href="https://github.com/arach/lattices/releases/latest/download/Lattices.dmg"
+                onClick={() => trackCta('download_dmg_install', 'https://github.com/arach/lattices/releases/latest/download/Lattices.dmg')}
+              >
                 Download for macOS <span aria-hidden="true">↗</span>
               </a>
               <small>Apple Silicon · .dmg</small>
