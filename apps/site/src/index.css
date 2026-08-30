@@ -7,6 +7,7 @@
 }
 
 :root {
+  --content-rail: clamp(1120px, calc(100% - 160px), 1320px);
   --bg: #111113;
   --surface: #1c1c1e;
   --surface-hover: #2c2c2e;
@@ -102,7 +103,7 @@ code {
 /* ── Shell ─────────────────────────────────────────── */
 
 .shell {
-  max-width: 960px;
+  max-width: var(--content-rail);
   margin: 0 auto;
   padding: 0 24px;
 }
@@ -119,7 +120,7 @@ code {
 }
 
 .nav-inner {
-  max-width: 960px;
+  max-width: var(--content-rail);
   margin: 0 auto;
   padding: 14px 24px;
   display: flex;
@@ -3503,6 +3504,73 @@ button.nav-link {
   color: var(--hero-accent);
 }
 
+.hero-demo-peek {
+  display: grid;
+  grid-template-columns: 118px minmax(0, 1fr);
+  gap: 14px;
+  width: min(100%, 390px);
+  margin-top: 28px;
+  padding-top: 14px;
+  border-top: 1px solid var(--hero-rule);
+  color: var(--hero-ink);
+  text-decoration: none;
+}
+
+.hero-demo-peek:focus-visible {
+  outline: 2px solid var(--hero-accent);
+  outline-offset: 5px;
+}
+
+.hero-demo-peek-media {
+  display: block;
+  width: 118px;
+  aspect-ratio: 8 / 5;
+  border: 1px solid var(--hero-rule);
+  border-radius: 2px;
+  background: var(--hero-ink);
+  object-fit: cover;
+  transition: border-color 180ms ease, filter 180ms ease;
+}
+
+.hero-demo-peek-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+}
+
+.hero-demo-peek-label,
+.hero-demo-peek-link {
+  color: var(--hero-ink-dim);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.hero-demo-peek-copy strong {
+  max-width: 23ch;
+  font-size: 13px;
+  line-height: 1.32;
+}
+
+.hero-demo-peek-link {
+  color: var(--hero-accent);
+  transition: color 180ms ease;
+}
+
+.hero-demo-peek:hover .hero-demo-peek-media,
+.hero-demo-peek:focus-visible .hero-demo-peek-media {
+  border-color: var(--hero-accent);
+  filter: contrast(1.04);
+}
+
+.hero-demo-peek:hover .hero-demo-peek-link,
+.hero-demo-peek:focus-visible .hero-demo-peek-link {
+  color: var(--hero-ink);
+}
+
 /* Apparatus scaffolding — measurement, not ornament. */
 
 .hero-apparatus {
@@ -3662,32 +3730,9 @@ button.nav-link {
   text-transform: uppercase;
 }
 
-.hero-plinth::before {
-  content: "";
-  position: absolute;
-  right: 3%;
-  bottom: calc(100% + 9px);
-  left: 4%;
-  height: 17px;
-  border: 1px solid var(--hero-etch);
-  background:
-    repeating-linear-gradient(135deg, transparent 0 5px, var(--hero-etch-faint) 5px 6px, transparent 6px 10px),
-    color-mix(in srgb, var(--hero-ground) 82%, transparent);
-  clip-path: polygon(0 0, 100% 0, 100% 48%, 88% 48%, 88% 100%, 13% 100%, 13% 58%, 0 58%);
-  opacity: 0.9;
-  pointer-events: none;
-}
-
+.hero-plinth::before,
 .hero-plinth::after {
-  content: "";
-  position: absolute;
-  right: 17%;
-  bottom: calc(100% + 4px);
-  left: 18%;
-  height: 1px;
-  background: var(--hero-etch);
-  box-shadow: 19px 4px 0 var(--hero-etch-faint);
-  pointer-events: none;
+  content: none;
 }
 
 .hero-plinth-state {
@@ -3723,6 +3768,11 @@ button.nav-link {
     -3px 4px 0 -2px var(--hero-etch),
     4px -3px 0 -3px var(--hero-etch-faint),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.hero-apparatus .hero-desktop-screen {
+  /* Follow the inner edge of the 12px frame after its 1px border. */
+  border-radius: 11px;
 }
 
 .hero-apparatus .hero-workspace-stage::before {
