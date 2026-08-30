@@ -813,42 +813,41 @@ export default function App() {
             <div className="cua-kicker">One state, two operators</div>
             <h2>Same desktop, whether you drive or your agent does.</h2>
             <p>
-              Agents can write your code and run your tests, but they can&apos;t
-              organize where you actually work: your screen. Lattices gives
-              them the same verbs you already use — place, focus, activate a
-              layer, then stage an action before it runs. You watch the receipt
-              land on the same desktop.
+              Agents can write code and run tests, but arranging the Mac around
+              that work is still brittle. Lattices gives you and your agents
+              the same workspace controls, from one-window moves to
+              multi-window layouts. Every change lands visibly on the desktop
+              with a receipt.
             </p>
           </div>
-          <div className="operator-rows fade-in fade-in-delay-1" aria-label="The same action, by hand and by API">
+          <div className="operator-rows fade-in fade-in-delay-1" aria-label="The same workspace request from a person or an agent">
             <div className="operator-row is-you">
               <span className="operator-row-label">You</span>
               <span className="operator-row-action">
-                <kbd>⌃</kbd><kbd>⌥</kbd><kbd>G</kbd>
-                <span>— snap the editor to the left half</span>
+                <span>&ldquo;Put all my terminals in a grid.&rdquo;</span>
               </span>
             </div>
             <div className="operator-row is-agent">
               <span className="operator-row-label">Your agent</span>
               <span className="operator-row-action">
-                <code>window.place {'{'} app: &apos;Code&apos;, placement: &apos;left&apos; {'}'}</code>
+                <code>space.optimize {'{'} app: &apos;iTerm2&apos;, strategy: &apos;mosaic&apos; {'}'}</code>
               </span>
             </div>
             <p className="operator-result">
-              <i aria-hidden="true" /> Same window, same spot — one live state.
+              <i aria-hidden="true" /> All terminals, one grid — one live state.
             </p>
           </div>
          </div>
         </section>
 
+        <div className="shell">
         <HandsOnSection />
 
-        <div className="shell">
         {/* Computer use (CUA) */}
         <section className="section cua-section" id="cua">
           <div className="cua-head fade-in">
             <div className="cua-kicker">Action · a Lattices product</div>
-            <h2>Computer use you can inspect</h2>
+            <h2>Computer use you can control</h2>
             <p>
               Action is the focused computer-use product in the Lattices family.
               Observe the screen, stage each action for review, execute on-device,
@@ -1000,37 +999,36 @@ export default function App() {
           <article>
             <span className="workflow-number">01</span>
             <div>
-              <h3>Launch</h3>
-              <h2>Bring a whole project up with one command.</h2>
+              <h3>Window manager</h3>
+              <h2>Arrange your whole Mac.</h2>
               <p>
-                Define its terminals, dev servers, and layout once. Lattices
-                launches the entire environment — panes running, windows placed,
-                ready to work. Durable, so it reattaches when you come back.
+                Tile windows, group them into layers, launch whole projects,
+                and switch contexts from the app, a shortcut, or a mouse
+                gesture.
               </p>
             </div>
           </article>
           <article>
             <span className="workflow-number">02</span>
             <div>
-              <h3>Arrange</h3>
-              <h2>Tile, layer, and switch — from a chord or a mouse shape.</h2>
+              <h3>Computer use</h3>
+              <h2>Give agents fast, inspectable control.</h2>
               <p>
-                ⌃⌥ tiles halves, thirds, and a 4×4 grid. Hold the middle
-                mouse button and draw: left and right for Spaces, down for
-                Screen Map, up for dictation. Caps Lock is Hyper. When things
-                drift, one command rebalances the screen.
+                Agents observe the screen, resolve accessible targets, stage
+                actions, execute on-device, and verify the result before
+                moving on.
               </p>
             </div>
           </article>
           <article>
             <span className="workflow-number">03</span>
             <div>
-              <h3>Automate</h3>
-              <h2>Let agents see the screen and act on it, safely.</h2>
+              <h3>Collaboration</h3>
+              <h2>Share one live workspace.</h2>
               <p>
-                Agents inspect windows through Accessibility, then work in a
-                loop you can trust: observe, stage, execute on-device, and
-                verify the result before moving on.
+                You and your agents work with the same windows and layers.
+                Actions stay visible to both sides, with a receipt for what
+                happened.
               </p>
             </div>
           </article>
@@ -1100,10 +1098,10 @@ export default function App() {
                 Your agents need the same desktop
               </h2>
               <p className="config-desc">
-                Agents start in a terminal. Lattices gives them the workspace
-                verbs on localhost: search, place, activate a layer, then
-                observe / stage / execute / verify before they touch the
-                screen.
+                Agent harnesses can run code, but computer use is still slow
+                and brittle. Lattices adds fast, typed workspace and
+                computer-use tools on localhost: search, place, activate,
+                observe, stage, execute, and verify.
               </p>
               <ul className="agent-methods">
                 <li><code>lattices.search</code> — title, app, session, or cwd</li>
@@ -1136,13 +1134,14 @@ export default function App() {
 
         <section className="local-trust fade-in" id="local-first">
           <div>
-            <div className="cua-kicker">Local-first, and open</div>
-            <h2>It all runs on your machine, in the open.</h2>
+            <div className="cua-kicker">Local core, open source</div>
+            <h2>The core runs on your Mac.</h2>
           </div>
           <p>
-            Lattices runs as a local service on your Mac — no cloud in the
-            loop, nothing leaves the device unless you send it. It speaks a
-            typed API over localhost, the source is open, and agent actions are
+            Lattices runs as a local service and exposes a typed API over
+            localhost. Workspace control and action traces stay on-device.
+            Optional vision-model features may send screen context to the
+            provider you configure. The source is open, and agent actions are
             recorded and verifiable.
           </p>
         </section>
@@ -1186,7 +1185,7 @@ export default function App() {
 
         {/* CTA */}
         <section className="cta">
-          <h2>Same desktop. You or your agent.</h2>
+          <h2>Put your whole desktop to work.</h2>
           <p>Free and open source. Running on your Mac in seconds.</p>
           <div className="cta-download-row">
             <a
