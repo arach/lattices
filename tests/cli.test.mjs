@@ -26,6 +26,9 @@ const {
 const { displaysMissingGeometry } = await import(
   pathToFileURL(path.join(repoRoot, "bin/cli/map.ts")).href
 );
+const { parseCaptureDisplayArgs } = await import(
+  pathToFileURL(path.join(repoRoot, "bin/cli/capture.ts")).href
+);
 const {
   describeMoveReceipt,
   normalizePlacement,
@@ -175,9 +178,59 @@ test("default command: prints home screen guidance", () => {
   assert.match(out, /Common commands/);
 });
 
-test("help: mentions lattices start", () => {
+test("help: mentions lattices start and display capture", () => {
   const out = runCli(["help"]);
   assert.match(out, /lattices start/);
+  assert.match(out, /lattices capture display \[index\]/);
+});
+
+test("capture help: documents delayed clipboard display capture", () => {
+  const out = runCli(["capture", "help"]);
+  assert.match(out, /lattices capture display \[index\]/);
+  assert.match(out, /--clipboard/);
+  assert.match(out, /--delay seconds/);
+});
+
+test("capture display parsing: accepts target, clipboard, metadata, and delay", () => {
+  assert.deepEqual(
+    parseCaptureDisplayArgs([
+      "1",
+      "--clipboard",
+      "--delay",
+      "3",
+      "--filename=hyper-g.png",
+      "--run-id",
+      "run_demo",
+      "--json",
+    ]),
+    {
+      display: 1,
+      clipboard: true,
+      delaySeconds: 3,
+      filename: "hyper-g.png",
+      runId: "run_demo",
+      json: true,
+    },
+  );
+
+  assert.deepEqual(parseCaptureDisplayArgs(["--delay=.5"]), {
+    display: undefined,
+    clipboard: false,
+    delaySeconds: 0.5,
+    filename: undefined,
+    runId: undefined,
+    json: false,
+  });
+});
+
+test("capture display parsing: rejects malformed and ambiguous input", () => {
+  assert.throws(() => parseCaptureDisplayArgs(["-1"]), /non-negative integer/);
+  assert.throws(() => parseCaptureDisplayArgs(["1.5"]), /non-negative integer/);
+  assert.throws(() => parseCaptureDisplayArgs(["0", "1"]), /Unexpected argument: 1/);
+  assert.throws(() => parseCaptureDisplayArgs(["--delay"]), /--delay expects a value/);
+  assert.throws(() => parseCaptureDisplayArgs(["--delay", "soon"]), /non-negative number of seconds/);
+  assert.throws(() => parseCaptureDisplayArgs(["--clipboard=true"]), /does not take a value/);
+  assert.throws(() => parseCaptureDisplayArgs(["--bogus"]), /Unknown option: --bogus/);
 });
 
 test("map renderer: draws current-space windows and a useful legend", () => {

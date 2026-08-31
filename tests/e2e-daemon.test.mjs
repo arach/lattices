@@ -111,6 +111,16 @@ test("CLI daemon status call returns JSON status payload", () => {
   assertStatusShape(status);
 });
 
+test("api.schema exposes permission-safe full-display capture contract", async () => {
+  const schema = await daemonCall("api.schema");
+  const endpoint = schema.methods?.find((method) => method.method === "capture.screenshotDisplay");
+  assert.ok(endpoint, "capture.screenshotDisplay should be registered");
+  const params = new Set(endpoint.params?.map((param) => param.name));
+  assert.ok(params.has("display"), "display alias should be discoverable");
+  assert.ok(params.has("displayIndex"), "displayIndex should be discoverable");
+  assert.ok(params.has("clipboard"), "clipboard behavior should be discoverable");
+});
+
 test("CLI windows --json returns window records", () => {
   const windows = runCliJson(["windows", "--json"]);
   assert.ok(Array.isArray(windows));

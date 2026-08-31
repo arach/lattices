@@ -238,6 +238,135 @@ final class CaptureController {
         }
     }
 
+    func screenshotDisplay(params: JSON?) throws -> JSON {
+        let source = params?["source"]?.stringValue ?? "daemon"
+        let resolved = try resolveDisplay(params: params)
+        let showsCursor = params?["cursor"]?.boolValue ?? true
+        let clipboardRequested = params?["clipboard"]?.boolValue ?? true
+        let ownsRun = params?["runId"]?.stringValue?.isEmpty ?? true
+        let run = try resolveRun(
+            params: params,
+            title: params?["title"]?.stringValue ?? "Screenshot \(resolved.name)",
+            source: source,
+            surfaces: [resolved.surface]
+        )
+
+        if ownsRun {
+            _ = try RunStore.shared.markRunning(
+                id: run.id,
+                summary: "Capturing display screenshot",
+                data: [
+                    "display": resolved.json,
+                    "cursor": .bool(showsCursor),
+                    "clipboard": .bool(clipboardRequested),
+                ]
+            )
+        } else {
+            _ = try RunStore.shared.appendTrace(
+                id: run.id,
+                kind: "capture.screenshotDisplay.started",
+                summary: "Capturing display screenshot",
+                data: [
+                    "display": resolved.json,
+                    "cursor": .bool(showsCursor),
+                    "clipboard": .bool(clipboardRequested),
+                ]
+            )
+        }
+
+        let filename = sanitizedFilename(
+            params?["filename"]?.stringValue
+                ?? "screenshot-display-\(resolved.index)-\(Self.fileTimestamp()).png"
+        )
+        let outputURL = RunStore.shared.artifactURL(for: run, filename: filename)
+        let startedAt = Date()
+
+        do {
+            let cgImage = try captureDisplayImage(
+                displayID: resolved.displayID,
+                showsCursor: showsCursor,
+                timeoutSeconds: 15
+            )
+            let data = try pngData(from: cgImage)
+            try data.write(to: outputURL, options: .atomic)
+            let clipboardCopied = clipboardRequested ? copyPNGToClipboard(data) : false
+
+            let artifact = RunStore.shared.makeArtifact(
+                run: run,
+                kind: "screenshot-display",
+                url: outputURL,
+                mimeType: "image/png",
+                metadata: [
+                    "displayIndex": .int(resolved.index),
+                    "displayID": .int(Int(resolved.displayID)),
+                    "displayName": .string(resolved.name),
+                    "width": .int(cgImage.width),
+                    "height": .int(cgImage.height),
+                    "byteSize": .int(data.count),
+                    "elapsedMs": .int(Int(Date().timeIntervalSince(startedAt) * 1000)),
+                    "cursor": .bool(showsCursor),
+                    "clipboardRequested": .bool(clipboardRequested),
+                    "clipboardCopied": .bool(clipboardCopied),
+                    "frame": regionJSON(resolved.frame),
+                ]
+            )
+            let updated = try RunStore.shared.appendArtifact(artifact)
+            let completionData: [String: JSON] = [
+                "artifactId": .string(artifact.id),
+                "path": .string(artifact.path),
+                "displayIndex": .int(resolved.index),
+                "clipboardCopied": .bool(clipboardCopied),
+            ]
+            let responseRun: RunSession
+            if ownsRun {
+                responseRun = try RunStore.shared.complete(
+                    id: updated.id,
+                    summary: "Saved display screenshot",
+                    data: completionData
+                )
+            } else {
+                responseRun = try RunStore.shared.appendTrace(
+                    id: updated.id,
+                    kind: "capture.screenshotDisplay.saved",
+                    summary: "Saved display screenshot",
+                    data: completionData
+                )
+            }
+
+            return .object([
+                "ok": .bool(true),
+                "run": responseRun.json,
+                "artifact": artifact.json,
+                "display": resolved.json,
+                "cursor": .bool(showsCursor),
+                "clipboard": .object([
+                    "requested": .bool(clipboardRequested),
+                    "copied": .bool(clipboardCopied),
+                ]),
+            ])
+        } catch {
+            let data: [String: JSON] = [
+                "display": resolved.json,
+                "error": .string(error.localizedDescription),
+            ]
+            if ownsRun {
+                _ = try? RunStore.shared.fail(
+                    id: run.id,
+                    summary: "Display screenshot failed",
+                    data: data
+                )
+            } else {
+                _ = try? RunStore.shared.appendTrace(
+                    id: run.id,
+                    kind: "capture.screenshotDisplay.failed",
+                    summary: "Display screenshot failed",
+                    data: data
+                )
+            }
+            throw error
+        }
+    }
+
     func zoomArtifact(params: JSON?) throws -> JSON {
         let source = params?["source"]?.stringValue ?? "daemon"
         let resolved = try resolveArtifact(params: params, source: source, fallbackTitle: "Zoom artifact")
@@ -501,6 +630,46 @@ final class CaptureController {
         let surfaces: [RunSurface]
     }
 
+    private struct DisplayResolution {
+        let index: Int
+        let displayID: CGDirectDisplayID
+        let name: String
+        let frame: CGRect
+
+        var surface: RunSurface {
+            RunSurface(
+                id: "display-\(displayID)",
+                kind: "display",
+                wid: nil,
+                app: nil,
+                title: name,
+                frame: RunFrame(WindowFrame(
+                    x: Double(frame.origin.x),
+                    y: Double(frame.origin.y),
+                    w: Double(frame.width),
+                    h: Double(frame.height)
+                )),
+                latticesSession: nil,
+                x: nil,
+                y: nil
+            )
+        }
+
+        var json: JSON {
+            .object([
+                "displayIndex": .int(index),
+                "displayID": .int(Int(displayID)),
+                "name": .string(name),
+                "frame": .object([
+                    "x": .double(Double(frame.origin.x)),
+                    "y": .double(Double(frame.origin.y)),
+                    "w": .double(Double(frame.width)),
+                    "h": .double(Double(frame.height)),
+                ]),
+            ])
+        }
+    }
+
     private struct ArtifactResolution {
         let run: RunSession
         let artifact: RunArtifact?
@@ -562,12 +731,47 @@ final class CaptureController {
         return captured
     }
 
+    private func captureDisplayImage(
+        displayID: CGDirectDisplayID,
+        showsCursor: Bool,
+        timeoutSeconds: Int
+    ) throws -> CGImage {
+        let semaphore = DispatchSemaphore(value: 0)
+        let box = CaptureBox()
+
+        Task.detached(priority: .userInitiated) {
+            let captured = await WindowCapture.display(
+                displayID: displayID,
+                showsCursor: showsCursor,
+                imageOption: [.bestResolution]
+            )
+            box.set(captured)
+            semaphore.signal()
+        }
+
+        if semaphore.wait(timeout: .now() + .seconds(timeoutSeconds)) == .timedOut {
+            throw RouterError.custom("Timed out capturing display \(displayID)")
+        }
+        guard let captured = box.value() else {
+            throw RouterError.custom("Unable to capture display \(displayID). Check Screen Recording permission.")
+        }
+        return captured
+    }
+
     private func pngData(from cgImage: CGImage) throws -> Data {
         let rep = NSBitmapImageRep(cgImage: cgImage)
         guard let data = rep.representation(using: .png, properties: [:]) else {
             throw RouterError.custom("Unable to encode screenshot as PNG")
         }
         return data
+    }
+
+    private func copyPNGToClipboard(_ data: Data) -> Bool {
+        onMainThread {
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            return pasteboard.setData(data, forType: .png)
+        }
     }
 
     private func resolveRegion(params: JSON?) throws -> RegionResolution {
@@ -610,6 +814,77 @@ final class CaptureController {
             height: target.frame.h
         ))
         return RegionResolution(rect: rect, target: target, surfaces: [.window(target)])
+    }
+
+    private func resolveDisplay(params: JSON?) throws -> DisplayResolution {
+        try onMainThread {
+            let screens = NSScreen.screens
+            guard !screens.isEmpty else {
+                throw RouterError.notFound("display")
+            }
+
+            let requestedIndex = params?["displayIndex"]?.intValue
+                ?? params?["display"]?.intValue
+            let screen: NSScreen
+            if let requestedIndex {
+                guard requestedIndex >= 0,
+                      let requestedScreen = DisplayGeometryMapper.screen(forDisplayIndex: requestedIndex) else {
+                    throw RouterError.notFound("display \(requestedIndex)")
+                }
+                screen = requestedScreen
+            } else {
+                let pointer = NSEvent.mouseLocation
+                guard let pointerScreen = screens.first(where: { $0.frame.contains(pointer) })
+                        ?? NSScreen.main
+                        ?? screens.first else {
+                    throw RouterError.notFound("current display")
+                }
+                screen = pointerScreen
+            }
+
+            let key = NSDeviceDescriptionKey("NSScreenNumber")
+            guard let number = screen.deviceDescription[key] as? NSNumber else {
+                throw RouterError.custom("Unable to resolve the CoreGraphics id for \(screen.localizedName)")
+            }
+            let displayID = CGDirectDisplayID(number.uint32Value)
+            let displayIndex = requestedIndex
+                ?? apiDisplayIndex(for: screen, displayID: displayID, screens: screens)
+            let frame = CGDisplayBounds(displayID)
+            guard !frame.isNull, !frame.isInfinite, !frame.isEmpty else {
+                throw RouterError.custom("Display \(displayID) has no capturable frame")
+            }
+
+            return DisplayResolution(
+                index: displayIndex,
+                displayID: displayID,
+                name: screen.localizedName,
+                frame: frame
+            )
+        }
+    }
+
+    private func apiDisplayIndex(
+        for screen: NSScreen,
+        displayID: CGDirectDisplayID,
+        screens: [NSScreen]
+    ) -> Int {
+        for display in WindowTiler.getDisplaySpaces() {
+            guard let mappedScreen = DisplayGeometryMapper.screen(for: display, in: screens),
+                  let number = mappedScreen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
+                continue
+            }
+            if CGDirectDisplayID(number.uint32Value) == displayID {
+                return display.displayIndex
+            }
+        }
+        return screens.firstIndex(where: { $0 === screen }) ?? 0
+    }
+
+    private func onMainThread<T>(_ body: () throws -> T) rethrows -> T {
+        if Thread.isMainThread {
+            return try body()
+        }
+        return try DispatchQueue.main.sync(execute: body)
     }
 
     private func normalizedRect(_ rect: CGRect) -> CGRect {

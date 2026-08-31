@@ -1739,6 +1739,26 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
+            method: "capture.screenshotDisplay",
+            description: "Capture one complete display as a PNG run artifact without focusing or changing visible overlays. Defaults to the display under the pointer.",
+            access: .mutate,
+            params: [
+                Param(name: "displayIndex", type: "int", required: false, description: "Target API display index; defaults to the display under the pointer"),
+                Param(name: "display", type: "int", required: false, description: "Alias for displayIndex"),
+                Param(name: "cursor", type: "bool", required: false, description: "Include the pointer for diagnostics (default true)"),
+                Param(name: "clipboard", type: "bool", required: false, description: "Copy PNG image data to the system clipboard (default true)"),
+                Param(name: "title", type: "string", required: false, description: "Optional run title"),
+                Param(name: "runId", type: "string", required: false, description: "Existing run id to append to"),
+                Param(name: "source", type: "string", required: false, description: "Calling surface label"),
+                Param(name: "filename", type: "string", required: false, description: "Optional artifact filename"),
+            ],
+            returns: .custom("Object with ok, run, artifact, display, cursor, and clipboard status"),
+            handler: { params in
+                try CaptureController.shared.screenshotDisplay(params: params)
+            }
+        ))
+
+        api.register(Endpoint(
             method: "capture.zoomArtifact",
             description: "Crop and zoom an image artifact into a new PNG artifact linked to the same run.",
             access: .mutate,

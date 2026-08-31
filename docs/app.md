@@ -315,6 +315,34 @@ retain a faint, non-interactive ambient surface after dismissal. Neither UI is
 the read-only terminal [`lattices map`](/docs/workspace-map) command; see that
 page for exact side effects, full-teardown steps, and tab-stack cleanup.
 
+### In-place window tools
+
+Press Hyper+G to arrange the real windows on the current desktop without
+switching to a thumbnail survey. Hover a real app window to reveal its dashed
+**click to select** outline, then click it to add or remove it from the
+selection. Selected windows have solid green numbered outlines; the last one
+selected is the active target for single-window actions. You can also select
+from the **Windows** drawer in the header or use letter hints. The bottom shelf
+shows the three-step flow—Select, Arrange, Finish—and groups actions by timing:
+
+- **Fill** expands the active selected window into open space immediately.
+- **Grid** moves two or more selected windows into a balanced grid immediately.
+- **Swap** exchanges the first two selected windows.
+- **Place** stages an exact grid position for the active selected window; it
+  applies only when you Keep changes.
+- **More** exposes tab groups, layers, quick placements, and Hyperspace.
+
+Grid, Fill, and Swap update the live desktop while Hyper+G remains open. Press
+**Keep changes** or Return to accept those live moves and apply staged changes.
+Press **Restore** or Escape to discard staged changes and restore the window
+frames and stacking order from when Hyper+G opened. Inline **Now** and **Keep**
+labels distinguish immediate actions from staged actions before anything moves.
+
+**Snapshot** starts a three-second countdown, captures the complete display
+without closing or changing Hyper+G, copies the PNG to the clipboard, and saves
+the same image as a Runs artifact. The command-line equivalent is
+`lattices capture display [index] --clipboard --delay 3`.
+
 ### Docs
 
 Embedded quick reference with glossary, "how it works" steps, and
@@ -355,9 +383,10 @@ Agents can use this to "see" what's on screen.
 
 ### Desktop Inventory integration
 
-The Desktop Inventory view (Hyper+G) uses OCR to make windows searchable
-by their content — not just by title or app name. When you type a search
-query, windows matching by OCR content show contextual snippets.
+Desktop Inventory and omni search use OCR to find windows by their content —
+not just by title or app name. Matching windows can include contextual text
+snippets. Hyper+G's optional drawer is a compact roster for the current display;
+use Desktop Inventory or omni search when the on-screen text is the target.
 
 ### API access
 
@@ -384,7 +413,7 @@ More in the [Agent API reference](/docs/api#ocrsnapshot).
 
 ### Requirements
 
-- **Screen Recording** permission — required to capture window images
+- **Screen Recording** permission — required to capture window and display images
 - Granted via System Settings > Privacy & Security > Screen Recording
 
 ## Local loopback services

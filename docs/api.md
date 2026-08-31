@@ -215,6 +215,7 @@ methods write into the Lattices run store under
 | `runs.get` | read | Inspect one run, including artifacts and trace events |
 | `runs.artifacts` | read | List artifacts for one run |
 | `capture.screenshotWindow` | write | Capture a window screenshot as a run artifact |
+| `capture.screenshotDisplay` | write | Capture one complete display as a run artifact and optional clipboard image |
 | `capture.screenshotRegion` | write | Capture a screen region as a run artifact |
 | `capture.zoomArtifact` | write | Crop and zoom an image artifact into a linked artifact |
 | `vision.analyzeWindow` | write | Capture a window and run local OCR-based visual analysis |
@@ -267,6 +268,42 @@ await daemonCall('capture.screenshotWindow', {
   session: 'frontend-a1b2c3',
   filename: 'before-layout.png'
 })
+```
+
+#### `capture.screenshotDisplay`
+
+Capture one complete composited display as a PNG artifact without focusing a
+window or changing visible overlays. The image includes the menu bar, pointer
+by default, and Lattices-owned surfaces already visible on that display, which
+makes it suitable for snapshots of transient UI such as Hyper+G. When no
+display is supplied, Lattices captures the display under the pointer.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `displayIndex` | int | no | Zero-based target from `spaces.list`; defaults to the display under the pointer |
+| `display` | int | no | Alias for `displayIndex` |
+| `cursor` | bool | no | Include the pointer; defaults to `true` |
+| `clipboard` | bool | no | Copy PNG image data to the system clipboard; defaults to `true` for raw RPC calls |
+| `title` | string | no | Optional run title |
+| `runId` | string | no | Existing run to append to |
+| `source` | string | no | Calling surface label |
+| `filename` | string | no | Optional artifact filename |
+
+```js
+await daemonCall('capture.screenshotDisplay', {
+  displayIndex: 0,
+  clipboard: true,
+  filename: 'hyper-g-layout.png',
+  source: 'agent'
+})
+```
+
+The CLI uses the positional index as `display`, always writes the run artifact,
+and copies the PNG only when `--clipboard` is present. `--delay` is a CLI-side
+wait measured in seconds; it is not an RPC parameter.
+
+```bash
+lattices capture display 0 --clipboard --delay 3 --filename hyper-g-layout.png
 ```
 
 #### `capture.screenshotRegion`
@@ -348,6 +385,7 @@ CLI:
 
 ```bash
 lattices capture window
+lattices capture display 0 --clipboard --delay 3
 lattices runs
 lattices runs run_20260617-120000_a1b2c3
 lattices terminals

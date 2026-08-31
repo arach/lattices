@@ -93,6 +93,47 @@ enum WindowCapture {
         }
     }
 
+    /// Capture one complete display exactly as WindowServer composites it.
+    ///
+    /// A display filter with no excluded windows intentionally includes
+    /// Lattices overlays along with the underlying apps. That makes this path
+    /// suitable for diagnostic snapshots of transient UI such as Hyper+G.
+    static func display(
+        displayID: CGDirectDisplayID,
+        showsCursor: Bool = true,
+        imageOption: CGWindowImageOption = [.bestResolution]
+    ) async -> CGImage? {
+        do {
+            let content = try await SCShareableContent.excludingDesktopWindows(
+                false,
+                onScreenWindowsOnly: true
+            )
+            guard let display = content.displays.first(where: { $0.displayID == displayID }) else {
+                return nil
+            }
+
+            let filter = SCContentFilter(display: display, excludingWindows: [])
+            filter.includeMenuBar = true
+            let contentInfo = SCShareableContent.info(for: filter)
+            let scale = outputScale(for: imageOption, contentInfo: contentInfo)
+            let configuration = SCStreamConfiguration()
+            configuration.width = max(1, Int((CGFloat(display.width) * scale).rounded(.up)))
+            configuration.height = max(1, Int((CGFloat(display.height) * scale).rounded(.up)))
+            configuration.captureResolution = captureResolution(for: imageOption)
+            configuration.scalesToFit = true
+            configuration.preservesAspectRatio = true
+            configuration.showsCursor = showsCursor
+            configuration.shouldBeOpaque = true
+
+            return try await SCScreenshotManager.captureImage(
+                contentFilter: filter,
+                configuration: configuration
+            )
+        } catch {
+            return nil
+        }
+    }
+
     private struct RegionSelection {
         let display: SCDisplay
         let sourceRect: CGRect
