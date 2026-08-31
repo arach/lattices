@@ -67,6 +67,7 @@ final class WindowHighlight {
         window.backgroundColor = .clear
         window.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.maximumWindow)))
         window.hasShadow = false
+        window.sharingType = .readOnly
         window.ignoresMouseEvents = true
         window.collectionBehavior = [.canJoinAllSpaces, .stationary]
 
@@ -145,6 +146,7 @@ final class WindowSelectionOverlay {
         var wid: UInt32
         var frame: NSRect
         var slot: Int?
+        var isHoverTarget = false
     }
 
     private var windows: [UInt32: NSWindow] = [:]
@@ -174,6 +176,7 @@ final class WindowSelectionOverlay {
             }
             if let border = existing.contentView as? SelectedWindowBorderView {
                 border.slot = entry.slot
+                border.isHoverTarget = entry.isHoverTarget
             }
             existing.orderFrontRegardless()
             return
@@ -189,10 +192,15 @@ final class WindowSelectionOverlay {
         window.backgroundColor = .clear
         window.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.maximumWindow)))
         window.hasShadow = false
+        window.sharingType = .readOnly
         window.ignoresMouseEvents = true
         window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
 
-        let borderView = SelectedWindowBorderView(frame: NSRect(origin: .zero, size: expanded.size), slot: entry.slot)
+        let borderView = SelectedWindowBorderView(
+            frame: NSRect(origin: .zero, size: expanded.size),
+            slot: entry.slot,
+            isHoverTarget: entry.isHoverTarget
+        )
         window.contentView = borderView
         window.alphaValue = 1
         window.orderFrontRegardless()
@@ -202,9 +210,11 @@ final class WindowSelectionOverlay {
 
 private class SelectedWindowBorderView: NSView {
     var slot: Int? { didSet { needsDisplay = true } }
+    var isHoverTarget: Bool { didSet { needsDisplay = true } }
 
-    init(frame: NSRect, slot: Int?) {
+    init(frame: NSRect, slot: Int?, isHoverTarget: Bool) {
         self.slot = slot
+        self.isHoverTarget = isHoverTarget
         super.init(frame: frame)
     }
 
@@ -214,34 +224,42 @@ private class SelectedWindowBorderView: NSView {
     override var isOpaque: Bool { false }
 
     override func draw(_ dirtyRect: NSRect) {
-        let accent = NSColor(calibratedRed: 0.38, green: 0.92, blue: 1.0, alpha: 1.0)
-        let borderWidth: CGFloat = 3
+        let selected = slot != nil
+        let accent = selected
+            ? NSColor(calibratedRed: 0.20, green: 0.78, blue: 0.45, alpha: 1.0)
+            : NSColor(calibratedRed: 0.36, green: 0.82, blue: 1.0, alpha: 1.0)
+        let borderWidth: CGFloat = selected ? 3 : 2
         let cornerRadius: CGFloat = 12
 
         let glowRect = bounds.insetBy(dx: 1, dy: 1)
         let glowPath = NSBezierPath(roundedRect: glowRect, xRadius: cornerRadius + 2, yRadius: cornerRadius + 2)
-        glowPath.lineWidth = borderWidth + 4
-        accent.withAlphaComponent(0.22).setStroke()
+        glowPath.lineWidth = borderWidth + (selected ? 4 : 3)
+        accent.withAlphaComponent(selected ? 0.22 : 0.14).setStroke()
         glowPath.stroke()
 
         let rect = bounds.insetBy(dx: borderWidth / 2 + 2, dy: borderWidth / 2 + 2)
         let path = NSBezierPath(roundedRect: rect, xRadius: cornerRadius, yRadius: cornerRadius)
         path.lineWidth = borderWidth
-        accent.withAlphaComponent(0.95).setStroke()
+        if isHoverTarget && !selected {
+            path.setLineDash([6, 4], count: 2, phase: 0)
+        }
+        accent.withAlphaComponent(selected ? 0.95 : 0.82).setStroke()
         path.stroke()
 
         let innerRect = rect.insetBy(dx: 3, dy: 3)
         let innerPath = NSBezierPath(roundedRect: innerRect, xRadius: max(cornerRadius - 3, 6), yRadius: max(cornerRadius - 3, 6))
         innerPath.lineWidth = 1
-        NSColor.white.withAlphaComponent(0.72).setStroke()
+        NSColor.white.withAlphaComponent(selected ? 0.72 : 0.24).setStroke()
         innerPath.stroke()
 
-        if let slot {
-            let badge = "\(slot)" as NSString
-            let font = NSFont.monospacedSystemFont(ofSize: 11, weight: .bold)
+        if let badgeText = slot.map(String.init) ?? (isHoverTarget ? "click to select" : nil) {
+            let badge = badgeText as NSString
+            let font = NSFont.monospacedSystemFont(ofSize: selected ? 11 : 10, weight: .bold)
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: font,
-                .foregroundColor: NSColor.black.withAlphaComponent(0.86),
+                .foregroundColor: selected
+                    ? NSColor.black.withAlphaComponent(0.86)
+                    : NSColor.white.withAlphaComponent(0.94),
             ]
             let size = badge.size(withAttributes: attrs)
             let padH: CGFloat = 7
@@ -250,8 +268,17 @@ private class SelectedWindowBorderView: NSView {
             let badgeH = size.height + padV * 2
             let badgeRect = NSRect(x: rect.minX + 8, y: rect.maxY - badgeH - 8, width: badgeW, height: badgeH)
             let badgePath = NSBezierPath(roundedRect: badgeRect, xRadius: 8, yRadius: 8)
-            accent.withAlphaComponent(0.95).setFill()
+            if selected {
+                accent.withAlphaComponent(0.95).setFill()
+            } else {
+                NSColor.black.withAlphaComponent(0.78).setFill()
+            }
             badgePath.fill()
+            if !selected {
+                accent.withAlphaComponent(0.84).setStroke()
+                badgePath.lineWidth = 1
+                badgePath.stroke()
+            }
             badge.draw(at: NSPoint(x: badgeRect.minX + padH, y: badgeRect.minY + padV), withAttributes: attrs)
         }
     }

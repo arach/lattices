@@ -199,6 +199,7 @@ private final class HyperspaceScreenPanel: NSPanel {
         isOpaque = false
         backgroundColor = .clear
         hasShadow = false
+        sharingType = .readOnly
         ignoresMouseEvents = false
         hidesOnDeactivate = false
         collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
@@ -224,6 +225,21 @@ private final class PassThroughHostingView<Content: View>: NSHostingView<Content
 private final class InPlaceHostingView<Content: View>: NSHostingView<Content> {
     weak var panel: MotionPanel?
     var screen: NSScreen?
+    private var pointerTrackingArea: NSTrackingArea?
+    private var lastHoverSample: TimeInterval = 0
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let pointerTrackingArea { removeTrackingArea(pointerTrackingArea) }
+        let area = NSTrackingArea(
+            rect: .zero,
+            options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        pointerTrackingArea = area
+    }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         if let hit = super.hitTest(point) { return hit }
@@ -238,6 +254,27 @@ private final class InPlaceHostingView<Content: View>: NSHostingView<Content> {
             return
         }
         super.mouseDown(with: event)
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        // CG window hit-testing is deliberately sampled rather than run at the
+        // display refresh rate. The affordance only needs to follow window changes.
+        let now = ProcessInfo.processInfo.systemUptime
+        guard now - lastHoverSample >= 0.08 else { return }
+        lastHoverSample = now
+
+        let local = convert(event.locationInWindow, from: nil)
+        guard super.hitTest(local) == nil else {
+            panel?.clearInPlaceDesktopHover()
+            return
+        }
+        guard let panel, let screen else { return }
+        panel.performInPlaceDesktopHover(at: local, in: self, on: screen)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        panel?.clearInPlaceDesktopHover()
+        super.mouseExited(with: event)
     }
 }
 
@@ -499,6 +536,7 @@ private final class MotionPanel: NSPanel {
     private var clusterHintMapByScreen: [String: [String: Int]] = [:]
     private var exposeTileWByScreen: [String: CGFloat] = [:]
     private var exposeFramesByScreen: [String: [UInt32: CGRect]] = [:]
+    private var inPlaceHoverWid: UInt32?
     private var clusterSearchQueryByScreen: [String: [Int: String]] = [:]
     private var activeClusterSearchByScreen: [String: Int] = [:]
     private var exposeClusters: [ExposeCluster] = []      // structural clusters for the spread
@@ -545,6 +583,7 @@ private final class MotionPanel: NSPanel {
         isOpaque = false
         backgroundColor = .clear
         hasShadow = false
+        sharingType = .readOnly
         ignoresMouseEvents = false   // capture clicks so you can pluck windows by clicking
         hidesOnDeactivate = false
         collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
@@ -727,6 +766,7 @@ private final class MotionPanel: NSPanel {
         thumbInFlight.removeAll()
         captureRebuildWorkItemsByScreenID.values.forEach { $0.cancel() }
         captureRebuildWorkItemsByScreenID.removeAll()
+        inPlaceHoverWid = nil
         WindowSelectionOverlay.shared.clear()
         removeExposeHost()
         orderOut(nil)
@@ -862,12 +902,7 @@ private final class MotionPanel: NSPanel {
                 let screen = validSurveyScreen(screenForPointer())
                     ?? validSurveyScreen(screenForEvent(event))
                     ?? activeSurveyScreen
-                if let screen {
-                    if !stagedIntents.isEmpty { AppFeedback.shared.commitTactile() }
-                    commitStagedIntents(on: screen)
-                    DiagnosticLog.shared.info("In-place confirm — commit staged + exit")
-                }
-                onExit?()
+                keepInPlaceAndExit(on: screen)
             } else if exposed {                             // Hyperspace: gather the plucked, then leave
                 let screen = validSurveyScreen(screenForPointer())
                     ?? validSurveyScreen(screenForEvent(event))
@@ -945,7 +980,8 @@ private final class MotionPanel: NSPanel {
                 if let eventScreen { gatherInPlace(on: eventScreen) }
                 return
             case 3  where !mods.contains(.shift) && inPlaceMode:             // F — fill available space
-                fillAvailableSpace()
+                guard let eventScreen else { NSSound.beep(); return }
+                fillSelectedInPlace(on: eventScreen)
                 return
             case 1  where !mods.contains(.shift) && inPlaceMode:             // S — swap first two picks
                 if let eventScreen, let id = screenID,
@@ -1307,6 +1343,16 @@ private final class MotionPanel: NSPanel {
         placeEntry(target, to: newFrame, label: "fill")
     }
 
+    /// Hyper+G exposes only selected windows as action targets. Keep the F shortcut
+    /// on the same model as the shelf instead of filling the implicit startup aim.
+    private func fillSelectedInPlace(on screen: NSScreen) {
+        let id = MotionPanel.screenID(screen)
+        let selected = pickOrderByScreen[id] ?? []
+        let target = fillAimWid.flatMap { selected.contains($0) ? $0 : nil } ?? selected.last
+        guard let target else { NSSound.beep(); return }
+        fillAvailableSpace(for: target)
+    }
+
     /// Pin keyboard actions (F fill, half-tiles, etc.) to the window the user last
     /// clicked or Tab-aimed — not a stale expose index from mode entry.
     private func aimWindow(_ wid: UInt32, on surveyScreen: NSScreen? = nil) {
@@ -1357,6 +1403,18 @@ private final class MotionPanel: NSPanel {
             RealWindowAnimator.setFrameRobust(el, frame, pid: entry.pid)
         }
         restoreOriginalOrder()
+    }
+
+    /// Mouse and keyboard confirmation share one transaction boundary: staged
+    /// placements are applied, live preview changes stay where they are, then the
+    /// overlay closes. `undoAndExit()` is the exact inverse used by Esc / Cancel.
+    private func keepInPlaceAndExit(on screen: NSScreen?) {
+        if let screen {
+            if !stagedIntents.isEmpty { AppFeedback.shared.commitTactile() }
+            commitStagedIntents(on: screen)
+            DiagnosticLog.shared.info("In-place confirm — commit staged + exit")
+        }
+        onExit?()
     }
 
     /// Re-stack every window in the front-to-back order it had when the mode
@@ -2005,10 +2063,14 @@ private final class MotionPanel: NSPanel {
 
     /// Gather the picked set into a balanced grid on the active display (the only
     /// place real windows move) and stay in the mode. Un-picked windows are left
-    /// exactly where they are — in the survey they never moved. Shared by G and ⏎.
+    /// exactly where they are — in the survey they never moved. In Hyper+G, staged
+    /// placements and layer changes remain pending for Keep instead of being
+    /// accidentally committed by a later Grid action.
     private func gatherInPlace() {
         let screen = activeSurveyScreen ?? NSScreen.main ?? NSScreen.screens[0]
-        commitStagedIntents(on: screen)   // drag & drop plan; no-op until staged
+        if !inPlaceMode {
+            commitStagedIntents(on: screen)   // Hyperspace gathers and commits in one step
+        }
         let members = gatherMembers()
         if members.count >= 2 {
             relayoutGroup()                                       // picked set snaps into the grid, on top
@@ -2273,7 +2335,7 @@ private final class MotionPanel: NSPanel {
     /// fit (so tiles never run under the band) and ExposeView (which draws it).
     private func bandHeight(for screen: NSScreen) -> CGFloat {
         if inPlaceMode {
-            return max(188, min(screen.frame.height * 0.24, 260))
+            return 0
         }
         // Reserve a touch under the top third for the intent band so the survey
         // grid gets the bottom ~2/3 (design/hyperspace-drag-drop.md). Floored so the
@@ -2328,6 +2390,12 @@ private final class MotionPanel: NSPanel {
                 inPlace: inPlaceMode,
                 screenAspect: screen.visibleFrame.width / max(1, screen.visibleFrame.height),
                 usableInset: MotionPanel.usableInset(of: screen),
+                onSnapshot: { [weak self] completion in
+                    guard let self else { completion("In-place tools closed"); return }
+                    self.captureInPlaceSnapshot(on: screen, completion: completion)
+                },
+                onCancel: { [weak self] in self?.undoAndExit() },
+                onKeep: { [weak self] in self?.keepInPlaceAndExit(on: screen) },
                 onNewLayer: { [weak self] in self?.presentNewLayer() })
             let hosting: NSHostingView<ExposeView>
             if inPlaceMode {
@@ -2523,11 +2591,18 @@ private final class MotionPanel: NSPanel {
                     WindowMotionMode.shared.deactivate()
                     WindowMotionMode.shared.toggleHyperspace()
                 },
+                onSnapshot: { [weak self] completion in
+                    guard let self else { completion("In-place tools closed"); return }
+                    self.captureInPlaceSnapshot(on: screen, completion: completion)
+                },
+                onCancel: { [weak self] in self?.undoAndExit() },
+                onKeep: { [weak self] in self?.keepInPlaceAndExit(on: screen) },
                 layers: layerPiles(on: screen),
                 stagedPlan: stagedPlan(on: screen),
                 currentLayout: currentLayout(on: screen),
                 pickedWids: Set(pickOrderByScreen[id] ?? []),
                 pickedOrder: pickOrderByScreen[id] ?? [],
+                hasSessionChanges: didMoveWindows,
                 displayScope: exposeDisplayScope(for: screen),
                 onLayout: { [weak self] frames in
                     guard let self else { return }
@@ -3039,6 +3114,27 @@ private final class MotionPanel: NSPanel {
         }
     }
 
+    /// Passive hover is an affordance only: it advertises that the real window is
+    /// clickable, but never changes the active action target or selection.
+    fileprivate func performInPlaceDesktopHover(at viewPoint: NSPoint, in view: NSView, on screen: NSScreen) {
+        guard exposed, inPlaceMode, !dismissed, !dragModel.isActive, !dragModel.isPlacing else {
+            clearInPlaceDesktopHover()
+            return
+        }
+        let cg = cgPoint(fromAppKitScreen: appKitScreenPoint(from: viewPoint, in: view))
+        setInPlaceDesktopHover(topWindowAtDesktopClick(cg: cg, on: screen)?.wid)
+    }
+
+    fileprivate func clearInPlaceDesktopHover() {
+        setInPlaceDesktopHover(nil)
+    }
+
+    private func setInPlaceDesktopHover(_ wid: UInt32?) {
+        guard inPlaceHoverWid != wid else { return }
+        inPlaceHoverWid = wid
+        refreshBorders()
+    }
+
     private func validSurveyScreen(_ screen: NSScreen?) -> NSScreen? {
         guard let screen, !surveyMembers(on: screen).isEmpty else { return nil }
         return screen
@@ -3105,18 +3201,62 @@ private final class MotionPanel: NSPanel {
     private func exposeDisplayScope(for screen: NSScreen) -> ExposeView.DisplayScope? {
         let screens = surveyScreens()
         let screenID = MotionPanel.screenID(screen)
-        guard let index = screens.firstIndex(where: { MotionPanel.screenID($0) == screenID }) else {
+        guard screens.contains(where: { MotionPanel.screenID($0) == screenID }) else {
             return nil
         }
-        let physicalIndex = NSScreen.screens.firstIndex(where: { MotionPanel.screenID($0) == screenID }) ?? index
+        let displayIndex = apiDisplayIndex(for: screen)
         let windows = surveyMembers(on: screen).count
         return ExposeView.DisplayScope(
-            index: physicalIndex,
+            index: displayIndex,
             count: screens.count,
-            label: physicalIndex == 0 ? "Main" : "Display \(physicalIndex + 1)",
+            label: screen == NSScreen.main ? "Main" : "Display \(displayIndex + 1)",
             windowCount: windows,
             isActive: activeSurveyScreen.map(MotionPanel.screenID) == screenID
         )
+    }
+
+    /// API display indices come from SkyLight, whose order is not guaranteed to
+    /// match `NSScreen.screens`. UUID-map the exact Hyper+G panel display so a
+    /// user can move the pointer anywhere during the countdown without changing
+    /// which setup is captured.
+    private func apiDisplayIndex(for screen: NSScreen) -> Int {
+        let screens = NSScreen.screens
+        let targetID = MotionPanel.screenID(screen)
+        for display in WindowTiler.getDisplaySpaces() {
+            guard let mapped = DisplayGeometryMapper.screen(for: display, in: screens) else { continue }
+            if MotionPanel.screenID(mapped) == targetID { return display.displayIndex }
+        }
+        return screens.firstIndex(where: { MotionPanel.screenID($0) == targetID }) ?? 0
+    }
+
+    private func captureInPlaceSnapshot(on screen: NSScreen,
+                                        completion: @escaping (String?) -> Void) {
+        let displayIndex = apiDisplayIndex(for: screen)
+        let params: JSON = .object([
+            "displayIndex": .int(displayIndex),
+            "cursor": .bool(true),
+            "clipboard": .bool(true),
+            "source": .string("hyper-g"),
+            "title": .string("Hyper+G Snapshot"),
+        ])
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            do {
+                _ = try CaptureController.shared.screenshotDisplay(params: params)
+                DispatchQueue.main.async {
+                    if self?.exposed == true { self?.makeKey() }
+                    DiagnosticLog.shared.info("In-place snapshot — display \(displayIndex) copied + saved")
+                    completion(nil)
+                }
+            } catch {
+                let message = error.localizedDescription
+                DispatchQueue.main.async {
+                    if self?.exposed == true { self?.makeKey() }
+                    DiagnosticLog.shared.error("In-place snapshot failed — \(message)")
+                    NSSound.beep()
+                    completion(message)
+                }
+            }
+        }
     }
 
     /// Clicking a minimap cell deselects it — the requested "unpluck with the
@@ -3204,15 +3344,27 @@ private final class MotionPanel: NSPanel {
         // chrome host beneath the instruction strip.
         if inPlaceMode {
             var overlayEntries: [WindowSelectionOverlay.Entry] = []
+            var selectedWids = Set<UInt32>()
             for (_, order) in pickOrderByScreen {
                 for (idx, wid) in order.enumerated() {
                     guard let entry = eligible.first(where: { $0.wid == wid }) else { continue }
+                    selectedWids.insert(wid)
                     overlayEntries.append(WindowSelectionOverlay.Entry(
                         wid: wid,
                         frame: liveAppKitFrame(for: entry),
                         slot: idx + 1
                     ))
                 }
+            }
+            if let hoverWid = inPlaceHoverWid,
+               !selectedWids.contains(hoverWid),
+               let entry = eligible.first(where: { $0.wid == hoverWid }) {
+                overlayEntries.append(WindowSelectionOverlay.Entry(
+                    wid: hoverWid,
+                    frame: liveAppKitFrame(for: entry),
+                    slot: nil,
+                    isHoverTarget: true
+                ))
             }
             WindowSelectionOverlay.shared.sync(overlayEntries)
             if exposed { return }
@@ -3407,7 +3559,7 @@ private final class MotionPanel: NSPanel {
     }
 
     static var selectedChromeColor: NSColor {
-        NSColor(calibratedRed: 0.38, green: 0.92, blue: 1.0, alpha: 1.0)
+        NSColor(calibratedRed: 0.20, green: 0.78, blue: 0.45, alpha: 1.0)
     }
 
     // MARK: - Legend
@@ -4113,11 +4265,17 @@ struct ExposeView: View {
     var onApplyPlacement: (UInt32, PlacementSpec) -> Void = { _, _ in }
     var onFillAvailable: (UInt32) -> Void = { _ in }
     var onOpenHyperspace: () -> Void = {}
+    var onSnapshot: (@escaping (String?) -> Void) -> Void = { completion in
+        completion("Display capture is unavailable")
+    }
+    var onCancel: () -> Void = {}
+    var onKeep: () -> Void = {}
     var layers: [LayerPile] = []
     var stagedPlan: [StagedMarker] = []
     var currentLayout: [LayerMember] = []   // every window on this display — context for the Place stage
     var pickedWids: Set<UInt32> = []      // plucked on this screen — outlined brighter when focused
     var pickedOrder: [UInt32] = []        // pick order — swap uses the first two
+    var hasSessionChanges = false
     var displayScope: DisplayScope?
     var onLayout: ([UInt32: CGRect]) -> Void = { _ in }
     var onHandKeys: (Bool) -> Void = { _ in }
@@ -4160,6 +4318,11 @@ struct ExposeView: View {
     // in the top-right; collapsed by default so it doesn't cover the intent band.
     @State private var dialsOpen = false
     @State private var showInPlaceCommands = false
+    @State private var showWindowInventory = false
+    @State private var snapshotCountdown: Int?
+    @State private var snapshotIsCapturing = false
+    @State private var snapshotNotice: String?
+    @State private var snapshotNoticeIsError = false
 
     @State private var perfMode = false
     @State private var perfFlat = false                  // A = true, B = false
@@ -4176,19 +4339,30 @@ struct ExposeView: View {
                     survey
                 }
             }
-            if inPlace {
+            if inPlace, !drag.isPlacing {
                 VStack(spacing: 0) {
-                    overlayIntentChrome(mode: "in-place", detail: "shared with hyperspace")
+                    inPlaceHeader
+                        .padding(.top, usableInset.top + 10)
+                        .padding(.leading, max(12, usableInset.leading + 12))
+                        .padding(.trailing, max(12, usableInset.trailing + 12))
                     Spacer(minLength: 0).allowsHitTesting(false)
+                    inPlaceActionShelf
+                        .padding(.leading, max(16, usableInset.leading + 16))
+                        .padding(.trailing, max(16, usableInset.trailing + 16))
+                        .padding(.bottom, usableInset.bottom + 14)
                 }
-                VStack {
-                    Spacer(minLength: 0).allowsHitTesting(false)
-                    HStack {
-                        Spacer(minLength: 0)
-                        floatingWindowInventory
+                if showWindowInventory {
+                    VStack {
+                        HStack {
+                            Spacer(minLength: 0).allowsHitTesting(false)
+                            floatingWindowInventory
+                        }
+                        Spacer(minLength: 0).allowsHitTesting(false)
                     }
-                    .padding(.trailing, 18)
-                    .padding(.bottom, 18)
+                    .padding(.top, usableInset.top + 72)
+                    .padding(.trailing, max(14, usableInset.trailing + 14))
+                    .padding(.bottom, usableInset.bottom + 112)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
             }
             placementStage
@@ -4212,10 +4386,10 @@ struct ExposeView: View {
             }
         }
         .overlay(alignment: .topTrailing) {
-            if !drag.isPlacing {                            // the Place stage owns the screen
+            if !inPlace, !drag.isPlacing {                  // the Place stage owns the screen
                 VStack(alignment: .trailing, spacing: 8) {
                     exitButton
-                    if !inPlace { settingsToggle }
+                    settingsToggle
                     if dialsOpen { dials }
                 }
                 .padding(20)
@@ -4227,7 +4401,7 @@ struct ExposeView: View {
             }
         }
         .overlay(alignment: .top) {
-            if !drag.isPlacing {
+            if !inPlace, !drag.isPlacing {
                 planSummaryBar.padding(.top, intentChromeHeight + 4)   // sits just under the intent strip
             }
         }
@@ -4589,7 +4763,11 @@ struct ExposeView: View {
             Rectangle().fill(Palette.border).frame(width: 0.5, height: 14)
             placeResSelector
             Rectangle().fill(Palette.border).frame(width: 0.5, height: 14)
-            Text("click a section · esc cancel").font(Typo.mono(9)).foregroundColor(.white.opacity(0.4))
+            Text(inPlace
+                 ? "click a section to stage · Keep applies it · esc cancel"
+                 : "click a section · esc cancel")
+                .font(Typo.mono(9))
+                .foregroundColor(.white.opacity(0.4))
         }
         .padding(.horizontal, 12).padding(.vertical, 7)
         .background(Capsule().fill(Color.black.opacity(0.6))
@@ -4995,6 +5173,410 @@ struct ExposeView: View {
         clusters.flatMap(\.tiles).sorted {
             $0.app.localizedCaseInsensitiveCompare($1.app) == .orderedAscending
         }
+    }
+
+    /// The shelf has one visible object model: actions target an explicitly selected
+    /// window. The most recently aimed selected window wins; after deselection, fall
+    /// back to the last window that remains in pick order.
+    private var selectedActionTile: Tile? {
+        if let aimed = inventoryTiles.first(where: \.isAimed), pickedWids.contains(aimed.id) {
+            return aimed
+        }
+        for wid in pickedOrder.reversed() {
+            if let tile = tileForWid(wid) { return tile }
+        }
+        return nil
+    }
+
+    /// Hyper+G is a transaction over the live desktop. The compact header owns
+    /// session-level controls; the shelf owns actions for the aimed/selected windows.
+    private var inPlaceHeader: some View {
+        HStack(spacing: 10) {
+            LatticesMark(size: 16, tint: Palette.running, dimOpacity: 0.28)
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 5) {
+                    Text("lattices")
+                        .font(Typo.monoBold(10))
+                        .foregroundColor(Palette.text)
+                    Text("· arrange")
+                        .font(Typo.monoBold(9))
+                        .foregroundColor(Palette.running)
+                }
+                Text("live desktop")
+                    .font(Typo.mono(8))
+                    .foregroundColor(Palette.textMuted)
+            }
+
+            Spacer(minLength: 12)
+
+            if let displayScope {
+                Button {
+                    withAnimation(HyperspaceMotion.panel) { showWindowInventory.toggle() }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "macwindow.on.rectangle")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(Palette.running)
+                        Text(displayScope.label)
+                            .font(Typo.monoBold(9))
+                            .foregroundColor(Palette.text)
+                        Text("· \(displayScope.windowCount) windows")
+                            .font(Typo.mono(8))
+                            .foregroundColor(Palette.running)
+                        if displayScope.count > 1 {
+                            Text("\(displayScope.index + 1)/\(displayScope.count)")
+                                .font(Typo.mono(8))
+                                .foregroundColor(Palette.textMuted)
+                        }
+                        Image(systemName: showWindowInventory ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundColor(Palette.textMuted)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(showWindowInventory ? Palette.running.opacity(0.10) : Color.white.opacity(0.035))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .strokeBorder(showWindowInventory ? Palette.running.opacity(0.30) : Palette.border, lineWidth: 0.5)
+                            )
+                    )
+                }
+                .buttonStyle(.plain)
+                .help(showWindowInventory ? "Hide the window drawer" : "Show every window on this display")
+                .accessibilityLabel(showWindowInventory ? "Hide window drawer" : "Show window drawer")
+            }
+
+            Rectangle()
+                .fill(Palette.borderLit)
+                .frame(width: 0.5, height: 22)
+
+            inPlaceSnapshotButton
+            inPlaceHeaderButton(inPlaceHasChanges ? "Restore" : "Cancel",
+                                icon: "arrow.uturn.backward",
+                                tint: Palette.textDim) {
+                onCancel()
+            }
+            .help("Discard staged changes, restore live changes, and close (Esc)")
+            inPlaceHeaderButton(inPlaceHasChanges ? "Keep changes" : "Done",
+                                icon: "checkmark",
+                                tint: Palette.running,
+                                filled: true) {
+                onKeep()
+            }
+            .help("Apply staged changes, keep live changes, and close (Return)")
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 48)
+        .background {
+            ZStack {
+                RoundedRectangle(cornerRadius: 13, style: .continuous).fill(.ultraThinMaterial)
+                RoundedRectangle(cornerRadius: 13, style: .continuous).fill(Color.black.opacity(0.42))
+                LatticesLatticeGrid(spacing: 20, opacity: 0.055)
+                    .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+            }
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .strokeBorder(Palette.borderLit, lineWidth: 0.75)
+        )
+        .shadow(color: .black.opacity(0.38), radius: 18, y: 8)
+    }
+
+    private func inPlaceHeaderButton(_ title: String,
+                                     icon: String,
+                                     tint: Color,
+                                     filled: Bool = false,
+                                     action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 9, weight: .bold))
+                Text(title)
+                    .font(Typo.monoBold(9))
+            }
+            .foregroundColor(filled ? Palette.bg : tint)
+            .padding(.horizontal, 10)
+            .frame(height: 28)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(filled ? tint : Color.white.opacity(0.045))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(filled ? tint.opacity(0.95) : Palette.borderLit, lineWidth: 0.5)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var inPlaceSnapshotButton: some View {
+        Button { beginSnapshotCountdown() } label: {
+            HStack(spacing: 5) {
+                Image(systemName: snapshotCountdown == nil ? "camera" : "timer")
+                    .font(.system(size: 9, weight: .bold))
+                Text(snapshotCountdown.map(String.init) ?? "Snapshot")
+                    .font(Typo.monoBold(9))
+                    .monospacedDigit()
+            }
+            .foregroundColor(HUDChrome.cyan)
+            .padding(.horizontal, 10)
+            .frame(height: 28)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(HUDChrome.cyan.opacity(0.08))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(HUDChrome.cyan.opacity(0.28), lineWidth: 0.5)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(snapshotCountdown != nil || snapshotIsCapturing)
+        .opacity(snapshotIsCapturing ? 0 : 1) // keep its slot stable but omit the shutter from the PNG
+        .help("Capture this display after a 3-second countdown; copy the PNG and save it to Runs")
+        .accessibilityLabel("Snapshot this display")
+    }
+
+    private func beginSnapshotCountdown() {
+        guard snapshotCountdown == nil, !snapshotIsCapturing else { return }
+        snapshotNotice = nil
+        snapshotNoticeIsError = false
+        Task { @MainActor in
+            for count in stride(from: 3, through: 1, by: -1) {
+                snapshotCountdown = count
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+            snapshotCountdown = nil
+            snapshotIsCapturing = true
+            // Give SwiftUI one frame to hide the shutter without moving the header.
+            try? await Task.sleep(nanoseconds: 120_000_000)
+            onSnapshot { errorMessage in
+                Task { @MainActor in
+                    snapshotIsCapturing = false
+                    if let errorMessage {
+                        snapshotNotice = "Snapshot failed · \(errorMessage)"
+                        snapshotNoticeIsError = true
+                    } else {
+                        snapshotNotice = "Snapshot copied · saved to Runs"
+                        snapshotNoticeIsError = false
+                    }
+                }
+            }
+        }
+    }
+
+    private var inPlaceActionShelf: some View {
+        HStack(alignment: .center, spacing: 0) {
+            inPlaceShelfLead
+
+            if let selectedActionTile {
+                inPlaceShelfDivider()
+                inPlaceShelfActions(for: selectedActionTile)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(width: inPlaceShelfWidth, height: 56, alignment: .leading)
+        .background {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.ultraThinMaterial)
+                RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.black.opacity(0.54))
+            }
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Palette.borderLit, lineWidth: 0.75)
+        )
+        .shadow(color: .black.opacity(0.46), radius: 24, y: 10)
+    }
+
+    private var inPlaceShelfWidth: CGFloat {
+        guard selectedActionTile != nil else { return 520 }
+        return pickedWids.count >= 2 ? 780 : 640
+    }
+
+    private var inPlaceShelfLeadWidth: CGFloat {
+        selectedActionTile == nil ? 496 : 224
+    }
+
+    private var inPlaceShelfLead: some View {
+        let state = inPlaceShelfLeadState
+        return HStack(spacing: 9) {
+            ZStack {
+                Circle()
+                    .fill(state.tint.opacity(0.16))
+                    .frame(width: 26, height: 26)
+                Text("\(state.step)")
+                    .font(Typo.monoBold(10))
+                    .foregroundColor(state.tint)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(state.title)
+                    .font(Typo.monoBold(9))
+                    .foregroundColor(state.tint)
+                    .lineLimit(1)
+                Text(state.detail)
+                    .font(Typo.mono(8))
+                    .foregroundColor(snapshotNoticeIsError ? Palette.kill : Palette.textMuted)
+                    .lineLimit(1)
+            }
+        }
+        .frame(width: inPlaceShelfLeadWidth, height: 36, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var inPlaceShelfLeadState: (step: Int, title: String, detail: String, tint: Color) {
+        if let snapshotNotice {
+            return (inPlaceProgressStep,
+                    snapshotNoticeIsError ? "SNAPSHOT FAILED" : "SNAPSHOT SAVED",
+                    snapshotNotice,
+                    snapshotNoticeIsError ? Palette.kill : HUDChrome.cyan)
+        }
+        if inPlaceHasChanges {
+            let title = pickedWids.isEmpty
+                ? "FINISH · CHANGES READY"
+                : "FINISH · \(pickedWids.count) SELECTED"
+            let tint = hasSessionChanges && inPlaceStagedCount == 0 ? HUDChrome.cyan : Palette.detach
+            if let selectedActionTile {
+                let slot = selectedActionTile.pickSlot.map { "#\($0) · " } ?? ""
+                return (3, title,
+                        "Target \(slot)\(selectedActionTile.app) · \(inPlaceChangeSummary)",
+                        tint)
+            }
+            return (3, title, inPlaceChangeSummary, tint)
+        }
+        if let selectedActionTile {
+            let slot = selectedActionTile.pickSlot.map { "#\($0) · " } ?? ""
+            return (2,
+                    "ARRANGE · \(pickedWids.count) SELECTED",
+                    "Target \(slot)\(selectedActionTile.app)",
+                    Palette.running)
+        }
+        return (1,
+                "SELECT A WINDOW",
+                "Hover for blue outline · click the window",
+                HUDChrome.cyan)
+    }
+
+    private var inPlaceChangeSummary: String {
+        let staged = inPlaceStagedCount
+        if hasSessionChanges, staged > 0 { return "Live + \(staged) on Keep" }
+        if hasSessionChanges { return "Live now · Restore undoes" }
+        if staged > 0 { return "\(staged) on Keep · Keep applies" }
+        return ""
+    }
+
+    private var inPlaceStagedCount: Int {
+        stagedPlan.count + inventoryTiles.filter { !$0.layerTags.isEmpty }.count
+    }
+
+    private var inPlaceHasChanges: Bool {
+        hasSessionChanges || inPlaceStagedCount > 0
+    }
+
+    private var inPlaceProgressStep: Int {
+        if inPlaceHasChanges { return 3 }
+        if !pickedWids.isEmpty { return 2 }
+        return 1
+    }
+
+    private func inPlaceShelfDivider(horizontalPadding: CGFloat = 10) -> some View {
+        Rectangle()
+            .fill(Palette.borderLit)
+            .frame(width: 0.5, height: 28)
+            .padding(.horizontal, horizontalPadding)
+    }
+
+    private func inPlaceTimingLabel(_ title: String,
+                                    width: CGFloat,
+                                    tint: Color) -> some View {
+        Text(title)
+            .font(Typo.monoBold(8))
+            .foregroundColor(tint)
+            .tracking(0.6)
+            .frame(width: width, alignment: .leading)
+    }
+
+    private func inPlaceShelfActions(for selectedActionTile: Tile) -> some View {
+        HStack(alignment: .center, spacing: 0) {
+            HStack(spacing: 4) {
+                inPlaceTimingLabel("NOW", width: 32, tint: HUDChrome.cyan)
+                inPlaceShelfButton("Fill", icon: "arrow.up.backward.and.arrow.down.forward", enabled: true) {
+                    onFillAvailable(selectedActionTile.id)
+                }
+                .help("Fill open space with the target window now; Restore puts it back")
+                if pickedWids.count >= 2 {
+                    inPlaceShelfButton("Grid", icon: "square.grid.2x2", enabled: true) {
+                        onGridSelection()
+                    }
+                    .help("Move the selected windows into a grid now; Restore puts them back")
+                    inPlaceShelfButton("Swap", icon: "arrow.left.arrow.right", enabled: true) {
+                        onSwapFirstTwo()
+                    }
+                    .help("Swap the first two selected windows now; Restore puts them back")
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            inPlaceShelfDivider(horizontalPadding: 8)
+
+            HStack(spacing: 4) {
+                inPlaceTimingLabel("KEEP", width: 36, tint: Palette.detach)
+                inPlaceShelfButton("Place", icon: "rectangle.dashed", enabled: true) {
+                    showWindowInventory = false
+                    drag.beginPlacing(selectedActionTile.id, on: screenID)
+                }
+                .help("Choose a grid position for the target window; Keep applies it")
+            }
+
+            inPlaceShelfDivider(horizontalPadding: 8)
+
+            Menu {
+                inPlaceTileMenu(selectedActionTile)
+            } label: {
+                inPlaceShelfControl("More", icon: "ellipsis", enabled: true, minWidth: 68)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize(horizontal: true, vertical: false)
+            .help("More actions for the target window")
+        }
+    }
+
+    private func inPlaceShelfButton(_ title: String,
+                                    icon: String,
+                                    enabled: Bool,
+                                    action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            inPlaceShelfControl(title, icon: icon, enabled: enabled)
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+    }
+
+    private func inPlaceShelfControl(_ title: String,
+                                     icon: String,
+                                     enabled: Bool,
+                                     minWidth: CGFloat = 60) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .semibold))
+            Text(title)
+                .font(Typo.monoBold(9))
+        }
+        .foregroundColor(enabled ? Palette.text : Palette.textMuted.opacity(0.55))
+        .padding(.horizontal, 9)
+        .frame(minWidth: minWidth, minHeight: 32, maxHeight: 32)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(enabled ? Color.white.opacity(0.045) : Color.clear)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(enabled ? Palette.border : Color.clear, lineWidth: 0.5)
+                )
+        )
     }
 
     // Quiet signature wash under the live desktop — corner mark does the heavy lifting.
@@ -6745,16 +7327,17 @@ struct ExposeView: View {
         if pickCount > 0 {
             Divider()
             Button { onGridSelection() } label: {
-                Label(pickCount >= 2 ? "Grid \(pickCount) Windows" : "Grid Selection",
+                Label(pickCount >= 2 ? "Grid \(pickCount) Windows · Live Now" : "Grid Selection",
                       systemImage: "square.grid.2x2")
             }
             .disabled(pickCount < 2)
             if pickCount >= 2 {
                 Button { onStackSelection() } label: {
-                    Label("Create Tab Group from \(pickCount) Windows (⌘T)", systemImage: "rectangle.stack")
+                    Label("Create Tab Group from \(pickCount) Windows · Close Hyper+G",
+                          systemImage: "rectangle.stack")
                 }
                 Button { onSwapFirstTwo() } label: {
-                    Label("Swap First Two (S)", systemImage: "arrow.left.arrow.right")
+                    Label("Swap First Two · Live Now (S)", systemImage: "arrow.left.arrow.right")
                 }
             }
             inPlaceSwapWithMenu(t)
@@ -6780,12 +7363,12 @@ struct ExposeView: View {
     @ViewBuilder
     private func inPlacePlacementMenus(_ t: Tile) -> some View {
         Button { onFillAvailable(t.id) } label: {
-            Label("Fill Available Space (F)", systemImage: "arrow.up.backward.and.arrow.down.forward")
+            Label("Fill Available Space · Live Now (F)", systemImage: "arrow.up.backward.and.arrow.down.forward")
         }
-        Menu("Apply Now", systemImage: "arrow.up.left.and.arrow.down.right") {
+        Menu("Apply Position · Live Now", systemImage: "arrow.up.left.and.arrow.down.right") {
             placementQuickItems(wid: t.id, handler: onApplyPlacement)
         }
-        Menu("Stage for Enter", systemImage: "clock.badge.checkmark") {
+        Menu("Stage Position for Keep", systemImage: "clock.badge.checkmark") {
             Button { drag.beginPlacing(t.id, on: screenID) } label: {
                 Label("Place…", systemImage: "rectangle.dashed")
             }
@@ -6797,7 +7380,7 @@ struct ExposeView: View {
     @ViewBuilder
     private func inPlaceLayerMenu(_ t: Tile) -> some View {
         Divider()
-        Menu("Add to Layer", systemImage: "square.stack.3d.up") {
+        Menu("Add to Layer on Keep", systemImage: "square.stack.3d.up") {
             Button("New Layer") { onNewLayer() }
             let joinable = layers.filter { !$0.isNew }
             if !joinable.isEmpty {

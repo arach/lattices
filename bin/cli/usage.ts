@@ -62,6 +62,7 @@ Usage:
   lattices terminals [--json] [--refresh]
                          List synthesized terminal instances
   lattices capture window [wid]  Save a screenshot run artifact
+  lattices capture display [index]  Save a full-display screenshot run artifact
   lattices capture record window [wid]  Record a window/visible region as a .mov artifact
   lattices capture record-command --app Scout -- <cmd>
                          Record a target while running an action command

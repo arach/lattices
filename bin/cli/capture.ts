@@ -6,6 +6,105 @@ import {
 } from "./helpers.ts";
 import { withDaemon } from "./daemon.ts";
 
+export type CaptureDisplayArgs = {
+  display?: number;
+  clipboard: boolean;
+  delaySeconds: number;
+  filename?: string;
+  runId?: string;
+  json: boolean;
+};
+
+/** Parse `lattices capture display` without the loose shared positional parser. */
+export function parseCaptureDisplayArgs(args: string[]): CaptureDisplayArgs {
+  const flags = new Map<string, string | true>();
+  const positional: string[] = [];
+  const booleanFlags = new Set(["clipboard", "json"]);
+  const valueFlags = new Set(["delay", "filename", "run-id", "runId"]);
+
+  for (let index = 0; index < args.length; index++) {
+    const argument = args[index]!;
+    if (!argument.startsWith("--")) {
+      positional.push(argument);
+      continue;
+    }
+
+    const match = argument.match(/^--([^=]+)(?:=(.*))?$/u);
+    if (!match) throw new Error(`Unknown option: ${argument}`);
+    const name = match[1]!;
+    const inlineValue = match[2];
+
+    if (booleanFlags.has(name)) {
+      if (inlineValue !== undefined) {
+        throw new Error(`--${name} does not take a value`);
+      }
+      flags.set(name, true);
+      continue;
+    }
+
+    if (!valueFlags.has(name)) {
+      throw new Error(`Unknown option: --${name}`);
+    }
+    const value = inlineValue === undefined ? args[++index] : inlineValue;
+    if (value === undefined || value === "" || value.startsWith("--")) {
+      throw new Error(`--${name} expects a value`);
+    }
+    flags.set(name, value);
+  }
+
+  if (positional.length > 1) {
+    throw new Error(`Unexpected argument: ${positional[1]}`);
+  }
+
+  let display: number | undefined;
+  const rawDisplay = positional[0];
+  if (rawDisplay !== undefined) {
+    if (!/^\d+$/u.test(rawDisplay)) {
+      throw new Error(`Display index must be a non-negative integer: ${rawDisplay}`);
+    }
+    display = Number(rawDisplay);
+    if (!Number.isSafeInteger(display)) {
+      throw new Error(`Display index must be a non-negative integer: ${rawDisplay}`);
+    }
+  }
+
+  let delaySeconds = 0;
+  const rawDelay = flags.get("delay");
+  if (typeof rawDelay === "string") {
+    if (!/^(?:\d+(?:\.\d*)?|\.\d+)$/u.test(rawDelay)) {
+      throw new Error(`--delay expects a non-negative number of seconds`);
+    }
+    delaySeconds = Number(rawDelay);
+    if (!Number.isFinite(delaySeconds)) {
+      throw new Error(`--delay expects a non-negative number of seconds`);
+    }
+  }
+
+  const filename = flags.get("filename");
+  const runId = flags.get("run-id") ?? flags.get("runId");
+  return {
+    display,
+    clipboard: flags.get("clipboard") === true,
+    delaySeconds,
+    filename: typeof filename === "string" ? filename : undefined,
+    runId: typeof runId === "string" ? runId : undefined,
+    json: flags.get("json") === true,
+  };
+}
+
+export function captureUsage(): string {
+  return `lattices capture — capture run artifacts
+
+Usage:
+  lattices capture window [wid] [--json]
+  lattices capture screenshot [wid] [--session name] [--app name]
+  lattices capture display [index] [--clipboard] [--delay seconds] [--filename name] [--run-id id] [--json]
+  lattices capture record window [wid] [--app name] [--duration-ms 5000] [--json]
+  lattices capture record region --x N --y N --width N --height N [--duration-ms 5000]
+  lattices capture record-command --app Scout --filename demo.mov -- <command> [...args]
+  lattices capture stop <run-id>`;
+}
+
 export async function captureCommand(subcommand?: string, ...rawArgs: string[]): Promise<void> {
   const sub = subcommand || "window";
   const dashIndex = rawArgs.indexOf("--");
@@ -208,17 +307,46 @@ Usage:
     return;
   }
 
-  if (!["window", "screenshot", "shot"].includes(sub)) {
-    console.log(`lattices capture — capture run artifacts
+  if (sub === "display") {
+    const options = parseCaptureDisplayArgs(commandArgs);
+    const params: Record<string, unknown> = {
+      source: "cli",
+      clipboard: options.clipboard,
+    };
+    if (options.display !== undefined) params.display = options.display;
+    if (options.filename) params.filename = options.filename;
+    if (options.runId) params.runId = options.runId;
 
-Usage:
-  lattices capture window [wid] [--json]
-  lattices capture screenshot [wid] [--session name] [--app name]
-  lattices capture record window [wid] [--app name] [--duration-ms 5000] [--json]
-  lattices capture record region --x N --y N --width N --height N [--duration-ms 5000]
-  lattices capture record-command --app Scout --filename demo.mov -- <command> [...args]
-  lattices capture stop <run-id>
-`);
+    await withDaemon(async ({ daemonCall }) => {
+      if (options.delaySeconds > 0) {
+        await new Promise((resolve) => setTimeout(resolve, options.delaySeconds * 1000));
+      }
+
+      const result = await daemonCall("capture.screenshotDisplay", params, 20000) as any;
+      if (options.json) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+
+      const artifact = result.artifact || {};
+      const run = result.run || {};
+      const display = result.display || {};
+      const displayIndex = display.displayIndex ?? options.display;
+      const displayLabel = display.name
+        ? `${display.name}${displayIndex !== undefined ? ` (display ${displayIndex})` : ""}`
+        : (displayIndex !== undefined ? `Display ${displayIndex}` : "display");
+      console.log(`Captured ${displayLabel}`);
+      console.log(`  run: ${run.id || "?"}`);
+      console.log(`  artifact: ${artifact.path || "?"}`);
+      if (options.clipboard) {
+        console.log(`  clipboard: ${result.clipboard?.copied === true ? "copied" : "not copied"}`);
+      }
+    });
+    return;
+  }
+
+  if (!["window", "screenshot", "shot"].includes(sub)) {
+    console.log(captureUsage());
     return;
   }
 
