@@ -28,10 +28,16 @@ enum HotkeyBootstrap {
         store.register(action: .hud) { HUDController.shared.toggle() }
         store.register(action: .mouseFinder) { MouseFinder.shared.find() }
         store.register(action: .overlayActors) { ScreenOverlayCanvasController.shared.toggleAgentActorsVisibility() }
-        store.register(action: .gridPlacement) { GridPlacementWindow.shared.toggle() }
+        store.register(action: .gridPlacement) {
+            TilePointerController.shared.cancelApply()
+            GridPlacementWindow.shared.toggle()
+        }
         // The single command-surface hotkey: opens the merged bar (browse +
         // search; "/" for slash commands).
-        store.register(action: .commandBar) { UnifiedCommandBarWindow.shared.toggle(mode: .search) }
+        store.register(action: .commandBar) {
+            TilePointerController.shared.cancelApply()
+            UnifiedCommandBarWindow.shared.toggle(mode: .search)
+        }
         store.register(action: .focusMode) { FocusModeController.shared.toggle() }
         store.register(action: .activityLog) {
             DiagnosticLog.shared.info("Hotkey: activityLog triggered")
@@ -75,6 +81,11 @@ enum HotkeyBootstrap {
         ]
         for (action, position) in tileMap {
             store.register(action: action) {
+                TilePointerController.shared.cancelApply()
+                if WindowMotionMode.shared.tileCurrentTarget(to: position) { return }
+                let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) })
+                    ?? NSScreen.main
+                TileZoneOverlay.shared.show(position: position, on: screen, autoHideAfter: 0.28)
                 WindowTiler.tileFrontmostViaAX(to: position)
             }
         }
@@ -90,6 +101,7 @@ enum HotkeyBootstrap {
             CommandModeWindow.shared.show(launchMode: .organize(appName: appName))
         }
         store.register(action: .tileOpenCell) {
+            TilePointerController.shared.cancelApply()
             FrontWindowPlacer.fillOpenGridCell()
         }
         store.register(action: .motionMode) {

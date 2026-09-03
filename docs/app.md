@@ -300,6 +300,7 @@ from Settings > Shortcuts.
 | Ctrl+Option+G      | 4x4 grid placement   |
 | Ctrl+Option+V      | Fill open 3x2 cell   |
 | Ctrl+Option+arrows | Tile halves          |
+| Ctrl+Option+mouse  | Aim HUD; release to tile, stay centered to cancel |
 | Ctrl+Option+1/2/3  | Tile thirds          |
 | Cmd+Option+1/2/3  | Switch workspace layer |
 | Ctrl+B  D         | Detach from session  |

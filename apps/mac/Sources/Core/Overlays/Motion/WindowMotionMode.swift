@@ -152,6 +152,14 @@ final class WindowMotionMode {
         // clears the spread — the recovery path for the "stuck on top" trap.
         MotionPanel.teardownStrayPanels()
     }
+
+    /// Ctrl+Option tiling while Hyper+G / Hyperspace is open. Lattices is
+    /// frontmost in that mode, so the global tile hotkeys would otherwise no-op.
+    /// Returns true when the overlay consumed the chord.
+    @discardableResult
+    func tileCurrentTarget(to position: TilePosition) -> Bool {
+        panel?.tileCurrentTarget(to: position) ?? false
+    }
 }
 
 // MARK: - Motion key mapping
@@ -1278,6 +1286,22 @@ private final class MotionPanel: NSPanel {
         target.size.width = max(minWidth, target.width)
         target.size.height = max(minHeight, target.height)
         placeActive(to: target)
+    }
+
+    fileprivate func tileCurrentTarget(to position: TilePosition) -> Bool {
+        let selected = pickOrderByScreen[activeScreenID ?? ""] ?? pickOrder
+        let targetWid = inPlaceHoverWid
+            ?? fillAimWid
+            ?? selected.last
+            ?? activeEntry.wid
+        guard let entry = eligible.first(where: { $0.wid == targetWid }),
+              let screen = screen(for: entry) else {
+            NSSound.beep()
+            return true
+        }
+        TileZoneOverlay.shared.show(position: position, on: screen, autoHideAfter: 0.28)
+        placeEntry(entry, to: WindowTiler.tileFrame(for: position, on: screen), label: position.rawValue)
+        return true
     }
 
     /// Place the active window instantly and exactly — snappy, no jittery tween.
