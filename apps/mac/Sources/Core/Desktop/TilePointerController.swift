@@ -21,6 +21,7 @@ final class TilePointerController {
     private var currentPosition: TilePosition?
     private var currentScreen: NSScreen?
     private var pollTimer: Timer?
+    private var pendingArm: DispatchWorkItem?
     private var pendingDisarm: DispatchWorkItem?
 
     private static let modifierKeyCodes: Set<UInt16> = [54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
@@ -75,6 +76,8 @@ final class TilePointerController {
         localFlagsMonitor = nil
         localMouseMonitor = nil
         localKeyMonitor = nil
+        pendingArm?.cancel()
+        pendingArm = nil
         pendingDisarm?.cancel()
         pendingDisarm = nil
         dismiss(apply: false)
@@ -91,15 +94,40 @@ final class TilePointerController {
     }
 
     private func handleFlags(_ flags: NSEvent.ModifierFlags) {
-        if Self.ctrlOptionHeld(flags) {
+        let mods = flags.intersection(.deviceIndependentFlagsMask)
+        // If Command or Shift is held (e.g. Hyper key chord or transition),
+        // immediately abort aiming so the Hyper key is never intercepted.
+        if !mods.intersection([.command, .shift]).isEmpty {
+            pendingArm?.cancel()
+            pendingArm = nil
             pendingDisarm?.cancel()
             pendingDisarm = nil
-            if !armed {
-                DiagnosticLog.shared.info("TilePointer: arm flags=\(flags.rawValue)")
-                arm()
+            if armed {
+                dismiss(apply: false)
             }
             return
         }
+
+        if Self.ctrlOptionHeld(flags) {
+            pendingDisarm?.cancel()
+            pendingDisarm = nil
+            guard !armed, pendingArm == nil else { return }
+            // Debounce arming briefly (30ms) so rapid modifier transitions (e.g. Hyper press)
+            // do not transiently arm before Command and Shift register.
+            let work = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                self.pendingArm = nil
+                guard Self.ctrlOptionHeld(NSEvent.modifierFlags), !self.armed else { return }
+                DiagnosticLog.shared.info("TilePointer: arm flags=\(NSEvent.modifierFlags.rawValue)")
+                self.arm()
+            }
+            pendingArm = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.03, execute: work)
+            return
+        }
+
+        pendingArm?.cancel()
+        pendingArm = nil
         guard armed else { return }
         scheduleDisarm()
     }
@@ -110,7 +138,9 @@ final class TilePointerController {
             guard let self else { return }
             self.pendingDisarm = nil
             guard self.armed, !Self.ctrlOptionHeld(NSEvent.modifierFlags) else { return }
-            let shouldApply = self.currentPosition != nil && !WindowDragSnapController.shared.isSnapping
+            let currentMods = NSEvent.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            let hasDisallowedModifiers = !currentMods.intersection([.command, .shift]).isEmpty
+            let shouldApply = !hasDisallowedModifiers && self.currentPosition != nil && !WindowDragSnapController.shared.isSnapping
             DiagnosticLog.shared.info("TilePointer: disarm apply=\(shouldApply) pos=\(self.currentPosition?.rawValue ?? "nil")")
             self.dismiss(apply: shouldApply)
         }
@@ -135,6 +165,11 @@ final class TilePointerController {
         guard position != currentPosition else { return }
         currentPosition = position
         DiagnosticLog.shared.info("TilePointer: aim \(position?.rawValue ?? "idle") on \(screen.localizedName)")
+        // Move detent: tick when the aim enters a new cell. Returning to
+        // dead-center stays silent so cancel reads as "null".
+        if position != nil, Preferences.shared.tilePointerSoundEffectsEnabled {
+            AppFeedback.shared.aimTick()
+        }
         if let position {
             TileZoneOverlay.shared.show(position: position, on: screen)
         } else {
@@ -207,6 +242,8 @@ final class TilePointerController {
     }
 
     private func dismiss(apply: Bool) {
+        pendingArm?.cancel()
+        pendingArm = nil
         pendingDisarm?.cancel()
         pendingDisarm = nil
         pollTimer?.invalidate()
@@ -221,6 +258,10 @@ final class TilePointerController {
 
         hideHUD()
         if apply, let position {
+            // Land: same tactile commit the other window-placement paths use.
+            if Preferences.shared.tilePointerSoundEffectsEnabled {
+                AppFeedback.shared.commitTactile()
+            }
             if WindowMotionMode.shared.tileCurrentTarget(to: position) {
                 return
             }

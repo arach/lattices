@@ -640,7 +640,10 @@ struct LatsTrackpadSurface: View {
         icon: String,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
+        Button(action: {
+            DeckTactileFeedback.shared.buttonPop()
+            action()
+        }) {
             trackpadControlLabel(title: title, icon: icon, isActive: false)
         }
         .buttonStyle(.plain)

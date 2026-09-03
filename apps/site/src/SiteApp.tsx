@@ -4,6 +4,7 @@ import ActionPage from './components/ActionPage'
 import BlinkPage from './components/BlinkPage'
 import { DocsPage } from './components/Docs'
 import LandingPage from './components/LandingPage'
+import ConceptExperimentPage from './components/ConceptExperimentPage'
 import { defaultDoc, getBlogPost, getDoc } from './lib/content'
 
 export default function SiteApp() {
@@ -47,6 +48,7 @@ export default function SiteApp() {
   }, [])
 
   if (route.kind === 'home') return <LandingPage />
+  if (route.kind === 'experiment') return <ConceptExperimentPage />
   if (route.kind === 'action') return <ActionPage />
   if (route.kind === 'blink') return <BlinkPage />
   if (route.kind === 'docs') return <DocsPage slug={route.slug} />
@@ -88,6 +90,7 @@ export default function SiteApp() {
 
 type Route =
   | { kind: 'home'; title: string; description: string }
+  | { kind: 'experiment'; title: string; description: string }
   | { kind: 'action'; title: string; description: string }
   | { kind: 'blink'; title: string; description: string }
   | { kind: 'docs'; slug?: string; title: string; description: string }
@@ -96,6 +99,14 @@ type Route =
   | { kind: 'not-found'; title: string; description: string }
 
 function resolveRoute(path: string): Route {
+  if (path === '/experiment' || path === '/concept') {
+    return {
+      kind: 'experiment',
+      title: 'SYS. 01 — Lattices Architectural Study',
+      description: 'An architectural design study: Dieter Rams meets Teenage Engineering for macOS and agent workspaces.',
+    }
+  }
+
   if (path === '/') {
     return {
       kind: 'home',

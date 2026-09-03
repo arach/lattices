@@ -105,12 +105,15 @@ enum HotkeyBootstrap {
             FrontWindowPlacer.fillOpenGridCell()
         }
         store.register(action: .motionMode) {
+            TilePointerController.shared.cancelApply()
             WindowMotionMode.shared.toggleHyperspace()
         }
         store.register(action: .inPlaceMode) {
+            TilePointerController.shared.cancelApply()
             WindowMotionMode.shared.toggleInPlace()
         }
         store.register(action: .chordHints) {
+            TilePointerController.shared.cancelApply()
             InPlaceChordHintOverlay.shared.toggle()
         }
     }
