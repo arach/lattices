@@ -555,6 +555,16 @@ struct SettingsContentView: View {
                 }
 
                 settingsPrefRow(
+                    "Ctrl+Option HUD",
+                    caption: "Loop is the radial ring. Matrix is the Lattices 3×3."
+                ) {
+                    SettingsChoiceBar(
+                        selection: $prefs.tilePointerHUDStyle,
+                        options: TilePointerHUDStyle.allCases.map { ($0, $0.label) }
+                    )
+                }
+
+                settingsPrefRow(
                     "Middle-click gestures",
                     caption: "Switch Spaces, open the Screen Map, or trigger dictation."
                 ) {

@@ -511,73 +511,32 @@ extension HotkeyAction {
 
 // MARK: - TileZoneOverlay
 
+/// Gray destination plate for Ctrl+Option tiling. One overlay morphs between
+/// cells instead of tearing down a blue panel per chord.
 final class TileZoneOverlay {
     static let shared = TileZoneOverlay()
 
-    private var panel: NSPanel?
+    func show(position: TilePosition, on screen: NSScreen? = nil, autoHideAfter: TimeInterval? = nil) {
+        let targetScreen = screen
+            ?? NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) })
+            ?? NSScreen.main
+            ?? NSScreen.screens.first
+        guard let targetScreen else { return }
+        WindowHoverPreview.shared.show(frame: Self.rect(for: position, on: targetScreen), autoHideAfter: autoHideAfter)
+    }
 
-    func show(position: TilePosition) {
-        // Instant teardown (no animation) when switching between cells
-        if let p = panel {
-            p.orderOut(nil)
-            self.panel = nil
-        }
+    func dismiss() {
+        WindowHoverPreview.shared.hide()
+    }
 
-        // Use the screen where the mouse is (same as CheatSheetHUD)
-        let mouseLocation = NSEvent.mouseLocation
-        let screen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }) ?? NSScreen.main ?? NSScreen.screens.first!
+    static func rect(for position: TilePosition, on screen: NSScreen) -> NSRect {
         let visible = screen.visibleFrame
-
         let (fx, fy, fw, fh) = position.rect
-        // visibleFrame origin is bottom-left in AppKit coordinates
-        let zoneRect = NSRect(
+        return NSRect(
             x: visible.origin.x + visible.width * fx,
             y: visible.origin.y + visible.height * (1 - fy - fh),
             width: visible.width * fw,
             height: visible.height * fh
         )
-
-        let p = NSPanel(
-            contentRect: zoneRect,
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-        p.isOpaque = false
-        p.backgroundColor = .clear
-        p.level = .floating
-        p.hasShadow = false
-        p.hidesOnDeactivate = false
-        p.isReleasedWhenClosed = false
-        p.ignoresMouseEvents = true
-
-        let overlay = NSView(frame: NSRect(origin: .zero, size: zoneRect.size))
-        overlay.wantsLayer = true
-        overlay.layer?.backgroundColor = NSColor.systemBlue.withAlphaComponent(0.08).cgColor
-        overlay.layer?.borderColor = NSColor.systemBlue.withAlphaComponent(0.4).cgColor
-        overlay.layer?.borderWidth = 2
-        overlay.layer?.cornerRadius = 8
-        p.contentView = overlay
-
-        p.alphaValue = 0
-        p.orderFrontRegardless()
-
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.12
-            p.animator().alphaValue = 1.0
-        }
-
-        self.panel = p
-    }
-
-    func dismiss() {
-        guard let p = panel else { return }
-        NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = 0.1
-            p.animator().alphaValue = 0
-        }) { [weak self] in
-            p.orderOut(nil)
-            self?.panel = nil
-        }
     }
 }

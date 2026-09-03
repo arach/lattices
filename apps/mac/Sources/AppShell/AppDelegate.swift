@@ -43,6 +43,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.async { ScreenOverlayCanvasController.shared.warmUp() }
 
         WindowDragSnapController.shared.start()
+        TilePointerController.shared.start()
         MouseGestureController.shared.start()
         KeyboardRemapController.shared.start()
         SecureEventInputMonitor.shared.start()

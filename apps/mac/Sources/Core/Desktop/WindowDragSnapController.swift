@@ -39,6 +39,8 @@ final class WindowDragSnapController {
     private var modifierModeEnabled = false
     private var windowHasMoved = false
 
+    var isSnapping: Bool { activeSession != nil }
+
     private init() {}
 
     func start() {
@@ -203,6 +205,7 @@ final class WindowDragSnapController {
 
     private func hideOverlays() {
         ScreenOverlayCanvasController.shared.removeLayers(owner: .dragSnap)
+        WindowHoverPreview.shared.hide()
     }
 
     private func captureFocusedWindow(at mouseLocation: NSPoint) -> DragWindowCandidate? {
@@ -352,6 +355,11 @@ final class WindowDragSnapController {
         }
 
         ScreenOverlayCanvasController.shared.replaceLayers(owner: .dragSnap, with: layers)
+        if let hoveredZone {
+            WindowHoverPreview.shared.show(frame: hoveredZone.previewRect)
+        } else {
+            WindowHoverPreview.shared.hide()
+        }
     }
 
     private static func screenRect(for fractions: (CGFloat, CGFloat, CGFloat, CGFloat), on screen: NSScreen) -> CGRect {

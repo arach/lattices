@@ -22,6 +22,20 @@ enum MouseGestureHUDStyle: String, CaseIterable, Identifiable {
     }
 }
 
+enum TilePointerHUDStyle: String, CaseIterable, Identifiable {
+    case loop
+    case matrix
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .loop: return "Loop"
+        case .matrix: return "Matrix"
+        }
+    }
+}
+
 class Preferences: ObservableObject {
     static let shared = Preferences()
 
@@ -84,6 +98,10 @@ class Preferences: ObservableObject {
 
     @Published var mouseGestureHUDStyle: MouseGestureHUDStyle {
         didSet { UserDefaults.standard.set(mouseGestureHUDStyle.rawValue, forKey: "mouseGestures.hud.style") }
+    }
+
+    @Published var tilePointerHUDStyle: TilePointerHUDStyle {
+        didSet { UserDefaults.standard.set(tilePointerHUDStyle.rawValue, forKey: "tilePointer.hud.style") }
     }
 
     @Published var cursorMarkerShape: CursorMarkerShape {
@@ -227,6 +245,13 @@ class Preferences: ObservableObject {
             self.mouseGestureHUDStyle = style
         } else {
             self.mouseGestureHUDStyle = .technical
+        }
+
+        if let savedTileStyle = UserDefaults.standard.string(forKey: "tilePointer.hud.style"),
+           let style = TilePointerHUDStyle(rawValue: savedTileStyle) {
+            self.tilePointerHUDStyle = style
+        } else {
+            self.tilePointerHUDStyle = .matrix
         }
 
         if let savedShape = UserDefaults.standard.string(forKey: "cursorMarker.shape"),

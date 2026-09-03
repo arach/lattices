@@ -82,6 +82,12 @@ defaults include:
   3x2 grid on its current screen.
 - `Ctrl+Option+Space`: open the command bar; type `/tile 3x2:3,2` or another
   placement string to place the captured frontmost window precisely.
+- `Ctrl+Option` + mouse: a small HUD sits at the cursor. Stay in the inner
+  center and release to cancel; move a little (still in the center cell) for
+  maximize; move into a sector for that tile. Release Ctrl+Option to apply.
+  Settings → Input Controls can switch Loop ring vs Lattices 3×3 matrix. A
+  Ctrl+Option key chord still wins if you press one during the hold.
+  Command-drag snap keeps large edge/corner drop zones.
 
 ### Placement Contract
 
