@@ -32,6 +32,7 @@
 		5D875934B56A9DC50211E1C3 /* HomeDataAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39EFEF38997FEAEB9C381D62 /* HomeDataAdapter.swift */; };
 		638DE62C1A554C5E39F0D430 /* FleetDeckVoiceBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFEA84FACFEF2BC028E68125 /* FleetDeckVoiceBar.swift */; };
 		6D5C7D4A62CD79AB8E33AEA1 /* HomeZeroState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0124DA4C4A5337F1FCDE85F0 /* HomeZeroState.swift */; };
+		6DD6D1919C605AEF2BD39B6D /* DeckTactileFeedback.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8352749B77ABE12E9951058 /* DeckTactileFeedback.swift */; };
 		702E0CE9E43B03A228EB124B /* DeckSkeleton.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE3829B428DD890399011344 /* DeckSkeleton.swift */; };
 		75E303C90FD9763D830E6DAE /* HomeMockData.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2C0C0DD3A5DE3971145E8B4 /* HomeMockData.swift */; };
 		7EDE2F31F72E36E314649728 /* HomeCloudStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9BAE762CC872FFCA8CB25DD /* HomeCloudStrip.swift */; };
@@ -93,6 +94,7 @@
 		BA2C2E756959812A344E33FA /* CompanionTrackpadSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionTrackpadSurface.swift; sourceTree = "<group>"; };
 		BB1F87999BB14714FBFACB9F /* HomeSyncSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeSyncSection.swift; sourceTree = "<group>"; };
 		BCC75F1AC3E0B76173D0E3EA /* HomeMachineGauges.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMachineGauges.swift; sourceTree = "<group>"; };
+		C8352749B77ABE12E9951058 /* DeckTactileFeedback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckTactileFeedback.swift; sourceTree = "<group>"; };
 		CE3829B428DD890399011344 /* DeckSkeleton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckSkeleton.swift; sourceTree = "<group>"; };
 		D2DF53527C0D8B29AB3ECF51 /* FleetDeckCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetDeckCommands.swift; sourceTree = "<group>"; };
 		E0A62477A93C15EBE3917B2E /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
@@ -204,6 +206,7 @@
 				7D303982A361559374D4ECAF /* DeckBridgeSecurityStore.swift */,
 				CE3829B428DD890399011344 /* DeckSkeleton.swift */,
 				11238FFB50336470B6A97CE0 /* DeckStore.swift */,
+				C8352749B77ABE12E9951058 /* DeckTactileFeedback.swift */,
 				33D07069EDC1FC31F2D17855 /* DeckTheme.swift */,
 				EFD01DA0D87BAD6328C48DE8 /* DesktopPreviewScreen.swift */,
 				0A0454EF94BCB42389D5B90B /* Info.plist */,
@@ -257,6 +260,7 @@
 				};
 			};
 			buildConfigurationList = 5A74D3F6041E0DD23E4479FA /* Build configuration list for PBXProject "LatticesCompanion" */;
+			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -269,7 +273,6 @@
 				A9A9C52D0A538CA736CDB7B5 /* XCLocalSwiftPackageReference "../../swift" */,
 			);
 			preferredProjectObjectVersion = 77;
-			productRefGroup = F3908548B1A4941A6C97B64B /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -304,6 +307,7 @@
 				477B603FA482CD0AF55BC9C7 /* DeckBridgeSecurityStore.swift in Sources */,
 				702E0CE9E43B03A228EB124B /* DeckSkeleton.swift in Sources */,
 				015334E9F01E2EC8CE7C6C77 /* DeckStore.swift in Sources */,
+				6DD6D1919C605AEF2BD39B6D /* DeckTactileFeedback.swift in Sources */,
 				A554A5F6BEE7A1D19133D7E3 /* DeckTheme.swift in Sources */,
 				1F06EA84AB51D9E228FBBBCB /* DesktopPreviewScreen.swift in Sources */,
 				E49DB476A1AF62CF00A48A94 /* FleetDeckAdapter.swift in Sources */,

@@ -7,6 +7,7 @@ final class WindowHoverPreview {
 
     private var overlayWindow: NSWindow?
     private var plate: CALayer?
+    private var blurView: NSVisualEffectView?
     private var visuallyPresent = false
     private var currentTarget: NSRect = .null
     private var generation: UInt64 = 0
@@ -22,9 +23,19 @@ final class WindowHoverPreview {
 
     private static let fillColor = NSColor(calibratedWhite: 0.28, alpha: 0.46).cgColor
     private static let strokeColor = NSColor(calibratedWhite: 1.0, alpha: 0.78).cgColor
+    /// Frosted (Ctrl+Option pointer tiling): blur carries the shape, so the
+    /// tint gets more opaque and the border drops to a hairline.
+    private static let frostedFillColor = NSColor(calibratedWhite: 0.24, alpha: 0.55).cgColor
+    private static let frostedStrokeColor = NSColor(calibratedWhite: 1.0, alpha: 0.30).cgColor
+    private static let standardBorderWidth: CGFloat = 2
+    private static let frostedBorderWidth: CGFloat = 1
     private static let morphTiming = CAMediaTimingFunction(controlPoints: 0.16, 1.00, 0.30, 1.00)
+    enum PlateStyle {
+        case standard
+        case frosted
+    }
 
-    func show(frame windowFrame: NSRect, autoHideAfter: TimeInterval? = nil) {
+    func show(frame windowFrame: NSRect, autoHideAfter: TimeInterval? = nil, style: PlateStyle = .standard) {
         let target = windowFrame.insetBy(dx: plateInset, dy: plateInset)
         guard target.width > 8, target.height > 8 else { return }
 
@@ -33,6 +44,7 @@ final class WindowHoverPreview {
         stickyUntil = autoHideAfter.map { CACurrentMediaTime() + $0 } ?? 0
         generation += 1
         let (window, plate) = ensureWindow()
+        applyStyle(style, to: plate)
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
 
         if visuallyPresent, similar(currentTarget, target) {
@@ -91,6 +103,7 @@ final class WindowHoverPreview {
         overlayWindow?.close()
         overlayWindow = nil
         plate = nil
+        blurView = nil
     }
 
     private func scheduleAutoHide(_ delay: TimeInterval?) {
@@ -100,6 +113,31 @@ final class WindowHoverPreview {
         }
         autoHideWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    private func applyStyle(_ style: PlateStyle, to plate: CALayer) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        switch style {
+        case .standard:
+            blurView?.isHidden = true
+            plate.backgroundColor = Self.fillColor
+            plate.borderColor = Self.strokeColor
+            plate.borderWidth = Self.standardBorderWidth
+        case .frosted:
+            blurView?.isHidden = false
+            plate.backgroundColor = Self.frostedFillColor
+            plate.borderColor = Self.frostedStrokeColor
+            plate.borderWidth = Self.frostedBorderWidth
+        }
+        CATransaction.commit()
+    }
+
+    /// Plate and blur backdrop share every frame change so the frosted
+    /// glass tracks the tint exactly through reveals and morphs.
+    private func setPlateFrame(_ rect: NSRect, on plate: CALayer) {
+        plate.frame = rect
+        blurView?.frame = rect
     }
 
     private func snapHide() {
@@ -121,12 +159,25 @@ final class WindowHoverPreview {
         host.layer?.backgroundColor = NSColor.clear.cgColor
         host.layer?.masksToBounds = false
 
+        // Frosted backdrop: blurs whatever sits behind the overlay window.
+        let blur = NSVisualEffectView()
+        blur.material = .underWindowBackground
+        blur.blendingMode = .behindWindow
+        blur.state = .active
+        blur.wantsLayer = true
+        blur.layer?.cornerRadius = cornerRadius
+        blur.layer?.cornerCurve = .continuous
+        blur.layer?.masksToBounds = true
+        blur.isHidden = true
+        host.addSubview(blur, positioned: .below, relativeTo: nil)
+
         let plate = CALayer()
         plate.cornerRadius = cornerRadius
         plate.cornerCurve = .continuous
         plate.backgroundColor = Self.fillColor
-        plate.borderWidth = 2
+        plate.borderWidth = Self.standardBorderWidth
         plate.borderColor = Self.strokeColor
+        plate.zPosition = 1
         plate.shadowColor = NSColor.black.cgColor
         plate.shadowOpacity = 0.28
         plate.shadowRadius = 16
@@ -156,6 +207,7 @@ final class WindowHoverPreview {
 
         self.overlayWindow = window
         self.plate = plate
+        self.blurView = blur
         return (window, plate)
     }
 
@@ -166,7 +218,7 @@ final class WindowHoverPreview {
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        plate.frame = layerRect(target, in: window)
+        setPlateFrame(layerRect(target, in: window), on: plate)
         plate.transform = reduceMotion
             ? CATransform3DIdentity
             : CATransform3DMakeScale(0.96, 0.96, 1)
@@ -189,7 +241,7 @@ final class WindowHoverPreview {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         placeWindow(window, frame: union)
-        plate.frame = currentScreen.offsetBy(dx: -union.minX, dy: -union.minY)
+        setPlateFrame(currentScreen.offsetBy(dx: -union.minX, dy: -union.minY), on: plate)
         plate.transform = CATransform3DIdentity
         plate.opacity = 1
         CATransaction.commit()
@@ -202,7 +254,7 @@ final class WindowHoverPreview {
             guard let self, self.generation == generation, self.visuallyPresent else { return }
             self.tighten(to: target)
         }
-        plate.frame = dest
+        setPlateFrame(dest, on: plate)
         plate.opacity = 1
         CATransaction.commit()
     }
@@ -213,7 +265,7 @@ final class WindowHoverPreview {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         placeWindow(window, frame: padded)
-        plate.frame = layerRect(target, in: window)
+        setPlateFrame(layerRect(target, in: window), on: plate)
         CATransaction.commit()
     }
 
@@ -234,6 +286,7 @@ final class WindowHoverPreview {
         let scale = NSScreen.screens.map(\.backingScaleFactor).max() ?? 2
         plate.contentsScale = scale
         overlayWindow?.contentView?.layer?.contentsScale = scale
+        blurView?.layer?.contentsScale = scale
     }
 
     private func similar(_ a: NSRect, _ b: NSRect) -> Bool {

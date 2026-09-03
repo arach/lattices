@@ -522,7 +522,7 @@ final class TileZoneOverlay {
             ?? NSScreen.main
             ?? NSScreen.screens.first
         guard let targetScreen else { return }
-        WindowHoverPreview.shared.show(frame: Self.rect(for: position, on: targetScreen), autoHideAfter: autoHideAfter)
+        WindowHoverPreview.shared.show(frame: Self.rect(for: position, on: targetScreen), autoHideAfter: autoHideAfter, style: .frosted)
     }
 
     func dismiss() {
