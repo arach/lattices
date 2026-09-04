@@ -563,6 +563,12 @@ struct SettingsContentView: View {
                         options: TilePointerHUDStyle.allCases.map { ($0, $0.label) }
                     )
                 }
+                settingsPrefRow(
+                    "Move & land feedback",
+                    caption: "Experiment: a tick as your aim crosses cells, a tactile tap when the window lands."
+                ) {
+                    SettingsSwitch(isOn: $prefs.tilePointerSoundEffectsEnabled)
+                }
 
                 settingsPrefRow(
                     "Middle-click gestures",

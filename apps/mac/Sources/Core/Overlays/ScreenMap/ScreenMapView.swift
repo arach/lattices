@@ -3594,8 +3594,10 @@ struct ScreenMapView: View {
             if isEditableTextResponder(win.firstResponder) {
                 return event
             }
-            // Track space key for canvas drag-to-pan
-            if event.keyCode == 49 && !controller.isSearchActive {
+            // Track space key for canvas drag-to-pan (only when no modifiers are held,
+            // so Hyper+Space / Ctrl+Opt+Space are not intercepted).
+            let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            if event.keyCode == 49 && !controller.isSearchActive && mods.isEmpty {
                 if event.type == .keyDown {
                     if !isSpaceHeld {
                         isSpaceHeld = true

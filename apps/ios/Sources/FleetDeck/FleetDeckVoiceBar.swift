@@ -65,7 +65,10 @@ struct FleetVoiceBar: View {
 
     // `.ptt`
     private var pushToTalk: some View {
-        Button(action: onPushToTalk) {
+        Button(action: {
+            DeckTactileFeedback.shared.tilePress(isAccent: true)
+            onPushToTalk()
+        }) {
             Image(systemName: "mic")
                 .font(.system(size: 15, weight: .regular))
                 .foregroundStyle(isListening ? FleetV6.green : FleetV6.fg2)
@@ -107,7 +110,10 @@ struct FleetVoiceBar: View {
     }
 
     private func chip(title: String, isOn: Bool, showsDivider: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        Button(action: {
+            DeckTactileFeedback.shared.rotaryTick()
+            action()
+        }) {
             Text(title)
                 .font(FleetV6.mono(10, .medium))
                 .tracking(1)

@@ -163,29 +163,31 @@ struct HomeBottomBar: View {
     }
 
     private var compactCollapsedBar: some View {
-        HStack(spacing: 9) {
+        HStack(spacing: 8) {
             statusSegment
 
             if hasTelemetry {
                 Text(telemetry.contextLabel)
-                    .font(LatsFont.mono(9))
+                    .font(LatsFont.mono(10))
                     .foregroundStyle(LatsPalette.textDim)
                     .lineLimit(1)
                     .truncationMode(.middle)
             } else {
                 Text(holdHint)
-                    .font(LatsFont.mono(8))
+                    .font(LatsFont.mono(9))
                     .foregroundStyle(LatsPalette.textFaint)
             }
 
             Spacer(minLength: 2)
 
-            HStack(spacing: 6) {
-                Circle().fill(agentDotTint).frame(width: 5, height: 5)
-                Text(agentLabel)
-                    .font(LatsFont.mono(9, weight: .semibold))
-                    .foregroundStyle(agentTextTint)
-                    .lineLimit(1)
+            if agentState != .idle {
+                HStack(spacing: 6) {
+                    Circle().fill(agentDotTint).frame(width: 5, height: 5)
+                    Text(agentLabel)
+                        .font(LatsFont.mono(10, weight: .semibold))
+                        .foregroundStyle(agentTextTint)
+                        .lineLimit(1)
+                }
             }
 
             if let onVoice {
@@ -231,7 +233,7 @@ struct HomeBottomBar: View {
 
     private var holdHintSegment: some View {
         Text(holdHint)
-            .font(LatsFont.mono(8))
+            .font(LatsFont.mono(9))
             .tracking(0.4)
             .foregroundStyle(LatsPalette.textFaint)
             .fixedSize()
@@ -295,6 +297,8 @@ struct HomeBottomBar: View {
         }
         .fixedSize()
     }
+
+
 
     private var rightMark: some View {
         HStack(spacing: 6) {
