@@ -81,7 +81,7 @@ struct HomeTopBar: View {
                 .foregroundStyle(LatsPalette.text)
                 .fixedSize()
 
-            if let primary = orderedMachines.first {
+            if orderedMachines.count > 1, let primary = orderedMachines.first {
                 Button { onPillTap?(primary) } label: {
                     HStack(spacing: 6) {
                         Circle().fill(primary.status.tint).frame(width: 6, height: 6)
@@ -98,13 +98,11 @@ struct HomeTopBar: View {
                 }
                 .buttonStyle(.plain)
 
-                if orderedMachines.count > 1 {
-                    Text("+\(orderedMachines.count - 1)")
-                        .font(LatsFont.mono(9, weight: .bold))
-                        .foregroundStyle(LatsPalette.textDim)
-                        .fixedSize()
-                }
-            } else {
+                Text("+\(orderedMachines.count - 1)")
+                    .font(LatsFont.mono(9, weight: .bold))
+                    .foregroundStyle(LatsPalette.textDim)
+                    .fixedSize()
+            } else if orderedMachines.isEmpty {
                 Text("Home")
                     .font(DeckTheme.caption(.semibold))
                     .foregroundStyle(LatsPalette.textDim)
@@ -415,3 +413,4 @@ private struct FleetDetailCell: View {
     }
     .preferredColorScheme(.dark)
 }
+

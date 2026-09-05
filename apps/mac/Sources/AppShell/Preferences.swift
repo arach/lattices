@@ -103,6 +103,10 @@ class Preferences: ObservableObject {
     @Published var tilePointerHUDStyle: TilePointerHUDStyle {
         didSet { UserDefaults.standard.set(tilePointerHUDStyle.rawValue, forKey: "tilePointer.hud.style") }
     }
+    /// Experiment: tick on aim change + tactile tap when the window lands.
+    @Published var tilePointerSoundEffectsEnabled: Bool {
+        didSet { UserDefaults.standard.set(tilePointerSoundEffectsEnabled, forKey: "tilePointer.soundEffects.enabled") }
+    }
 
     @Published var cursorMarkerShape: CursorMarkerShape {
         didSet { UserDefaults.standard.set(cursorMarkerShape.rawValue, forKey: "cursorMarker.shape") }
@@ -252,6 +256,11 @@ class Preferences: ObservableObject {
             self.tilePointerHUDStyle = style
         } else {
             self.tilePointerHUDStyle = .matrix
+        }
+        if UserDefaults.standard.object(forKey: "tilePointer.soundEffects.enabled") != nil {
+            self.tilePointerSoundEffectsEnabled = UserDefaults.standard.bool(forKey: "tilePointer.soundEffects.enabled")
+        } else {
+            self.tilePointerSoundEffectsEnabled = true
         }
 
         if let savedShape = UserDefaults.standard.string(forKey: "cursorMarker.shape"),

@@ -144,7 +144,17 @@ struct LatsButton: View {
     var action: () -> Void
 
     var body: some View {
-        Button(action: action) {
+        Button(action: {
+            switch style {
+            case .primary:
+                DeckTactileFeedback.shared.tilePress(isAccent: true)
+            case .secondary:
+                DeckTactileFeedback.shared.tilePress(isAccent: false)
+            case .ghost:
+                DeckTactileFeedback.shared.buttonPop()
+            }
+            action()
+        }) {
             HStack(spacing: 8) {
                 if let icon { Image(systemName: icon).font(.system(size: 12, weight: .semibold)) }
                 Text(title).font(LatsFont.ui(13, weight: .semibold))

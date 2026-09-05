@@ -121,6 +121,8 @@ struct HomeView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Start voice on \(voiceMacLabel)")
+        .opacity(horizontalSizeClass == .compact ? 0 : 1)
+        .allowsHitTesting(horizontalSizeClass != .compact)
     }
 
     private var foregroundAgentState: HomeAgentState {
@@ -155,9 +157,13 @@ struct HomeView: View {
                         onVoice: onMachineVoice
                     )
 
-                    HomeScenesGrid(scenes: scenes, onScene: onScene)
+                    if !scenes.isEmpty {
+                        HomeScenesGrid(scenes: scenes, onScene: onScene)
+                    }
 
-                    HomeRoutinesList(routines: routines, onRun: onRoutine)
+                    if !routines.isEmpty {
+                        HomeRoutinesList(routines: routines, onRun: onRoutine)
+                    }
 
                     HomeActivityFeed(
                         recent: recent,
@@ -165,11 +171,13 @@ struct HomeView: View {
                         attention: attention
                     )
 
-                    HomeSyncSection(
-                        actions: sync,
-                        machines: machines,
-                        onBroadcast: onBroadcast
-                    )
+                    if !sync.isEmpty {
+                        HomeSyncSection(
+                            actions: sync,
+                            machines: machines,
+                            onBroadcast: onBroadcast
+                        )
+                    }
                 }
                 .padding(.horizontal, horizontalSizeClass == .compact ? 14 : 24)
                 .padding(.vertical, horizontalSizeClass == .compact ? 12 : 18)
@@ -206,7 +214,9 @@ struct HomeView: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
-            HomeCloudStrip(cloud: cloud)
+            if cloud.agentsRunning > 0 || cloud.buildsQueued > 0 || cloud.lastDeployAgo != nil {
+                HomeCloudStrip(cloud: cloud)
+            }
             HomeBottomBar(
                 agentState: foregroundAgentState,
                 telemetry: bottomTelemetry,
@@ -290,6 +300,7 @@ struct HomeView: View {
             calendar:  HomeMock.calendar,
             attention: HomeMock.attention,
             onPair: {}
+
         )
     }
     .preferredColorScheme(.dark)
