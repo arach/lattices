@@ -556,7 +556,7 @@ struct SettingsContentView: View {
 
                 settingsPrefRow(
                     "Ctrl+Option HUD",
-                    caption: "Loop is the radial ring. Matrix is the Lattices 3×3."
+                    caption: "Loop is the radial ring. Matrix is the Lattices 3×3. While held, numpad 1–9 or arrow keys tile directly."
                 ) {
                     SettingsChoiceBar(
                         selection: $prefs.tilePointerHUDStyle,
@@ -3043,7 +3043,7 @@ struct SettingsContentView: View {
                             shortcutSectionCard(
                                 title: "Tiling",
                                 eyebrow: "Desktop Layout",
-                                summary: "The grid is the placement map. Click a cell or a row to rebind."
+                                summary: "The grid is the placement map. Click a cell to rebind. While Ctrl+Option is held, numpad or number-row 1–9 tile the matrix; arrows aim an edge or corner and apply on release."
                             ) {
                                 LazyVGrid(columns: tilingColumns, alignment: .leading, spacing: 20) {
                                     shortcutsTilingVisualizer
@@ -3312,7 +3312,6 @@ struct SettingsContentView: View {
                 }
                 .padding(8)
                 .background(shortcutsInsetPanel)
-
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Thirds")
                         .font(Typo.caption(10.5))
@@ -3327,7 +3326,42 @@ struct SettingsContentView: View {
                 .padding(8)
                 .background(shortcutsInsetPanel)
 
-                Text("Use the grid as a visual legend for where each shortcut will place the focused window.")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("HUD keyboard")
+                        .font(Typo.caption(10.5))
+                        .foregroundColor(Palette.textMuted)
+
+                    Text("While Ctrl+Option is held")
+                        .font(Typo.caption(9.5))
+                        .foregroundColor(Palette.textDim)
+
+                    VStack(spacing: 2) {
+                        HStack(spacing: 2) {
+                            hudKeyboardCell("7")
+                            hudKeyboardCell("8")
+                            hudKeyboardCell("9")
+                        }
+                        HStack(spacing: 2) {
+                            hudKeyboardCell("4")
+                            hudKeyboardCell("5")
+                            hudKeyboardCell("6")
+                        }
+                        HStack(spacing: 2) {
+                            hudKeyboardCell("1")
+                            hudKeyboardCell("2")
+                            hudKeyboardCell("3")
+                        }
+                    }
+
+                    Text("Numpad or number row. Arrows: one edge, two for a corner — release Ctrl+Option to apply.")
+                        .font(Typo.caption(9.5))
+                        .foregroundColor(Palette.textDim)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(8)
+                .background(shortcutsInsetPanel)
+
+                Text("Global shortcuts below fire instantly. HUD keys only apply while Ctrl+Option is held.")
                     .font(Typo.caption(10.5))
                     .foregroundColor(Palette.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -3418,6 +3452,32 @@ struct SettingsContentView: View {
             .fill(Palette.surface.opacity(0.55))
     }
 
+    private func hudKeyboardCell(_ label: String) -> some View {
+        Text(label)
+            .font(Typo.geistMonoBold(9))
+            .foregroundColor(Palette.text)
+            .frame(maxWidth: .infinity)
+            .frame(height: 28)
+            .background(
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Palette.surface)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .strokeBorder(Palette.border, lineWidth: 0.5)
+                    )
+            )
+    }
+
+    private func tileCellBadge(_ binding: KeyBinding?) -> String {
+        guard let binding else { return "Unset" }
+        let parts = binding.displayParts
+        guard let key = parts.last else { return "Unset" }
+        if parts.contains("Shift") {
+            return "⇧\(key)"
+        }
+        return key
+    }
+
     private func relativeTimestamp(_ date: Date) -> String {
         RelativeDateTimeFormatter().localizedString(for: date, relativeTo: Date())
     }
@@ -3431,7 +3491,7 @@ struct SettingsContentView: View {
 
     private func tileCell(action: HotkeyAction, label: String) -> some View {
         let binding = hotkeyStore.bindings[action]
-        let badgeText = binding?.displayParts.last ?? "Unset"
+        let badgeText = tileCellBadge(binding)
 
         return Button {
             // Open inline key recorder for this action

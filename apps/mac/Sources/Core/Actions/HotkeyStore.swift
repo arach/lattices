@@ -272,6 +272,7 @@ class HotkeyStore: ObservableObject {
         let cmdShift = UInt32(cmdKey | shiftKey)
         let cmdOpt = UInt32(cmdKey | optionKey)
         let ctrlOpt = UInt32(controlKey | optionKey)
+        let ctrlOptShift = UInt32(controlKey | optionKey | shiftKey)
 
         func bind(_ action: HotkeyAction, _ keyCode: UInt32, _ mods: UInt32) {
             d[action] = KeyBinding(
@@ -320,9 +321,9 @@ class HotkeyStore: ObservableObject {
         bind(.tileBottomRight,  40, ctrlOpt)  // Ctrl+Opt+K
         bind(.tileDistribute,    2, ctrlOpt)  // Ctrl+Opt+D
         bind(.tileTypeGrid,     16, hyper)    // Hyper+Y
-        bind(.tileLeftThird,    18, ctrlOpt)  // Ctrl+Opt+1
-        bind(.tileCenterThird,  19, ctrlOpt)  // Ctrl+Opt+2
-        bind(.tileRightThird,   20, ctrlOpt)  // Ctrl+Opt+3
+        bind(.tileLeftThird,    18, ctrlOptShift)  // Ctrl+Opt+Shift+1
+        bind(.tileCenterThird,  19, ctrlOptShift)  // Ctrl+Opt+Shift+2
+        bind(.tileRightThird,   20, ctrlOptShift)  // Ctrl+Opt+Shift+3
         bind(.tileOrganize,     31, ctrlOpt)  // Ctrl+Opt+O
         bind(.tileOpenCell,      9, ctrlOpt)  // Ctrl+Opt+V
         bind(.motionMode,       49, hyper)    // Hyper+Space — Hyperspace (full survey)
@@ -403,6 +404,30 @@ class HotkeyStore: ObservableObject {
                !ud.bool(forKey: flag) {
                 merged.removeValue(forKey: action)
                 ud.set(true, forKey: Self.disabledKey(for: action))
+                ud.set(true, forKey: flag)
+            }
+        }
+
+
+        // Free Ctrl+Opt+1/2/3 for the tile-pointer matrix; vertical thirds
+        // move to Ctrl+Opt+Shift+1/2/3. Only migrate installs still on the
+        // old default — custom remaps are left alone.
+        let ctrlOpt = UInt32(controlKey | optionKey)
+        let thirdRetarget: [(HotkeyAction, UInt32, String)] = [
+            (.tileLeftThird, 18, "hotkey.tileLeftThird.ctrlOptShift.v1"),
+            (.tileCenterThird, 19, "hotkey.tileCenterThird.ctrlOptShift.v1"),
+            (.tileRightThird, 20, "hotkey.tileRightThird.ctrlOptShift.v1"),
+        ]
+        for (action, keyCode, flag) in thirdRetarget {
+            if let binding = merged[action],
+               binding.keyCode == keyCode,
+               binding.carbonModifiers == ctrlOpt,
+               let replacement = Self.defaultBindings[action],
+               !ud.bool(forKey: flag) {
+                merged[action] = replacement
+                if let data = try? JSONEncoder().encode(replacement) {
+                    ud.set(data, forKey: Self.storageKey(for: action))
+                }
                 ud.set(true, forKey: flag)
             }
         }
