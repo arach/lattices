@@ -12,7 +12,12 @@ let package = Package(
         .library(name: "LatticesTerminalKit", targets: ["LatticesTerminalKit"])
     ],
     targets: [
-        .target(name: "DeckKit"),
+        .target(
+            name: "DeckKit",
+            resources: [
+                .copy("Resources/deck-tactile-catalog.json")
+            ]
+        ),
         .target(name: "LatticesTerminalKit"),
         .testTarget(
             name: "DeckKitTests",
