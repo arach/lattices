@@ -287,7 +287,10 @@ struct FleetDecisionCard: View {
             .padding(.top, 10)
 
             HStack {
-                Button(action: onDefer) {
+                Button(action: {
+                    DeckTactileFeedback.shared.decisionDeferred()
+                    onDefer()
+                }) {
                     Text("ASK ME LATER")
                         .font(FleetV6.mono(9, .medium))
                         .tracking(1.08)
@@ -318,7 +321,10 @@ private struct FleetDecisionRow: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
+        Button(action: {
+            DeckTactileFeedback.shared.decisionApproved()
+            action()
+        }) {
             HStack(spacing: 11) {
                 Text(option.key)
                     .font(FleetV6.mono(9.5))
@@ -475,10 +481,22 @@ struct FleetWellFill: ViewModifier {
 /// `:active { transform: translateY(1px) }` — every pressable face in the design
 /// sinks by a point.
 struct FleetPressStyle: ButtonStyle {
+    var isKey: Bool = true
+    var isAccent: Bool = false
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .offset(y: configuration.isPressed ? 1 : 0)
             .brightness(configuration.isPressed ? 0.04 : 0)
             .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
+            .onChange(of: configuration.isPressed) { _, isPressed in
+                if isPressed {
+                    if isKey {
+                        DeckTactileFeedback.shared.tilePress(isAccent: isAccent)
+                    } else {
+                        DeckTactileFeedback.shared.buttonPop()
+                    }
+                }
+            }
     }
 }

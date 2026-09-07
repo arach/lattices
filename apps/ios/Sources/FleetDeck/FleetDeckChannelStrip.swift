@@ -43,7 +43,10 @@ private struct FleetChannelColumn: View {
     let onSelect: () -> Void
 
     var body: some View {
-        Button(action: onSelect) {
+        Button(action: {
+            DeckTactileFeedback.shared.rotaryTick()
+            onSelect()
+        }) {
             VStack(alignment: .leading, spacing: 0) {
                 head
                 if !isRail {

@@ -223,7 +223,10 @@ private struct HomeFleetDoor: View {
     }
 
     var body: some View {
-        Button(action: onTap) {
+        Button(action: {
+            DeckTactileFeedback.shared.tilePress(isAccent: true)
+            onTap()
+        }) {
             HStack(spacing: DeckTheme.Space.x12) {
                 tile
 
@@ -394,7 +397,10 @@ private struct HomeTargetCard: View {
     }
 
     var body: some View {
-        Button(action: { onEnterDeck?(machine) }) {
+        Button(action: {
+            DeckTactileFeedback.shared.tilePress(isAccent: false)
+            onEnterDeck?(machine)
+        }) {
             LatsCard(padding: 12, radius: 8) {
                 Group {
                     switch density {

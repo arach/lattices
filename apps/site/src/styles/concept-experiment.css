@@ -1,0 +1,1494 @@
+/* ── Lattices SYS. 01 — "THE DECK" Physical Workspace Controller Stylesheet ── */
+/* Inspired by Dieter Rams (Braun), Teenage Engineering, and Swiss Modernist Posters */
+
+.concept-exp-page {
+  --ce-bg: #f4f0e6;
+  --ce-bg-alt: #ece6d8;
+  --ce-surface: #ffffff;
+  --ce-surface-subtle: #f9f8f4;
+  --ce-ink: #121315;
+  --ce-ink-muted: #52504b;
+  --ce-ink-subtle: #8a877e;
+  --ce-border: #ded8c8;
+  --ce-border-strong: #c2b9a7;
+
+  /* Physical Hardware Finishes (Warm Archival Paper Mode) */
+  --ce-chassis: #e5ded0;
+  --ce-chassis-bezel: #d8d0c0;
+  --ce-chassis-rim: #bfb5a2;
+  --ce-chassis-shadow: rgba(0, 0, 0, 0.12);
+  --ce-plate: #ded7c9;
+  --ce-screw: #a89f8c;
+
+  /* Embedded Screen */
+  --ce-screen-bg: #121417;
+  --ce-screen-border: #23262c;
+  --ce-screen-well: #0c0d0f;
+  --ce-screen-text: #eae9e4;
+  --ce-screen-text-dim: #797e88;
+  --ce-screen-accent: #d8542b;
+
+  /* Keycap Materials (3D Physical Mechanical Keys) */
+  --ce-orange-key: #d8542b;
+  --ce-orange-key-border: #bd431c;
+  --ce-orange-key-shadow: #8f2f0f;
+  --ce-orange-key-text: #ffffff;
+  --ce-orange-key-sub: rgba(255, 255, 255, 0.75);
+
+  --ce-cream-key: #fcf9f2;
+  --ce-cream-key-border: #ded7c8;
+  --ce-cream-key-shadow: #b2a996;
+  --ce-cream-key-text: #16171a;
+  --ce-cream-key-sub: #6e6b63;
+
+  /* Dial / Metal controls */
+  --ce-knob-metal: #d2cbbe;
+  --ce-knob-shadow: rgba(0, 0, 0, 0.16);
+  --ce-toggle-metal: #c2baa9;
+
+  --ce-accent-orange: #d8542b;
+  --ce-amber: #e6a23c;
+  --ce-amber-glow: rgba(230, 162, 60, 0.35);
+  --ce-green: #2ecc71;
+  --ce-green-glow: rgba(46, 204, 113, 0.35);
+  --ce-grid-line: rgba(18, 19, 21, 0.07);
+
+  min-height: 100vh;
+  background-color: var(--ce-bg);
+  color: var(--ce-ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  position: relative;
+  overflow-x: hidden;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* ── Anodized Noir Material Mode ── */
+.concept-exp-page[data-material="anodized"] {
+  --ce-bg: #101113;
+  --ce-bg-alt: #16181b;
+  --ce-surface: #1a1c20;
+  --ce-surface-subtle: #141518;
+  --ce-ink: #f4f3ee;
+  --ce-ink-muted: #9e9c94;
+  --ce-ink-subtle: #626058;
+  --ce-border: #26282e;
+  --ce-border-strong: #383a42;
+
+  /* Physical Hardware Finishes (Anodized Noir Mode) */
+  --ce-chassis: #1c1e22;
+  --ce-chassis-bezel: #16171a;
+  --ce-chassis-rim: #2d3036;
+  --ce-chassis-shadow: rgba(0, 0, 0, 0.55);
+  --ce-plate: #151619;
+  --ce-screw: #3a3d45;
+
+  /* Embedded Screen */
+  --ce-screen-bg: #090a0c;
+  --ce-screen-border: #1e2025;
+  --ce-screen-well: #050607;
+  --ce-screen-text: #eae9e4;
+  --ce-screen-text-dim: #6c717a;
+  --ce-screen-accent: #e25d33;
+
+  /* Keycap Materials */
+  --ce-orange-key: #d8542b;
+  --ce-orange-key-border: #e26338;
+  --ce-orange-key-shadow: #7e2b10;
+  --ce-orange-key-text: #ffffff;
+  --ce-orange-key-sub: rgba(255, 255, 255, 0.8);
+
+  --ce-cream-key: #25282f;
+  --ce-cream-key-border: #383c46;
+  --ce-cream-key-shadow: #131418;
+  --ce-cream-key-text: #f0eee6;
+  --ce-cream-key-sub: #91949e;
+
+  /* Dial / Metal controls */
+  --ce-knob-metal: #2e313a;
+  --ce-knob-shadow: rgba(0, 0, 0, 0.6);
+  --ce-toggle-metal: #3a3e47;
+
+  --ce-accent-orange: #e25d33;
+  --ce-amber: #e6a23c;
+  --ce-amber-glow: rgba(230, 162, 60, 0.45);
+  --ce-green: #2ecc71;
+  --ce-green-glow: rgba(46, 204, 113, 0.45);
+  --ce-grid-line: rgba(244, 243, 238, 0.05);
+}
+
+/* Background architectural coordinate dot pattern */
+.concept-exp-bg-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: 
+    radial-gradient(var(--ce-ink-subtle) 0.65px, transparent 0.65px),
+    linear-gradient(to right, var(--ce-grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--ce-grid-line) 1px, transparent 1px);
+  background-size: 24px 24px, 120px 120px, 120px 120px;
+  background-position: 0 0, 0 0, 0 0;
+  opacity: 0.35;
+  z-index: 0;
+}
+
+/* Outer layout shell */
+.concept-exp-shell {
+  position: relative;
+  z-index: 1;
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 32px 32px 100px;
+}
+
+/* ── Top Technical Masthead ── */
+.concept-exp-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--ce-border);
+  padding-bottom: 20px;
+  margin-bottom: 40px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11.5px;
+}
+
+.concept-exp-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.concept-exp-logo-glyph {
+  display: grid;
+  grid-template-columns: repeat(3, 4px);
+  gap: 3px;
+}
+
+.concept-exp-glyph-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 1px;
+  background-color: var(--ce-border-strong);
+}
+
+.concept-exp-glyph-dot.active {
+  background-color: var(--ce-accent-orange);
+}
+
+.concept-exp-brand-text {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  font-size: 13px;
+}
+
+.concept-exp-brand-meta {
+  color: var(--ce-ink-subtle);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+}
+
+.concept-exp-telemetry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ce-ink-muted);
+  font-size: 11px;
+}
+
+.concept-exp-led {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.concept-exp-led.green {
+  background-color: var(--ce-green);
+  box-shadow: 0 0 6px var(--ce-green-glow);
+}
+
+.concept-exp-led.amber {
+  background-color: var(--ce-amber);
+  box-shadow: 0 0 8px var(--ce-amber-glow);
+  animation: conceptPulse 1.8s infinite ease-in-out;
+}
+
+@keyframes conceptPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.9); }
+}
+
+.concept-exp-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.concept-exp-btn-toggle {
+  background: var(--ce-surface);
+  color: var(--ce-ink);
+  border: 1px solid var(--ce-border-strong);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.concept-exp-btn-toggle:hover {
+  background: var(--ce-surface-subtle);
+  border-color: var(--ce-ink);
+}
+
+.concept-exp-backlink {
+  color: var(--ce-ink-muted);
+  text-decoration: none;
+  font-weight: 500;
+  padding: 6px 10px;
+}
+
+.concept-exp-backlink:hover {
+  color: var(--ce-ink);
+}
+
+/* ══════════════════════════════════════════════════════════
+   TOP 2-COLUMN HERO: EXPLAINER (LEFT) + POSTER EXHIBIT (RIGHT)
+   ══════════════════════════════════════════════════════════ */
+.concept-exp-top-grid {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 48px;
+  align-items: start;
+  border-bottom: 1px solid var(--ce-border);
+  padding-bottom: 56px;
+  margin-bottom: 64px;
+  position: relative;
+}
+
+.concept-exp-crosshair {
+  position: absolute;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 14px;
+  color: var(--ce-ink-subtle);
+  line-height: 1;
+  user-select: none;
+}
+
+.concept-exp-crosshair.top-left { top: -20px; left: 0; }
+.concept-exp-crosshair.top-right { top: -20px; right: 0; }
+.concept-exp-crosshair.bottom-left { bottom: -7px; left: 0; }
+.concept-exp-crosshair.bottom-right { bottom: -7px; right: 0; }
+
+/* ── Left Column: Explainer ── */
+.concept-exp-explainer-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.concept-exp-kicker {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ce-accent-orange);
+  margin-bottom: 12px;
+}
+
+.concept-exp-title {
+  font-size: clamp(3rem, 5.8vw, 5.2rem);
+  font-weight: 850;
+  line-height: 0.98;
+  letter-spacing: -0.045em;
+  color: var(--ce-ink);
+  margin: 0 0 16px;
+}
+
+.concept-exp-title-dot {
+  color: var(--ce-accent-orange);
+}
+
+.concept-exp-deck-tagline {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ce-ink-muted);
+  letter-spacing: -0.01em;
+  margin-bottom: 24px;
+  display: block;
+}
+
+.concept-exp-subtitle {
+  font-size: 1.15rem;
+  line-height: 1.6;
+  color: var(--ce-ink-muted);
+  margin: 0 0 28px;
+}
+
+.concept-exp-subtitle strong {
+  color: var(--ce-ink);
+  font-weight: 600;
+}
+
+/* Explainer Feature List */
+.concept-exp-spec-pills-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 32px;
+  background: var(--ce-surface);
+  border: 1px solid var(--ce-border);
+  border-radius: 10px;
+  padding: 16px 20px;
+}
+
+.concept-exp-spec-pill-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--ce-ink);
+  line-height: 1.45;
+}
+
+.concept-exp-spec-pill-mark {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ce-accent-orange);
+}
+
+.concept-exp-spec-pill-desc {
+  font-weight: 500;
+}
+
+.concept-exp-spec-pill-desc strong {
+  font-weight: 650;
+}
+
+/* CTA Action Bar */
+.concept-exp-hero-actions {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.concept-exp-btn-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--ce-ink);
+  color: var(--ce-surface);
+  border: none;
+  border-radius: 8px;
+  padding: 11px 22px;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 650;
+  text-decoration: none;
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.concept-exp-btn-cta:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.concept-exp-btn-cta.secondary {
+  background: transparent;
+  color: var(--ce-ink);
+  border: 1px solid var(--ce-border-strong);
+}
+
+.concept-exp-btn-cta.secondary:hover {
+  background: var(--ce-surface-subtle);
+  border-color: var(--ce-ink);
+}
+
+/* ── Right Column: Framed Archival Poster Exhibit ── */
+.concept-exp-poster-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.concept-exp-poster-frame {
+  width: 100%;
+  max-width: 440px;
+  background: var(--ce-surface);
+  border: 1px solid var(--ce-border-strong);
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow:
+    0 20px 48px var(--ce-chassis-shadow),
+    0 1px 2px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  transition: all 0.3s ease;
+}
+
+.concept-exp-poster-frame-hdr {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ce-ink-subtle);
+  border-bottom: 1px dashed var(--ce-border);
+  padding-bottom: 8px;
+}
+
+.concept-exp-poster-img-wrap {
+  position: relative;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--ce-border);
+  background: var(--ce-bg-alt);
+}
+
+.concept-exp-poster-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.concept-exp-poster-img-wrap:hover .concept-exp-poster-image {
+  transform: scale(1.02);
+}
+
+.concept-exp-poster-caption {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+}
+
+.concept-exp-caption-title {
+  font-weight: 700;
+  color: var(--ce-ink);
+  letter-spacing: 0.02em;
+}
+
+.concept-exp-caption-sub {
+  color: var(--ce-ink-subtle);
+  font-size: 9.5px;
+  line-height: 1.4;
+}
+
+.concept-exp-poster-col-links {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--ce-border);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+}
+
+.concept-exp-poster-col-link {
+  color: var(--ce-accent-orange);
+  text-decoration: none;
+  font-weight: 600;
+  transition: opacity 0.12s ease;
+}
+
+.concept-exp-poster-col-link:hover {
+  text-decoration: underline;
+  opacity: 0.85;
+}
+
+/* ══════════════════════════════════════════════════════════
+   SYS. 01 PHYSICAL DESK CONTROLLER CENTERPIECE
+   ══════════════════════════════════════════════════════════ */
+.concept-exp-console-showcase {
+  margin-bottom: 96px;
+  scroll-margin-top: 40px;
+}
+
+.concept-exp-console-section-hdr {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-top: 1px solid var(--ce-border);
+  padding-top: 32px;
+  margin-bottom: 24px;
+}
+
+.concept-exp-console-section-title {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  color: var(--ce-ink);
+  margin: 0;
+}
+
+.concept-exp-console-meta-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+}
+
+.concept-exp-console-meta-title {
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--ce-ink);
+}
+
+.concept-exp-console-meta-badge {
+  display: flex;
+  gap: 8px;
+  color: var(--ce-ink-subtle);
+  font-size: 10px;
+}
+
+/* Heavy Milled Aluminum Enclosure */
+.concept-exp-chassis-unit {
+  background: var(--ce-chassis);
+  border: 2px solid var(--ce-chassis-rim);
+  border-radius: 20px;
+  padding: 32px;
+  box-shadow:
+    0 24px 60px var(--ce-chassis-shadow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.15);
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+/* Recessed screw heads at 4 corners */
+.concept-exp-chassis-screw {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ce-screw);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.concept-exp-chassis-screw::after {
+  content: "";
+  position: absolute;
+  top: 4.5px;
+  left: 2px;
+  width: 6px;
+  height: 1px;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.concept-exp-chassis-screw.tl { top: 14px; left: 14px; transform: rotate(25deg); }
+.concept-exp-chassis-screw.tr { top: 14px; right: 14px; transform: rotate(115deg); }
+.concept-exp-chassis-screw.bl { bottom: 14px; left: 14px; transform: rotate(65deg); }
+.concept-exp-chassis-screw.br { bottom: 14px; right: 14px; transform: rotate(140deg); }
+
+/* Main Split Faceplate Grid: Keys (Left) + Screen (Right) */
+.concept-exp-faceplate-grid {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 36px;
+}
+
+/* ── Left Ergonomic Zone: Mechanical Key Matrix & Controls ── */
+.concept-exp-keys-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+/* Console Top Rail: Engraved Model + Host Selector */
+.concept-exp-keys-toprail {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--ce-border-strong);
+  padding-bottom: 14px;
+}
+
+.concept-exp-engraving {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--ce-ink);
+}
+
+.concept-exp-host-pills {
+  display: flex;
+  gap: 6px;
+}
+
+.concept-exp-host-pill {
+  background: var(--ce-surface);
+  color: var(--ce-ink-muted);
+  border: 1px solid var(--ce-border);
+  border-radius: 5px;
+  padding: 4px 8px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.12s ease;
+}
+
+.concept-exp-host-pill:hover {
+  color: var(--ce-ink);
+  border-color: var(--ce-border-strong);
+}
+
+.concept-exp-host-pill.active {
+  background: var(--ce-ink);
+  color: var(--ce-surface);
+  border-color: var(--ce-ink);
+}
+
+.concept-exp-pill-led {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ce-green);
+}
+
+.concept-exp-pill-led.warn {
+  background: var(--ce-amber);
+  box-shadow: 0 0 4px var(--ce-amber-glow);
+}
+
+/* ── 3×3 Sculpted Mechanical Key Matrix ── */
+.concept-exp-keypad-matrix {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  background: var(--ce-plate);
+  border: 1px solid var(--ce-chassis-rim);
+  border-radius: 14px;
+  padding: 18px;
+  box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.08);
+}
+
+/* Physical Mechanical Keycap */
+.concept-exp-mech-key {
+  aspect-ratio: 1 / 1;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 12px 10px 10px;
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+  border: 1px solid transparent;
+  outline: none;
+  transition: transform 0.06s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.06s cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Subtle concave dish gradient on key top */
+.concept-exp-mech-key::before {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border-radius: 9px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.22) 0%, rgba(0, 0, 0, 0.04) 100%);
+  pointer-events: none;
+}
+
+/* ── Bone-white / Cream Keys (Keys 2, 3, 5, 6) ── */
+.concept-exp-mech-key.cream {
+  background-color: var(--ce-cream-key);
+  border-color: var(--ce-cream-key-border);
+  box-shadow:
+    0 7px 0 var(--ce-cream-key-shadow),
+    0 10px 14px rgba(0, 0, 0, 0.12);
+  color: var(--ce-cream-key-text);
+}
+
+.concept-exp-mech-key.cream:hover {
+  transform: translateY(2px);
+  box-shadow:
+    0 5px 0 var(--ce-cream-key-shadow),
+    0 8px 10px rgba(0, 0, 0, 0.1);
+}
+
+.concept-exp-mech-key.cream:active,
+.concept-exp-mech-key.cream.pressed {
+  transform: translateY(6px);
+  box-shadow:
+    0 1px 0 var(--ce-cream-key-shadow),
+    0 2px 4px rgba(0, 0, 0, 0.08);
+}
+
+/* ── Terracotta Orange Signature "L" Keys (Keys 1, 4, 7, 8, 9) ── */
+.concept-exp-mech-key.orange {
+  background-color: var(--ce-orange-key);
+  border-color: var(--ce-orange-key-border);
+  box-shadow:
+    0 7px 0 var(--ce-orange-key-shadow),
+    0 10px 16px rgba(0, 0, 0, 0.16);
+  color: var(--ce-orange-key-text);
+}
+
+.concept-exp-mech-key.orange:hover {
+  transform: translateY(2px);
+  box-shadow:
+    0 5px 0 var(--ce-orange-key-shadow),
+    0 8px 12px rgba(0, 0, 0, 0.14);
+}
+
+.concept-exp-mech-key.orange:active,
+.concept-exp-mech-key.orange.pressed {
+  transform: translateY(6px);
+  box-shadow:
+    0 1px 0 var(--ce-orange-key-shadow),
+    0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Active / Focused Window Highlight on Key */
+.concept-exp-mech-key.focused {
+  border-color: rgba(255, 255, 255, 0.85);
+  filter: brightness(1.05);
+}
+
+.concept-exp-mech-key.focused .concept-exp-key-pip {
+  background: #ffffff;
+  box-shadow: 0 0 6px #ffffff;
+}
+
+/* Key Typography & Markings */
+.concept-exp-key-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative;
+  z-index: 1;
+}
+
+.concept-exp-key-slot {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  opacity: 0.85;
+}
+
+.concept-exp-key-pip {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.2);
+  transition: all 0.15s ease;
+}
+
+.concept-exp-mech-key.orange .concept-exp-key-pip {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.concept-exp-key-center {
+  position: relative;
+  z-index: 1;
+  text-align: left;
+}
+
+.concept-exp-key-app {
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin-bottom: 2px;
+}
+
+.concept-exp-key-bottom {
+  position: relative;
+  z-index: 1;
+}
+
+.concept-exp-key-role {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 8.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Hardware Auxiliary Controls (Dial, Toggle, Push-Buttons) ── */
+.concept-exp-aux-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  background: var(--ce-plate);
+  border: 1px solid var(--ce-chassis-rim);
+  border-radius: 12px;
+  padding: 16px 20px;
+}
+
+/* Tactile Knurled Metal Dial */
+.concept-exp-knob-cluster {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.concept-exp-knob-dial {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.4) 0%, transparent 60%),
+    conic-gradient(from 0deg, #d8d2c4 0deg, #b8b1a3 90deg, #e4ded2 180deg, #aba496 270deg, #d8d2c4 360deg);
+  border: 2px solid var(--ce-chassis-rim);
+  box-shadow:
+    0 6px 12px var(--ce-knob-shadow),
+    inset 0 1px 1px rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  position: relative;
+  transition: transform 0.15s ease-out;
+}
+
+.concept-exp-knob-dial::after {
+  content: "";
+  position: absolute;
+  top: 5px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3px;
+  height: 12px;
+  background: var(--ce-accent-orange);
+  border-radius: 2px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.concept-exp-knob-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.concept-exp-knob-label {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--ce-ink);
+}
+
+.concept-exp-knob-sub {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 9px;
+  color: var(--ce-ink-subtle);
+}
+
+/* Metal Toggle Switch */
+.concept-exp-toggle-cluster {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.concept-exp-toggle-switch {
+  width: 44px;
+  height: 24px;
+  border-radius: 12px;
+  background: var(--ce-chassis-rim);
+  position: relative;
+  cursor: pointer;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--ce-border-strong);
+}
+
+.concept-exp-toggle-handle {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 30% 30%, #ffffff 0%, #b8b1a3 100%);
+  position: absolute;
+  top: 1px;
+  left: 2px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
+  transition: transform 0.12s cubic-bezier(0.3, 0, 0, 1);
+}
+
+.concept-exp-toggle-switch.on .concept-exp-toggle-handle {
+  transform: translateX(20px);
+  background: radial-gradient(circle at 30% 30%, #ffffff 0%, var(--ce-accent-orange) 100%);
+}
+
+.concept-exp-toggle-label {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--ce-ink);
+}
+
+/* ── Right Ergonomic Zone: Embedded High-Contrast OLED Screen ── */
+.concept-exp-screen-zone {
+  display: flex;
+  flex-direction: column;
+}
+
+.concept-exp-oled-screen {
+  background: var(--ce-screen-bg);
+  border: 3px solid var(--ce-screen-border);
+  border-radius: 14px;
+  padding: 22px;
+  box-shadow:
+    inset 0 4px 14px rgba(0, 0, 0, 0.6),
+    0 1px 0 rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  color: var(--ce-screen-text);
+  font-family: "JetBrains Mono", monospace;
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Subtle raster CRT lines on screen surface */
+.concept-exp-oled-screen::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0.15),
+    rgba(0, 0, 0, 0.15) 1px,
+    transparent 1px,
+    transparent 2px
+  );
+  pointer-events: none;
+  opacity: 0.45;
+}
+
+/* Screen Top Bar */
+.concept-exp-screen-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px dashed var(--ce-screen-border);
+  padding-bottom: 12px;
+  font-size: 10.5px;
+}
+
+.concept-exp-screen-title {
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--ce-screen-text);
+}
+
+.concept-exp-screen-status {
+  color: var(--ce-accent-orange);
+  font-weight: 600;
+}
+
+/* 3x3 Spatial Partition Wireframe on Screen */
+.concept-exp-spatial-wireframe {
+  aspect-ratio: 16 / 9;
+  background: var(--ce-screen-well);
+  border: 1px solid var(--ce-screen-border);
+  border-radius: 8px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 6px;
+  padding: 8px;
+  position: relative;
+}
+
+.concept-exp-wire-cell {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  border-radius: 5px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.concept-exp-wire-cell:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.concept-exp-wire-cell.active-cell {
+  background: rgba(216, 84, 43, 0.22);
+  border: 1.5px solid var(--ce-screen-accent);
+  box-shadow: 0 0 10px rgba(216, 84, 43, 0.3);
+}
+
+.concept-exp-wire-slot {
+  font-size: 8.5px;
+  color: var(--ce-screen-text-dim);
+}
+
+.concept-exp-wire-app {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ce-screen-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Agent Attention Module on OLED Screen */
+.concept-exp-screen-attention-box {
+  background: rgba(230, 162, 60, 0.08);
+  border: 1px solid rgba(230, 162, 60, 0.35);
+  border-radius: 8px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.concept-exp-screen-attention-box.settled {
+  background: rgba(46, 204, 113, 0.08);
+  border-color: rgba(46, 204, 113, 0.35);
+}
+
+.concept-exp-screen-attn-hdr {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--ce-amber);
+}
+
+.concept-exp-screen-attn-hdr.settled {
+  color: var(--ce-green);
+}
+
+.concept-exp-screen-attn-query {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ce-screen-text);
+  margin: 0;
+}
+
+.concept-exp-screen-attn-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.concept-exp-screen-btn {
+  background: var(--ce-screen-accent);
+  color: #ffffff;
+  border: none;
+  border-radius: 5px;
+  padding: 6px 14px;
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  transition: opacity 0.12s ease;
+}
+
+.concept-exp-screen-btn:hover {
+  opacity: 0.9;
+}
+
+.concept-exp-screen-btn.secondary {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--ce-screen-text);
+}
+
+.concept-exp-screen-btn.secondary:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Telemetry Readouts */
+.concept-exp-telemetry-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  border-top: 1px dashed var(--ce-screen-border);
+  padding-top: 12px;
+}
+
+.concept-exp-screen-readout {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.concept-exp-screen-readout-lbl {
+  font-size: 8.5px;
+  color: var(--ce-screen-text-dim);
+  text-transform: uppercase;
+}
+
+.concept-exp-screen-readout-val {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ce-screen-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Bottom Hardware Receipt */
+.concept-exp-console-receipt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 18px;
+  padding: 10px 16px;
+  background: var(--ce-plate);
+  border: 1px solid var(--ce-chassis-rim);
+  border-radius: 8px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: var(--ce-ink);
+}
+
+.concept-exp-receipt-led {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ce-green);
+  box-shadow: 0 0 6px var(--ce-green-glow);
+}
+
+/* ══════════════════════════════════════════════════════════
+   SECT. 02: HARDWARE DEMO VIDEO SECTION
+   ══════════════════════════════════════════════════════════ */
+.concept-exp-video-section {
+  margin-bottom: 96px;
+  scroll-margin-top: 40px;
+}
+
+.concept-exp-video-header {
+  border-top: 1px solid var(--ce-border);
+  padding-top: 32px;
+  margin-bottom: 28px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.concept-exp-video-title {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  color: var(--ce-ink);
+  margin: 0;
+}
+
+.concept-exp-video-subtitle {
+  font-size: 14.5px;
+  color: var(--ce-ink-muted);
+  max-width: 720px;
+  margin: 8px 0 0;
+  line-height: 1.55;
+}
+
+/* Video Player Aluminum Enclosure */
+.concept-exp-video-enclosure {
+  background: var(--ce-chassis);
+  border: 2px solid var(--ce-chassis-rim);
+  border-radius: 18px;
+  padding: 24px;
+  box-shadow:
+    0 24px 60px var(--ce-chassis-shadow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  position: relative;
+}
+
+.concept-exp-video-frame {
+  position: relative;
+  background: #000000;
+  border: 1px solid var(--ce-border-strong);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+}
+
+.concept-exp-video-player {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  background: #000000;
+}
+
+/* Video Telemetry Strip */
+.concept-exp-video-meta-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 16px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: var(--ce-ink);
+}
+
+.concept-exp-video-spec-tags {
+  display: flex;
+  gap: 12px;
+  color: var(--ce-ink-subtle);
+  font-size: 10px;
+}
+
+.concept-exp-video-insights-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  margin-top: 28px;
+}
+
+.concept-exp-video-insight-card {
+  background: var(--ce-surface);
+  border: 1px solid var(--ce-border);
+  border-radius: 10px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.concept-exp-insight-step {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ce-accent-orange);
+  letter-spacing: 0.08em;
+}
+
+.concept-exp-insight-head {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ce-ink);
+  margin: 0;
+}
+
+.concept-exp-insight-body {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ce-ink-muted);
+  margin: 0;
+}
+
+/* ── 3 Design Modules (Dieter Rams Spec Sheet Style) ── */
+.concept-exp-modules-section {
+  margin-bottom: 72px;
+}
+
+.concept-exp-section-header {
+  border-top: 1px solid var(--ce-border);
+  padding-top: 32px;
+  margin-bottom: 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.concept-exp-section-title {
+  font-size: 26px;
+  font-weight: 750;
+  letter-spacing: -0.035em;
+  color: var(--ce-ink);
+  margin: 0;
+}
+
+.concept-exp-section-num {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  color: var(--ce-ink-subtle);
+}
+
+.concept-exp-modules-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 32px;
+}
+
+.concept-exp-module-card {
+  border: 1px solid var(--ce-border);
+  border-radius: 12px;
+  background: var(--ce-surface);
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.concept-exp-module-card:hover {
+  border-color: var(--ce-border-strong);
+  transform: translateY(-2px);
+}
+
+.concept-exp-module-num {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ce-accent-orange);
+  letter-spacing: 0.06em;
+}
+
+.concept-exp-module-heading {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ce-ink);
+  margin: 0;
+  line-height: 1.25;
+}
+
+.concept-exp-module-body {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ce-ink-muted);
+  margin: 0;
+}
+
+.concept-exp-code-snippet {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  background: var(--ce-surface-subtle);
+  border: 1px dashed var(--ce-border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: var(--ce-ink);
+  line-height: 1.5;
+  margin-top: auto;
+}
+
+/* ── Technical Specification Ledger Table ── */
+.concept-exp-spec-table-wrap {
+  border: 1px solid var(--ce-border);
+  border-radius: 12px;
+  background: var(--ce-surface);
+  overflow: hidden;
+  margin-bottom: 72px;
+}
+
+.concept-exp-spec-header {
+  padding: 16px 24px;
+  background: var(--ce-surface-subtle);
+  border-bottom: 1px solid var(--ce-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.concept-exp-spec-header-title {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--ce-ink);
+}
+
+.concept-exp-spec-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.concept-exp-spec-table tr {
+  border-bottom: 1px solid var(--ce-border);
+}
+
+.concept-exp-spec-table tr:last-child {
+  border-bottom: none;
+}
+
+.concept-exp-spec-table td {
+  padding: 14px 24px;
+}
+
+.concept-exp-spec-table td.col-prop {
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--ce-ink);
+  width: 280px;
+  border-right: 1px solid var(--ce-border);
+  background: var(--ce-surface-subtle);
+}
+
+.concept-exp-spec-table td.col-val {
+  color: var(--ce-ink-muted);
+}
+
+/* ── Colophon & Footer ── */
+.concept-exp-footer {
+  border-top: 1px solid var(--ce-border);
+  padding-top: 36px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 32px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--ce-ink-subtle);
+}
+
+.concept-exp-colophon-quote {
+  font-style: italic;
+  font-size: 13px;
+  color: var(--ce-ink-muted);
+  max-width: 520px;
+  line-height: 1.55;
+}
+
+.concept-exp-footer-meta {
+  font-family: "JetBrains Mono", monospace;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: right;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1024px) {
+  .concept-exp-top-grid {
+    grid-template-columns: 1fr;
+    gap: 40px;
+  }
+  .concept-exp-poster-frame {
+    max-width: 380px;
+    margin: 0 auto;
+  }
+  .concept-exp-faceplate-grid {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .concept-exp-video-insights-grid {
+    grid-template-columns: 1fr;
+  }
+  .concept-exp-modules-grid {
+    grid-template-columns: 1fr;
+  }
+}

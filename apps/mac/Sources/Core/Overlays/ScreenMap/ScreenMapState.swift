@@ -2231,22 +2231,25 @@ final class ScreenMapController: ObservableObject {
         }
 
         // Ctrl+Option direct tiling shortcuts (always active, single selection)
-        if modifiers.contains([.control, .option]) && selectedWindowIds.count == 1 {
+        // Ensure Command is NOT held so the Hyper key (Ctrl+Opt+Cmd+Shift) is not intercepted.
+        let mods = modifiers.intersection(.deviceIndependentFlagsMask)
+        let isCtrlOpt = mods.contains(.control) && mods.contains(.option) && !mods.contains(.command)
+        if isCtrlOpt && selectedWindowIds.count == 1 {
             switch keyCode {
-            case 123: // Ctrl+Opt+← → left
+            case 123 where !mods.contains(.shift): // Ctrl+Opt+← → left
                 tileSelectedWindowInEditor(to: .left)
                 return true
-            case 124: // Ctrl+Opt+→ → right
+            case 124 where !mods.contains(.shift): // Ctrl+Opt+→ → right
                 tileSelectedWindowInEditor(to: .right)
                 return true
             case 126: // Ctrl+Opt+↑ → top (+ Shift = maximize)
-                if modifiers.contains(.shift) {
+                if mods.contains(.shift) {
                     tileSelectedWindowInEditor(to: .maximize)
                 } else {
                     tileSelectedWindowInEditor(to: .top)
                 }
                 return true
-            case 125: // Ctrl+Opt+↓ → bottom
+            case 125 where !mods.contains(.shift): // Ctrl+Opt+↓ → bottom
                 tileSelectedWindowInEditor(to: .bottom)
                 return true
             default:

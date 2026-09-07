@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 final class WindowPreviewStore: ObservableObject {
@@ -10,9 +11,12 @@ final class WindowPreviewStore: ObservableObject {
     private var lastAttemptAt: [UInt32: Date] = [:]
     private var accessOrder: [UInt32] = []
     private var lastFront: UInt32?
+    private var capturePausedUntil: Date?
+    private var permissionCancellable: AnyCancellable?
     private let maxCached = 28            // enough to cover a full Exposé survey
     private let queue = DispatchQueue(label: "dev.lattices.app.window-preview", qos: .userInitiated)
     private let previewMaxSize = NSSize(width: 360, height: 190)
+    private let failureBackoff: TimeInterval = 45
 
     private init() {
         // Keep the cache warm off the desktop poll, frugally: the frontmost window
@@ -23,6 +27,12 @@ final class WindowPreviewStore: ObservableObject {
                 DispatchQueue.main.async { self?.warmTick() }
             }
         }
+        permissionCancellable = PermissionChecker.shared.$screenRecording
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] granted in
+                guard granted else { return }
+                self?.capturePausedUntil = nil
+            }
     }
 
     func image(for wid: UInt32) -> NSImage? {
@@ -50,9 +60,16 @@ final class WindowPreviewStore: ObservableObject {
         if images[window.wid] != nil || loading.contains(window.wid) {
             return
         }
+        if let capturePausedUntil, capturePausedUntil > Date() {
+            return
+        }
+        guard WindowCapture.hasScreenRecordingAccess() else {
+            pauseCaptures(for: 300, reason: "Screen Recording not granted")
+            return
+        }
 
         let now = Date()
-        if let lastAttemptAt = lastAttemptAt[window.wid], now.timeIntervalSince(lastAttemptAt) < 1.0 {
+        if let lastAttemptAt = lastAttemptAt[window.wid], now.timeIntervalSince(lastAttemptAt) < failureBackoff {
             return
         }
         lastAttemptAt[window.wid] = now
@@ -93,6 +110,9 @@ final class WindowPreviewStore: ObservableObject {
                         }
                     } else {
                         DiagnosticLog.shared.info("HUDPreview: capture unavailable wid=\(wid) after \(elapsedMs)ms")
+                        if WindowCapture.lastFailureWasPermission || !WindowCapture.hasScreenRecordingAccess() {
+                            self.pauseCaptures(for: 300, reason: "Screen Recording denied during capture")
+                        }
                     }
                 }
             }
@@ -122,7 +142,16 @@ final class WindowPreviewStore: ObservableObject {
     /// One frugal warming pass, driven by the desktop poll. Reuses `load` — no new
     /// capture path. The frontmost (dynamic) window refreshes only when focus moves
     /// to it; the static back layer is captured once, a couple per tick.
+    private func pauseCaptures(for seconds: TimeInterval, reason: String) {
+        let until = Date().addingTimeInterval(seconds)
+        if let capturePausedUntil, capturePausedUntil > until { return }
+        capturePausedUntil = until
+        DiagnosticLog.shared.warn("HUDPreview: pausing captures for \(Int(seconds))s (\(reason))")
+    }
+
     private func warmTick() {
+        if let capturePausedUntil, capturePausedUntil > Date() { return }
+        if images.isEmpty && !loading.isEmpty { return }
         let windows = DesktopModel.shared.allWindows()
             .filter { $0.app != "Lattices" && $0.isOnScreen && !$0.title.isEmpty }
         guard !windows.isEmpty else { return }

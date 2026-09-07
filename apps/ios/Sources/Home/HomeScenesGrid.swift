@@ -58,7 +58,10 @@ private struct SceneCard: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
+        Button(action: {
+            DeckTactileFeedback.shared.tilePress(isAccent: false)
+            action()
+        }) {
             cardBody
         }
         .buttonStyle(.plain)

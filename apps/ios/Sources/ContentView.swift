@@ -975,6 +975,7 @@ struct LatsSettingsView: View {
                             activeDetailCard
                             disconnectCard
                         }
+                        tactileCard
                         aboutCard
                     }
                     .padding(.horizontal, 14)
@@ -1239,6 +1240,57 @@ struct LatsSettingsView: View {
                 store.disconnect()
             }
             .frame(maxWidth: .infinity)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10).fill(LatsPalette.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10).stroke(LatsPalette.hairline2, lineWidth: 1)
+        )
+    }
+
+    @State private var isSoundOn = DeckTactileFeedback.shared.isSoundEnabled
+    @State private var isHapticsOn = DeckTactileFeedback.shared.isHapticsEnabled
+
+    private var tactileCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            LatsSectionLabel(text: "Tactile & Acoustics")
+
+            Toggle(isOn: $isSoundOn) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Mechanical Acoustics")
+                        .font(LatsFont.ui(13, weight: .medium))
+                        .foregroundStyle(LatsPalette.text)
+                    Text("Synthesized Rams / TE mechanical switch thock, ticks & clacks")
+                        .font(LatsFont.mono(10))
+                        .foregroundStyle(LatsPalette.textDim)
+                }
+            }
+            .tint(LatsPalette.amber)
+            .onChange(of: isSoundOn) { _, newValue in
+                DeckTactileFeedback.shared.isSoundEnabled = newValue
+                if newValue { DeckTactileFeedback.shared.tilePress(isAccent: true) }
+            }
+
+            LatsHairlineDivider()
+
+            Toggle(isOn: $isHapticsOn) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Haptic Feedback")
+                        .font(LatsFont.ui(13, weight: .medium))
+                        .foregroundStyle(LatsPalette.text)
+                    Text("Taptic Engine rigid, heavy & selection impact impulses")
+                        .font(LatsFont.mono(10))
+                        .foregroundStyle(LatsPalette.textDim)
+                }
+            }
+            .tint(LatsPalette.amber)
+            .onChange(of: isHapticsOn) { _, newValue in
+                DeckTactileFeedback.shared.isHapticsEnabled = newValue
+                if newValue { DeckTactileFeedback.shared.tilePress(isAccent: false) }
+            }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)

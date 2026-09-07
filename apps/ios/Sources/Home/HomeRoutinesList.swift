@@ -92,7 +92,10 @@ private struct PlayAffordance: View {
     var action: () -> Void
 
     var body: some View {
-        Button(action: action) {
+        Button(action: {
+            DeckTactileFeedback.shared.tilePress(isAccent: true)
+            action()
+        }) {
             ZStack {
                 Circle()
                     .fill(LatsPalette.green.opacity(0.15))

@@ -2,6 +2,9 @@ import CoreGraphics
 import ScreenCaptureKit
 
 enum WindowCapture {
+    private static var lastDeniedLogAt: Date?
+    private(set) static var lastFailureWasPermission = false
+
     // ScreenCaptureKit replacement for the macOS-26-removed
     // CGWindowListCreateImage window snapshot path. Callers still pass the
     // same CoreGraphics-style options, but unsupported combinations degrade
@@ -13,6 +16,7 @@ enum WindowCapture {
         imageOption: CGWindowImageOption
     ) async -> CGImage? {
         _ = listOption
+        guard hasScreenRecordingAccess() else { return nil }
 
         do {
             let content = try await SCShareableContent.current
@@ -45,11 +49,14 @@ enum WindowCapture {
             configuration.capturesShadowsOnly = imageOption.contains(.onlyShadows)
             configuration.shouldBeOpaque = imageOption.contains(.shouldBeOpaque)
 
-            return try await SCScreenshotManager.captureImage(
+            let image = try await SCScreenshotManager.captureImage(
                 contentFilter: filter,
                 configuration: configuration
             )
+            lastFailureWasPermission = false
+            return image
         } catch {
+            logCaptureFailure("image wid=\(windowID)", error)
             return nil
         }
     }
@@ -61,6 +68,7 @@ enum WindowCapture {
         guard !rect.isNull, !rect.isInfinite, !rect.isEmpty else {
             return nil
         }
+        guard hasScreenRecordingAccess() else { return nil }
 
         do {
             let content = try await SCShareableContent.excludingDesktopWindows(
@@ -89,6 +97,7 @@ enum WindowCapture {
                 configuration: configuration
             )
         } catch {
+            logCaptureFailure("region", error)
             return nil
         }
     }
@@ -103,6 +112,7 @@ enum WindowCapture {
         showsCursor: Bool = true,
         imageOption: CGWindowImageOption = [.bestResolution]
     ) async -> CGImage? {
+        guard hasScreenRecordingAccess() else { return nil }
         do {
             let content = try await SCShareableContent.excludingDesktopWindows(
                 false,
@@ -130,8 +140,39 @@ enum WindowCapture {
                 configuration: configuration
             )
         } catch {
+            logCaptureFailure("display \(displayID)", error)
             return nil
         }
+    }
+
+    static func hasScreenRecordingAccess() -> Bool {
+        let granted = CGPreflightScreenCaptureAccess()
+        if !granted { logDeniedOnce() }
+        return granted
+    }
+
+    private static func logCaptureFailure(_ label: String, _ error: Error) {
+        let nsError = error as NSError
+        lastFailureWasPermission = isPermissionError(nsError)
+        DiagnosticLog.shared.warn(
+            "WindowCapture.\(label) failed: \(nsError.domain)#\(nsError.code) \(nsError.localizedDescription)"
+        )
+    }
+
+    private static func isPermissionError(_ error: NSError) -> Bool {
+        if error.code == -3801 || error.code == 3801 { return true }
+        let haystack = "\(error.domain) \(error.localizedDescription)".lowercased()
+        return haystack.contains("not authorized")
+            || haystack.contains("denied")
+            || haystack.contains("tcc")
+            || haystack.contains("screen recording")
+    }
+
+    private static func logDeniedOnce() {
+        let now = Date()
+        if let lastDeniedLogAt, now.timeIntervalSince(lastDeniedLogAt) < 10 { return }
+        lastDeniedLogAt = now
+        DiagnosticLog.shared.warn("WindowCapture: Screen Recording not granted; skipping capture")
     }
 
     private struct RegionSelection {

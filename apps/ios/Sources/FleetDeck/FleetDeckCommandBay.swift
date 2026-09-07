@@ -55,7 +55,10 @@ struct FleetCommandBay: View {
                         .padding(.trailing, 4)
 
                     ForEach(Array(sets.enumerated()), id: \.element.id) { index, set in
-                        Button { onSelectSet(index) } label: {
+                        Button {
+                            DeckTactileFeedback.shared.rotaryTick()
+                            onSelectSet(index)
+                        } label: {
                             HStack(spacing: 6) {
                                 Text("\(index + 1)")
                                     .foregroundStyle(FleetV6.fg4)
@@ -260,7 +263,7 @@ struct FleetKeyRow: View {
                 .background { FleetKeycapBackground() }
                 .contentShape(Rectangle())
         }
-        .buttonStyle(FleetPressStyle())
+        .buttonStyle(FleetPressStyle(isKey: true, isAccent: wide))
         .accessibilityLabel(label)
     }
 
@@ -273,7 +276,7 @@ struct FleetKeyRow: View {
                 .background { FleetKeycapBackground() }
                 .contentShape(Rectangle())
         }
-        .buttonStyle(FleetPressStyle())
+        .buttonStyle(FleetPressStyle(isKey: true, isAccent: false))
         .accessibilityLabel(symbol.replacingOccurrences(of: "arrow.", with: "") + " arrow")
     }
 }
@@ -313,7 +316,10 @@ struct FleetStatusBar: View {
 
             Spacer(minLength: 0)
 
-            Button(action: onAttention) {
+            Button(action: {
+                DeckTactileFeedback.shared.buttonPop()
+                onAttention()
+            }) {
                 HStack(spacing: 7) {
                     Text(attentionCount > 0 ? "ATTN \(attentionCount)" : "ALL CLEAR")
                         .foregroundStyle(attentionCount > 0 ? FleetV6.amber : FleetV6.green)
@@ -336,7 +342,10 @@ struct FleetStatusBar: View {
                 Text("\(agentCount)").foregroundStyle(FleetV6.fg2)
             }
 
-            Button(action: onToggleLayout) {
+            Button(action: {
+                DeckTactileFeedback.shared.toggleClack()
+                onToggleLayout()
+            }) {
                 HStack(spacing: 7) {
                     Text("VIEW ·")
                     Text(layout.rawValue.uppercased()).foregroundStyle(FleetV6.fg2)

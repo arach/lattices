@@ -25,7 +25,7 @@ struct HomeActivityFeed: View {
                 LatsSectionLabel(text: "Activity")
                 Spacer()
                 Text(metaLine)
-                    .font(LatsFont.mono(9))
+                    .font(LatsFont.mono(10))
                     .tracking(0.5)
                     .foregroundStyle(LatsPalette.textFaint)
             }
@@ -33,7 +33,7 @@ struct HomeActivityFeed: View {
             LatsCard(padding: 0) {
                 if !hasAny {
                     Text("no activity yet")
-                        .font(LatsFont.mono(10))
+                        .font(LatsFont.mono(11))
                         .foregroundStyle(LatsPalette.textFaint)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 14)
@@ -108,13 +108,13 @@ private struct ActivityAttentionRow: View {
                 .frame(width: 14)
 
             Text("ATTENTION")
-                .font(LatsFont.mono(9, weight: .bold))
+                .font(LatsFont.mono(10, weight: .bold))
                 .tracking(0.9)
                 .foregroundStyle(LatsPalette.amber.opacity(0.85))
                 .frame(width: 64, alignment: .leading)
 
             Text(item.label)
-                .font(LatsFont.ui(12, weight: .semibold))
+                .font(LatsFont.ui(13, weight: .semibold))
                 .foregroundStyle(LatsPalette.text)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -141,20 +141,20 @@ private struct ActivityRecentRow: View {
                 .frame(width: 14)
 
             Text(entry.kind.label.uppercased())
-                .font(LatsFont.mono(9, weight: .semibold))
+                .font(LatsFont.mono(10, weight: .semibold))
                 .tracking(0.9)
                 .foregroundStyle(LatsPalette.textFaint)
                 .frame(width: 64, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(entry.title)
-                    .font(LatsFont.ui(12, weight: .medium))
+                    .font(LatsFont.ui(13, weight: .medium))
                     .foregroundStyle(LatsPalette.text)
                     .lineLimit(1)
                     .truncationMode(.tail)
                 if let subtitle = entry.subtitle {
                     Text(subtitle)
-                        .font(LatsFont.mono(10))
+                        .font(LatsFont.mono(11))
                         .foregroundStyle(LatsPalette.textDim)
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -167,7 +167,7 @@ private struct ActivityRecentRow: View {
             }
 
             Text(entry.agoLabel)
-                .font(LatsFont.mono(10))
+                .font(LatsFont.mono(11))
                 .foregroundStyle(LatsPalette.textFaint)
                 .frame(width: 56, alignment: .trailing)
         }
@@ -186,12 +186,12 @@ private struct ActivityAgentRow: View {
     var body: some View {
         HStack(spacing: 10) {
             Text(entry.glyph)
-                .font(LatsFont.mono(11, weight: .semibold))
+                .font(LatsFont.mono(12, weight: .semibold))
                 .foregroundStyle(entry.tint.color)
                 .frame(width: 14)
 
             Text("AGENT")
-                .font(LatsFont.mono(9, weight: .semibold))
+                .font(LatsFont.mono(10, weight: .semibold))
                 .tracking(0.9)
                 .foregroundStyle(LatsPalette.violet.opacity(0.7))
                 .frame(width: 64, alignment: .leading)

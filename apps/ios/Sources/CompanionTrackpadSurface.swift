@@ -196,7 +196,10 @@ private extension CompanionTrackpadSurface {
         isActive: Bool,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
+        Button(action: {
+            DeckTactileFeedback.shared.buttonPop()
+            action()
+        }) {
             HStack(spacing: 6) {
                 Image(systemName: icon)
                     .font(.system(size: 12, weight: .medium))
