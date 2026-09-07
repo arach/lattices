@@ -4,16 +4,28 @@ import CoreGraphics
 /// Hold Ctrl+Option and move the mouse to aim. Dead-center is cancel;
 /// the rest of the center cell is maximize; outer cells are sectors.
 /// Release Ctrl+Option to apply the current aim, or stay in the dead
-/// zone to do nothing. A key chord during the hold cancels the picker.
+/// zone to do nothing.
+///
+/// Keyboard aim (while Ctrl+Option is held):
+/// - Numpad 1–9 map to the 3×3 matrix (5 = maximize)
+/// - Number row 1–9 use the same matrix layout
+/// - Arrow keys tile to an edge; hold two arrows for a corner (e.g. ← + ↓ = bottom-left)
+/// Other keys during the hold still cancel the picker.
 final class TilePointerController {
     static let shared = TilePointerController()
 
     private var flagsMonitor: Any?
     private var mouseMonitor: Any?
     private var keyMonitor: Any?
+    private var keyUpMonitor: Any?
     private var localFlagsMonitor: Any?
     private var localMouseMonitor: Any?
     private var localKeyMonitor: Any?
+    private var localKeyUpMonitor: Any?
+    private var heldArrows = Set<TilePointerKeyboard.Arrow>()
+    /// True after an arrow chord set the aim; keeps that cell until modifiers release
+    /// even if the arrow keys come up before Ctrl+Option.
+    private var arrowAimLocked = false
 
     private var armed = false
     private var origin: NSPoint?
@@ -58,8 +70,15 @@ final class TilePointerController {
         keyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
             self?.handleKeyDown(event)
         }
+        keyUpMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyUp) { [weak self] event in
+            self?.handleKeyUp(event)
+        }
         localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            self?.handleKeyDown(event)
+            guard let self else { return event }
+            return self.handleKeyDown(event) ? nil : event
+        }
+        localKeyUpMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyUp) { [weak self] event in
+            self?.handleKeyUp(event)
             return event
         }
 
@@ -67,15 +86,20 @@ final class TilePointerController {
     }
 
     func stop() {
-        for monitor in [flagsMonitor, mouseMonitor, keyMonitor, localFlagsMonitor, localMouseMonitor, localKeyMonitor] {
+        for monitor in [
+            flagsMonitor, mouseMonitor, keyMonitor, keyUpMonitor,
+            localFlagsMonitor, localMouseMonitor, localKeyMonitor, localKeyUpMonitor,
+        ] {
             if let monitor { NSEvent.removeMonitor(monitor) }
         }
         flagsMonitor = nil
         mouseMonitor = nil
         keyMonitor = nil
+        keyUpMonitor = nil
         localFlagsMonitor = nil
         localMouseMonitor = nil
         localKeyMonitor = nil
+        localKeyUpMonitor = nil
         pendingArm?.cancel()
         pendingArm = nil
         pendingDisarm?.cancel()
@@ -84,13 +108,55 @@ final class TilePointerController {
     }
 
     /// Keyboard chords and other Ctrl+Option hotkeys own the hold.
+    var isAiming: Bool { armed }
+
+    /// While the Ctrl+Option HUD is actively using arrow aim, defer global tiling
+    /// hotkeys that share the same chord. Quick Ctrl+Option+arrow chords must still
+    /// tile immediately via the registered hotkey path.
+    func shouldSuppressTilingHotkey(_ action: HotkeyAction) -> Bool {
+        guard armed, arrowAimLocked || !heldArrows.isEmpty else { return false }
+        switch action {
+        case .tileLeft, .tileRight, .tileTop, .tileBottom,
+             .tileTopLeft, .tileTopRight, .tileBottomLeft, .tileBottomRight,
+             .tileMaximize, .tileLeftThird, .tileCenterThird, .tileRightThird:
+            return true
+        default:
+            return false
+        }
+    }
+
     func cancelApply() {
         dismiss(apply: false)
     }
 
-    private func handleKeyDown(_ event: NSEvent) {
-        guard !Self.modifierKeyCodes.contains(event.keyCode) else { return }
+    /// Returns true when the key was consumed for a keyboard tile.
+    @discardableResult
+    private func handleKeyDown(_ event: NSEvent) -> Bool {
+        guard !Self.modifierKeyCodes.contains(event.keyCode) else { return false }
+        guard Self.ctrlOptionHeld(event.modifierFlags) else {
+            cancelApply()
+            return false
+        }
+
+        if let position = TilePointerKeyboard.tilePosition(forMatrixKeyCode: event.keyCode) {
+            applyKeyboardTile(to: position)
+            return true
+        }
+        if let arrow = TilePointerKeyboard.Arrow.from(keyCode: event.keyCode) {
+            // Before the HUD arms, leave Ctrl+Option+arrow to the global tiling hotkeys.
+            guard armed else { return false }
+            heldArrows.insert(arrow)
+            updateArrowAim()
+            return true
+        }
+
         cancelApply()
+        return false
+    }
+
+    private func handleKeyUp(_ event: NSEvent) {
+        guard let arrow = TilePointerKeyboard.Arrow.from(keyCode: event.keyCode) else { return }
+        heldArrows.remove(arrow)
     }
 
     private func handleFlags(_ flags: NSEvent.ModifierFlags) {
@@ -106,6 +172,10 @@ final class TilePointerController {
                 dismiss(apply: false)
             }
             return
+        }
+
+        if !Self.ctrlOptionHeld(flags) {
+            heldArrows.removeAll()
         }
 
         if Self.ctrlOptionHeld(flags) {
@@ -149,7 +219,7 @@ final class TilePointerController {
     }
 
     private func handleMouseMoved(_ event: NSEvent? = nil) {
-        guard armed, !WindowDragSnapController.shared.isSnapping else { return }
+        guard armed, heldArrows.isEmpty, !arrowAimLocked, !WindowDragSnapController.shared.isSnapping else { return }
         if origin == nil {
             origin = NSEvent.mouseLocation
         }
@@ -175,6 +245,26 @@ final class TilePointerController {
         } else {
             TileZoneOverlay.shared.dismiss()
         }
+    }
+
+    private func updateArrowAim() {
+        guard armed, let origin else { return }
+        guard let position = TilePointerKeyboard.tilePosition(forArrows: heldArrows) else {
+            return
+        }
+        arrowAimLocked = true
+
+        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(origin) })
+                ?? NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) })
+                ?? NSScreen.main else { return }
+        currentScreen = screen
+        showHUD(at: origin, position: position)
+        guard position != currentPosition else { return }
+        currentPosition = position
+        if Preferences.shared.tilePointerSoundEffectsEnabled {
+            AppFeedback.shared.aimTick()
+        }
+        TileZoneOverlay.shared.show(position: position, on: screen)
     }
 
     /// When the origin sits against a display edge, macOS pins the cursor.
@@ -219,6 +309,7 @@ final class TilePointerController {
 
     private func arm() {
         armed = true
+        arrowAimLocked = false
         origin = NSEvent.mouseLocation
         aimPoint = origin
         currentPosition = nil
@@ -250,6 +341,8 @@ final class TilePointerController {
         pollTimer = nil
         let position = currentPosition
         let screen = currentScreen
+        heldArrows.removeAll()
+        arrowAimLocked = false
         armed = false
         origin = nil
         aimPoint = nil
@@ -258,18 +351,42 @@ final class TilePointerController {
 
         hideHUD()
         if apply, let position {
-            // Land: same tactile commit the other window-placement paths use.
-            if Preferences.shared.tilePointerSoundEffectsEnabled {
-                AppFeedback.shared.commitTactile()
-            }
-            if WindowMotionMode.shared.tileCurrentTarget(to: position) {
-                return
-            }
-            TileZoneOverlay.shared.show(position: position, on: screen, autoHideAfter: 0.28)
-            WindowTiler.tileFrontmostViaAX(to: position)
+            commitTile(to: position, on: screen)
             return
         }
         TileZoneOverlay.shared.dismiss()
+    }
+
+    private func applyKeyboardTile(to position: TilePosition) {
+        pendingArm?.cancel()
+        pendingArm = nil
+        pendingDisarm?.cancel()
+        pendingDisarm = nil
+        pollTimer?.invalidate()
+        pollTimer = nil
+        heldArrows.removeAll()
+        arrowAimLocked = false
+        armed = false
+        origin = nil
+        aimPoint = nil
+        currentPosition = nil
+        let screen = currentScreen
+            ?? NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) })
+            ?? NSScreen.main
+        currentScreen = nil
+        hideHUD()
+        commitTile(to: position, on: screen)
+    }
+
+    private func commitTile(to position: TilePosition, on screen: NSScreen?) {
+        if Preferences.shared.tilePointerSoundEffectsEnabled {
+            AppFeedback.shared.commitTactile()
+        }
+        if WindowMotionMode.shared.tileCurrentTarget(to: position) {
+            return
+        }
+        TileZoneOverlay.shared.show(position: position, on: screen, autoHideAfter: 0.28)
+        WindowTiler.tileFrontmostViaAX(to: position)
     }
 
     private var hudStyle: TilePointerHUDStyle {
