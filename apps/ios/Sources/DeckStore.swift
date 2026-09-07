@@ -265,8 +265,14 @@ final class DeckStore: ObservableObject {
                 if let runtimeSnapshot = result.runtimeSnapshot {
                     snapshot = runtimeSnapshot
                 }
-                try? await Task.sleep(for: .milliseconds(350))
+                let isVoiceCommand = actionID.hasPrefix("voice.")
+                if !isVoiceCommand {
+                    try? await Task.sleep(for: .milliseconds(350))
+                }
                 await refreshSnapshot(endpoint: endpoint)
+                if isVoiceCommand {
+                    await refreshSnapshot(endpoint: endpoint)
+                }
                 errorMessage = nil
             } catch {
                 lastActionResult = nil
@@ -301,11 +307,26 @@ final class DeckStore: ObservableObject {
     var voiceState: DeckVoiceState? { snapshot?.voice }
 
     func startVoice() {
+        setUIPriority(.fast)
         perform(actionID: "voice.command.start", pageID: "home", label: "voice")
+    }
+
+    /// Wake the Mac voice runtime while the user is picking a host so capture
+    /// does not pay cold-start costs on the first mic tap.
+    func prewarmVoice() {
+        guard let endpoint = preferredEndpoint(), let health else { return }
+        Task {
+            let request = DeckActionRequest(pageID: "home", actionID: "voice.runtime.warm", payload: [:])
+            try? await performWithFallback(request: request, preferred: endpoint, health: health)
+        }
     }
 
     func stopVoice() {
         perform(actionID: "voice.command.stop", pageID: "home", label: "voice")
+    }
+
+    func cancelVoice() {
+        perform(actionID: "voice.cancel", pageID: "home", label: "voice")
     }
 
     func toggleVoice() {
