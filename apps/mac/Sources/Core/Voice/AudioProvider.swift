@@ -1,4 +1,5 @@
 import AppKit
+import DeckKit
 #if LATTICES_VOICE && canImport(HudsonVoice)
 import HudsonVoice
 #endif
@@ -51,6 +52,8 @@ final class AudioLayer: ObservableObject {
 
     private var pendingVoiceStart = false
     private var voiceConnectionRetry: DispatchWorkItem?
+    /// Capture was requested but the provider is still warming up.
+    var isWarmingUp: Bool { pendingVoiceStart && !isListening }
 
     private init() {
         #if LATTICES_VOICE && canImport(HudsonVoice)
@@ -246,12 +249,11 @@ final class AudioLayer: ObservableObject {
 
         } else if shouldAnswerWithAssistant(text) {
             DiagnosticLog.shared.info("AudioLayer: route → Assistant question")
-            DiagnosticLog.shared.info("AudioLayer: question-like voice request, handing to Assistant")
             matchedIntent = nil
             matchedSlots = [:]
             executionResult = "thinking..."
             executionData = nil
-            handoffToAssistant(prompt: IntentHeuristics.assistantPromptText(text))
+            answerVoiceQuestion(text)
 
         } else {
             // No local match — ask the selected Assistant provider.
@@ -280,11 +282,44 @@ final class AudioLayer: ObservableObject {
             self.agentResponse = response
             if let commentary = response.commentary {
                 DiagnosticLog.shared.info("AudioLayer: Assistant advisor says — \(commentary)")
+                if self.shouldSurfaceAdvisorCommentary() {
+                    self.setFinalResult(commentary)
+                }
             }
             if let suggestion = response.suggestion {
                 DiagnosticLog.shared.info("AudioLayer: Assistant advisor suggests — \(suggestion.label) → \(suggestion.intent)")
             }
         }
+    }
+
+    private func answerVoiceQuestion(_ text: String) {
+        let assistant = WorkspaceAssistantSession.shared
+        guard assistant.isProviderInferenceReady else {
+            DiagnosticLog.shared.info("AudioLayer: Assistant provider not ready for question")
+            handoffToAssistant(prompt: IntentHeuristics.assistantPromptText(text))
+            return
+        }
+
+        assistant.answerVoiceQuestion(text) { [weak self] response in
+            guard let self else { return }
+            if let commentary = response?.commentary?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !commentary.isEmpty {
+                self.agentResponse = response
+                self.setFinalResult(commentary)
+                return
+            }
+            self.handoffToAssistant(prompt: IntentHeuristics.assistantPromptText(text))
+        }
+    }
+
+    private func shouldSurfaceAdvisorCommentary() -> Bool {
+        guard let result = executionResult?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !result.isEmpty else {
+            return true
+        }
+        if result == "ok" { return true }
+        if DeckVoiceErrorMapper.isProgressMessage(result) { return true }
+        return false
     }
 
     private func assistantFallback(transcription: Transcription) {
@@ -410,6 +445,36 @@ final class AudioLayer: ObservableObject {
             DiagnosticLog.shared.warn("AudioLayer: final outcome — \(message)")
         } else {
             DiagnosticLog.shared.info("AudioLayer: final outcome — \(message)")
+            speakVoiceOutcome(message: message)
+        }
+    }
+
+    private func speakVoiceOutcome(message: String) {
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        if DeckVoiceErrorMapper.isProgressMessage(trimmed) { return }
+        if trimmed == "Sent to Assistant" { return }
+
+        if let intent = matchedIntent, let cue = cachedCuePhrase(for: intent) {
+            HandsOffSession.shared.playRemoteCachedCue(cue)
+            return
+        }
+
+        let spoken = trimmed == "ok" ? "Done." : trimmed
+        HandsOffSession.shared.speakRemoteResponse(spoken)
+    }
+
+    private func cachedCuePhrase(for intent: String) -> String? {
+        switch intent {
+        case "tile_window": return "Tiled."
+        case "focus": return "Focused."
+        case "distribute": return "Distributed."
+        case "search": return "Searching."
+        case "switch_layer": return "Switched."
+        case "create_layer": return "Done."
+        case "launch": return "Done."
+        case "kill": return "Done."
+        default: return nil
         }
     }
 
