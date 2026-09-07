@@ -1,4 +1,5 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
+import { useDeckTactile } from '../lib/deck-tactile'
 import '../styles/concept-experiment.css'
 
 interface FleetHost {
@@ -371,132 +372,14 @@ export default function ConceptExperimentPage() {
   const [toggleMesh, setToggleMesh] = useState<boolean>(false)
   const [lastReceipt, setLastReceipt] = useState<string>('SYS. 01 ONLINE · USB-C HID BUS 12Mbps · Ed25519 Authenticated')
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true)
-  const audioCtxRef = useRef<AudioContext | null>(null)
+  const { play: playTactile } = useDeckTactile(soundEnabled)
 
   const activeHost = FLEET_HOSTS.find((h) => h.id === selectedHostId) || FLEET_HOSTS[0]
   const currentWindows = WINDOWS_BY_HOST[selectedHostId] || WINDOWS_BY_HOST.studio
   const activeWindow = currentWindows.find((w) => w.id === activeWindowId) || currentWindows[3]
 
-  // Web Audio Synthesizer for Physical Mechanical Sounds
-  const getAudioContext = (): AudioContext | null => {
-    if (!soundEnabled) return null
-    try {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
-      if (!audioCtxRef.current) {
-        audioCtxRef.current = new AudioCtx()
-      }
-      const ctx = audioCtxRef.current
-      if (ctx.state === 'suspended') {
-        ctx.resume()
-      }
-      return ctx
-    } catch {
-      return null
-    }
-  }
-
-  // Authentic mechanical keyboard "thock"
-  const playMechanicalKey = (isOrange: boolean, id: number) => {
-    const ctx = getAudioContext()
-    if (!ctx) return
-
-    const t = ctx.currentTime
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    const filter = ctx.createBiquadFilter()
-
-    // Base frequency: terracotta keys have a deeper, weightier body (240Hz), cream keys are crisper (340Hz)
-    const baseFreq = isOrange ? 230 + (id % 3) * 15 : 320 + (id % 3) * 20
-    osc.type = 'triangle'
-    osc.frequency.setValueAtTime(baseFreq, t)
-    osc.frequency.exponentialRampToValueAtTime(55, t + 0.055)
-
-    filter.type = 'lowpass'
-    filter.frequency.setValueAtTime(isOrange ? 1200 : 1800, t)
-    filter.frequency.exponentialRampToValueAtTime(300, t + 0.05)
-
-    gain.gain.setValueAtTime(0.28, t)
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.06)
-
-    osc.connect(filter)
-    filter.connect(gain)
-    gain.connect(ctx.destination)
-
-    osc.start(t)
-    osc.stop(t + 0.065)
-
-    // Short contact click noise
-    const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 0.008, ctx.sampleRate)
-    const output = noiseBuffer.getChannelData(0)
-    for (let i = 0; i < noiseBuffer.length; i++) {
-      output[i] = Math.random() * 2 - 1
-    }
-    const noise = ctx.createBufferSource()
-    noise.buffer = noiseBuffer
-    const noiseGain = ctx.createGain()
-    noiseGain.gain.setValueAtTime(0.12, t)
-    noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.008)
-    noise.connect(noiseGain)
-    noiseGain.connect(ctx.destination)
-    noise.start(t)
-  }
-
-  // Rotary encoder ratchet tick
-  const playRotaryTick = () => {
-    const ctx = getAudioContext()
-    if (!ctx) return
-    const t = ctx.currentTime
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.type = 'sine'
-    osc.frequency.setValueAtTime(1900, t)
-    osc.frequency.exponentialRampToValueAtTime(300, t + 0.015)
-    gain.gain.setValueAtTime(0.18, t)
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.016)
-    osc.connect(gain)
-    gain.connect(ctx.destination)
-    osc.start(t)
-    osc.stop(t + 0.02)
-  }
-
-  // Heavy metal toggle switch clack
-  const playToggleClack = () => {
-    const ctx = getAudioContext()
-    if (!ctx) return
-    const t = ctx.currentTime
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.type = 'square'
-    osc.frequency.setValueAtTime(450, t)
-    osc.frequency.exponentialRampToValueAtTime(90, t + 0.035)
-    gain.gain.setValueAtTime(0.2, t)
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.04)
-    osc.connect(gain)
-    gain.connect(ctx.destination)
-    osc.start(t)
-    osc.stop(t + 0.045)
-  }
-
-  // Micro push button click
-  const playButtonPop = () => {
-    const ctx = getAudioContext()
-    if (!ctx) return
-    const t = ctx.currentTime
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.type = 'triangle'
-    osc.frequency.setValueAtTime(520, t)
-    osc.frequency.exponentialRampToValueAtTime(120, t + 0.025)
-    gain.gain.setValueAtTime(0.18, t)
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.03)
-    osc.connect(gain)
-    gain.connect(ctx.destination)
-    osc.start(t)
-    osc.stop(t + 0.035)
-  }
-
   const handleKeyClick = (win: SpatialWindow) => {
-    playMechanicalKey(win.isOrange, win.id)
+    playTactile(win.isOrange ? 'deck.key.accent' : 'deck.key', { id: win.id })
     setActiveKeyDepressed(win.id)
     setActiveWindowId(win.id)
     setLastReceipt(`SYS.01 KEY 0${win.id} -> focused ${win.app} (${win.pid}) on ${activeHost.name} [1.8ms]`)
@@ -504,7 +387,7 @@ export default function ConceptExperimentPage() {
   }
 
   const handleKnobClick = () => {
-    playRotaryTick()
+    playTactile('deck.rotary')
     const nextAngle = (knobAngle + 30) % 360
     setKnobAngle(nextAngle)
     const nextWindowId = (activeWindowId % 9) + 1
@@ -514,20 +397,20 @@ export default function ConceptExperimentPage() {
   }
 
   const handleToggleClick = () => {
-    playToggleClack()
+    playTactile('deck.toggle')
     const nextState = !toggleMesh
     setToggleMesh(nextState)
     setLastReceipt(nextState ? 'TOGGLE: Mesh Bonjour Relay Active (_lattices-fleet._tcp.)' : 'TOGGLE: USB-C Direct Zero-Latency HID Mode')
   }
 
   const handleApproveAgent = () => {
-    playButtonPop()
+    playTactile('deck.button')
     setAgentDecisionState('approved')
     setLastReceipt(`SYS.01 [KEY A: APPROVE] -> Authorized Claude Code schema change on ${activeHost.name} · Resuming turn`)
   }
 
   const handleRejectAgent = () => {
-    playButtonPop()
+    playTactile('deck.button')
     setAgentDecisionState('rejected')
     setLastReceipt(`SYS.01 [KEY B: REJECT] -> Blocked schema write on ${activeHost.name} · Agent parked`)
   }
@@ -658,7 +541,7 @@ export default function ConceptExperimentPage() {
                           type="button"
                           className={`concept-exp-host-pill ${isActive ? 'active' : ''}`}
                           onClick={() => {
-                            playButtonPop()
+                            playTactile('deck.button')
                             setSelectedHostId(host.id)
                             setLastReceipt(`SYS.01 HOST SELECT -> switched target host to ${host.name}`)
                           }}
@@ -808,7 +691,7 @@ export default function ConceptExperimentPage() {
                           type="button"
                           className="concept-exp-screen-btn secondary"
                           onClick={() => {
-                            playButtonPop()
+                            playTactile('deck.button')
                             setAgentDecisionState('pending')
                             setLastReceipt('SYS.01 Reset agent attention fixture to pending')
                           }}

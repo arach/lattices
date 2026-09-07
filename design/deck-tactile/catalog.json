@@ -1,0 +1,412 @@
+{
+  "version": 1,
+  "meta": {
+    "name": "lattices-deck-sys01",
+    "description": "Declarative tactile + acoustic catalog for the Lattices deck controller (SYS.01)."
+  },
+  "sounds": {
+    "mechanicalKey.orange": {
+      "duration": 0.065,
+      "volume": 0.85,
+      "layers": [
+        {
+          "kind": "oscillator",
+          "waveform": "triangle",
+          "frequency": {
+            "start": {
+              "base": 230,
+              "detune": {
+                "param": "id",
+                "step": 15,
+                "modulo": 3
+              }
+            },
+            "end": 55,
+            "time": 0.055,
+            "curve": "exponential"
+          },
+          "filter": {
+            "type": "lowpass",
+            "start": 1200,
+            "end": 300,
+            "time": 0.05,
+            "curve": "exponential"
+          },
+          "gain": {
+            "start": 0.32,
+            "end": 0.001,
+            "time": 0.06,
+            "curve": "exponential"
+          }
+        },
+        {
+          "kind": "noise",
+          "duration": 0.008,
+          "gain": {
+            "start": 0.14,
+            "end": 0.001,
+            "time": 0.008,
+            "curve": "exponential"
+          }
+        }
+      ]
+    },
+    "mechanicalKey.cream": {
+      "duration": 0.065,
+      "volume": 0.85,
+      "layers": [
+        {
+          "kind": "oscillator",
+          "waveform": "triangle",
+          "frequency": {
+            "start": {
+              "base": 320,
+              "detune": {
+                "param": "id",
+                "step": 20,
+                "modulo": 3
+              }
+            },
+            "end": 55,
+            "time": 0.055,
+            "curve": "exponential"
+          },
+          "filter": {
+            "type": "lowpass",
+            "start": 1800,
+            "end": 300,
+            "time": 0.05,
+            "curve": "exponential"
+          },
+          "gain": {
+            "start": 0.32,
+            "end": 0.001,
+            "time": 0.06,
+            "curve": "exponential"
+          }
+        },
+        {
+          "kind": "noise",
+          "duration": 0.008,
+          "gain": {
+            "start": 0.14,
+            "end": 0.001,
+            "time": 0.008,
+            "curve": "exponential"
+          }
+        }
+      ]
+    },
+    "rotaryTick": {
+      "duration": 0.02,
+      "volume": 0.85,
+      "layers": [
+        {
+          "kind": "oscillator",
+          "waveform": "sine",
+          "frequency": {
+            "start": 1900,
+            "end": 300,
+            "time": 0.015,
+            "curve": "exponential"
+          },
+          "gain": {
+            "start": 0.22,
+            "end": 0.001,
+            "time": 0.016,
+            "curve": "exponential"
+          }
+        }
+      ]
+    },
+    "toggleClack": {
+      "duration": 0.045,
+      "volume": 0.85,
+      "layers": [
+        {
+          "kind": "oscillator",
+          "waveform": "square",
+          "frequency": {
+            "start": 450,
+            "end": 90,
+            "time": 0.035,
+            "curve": "exponential"
+          },
+          "gain": {
+            "start": 0.24,
+            "end": 0.001,
+            "time": 0.04,
+            "curve": "exponential"
+          }
+        }
+      ]
+    },
+    "buttonPop": {
+      "duration": 0.035,
+      "volume": 0.85,
+      "layers": [
+        {
+          "kind": "oscillator",
+          "waveform": "triangle",
+          "frequency": {
+            "start": 520,
+            "end": 120,
+            "time": 0.025,
+            "curve": "exponential"
+          },
+          "gain": {
+            "start": 0.2,
+            "end": 0.001,
+            "time": 0.03,
+            "curve": "exponential"
+          }
+        }
+      ]
+    },
+    "approvalChime": {
+      "duration": 0.12,
+      "volume": 0.85,
+      "layers": [
+        {
+          "kind": "oscillator",
+          "waveform": "sine",
+          "frequency": {
+            "start": 587.33
+          },
+          "gain": {
+            "start": 0.22,
+            "end": 0.0,
+            "time": 0.06,
+            "curve": "linear",
+            "delay": 0.0
+          }
+        },
+        {
+          "kind": "oscillator",
+          "waveform": "sine",
+          "frequency": {
+            "start": 880.0
+          },
+          "gain": {
+            "start": 0.26,
+            "end": 0.0,
+            "time": 0.09,
+            "curve": "linear",
+            "delay": 0.03
+          }
+        }
+      ]
+    },
+    "warningBuzz": {
+      "duration": 0.08,
+      "volume": 0.85,
+      "layers": [
+        {
+          "kind": "oscillator",
+          "waveform": "sine",
+          "frequency": {
+            "start": 220
+          },
+          "gain": {
+            "segments": [
+              {
+                "start": 0.22,
+                "end": 0.0,
+                "time": 0.035,
+                "curve": "linear",
+                "delay": 0.0
+              },
+              {
+                "start": 0.0,
+                "end": 0.0,
+                "time": 0.01,
+                "curve": "linear",
+                "delay": 0.035
+              },
+              {
+                "start": 0.2,
+                "end": 0.0,
+                "time": 0.035,
+                "curve": "linear",
+                "delay": 0.045
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "pointer.tick": {
+      "duration": 0.08,
+      "volume": 0.22,
+      "layers": [
+        {
+          "kind": "oscillator",
+          "waveform": "sine",
+          "frequency": {
+            "start": 920
+          },
+          "gain": {
+            "start": 0.28,
+            "end": 0.001,
+            "time": 0.055,
+            "curve": "exponential"
+          }
+        }
+      ]
+    },
+    "pointer.click": {
+      "duration": 0.09,
+      "volume": 0.26,
+      "layers": [
+        {
+          "kind": "oscillator",
+          "waveform": "sine",
+          "frequency": {
+            "start": 1240
+          },
+          "gain": {
+            "start": 0.34,
+            "end": 0.001,
+            "time": 0.032,
+            "curve": "exponential",
+            "delay": 0.0
+          }
+        },
+        {
+          "kind": "oscillator",
+          "waveform": "sine",
+          "frequency": {
+            "start": 540
+          },
+          "gain": {
+            "start": 0.18,
+            "end": 0.001,
+            "time": 0.055,
+            "curve": "exponential",
+            "delay": 0.018
+          }
+        }
+      ]
+    },
+    "pointer.engage": {
+      "duration": 0.22,
+      "volume": 0.32,
+      "layers": [
+        {
+          "kind": "oscillator",
+          "waveform": "sine",
+          "frequency": {
+            "start": 420
+          },
+          "gain": {
+            "start": 0.2,
+            "end": 0.001,
+            "time": 0.11,
+            "curve": "exponential",
+            "delay": 0.0
+          }
+        },
+        {
+          "kind": "oscillator",
+          "waveform": "sine",
+          "frequency": {
+            "start": 760
+          },
+          "gain": {
+            "start": 0.24,
+            "end": 0.001,
+            "time": 0.13,
+            "curve": "exponential",
+            "delay": 0.055
+          }
+        },
+        {
+          "kind": "oscillator",
+          "waveform": "sine",
+          "frequency": {
+            "start": 1160
+          },
+          "gain": {
+            "start": 0.12,
+            "end": 0.001,
+            "time": 0.06,
+            "curve": "exponential",
+            "delay": 0.12
+          }
+        }
+      ]
+    },
+    "pointer.chime": {
+      "duration": 0.25,
+      "volume": 0.3,
+      "layers": [
+        {
+          "kind": "oscillator",
+          "waveform": "sine",
+          "frequency": {
+            "start": 620
+          },
+          "gain": {
+            "start": 0.18,
+            "end": 0.001,
+            "time": 0.18,
+            "curve": "exponential",
+            "delay": 0.0
+          }
+        },
+        {
+          "kind": "oscillator",
+          "waveform": "sine",
+          "frequency": {
+            "start": 930
+          },
+          "gain": {
+            "start": 0.16,
+            "end": 0.001,
+            "time": 0.2,
+            "curve": "exponential",
+            "delay": 0.03
+          }
+        }
+      ]
+    }
+  },
+  "events": {
+    "deck.key": {
+      "sound": "mechanicalKey.cream",
+      "haptic": "rigid"
+    },
+    "deck.key.accent": {
+      "sound": "mechanicalKey.orange",
+      "haptic": "heavy"
+    },
+    "deck.rotary": {
+      "sound": "rotaryTick",
+      "haptic": "selection"
+    },
+    "deck.toggle": {
+      "sound": "toggleClack",
+      "haptic": "medium"
+    },
+    "deck.button": {
+      "sound": "buttonPop",
+      "haptic": "light"
+    },
+    "deck.decision.approved": {
+      "sound": "approvalChime",
+      "haptic": "success"
+    },
+    "deck.decision.deferred": {
+      "sound": "warningBuzz",
+      "haptic": "warning"
+    },
+    "pointer.aim": {
+      "sound": "pointer.tick",
+      "haptic": "generic"
+    },
+    "pointer.commit": {
+      "sound": "pointer.engage",
+      "haptic": "alignment"
+    }
+  }
+}

@@ -1,0 +1,5 @@
+export * from './types'
+export * from './theme'
+export * from './synthesizer'
+export * from './useDeckTactile'
+export { default as deckTactileCatalog } from './catalog.json'
