@@ -65,63 +65,28 @@ async function inferSmart(prompt: string, options: any): Promise<{ data: any; ra
 import { readFileSync } from "fs";
 import { join } from "path";
 import { spawn } from "child_process";
+import {
+  AVSPEECH_MODEL_ID,
+  describeVoxRuntime,
+  KOKORO_MODEL_ID,
+  KOKORO_VOICE_ID,
+  playCachedWav,
+  resolveVoxRuntime,
+  speakWithVox,
+  synthesizeWithVox,
+} from "./vox-tts.ts";
 
-// ── Streaming TTS via OpenAI API → ffplay ──────────────────────────
+// ── TTS via Hudson/Vox (Kokoro) → avspeech → say ───────────────────
 
-const OPENAI_TTS_URL = "https://api.openai.com/v1/audio/speech";
-const ttsConfig = loadTTSConfig();
-let remoteTTSDisabledReason: string | null = ttsConfig.apiKey ? null : "OPENAI_API_KEY is not configured";
+let voxTTSDisabledReason: string | null = resolveVoxRuntime() ? null : "Hudson voice runtime unavailable";
 
-function loadTTSConfig() {
-  return {
-    apiKey: process.env.OPENAI_API_KEY || "",
-    voice: "nova",
-  };
+function disableVoxTTS(reason: string) {
+  if (voxTTSDisabledReason) return;
+  voxTTSDisabledReason = reason;
+  log(`Hudson TTS disabled for this worker: ${reason}`);
 }
 
-class RemoteTTSUnavailableError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "RemoteTTSUnavailableError";
-  }
-}
-
-function disableRemoteTTS(reason: string) {
-  if (remoteTTSDisabledReason) return;
-  remoteTTSDisabledReason = reason;
-  log(`remote TTS disabled for this worker: ${reason}; using macOS speech`);
-}
-
-async function requestRemoteSpeech(text: string): Promise<Response> {
-  if (remoteTTSDisabledReason) {
-    throw new RemoteTTSUnavailableError(remoteTTSDisabledReason);
-  }
-
-  const res = await fetch(OPENAI_TTS_URL, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${ttsConfig.apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "tts-1",
-      voice: ttsConfig.voice,
-      input: text,
-      response_format: "pcm",
-      speed: 1.1,
-    }),
-  });
-
-  if (!res.ok) {
-    const reason = `OpenAI TTS error: ${res.status} ${res.statusText}`;
-    if (res.status === 401 || res.status === 403) disableRemoteTTS(reason);
-    throw new RemoteTTSUnavailableError(reason);
-  }
-
-  return res;
-}
-
-/** On-device fallback that keeps voice useful when cloud TTS is unavailable. */
+/** Last-resort macOS speech when Hudson voice runtime is unavailable. */
 async function localSpeak(text: string): Promise<number> {
   const start = performance.now();
   return new Promise((resolve, reject) => {
@@ -140,59 +105,31 @@ async function localSpeak(text: string): Promise<number> {
 }
 
 async function speak(text: string): Promise<number> {
-  if (!remoteTTSDisabledReason) {
+  if (!voxTTSDisabledReason) {
     try {
-      return await streamSpeak(text);
+      const ms = await speakWithVox(text, {
+        modelId: KOKORO_MODEL_ID,
+        voiceId: KOKORO_VOICE_ID,
+      });
+      log(`Kokoro spoke "${text.slice(0, 40)}" in ${ms}ms`);
+      return ms;
     } catch (error: any) {
-      log(`remote TTS unavailable: ${error.message}; falling back to macOS speech`);
+      log(`Kokoro TTS unavailable: ${error.message}`);
+      disableVoxTTS(error.message);
     }
   }
-  return localSpeak(text);
-}
 
-/** Stream TTS: fetch audio from OpenAI and pipe directly to ffplay. Playback starts immediately. */
-async function streamSpeak(text: string): Promise<number> {
-  const start = performance.now();
-  const res = await requestRemoteSpeech(text);
-
-  const ttfb = Math.round(performance.now() - start);
-  log(`TTS first byte in ${ttfb}ms`);
-
-  // Pipe response body directly to ffplay — playback starts as chunks arrive
-  return new Promise((resolve, reject) => {
-    const player = spawn("ffplay", [
-      "-nodisp",      // no video window
-      "-autoexit",    // quit when done
-      "-loglevel", "quiet",
-      "-f", "s16le",   // PCM signed 16-bit little-endian
-      "-ar", "24000",  // OpenAI TTS outputs 24kHz
-      "-ch_layout", "mono",
-      "-",            // read from stdin
-    ], { stdio: ["pipe", "ignore", "ignore"] });
-
-    const reader = res.body?.getReader();
-    if (!reader) {
-      reject(new Error("No response body"));
-      return;
+  if (resolveVoxRuntime()) {
+    try {
+      const ms = await speakWithVox(text, { modelId: AVSPEECH_MODEL_ID });
+      log(`avspeech spoke "${text.slice(0, 40)}" in ${ms}ms`);
+      return ms;
+    } catch (error: any) {
+      log(`avspeech fallback failed: ${error.message}`);
     }
+  }
 
-    // Pump chunks from fetch → ffplay stdin
-    (async () => {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        player.stdin.write(value);
-      }
-      player.stdin.end();
-    })().catch(reject);
-
-    player.on("close", () => {
-      const ms = Math.round(performance.now() - start);
-      resolve(ms);
-    });
-
-    player.on("error", reject);
-  });
+  return localSpeak(text);
 }
 
 // ── Pre-cached ack sounds (no API call needed) ────────────────────
@@ -235,7 +172,8 @@ async function ensureVoiceCache() {
 
   for (const phrase of allPhrases) {
     const safeName = phrase.replace(/[^a-z]/gi, "_").toLowerCase();
-    const filePath = join(ackCacheDir, `voice_${safeName}.pcm`);
+    const filePath = join(ackCacheDir, `kokoro_${safeName}.wav`);
+    const legacyPath = join(ackCacheDir, `voice_${safeName}.pcm`);
 
     if (existsSync(filePath)) {
       ackCache.set(phrase, filePath);
@@ -243,18 +181,25 @@ async function ensureVoiceCache() {
       continue;
     }
 
-    // Generate and cache. Authentication failures disable remote TTS once for
-    // this worker instead of retrying the same credential for every cue.
+    if (existsSync(legacyPath)) {
+      try {
+        const { unlinkSync } = await import("fs");
+        unlinkSync(legacyPath);
+      } catch {}
+    }
+
     try {
-      const res = await requestRemoteSpeech(phrase);
-      const buf = Buffer.from(await res.arrayBuffer());
-      writeFileSync(filePath, buf);
+      const { wav } = await synthesizeWithVox(phrase, {
+        modelId: KOKORO_MODEL_ID,
+        voiceId: KOKORO_VOICE_ID,
+      });
+      writeFileSync(filePath, wav);
       ackCache.set(phrase, filePath);
       generated++;
       log(`cached: "${phrase}"`);
     } catch (e: any) {
       log(`cache failed for "${phrase}": ${e.message}`);
-      if (remoteTTSDisabledReason) break;
+      if (voxTTSDisabledReason) break;
     }
   }
   log(`voice cache: ${cached} hit, ${generated} generated, ${allPhrases.length} total`);
@@ -271,28 +216,14 @@ async function playCached(phrase: string): Promise<number> {
   }
 
   log(`playing cached: "${phrase}"`);
-  return new Promise((resolve, reject) => {
-    const player = spawn("ffplay", [
-      "-nodisp", "-autoexit", "-loglevel", "quiet",
-      "-f", "s16le", "-ar", "24000", "-ch_layout", "mono",
-      filePath,
-    ], { stdio: ["ignore", "ignore", "pipe"] });
-
-    let stderr = "";
-    player.stderr?.on("data", (d: Buffer) => { stderr += d.toString(); });
-
-    player.on("close", (code: number) => {
-      const ms = Math.round(performance.now() - start);
-      if (code !== 0) log(`ffplay error (code ${code}): ${stderr.slice(0, 100)}`);
-      else log(`played "${phrase}" in ${ms}ms`);
-      resolve(ms);
-    });
-
-    player.on("error", (err: Error) => {
-      log(`ffplay spawn error: ${err.message}`);
-      reject(err);
-    });
-  });
+  try {
+    const ms = await playCachedWav(filePath);
+    log(`played "${phrase}" in ${ms}ms`);
+    return ms;
+  } catch (err: any) {
+    log(`cached playback failed: ${err.message}`);
+    return speak(phrase);
+  }
 }
 
 /** Play a random ack phrase from cache. */
@@ -317,7 +248,7 @@ function playConfirm(intent: string): Promise<number> {
 // Warm up cache on startup
 ensureVoiceCache().then(() => log("voice cache ready"));
 
-log(`worker started, TTS=${remoteTTSDisabledReason ? "macOS local" : "OpenAI with macOS fallback"}`);
+log(`worker started, TTS=${voxTTSDisabledReason ? "macOS say fallback" : `Hudson Kokoro (${KOKORO_VOICE_ID})`} @ ${describeVoxRuntime()}`);
 
 // ── Load system prompt once ────────────────────────────────────────
 
@@ -447,23 +378,14 @@ async function processLine(line: string) {
       break;
 
     case "turn": {
-      // Full orchestrated turn — parallel where possible.
-      //
-      // Timeline:
-      //   t=0  ──┬── ack TTS (fire & forget)
-      //          └── model inference
-      //   t=~600ms ─┬── narrate TTS (what we're doing)
-      //             └── execute actions (in parallel with narrate)
-      //   t=done ── respond with results
-      //
       const turnStart = performance.now();
       const transcript = cmd.transcript;
       const snap = cmd.snapshot ?? {};
       const history = cmd.history ?? [];
 
       log(`⏱ turn start: "${transcript.slice(0, 50)}"`);
+      progress("acknowledging", turnStart);
 
-      // Fire cached ack sound + inference in PARALLEL
       const ackPromise = playAck().catch((e) => log(`ack error: ${e.message}`));
 
       const messages = history.map((h: any) => ({
@@ -474,9 +396,10 @@ async function processLine(line: string) {
       let inferResult: any = null;
       const localPlan = tryLocalAssistantPlan(transcript, snap);
       if (localPlan) {
-        inferResult = localPlan;
-        log("local planner matched");
+        inferResult = { ...localPlan, _meta: turnMeta("quick", "quick", true) };
+        log("local planner matched — quick path");
       } else {
+        progress("planning", turnStart, "standard");
         const userMessage = buildAssistantContextMessage(transcript, snap);
         try {
           const { data, raw } = await inferSmart(userMessage, {
@@ -489,35 +412,60 @@ async function processLine(line: string) {
             tag: "hands-off",
           });
           const plan = normalizeAssistantPlan(data, transcript);
-          inferResult = { ...plan, _meta: { ...plan._meta, provider: raw.provider, model: raw.model, durationMs: raw.durationMs, tokens: raw.usage?.totalTokens } };
+          const hasActions = Array.isArray(plan.actions) && plan.actions.length > 0;
+          const turnKind = hasActions ? "standard" : "conversation";
+          inferResult = {
+            ...plan,
+            _meta: {
+              ...plan._meta,
+              ...turnMeta("standard", turnKind, false),
+              provider: raw.provider,
+              model: raw.model,
+              durationMs: raw.durationMs,
+              tokens: raw.usage?.totalTokens,
+            },
+          };
           log(`⏱ inference done in ${raw.durationMs}ms`);
         } catch (err: any) {
           log(`⏱ inference error: ${err.message}`);
-          inferResult = { actions: [], spoken: "Sorry, I had trouble with that.", _meta: { error: err.message } };
+          inferResult = {
+            actions: [],
+            spoken: "Sorry, I had trouble with that.",
+            _meta: { ...turnMeta("standard", "conversation", false), error: err.message },
+          };
         }
       }
 
-      // Wait for ack to finish before narrating (don't overlap speech)
-      await ackPromise;
-
-      // Step 2: Narrate + execute in PARALLEL
       const hasActions = Array.isArray(inferResult.actions) && inferResult.actions.length > 0;
       const spokenText = inferResult.spoken;
+      const isQuick = inferResult._meta?.path === "quick" && hasActions;
+
+      if (isQuick) {
+        await ackPromise;
+        progress("executing", turnStart, "quick");
+        const turnMs = Math.round(performance.now() - turnStart);
+        log(`⏱ quick turn response at ${turnMs}ms`);
+        respond({ ok: true, data: inferResult, turnMs });
+        progress("confirming", turnStart, "quick");
+        const intent = inferResult.actions?.[0]?.intent as string | undefined;
+        playConfirm(intent ?? "done").catch(() => {});
+        break;
+      }
+
+      await ackPromise;
 
       if (hasActions && spokenText) {
-        // SPEAK FIRST — user must hear what's about to happen before windows move
+        progress("narrating", turnStart, "standard");
         log(`⏱ narrating: "${spokenText.slice(0, 50)}"`);
         await speak(spokenText).catch((e) => log(`narrate error: ${e.message}`));
-
-        // NOW respond with actions — Swift executes after user heard the plan
+        progress("executing", turnStart, "standard");
         const turnMs = Math.round(performance.now() - turnStart);
         log(`⏱ turn response at ${turnMs}ms — actions sent after narration`);
         respond({ ok: true, data: inferResult, turnMs });
-
-        // Confirm
+        progress("confirming", turnStart, "standard");
         await playCached("Done.").catch(() => {});
       } else if (spokenText) {
-        // Conversation only — speak and respond
+        progress("narrating", turnStart, "conversation");
         await speak(spokenText).catch((e) => log(`speak error: ${e.message}`));
         const turnMs = Math.round(performance.now() - turnStart);
         respond({ ok: true, data: inferResult, turnMs });
@@ -555,6 +503,20 @@ async function processLine(line: string) {
 function respond(obj: any) {
   console.log(JSON.stringify(obj));
 }
+
+function progress(stage: string, turnStart: number, turnKind?: "quick" | "standard" | "conversation") {
+  respond({
+    ok: true,
+    progress: stage,
+    turnKind,
+    turnMs: Math.round(performance.now() - turnStart),
+  });
+}
+
+function turnMeta(path: "quick" | "standard", turnKind: "quick" | "standard" | "conversation", localMatch = false) {
+  return { path, turnKind, localMatch };
+}
+
 
 function log(msg: string) {
   const ts = new Date().toISOString().slice(11, 23);
