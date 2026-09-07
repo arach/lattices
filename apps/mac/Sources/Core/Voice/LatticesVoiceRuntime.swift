@@ -57,6 +57,15 @@ enum LatticesVoiceRuntime {
         #endif
     }
 
+    /// Drop any orphaned live capture session owned by the embedded runtime.
+    /// Used when Vox reports `live_session_busy` after a dropped client handle.
+    static func resetEmbeddedRuntime() {
+        #if LATTICES_VOICE && canImport(HudsonVoice)
+        stop()
+        _ = ensureRunning()
+        #endif
+    }
+
     #if LATTICES_VOICE && canImport(HudsonVoice)
     /// True when this process is currently hosting the voice WebSocket.
     static var isRunning: Bool { Host.shared.isRunning }
@@ -121,9 +130,19 @@ private final class Host: @unchecked Sendable {
         try configureEnvironment(authToken: authToken)
         try persistPreferences()
 
+        let (asrEngine, ttsEngine, defaultSynthesisModelId) = try LatticesVoiceEngineLoader.loadEngines(
+            runtimeHome: runtimeHomeURL
+        )
+        DiagnosticLog.shared.info(
+            "HudsonVoice: synthesis default \(defaultSynthesisModelId) (\(LatticesVoiceEngineLoader.kokoroVoiceId))"
+        )
+
         let service = VoxRuntimeService(
             port: port,
             bindAddress: bindAddress,
+            engine: asrEngine,
+            ttsEngine: ttsEngine,
+            defaultSynthesisModelId: defaultSynthesisModelId,
             authToken: authToken
         )
         do {
@@ -166,7 +185,10 @@ private final class Host: @unchecked Sendable {
     }
 
     private func persistPreferences() throws {
-        let preferences = (try? HudsonVoicePreferences.load()) ?? HudsonVoicePreferences()
+        var preferences = (try? HudsonVoicePreferences.load()) ?? HudsonVoicePreferences()
+        if preferences.preferredSynthesisModelId?.isEmpty != false {
+            preferences.preferredSynthesisModelId = LatticesVoiceEngineLoader.kokoroModelId
+        }
         try preferences.normalized().save()
     }
 
