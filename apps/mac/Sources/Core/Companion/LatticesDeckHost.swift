@@ -1,6 +1,9 @@
 import AppKit
 import DeckKit
 import Foundation
+#if LATTICES_VOICE && canImport(HudsonVoice)
+import HudsonVoice
+#endif
 
 enum LatticesDeckHostError: LocalizedError {
     case unsupportedAction(String)
@@ -276,31 +279,34 @@ private extension LatticesDeckHost {
                 suggestedActions: voiceSuggestions(for: .idle)
             )
 
-        // Single-shot voice command path (transcribe → match intent → execute).
-        // Distinct from voice.toggle / voice.cancel which drive the chat-style
-        // HandsOffSession. Lives here so the iPad companion can fire dictation
-        // on the active Mac via the existing /deck/perform bridge.
+        // iPad companion voice relay — same HandsOff session as the Mac menu
+        // voice mode. The iPad never captures audio; it arms the Mac microphone.
         case "voice.command.start":
             try MainActorSync.run {
-                AudioLayer.shared.startVoiceCommand()
+                self.startRemoteVoiceListening()
             }
             return try voiceOutcome()
 
         case "voice.command.stop":
             try MainActorSync.run {
-                AudioLayer.shared.stopVoiceCommand()
+                self.finishRemoteVoiceListening()
             }
             return try voiceOutcome()
 
         case "voice.command.toggle":
             try MainActorSync.run {
-                if AudioLayer.shared.isListening {
-                    AudioLayer.shared.stopVoiceCommand()
-                } else {
-                    AudioLayer.shared.startVoiceCommand()
-                }
+                HandsOffSession.shared.setAudibleFeedbackEnabled(true)
+                HandsOffSession.shared.toggle()
             }
             return try voiceOutcome()
+
+        case "voice.runtime.warm":
+            warmVoiceRuntime()
+            return ActionOutcome(
+                summary: "Warming voice runtime",
+                detail: "Preparing the Mac voice engine for capture.",
+                suggestedActions: []
+            )
 
         case "talkie.perform":
             guard let shortcutID = request.payload["shortcutID"]?.stringValue else {
@@ -529,6 +535,52 @@ private extension LatticesDeckHost {
         }
     }
 
+
+    func warmVoiceRuntime() {
+        #if LATTICES_VOICE && canImport(HudsonVoice)
+        Task {
+            _ = LatticesVoiceRuntime.ensureRunning()
+            guard let runtime = HudsonVoiceRuntimeResolver.resolve(clientId: "lattices") else { return }
+            do {
+                _ = try await HudVoxProbe.health(
+                    endpoint: runtime.endpoint,
+                    clientId: runtime.options.clientId,
+                    authToken: runtime.options.authToken ?? runtime.authToken
+                )
+            } catch {
+                DiagnosticLog.shared.warn(
+                    "DeckHost: voice runtime warm-up probe failed — \(error.localizedDescription)"
+                )
+            }
+        }
+        #endif
+    }
+
+    @MainActor
+    func startRemoteVoiceListening() {
+        let handsOff = HandsOffSession.shared
+        handsOff.setAudibleFeedbackEnabled(true)
+        switch handsOff.state {
+        case .idle:
+            handsOff.toggle()
+        case .listening:
+            break
+        case .thinking, .connecting:
+            handsOff.cancel()
+            handsOff.toggle()
+        }
+    }
+
+    @MainActor
+    func finishRemoteVoiceListening() {
+        let handsOff = HandsOffSession.shared
+        if handsOff.state == .listening {
+            handsOff.finishListening()
+        } else if handsOff.state == .thinking {
+            handsOff.cancel()
+        }
+    }
+
     func voiceOutcome() throws -> ActionOutcome {
         let phase = try MainActorSync.run { self.currentVoicePhase() }
         let summary: String
@@ -692,13 +744,7 @@ private extension LatticesDeckHost {
         let spacesState = buildSpacesState()
         let currentSpaceIndex = spacesState.currentSpaceIndex
         let currentSpaceName = spacesState.currentSpaceName
-        let voice = DeckVoiceState(
-            phase: currentVoicePhase(),
-            transcript: handsOff.lastTranscript ?? audio.lastTranscript,
-            transcriptLines: buildTranscriptLines(handsOff: handsOff, audio: audio),
-            responseSummary: handsOff.lastResponse ?? audio.executionResult,
-            provider: audio.providerName == "none" ? "voice-runtime" : audio.providerName
-        )
+        let voice = buildDeckVoiceState(handsOff: handsOff, audio: audio)
         let desktop = DeckDesktopSummary(
             activeLayerName: activeLayerName(),
             activeAppName: visibleWindows.first?.app ?? NSWorkspace.shared.frontmostApplication?.localizedName,
@@ -905,18 +951,74 @@ private extension LatticesDeckHost {
     }
 
     @MainActor
+    func buildDeckVoiceState(handsOff: HandsOffSession, audio: AudioLayer) -> DeckVoiceState {
+        let phase = currentVoicePhase(handsOff: handsOff, audio: audio)
+        let rawSummary = handsOff.state == .idle
+            ? (handsOff.lastResponse ?? audio.executionResult)
+            : handsOff.lastResponse
+        let responseSummary = DeckVoiceErrorMapper.isProgressMessage(rawSummary) ? nil : rawSummary
+        let error = DeckVoiceErrorMapper.resolve(
+            phase: phase,
+            executionResult: rawSummary,
+            executionError: audio.executionError,
+            providerError: audio.provider?.lastErrorMessage,
+            isWarmingUp: handsOff.state == .connecting
+        )
+        let summary = error == nil ? responseSummary : nil
+        return DeckVoiceState(
+            phase: phase,
+            transcript: handsOff.lastTranscript ?? audio.lastTranscript,
+            transcriptLines: buildTranscriptLines(handsOff: handsOff, audio: audio),
+            responseSummary: summary,
+            provider: audio.providerName == "none" ? "voice-runtime" : audio.providerName,
+            error: error,
+            lastError: error,
+            turnKind: handsOff.lastTurnKind,
+            turnStage: handsOff.turnStage,
+            statusLine: voiceStatusLine(handsOff: handsOff)
+        )
+    }
+
+    @MainActor
+    func voiceStatusLine(handsOff: HandsOffSession) -> String? {
+        switch handsOff.turnStage {
+        case .acknowledging: return "Got it…"
+        case .understanding: return "Understanding what you said…"
+        case .planning:
+            return handsOff.lastTurnKind == .quick ? "Running command…" : "Planning on your Mac…"
+        case .narrating: return "Explaining what I'll do…"
+        case .executing:
+            return handsOff.lastTurnKind == .quick ? "Running command…" : "Updating your desktop…"
+        case .confirming: return "Done."
+        case .none: return nil
+        }
+    }
+
+    @MainActor
     func currentVoicePhase() -> DeckVoicePhase {
-        let handsOff = HandsOffSession.shared
+        currentVoicePhase(handsOff: HandsOffSession.shared, audio: AudioLayer.shared)
+    }
+
+    @MainActor
+    func currentVoicePhase(handsOff: HandsOffSession, audio: AudioLayer) -> DeckVoicePhase {
         switch handsOff.state {
-        case .idle:
-            break
         case .connecting, .listening:
             return .listening
         case .thinking:
-            return .reasoning
+            switch handsOff.turnStage {
+            case .acknowledging, .narrating, .confirming:
+                return .speaking
+            case .understanding:
+                return .transcribing
+            case .planning, .executing:
+                return .reasoning
+            case .none:
+                return .reasoning
+            }
+        case .idle:
+            break
         }
 
-        let audio = AudioLayer.shared
         if audio.isListening {
             return .listening
         }
