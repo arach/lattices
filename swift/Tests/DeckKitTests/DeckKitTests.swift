@@ -343,4 +343,66 @@ final class DeckKitTests: XCTestCase {
         XCTAssertEqual(decoded.cockpitMode?.mode, .replay)
         XCTAssertEqual(decoded.activityLog?.first?.tag, "DECK")
     }
+
+    func testVoiceErrorMapperMapsRuntimeUnavailable() {
+        let error = DeckVoiceErrorMapper.map(
+            message: "Voice runtime unavailable",
+            detail: "Voice runtime unavailable"
+        )
+        XCTAssertEqual(error.code, .voxUnreachable)
+        XCTAssertEqual(error.remediation, .openVox)
+    }
+
+    func testVoiceErrorMapperIgnoresProgressMessages() {
+        XCTAssertNil(
+            DeckVoiceErrorMapper.resolve(
+                phase: .listening,
+                executionResult: "Connecting to voice runtime...",
+                executionError: nil,
+                providerError: nil,
+                isWarmingUp: true
+            )
+        )
+    }
+
+    func testVoiceErrorMapperMapsEmptyTranscript() {
+        let error = DeckVoiceErrorMapper.resolve(
+            phase: .idle,
+            executionResult: "No speech detected",
+            executionError: nil,
+            providerError: nil,
+            isWarmingUp: false
+        )
+        XCTAssertEqual(error?.code, .emptyTranscript)
+        XCTAssertEqual(error?.remediation, .retryVoice)
+    }
+
+    func testVoiceErrorMapperMapsNoActiveLiveSession() {
+        let error = DeckVoiceErrorMapper.resolve(
+            phase: .idle,
+            executionResult: "No active live session",
+            executionError: nil,
+            providerError: nil,
+            isWarmingUp: false
+        )
+        XCTAssertEqual(error?.code, .transcriptionFailed)
+        XCTAssertEqual(error?.remediation, .retryVoice)
+        XCTAssertTrue(DeckVoiceErrorMapper.isErrorMessage("No active live session"))
+    }
+
+    func testVoiceStateEncodesTurnMetadata() throws {
+        let state = DeckVoiceState(
+            phase: .reasoning,
+            transcript: "tile chrome left",
+            responseSummary: nil,
+            turnKind: .quick,
+            turnStage: .executing,
+            statusLine: "Running command…"
+        )
+        let data = try JSONEncoder().encode(state)
+        let decoded = try JSONDecoder().decode(DeckVoiceState.self, from: data)
+        XCTAssertEqual(decoded.turnKind, .quick)
+        XCTAssertEqual(decoded.turnStage, .executing)
+        XCTAssertEqual(decoded.statusLine, "Running command…")
+    }
 }
