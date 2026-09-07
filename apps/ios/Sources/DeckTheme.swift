@@ -25,19 +25,19 @@ enum DeckTheme {
     // need a visible seam, they are the same level. Do not invent a sixth.
 
     /// Root background. Everything sits on this.
-    static let canvas = rgb(0x0D0F12)
+    static let canvas = adaptive(light: 0xF1F1EC, dark: 0x0D0F12)
 
     /// Recessed group — channel strip, activity screen, voice bar. Depth −1.
-    static let well = rgb(0x0A0B0D)
+    static let well = adaptive(light: 0xE9E9E3, dark: 0x0A0B0D)
 
     /// Flush item — cards, tiles, list rows. Depth +1.
-    static let card = rgb(0x131518)
+    static let card = adaptive(light: 0xFAFAF7, dark: 0x131518)
 
     /// Focused/hero console, popovers, sheets. Reserved; never an ordinary card.
-    static let raised = rgb(0x181B1F)
+    static let raised = adaptive(light: 0xFFFFFF, dark: 0x181B1F)
 
     /// Anything tappable inside a card — buttons, inputs, chips.
-    static let control = rgb(0x1E2126)
+    static let control = adaptive(light: 0xE5E5DE, dark: 0x1E2126)
 
     // MARK: - Text
     //
@@ -45,10 +45,10 @@ enum DeckTheme {
     // white-at-opacity so a label reads the same on `well` as on `raised`, and
     // warm-neutral so the amber doesn't vibrate against it.
 
-    static let text          = rgb(0xE2E2DF)
-    static let textSecondary = rgb(0xA0A09B)
-    static let textTertiary  = rgb(0x71716C)
-    static let textDisabled  = rgb(0x4A4A4D)
+    static let text          = adaptive(light: 0x1C1C19, dark: 0xE2E2DF)
+    static let textSecondary = adaptive(light: 0x585850, dark: 0xA0A09B)
+    static let textTertiary  = adaptive(light: 0x8B8B83, dark: 0x71716C)
+    static let textDisabled  = adaptive(light: 0xB9B9B1, dark: 0x4A4A4D)
 
     // MARK: - Hairlines
     //
@@ -57,24 +57,24 @@ enum DeckTheme {
     // heads. No dotted rules, no black seams.
 
     /// Stroke on a flush card; row separator only when the gap is under 8pt.
-    static let hairline = Color.white.opacity(0.08)
+    static let hairline = adaptive(light: 0x000000, dark: 0xFFFFFF, alphaLight: 0.08, alphaDark: 0.08)
 
     /// Focused / selected / recently-changed. The only "look at me" that is not amber.
-    static let hairlineStrong = Color.white.opacity(0.14)
+    static let hairlineStrong = adaptive(light: 0x000000, dark: 0xFFFFFF, alphaLight: 0.14, alphaDark: 0.14)
 
     // MARK: - Accent
     //
     // Two hues for the whole app. Attention and selection share one, because
     // they share a meaning: look here.
 
-    static let accent        = rgb(0xE4B65C)
-    static let accentPressed = rgb(0xC29B4E)
-    static let accentFill    = rgb(0xE4B65C).opacity(0.14)
-    static let accentDisabled = rgb(0xE4B65C).opacity(0.35)
+    static let accent        = adaptive(light: 0xB3822A, dark: 0xE4B65C)
+    static let accentPressed = adaptive(light: 0x96691F, dark: 0xC29B4E)
+    static let accentFill    = adaptive(light: 0xB3822A, dark: 0xE4B65C, alphaLight: 0.16, alphaDark: 0.14)
+    static let accentDisabled = adaptive(light: 0xB3822A, dark: 0xE4B65C, alphaLight: 0.35, alphaDark: 0.35)
 
-    static let error        = rgb(0xEA6A64)
-    static let errorPressed = rgb(0xC85A55)
-    static let errorFill    = rgb(0xEA6A64).opacity(0.14)
+    static let error        = adaptive(light: 0xC94F4A, dark: 0xEA6A64)
+    static let errorPressed = adaptive(light: 0xA8403B, dark: 0xC85A55)
+    static let errorFill    = adaptive(light: 0xC94F4A, dark: 0xEA6A64, alphaLight: 0.14, alphaDark: 0.14)
 
     // MARK: - Radii
 
@@ -155,6 +155,51 @@ enum DeckTheme {
             green: Double((hex >> 8) & 0xFF) / 255,
             blue:  Double(hex & 0xFF) / 255
         )
+    }
+    /// A light/dark pair. Dark keeps the v7 values untouched; light mirrors
+    /// the depth model — `well` recessed below `canvas`, `card` floating
+    /// above — in warm-neutral steps so the amber doesn't vibrate.
+    static func adaptive(light: UInt32, dark: UInt32, alphaLight: Double = 1, alphaDark: Double = 1) -> Color {
+        Color(uiColor: UIColor { traits in
+            let darkMode = traits.userInterfaceStyle == .dark
+            let hex = darkMode ? dark : light
+            return UIColor(
+                red:   CGFloat((hex >> 16) & 0xFF) / 255,
+                green: CGFloat((hex >> 8) & 0xFF) / 255,
+                blue:  CGFloat(hex & 0xFF) / 255,
+                alpha: darkMode ? alphaDark : alphaLight
+            )
+        })
+    }
+}
+// MARK: - Appearance
+
+/// System / Dark / Light for the whole companion. Stored as a raw string in
+/// UserDefaults; read with `@AppStorage(DeckAppearanceMode.storageKey)` and
+/// applied once at the root via `.preferredColorScheme`.
+enum DeckAppearanceMode: String, CaseIterable, Identifiable {
+    case system
+    case dark
+    case light
+
+    static let storageKey = "deck.appearance"
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .system: return "System"
+        case .dark:   return "Dark"
+        case .light:  return "Light"
+        }
+    }
+
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .dark:   return .dark
+        case .light:  return .light
+        }
     }
 }
 

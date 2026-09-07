@@ -1,4 +1,5 @@
 import AppKit
+import DeckKit
 #if LATTICES_VOICE && canImport(HudsonVoice)
 import HudsonVoice
 #endif
@@ -56,6 +57,10 @@ final class HandsOffSession: ObservableObject {
     @Published private(set) var stateChangedAt: Date = Date()
     @Published var lastTranscript: String?
     @Published var lastResponse: String?
+    /// In-flight turn stage streamed from the worker (ack → plan → narrate → execute).
+    @Published private(set) var turnStage: DeckVoiceTurnStage?
+    /// Kind of the most recently completed turn — drives relay UI copy on the iPad.
+    @Published private(set) var lastTurnKind: DeckVoiceTurnKind?
     @Published var audibleFeedbackEnabled: Bool = false
 
     /// Recently executed actions — shown as playback in the HUD bottom bar
@@ -161,11 +166,26 @@ final class HandsOffSession: ObservableObject {
 
     func playCachedCue(_ phrase: String) {
         guard audibleFeedbackEnabled else { return }
+        playRemoteCachedCue(phrase)
+    }
+
+    /// Cached cue for iPad voice relay and other remote paths outside hands-off.
+    func playRemoteCachedCue(_ phrase: String) {
+        let trimmed = phrase.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
         let now = Date()
         guard now.timeIntervalSince(lastCueAt) >= 0.2 else { return }
         lastCueAt = now
         startWorker()
-        sendToWorker(["cmd": "play_cached", "text": phrase])
+        sendToWorker(["cmd": "play_cached", "text": trimmed])
+    }
+
+    /// Fire-and-forget spoken feedback for remote voice commands (iPad relay).
+    func speakRemoteResponse(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        startWorker()
+        sendToWorker(["cmd": "ack", "text": trimmed])
     }
 
     /// Append a full turn record to the JSONL log
@@ -330,6 +350,19 @@ final class HandsOffSession: ObservableObject {
 
             DiagnosticLog.shared.info("HandsOff: worker response → \(trimmed)")
 
+            // Mid-turn progress — update stage without completing the turn callback.
+            if let progress = json["progress"] as? String {
+                let stage = DeckVoiceTurnStage(rawValue: progress)
+                let kind = (json["turnKind"] as? String).flatMap(DeckVoiceTurnKind.init(rawValue:))
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    if let stage { self.turnStage = stage }
+                    if let kind { self.lastTurnKind = kind }
+                    if self.state != .thinking { self.state = .thinking }
+                }
+                continue
+            }
+
             // Parse everything on the background thread, then do ONE main-queue dispatch
             // to update all @Published properties atomically. Scattered dispatches cause
             // Combine deadlocks (os_unfair_lock contention with SwiftUI rendering).
@@ -374,6 +407,10 @@ final class HandsOffSession: ObservableObject {
                         self.recentActions = actions
                         self.executeActions(actions)
                     }
+                    if let meta = dataObj?["_meta"] as? [String: Any] {
+                        self.lastTurnKind = Self.parseTurnKind(meta)
+                    }
+                    self.turnStage = nil
                     self.state = .idle
                 }
                 cb?(json)
@@ -406,6 +443,7 @@ final class HandsOffSession: ObservableObject {
         turnTimeoutWork?.cancel()
         turnTimeoutWork = nil
         pendingCallback = nil
+        turnStage = nil
         state = .idle
         DiagnosticLog.shared.warn("HandsOff: turn cancelled by user")
         playSound("Funk")
@@ -675,6 +713,8 @@ final class HandsOffSession: ObservableObject {
     // MARK: - Turn processing (delegates to worker)
 
     private func processTurn(_ transcript: String) {
+        turnStage = .understanding
+        lastTurnKind = nil
         state = .thinking
         guard startWorker() else {
             state = .idle
@@ -733,6 +773,16 @@ final class HandsOffSession: ObservableObject {
                 }
             }
         }
+    }
+
+    private static func parseTurnKind(_ meta: [String: Any]) -> DeckVoiceTurnKind? {
+        if let kind = meta["turnKind"] as? String {
+            return DeckVoiceTurnKind(rawValue: kind)
+        }
+        if let path = meta["path"] as? String, path == "quick" {
+            return .quick
+        }
+        return nil
     }
 
     // MARK: - Desktop snapshot (full context — all windows, all screens)

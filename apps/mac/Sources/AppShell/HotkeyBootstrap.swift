@@ -81,6 +81,7 @@ enum HotkeyBootstrap {
         ]
         for (action, position) in tileMap {
             store.register(action: action) {
+                guard !TilePointerController.shared.shouldSuppressTilingHotkey(action) else { return }
                 TilePointerController.shared.cancelApply()
                 if WindowMotionMode.shared.tileCurrentTarget(to: position) { return }
                 let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) })

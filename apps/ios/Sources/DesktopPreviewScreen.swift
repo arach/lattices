@@ -39,7 +39,6 @@ struct DesktopPreviewScreen: View {
             footer
         }
         .background(DeckTheme.canvas.ignoresSafeArea())
-        .preferredColorScheme(.dark)
         .statusBarHidden(true)
         .task(id: previewTaskID) {
             await runPreviewLoop()

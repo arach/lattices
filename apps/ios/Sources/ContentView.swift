@@ -33,6 +33,8 @@ struct ContentView: View {
     @State private var showSettings = false
     @State private var showAddHost = false
     @State private var trustedBridges: [StoredBridgeTrust] = []
+    @State private var voicePanelOpen = false
+    @State private var voiceTargetMachineID: String?
 
     private var liveMachines: [HomeMachine] {
         HomeDataAdapter.machines(
@@ -40,6 +42,23 @@ struct ContentView: View {
             secondaryStores: fleetStore.secondaryStores,
             trustedBridges: trustedBridges
         )
+    }
+
+    /// Roster machines with voice indicators scoped to the Mac the user picked.
+    /// Other hosts can still report `.listening` in their snapshot from a stale
+    /// relay session; showing that on the wrong tile was the Art's-mini bug.
+    private var voiceAwareMachines: [HomeMachine] {
+        liveMachines.map { machine in
+            var copy = machine
+            guard let targetID = voiceTargetMachineID else {
+                if copy.voice == .listening { copy.voice = .off }
+                return copy
+            }
+            if machine.id != targetID && copy.voice != .off {
+                copy.voice = .off
+            }
+            return copy
+        }
     }
 
     /// Unpaired Macs on the network right now. Home shows the count and does
@@ -74,144 +93,27 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             LatsBackground {
-                HomeView(
-                    // Live data — every section with a real source on
-                    // DeckRuntimeSnapshot is wired through HomeDataAdapter.
-                    // Sections still without a backend (terminal/calendar/
-                    // scenes/routines/sync) pass empty arrays; their
-                    // tiles/sections hide themselves.
-                    machines:  liveMachines,
-                    scenes:    [],
-                    routines:  [],
-                    recent:    liveRecent,
-                    sync:      [],
-                    cloud:     liveCloud,
-                    agentFeed: liveAgentFeed,
-                    terminal:  [],
-                    calendar:  [],
-                    attention: liveAttention,
-                    bottomTelemetry: liveBottomTelemetry,
-
-                    onEnterDeck: { machine in
-                        guard machine.status != .offline else { return }
-                        prepareConnection(for: machine)
-                        // Start fetching on the tap rather than on arrival, so
-                        // the request is already in flight while the cover
-                        // animates instead of starting after it.
-                        hostStore(for: machine.id)?.setUIPriority(.fast)
-                        hostStore(for: machine.id)?.refreshSnapshot()
-                        deckDestination = .host(machine.id)
-                    },
-                    onEnterFleet: {
-                        fleetStore.synchronize(with: store)
-                        deckDestination = .fleet(initialMachineID: nil)
-                    },
-                    onAddHost:   { showAddHost = true },
-
-                    // Per-host dictation. Routed to *that machine's* store, not
-                    // the primary — which is the point: the primary is whichever
-                    // trusted host Bonjour listed first, so "who hears me" was
-                    // decided by discovery order rather than by the user.
-                    onMachineVoice: { machine in
-                        hostStore(for: machine.id)?.toggleVoice()
-                    },
-                    nearbyCandidateCount: nearbyCandidateCount,
-                    onPair:      { showAddHost = true },
-                    onSettings:  { showSettings = true },
-
-                    // Voice relay — wired to the active Mac via /deck/perform.
-                    voiceState:        store.snapshot?.voice,
-                    voiceMacLabel:     store.connectionLabel,
-                    isVoicePerforming: store.isPerformingAction,
-                    onVoiceStart:      { store.startVoice() },
-                    onVoiceStop:       { store.stopVoice() },
-                    onVoiceCancel:     { store.stopVoice() },
-                    onVoiceRemediate:  { _ in /* deferred — wired after error pipeline lands */ }
-                )
-                .onAppear {
-                    trustedBridges = DeckBridgeSecurityStore.shared.trustedBridgeList()
-                }
+                homeScreen
             }
             .navigationBarHidden(true)
             .toolbar(.hidden, for: .navigationBar)
             .fullScreenCover(item: $deckDestination) { destination in
-                switch destination {
-                case .host(let machineID):
-                    if let hostStore = hostStore(for: machineID) {
-                        HostDeckHost(store: hostStore, onClose: { deckDestination = nil })
-                    } else {
-                        // Better to say we lost it than to silently open a
-                        // different Mac's cockpit.
-                        LatsBackground {
-                            LatsEmptyState(
-                                title: "That Mac is no longer reachable",
-                                subtitle: "Its connection changed while you were opening it. Go back and pick it again.",
-                                icon: "laptopcomputer.slash"
-                            )
-                            .padding(24)
-                        }
-                        .onTapGesture { deckDestination = nil }
-                    }
-                case .fleet(let machineID):
-                    FleetDeckScreen(
-                        primaryStore: store,
-                        fleetStore: fleetStore,
-                        initialMachineID: machineID
-                    )
-                }
+                deckCover(for: destination)
             }
             .sheet(isPresented: $showSettings) {
-                LatsSettingsView(
-                    store: store,
-                    onForget: {
-                        fleetStore.releaseUntrusted()
-                        trustedBridges = DeckBridgeSecurityStore.shared.trustedBridgeList()
-                    }
-                )
-                .preferredColorScheme(.dark)
+                settingsSheet
             }
             .sheet(isPresented: $showAddHost) {
-                AddHostSheet(
-                    store: store,
-                    onPaired: { endpoint in
-                        // Adding is additive. The Mac on screen does not move
-                        // just because another one joined — the user asked to
-                        // add, not to switch. The only exception is having
-                        // nothing to look at yet.
-                        if store.activeEndpoint == nil {
-                            repointedMachineID = endpoint.id
-                            store.connect(to: endpoint)
-                        } else {
-                            fleetStore.adopt(endpoint)
-                        }
-                        trustedBridges = DeckBridgeSecurityStore.shared.trustedBridgeList()
-                    },
-                    onOpen: { endpoint in
-                        deckDestination = .host(endpoint.id)
-                    }
-                )
-                .preferredColorScheme(.dark)
+                addHostSheet
             }
-            // Adaptive polling: speed up while the user is in the cockpit
-            // (Deck or settings) — Home alone runs in ambient mode.
             .onChange(of: deckDestination) { _, destination in
-                applyPollPriority(for: destination)
-                // The escape hatch below is only good for the presentation that
-                // opened it. Left standing, it would keep vouching for the
-                // primary store long after the primary had been pointed at some
-                // other Mac — which is the exact confusion it exists to prevent.
-                if destination == nil {
-                    repointedMachineID = nil
-                    // A protected request can discover that the saved pairing
-                    // no longer matches while the deck is covering Home. Pull
-                    // the roster again as the cover closes so the stale card is
-                    // replaced by the Add flow immediately.
-                    trustedBridges = DeckBridgeSecurityStore.shared.trustedBridgeList()
-                    fleetStore.releaseUntrusted()
-                }
+                handleDeckDestinationChange(destination)
             }
             .onChange(of: showSettings) { _, isOpen in
                 store.setUIPriority(isOpen ? .fast : .ambient)
+            }
+            .onChange(of: voicePanelOpen) { _, isOpen in
+                handleVoicePanelChange(isOpen)
             }
         }
         .preferredColorScheme(.dark)
@@ -230,6 +132,133 @@ struct ContentView: View {
         ) { _ in
             trustedBridges = DeckBridgeSecurityStore.shared.trustedBridgeList()
             fleetStore.releaseUntrusted()
+        }
+    }
+
+    @ViewBuilder
+    private var homeScreen: some View {
+        HomeView(
+            machines: voiceAwareMachines,
+            recent: liveRecent,
+            cloud: liveCloud,
+            agentFeed: liveAgentFeed,
+            attention: liveAttention,
+            bottomTelemetry: liveBottomTelemetry,
+            onEnterDeck: enterDeck,
+            onEnterFleet: enterFleet,
+            onAddHost: { showAddHost = true },
+            onMachineVoice: { machine in
+                openVoicePanel(prefilling: machine)
+            },
+            nearbyCandidateCount: nearbyCandidateCount,
+            onPair: { showAddHost = true },
+            onSettings: { showSettings = true },
+            voiceState: boundVoiceState,
+            voiceMacLabel: voiceTargetLabel,
+            isVoicePerforming: isVoicePerforming,
+            voiceTargetReachable: isVoiceTargetReachable,
+            onVoiceOpen: { machine in
+                openVoicePanel(prefilling: machine)
+            },
+            onVoiceStart: startVoiceOnTarget,
+            onVoiceStop: { voiceTargetStore?.stopVoice() },
+            onVoiceCancel: { voiceTargetStore?.cancelVoice() },
+            onVoiceRemediate: { handleVoiceRemediation($0) },
+            voiceMachines: voiceAwareMachines,
+            voiceTargetMachineID: voiceTargetMachineID,
+            onSelectVoiceTarget: { machine in
+                switchVoiceTarget(to: machine)
+            },
+            voicePanelOpen: $voicePanelOpen
+        )
+        .onAppear {
+            trustedBridges = DeckBridgeSecurityStore.shared.trustedBridgeList()
+        }
+    }
+
+    @ViewBuilder
+    private func deckCover(for destination: DeckDestination) -> some View {
+        switch destination {
+        case .host(let machineID):
+            if let hostStore = hostStore(for: machineID) {
+                HostDeckHost(store: hostStore, onClose: { deckDestination = nil })
+            } else {
+                LatsBackground {
+                    LatsEmptyState(
+                        title: "That Mac is no longer reachable",
+                        subtitle: "Its connection changed while you were opening it. Go back and pick it again.",
+                        icon: "laptopcomputer.slash"
+                    )
+                    .padding(24)
+                }
+                .onTapGesture { deckDestination = nil }
+            }
+        case .fleet(let machineID):
+            FleetDeckScreen(
+                primaryStore: store,
+                fleetStore: fleetStore,
+                initialMachineID: machineID
+            )
+        }
+    }
+
+    private var settingsSheet: some View {
+        LatsSettingsView(
+            store: store,
+            onForget: {
+                fleetStore.releaseUntrusted()
+                trustedBridges = DeckBridgeSecurityStore.shared.trustedBridgeList()
+            }
+        )
+        .preferredColorScheme(.dark)
+    }
+
+    private var addHostSheet: some View {
+        AddHostSheet(
+            store: store,
+            onPaired: { endpoint in
+                if store.activeEndpoint == nil {
+                    repointedMachineID = endpoint.id
+                    store.connect(to: endpoint)
+                } else {
+                    fleetStore.adopt(endpoint)
+                }
+                trustedBridges = DeckBridgeSecurityStore.shared.trustedBridgeList()
+            },
+            onOpen: { endpoint in
+                deckDestination = .host(endpoint.id)
+            }
+        )
+        .preferredColorScheme(.dark)
+    }
+
+    private func enterDeck(_ machine: HomeMachine) {
+        guard machine.status != .offline else { return }
+        prepareConnection(for: machine)
+        hostStore(for: machine.id)?.setUIPriority(.fast)
+        hostStore(for: machine.id)?.refreshSnapshot()
+        deckDestination = .host(machine.id)
+    }
+
+    private func enterFleet() {
+        fleetStore.synchronize(with: store)
+        deckDestination = .fleet(initialMachineID: nil)
+    }
+
+    private func handleDeckDestinationChange(_ destination: DeckDestination?) {
+        applyPollPriority(for: destination)
+        if destination == nil {
+            repointedMachineID = nil
+            trustedBridges = DeckBridgeSecurityStore.shared.trustedBridgeList()
+            fleetStore.releaseUntrusted()
+        }
+    }
+
+    private func handleVoicePanelChange(_ isOpen: Bool) {
+        if isOpen {
+            voiceTargetStore?.setUIPriority(.fast)
+        } else if deckDestination == nil && !showSettings {
+            voiceTargetStore?.setUIPriority(.ambient)
         }
     }
 
@@ -284,6 +313,156 @@ struct ContentView: View {
         applyPollPriority(for: deckDestination)
     }
 
+    private var boundVoiceState: DeckVoiceState? {
+        guard voiceTargetMachineID != nil else { return nil }
+        return voiceTargetStore?.snapshot?.voice
+    }
+
+    private var isVoicePerforming: Bool {
+        voiceTargetMachineID != nil && (voiceTargetStore?.isPerformingAction ?? false)
+    }
+
+    private var isVoiceTargetReachable: Bool {
+        guard let id = voiceTargetMachineID,
+              let machine = liveMachines.first(where: { $0.id == id }) else { return false }
+        if machine.status == .offline { return false }
+        if let targetStore = voiceTargetStore {
+            return targetStore.health != nil || targetStore.snapshot != nil
+        }
+        // On the network but the DeckStore is still handshaking after adopt.
+        return machine.status == .online || machine.status == .active
+    }
+
+    private var voiceTargetLabel: String {
+        if let id = voiceTargetMachineID,
+           let machine = liveMachines.first(where: { $0.id == id }) {
+            return machine.name
+        }
+        return "your Mac"
+    }
+
+    /// The DeckStore for the Mac the user picked. No fallback — routing to the
+    /// foreground or primary host while the UI shows another name is how we
+    /// ended up with the wrong mic lit on the roster.
+    private var voiceTargetStore: DeckStore? {
+        guard let id = voiceTargetMachineID else { return nil }
+        return hostStore(for: id)
+    }
+
+    private func bridgeEndpoint(for machineID: String) -> BridgeEndpoint? {
+        if store.activeEndpoint?.id == machineID { return store.activeEndpoint }
+        if let bridge = store.discoveredBridges.first(where: { $0.id == machineID }) {
+            return bridge
+        }
+        guard let machine = liveMachines.first(where: { $0.id == machineID }) else { return nil }
+        if let active = store.activeEndpoint,
+           machineNameKey(active.name, host: active.host) == machineNameKey(machine.name, host: machine.host) {
+            return active
+        }
+        return store.discoveredBridges.first {
+            machineNameKey($0.name, host: $0.host) == machineNameKey(machine.name, host: machine.host)
+        }
+    }
+
+    private func machineNameKey(_ name: String, host: String) -> String {
+        let candidate = name.isEmpty ? host : name
+        return candidate.lowercased()
+            .replacingOccurrences(of: ".local", with: "")
+            .replacingOccurrences(of: ".lan", with: "")
+            .unicodeScalars
+            .filter { CharacterSet.alphanumerics.contains($0) }
+            .map(String.init)
+            .joined()
+    }
+
+    private func ensureVoiceRoute(for machine: HomeMachine) {
+        fleetStore.synchronize(with: store)
+        guard let endpoint = bridgeEndpoint(for: machine.id) else { return }
+        fleetStore.adopt(endpoint)
+        guard let matched = hostStore(for: machine.id) else { return }
+        matched.setUIPriority(.fast)
+        if matched.health == nil && matched.snapshot == nil {
+            matched.connect(to: endpoint)
+        } else {
+            matched.refreshSnapshot()
+        }
+    }
+
+    private func openVoicePanel(prefilling machine: HomeMachine?) {
+        if let machine {
+            switchVoiceTarget(to: machine)
+        } else if liveMachines.count == 1, let only = liveMachines.first {
+            ensureVoiceRoute(for: only)
+            voiceTargetMachineID = bridgeEndpoint(for: only.id)?.id ?? only.id
+            cancelVoiceOnOtherHosts(except: voiceTargetMachineID)
+            voiceTargetStore?.setUIPriority(.fast)
+            prewarmVoiceTarget()
+        } else {
+            cancelVoiceOnOtherHosts(except: nil)
+            voiceTargetMachineID = nil
+        }
+        voicePanelOpen = true
+    }
+
+    private func switchVoiceTarget(to machine: HomeMachine) {
+        if let previousID = voiceTargetMachineID, previousID != machine.id {
+            tearDownVoice(on: previousID)
+        }
+        ensureVoiceRoute(for: machine)
+        voiceTargetMachineID = bridgeEndpoint(for: machine.id)?.id ?? machine.id
+        cancelVoiceOnOtherHosts(except: voiceTargetMachineID)
+        voiceTargetStore?.setUIPriority(.fast)
+        prewarmVoiceTarget()
+    }
+
+    private func startVoiceOnTarget() {
+        guard let targetID = voiceTargetMachineID,
+              let targetStore = voiceTargetStore,
+              isVoiceTargetReachable else { return }
+        cancelVoiceOnOtherHosts(except: targetID)
+        targetStore.setUIPriority(.fast)
+        targetStore.startVoice()
+    }
+
+    /// Only one Mac should ever have an open relay mic. Stale sessions on other
+    /// hosts (from earlier routing bugs or a missed stop) must not keep their
+    /// roster card lit while the user is speaking to a different machine.
+    private func tearDownVoice(on machineID: String) {
+        let host = hostStore(for: machineID)
+        host?.stopVoice()
+        host?.cancelVoice()
+    }
+
+    private func cancelVoiceOnOtherHosts(except machineID: String?) {
+        for machine in liveMachines {
+            if let except = machineID, machine.id == except { continue }
+            tearDownVoice(on: machine.id)
+        }
+    }
+
+    private func prewarmVoiceTarget() {
+        guard let targetStore = voiceTargetStore else { return }
+        targetStore.setUIPriority(.fast)
+        targetStore.prewarmVoice()
+    }
+
+    private func handleVoiceRemediation(_ action: DeckRemediationAction) {
+        switch action {
+        case .retryVoice:
+            voicePanelOpen = true
+            startVoiceOnTarget()
+        case .openDiagnostics:
+            showSettings = true
+        case .openVox, .openSystemSettings:
+            voicePanelOpen = true
+            guard let targetStore = voiceTargetStore, isVoiceTargetReachable else { return }
+            targetStore.perform(actionID: "voice.toggle", pageID: "voice")
+        case .chooseTarget:
+            voicePanelOpen = true
+            voiceTargetMachineID = nil
+        }
+    }
+
     /// The session backing one Mac, or nil when we cannot prove we have it.
     ///
     /// `BridgeEndpoint.id` is derived from host:port and is not stable — a Mac
@@ -293,8 +472,26 @@ struct ContentView: View {
     /// host-ownership violation: the user taps one machine and drives another.
     /// The primary is only acceptable when this very tap re-pointed it.
     private func hostStore(for machineID: String) -> DeckStore? {
-        if let match = fleetStore.stores(including: store)
-            .first(where: { $0.activeEndpoint?.id == machineID }) {
+        let candidates = fleetStore.stores(including: store)
+        if let direct = candidates.first(where: { $0.activeEndpoint?.id == machineID }) {
+            return direct
+        }
+        guard let endpoint = bridgeEndpoint(for: machineID) else {
+            return repointedMachineID == machineID ? store : nil
+        }
+        if let fingerprint = endpoint.bridgeFingerprint, !fingerprint.isEmpty,
+           let match = candidates.first(where: {
+               guard let activeFingerprint = $0.activeEndpoint?.bridgeFingerprint, !activeFingerprint.isEmpty else {
+                   return false
+               }
+               return activeFingerprint.caseInsensitiveCompare(fingerprint) == .orderedSame
+           }) {
+            return match
+        }
+        if let match = candidates.first(where: {
+            guard let active = $0.activeEndpoint else { return false }
+            return active.host == endpoint.host && active.port == endpoint.port
+        }) {
             return match
         }
         return repointedMachineID == machineID ? store : nil

@@ -1,227 +1,124 @@
 import SwiftUI
 
-// MARK: - Channel strip
+// MARK: - Host tabs
 //
-// Compact, horizontally scrollable host rail. Selecting a Mac also makes it the
-// route for commands and voice, so the deck does not need a second destination
-// picker.
+// Compact chips for the Macs on the network. The name is the tab; status is
+// only written when it changes a decision — needs you, or unreachable.
+// Running and idle stay quiet so attention can actually read.
 
 struct FleetChannelStrip: View {
     let channels: [FleetChannel]
     let order: [Int]
     let currentIndex: Int
-    /// Retained for source compatibility; both layouts use the compact rail.
-    let layout: FleetDeckLayout
     let onSelect: (Int) -> Void
 
     var body: some View {
-        ScrollView(.horizontal) {
-            LazyHStack(spacing: 6) {
-                ForEach(order, id: \.self) { index in
-                    if channels.indices.contains(index) {
-                        FleetChannelColumn(
-                            channel: channels[index],
-                            isActive: index == currentIndex,
-                            isRail: true,
-                            onSelect: { onSelect(index) }
-                        )
-                        .frame(width: 210)
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal) {
+                HStack(spacing: 6) {
+                    ForEach(order, id: \.self) { index in
+                        if channels.indices.contains(index) {
+                            FleetHostTab(
+                                channel: channels[index],
+                                isActive: index == currentIndex,
+                                onSelect: { onSelect(index) }
+                            )
+                            .id(index)
+                        }
                     }
                 }
+                .frame(minHeight: 44)
+                .padding(.trailing, 4)
             }
-            .padding(.horizontal, 4)
+            .scrollIndicators(.hidden)
+            .scrollBounceBehavior(.basedOnSize)
+            .onAppear { proxy.scrollTo(currentIndex, anchor: .center) }
+            .onChange(of: currentIndex) { _, index in
+                withAnimation(.easeOut(duration: 0.18)) {
+                    proxy.scrollTo(index, anchor: .center)
+                }
+            }
         }
-        .scrollIndicators(.hidden)
-        .frame(height: 44)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Macs")
     }
 }
 
-private struct FleetChannelColumn: View {
+private struct FleetHostTab: View {
     let channel: FleetChannel
     let isActive: Bool
-    let isRail: Bool
     let onSelect: () -> Void
 
     var body: some View {
-        Button(action: {
+        Button {
             DeckTactileFeedback.shared.rotaryTick()
             onSelect()
-        }) {
-            VStack(alignment: .leading, spacing: 0) {
-                head
-                if !isRail {
-                    body_
-                    Spacer(minLength: 0)
-                    foot
-                }
-            }
-            .padding(.top, isRail ? 0 : 11)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: isRail ? .leading : .topLeading)
-            .background {
-                if isActive {
-                    LinearGradient(
-                        stops: [
-                            .init(color: Color.white.opacity(0.05), location: 0),
-                            .init(color: Color.white.opacity(0.012), location: 0.55),
-                            .init(color: .clear, location: 1)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .overlay(alignment: .top) {
-                        Rectangle().fill(Color.white.opacity(0.06)).frame(height: 1)
-                    }
-                }
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        // The design makes the active column non-interactive with `cursor:default`,
-        // not by dimming it — `.disabled` would fade the whole label.
-        .allowsHitTesting(!isActive)
-        .accessibilityLabel("\(channel.channelLabel), \(channel.deviceName)")
-        .accessibilityValue("\(channel.agentName), \(channel.state.label)")
-        .accessibilityAddTraits(isActive ? [.isSelected, .isButton] : .isButton)
-    }
-
-    // `.chan-head`
-    private var head: some View {
-        VStack(spacing: 0) {
+        } label: {
             HStack(spacing: 8) {
-                Text(channel.channelLabel)
-                    .font(FleetV6.mono(10, .medium))
-                    .tracking(1.4)
-                    .foregroundStyle(FleetV6.fg4)
-                    .fixedSize()
-
                 Image(systemName: channel.deviceIcon.symbol)
-                    .font(.system(size: 13, weight: .light))
-                    .foregroundStyle(FleetV6.fg3)
-                    .frame(width: 20, alignment: .leading)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(isActive ? DeckTheme.text : DeckTheme.textTertiary)
+                    .frame(width: 16, alignment: .center)
+                    .accessibilityHidden(true)
 
                 Text(channel.deviceName)
-                    .font(FleetV6.mono(12.5, .medium))
-                    .foregroundStyle(FleetV6.fg)
+                    .font(DeckTheme.secondary(.medium))
+                    .foregroundStyle(isActive ? DeckTheme.text : DeckTheme.textSecondary)
                     .lineLimit(1)
-                    .truncationMode(.tail)
+                    .fixedSize(horizontal: true, vertical: false)
 
-                Spacer(minLength: 6)
-
-                FleetChannelStatus(state: channel.state, isActive: isActive)
+                if let status = statusCopy {
+                    Text(status)
+                        .font(DeckTheme.caption(.medium))
+                        .foregroundStyle(statusColor)
+                        .fixedSize()
+                }
             }
-            .padding(.horizontal, 15)
-            .padding(.bottom, isRail ? 0 : 9)
-
-            if !isRail {
-                FleetDottedRule(color: Color.white.opacity(0.09))
-                    .padding(.horizontal, 15)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background {
+                RoundedRectangle(cornerRadius: DeckTheme.radiusCard, style: .continuous)
+                    .fill(isActive ? DeckTheme.card : Color.clear)
             }
+            .overlay {
+                RoundedRectangle(cornerRadius: DeckTheme.radiusCard, style: .continuous)
+                    .strokeBorder(
+                        isActive ? DeckTheme.hairlineStrong : Color.clear,
+                        lineWidth: 1
+                    )
+            }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
         }
-        .frame(maxHeight: isRail ? .infinity : nil)
+        .buttonStyle(FleetHostTabStyle())
+        .accessibilityLabel(channel.deviceName)
+        .accessibilityValue(channel.state.label)
+        .accessibilityAddTraits(isActive ? .isSelected : [])
+        .accessibilityHint(isActive ? "On deck" : "Switch to this Mac")
     }
 
-    // `.chan-body`
-    private var body_: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Circle()
-                    .fill(FleetV6.agentHue(channel.hue))
-                    .frame(width: 5, height: 5)
-                    .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 1 }
-                Text(channel.agentName)
-                    .font(FleetV6.mono(16, .medium))
-                    .foregroundStyle(FleetV6.fg)
-                Text(channel.appName)
-                    .font(FleetV6.mono(10))
-                    .tracking(1)
-                    .foregroundStyle(FleetV6.fg4)
-                    .lineLimit(1)
-            }
-            .padding(.top, 10)
-
-            Text(channel.task)
-                .font(FleetV6.mono(11))
-                .foregroundStyle(FleetV6.fg3)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .padding(.top, 4)
-
-            HStack(spacing: 7) {
-                FleetDot(color: FleetV6.fg3, size: 5)
-                Text(channel.lastEventText)
-                    .font(FleetV6.mono(10.5))
-                    .foregroundStyle(FleetV6.fg3)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Spacer(minLength: 4)
-                Text(channel.lastEventTime)
-                    .font(FleetV6.mono(9.5))
-                    .monospacedDigit()
-                    .foregroundStyle(FleetV6.fg4)
-            }
-            .padding(.top, 9)
+    /// Only the states that ask the user to do something different.
+    private var statusCopy: String? {
+        switch channel.state {
+        case .attn: return "Needs you"
+        case .down: return "Unreachable"
+        case .run, .idle: return nil
         }
-        .padding(.horizontal, 15)
     }
 
-    // `.chan-foot`
-    private var foot: some View {
-        HStack(spacing: 0) {
-            HStack(spacing: 7) {
-                FleetDot(color: isActive ? FleetV6.fg2 : FleetV6.fg4, size: 6)
-                Text(isActive ? "ON DECK" : "TAP TO SWITCH")
-                    .font(FleetV6.mono(9.5, .medium))
-                    .tracking(1.1)
-                    .foregroundStyle(isActive ? FleetV6.fg2 : FleetV6.fg4)
-            }
-            Spacer(minLength: 4)
-            Text(channel.footerMetrics)
-                .font(FleetV6.mono(9.5, .medium))
-                .tracking(1.1)
-                .monospacedDigit()
-                .foregroundStyle(FleetV6.fg4)
-                .lineLimit(1)
-        }
-        .padding(.horizontal, 15)
-        .padding(.vertical, 8)
-        .overlay(alignment: .top) {
-            Rectangle().fill(FleetV6.brk2).frame(height: 1)
+    private var statusColor: Color {
+        switch channel.state {
+        case .attn: return DeckTheme.accent
+        case .down: return DeckTheme.error
+        case .run, .idle: return DeckTheme.textTertiary
         }
     }
 }
 
-/// `.chan-st` — the state readout. The active channel's RUNNING dot is the only
-/// place the phosphor green appears in the strip.
-struct FleetChannelStatus: View {
-    let state: FleetChannelState
-    var isActive: Bool = false
-
-    private var color: Color {
-        switch state {
-        case .run:  return FleetV6.fg3
-        case .attn: return FleetV6.amber
-        case .idle: return FleetV6.fg4
-        case .down: return FleetV6.red
-        }
-    }
-
-    private var dotColor: Color {
-        switch state {
-        case .run:  return isActive ? FleetV6.green : FleetV6.fg3
-        case .attn: return FleetV6.amber
-        case .idle: return FleetV6.fg4
-        case .down: return FleetV6.red
-        }
-    }
-
-    var body: some View {
-        HStack(spacing: 6) {
-            FleetDot(color: dotColor, size: 5, glow: state == .attn)
-            Text(state.label)
-                .font(FleetV6.mono(9, .medium))
-                .tracking(1.26)
-                .foregroundStyle(color)
-                .fixedSize()
-        }
+struct FleetHostTabStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.72 : 1)
+            .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
     }
 }

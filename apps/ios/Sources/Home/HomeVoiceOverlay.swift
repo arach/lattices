@@ -51,7 +51,6 @@ struct HomeVoiceOverlay: View {
                 bottomBar
             }
         }
-        .preferredColorScheme(.dark)
     }
 
     // MARK: - Top bar

@@ -56,7 +56,7 @@ enum FleetDeckAdapter {
             fileName: snapshot?.layout?.frontmostWindow?.title
                 ?? snapshot?.desktop?.currentSpaceName
                 ?? "",
-            agentName: log.first?.tag.uppercased() ?? "AGENT",
+            agentName: (state == .run || state == .attn) ? (log.first?.tag.uppercased() ?? "AGENT") : "AGENT",
             hue: index,
             state: state,
             task: task,
@@ -73,52 +73,6 @@ enum FleetDeckAdapter {
             logSource: "~/lats/ch\(String(format: "%02d", index + 1))/agent.log",
             logLineCount: log.count
         )
-    }
-
-    /// The fleet feed is every Mac's activity log merged newest-first, which is
-    /// what the design's right-hand column shows.
-    static func feed(from stores: [DeckStore], channels: [FleetChannel]) -> [FleetFeedEvent] {
-        var events: [(FleetFeedEvent, Date)] = []
-
-        for (index, store) in stores.enumerated() {
-            guard channels.indices.contains(index) else { continue }
-            let isBlocked = channels[index].state == .attn
-
-            if let question = store.snapshot?.questions.first {
-                events.append((
-                    FleetFeedEvent(
-                        id: "q-\(store.sessionID)-\(question.id)",
-                        time: "now",
-                        channelIndex: index,
-                        agent: channels[index].agentName,
-                        text: "needs your call · \(question.prompt)",
-                        kind: .attn
-                    ),
-                    .now
-                ))
-            }
-
-            let entries = store.snapshot?.activityLog ?? []
-            for (entryIndex, entry) in entries.enumerated() {
-                events.append((
-                    FleetFeedEvent(
-                        id: "\(store.sessionID)-\(entry.id)",
-                        time: relativeTime(since: entry.createdAt),
-                        channelIndex: index,
-                        agent: entry.tag.uppercased(),
-                        text: entry.text,
-                        // The newest line on a blocked channel is the one the
-                        // design brightens.
-                        kind: isBlocked && entryIndex == 0 ? .hot : .normal
-                    ),
-                    entry.createdAt
-                ))
-            }
-        }
-
-        return events
-            .sorted { $0.1 > $1.1 }
-            .map(\.0)
     }
 
     /// A Mac's advertised cockpit pages become the command bay's sets. Falls

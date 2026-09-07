@@ -173,30 +173,6 @@ enum FleetDeckFixture {
         )
     ]
 
-    static let feed: [FleetFeedEvent] = [
-        event(0, "4s", 1, "TESTER", "UI suite 12/18 · no flakes", .normal),
-        event(1, "12s", 0, "CODEX", "tile bay rebuilt · diff staged", .hot),
-        event(2, "31s", 1, "TESTER", "unit suite green · 212/212", .normal),
-        event(3, "48s", 0, "CODEX", "key-row shadow pass started", .normal),
-        event(4, "1m", 2, "SCOUT", "needs your call · lane naming", .attn),
-        event(5, "2m", 3, "BUILD", "needs your go · ship build 412", .attn),
-        event(6, "2m", 0, "CODEX", "read design notes · started task", .normal),
-        event(7, "3m", 2, "SCOUT", "drafted naming schemes A/B", .normal),
-        event(8, "5m", 1, "TESTER", "booted 3 simulators", .normal),
-        event(9, "9m", 3, "BUILD", "build 412 signed · 0 warnings", .normal)
-    ]
-
-    private static func event(
-        _ index: Int,
-        _ time: String,
-        _ channel: Int,
-        _ agent: String,
-        _ text: String,
-        _ kind: FleetFeedKind
-    ) -> FleetFeedEvent {
-        FleetFeedEvent(id: "fx-\(index)", time: time, channelIndex: channel, agent: agent, text: text, kind: kind)
-    }
-
     // MARK: Logs
 
     private static let rawLogs: [[(String, String, String, FleetLogStyle)]] = [

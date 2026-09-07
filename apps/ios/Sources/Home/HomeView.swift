@@ -6,10 +6,8 @@ import SwiftUI
 /// Composed of independent sections:
 ///   - HomeTopBar       (chrome — fleet pills, agent count, settings)
 ///   - HomeTargetsRow   (adaptive cards: 1, 2, 3-4 Macs)
-///   - HomeScenesGrid   (instant layout presets)
-///   - HomeRoutinesList (agent recipes)
+///   - HomeScreensRow   (live per-host screen thumbnails)
 ///   - HomeActivityFeed (combined: attention + recent + agent narration)
-///   - HomeSyncSection  (broadcast / fleet ops)
 ///   - HomeVoicePanel   (inline voice — slides in above the cloud strip)
 ///   - HomeCloudStrip   (separate cloud aggregate)
 ///   - HomeBottomBar    (chrome — status, voice/cmd)
@@ -22,15 +20,13 @@ struct HomeView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     let machines: [HomeMachine]
-    let scenes: [HomeScene]
-    let routines: [HomeRoutine]
     let recent: [HomeRecentEntry]
-    let sync: [HomeSyncAction]
     let cloud: HomeCloudStatus
     let agentFeed: [HomeAgentFeedEntry]
-    let terminal: [HomeTerminalLine]
-    let calendar: [HomeCalendarEvent]
     let attention: [HomeAttentionItem]
+    /// Live per-host screen thumbnails, keyed by machine ID. A host joins the
+    /// Screens strip only once it has produced a frame.
+    var screenPreviews: [String: UIImage] = [:]
 
     /// Bottom-bar telemetry. When `.empty` (default), the cluster hides itself
     /// while the rest of the bar (status / version / agent) still renders.
@@ -44,9 +40,6 @@ struct HomeView: View {
     var onMachineVoice: ((HomeMachine) -> Void)? = nil
     /// Unpaired Macs discovery can see right now. Surfaced on the add cell.
     var nearbyCandidateCount: Int = 0
-    var onScene: ((HomeScene) -> Void)? = nil
-    var onRoutine: ((HomeRoutine) -> Void)? = nil
-    var onBroadcast: ((HomeSyncAction, [HomeMachine]) -> Void)? = nil
     var onPair: (() -> Void)? = nil
     var onSettings: (() -> Void)? = nil
 
@@ -54,12 +47,23 @@ struct HomeView: View {
     var voiceState: DeckVoiceState? = nil
     var voiceMacLabel: String = "Mac"
     var isVoicePerforming: Bool = false
+    var voiceTargetReachable: Bool = false
+    /// Opens the voice panel without arming a microphone.
+    var onVoiceOpen: ((HomeMachine?) -> Void)? = nil
     var onVoiceStart: (() -> Void)? = nil
     var onVoiceStop: (() -> Void)? = nil
     var onVoiceCancel: (() -> Void)? = nil
     var onVoiceRemediate: ((DeckRemediationAction) -> Void)? = nil
 
-    @State private var voicePanelOpen: Bool = false
+    /// Fleet roster for choosing which Mac receives voice commands.
+    var voiceMachines: [HomeMachine] = []
+    var voiceTargetMachineID: String? = nil
+    var onSelectVoiceTarget: ((HomeMachine) -> Void)? = nil
+
+    @Binding var voicePanelOpen: Bool
+    /// Screen previews are on-demand: a live strip of every Mac's display
+    /// fights the page for attention, so it stays off until asked for.
+    @AppStorage("deck.home.showScreens") private var showScreens = false
 
     private var foregroundMachine: HomeMachine? {
         machines.first(where: { $0.isForeground })
@@ -72,57 +76,33 @@ struct HomeView: View {
         }.count
     }
 
+    private var hasActiveVoiceSession: Bool {
+        guard let phase = voiceState?.phase else { return false }
+        return phase != .idle || voiceState?.error != nil
+    }
+
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            Group {
-                if machines.isEmpty {
-                    zeroStateLayout
-                } else {
-                    connectedLayout
-                }
-            }
-            if !voicePanelOpen && horizontalSizeClass != .compact {
-                voiceTrigger
-                    .padding(.trailing, 18)
-                    .padding(.bottom, 70) // sit above the HomeBottomBar
+        Group {
+            if machines.isEmpty {
+                zeroStateLayout
+            } else {
+                connectedLayout
             }
         }
-        // Auto-open the panel when the Mac reports active voice work (a
-        // dictation kicked off elsewhere, or an error needs attention). We
-        // don't auto-open just for stale transcripts/responses — closing the
-        // panel must stay closed once the turn is done.
+        // Auto-open only for the Mac the user already picked — not because some
+        // other host's snapshot happened to report voice activity.
         .onChange(of: voiceState?.phase) { _, newPhase in
+            guard voiceTargetMachineID != nil else { return }
             if let newPhase, newPhase != .idle {
                 voicePanelOpen = true
             }
         }
         .onChange(of: voiceState?.error?.code) { _, newCode in
+            guard voiceTargetMachineID != nil else { return }
             if newCode != nil {
                 voicePanelOpen = true
             }
         }
-    }
-
-    private var voiceTrigger: some View {
-        Button {
-            onVoiceStart?()
-            voicePanelOpen = true
-        } label: {
-            Image(systemName: "mic.fill")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(DeckTheme.text)
-                .frame(width: 52, height: 52)
-                .background(
-                    Circle().fill(DeckTheme.accentFill)
-                )
-                .overlay(
-                    Circle().stroke(DeckTheme.accent.opacity(0.55), lineWidth: 1)
-                )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Start voice on \(voiceMacLabel)")
-        .opacity(horizontalSizeClass == .compact ? 0 : 1)
-        .allowsHitTesting(horizontalSizeClass != .compact)
     }
 
     private var foregroundAgentState: HomeAgentState {
@@ -151,18 +131,18 @@ struct HomeView: View {
                     HomeTargetsRow(
                         machines: machines,
                         nearbyCandidateCount: nearbyCandidateCount,
+                        screensVisible: $showScreens,
                         onEnterDeck: onEnterDeck,
                         onEnterFleet: onEnterFleet,
                         onAddHost: onAddHost,
                         onVoice: onMachineVoice
                     )
-
-                    if !scenes.isEmpty {
-                        HomeScenesGrid(scenes: scenes, onScene: onScene)
-                    }
-
-                    if !routines.isEmpty {
-                        HomeRoutinesList(routines: routines, onRun: onRoutine)
+                    if showScreens {
+                        HomeScreensRow(
+                            machines: machines,
+                            previews: screenPreviews,
+                            onEnterDeck: onEnterDeck
+                        )
                     }
 
                     HomeActivityFeed(
@@ -171,13 +151,6 @@ struct HomeView: View {
                         attention: attention
                     )
 
-                    if !sync.isEmpty {
-                        HomeSyncSection(
-                            actions: sync,
-                            machines: machines,
-                            onBroadcast: onBroadcast
-                        )
-                    }
                 }
                 .padding(.horizontal, horizontalSizeClass == .compact ? 14 : 24)
                 .padding(.vertical, horizontalSizeClass == .compact ? 12 : 18)
@@ -189,6 +162,10 @@ struct HomeView: View {
                     voiceState: voiceState,
                     macLabel: voiceMacLabel,
                     isPerforming: isVoicePerforming,
+                    isTargetReachable: voiceTargetReachable,
+                    machines: voiceMachines,
+                    selectedMachineID: voiceTargetMachineID,
+                    onSelectMachine: onSelectVoiceTarget,
                     onStart: { onVoiceStart?() },
                     onStop:  { onVoiceStop?() },
                     onCancel: {
@@ -211,6 +188,8 @@ struct HomeView: View {
                     },
                     onRemediate: { onVoiceRemediate?($0) }
                 )
+                .padding(.horizontal, horizontalSizeClass == .compact ? 14 : 24)
+                .padding(.bottom, DeckTheme.Space.x8)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
@@ -223,7 +202,13 @@ struct HomeView: View {
                 onCommand: foregroundMachine.map { machine in
                     { onEnterDeck?(machine) }
                 },
-                onVoice: onVoiceStart
+                onVoice: {
+                    if hasActiveVoiceSession {
+                        voicePanelOpen = true
+                    } else {
+                        onVoiceOpen?(nil)
+                    }
+                }
             )
         }
         .animation(.easeInOut(duration: 0.22), value: voicePanelOpen)
@@ -236,15 +221,11 @@ struct HomeView: View {
     LatsBackground(grid: false) {
         HomeView(
             machines:  HomeMock.fleetFour,
-            scenes:    HomeMock.scenes,
-            routines:  HomeMock.routines,
             recent:    HomeMock.recent,
-            sync:      HomeMock.sync,
             cloud:     HomeMock.cloud,
             agentFeed: HomeMock.agentFeed,
-            terminal:  HomeMock.terminal,
-            calendar:  HomeMock.calendar,
-            attention: HomeMock.attention
+            attention: HomeMock.attention,
+            voicePanelOpen: .constant(false)
         )
     }
     .preferredColorScheme(.dark)
@@ -254,15 +235,11 @@ struct HomeView: View {
     LatsBackground {
         HomeView(
             machines:  HomeMock.fleetTwo,
-            scenes:    HomeMock.scenes,
-            routines:  HomeMock.routines,
             recent:    HomeMock.recent,
-            sync:      HomeMock.sync,
             cloud:     HomeMock.cloud,
             agentFeed: HomeMock.agentFeed,
-            terminal:  HomeMock.terminal,
-            calendar:  HomeMock.calendar,
-            attention: HomeMock.attention
+            attention: HomeMock.attention,
+            voicePanelOpen: .constant(false)
         )
     }
     .preferredColorScheme(.dark)
@@ -272,15 +249,11 @@ struct HomeView: View {
     LatsBackground {
         HomeView(
             machines:  HomeMock.fleetOne,
-            scenes:    HomeMock.scenes,
-            routines:  HomeMock.routines,
             recent:    HomeMock.recent,
-            sync:      HomeMock.sync,
             cloud:     HomeMock.cloud,
             agentFeed: HomeMock.agentFeed,
-            terminal:  HomeMock.terminal,
-            calendar:  HomeMock.calendar,
-            attention: HomeMock.attention
+            attention: HomeMock.attention,
+            voicePanelOpen: .constant(false)
         )
     }
     .preferredColorScheme(.dark)
@@ -290,16 +263,12 @@ struct HomeView: View {
     LatsBackground {
         HomeView(
             machines:  HomeMock.fleetEmpty,
-            scenes:    HomeMock.scenes,
-            routines:  HomeMock.routines,
             recent:    HomeMock.recent,
-            sync:      HomeMock.sync,
             cloud:     HomeMock.cloud,
             agentFeed: HomeMock.agentFeed,
-            terminal:  HomeMock.terminal,
-            calendar:  HomeMock.calendar,
             attention: HomeMock.attention,
-            onPair: {}
+            onPair: {},
+            voicePanelOpen: .constant(false)
 
         )
     }

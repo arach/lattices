@@ -67,6 +67,22 @@ enum FleetV6 {
     static let dome        = DeckTheme.control
     static let tilesWrapBG = DeckTheme.well
     static let statusBG    = DeckTheme.canvas
+    // MARK: Light/dark pairs
+    //
+    // White-alpha fills and heavy black shadows were authored for the dark
+    // enclosure; in light mode the fills vanish and the shadows turn to soot.
+    // These mirror the intent in both appearances.
+
+    /// Selected tab / chip fill.
+    static let selectedFill = DeckTheme.adaptive(light: 0x000000, dark: 0xFFFFFF, alphaLight: 0.07, alphaDark: 0.07)
+    /// Keycap edge: strong dark bevel in dark, hairline in light.
+    static let keyEdge = DeckTheme.adaptive(light: 0x000000, dark: 0x000000, alphaLight: 0.14, alphaDark: 0.7)
+    /// Keycap top gloss: subtle in dark, present in light.
+    static let keyGloss = DeckTheme.adaptive(light: 0xFFFFFF, dark: 0xFFFFFF, alphaLight: 0.5, alphaDark: 0.09)
+    /// Control drop shadow — deep in dark, a whisper in light.
+    static let controlShadow = DeckTheme.adaptive(light: 0x000000, dark: 0x000000, alphaLight: 0.12, alphaDark: 0.6)
+    /// Trackpad crosshair.
+    static let crosshair = DeckTheme.adaptive(light: 0x000000, dark: 0xFFFFFF, alphaLight: 0.18, alphaDark: 0.14)
 
     // MARK: Type
     //
@@ -251,13 +267,13 @@ struct FleetKeycapBackground: View {
             .fill(pressed ? FleetV6.keycapHover : FleetV6.keycap)
             .overlay {
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .strokeBorder(Color.black.opacity(0.7), lineWidth: 1)
+                    .strokeBorder(FleetV6.keyEdge, lineWidth: 1)
             }
             .overlay(alignment: .top) {
-                Rectangle().fill(Color.white.opacity(0.09)).frame(height: 1)
+                Rectangle().fill(FleetV6.keyGloss).frame(height: 1)
                     .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
             }
-            .shadow(color: .black.opacity(0.6), radius: 2, y: 2)
+            .shadow(color: FleetV6.controlShadow, radius: 2, y: 2)
     }
 }
 

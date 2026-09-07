@@ -251,13 +251,22 @@ private final class InPlaceHostingView<Content: View>: NSHostingView<Content> {
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         if let hit = super.hitTest(point) { return hit }
-        guard let panel, let screen, panel.inPlaceCapturesDesktopClick(at: point, in: self, on: screen) else { return nil }
+        guard let panel, let screen else { return nil }
+        // Swallow clicks on chrome padding that SwiftUI doesn't paint — never fall through
+        // to live-window selection when the user meant to hit the HUD.
+        if panel.inPlaceChromeBlocksClick(at: point, in: self, on: screen) { return self }
+        guard panel.inPlaceCapturesDesktopClick(at: point, in: self, on: screen) else { return nil }
         return self
     }
 
     override func mouseDown(with event: NSEvent) {
         let local = convert(event.locationInWindow, from: nil)
-        if let panel, let screen, panel.inPlaceCapturesDesktopClick(at: local, in: self, on: screen) {
+        guard let panel, let screen else {
+            super.mouseDown(with: event)
+            return
+        }
+        if panel.inPlaceChromeBlocksClick(at: local, in: self, on: screen) { return }
+        if panel.inPlaceCapturesDesktopClick(at: local, in: self, on: screen) {
             panel.performInPlaceDesktopSelect(at: local, in: self, on: screen)
             return
         }
@@ -2657,6 +2666,9 @@ private final class MotionPanel: NSPanel {
                 onRecallLayer: { [weak self] id in self?.pluckLayer(id, on: screen) },
                 onBeginClusterSearch: { [weak self] cid in self?.activateClusterSearch(cid, on: screen) },
                 onClearClusterSearch: { [weak self] cid in self?.clearClusterSearch(cid, on: screen) },
+                onPluckGroup: { [weak self] cid in self?.exposeToggleCluster(cid, on: screen) },
+                onFocusCluster: { [weak self] cid in self?.focusClusterApp(cid, on: screen) },
+                onQuitCluster: { [weak self] cid in self?.quitClusterApp(cid, on: screen) },
                 onEditClause: { [weak self] id, idx, clause in
                     guard let self, !self.selectionOnly else { NSSound.beep(); return }
                     self.presentLayerRuleEditor(id, idx, clause, on: screen)
@@ -2812,6 +2824,39 @@ private final class MotionPanel: NSPanel {
         updateLegend()
         refreshBorders()
         updateStack()
+    }
+
+    private func focusClusterApp(_ clusterID: Int, on screen: NSScreen) {
+        let screenID = MotionPanel.screenID(screen)
+        guard let box = exposeClustersByScreen[screenID]?.first(where: { $0.id == clusterID }),
+              let entry = box.members.first else {
+            NSSound.beep()
+            return
+        }
+        NSRunningApplication(processIdentifier: pid_t(entry.pid))?.activate()
+        focusWindow(entry.wid, on: screen)
+        DiagnosticLog.shared.info("Hyperspace focus — cluster \(box.name) app=\(entry.app)")
+    }
+
+    private func quitClusterApp(_ clusterID: Int, on screen: NSScreen) {
+        let screenID = MotionPanel.screenID(screen)
+        guard let box = exposeClustersByScreen[screenID]?.first(where: { $0.id == clusterID }),
+              let entry = box.members.first,
+              let app = NSRunningApplication(processIdentifier: pid_t(entry.pid)) else {
+            NSSound.beep()
+            return
+        }
+        DiagnosticLog.shared.info("Hyperspace quit — cluster \(box.name) app=\(entry.app)")
+        app.terminate()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            guard let self, self.exposed, !self.dismissed else { return }
+            DesktopModel.shared.poll()
+            self.rebuildSurveyState(for: screen, resetAim: false)
+            self.rebuildExposeView(screens: [screen])
+            self.updateLegend()
+            self.refreshBorders()
+            self.updateStack()
+        }
     }
 
     // MARK: - Cluster-local search
@@ -3119,10 +3164,30 @@ private final class MotionPanel: NSPanel {
         return NSEvent.mouseLocation
     }
 
+    /// Chrome bands where a click must not pluck a live window underneath.
+    fileprivate func inPlaceChromeBlocksClick(at viewPoint: NSPoint, in view: NSView, on screen: NSScreen) -> Bool {
+        guard exposed, inPlaceMode, !dismissed else { return false }
+        let bounds = view.bounds
+        guard bounds.width > 1, bounds.height > 1 else { return false }
+        let inset = MotionPanel.usableInset(of: screen)
+        let topBand = inset.top + 72
+        let bottomBand = inset.bottom + 88
+        let y = viewPoint.y
+        // Header strip and bottom shelf / instruction row — full width.
+        if y >= bounds.height - topBand || y <= bottomBand { return true }
+        // Floating window drawer on the right.
+        let rightBand = inset.trailing + 320
+        if viewPoint.x >= bounds.width - rightBand, y >= bounds.height - topBand - 420 {
+            return true
+        }
+        return false
+    }
+
     /// True when this click should be captured by the overlay (over a live window).
     fileprivate func inPlaceCapturesDesktopClick(at viewPoint: NSPoint, in view: NSView, on screen: NSScreen) -> Bool {
         guard exposed, inPlaceMode, !dismissed, !dragModel.isActive, !dragModel.isPlacing else { return false }
         guard commandPanel == nil, newLayerPanel == nil, rulePanel == nil else { return false }
+        if inPlaceChromeBlocksClick(at: viewPoint, in: view, on: screen) { return false }
         let cg = cgPoint(fromAppKitScreen: appKitScreenPoint(from: viewPoint, in: view))
         return topWindowAtDesktopClick(cg: cg, on: screen) != nil
     }
@@ -3600,6 +3665,13 @@ private final class MotionPanel: NSPanel {
     }
 
     private func updateLegend() {
+        // Hyper+G owns its own header/shelf chrome on the survey panels above us.
+        // Keeping the MotionPanel legend visible lets clicks leak through to desktop selection.
+        if inPlaceMode {
+            legendHost?.isHidden = true
+            return
+        }
+        legendHost?.isHidden = false
         legendHost?.rootView = legendModel()
         if let hosting = legendHost {
             let size = hosting.fittingSize
@@ -3833,6 +3905,7 @@ private struct MotionLegend: View {
                     keyHint("Hyper+␣", "survey")
                 } else {
                     keyHint("a–z", "select")
+                    keyHint("click", "group")
                     keyHint("⇧a–z", "group")
                     keyHint("Tab", "aim")
                     keyHint("⌘scroll", "zoom")
@@ -4308,6 +4381,9 @@ struct ExposeView: View {
     var onRecallLayer: (String) -> Void = { _ in } // add every live match to the survey selection
     var onBeginClusterSearch: (Int) -> Void = { _ in }
     var onClearClusterSearch: (Int) -> Void = { _ in }
+    var onPluckGroup: (Int) -> Void = { _ in }
+    var onFocusCluster: (Int) -> Void = { _ in }
+    var onQuitCluster: (Int) -> Void = { _ in }
     var onEditClause: (String, Int?, StudioLayerClause) -> Void = { _, _, _ in }
     var onRemoveClause: (String, Int) -> Void = { _, _ in }  // edit mode: drop a rule clause (layerId, clauseIndex)
     var onDeleteLayer: (String) -> Void = { _ in }           // edit mode: delete a whole layer (layerId)
@@ -4369,11 +4445,16 @@ struct ExposeView: View {
                         .padding(.top, usableInset.top + 10)
                         .padding(.leading, max(12, usableInset.leading + 12))
                         .padding(.trailing, max(12, usableInset.trailing + 12))
+                        .contentShape(Rectangle())
                     Spacer(minLength: 0).allowsHitTesting(false)
-                    inPlaceActionShelf
-                        .padding(.leading, max(16, usableInset.leading + 16))
-                        .padding(.trailing, max(16, usableInset.trailing + 16))
-                        .padding(.bottom, usableInset.bottom + 14)
+                    HStack(spacing: 0) {
+                        inPlaceActionShelf
+                            .contentShape(Rectangle())
+                        Spacer(minLength: 0).allowsHitTesting(false)
+                    }
+                    .padding(.leading, max(16, usableInset.leading + 16))
+                    .padding(.trailing, max(16, usableInset.trailing + 16))
+                    .padding(.bottom, usableInset.bottom + 14)
                 }
                 if showWindowInventory {
                     VStack {
@@ -5306,6 +5387,7 @@ struct ExposeView: View {
                 .strokeBorder(Palette.borderLit, lineWidth: 0.75)
         )
         .shadow(color: .black.opacity(0.38), radius: 18, y: 8)
+        .contentShape(Rectangle())
     }
 
     private func inPlaceHeaderButton(_ title: String,
@@ -5718,6 +5800,7 @@ struct ExposeView: View {
                     .strokeBorder(Palette.borderLit, lineWidth: 1))
         )
         .shadow(color: .black.opacity(0.5), radius: 22, y: 10)
+        .contentShape(Rectangle())
     }
 
     private func inventoryRow(_ t: Tile) -> some View {
@@ -7156,6 +7239,65 @@ struct ExposeView: View {
         if drag.hoverCell != cell { drag.hoverCell = cell }
     }
 
+    private func clusterFullyPicked(_ c: Cluster) -> Bool {
+        !c.tiles.isEmpty && c.tiles.allSatisfy { pickedWids.contains($0.id) }
+    }
+
+    private func clusterPartiallyPicked(_ c: Cluster) -> Bool {
+        c.tiles.contains { pickedWids.contains($0.id) }
+    }
+
+    private func clusterQuickActions(_ c: Cluster) -> some View {
+        let picked = clusterPartiallyPicked(c)
+        return HStack(spacing: 6) {
+            Button { onFocusCluster(c.id) } label: {
+                clusterActionChip("Open", icon: "arrow.up.forward.square")
+            }
+            .buttonStyle(.plain)
+            .help("Bring \(c.name) to the front")
+            Button { onPluckGroup(c.id) } label: {
+                clusterActionChip(clusterFullyPicked(c) ? "Deselect" : "Select",
+                                  icon: clusterFullyPicked(c) ? "minus.circle" : "plus.circle",
+                                  accent: true)
+            }
+            .buttonStyle(.plain)
+            if picked {
+                Button { onGridSelection() } label: {
+                    clusterActionChip("Gather", icon: "square.grid.2x2")
+                }
+                .buttonStyle(.plain)
+                .help("Arrange the selected windows in a grid")
+            }
+            Button(role: .destructive) { onQuitCluster(c.id) } label: {
+                clusterActionChip("Quit", icon: "xmark.circle", destructive: true)
+            }
+            .buttonStyle(.plain)
+            .help("Quit \(c.name)")
+        }
+    }
+
+    private func clusterActionChip(_ title: String,
+                                   icon: String,
+                                   accent: Bool = false,
+                                   destructive: Bool = false) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 8, weight: .semibold))
+            Text(title)
+                .font(Typo.monoBold(8))
+        }
+        .foregroundColor(destructive ? Palette.kill : (accent ? Palette.running : Palette.text))
+        .padding(.horizontal, 7).padding(.vertical, 4)
+        .background(
+            Capsule()
+                .fill(Color.white.opacity(destructive ? 0.06 : (accent ? 0.10 : 0.05)))
+                .overlay(Capsule().strokeBorder(
+                    destructive ? Palette.kill.opacity(0.35)
+                        : (accent ? Palette.running.opacity(0.35) : Palette.border),
+                    lineWidth: 0.5))
+        )
+    }
+
     private func clusterBox(_ c: Cluster) -> some View {
         let expanded = isExpandedTerminalCluster(c)
         let shown = filteredTiles(in: c)
@@ -7163,48 +7305,59 @@ struct ExposeView: View {
         let cap = clusterColumnCap(c)
         let cols = min(max(shown.count, 1), cap)
         let innerW = localTile * CGFloat(cols) + 8 * CGFloat(max(0, cols - 1))
+        let groupPicked = clusterFullyPicked(c)
+        let groupPartial = clusterPartiallyPicked(c)
         return VStack(alignment: .leading, spacing: 9) {
-            HStack(spacing: 6) {
-                if !c.hint.isEmpty {
-                    Text("⇧\(c.hint)")
-                        .font(Typo.monoBold(9)).foregroundColor(.white).tracking(0.3)
-                        .padding(.horizontal, 5).padding(.vertical, 2)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(c.userDefined ? Palette.running.opacity(0.8) : Color.white.opacity(0.16))
-                                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color.white.opacity(0.28), lineWidth: 0.5))
-                        )
-                        .help("Select the whole \(c.name) group")
-                }
-                Text(c.name)
-                    .font(Typo.monoBold(11)).foregroundColor(.white).tracking(0.3)
-                Text(c.rule)
-                    .font(Typo.mono(9)).foregroundColor(Palette.textMuted)
-                    .padding(.horizontal, 5).padding(.vertical, 1)
-                    .background(
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(Color.white.opacity(0.05))
-                            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.border, lineWidth: 0.5))
-                    )
-                if expanded {
-                    Text("\(c.tiles.count)")
-                        .font(Typo.monoBold(8))
-                        .tracking(0.6)
-                        .foregroundColor(HUDChrome.cyan.opacity(0.9))
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 6) {
+                    if !c.hint.isEmpty {
+                        Text("⇧\(c.hint)")
+                            .font(Typo.monoBold(9)).foregroundColor(.white).tracking(0.3)
+                            .padding(.horizontal, 5).padding(.vertical, 2)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(c.userDefined ? Palette.running.opacity(0.8) : Color.white.opacity(0.16))
+                                    .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color.white.opacity(0.28), lineWidth: 0.5))
+                            )
+                            .help("Select the whole \(c.name) group")
+                    }
+                    Text(c.name)
+                        .font(Typo.monoBold(11)).foregroundColor(.white).tracking(0.3)
+                    Text(c.rule)
+                        .font(Typo.mono(9)).foregroundColor(Palette.textMuted)
                         .padding(.horizontal, 5).padding(.vertical, 1)
                         .background(
                             RoundedRectangle(cornerRadius: 4)
-                                .fill(HUDChrome.cyan.opacity(0.10))
-                                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(HUDChrome.cyan.opacity(0.35), lineWidth: 0.5))
+                                .fill(Color.white.opacity(0.05))
+                                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.border, lineWidth: 0.5))
                         )
-                        .help("\(c.tiles.count) windows in this terminal group")
+                    if expanded {
+                        Text("\(c.tiles.count)")
+                            .font(Typo.monoBold(8))
+                            .tracking(0.6)
+                            .foregroundColor(HUDChrome.cyan.opacity(0.9))
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(HUDChrome.cyan.opacity(0.10))
+                                    .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(HUDChrome.cyan.opacity(0.35), lineWidth: 0.5))
+                            )
+                            .help("\(c.tiles.count) windows in this terminal group")
+                    }
+                    Spacer(minLength: 16)
+                    Text(c.userDefined ? "you" : "smart")
+                        .font(Typo.mono(8))
+                        .tracking(0.6)
+                        .foregroundColor(c.userDefined ? Palette.running : Palette.textMuted)
                 }
-                Spacer(minLength: 16)
-                Text(c.userDefined ? "you" : "smart")
-                    .font(Typo.mono(8))
-                    .tracking(0.6)
-                    .foregroundColor(c.userDefined ? Palette.running : Palette.textMuted)
+                if !inPlace {
+                    clusterQuickActions(c)
+                }
             }
+            .contentShape(Rectangle())
+            .onTapGesture { onPluckGroup(c.id) }
+            .contextMenu { clusterContextMenu(c) }
+            .help("Click to select all \(c.name) windows")
             if expanded {
                 clusterSearchBar(c, visibleCount: shown.count)
                     .frame(width: innerW, alignment: .leading)
@@ -7221,13 +7374,36 @@ struct ExposeView: View {
         .padding(.horizontal, 11).padding(.top, 9).padding(.bottom, 11)
         .background(
             RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .fill(Color.white.opacity(expanded ? 0.032 : (c.userDefined ? 0.03 : 0.018)))
+                .fill(Color.white.opacity(groupPicked ? 0.06 : (expanded ? 0.032 : (c.userDefined ? 0.03 : 0.018))))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .strokeBorder(expanded ? HUDChrome.cyan.opacity(0.30) : (c.userDefined ? Palette.borderLit : Palette.border),
-                              lineWidth: expanded ? 1.15 : 1)
+                .strokeBorder(groupPicked ? Palette.running.opacity(0.55)
+                              : (groupPartial ? Palette.running.opacity(0.28)
+                                 : (expanded ? HUDChrome.cyan.opacity(0.30)
+                                    : (c.userDefined ? Palette.borderLit : Palette.border))),
+                              lineWidth: groupPicked ? 1.35 : (expanded ? 1.15 : 1))
         )
+    }
+
+    @ViewBuilder
+    private func clusterContextMenu(_ c: Cluster) -> some View {
+        Button { onPluckGroup(c.id) } label: {
+            Label(clusterFullyPicked(c) ? "Deselect Group" : "Select Group",
+                  systemImage: clusterFullyPicked(c) ? "minus.circle" : "plus.circle")
+        }
+        Button { onFocusCluster(c.id) } label: {
+            Label("Open \(c.name)", systemImage: "arrow.up.forward.square")
+        }
+        if clusterPartiallyPicked(c) {
+            Button { onGridSelection() } label: {
+                Label("Gather Selection", systemImage: "square.grid.2x2")
+            }
+        }
+        Divider()
+        Button(role: .destructive) { onQuitCluster(c.id) } label: {
+            Label("Quit \(c.name)", systemImage: "xmark.circle")
+        }
     }
 
     private func isExpandedTerminalCluster(_ c: Cluster) -> Bool {

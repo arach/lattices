@@ -74,8 +74,7 @@ final class FleetDeckController: ObservableObject {
 
     func refresh() {
         let channels = FleetDeckAdapter.channels(from: stores)
-        let feed = FleetDeckAdapter.feed(from: stores, channels: channels)
-        model.ingest(channels: channels, feed: feed)
+        model.ingest(channels: channels)
         // After ingest, never before: ingest can move the selection.
         syncSets()
     }
@@ -100,46 +99,6 @@ final class FleetDeckController: ObservableObject {
         return stores.first { $0.sessionID.uuidString == hostID } ?? stores.first
     }
 
-    /// Which of the three console buttons the Mac on deck can actually service.
-    /// The bridge has no dedicated agent-control actions yet, so this looks for
-    /// a matching tile in the Mac's advertised cockpit pages.
-    func availableConsoleActions() -> Set<FleetConsoleAction> {
-        guard let store = currentStore else { return [] }
-        let tiles = (store.snapshot?.cockpit?.pages ?? []).flatMap(\.tiles)
-        var available: Set<FleetConsoleAction> = []
-        for action in [FleetConsoleAction.approve, .steer, .recap] where resolve(action, in: tiles) != nil {
-            available.insert(action)
-        }
-        return available
-    }
-
-    func perform(_ action: FleetConsoleAction) {
-        guard let store = currentStore else { return }
-        let tiles = (store.snapshot?.cockpit?.pages ?? []).flatMap(\.tiles)
-        guard let tile = resolve(action, in: tiles), let actionID = tile.actionID else { return }
-        store.perform(actionID: actionID, pageID: "cockpit", payload: tile.payload, label: tile.title)
-    }
-
-    private func resolve(_ action: FleetConsoleAction, in tiles: [DeckCockpitTile]) -> DeckCockpitTile? {
-        tiles.first { tile in
-            guard tile.isEnabled, tile.actionID != nil else { return false }
-            let haystack = [tile.shortcutID, tile.actionID ?? ""].map { $0.lowercased() }
-            return action.shortcutKeys.contains { key in
-                haystack.contains { $0 == key || $0.hasSuffix(".\(key)") }
-            }
-        }
-    }
-}
-
-extension FleetConsoleAction {
-    /// Shortcut / action identifiers a Mac may advertise for this control.
-    var shortcutKeys: [String] {
-        switch self {
-        case .approve: return ["approve", "unblock"]
-        case .steer:   return ["steer", "redirect"]
-        case .recap:   return ["summarize", "recap", "digest"]
-        }
-    }
 }
 
 // MARK: - Host
@@ -162,7 +121,6 @@ struct FleetDeckHost: View {
             voiceTranscript: controller.currentStore?.snapshot?.voice?.transcript ?? "",
             isBusy: controller.currentStore?.isPerformingAction ?? false,
             isOnline: !stores.isEmpty && stores.contains { $0.snapshot != nil },
-            enabledConsoleActions: controller.availableConsoleActions(),
             onClose: onClose,
             onPushToTalk: { controller.currentStore?.toggleVoice() },
             onTile: { tile in
@@ -193,9 +151,24 @@ struct FleetDeckHost: View {
                     label: option.title
                 )
             },
-            onConsoleAction: { controller.perform($0) },
+            onSendText: { text in
+                controller.currentStore?.perform(
+                    actionID: "keys.type",
+                    pageID: "cockpit",
+                    payload: ["text": .string(text)],
+                    label: "Type text"
+                )
+            },
             onTrackpad: { event, dx, dy in
                 controller.currentStore?.sendTrackpad(event: event, dx: dx, dy: dy)
+            },
+            onWindowDrag: { dx, dy in
+                controller.currentStore?.perform(
+                    actionID: "window.dragBy",
+                    pageID: "cockpit",
+                    payload: ["dx": .double(dx), "dy": .double(dy)],
+                    label: "Drag window"
+                )
             }
         )
         .onAppear { controller.bind(stores: stores, initialMachineID: initialMachineID) }
@@ -210,7 +183,6 @@ struct FleetDeckHost: View {
 /// Renders the deck against the design's own fixture data — no Macs required.
 struct FleetDeckFixtureHost: View {
     @StateObject private var model = FleetDeckModel()
-    var initialLayout: FleetDeckLayout = .ops
     var onClose: (() -> Void)?
 
     var body: some View {
@@ -219,13 +191,11 @@ struct FleetDeckFixtureHost: View {
             voicePhase: .listening,
             voiceTranscript: "run the simulator suite again, then post the diff for review",
             isOnline: true,
-            enabledConsoleActions: [.approve, .steer, .recap],
             onClose: onClose
         )
         .onAppear {
             if model.channels.isEmpty {
                 model.loadFixture()
-                model.layout = initialLayout
             }
         }
     }
