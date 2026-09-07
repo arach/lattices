@@ -201,7 +201,8 @@ private extension HomeDataAdapter {
             attentionCount: snapshot?.questions.count ?? 0,
             latencyMs: nil,
             metrics: metrics(from: snapshot?.telemetry),
-            voice: voiceActivity(for: voice)
+            voice: voiceActivity(for: voice),
+            hasLiveSession: snapshot != nil
         )
     }
 
@@ -248,6 +249,7 @@ private extension HomeDataAdapter {
             agentState: .idle,
             attentionCount: 0,
             latencyMs: nil,
+            voice: .off,
             hasLiveSession: false
         )
     }

@@ -11,10 +11,10 @@ enum FleetChannelState: String {
 
     var label: String {
         switch self {
-        case .run:  return "RUNNING"
-        case .attn: return "NEEDS YOU"
-        case .idle: return "IDLE"
-        case .down: return "UNREACHABLE"
+        case .run:  return "Running"
+        case .attn: return "Needs you"
+        case .idle: return "Idle"
+        case .down: return "Unreachable"
         }
     }
 }
@@ -110,26 +110,6 @@ struct FleetChannel: Identifiable {
     }
 }
 
-// MARK: - Feed
-
-enum FleetFeedKind {
-    case normal, hot, attn
-}
-
-struct FleetFeedEvent: Identifiable {
-    let id: String
-    var time: String
-    /// Index into `FleetDeckModel.channels`.
-    var channelIndex: Int
-    var agent: String
-    var text: String
-    var kind: FleetFeedKind
-}
-
-enum FleetFeedFilter {
-    case all, attention
-}
-
 // MARK: - Log
 
 enum FleetLogStyle {
@@ -169,22 +149,6 @@ struct FleetCommandSet: Identifiable {
     var tiles: [FleetCommandTile]
 }
 
-// MARK: - Layout
-
-/// The design's two body layouts. `ops` is the default four-up triage view;
-/// `focus` collapses the channel strip to a switcher rail and gives one Mac's
-/// log the full panel.
-enum FleetDeckLayout: String {
-    case ops, focus
-
-    var label: String {
-        switch self {
-        case .ops:   return "AGENT OPS"
-        case .focus: return "FOCUS"
-        }
-    }
-}
-
 // MARK: - Model
 
 /// Holds everything the deck renders plus the selection/triage logic the design
@@ -193,15 +157,15 @@ enum FleetDeckLayout: String {
 @MainActor
 final class FleetDeckModel: ObservableObject {
     @Published private(set) var channels: [FleetChannel] = []
-    @Published private(set) var feed: [FleetFeedEvent] = []
+    /// Typed turns the user sent from the chat rail, keyed by channel id, so
+    /// the conversation keeps your half of it.
+    @Published private(set) var userMessages: [String: [FleetUserMessage]] = [:]
     @Published var sets: [FleetCommandSet] = FleetCommandSet.canonical
 
     @Published var currentIndex = 0
     /// Voice routing target. `channels.count` means ALL.
     @Published var routeIndex = 0
     @Published var setIndex = 0
-    @Published var feedFilter: FleetFeedFilter = .all
-    @Published var layout: FleetDeckLayout = .ops
     @Published private(set) var lastResolvedIndex: Int?
 
     /// Set for the design fixture so decisions resolve locally instead of being
@@ -238,13 +202,6 @@ final class FleetDeckModel: ObservableObject {
         let blocked = channels.indices.filter { channels[$0].state == .attn }
         let rest = channels.indices.filter { channels[$0].state != .attn }
         return blocked + rest
-    }
-
-    var visibleFeed: [FleetFeedEvent] {
-        switch feedFilter {
-        case .all: return feed
-        case .attention: return feed.filter { $0.kind == .attn }
-        }
     }
 
     var routeLabel: String {
@@ -334,27 +291,26 @@ final class FleetDeckModel: ObservableObject {
         channel.lastEventTime = "now"
         channels[channelIndex] = channel
 
-        feed.removeAll { $0.channelIndex == channelIndex && $0.kind == .attn }
-        feed.insert(
-            FleetFeedEvent(
-                id: "resolved-\(channelIndex)-\(option.id)",
-                time: "now",
-                channelIndex: channelIndex,
-                agent: channel.agentName,
-                text: option.feedText,
-                kind: .hot
-            ),
-            at: 0
-        )
-
         lastResolvedIndex = channelIndex
 
         if let next = nextBlocker(from: channelIndex) {
             currentIndex = next
             routeIndex = next
-        } else if feedFilter == .attention {
-            feedFilter = .all
         }
+    }
+
+    /// A typed turn sent from the rail. Recorded optimistically — the rail
+    /// shows your message immediately; the Mac's response arrives through the
+    /// activity log like any other outcome.
+    func recordUserMessage(_ text: String, via: String) {
+        guard let channel = current else { return }
+        let message = FleetUserMessage(
+            id: "user-\(UUID().uuidString)",
+            text: text,
+            via: via,
+            time: "now"
+        )
+        userMessages[channel.id, default: []].append(message)
     }
 
     func deferDecision() {
@@ -369,10 +325,12 @@ final class FleetDeckModel: ObservableObject {
     /// Mac is on deck, and selection can change inside this call — deriving them
     /// from the pre-ingest host is how a tile advertised by one Mac ends up
     /// dispatched to another. The controller sets them once selection settles.
-    func ingest(channels newChannels: [FleetChannel], feed newFeed: [FleetFeedEvent]) {
+    func ingest(channels newChannels: [FleetChannel]) {
         let previousID = channels.indices.contains(currentIndex) ? channels[currentIndex].id : nil
         channels = newChannels
-        feed = newFeed
+        // Channels whose hosts went away take their typed turns with them.
+        let liveIDs = Set(newChannels.map(\.id))
+        userMessages = userMessages.filter { liveIDs.contains($0.key) }
 
         if let pendingHostID, let index = newChannels.firstIndex(where: { $0.id == pendingHostID }) {
             // The host the presenter asked for has finally shown up.
@@ -400,7 +358,6 @@ final class FleetDeckModel: ObservableObject {
     func loadFixture() {
         isFixture = true
         channels = FleetDeckFixture.channels
-        feed = FleetDeckFixture.feed
         sets = FleetCommandSet.canonical
         // "The deck opens on what needs you" — the design boots on CH 03.
         currentIndex = 2

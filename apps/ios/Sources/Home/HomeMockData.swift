@@ -105,28 +105,6 @@ struct HomeMachineMetrics: Equatable {
     let thermalPercent: Double?
 }
 
-// MARK: - Scenes (layout presets — instant, deterministic)
-
-struct HomeScene: Identifiable, Equatable {
-    let id: String
-    let name: String          // "Deep Work"
-    let tint: LatsTint
-    let summary: String       // "5 win · 2 disp"
-    let targetHints: [String] // e.g. ["Cur", "iTm", "Chr"]
-    let hotkey: String?       // "⌘1"
-}
-
-// MARK: - Routines (agent recipes — multi-step, may pause)
-
-struct HomeRoutine: Identifiable, Equatable {
-    let id: String
-    let name: String
-    let stepPreview: String   // "Open Zoom > Tile Linear right > Mute Slack > Start 15m timer"
-    let lastRun: String?      // "yesterday · 9:30"
-    let isAgentic: Bool
-    let hotkey: String?       // "^vs"
-}
-
 // MARK: - Recent activity
 
 enum HomeRecentKind: String {
@@ -164,16 +142,6 @@ struct HomeRecentEntry: Identifiable, Equatable {
     let agoLabel: String      // "2m"
 }
 
-// MARK: - Sync / broadcast actions
-
-struct HomeSyncAction: Identifiable, Equatable {
-    let id: String
-    let title: String         // "Sync clipboards"
-    let subtitle: String      // brief description
-    let icon: String          // SF Symbol
-    let hotkey: String?       // "^v"
-}
-
 // MARK: - Cloud aggregate state
 
 struct HomeCloudStatus: Equatable {
@@ -191,23 +159,13 @@ struct HomeAttentionItem: Identifiable, Equatable {
     let tint: LatsTint
 }
 
-struct HomeCalendarEvent: Identifiable, Equatable {
-    let id: String
-    let timeLabel: String     // "3:00pm"
-    let title: String
-}
-
 struct HomeAgentFeedEntry: Identifiable, Equatable {
     let id: String
     let glyph: String         // "✓", "⏳", "•"
     let text: String
     let tint: LatsTint
-}
-
-struct HomeTerminalLine: Identifiable, Equatable {
-    let id: String
-    let text: String
-    let isPrompt: Bool        // dim styling
+    /// Consecutive identical-signature lines collapsed into this row.
+    var repeatCount: Int = 1
 }
 
 // MARK: - Sample data
@@ -297,64 +255,12 @@ enum HomeMock {
     static let fleetFour: [HomeMachine]  = fleet
     static let fleetEmpty: [HomeMachine] = []
 
-    static let scenes: [HomeScene] = [
-        HomeScene(id: "deep",   name: "Deep Work",   tint: .green,  summary: "3 win · 1 disp", targetHints: ["Cur", "Not", "Thi"], hotkey: "⌘1"),
-        HomeScene(id: "review", name: "Code Review", tint: .blue,   summary: "5 win · 2 disp", targetHints: ["Cur", "iTm", "Chr"], hotkey: "⌘2"),
-        HomeScene(id: "rsrch",  name: "Research",    tint: .teal,   summary: "6 win · 2 disp", targetHints: ["Chr", "Saf", "Not"], hotkey: "⌘3"),
-        HomeScene(id: "mtg",    name: "Meeting",     tint: .amber,  summary: "2 win · 1 disp", targetHints: ["Zoo", "Not"],         hotkey: "⌘4"),
-        HomeScene(id: "stream", name: "Stream",      tint: .pink,   summary: "4 win · 2 disp", targetHints: ["OBS", "Chr", "Dis"], hotkey: "⌘5"),
-        HomeScene(id: "wind",   name: "Wind Down",   tint: .violet, summary: "2 win · 1 disp", targetHints: ["Saf", "Spo"],         hotkey: "⌘6"),
-    ]
-
-    static let routines: [HomeRoutine] = [
-        HomeRoutine(
-            id: "standup",
-            name: "Standup setup",
-            stepPreview: "Open Zoom > Tile Linear right > Mute Slack > Start 15m timer",
-            lastRun: "yesterday · 9:30",
-            isAgentic: false,
-            hotkey: "^vs"
-        ),
-        HomeRoutine(
-            id: "pull-all",
-            name: "Pull all repos",
-            stepPreview: "Scan ~/dev > git pull > Report stale branches",
-            lastRun: "2h ago",
-            isAgentic: true,
-            hotkey: nil
-        ),
-        HomeRoutine(
-            id: "screenshots",
-            name: "Screenshot cleanup",
-            stepPreview: "Move to ~/Pictures/Inbox > OCR > Tag by app",
-            lastRun: "3d ago",
-            isAgentic: true,
-            hotkey: nil
-        ),
-        HomeRoutine(
-            id: "eod",
-            name: "End of day",
-            stepPreview: "Save layout > Close non-essentials > Push WIP > Status to Linear",
-            lastRun: "Friday · 18:42",
-            isAgentic: true,
-            hotkey: "^vq"
-        ),
-    ]
-
     static let recent: [HomeRecentEntry] = [
         HomeRecentEntry(id: "r1", kind: .command, title: "tile chrome two-up right", subtitle: "voice · 3 windows moved", target: "laptop", agoLabel: "2m"),
         HomeRecentEntry(id: "r2", kind: .voice,   title: "“open shell in the lats…”", subtitle: "agent · iTerm 2",         target: "laptop", agoLabel: "14m"),
         HomeRecentEntry(id: "r3", kind: .layout,  title: "snap left",                  subtitle: "iTerm 2 · display 1",      target: "laptop", agoLabel: "1h"),
         HomeRecentEntry(id: "r4", kind: .layout,  title: "restored layout · …",        subtitle: "5 windows · 2 displays",   target: "mini",   agoLabel: "3h"),
         HomeRecentEntry(id: "r5", kind: .switchAction, title: "next window · Codex",   subtitle: "act.08 · keyboard",        target: "laptop", agoLabel: "yesterday"),
-    ]
-
-    static let sync: [HomeSyncAction] = [
-        HomeSyncAction(id: "s1", title: "Sync clipboards",  subtitle: "Share the latest copy across every target",    icon: "doc.on.clipboard",  hotkey: "^v"),
-        HomeSyncAction(id: "s2", title: "Mirror project",   subtitle: "Open the same repo and branch on each target", icon: "square.on.square",  hotkey: nil),
-        HomeSyncAction(id: "s3", title: "Pull all repos",   subtitle: "git pull across every dev workspace, in parallel", icon: "arrow.triangle.2.circlepath", hotkey: nil),
-        HomeSyncAction(id: "s4", title: "DND everywhere",   subtitle: "Silence notifications, hide the dock, focus layouts", icon: "bell.slash", hotkey: nil),
-        HomeSyncAction(id: "s5", title: "Snapshot layouts", subtitle: "Save current window layout on each target",       icon: "square.grid.2x2", hotkey: nil),
     ]
 
     static let cloud = HomeCloudStatus(
@@ -369,22 +275,10 @@ enum HomeMock {
         HomeAttentionItem(id: "a3", icon: "bubble.left",              label: "Slack: 3 dms",                tint: .pink),
     ]
 
-    static let calendar: [HomeCalendarEvent] = [
-        HomeCalendarEvent(id: "c1", timeLabel: "3:00pm", title: "standup"),
-        HomeCalendarEvent(id: "c2", timeLabel: "4:30pm", title: "design review"),
-        HomeCalendarEvent(id: "c3", timeLabel: "6:00pm", title: "gym"),
-    ]
-
     static let agentFeed: [HomeAgentFeedEntry] = [
         HomeAgentFeedEntry(id: "f1", glyph: "✓", text: "designed home arch", tint: .green),
         HomeAgentFeedEntry(id: "f2", glyph: "⏳", text: "writing tile spec",   tint: .violet),
         HomeAgentFeedEntry(id: "f3", glyph: "•", text: "12 tools used · 4m",  tint: .blue),
     ]
 
-    static let terminal: [HomeTerminalLine] = [
-        HomeTerminalLine(id: "t1", text: "~/dev/lattices",            isPrompt: true),
-        HomeTerminalLine(id: "t2", text: "$ swift build -c release", isPrompt: false),
-        HomeTerminalLine(id: "t3", text: "Compiling DeckKit…",        isPrompt: false),
-        HomeTerminalLine(id: "t4", text: "Compiling Sources…",        isPrompt: false),
-    ]
 }

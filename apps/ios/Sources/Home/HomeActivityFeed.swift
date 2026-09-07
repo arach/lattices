@@ -202,6 +202,13 @@ private struct ActivityAgentRow: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
+
+            if entry.repeatCount > 1 {
+                Text("×\(entry.repeatCount)")
+                    .font(LatsFont.mono(10, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundStyle(LatsPalette.textFaint)
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
