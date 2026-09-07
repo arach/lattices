@@ -46,6 +46,26 @@ public struct DeckRuntimeSnapshot: Codable, Equatable, Sendable {
     }
 }
 
+/// How much work a voice turn is expected to do — drives iPad copy and pacing.
+public enum DeckVoiceTurnKind: String, Codable, CaseIterable, Sendable {
+    /// Local rule match — ack + execute, typically sub-second.
+    case quick
+    /// Model inference with actions — narrate then execute.
+    case standard
+    /// Spoken reply only, no desktop actions.
+    case conversation
+}
+
+/// Fine-grained stage within an in-flight turn. Cleared when the turn completes.
+public enum DeckVoiceTurnStage: String, Codable, CaseIterable, Sendable {
+    case acknowledging
+    case understanding
+    case planning
+    case narrating
+    case executing
+    case confirming
+}
+
 public struct DeckVoiceState: Codable, Equatable, Sendable {
     public var phase: DeckVoicePhase
     public var transcript: String?
@@ -54,6 +74,12 @@ public struct DeckVoiceState: Codable, Equatable, Sendable {
     public var provider: String?
     public var error: DeckVoiceError?       // currently-active error (cleared on recovery)
     public var lastError: DeckVoiceError?   // sticky most-recent error for the activity tape
+    /// Quick vs standard vs conversation — from the worker `_meta` contract.
+    public var turnKind: DeckVoiceTurnKind?
+    /// In-flight stage for turn-by-turn UI (ack → plan → narrate → execute).
+    public var turnStage: DeckVoiceTurnStage?
+    /// Human-readable status for relay clients; overrides generic phase captions when set.
+    public var statusLine: String?
 
     public init(
         phase: DeckVoicePhase,
@@ -62,7 +88,10 @@ public struct DeckVoiceState: Codable, Equatable, Sendable {
         responseSummary: String? = nil,
         provider: String? = nil,
         error: DeckVoiceError? = nil,
-        lastError: DeckVoiceError? = nil
+        lastError: DeckVoiceError? = nil,
+        turnKind: DeckVoiceTurnKind? = nil,
+        turnStage: DeckVoiceTurnStage? = nil,
+        statusLine: String? = nil
     ) {
         self.phase = phase
         self.transcript = transcript
@@ -71,6 +100,9 @@ public struct DeckVoiceState: Codable, Equatable, Sendable {
         self.provider = provider
         self.error = error
         self.lastError = lastError
+        self.turnKind = turnKind
+        self.turnStage = turnStage
+        self.statusLine = statusLine
     }
 }
 
