@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fleet Deck — Remote-First Study</title>
+<style>
+  :root {
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+    --serif: ui-serif, "New York", Georgia, serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: var(--sans);
+    background: #17181A;
+    color: #E2E2DF;
+    padding: 48px 32px 96px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .doc { max-width: 1480px; margin: 0 auto; }
+  .doc > header { margin-bottom: 40px; max-width: 720px; }
+  .doc h1 { font-size: 24px; font-weight: 650; letter-spacing: -0.01em; }
+  .doc .sub { margin-top: 8px; font-size: 14px; color: #A0A09B; line-height: 1.55; }
+  .doc .sub em { color: #E2E2DF; font-style: normal; }
+  .doc .meta { margin-top: 10px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #71716C; }
+
+  section.note { max-width: 720px; margin: 0 0 48px; font-size: 14px; line-height: 1.65; color: #A0A09B; }
+  section.note strong { color: #E2E2DF; font-weight: 600; }
+
+  .panels { display: grid; gap: 56px; }
+  .panel-label { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #71716C; margin-bottom: 12px; }
+  .panel-label b { color: #A0A09B; font-weight: 600; }
+
+  /* ════════════════════════ THE DECK ════════════════════════ */
+
+  .deck {
+    border-radius: 12px;
+    padding: 12px 16px 9px;
+    display: grid;
+    grid-template-rows: 52px 1fr auto auto auto;
+    gap: 8px;
+    height: 820px;
+    /* token scopes */
+    --canvas:#0D0F12; --well:#0A0B0D; --card:#131518; --raised:#181B1F; --control:#1E2126;
+    --text:#E2E2DF; --text2:#A0A09B; --text3:#71716C; --text4:#4A4A4D;
+    --accent:#E4B65C; --accentFill:rgba(228,182,92,0.14); --error:#EA6A64;
+    --hair:rgba(255,255,255,0.08); --hair2:rgba(255,255,255,0.14);
+  }
+  .deck.light {
+    --canvas:#F1F1EC; --well:#E9E9E3; --card:#FAFAF7; --raised:#FFFFFF; --control:#E5E5DE;
+    --text:#1C1C19; --text2:#585850; --text3:#8B8B83; --text4:#B9B9B1;
+    --accent:#B3822A; --accentFill:rgba(179,130,42,0.16); --error:#C94F4A;
+    --hair:rgba(0,0,0,0.08); --hair2:rgba(0,0,0,0.14);
+  }
+  .deck { background: var(--canvas); color: var(--text); }
+  .deck ::selection { background: var(--accentFill); color: var(--text); }
+  .deck :is(button, .key, .tile):focus-visible { outline: 1.5px solid var(--accent); outline-offset: 2px; }
+
+  /* ── channel strip ─────────────────────────────── */
+  .strip {
+    background: var(--well); border-radius: 10px;
+    display: flex; align-items: center; gap: 8px; padding: 0 10px;
+  }
+  .brand { display: flex; align-items: center; gap: 7px; padding-right: 10px; }
+  .brand .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text2); }
+  .brand span { font-size: 13px; font-weight: 600; }
+  .strip .rule { width: 1px; height: 28px; background: var(--hair); }
+  .chans { display: flex; gap: 6px; flex: 1; min-width: 0; }
+  .chan {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 12px; border-radius: 8px;
+    font-size: 12.5px; font-weight: 500; color: var(--text2);
+    border: 1px solid transparent;
+    white-space: nowrap;
+  }
+  .chan.on { color: var(--text); background: var(--card); border-color: var(--hair2); }
+  .chan .state { font-size: 10px; color: var(--text2); letter-spacing: 0.08em; }
+  .chan .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--text3); }
+  .chan.attn .dot { background: var(--accent); }
+  .chan.attn .state { color: var(--accent); }
+  .strip .pill {
+    font-size: 11px; font-weight: 600; color: var(--accent);
+    padding: 5px 10px; border-radius: 5px; background: var(--accentFill);
+    white-space: nowrap;
+  }
+  .strip .icons { display: flex; gap: 2px; }
+  .strip .icons i {
+    width: 34px; height: 34px; display: grid; place-items: center;
+    color: var(--text3); font-style: normal; font-size: 14px;
+  }
+
+  /* ── body ──────────────────────────────────────── */
+  .body { display: grid; grid-template-columns: 1fr 380px; gap: 8px; min-height: 0; }
+
+  /* trackpad */
+  .pad {
+    position: relative; background: var(--well); border-radius: 12px;
+    overflow: hidden; display: block;
+  }
+  .pad .brackets i { position: absolute; width: 13px; height: 13px; border: 1.5px solid var(--hair2); }
+  .pad .brackets i:nth-child(1) { top: 10px; left: 12px; border-right: 0; border-bottom: 0; }
+  .pad .brackets i:nth-child(2) { top: 10px; right: 12px; border-left: 0; border-bottom: 0; }
+  .pad .brackets i:nth-child(3) { bottom: 10px; left: 12px; border-right: 0; border-top: 0; }
+  .pad .brackets i:nth-child(4) { bottom: 10px; right: 12px; border-left: 0; border-top: 0; }
+  .pad .x-hair-x, .pad .x-hair-y { position: absolute; background: var(--hair2); }
+  .pad .x-hair-x { left: 0; right: 0; top: 58%; height: 1px; }
+  .pad .x-hair-y { top: 0; bottom: 0; left: 42%; width: 1px; }
+  .pad .pad-label {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    font-size: 10px; letter-spacing: 0.42em; color: var(--text3); text-transform: uppercase;
+  }
+  .pad .win {
+    position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+    width: 300px; height: 86px; border-radius: 8px; overflow: hidden;
+    border: 1px solid var(--hair2);
+    background: linear-gradient(180deg, #1A1D23, #121419);
+  }
+  .deck.light .pad .win { background: linear-gradient(180deg, #FFFFFF, #EDEEE9); }
+  .pad .win .wt { display: flex; gap: 5px; padding: 7px 9px; border-bottom: 1px solid var(--hair); }
+  .pad .win .wt i { width: 7px; height: 7px; border-radius: 50%; background: var(--hair2); }
+  .pad .win .wl { margin: 9px; display: grid; gap: 5px; }
+  .pad .win .wl i { height: 4px; border-radius: 2px; background: var(--hair); display: block; }
+  .pad .win .cap {
+    position: absolute; bottom: 6px; left: 8px;
+    font-size: 9.5px; color: var(--text);
+    background: var(--raised); border: 1px solid var(--hair);
+    padding: 2px 7px; border-radius: 99px;
+  }
+  .pad .modes { position: absolute; bottom: 12px; left: 0; right: 0; display: flex; justify-content: center; gap: 8px; z-index: 3; }
+  .pad .ghost {
+    position: absolute; border: 1.5px dashed var(--accent); border-radius: 8px;
+    width: 300px; height: 86px; top: 34px; left: calc(50% - 128px);
+  }
+  .pad .dragtag {
+    position: absolute; top: 128px; left: calc(50% + 40px);
+    font-size: 9.5px; color: var(--accent);
+    background: var(--accentFill); border: 1px solid var(--accent);
+    padding: 3px 9px; border-radius: 99px; z-index: 3;
+  }
+  .pad .modes span {
+    font-size: 10px; color: var(--text2); padding: 4px 10px; border-radius: 6px;
+  }
+  .pad .modes span.on { color: var(--text); background: var(--control); }
+
+  /* chat */
+  .chat {
+    background: var(--well); border-radius: 12px;
+    display: grid; grid-template-rows: auto 1fr auto; min-height: 0;
+  }
+  .chat-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 14px; border-bottom: 1px solid var(--hair);
+    font-size: 12px; font-weight: 600;
+  }
+  .chat-head .sub { margin-left: auto; font-size: 10.5px; color: var(--text3); font-weight: 400; }
+  .chat-log { padding: 14px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--hair2) transparent; }
+  .chat-log::-webkit-scrollbar { width: 6px; }
+  .chat-log::-webkit-scrollbar-thumb { background: var(--hair2); border-radius: 3px; }
+  .msg { display: flex; flex-direction: column; gap: 6px; max-width: 92%; }
+  .msg .who { font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text2); }
+  .msg.agent { align-self: flex-start; }
+  .msg.agent .bubble {
+    font-family: var(--serif); font-size: 14.5px; line-height: 1.5; color: var(--text);
+  }
+  .msg.user { align-self: flex-end; align-items: flex-end; }
+  .msg.user .bubble {
+    background: var(--control); border-radius: 10px; padding: 8px 12px;
+    font-size: 13.5px; color: var(--text);
+  }
+  .msg.user .via { font-size: 10px; color: var(--text2); }
+  .msg .replies { display: flex; gap: 6px; margin-top: 2px; }
+  .msg .replies button {
+    font: 600 11.5px var(--sans); color: var(--text);
+    background: var(--control); border: 1px solid var(--hair); border-radius: 7px;
+    padding: 6px 12px; cursor: pointer;
+    transition: border-color 0.12s ease;
+  }
+  .msg .replies button:hover { border-color: var(--hair2); }
+  .msg .replies button.hot { color: var(--accent); border-color: var(--accent); background: var(--accentFill); }
+  .msg .replies button.quiet { color: var(--text2); }
+  .sys {
+    align-self: stretch; display: flex; align-items: center; gap: 8px;
+    font-size: 10.5px; color: var(--text2);
+  }
+  .sys::before { content: ""; width: 4px; height: 4px; border-radius: 50%; background: var(--text4); flex: none; }
+  .sys b { color: var(--text); font-weight: 500; }
+  .chat-input {
+    display: flex; gap: 8px; align-items: center;
+    padding: 10px 12px; border-top: 1px solid var(--hair);
+  }
+  .chat-input .mic {
+    width: 34px; height: 34px; border-radius: 8px; flex: none;
+    background: var(--control); border: 1px solid var(--hair);
+    display: grid; place-items: center; color: var(--text2); font-size: 13px;
+  }
+  .chat-input .field {
+    flex: 1; background: var(--card); border: 1px solid var(--hair); border-radius: 8px;
+    padding: 8px 12px; font-size: 12.5px; color: var(--text2);
+  }
+  .chat-input .send {
+    font: 600 12px var(--sans); color: var(--accent);
+    padding: 8px 12px; border-radius: 8px; background: var(--accentFill); border: 1px solid transparent;
+    cursor: pointer; transition: border-color 0.12s ease;
+  }
+  .chat-input .send:hover { border-color: var(--accent); }
+
+  /* tiles */
+  .tiles { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+  .tile {
+    background: var(--card); border: 1px solid var(--hair); border-radius: 8px;
+    padding: 10px 12px; display: flex; align-items: center; gap: 10px; min-height: 52px;
+  }
+  .tile i {
+    width: 28px; height: 28px; border-radius: 7px; background: var(--control);
+    display: grid; place-items: center; font-style: normal; font-size: 12px; color: var(--text2);
+    flex: none;
+  }
+  .tile b { font-size: 12.5px; font-weight: 550; display: block; }
+  .tile small { font-size: 9.5px; color: var(--text3); letter-spacing: 0.06em; text-transform: uppercase; display: block; margin-top: 1px; }
+
+  /* key row */
+  .keys {
+    background: var(--well); border-radius: 10px;
+    display: flex; align-items: center; gap: 18px; padding: 0 14px;
+    min-height: 52px;
+  }
+  .kgrp { display: flex; align-items: center; gap: 5px; }
+  .kgrp.tight { gap: 3px; }
+  .kgrp.grow { flex: 1; }
+  .key.lock { color: var(--text2); }
+  .key.lock.armed {
+    color: var(--accent); background: var(--accentFill); border-color: var(--accent);
+  }
+  .key {
+    height: 34px; min-width: 44px; padding: 0 12px;
+    background: var(--control); border-radius: 7px;
+    border: 1px solid var(--hair);
+    display: grid; place-items: center;
+    font-size: 11.5px; font-weight: 500; color: var(--text2);
+  }
+  .key.wide { flex: 1; }
+
+  /* ── legend ────────────────────────────────────── */
+  .legend { margin-top: 64px; max-width: 880px; }
+  .legend h2 { font-size: 15px; font-weight: 650; margin-bottom: 14px; }
+  .legend table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .legend td { padding: 10px 12px; border-top: 1px solid rgba(255,255,255,0.07); vertical-align: top; line-height: 1.5; color: #A0A09B; }
+  .legend td:first-child { color: #E2E2DF; font-weight: 550; width: 180px; white-space: nowrap; }
+  .legend td:last-child { color: #71716C; width: 300px; }
+</style>
+</head>
+<body>
+<div class="doc">
+
+  <header>
+    <h1>Fleet Deck — remote-first study</h1>
+    <p class="sub">The console and feed fold into the two things they were circling: <em>a trackpad you drive</em> and <em>a conversation with the Mac</em>. The command bay compresses to a 6×2 tile grid; the single key row stays physical.</p>
+    <p class="meta">Studio study · fleet deck v8 · 2026-09-04 · html only, nothing shipped</p>
+  </header>
+
+  <section class="note">
+    <strong>What changed its mind:</strong> the ops console asked “what is the agent doing” and the fleet feed asked “what happened anywhere.” Both answers were already conversational — a question from the agent, a command from you, an outcome. So the middle of the deck becomes the remote again: <strong>trackpad → tiles → keys</strong> on the left, one <strong>chat rail</strong> on the right that carries questions (with inline replies), your voice/typed commands, and their outcomes.
+  </section>
+
+  <div class="panels">
+
+    <!-- ════════════ DARK · needs-you state ════════════ -->
+    <div>
+      <div class="panel-label"><b>Dark</b> · needs-you — agent blocked, reply inline</div>
+      <div class="deck" data-scheme="dark">
+        <div class="strip">
+          <div class="brand"><i class="dot"></i><span>Lats Deck</span></div>
+          <div class="rule"></div>
+          <div class="chans">
+            <div class="chan"><i class="dot"></i>Arts Mini <span class="state">IDLE</span></div>
+            <div class="chan on attn"><i class="dot"></i>Arach&rsquo;s Mac mini <span class="state">NEEDS YOU</span></div>
+          </div>
+          <div class="pill">Needs you · 1</div>
+          <div class="icons"><i>◉</i><i>▦</i><i>✕</i></div>
+        </div>
+
+        <div class="body">
+          <div class="pad">
+            <div class="win">
+              <div class="wt"><i></i><i></i><i></i></div>
+              <div class="wl"><i style="width:82%"></i><i style="width:64%"></i><i style="width:71%"></i></div>
+              <div class="cap">Ghostty — lattices</div>
+            </div>
+            <div class="brackets"><i></i><i></i><i></i><i></i></div>
+            <div class="x-hair-x"></div><div class="x-hair-y"></div>
+            <div class="ghost"></div>
+            <div class="dragtag">dragging — Ghostty</div>
+            <div class="pad-label">Trackpad</div>
+            <div class="modes"><span>Pointer</span><span>Scroll</span><span class="on">Drag window</span></div>
+          </div>
+
+          <div class="chat">
+            <div class="chat-head">Arach&rsquo;s Mac mini <span class="sub">agent · claude</span></div>
+            <div class="chat-log">
+              <div class="msg agent">
+                <div class="who">Agent · 2m</div>
+                <div class="bubble">Chrome is full-screen on display 2. Move it anyway, or swap it with Ghostty?</div>
+                <div class="replies">
+                  <button class="hot">Swap them</button>
+                  <button>Move anyway</button>
+                  <button class="quiet">Dismiss</button>
+                </div>
+              </div>
+              <div class="msg user">
+                <div class="bubble">swap them</div>
+                <div class="via">voice · 96%</div>
+              </div>
+              <div class="sys"><b>Swapped</b> Chrome ↔ Ghostty on display 2 · just now</div>
+              <div class="msg agent">
+                <div class="who">Agent · just now</div>
+                <div class="bubble">Done — Chrome left, Ghostty right. Anything else?</div>
+              </div>
+            </div>
+            <div class="chat-input">
+              <div class="mic">◉</div>
+              <div class="field">Type to Arach&rsquo;s Mac mini…</div>
+              <button class="send">Send</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="tiles">
+            <div class="tile"><i>◧</i><div><b>Tile left</b><small>win</small></div></div>
+            <div class="tile"><i>◨</i><div><b>Tile right</b><small>win</small></div></div>
+            <div class="tile"><i>▣</i><div><b>Maximize</b><small>win</small></div></div>
+            <div class="tile"><i>▤</i><div><b>Center</b><small>win</small></div></div>
+            <div class="tile"><i>⇥</i><div><b>Next app</b><small>sys</small></div></div>
+            <div class="tile"><i>⇤</i><div><b>Prev app</b><small>sys</small></div></div>
+            <div class="tile"><i>⧉</i><div><b>Preview</b><small>screen</small></div></div>
+            <div class="tile"><i>⎘</i><div><b>Paste phone</b><small>clip</small></div></div>
+            <div class="tile"><i>◎</i><div><b>Find mouse</b><small>sys</small></div></div>
+            <div class="tile"><i>➤</i><div><b>Summon mouse</b><small>sys</small></div></div>
+            <div class="tile"><i>▹</i><div><b>Next window</b><small>sys</small></div></div>
+          <div class="tile"><i>◃</i><div><b>Prev window</b><small>sys</small></div></div>
+        </div>
+
+        <div class="keys">
+          <div class="kgrp">
+            <div class="key lock">⌃</div>
+            <div class="key lock">⌥</div>
+            <div class="key lock armed">⌘</div>
+            <div class="key lock">⇧</div>
+          </div>
+          <div class="kgrp">
+            <div class="key">esc</div>
+            <div class="key">tab</div>
+            <div class="key">⌘Z</div>
+            <div class="key">⌘C</div>
+            <div class="key">⌘V</div>
+          </div>
+          <div class="kgrp grow">
+            <div class="key wide">space</div>
+          </div>
+          <div class="kgrp tight">
+            <div class="key">←</div><div class="key">↑</div><div class="key">↓</div><div class="key">→</div>
+          </div>
+          <div class="kgrp">
+            <div class="key">enter ⏎</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════════ LIGHT · driving state ════════════ -->
+    <div>
+      <div class="panel-label"><b>Light</b> · driving — idle fleet, mid-conversation</div>
+      <div class="deck light">
+        <div class="strip">
+          <div class="brand"><i class="dot"></i><span>Lats Deck</span></div>
+          <div class="rule"></div>
+          <div class="chans">
+            <div class="chan on"><i class="dot"></i>Arts Mini <span class="state">ACTIVE</span></div>
+            <div class="chan"><i class="dot"></i>Arach&rsquo;s Mac mini <span class="state">IDLE</span></div>
+          </div>
+          <div class="icons"><i>◉</i><i>▦</i><i>✕</i></div>
+        </div>
+
+        <div class="body">
+          <div class="pad">
+            <div class="win">
+              <div class="wt"><i></i><i></i><i></i></div>
+              <div class="wl"><i style="width:76%"></i><i style="width:58%"></i><i style="width:69%"></i></div>
+              <div class="cap">Safari — design review</div>
+            </div>
+            <div class="brackets"><i></i><i></i><i></i><i></i></div>
+            <div class="pad-label">Trackpad</div>
+            <div class="modes"><span class="on">Pointer</span><span>Scroll</span><span>Drag window</span></div>
+          </div>
+
+          <div class="chat">
+            <div class="chat-head">Arts Mini <span class="sub">dictation</span></div>
+            <div class="chat-log">
+              <div class="msg user">
+                <div class="bubble">open the lattices repo in ghostty and run the tests</div>
+                <div class="via">voice · 98%</div>
+              </div>
+              <div class="sys"><b>Ran</b> open shell → lattices · bun test · 12s</div>
+              <div class="msg agent">
+                <div class="who">Agent · 8s</div>
+                <div class="bubble">Tests pass — 38 up, one skipped (daemon-down path, expected).</div>
+              </div>
+              <div class="msg user">
+                <div class="bubble">nice. tile the terminal left half</div>
+                <div class="via">typed</div>
+              </div>
+              <div class="sys"><b>Tiled</b> Ghostty → left · just now</div>
+            </div>
+            <div class="chat-input">
+              <div class="mic">◉</div>
+              <div class="field">Type to Arts Mini…</div>
+              <button class="send">Send</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="tiles">
+            <div class="tile"><i>◧</i><div><b>Tile left</b><small>win</small></div></div>
+            <div class="tile"><i>◨</i><div><b>Tile right</b><small>win</small></div></div>
+            <div class="tile"><i>▣</i><div><b>Maximize</b><small>win</small></div></div>
+            <div class="tile"><i>▤</i><div><b>Center</b><small>win</small></div></div>
+            <div class="tile"><i>⇥</i><div><b>Next app</b><small>sys</small></div></div>
+            <div class="tile"><i>⇤</i><div><b>Prev app</b><small>sys</small></div></div>
+            <div class="tile"><i>⧉</i><div><b>Preview</b><small>screen</small></div></div>
+            <div class="tile"><i>⎘</i><div><b>Paste phone</b><small>clip</small></div></div>
+            <div class="tile"><i>◎</i><div><b>Find mouse</b><small>sys</small></div></div>
+            <div class="tile"><i>➤</i><div><b>Summon mouse</b><small>sys</small></div></div>
+            <div class="tile"><i>▹</i><div><b>Next window</b><small>sys</small></div></div>
+          <div class="tile"><i>◃</i><div><b>Prev window</b><small>sys</small></div></div>
+        </div>
+
+        <div class="keys">
+          <div class="kgrp">
+            <div class="key lock">⌃</div>
+            <div class="key lock">⌥</div>
+            <div class="key lock armed">⌘</div>
+            <div class="key lock">⇧</div>
+          </div>
+          <div class="kgrp">
+            <div class="key">esc</div>
+            <div class="key">tab</div>
+            <div class="key">⌘Z</div>
+            <div class="key">⌘C</div>
+            <div class="key">⌘V</div>
+          </div>
+          <div class="kgrp grow">
+            <div class="key wide">space</div>
+          </div>
+          <div class="kgrp tight">
+            <div class="key">←</div><div class="key">↑</div><div class="key">↓</div><div class="key">→</div>
+          </div>
+          <div class="kgrp">
+            <div class="key">enter ⏎</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ════════════ legend ════════════ -->
+  <div class="legend">
+    <h2>What moved where</h2>
+    <table>
+      <tr><td>Agent console → chat</td><td>Decisions become agent messages with inline reply chips (approve/steer/dismiss). Steps and stats were idle filler; the question was always the content.</td><td>FleetAgentConsole, FleetFocusPane retire</td></tr>
+      <tr><td>Fleet feed → chat</td><td>Action outcomes land as quiet system lines in the conversation. Watcher churn (WIN/PROC/OCR/TMUX) never enters; it stays on the Mac’s own activity page.</td><td>FleetFeedPanel retires; CompanionActivityLog filtered at the adapter</td></tr>
+      <tr><td>Command bay → tile grid</td><td>The oversized cards compress to a 6×2 grid of compact shortcut buttons. Sets still switch from the strip’s overflow.</td><td>FleetCommandBay slimmed</td></tr>
+      <tr><td>Trackpad → hero</td><td>The strip becomes the left two-thirds, with the frontmost-window preview riding on top — the physical center the deck advertises.</td><td>FleetTrackpadStrip promoted</td></tr>
+      <tr><td>Layouts toggle</td><td>ops/focus/split retire with the console; one anatomy, no modes to learn.</td><td>FleetDeckLayout enum dies</td></tr>
+      <tr><td>New: typed input</td><td>The keyboardForwarding capability ships at last: a text field beside push-to-talk.</td><td>net-new bridge path</td></tr>
+      <tr><td>Key row + lockable modifiers</td><td>One row in five clusters: modifiers (tap to arm, amber), edit keys, space, arrow cluster, enter. ⌘ armed + L sends ⌘L; chording is how a touch remote stays a keyboard.</td><td>extends existing key row</td></tr>
+      <tr><td>Tiles → two rows</td><td>Twelve shortcut buttons in a 6×2 grid: window moves, app/window switching, mouse tools, preview, clipboard.</td><td>command bay → tile grid</td></tr>
+      <tr><td>Trackpad: drag window</td><td>Third mode beside pointer/scroll. Touch grabs the frontmost window and moves it live across the Mac’s displays. Direct manipulation, not a tile command.</td><td>net-new deck action, AX move by delta</td></tr>
+      <tr><td>Chat agent → Scout</td><td>The rail’s agent turns route through the Scout broker already on the Mac. Questions and needs-you bubbles are flights; inline replies resolve them. No new orchestration layer.</td><td>bridge → scout ask</td></tr>
+    </table>
+  </div>
+
+</div>
+</body>
+</html>

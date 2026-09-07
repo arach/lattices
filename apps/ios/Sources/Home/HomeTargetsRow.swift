@@ -25,6 +25,8 @@ struct HomeTargetsRow: View {
     /// whatever it found: it still tells you it can see something, it just no
     /// longer acts on that by itself.
     var nearbyCandidateCount: Int = 0
+    /// Shows/hides the Screens strip. Nil hides the toggle with the strip.
+    var screensVisible: Binding<Bool>? = nil
     var onEnterDeck: ((HomeMachine) -> Void)? = nil
     var onEnterFleet: (() -> Void)? = nil
     var onAddHost: (() -> Void)? = nil
@@ -86,6 +88,20 @@ struct HomeTargetsRow: View {
         HStack(spacing: 8) {
             LatsSectionLabel(text: "Machines")
             Spacer(minLength: 0)
+            if let screensVisible {
+                Button {
+                    DeckTactileFeedback.shared.buttonPop()
+                    screensVisible.wrappedValue.toggle()
+                } label: {
+                    Image(systemName: screensVisible.wrappedValue ? "eye" : "eye.slash")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(screensVisible.wrappedValue ? LatsPalette.amber : LatsPalette.textDim)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Toggle screen previews")
+            }
             LatsBadge(text: "\(machines.count)", tint: LatsPalette.textDim)
         }
     }

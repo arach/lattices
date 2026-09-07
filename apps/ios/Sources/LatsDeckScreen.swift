@@ -95,8 +95,6 @@ enum ShortcutCategory: String {
     }
 }
 
-enum SimAction { case rec, voice, agent, tile, move, palette, none }
-
 // MARK: - Live data adapters
 
 extension CockpitMode {
@@ -134,7 +132,6 @@ struct LatsShortcut: Identifiable {
     let tint: LatsTint
     let category: ShortcutCategory
     let hint: String
-    let sim: SimAction
     var actionID: String? = nil
     var payload: [String: DeckValue] = [:]
     var controlKind: DeckCockpitControlKind? = nil
@@ -151,7 +148,6 @@ struct LatsShortcut: Identifiable {
         tint: LatsTint,
         category: ShortcutCategory,
         hint: String,
-        sim: SimAction,
         actionID: String? = nil,
         payload: [String: DeckValue] = [:],
         controlKind: DeckCockpitControlKind? = nil,
@@ -167,7 +163,6 @@ struct LatsShortcut: Identifiable {
         self.tint = tint
         self.category = category
         self.hint = hint
-        self.sim = sim
         self.actionID = actionID
         self.payload = payload
         self.controlKind = controlKind
@@ -187,52 +182,6 @@ struct LatsWindow: Identifiable {
     let h: Double
     let tint: LatsTint
     let tag: String
-}
-
-struct CommandDeck {
-    static let accent: LatsTint = .green
-    static let name = "remote"
-    static let hint = "control"
-
-    static let shortcuts: [LatsShortcut] = [
-        .init(label: "Dictate",     icon: "mic.fill",                 tint: .red,    category: .voice,  hint: "F1",  sim: .rec),
-        .init(label: "Voice Cmd",   icon: "waveform",                  tint: .red,    category: .voice,  hint: "F2",  sim: .voice),
-        .init(label: "Record",      icon: "record.circle.fill",        tint: .red,    category: .voice,  hint: "F3",  sim: .rec),
-        .init(label: "Search",      icon: "magnifyingglass",           tint: .blue,   category: .system, hint: "F4",  sim: .palette),
-        .init(label: "Palette",     icon: "command",                   tint: .violet, category: .system, hint: "⌘K",  sim: .palette),
-        .init(label: "Pairing",     icon: "laptopcomputer.and.iphone", tint: .pink,   category: .system, hint: "⌘P",  sim: .none),
-        .init(label: "Claude",      icon: "sparkles",                  tint: .violet, category: .agent,  hint: "F7",  sim: .agent),
-        .init(label: "Pi",          icon: "sparkle",                   tint: .teal,   category: .agent,  hint: "F8",  sim: .agent),
-        .init(label: "Workflows",   icon: "point.3.connected.trianglepath.dotted", tint: .teal, category: .system, hint: "F11", sim: .none),
-        .init(label: "Pending",     icon: "clock",                     tint: .amber,  category: .system, hint: "F12", sim: .none),
-        .init(label: "Recents",     icon: "clock.arrow.circlepath",    tint: .violet, category: .system, hint: "F9",  sim: .none),
-        .init(label: "Home",        icon: "house.fill",                tint: .pink,   category: .system, hint: "F10", sim: .none),
-        .init(label: "Tile 2-up",   icon: "rectangle.split.2x1",       tint: .blue,   category: .window, hint: "⌘1",  sim: .tile),
-        .init(label: "Tile 4-up",   icon: "rectangle.split.2x2",       tint: .blue,   category: .window, hint: "⌘2",  sim: .tile),
-        .init(label: "L Monitor",   icon: "display",                   tint: .blue,   category: .window, hint: "⌘3",  sim: .move),
-        .init(label: "R Monitor",   icon: "display",                   tint: .blue,   category: .window, hint: "⌘4",  sim: .move),
-        .init(label: "Desktop Pv",  icon: "macwindow.on.rectangle",    tint: .blue,   category: .window, hint: "⌘5",  sim: .none),
-        .init(label: "Memos",       icon: "note.text",                 tint: .amber,  category: .voice,  hint: "⌘M",  sim: .none),
-    ]
-
-    static let stage: [[LatsWindow]] = [
-        [   // Display 0 — terminals
-            .init(x: 5,  y: 12, w: 42, h: 78, tint: .green, tag: "tmux"),
-            .init(x: 50, y: 12, w: 45, h: 38, tint: .green, tag: "vim"),
-            .init(x: 50, y: 54, w: 45, h: 36, tint: .green, tag: "logs"),
-        ],
-        [   // Display 1 — chrome + figma
-            .init(x: 5,  y: 14, w: 50, h: 76, tint: .blue,   tag: "chr"),
-            .init(x: 58, y: 14, w: 38, h: 36, tint: .blue,   tag: "chr"),
-            .init(x: 58, y: 54, w: 38, h: 36, tint: .violet, tag: "fig"),
-        ],
-    ]
-
-    static let transcript = [
-        "move all terminals to the left monitor",
-        "open shell in the lats project",
-        "tile chrome two up on the right",
-    ]
 }
 
 struct LatsTelemetry {
@@ -1729,7 +1678,7 @@ struct ActionKey: View {
             .frame(height: 26)
             .background(
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(accent.map { $0.opacity(0.16) } ?? Color.white.opacity(0.04))
+                    .fill(accent.map { $0.opacity(0.16) } ?? DeckTheme.control)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 4)
@@ -1763,7 +1712,7 @@ struct ArrowCluster: View {
             .frame(width: 24, height: 26)
             .background(
                 RoundedRectangle(cornerRadius: 3)
-                    .fill(Color.white.opacity(0.04))
+                    .fill(DeckTheme.control)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 3)
@@ -2393,20 +2342,7 @@ struct LatsDeckScreen: View {
     /// Which deck to render. Defaults to the stable remote surface.
     var deckID: String = "remote"
 
-    // ── Mock-mode state (only used when liveSnapshot is nil) ──
     @State private var selectedDeckID: String?
-    @State private var mockMode: CockpitMode = .idle
-    @State private var mockRecTime: Double = 0
-    @State private var mockAgentProgress: Double = 80
-    @State private var mockReplayMessage = "Move all terminals to the left, Chrome to the right."
-    @State private var mockTelemetry = LatsTelemetry()
-    @State private var mockStage: [[LatsWindow]] = CommandDeck.stage
-    @State private var mockSpace: Int = 0
-    @State private var mockTranscript: [String] = CommandDeck.transcript
-
-    @State private var recTimer: Timer?
-    @State private var agentTimer: Timer?
-    @State private var modeAutoReturn: DispatchWorkItem?
     @State private var isUsingJoystick = false
     @State private var joystickSwipeSuppressedUntil = Date.distantPast
 
@@ -2429,21 +2365,21 @@ struct LatsDeckScreen: View {
 
     private var mode: CockpitMode {
         if let m = liveSnapshot?.cockpitMode?.mode { return CockpitMode(from: m) }
-        return mockMode
+        return .idle
     }
 
     private var recTime: Double {
-        liveSnapshot?.cockpitMode?.elapsedSeconds ?? mockRecTime
+        liveSnapshot?.cockpitMode?.elapsedSeconds ?? 0
     }
 
     private var agentProgress: Double {
         // Live agentProgress is 0...1; legacy mock visual uses 0...264 (stroke dasharray)
         if let p = liveSnapshot?.cockpitMode?.agentProgress { return p * 264 }
-        return mockAgentProgress
+        return 0
     }
 
     private var replayMessage: String {
-        liveSnapshot?.cockpitMode?.replayMessage ?? mockReplayMessage
+        liveSnapshot?.cockpitMode?.replayMessage ?? ""
     }
 
     private var replayUndoLabel: String {
@@ -2460,7 +2396,7 @@ struct LatsDeckScreen: View {
 
     private var telemetry: LatsTelemetry {
         if let t = liveSnapshot?.telemetry { return LatsTelemetry(from: t) }
-        return mockTelemetry
+        return LatsTelemetry()
     }
 
     private var space: Int {
@@ -2469,11 +2405,11 @@ struct LatsDeckScreen: View {
         if let liveIndex {
             return max(0, liveIndex - 1)
         }
-        return mockSpace
+        return 0
     }
 
     private var spaceCount: Int {
-        max(1, liveSnapshot?.spaces?.displays.first?.spaces.count ?? 6)
+        max(1, liveSnapshot?.spaces?.displays.first?.spaces.count ?? 1)
     }
 
     private var spaceName: String? {
@@ -2490,7 +2426,7 @@ struct LatsDeckScreen: View {
             return Array(lines.sorted { $0.createdAt > $1.createdAt }.prefix(5).map(\.text))
         }
         if let one = liveSnapshot?.voice?.transcript, !one.isEmpty { return [one] }
-        return mockTranscript
+        return []
     }
 
     private var activityLog: [DeckActivityLogEntry] {
@@ -2504,7 +2440,7 @@ struct LatsDeckScreen: View {
     }
 
     private var stage: [[LatsWindow]] {
-        guard let preview = liveSnapshot?.layout?.preview else { return mockStage }
+        guard let preview = liveSnapshot?.layout?.preview else { return [] }
         // Bridge sends each preview window with a `displayIndex` plus a `displayCount`.
         // Bucket windows into per-display columns so the iPad mini-frames render the
         // correct windows on the correct monitor.
@@ -2526,8 +2462,7 @@ struct LatsDeckScreen: View {
     }
 
     private var shortcuts: [LatsShortcut] {
-        if let live = liveShortcuts() { return live }
-        return CommandDeck.shortcuts
+        return liveShortcuts() ?? []
     }
 
     private var deckAccent: Color {
@@ -2536,11 +2471,11 @@ struct LatsDeckScreen: View {
         if let tile = activeCockpitPage()?.tiles.first {
             return LatsTint.from(token: tile.accentToken).color
         }
-        return CommandDeck.accent.color
+        return LatsTint.green.color
     }
 
     private var deckName: String {
-        activeCockpitPage()?.title.lowercased() ?? CommandDeck.name
+        activeCockpitPage()?.title.lowercased() ?? "deck"
     }
 
     private var deckNames: [String] {
@@ -2661,21 +2596,14 @@ struct LatsDeckScreen: View {
                         spaceName: spaceName,
                         hostLabel: hostLabel,
                         onModeTap: { toggleVoice() },
-                        onSpaceTap: { if !isConnected { mockSpace = (mockSpace + 1) % 6 } },
+                        onSpaceTap: {},
                         onPaletteTap: {},
                         onSwitcherTap: { cycleDeck() }
                     )
                 }
             }
         }
-        .preferredColorScheme(.dark)
         .statusBarHidden(true)
-        .onChange(of: mockMode) { _, newMode in
-            if !isConnected { handleModeChange(newMode) }
-        }
-        .onAppear {
-            if !isConnected { jitterTelemetry() }
-        }
     }
 
     // MARK: - Live snapshot helpers
@@ -2695,7 +2623,6 @@ struct LatsDeckScreen: View {
                 tint: LatsTint.from(token: tile.categoryTint ?? tile.accentToken),
                 category: shortcutCategory(for: tile),
                 hint: tile.subtitle ?? "",
-                sim: simAction(from: tile.actionID),
                 actionID: tile.actionID,
                 payload: tile.payload,
                 controlKind: tile.controlKind,
@@ -2731,16 +2658,6 @@ struct LatsDeckScreen: View {
         return .system
     }
 
-    private func simAction(from actionID: String?) -> SimAction {
-        guard let id = actionID?.lowercased() else { return .none }
-        if id.contains("voice") || id.contains("dictate") || id.contains("rec") { return .rec }
-        if id.contains("agent") || id.contains("claude") || id.contains("pi") { return .agent }
-        if id.contains("tile") { return .tile }
-        if id.contains("move") || id.contains("monitor") { return .move }
-        if id.contains("palette") || id.contains("search") { return .palette }
-        return .none
-    }
-
     // MARK: - Behaviour
 
     private func handleTilePress(_ shortcut: LatsShortcut) {
@@ -2762,36 +2679,6 @@ struct LatsDeckScreen: View {
             return
         }
 
-        // Mock fallback
-        switch shortcut.sim {
-        case .rec, .voice:
-            startMockRec()
-            scheduleModeReturn(after: 2.4) {
-                mockReplayMessage = "Move all terminals to the left, Chrome to the right."
-                mockMode = .replay
-                scheduleModeReturn(after: 3.0) { mockMode = .idle }
-            }
-        case .agent:
-            mockMode = .agent
-            mockAgentProgress = 20
-            scheduleModeReturn(after: 9.0) {
-                mockReplayMessage = "Agent moved 7 windows across 2 displays."
-                mockMode = .replay
-                scheduleModeReturn(after: 3.0) { mockMode = .idle }
-            }
-        case .tile:
-            mockReplayMessage = "Tiled 4-up on display 1"
-            mockMode = .replay
-            scheduleModeReturn(after: 2.4) { mockMode = .idle }
-        case .move:
-            mockReplayMessage = "Moved windows by display target."
-            mockMode = .replay
-            scheduleModeReturn(after: 2.4) { mockMode = .idle }
-        case .palette, .none:
-            mockReplayMessage = "\(shortcut.label) fired."
-            mockMode = .replay
-            scheduleModeReturn(after: 1.8) { mockMode = .idle }
-        }
     }
 
     private func handleSendKey(_ key: String, _ modifiers: [String]) {
@@ -2810,10 +2697,6 @@ struct LatsDeckScreen: View {
         if let onAction {
             let actionID = liveSnapshot?.cockpitMode?.replayUndoActionID ?? "history.undoLast"
             onAction(actionID, [:], "Undo last action")
-        } else {
-            mockReplayMessage = "Undid the last action."
-            mockMode = .replay
-            scheduleModeReturn(after: 1.6) { mockMode = .idle }
         }
     }
 
@@ -2824,8 +2707,6 @@ struct LatsDeckScreen: View {
                 ["displayIndex": .int(display), "index": .int(index)],
                 "Switch display \(display + 1) to space \(index + 1)"
             )
-        } else {
-            mockSpace = index
         }
     }
 
@@ -2838,8 +2719,6 @@ struct LatsDeckScreen: View {
                 ["displayIndex": .int(display), "direction": .int(direction)],
                 label
             )
-        } else {
-            mockSpace = max(0, min(spaceCount - 1, mockSpace + direction))
         }
     }
 
@@ -2888,52 +2767,6 @@ struct LatsDeckScreen: View {
             onAction(actionID, [:], nil)
             return
         }
-        if mockMode == .rec {
-            mockMode = .replay
-            scheduleModeReturn(after: 1.8) { mockMode = .idle }
-        } else {
-            startMockRec()
-        }
-    }
-
-    private func startMockRec() {
-        mockRecTime = 0
-        mockMode = .rec
-    }
-
-    private func scheduleModeReturn(after seconds: Double, action: @escaping () -> Void) {
-        modeAutoReturn?.cancel()
-        let work = DispatchWorkItem { action() }
-        modeAutoReturn = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
-    }
-
-    private func handleModeChange(_ newMode: CockpitMode) {
-        recTimer?.invalidate(); recTimer = nil
-        agentTimer?.invalidate(); agentTimer = nil
-
-        if newMode == .rec {
-            mockRecTime = 0
-            recTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
-                Task { @MainActor in mockRecTime += 0.1 }
-            }
-        }
-        if newMode == .agent {
-            agentTimer = Timer.scheduledTimer(withTimeInterval: 0.18, repeats: true) { _ in
-                Task { @MainActor in mockAgentProgress = min(264, mockAgentProgress + 4) }
-            }
-        }
-    }
-
-    private func jitterTelemetry() {
-        Timer.scheduledTimer(withTimeInterval: 1.4, repeats: true) { _ in
-            Task { @MainActor in
-                mockTelemetry.cpu = max(8, min(90, mockTelemetry.cpu + .random(in: -4...4)))
-                mockTelemetry.mem = max(40, min(85, mockTelemetry.mem + .random(in: -2...2)))
-                mockTelemetry.gpu = max(5, min(60, mockTelemetry.gpu + .random(in: -5...5)))
-                mockTelemetry.therm = max(42, min(72, mockTelemetry.therm + .random(in: -0.75...0.75)))
-            }
-        }
     }
 }
 
@@ -2950,6 +2783,9 @@ struct FleetDeckScreen: View {
     @ObservedObject var fleetStore: DeckFleetStore
     var initialMachineID: String?
     var previewStores: [DeckStore]? = nil
+    /// Optional override. Preview hosts sit at the window root, where
+    /// `dismiss()` is a no-op; they pass a close that actually leaves.
+    var onClose: (() -> Void)? = nil
 
     @State private var selectedSessionID: UUID?
 
@@ -2962,7 +2798,6 @@ struct FleetDeckScreen: View {
         // single-Mac focus environment is reached through `DeckDestination.host`,
         // which presents `LatsDeckScreen` directly.
         fleetLayout
-        .preferredColorScheme(.dark)
         .statusBarHidden(true)
         .onAppear {
             if previewStores == nil {
@@ -3003,7 +2838,7 @@ struct FleetDeckScreen: View {
                 FleetDeckHost(
                     stores: stores,
                     initialMachineID: initialMachineID,
-                    onClose: { dismiss() }
+                    onClose: close
                 )
             } else {
                 LatsBackground(grid: true) {
@@ -3039,8 +2874,16 @@ struct FleetDeckScreen: View {
                         .tracking(0.8)
                 }
             ),
-            onClose: { dismiss() }
+            onClose: close
         )
+    }
+
+    private func close() {
+        if let onClose {
+            onClose()
+        } else {
+            dismiss()
+        }
     }
 
     private func landscapeDecks(size: CGSize) -> some View {
@@ -3184,10 +3027,8 @@ struct FleetDeckPreviewHost: View {
     @StateObject private var fleetStore = DeckFleetStore()
     private let previewStores: [DeckStore]
     private let useDesignFixture: Bool
-    private let fixtureLayout: FleetDeckLayout
 
-    init(machineCount: Int = 4, useDesignFixture: Bool = false, fixtureLayout: FleetDeckLayout = .ops) {
-        self.fixtureLayout = fixtureLayout
+    init(machineCount: Int = 4, useDesignFixture: Bool = false) {
         let names = ["Arach MacBook Pro", "Studio", "Mac mini", "Build Mac"]
         let stores = (0..<max(1, min(machineCount, names.count))).map {
             DeckStore.fleetPreview(name: names[$0], index: $0)
@@ -3197,20 +3038,24 @@ struct FleetDeckPreviewHost: View {
         _primaryStore = StateObject(wrappedValue: stores[0])
     }
 
+    @State private var showHome = false
+
     var body: some View {
         Group {
-            if useDesignFixture {
-                FleetDeckFixtureHost(initialLayout: fixtureLayout)
+            if showHome {
+                ContentView()
+            } else if useDesignFixture {
+                FleetDeckFixtureHost(onClose: { showHome = true })
             } else {
                 FleetDeckScreen(
                     primaryStore: primaryStore,
                     fleetStore: fleetStore,
-                    previewStores: previewStores
+                    previewStores: previewStores,
+                    onClose: { showHome = true }
                 )
             }
         }
-        .preferredColorScheme(.dark)
-        .statusBarHidden(true)
+        .statusBarHidden(!showHome)
     }
 }
 #endif
@@ -3860,7 +3705,7 @@ private struct FleetSharedDeck: View {
     }
 
     private var fleetStage: [[LatsWindow]] {
-        guard let preview = store.snapshot?.layout?.preview else { return CommandDeck.stage }
+        guard let preview = store.snapshot?.layout?.preview else { return [] }
         let displayCount = max(preview.displayCount ?? 1, 1)
         var buckets = Array(repeating: [LatsWindow](), count: displayCount)
         for window in preview.windows {
@@ -3932,7 +3777,6 @@ private struct FleetSharedDeck: View {
             tint: LatsTint.from(token: tile.categoryTint ?? tile.accentToken),
             category: shortcutCategory(for: tile),
             hint: tile.subtitle ?? "",
-            sim: .none,
             actionID: tile.actionID,
             payload: tile.payload,
             controlKind: tile.controlKind,
@@ -4343,7 +4187,7 @@ private struct FleetMachineDeck: View {
     }
 
     private var fleetStage: [[LatsWindow]] {
-        guard let preview = store.snapshot?.layout?.preview else { return CommandDeck.stage }
+        guard let preview = store.snapshot?.layout?.preview else { return [] }
         let displayCount = max(preview.displayCount ?? 1, 1)
         var buckets = Array(repeating: [LatsWindow](), count: displayCount)
         for window in preview.windows {
@@ -4415,7 +4259,6 @@ private struct FleetMachineDeck: View {
             tint: LatsTint.from(token: tile.categoryTint ?? tile.accentToken),
             category: shortcutCategory(for: tile),
             hint: tile.subtitle ?? "",
-            sim: .none,
             actionID: tile.actionID,
             payload: tile.payload,
             controlKind: tile.controlKind,
