@@ -1,5 +1,7 @@
 #!/usr/bin/env bun
 
+import { BrowserTimeoutError, CDPSession, deadlineFetchJson, withDeadline, checkDeadline, boundedWait, deadlineSleep, remainingTimeout } from "./transport.ts";
+
 import { mkdir } from "node:fs/promises";
 import {
   existsSync,
@@ -351,7 +353,7 @@ const tools = [
           description: "Action mode only. Action browser identity to use, e.g. agent-browser (blank) or work (seeded from a regular Chrome profile). Created on first use.",
         },
         background: { type: "boolean", description: "Action mode only: keep Chrome hidden in the background. Defaults to true. Regular mode is always visible." },
-        waitMs: { type: "number", description: "Action mode only: maximum time to wait for the page to become ready. Defaults to 15000." },
+        waitMs: { type: "number", minimum: 0, maximum: 2_147_483_647, description: "Total deadline in milliseconds, including startup, connection, navigation, and readiness. Defaults to 15000; zero fails immediately." },
         newTab: { type: "boolean", description: "Action mode only: create a separate tab instead of reusing this session's current tab. Defaults to false." },
       },
       required: ["url"],
@@ -497,69 +499,6 @@ const tools = [
   },
 ];
 
-class CDPSession {
-  private socket: WebSocket;
-  private nextId = 1;
-  private pending = new Map<number, {
-    resolve: (value: JsonObject) => void;
-    reject: (error: Error) => void;
-  }>();
-
-  private constructor(socket: WebSocket) {
-    this.socket = socket;
-    socket.addEventListener("message", (event) => {
-      const message = JSON.parse(String(event.data)) as {
-        id?: number;
-        result?: JsonObject;
-        error?: { message?: string };
-      };
-      if (!message.id) return;
-      const waiter = this.pending.get(message.id);
-      if (!waiter) return;
-      this.pending.delete(message.id);
-      if (message.error) {
-        waiter.reject(new Error(message.error.message ?? "Chrome DevTools command failed."));
-      } else {
-        waiter.resolve(message.result ?? {});
-      }
-    });
-    socket.addEventListener("close", () => {
-      for (const waiter of this.pending.values()) {
-        waiter.reject(new Error("Chrome DevTools connection closed."));
-      }
-      this.pending.clear();
-    });
-  }
-
-  static async connect(url: string): Promise<CDPSession> {
-    const socket = new WebSocket(url);
-    await new Promise<void>((resolveConnection, reject) => {
-      const timeout = setTimeout(() => reject(new Error("Timed out connecting to Chrome DevTools.")), 5_000);
-      socket.addEventListener("open", () => {
-        clearTimeout(timeout);
-        resolveConnection();
-      }, { once: true });
-      socket.addEventListener("error", () => {
-        clearTimeout(timeout);
-        reject(new Error("Could not connect to Chrome DevTools."));
-      }, { once: true });
-    });
-    return new CDPSession(socket);
-  }
-
-  call(method: string, params: JsonObject = {}): Promise<JsonObject> {
-    const id = this.nextId++;
-    return new Promise((resolveCall, reject) => {
-      this.pending.set(id, { resolve: resolveCall, reject });
-      this.socket.send(JSON.stringify({ id, method, params }));
-    });
-  }
-
-  close(): void {
-    this.socket.close();
-  }
-}
-
 function normalizeURL(value: string): string {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value) || value.startsWith("chrome://")) {
     return value;
@@ -568,27 +507,28 @@ function normalizeURL(value: string): string {
 }
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${chromeBaseURL}${path}`, init);
-  if (!response.ok) {
-    throw new Error(`Chrome endpoint ${path} returned ${response.status}.`);
-  }
-  return await response.json() as T;
+  return deadlineFetchJson<T>(`${chromeBaseURL}${path}`, init);
 }
 
 async function chromeIsReady(): Promise<boolean> {
   try {
     await fetchJson("/json/version");
     return true;
-  } catch {
+  } catch (error) {
+    // A stalled endpoint may belong to a live Chrome; do not launch another.
+    if (error instanceof BrowserTimeoutError) throw error;
+    checkDeadline();
     return false;
   }
 }
 
 function probe(command: string[]): string {
   try {
-    const result = Bun.spawnSync(command, { stdout: "pipe", stderr: "ignore" });
+    const result = Bun.spawnSync(command, { stdout: "pipe", stderr: "ignore", timeout: remainingTimeout(1_000), killSignal: "SIGKILL" });
+    checkDeadline();
     return result.success ? textDecoder.decode(result.stdout).trim() : "";
   } catch {
+    checkDeadline();
     return "";
   }
 }
@@ -747,6 +687,7 @@ function chromeProcessId(): number | undefined {
 }
 
 async function closeChrome(): Promise<boolean> {
+  checkDeadline();
   const chromePid = chromeProcessId();
   try {
     const version = await fetchJson<{ webSocketDebuggerUrl?: string }>("/json/version");
@@ -756,14 +697,16 @@ async function closeChrome(): Promise<boolean> {
       session.close();
     }
   } catch {
+    checkDeadline();
     // Chrome is unreachable; fall through to the signal ladder.
   }
+  checkDeadline();
   if (chromePid === undefined) return !(await chromeIsReady());
   for (let attempt = 0; attempt < 24; attempt += 1) {
     if (!processIsRunning(chromePid)) return true;
     if (attempt === 2) signalProcess(chromePid, "SIGTERM");
     if (attempt === 16) signalProcess(chromePid, "SIGKILL");
-    await Bun.sleep(125);
+    await deadlineSleep(125);
   }
   return !processIsRunning(chromePid);
 }
@@ -861,6 +804,7 @@ async function useProfile(nextName: string): Promise<{
     currentTargetId = undefined;
     viewportOverrides.clear();
   }
+  checkDeadline();
   profileName = name;
   profileDir = nextDir;
   writeProfileMeta(profileName, profileDir);
@@ -873,8 +817,7 @@ async function companionStatus(): Promise<JsonObject> {
   const manifestPath = join(dist, "manifest.json");
   let bridge: JsonObject = { ok: false, connected: false };
   try {
-    const response = await fetch(companionBridgeHealthURL);
-    bridge = await response.json() as JsonObject;
+    bridge = await deadlineFetchJson<JsonObject>(companionBridgeHealthURL);
   } catch (error) {
     bridge = {
       ok: false,
@@ -926,7 +869,9 @@ async function ensureChrome(background = true): Promise<void> {
     return;
   }
 
-  await mkdir(profileDir, { recursive: true });
+  checkDeadline();
+  await boundedWait(mkdir(profileDir, { recursive: true }), "Create Chrome profile");
+  checkDeadline();
   writeProfileMeta(profileName, profileDir);
   const openArgs = [
     "/usr/bin/open",
@@ -951,10 +896,11 @@ async function ensureChrome(background = true): Promise<void> {
     "about:blank",
   );
 
+  checkDeadline();
   const launch = Bun.spawn(openArgs, { stdout: "ignore", stderr: "pipe" });
-  const status = await launch.exited;
+  const status = await boundedWait(launch.exited, "Launch Chrome", () => launch.kill());
   if (status !== 0) {
-    const stderr = await new Response(launch.stderr).text();
+    const stderr = await boundedWait(new Response(launch.stderr).text(), "Read Chrome launch error");
     throw new Error(stderr.trim() || `Could not launch ${chromeAppName}.`);
   }
 
@@ -963,7 +909,7 @@ async function ensureChrome(background = true): Promise<void> {
       claimBrowser();
       return;
     }
-    await Bun.sleep(250);
+    await deadlineSleep(250);
   }
 
   throw new Error(`Chrome did not expose its local debugging port at ${chromeBaseURL}.`);
@@ -1139,7 +1085,7 @@ async function resizeWindowForTab(
     });
   });
   // The window manager applies asynchronously, and the page relayouts after it.
-  await Bun.sleep(250);
+  await deadlineSleep(250);
   return { chromeInset: inset, windowBounds: bounds };
 }
 
@@ -1193,7 +1139,7 @@ async function waitUntilReady(
       // Navigation may replace the execution context between polls.
     }
     if (Date.now() - started >= timeoutMs) return last;
-    await Bun.sleep(Math.min(150, Math.max(1, timeoutMs - (Date.now() - started))));
+    await deadlineSleep(Math.min(150, Math.max(1, timeoutMs - (Date.now() - started))));
   }
 }
 
@@ -1245,6 +1191,15 @@ function errorResult(data: JsonObject): ToolResult {
 }
 
 async function callTool(name: string, args: JsonObject): Promise<ToolResult> {
+  if (name !== "browser_open") return callToolImpl(name, args);
+  const waitMs = args.waitMs === undefined ? 15_000 : args.waitMs;
+  if (typeof waitMs !== "number" || !Number.isFinite(waitMs) || waitMs < 0 || waitMs > 2_147_483_647) {
+    throw new Error("waitMs must be a finite nonnegative number no greater than 2147483647.");
+  }
+  return withDeadline(waitMs, "browser_open", () => callToolImpl(name, args));
+}
+
+async function callToolImpl(name: string, args: JsonObject): Promise<ToolResult> {
   switch (name) {
     case "browser_profiles":
       return textResult({
@@ -1345,13 +1300,14 @@ async function callTool(name: string, args: JsonObject): Promise<ToolResult> {
         if (typeof args.profile === "string" && args.profile.trim()) {
           throw new Error("profile is only available in action mode; regular mode uses the user's normal Chrome profile.");
         }
+        checkDeadline();
         const launch = Bun.spawn(regularChromeLaunchArgs(chromeAppName, url), {
           stdout: "ignore",
           stderr: "pipe",
         });
-        const status = await launch.exited;
+        const status = await boundedWait(launch.exited, "Launch Chrome", () => launch.kill());
         if (status !== 0) {
-          const stderr = await new Response(launch.stderr).text();
+          const stderr = await boundedWait(new Response(launch.stderr).text(), "Read Chrome launch error");
           throw new Error(stderr.trim() || `Could not open ${chromeAppName}.`);
         }
         return textResult({
@@ -1393,6 +1349,7 @@ async function callTool(name: string, args: JsonObject): Promise<ToolResult> {
           throw new Error("Chrome created a tab without a DevTools endpoint.");
         }
       }
+      if (!target.webSocketDebuggerUrl) throw new Error("Chrome tab has no DevTools endpoint.");
       currentTargetId = target.id;
       const session = await CDPSession.connect(target.webSocketDebuggerUrl);
       try {
@@ -1537,7 +1494,7 @@ async function callTool(name: string, args: JsonObject): Promise<ToolResult> {
           return { selector: selector || element.tagName.toLowerCase(), text: (element.innerText || element.textContent || "").trim().slice(0, 300) };
         })()`;
         const result = await evaluateValue(session, expression) as JsonObject;
-        await Bun.sleep(250);
+        await deadlineSleep(250);
         return textResult({ ok: true, tabId: target.id, result });
       });
 
@@ -1705,7 +1662,7 @@ async function callTool(name: string, args: JsonObject): Promise<ToolResult> {
         });
       }
       const target = await targetFor(args.tabId);
-      const response = await fetch(`${chromeBaseURL}/json/close/${encodeURIComponent(target.id)}`);
+      const response = await boundedWait(fetch(`${chromeBaseURL}/json/close/${encodeURIComponent(target.id)}`, { signal: AbortSignal.timeout(10_000) }), "Close Chrome tab");
       if (!response.ok) {
         throw new Error(`Chrome could not close tab ${target.id}.`);
       }

@@ -111,6 +111,7 @@ describe("Action Browser navigation assessment", () => {
     });
 
     expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("Expected navigation to time out");
     expect(result.error).toContain("Timed out after 250ms");
   });
 

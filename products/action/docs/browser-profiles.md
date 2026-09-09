@@ -296,3 +296,21 @@ plugin in each harness so the cached copy is replaced.
 - [packages/chrome-companion/README.md](../packages/chrome-companion/README.md)
 - [ACT-001 surface adapter architecture](decisions/ACT-001-surface-adapter-architecture.md)
 - [plugins/action-browser/skills/action-browser/SKILL.md](../plugins/action-browser/skills/action-browser/SKILL.md)
+
+## Browser request deadlines
+
+`browser_open.waitMs` is the total operation budget (15,000 ms by default),
+including profile selection, Chrome startup, HTTP/CDP connection, navigation,
+and readiness checks. Zero fails immediately without opening a tab. Expiry
+returns an MCP tool error and cancels pending transport work; increasing
+`waitMs` does not remove the 10-second limit on individual HTTP/CDP operations.
+
+When configuring the MCP server locally, point to
+`products/action/plugins/action-browser/scripts/run-action-browser-mcp.sh` in
+the Lattices checkout instead of a version-pinned plugin cache. On the next MCP
+process start, `initialize` should report `0.3.0`, and `tools/list` should expose
+`browser_open.mode`, `profile`, and `newTab`. Existing MCP processes retain their
+loaded implementation until reloaded.
+
+The launcher resolves Bun from `ACTION_BUN_BIN`, PATH, or the standard user and
+Homebrew locations. An explicit invalid override fails with an actionable error.
