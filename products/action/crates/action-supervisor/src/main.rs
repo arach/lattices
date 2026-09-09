@@ -117,6 +117,7 @@ struct Config {
     supervisor_executable: PathBuf,
     supervisor_state_path: PathBuf,
     bun_executable: String,
+    bun_resolution_error: Option<String>,
     companion_host: String,
     companion_port: u16,
     companion_url: String,
@@ -147,14 +148,15 @@ impl Config {
             None => env::current_exe().map_err(|error| error.to_string())?,
         };
         let supervisor_state_path = runtime_directory.join("supervisor-state.json");
-        let bun_executable = env_nonempty("ACTION_BUN_BIN").unwrap_or_else(|| {
-            let home_bun = home.join(".bun/bin/bun");
-            if home_bun.exists() {
-                home_bun.to_string_lossy().to_string()
-            } else {
-                "bun".to_string()
-            }
-        });
+        let (bun_executable, bun_resolution_error) = match resolve_bun(
+            &home,
+            env_nonempty("ACTION_BUN_BIN").as_deref(),
+            &env::var("PATH").unwrap_or_default(),
+            executable_file,
+        ) {
+            Ok(path) => (path, None),
+            Err(error) => (String::new(), Some(error)),
+        };
         let companion_host = env_nonempty("ACTION_COMPANION_HOST").unwrap_or_else(|| DEFAULT_HOST.to_string());
         let companion_port = env_nonempty("ACTION_COMPANION_PORT")
             .and_then(|value| value.parse::<u16>().ok())
@@ -183,6 +185,7 @@ impl Config {
             supervisor_executable,
             supervisor_state_path,
             bun_executable,
+            bun_resolution_error,
             companion_host,
             companion_port,
             companion_url,
@@ -239,6 +242,7 @@ struct DoctorReport {
 }
 
 fn start_service(config: &Config) -> Result<ServiceStatus, String> {
+    validate_bun(config)?;
     ensure_launch_agent(config)?;
     let _ = run_command("/bin/launchctl", &["bootout", &config.service_target]);
     let _ = wait_for_stopped(config);
@@ -260,6 +264,7 @@ fn stop_service(config: &Config) -> Result<ServiceStatus, String> {
 }
 
 fn supervise_service(config: &Config) -> Result<(), String> {
+    validate_bun(config)?;
     install_signal_handlers();
     ensure_supervisor_directories(config)?;
     eprintln!(
@@ -517,7 +522,9 @@ fn doctor_report(config: &Config) -> DoctorReport {
     if !config.companion_entrypoint().exists() {
         warnings.push(format!("companion entrypoint is missing: {}", config.companion_entrypoint().display()));
     }
-    if !command_available(&config.bun_executable) {
+    if let Some(error) = &config.bun_resolution_error {
+        warnings.push(error.clone());
+    } else if !command_available(&config.bun_executable) {
         warnings.push(format!("bun executable is not available: {}", config.bun_executable));
     }
     if !status.health.reachable {
@@ -614,6 +621,7 @@ fn ensure_supervisor_directories(config: &Config) -> Result<(), String> {
 fn render_launch_agent_plist(config: &Config) -> String {
     let mut env_entries = vec![
         ("ACTION_ROOT", config.action_root.to_string_lossy().to_string()),
+        ("ACTION_BUN_BIN", config.bun_executable.clone()),
         ("ACTION_SUPPORT_DIRECTORY", config.support_directory.to_string_lossy().to_string()),
         ("ACTION_COMPANION_SOCKET_PATH", config.companion_socket_path.to_string_lossy().to_string()),
         ("ACTION_COMPANION_HOST", config.companion_host.clone()),
@@ -931,4 +939,83 @@ fn json_escape(value: &str) -> String {
 
 fn xml_escape(value: &str) -> String {
     value.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&apos;")
+}
+
+// Status/doctor/stop must remain usable even if Bun was removed after startup.
+fn validate_bun(config: &Config) -> Result<(), String> {
+    match &config.bun_resolution_error {
+        Some(error) => Err(error.clone()),
+        None => Ok(()),
+    }
+}
+
+// Resolve before writing launchd configuration: GUI environments omit shell PATH.
+fn resolve_bun(
+    home: &Path,
+    explicit: Option<&str>,
+    path: &str,
+    executable: impl Fn(&Path) -> bool,
+) -> Result<String, String> {
+    let search = |name: &str| -> Option<PathBuf> {
+        env::split_paths(path)
+            .filter(|directory| directory.is_absolute())
+            .map(|directory| directory.join(name))
+            .find(|candidate| executable(candidate))
+    };
+    if let Some(value) = explicit {
+        let candidate = if Path::new(value).is_absolute() {
+            Some(PathBuf::from(value))
+        } else if !value.contains('/') {
+            search(value)
+        } else {
+            None
+        };
+        return candidate.filter(|candidate| executable(candidate))
+            .map(|candidate| candidate.to_string_lossy().into_owned())
+            .ok_or_else(|| format!("ACTION_BUN_BIN is not an executable file: {value}"));
+    }
+    let candidates = [
+        home.join(".bun/bin/bun"),
+        PathBuf::from("/opt/homebrew/bin/bun"),
+        PathBuf::from("/usr/local/bin/bun"),
+    ];
+    search("bun").or_else(|| candidates.into_iter().find(|candidate| executable(candidate)))
+        .map(|candidate| candidate.to_string_lossy().into_owned())
+        .ok_or_else(|| "Bun was not found. Install Bun or set ACTION_BUN_BIN to its absolute executable path.".to_string())
+}
+
+fn executable_file(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    fs::metadata(path).is_ok_and(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
+}
+
+#[cfg(test)]
+mod bun_tests {
+    use super::*;
+
+    #[test]
+    fn resolves_bun_without_shell_path() {
+        let result = resolve_bun(Path::new("/Users/test"), None, "/usr/bin:/bin", |path| path == Path::new("/Users/test/.bun/bin/bun"));
+        assert_eq!(result.unwrap(), "/Users/test/.bun/bin/bun");
+    }
+
+    #[test]
+    fn supports_homebrew_and_path_installations() {
+        for expected in ["/opt/homebrew/bin/bun", "/usr/local/bin/bun", "/custom/bin/bun"] {
+            let result = resolve_bun(Path::new("/Users/test"), None, "/custom/bin:/usr/bin", |path| path == Path::new(expected));
+            assert_eq!(result.unwrap(), expected);
+        }
+    }
+
+    #[test]
+    fn rejects_bad_override_instead_of_silently_selecting_another_bun() {
+        let result = resolve_bun(Path::new("/Users/test"), Some("/missing/bun"), "/bin", |path| path == Path::new("/bin/bun"));
+        assert!(result.unwrap_err().contains("ACTION_BUN_BIN"));
+    }
+
+    #[test]
+    fn fails_early_when_bun_is_missing_and_ignores_relative_path_entries() {
+        let result = resolve_bun(Path::new("/Users/test"), None, ".:relative", |path| !path.is_absolute());
+        assert!(result.unwrap_err().contains("Bun was not found"));
+    }
 }

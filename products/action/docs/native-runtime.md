@@ -84,6 +84,21 @@ Keep these rules intact:
 
 ## Scripts And Helpers
 
+### Bun and older installed apps
+
+The current app no longer starts the legacy Bun console on port 4318. An
+installed app logging `Started local console process` and `env: bun: No such
+file or directory` is an older build; rebuilding the source does not replace
+that running app. Build and verify the signed bundle, then install and relaunch
+it during an explicit service activation step.
+
+The replacement companion service uses `crates/action-supervisor`. It resolves
+Bun to an absolute executable from `ACTION_BUN_BIN`, PATH, or the standard
+user/Homebrew locations before starting, and stores that path in its launchd
+configuration. An invalid override or missing Bun fails early instead of
+starting a repeated child-process failure loop. Restarting an existing service
+is a separate operation from building these fixes.
+
 Useful native scripts live in:
 
 - [native/engine/scripts](native/engine/scripts)
