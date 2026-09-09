@@ -231,7 +231,16 @@ final class ActionAgentRuntimeServer: @unchecked Sendable {
         case .permissionsRequest:
             return [
                 "accessibility": actionAgentAccessibilityStatus(prompt: true).rawValue,
-                "screenRecording": actionAgentRequestScreenRecording().rawValue,
+                "screenRecording": await actionRequestScreenRecordingAccess()
+                    ? ActionAgentRuntimePermissionState.granted.rawValue
+                    : ActionAgentRuntimePermissionState.denied.rawValue,
+                "bundleId": Bundle.main.bundleIdentifier ?? "unknown",
+                "bundlePath": Bundle.main.bundlePath,
+            ]
+        case .accessibilityRequest:
+            return [
+                "accessibility": actionAgentAccessibilityStatus(prompt: true).rawValue,
+                "screenRecording": actionAgentScreenRecordingStatus().rawValue,
                 "bundleId": Bundle.main.bundleIdentifier ?? "unknown",
                 "bundlePath": Bundle.main.bundlePath,
             ]
@@ -683,15 +692,6 @@ private func actionAgentAccessibilityStatus(prompt: Bool = false) -> ActionAgent
 
 private func actionAgentScreenRecordingStatus() -> ActionAgentRuntimePermissionState {
     CGPreflightScreenCaptureAccess() ? .granted : .denied
-}
-
-@discardableResult
-private func actionAgentRequestScreenRecording() -> ActionAgentRuntimePermissionState {
-    if CGPreflightScreenCaptureAccess() {
-        return .granted
-    }
-
-    return CGRequestScreenCaptureAccess() ? .granted : .denied
 }
 
 private func actionAgentOpenSettingsPane(anchor: String) {

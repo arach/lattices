@@ -324,7 +324,20 @@ final class ActionLauncherViewModel: ObservableObject {
 
     func requestPermissions() {
         Task {
-            await requestPermissionsViaAgent()
+            _ = await updatePermissions(using: .accessibilityRequest)
+            await requestScreenRecordingPermissionFromHost()
+        }
+    }
+
+    func requestAccessibilityPermission() {
+        Task {
+            _ = await updatePermissions(using: .accessibilityRequest)
+        }
+    }
+
+    func requestScreenRecordingPermission() {
+        Task {
+            await requestScreenRecordingPermissionFromHost()
         }
     }
 
@@ -785,14 +798,9 @@ final class ActionLauncherViewModel: ObservableObject {
         _ = await updatePermissions(using: .permissionsSnapshot)
     }
 
-    private func requestPermissionsViaAgent() async {
-        // A previous Action install can leave its helper listening on the
-        // well-known port. Verify the responder before asking macOS to prompt,
-        // otherwise the user could grant access to the retired identity.
-        guard await updatePermissions(using: .permissionsSnapshot) else {
-            return
-        }
-        _ = await updatePermissions(using: .permissionsRequest)
+    private func requestScreenRecordingPermissionFromHost() async {
+        _ = await actionRequestScreenRecordingAccess()
+        _ = await updatePermissions(using: .permissionsSnapshot)
     }
 
     @discardableResult

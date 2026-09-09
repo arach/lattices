@@ -32,6 +32,7 @@ public enum ActionAgentMethod: String, CaseIterable, Sendable {
     case launchApp = "app.launch"
     case permissionsSnapshot = "permissions.snapshot"
     case permissionsRequest = "permissions.request"
+    case accessibilityRequest = "permissions.requestAccessibility"
     case openAccessibilitySettings = "settings.openAccessibility"
     case openScreenRecordingSettings = "settings.openScreenRecording"
     case activateApp = "app.activate"

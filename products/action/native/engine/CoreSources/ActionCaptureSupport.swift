@@ -43,6 +43,26 @@ public func actionShareableContent() async throws -> SCShareableContent {
     return try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
 }
 
+/// Requests Screen Recording access by exercising the same ScreenCaptureKit API
+/// used by Action's capture paths. On current macOS releases this is the reliable
+/// foreground authorization trigger; the older Core Graphics request alone can
+/// return false without presenting the consent sheet.
+public func actionRequestScreenRecordingAccess() async -> Bool {
+    if CGPreflightScreenCaptureAccess() {
+        return true
+    }
+
+    do {
+        _ = try await SCShareableContent.current
+    } catch {
+        // Keep Core Graphics as a compatibility fallback for macOS releases where
+        // requesting shareable content does not present authorization itself.
+        _ = CGRequestScreenCaptureAccess()
+    }
+
+    return CGPreflightScreenCaptureAccess()
+}
+
 public func actionBestWindowSelection(for bundleId: String) async throws -> ActionWindowSelection {
     let content = try await actionShareableContent()
     let candidates = content.windows.filter { window in

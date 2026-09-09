@@ -504,6 +504,9 @@ struct ActionLauncherRootView: View {
         .onReceive(NotificationCenter.default.publisher(for: .actionShowKeyboardCheatSheet)) { _ in
             showKeyboardCheatSheet = true
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            model.refreshPermissions()
+        }
         .sheet(isPresented: $showKeyboardCheatSheet) {
             ActionKeyboardCheatSheetView(
                 onOpenDocs: openDocumentation,
@@ -2443,7 +2446,7 @@ struct ActionLauncherRootView: View {
                     granted: axGranted,
                     statusLabel: permissionStatusLabel(model.accessibilityStatus),
                     primaryActionTitle: "Grant",
-                    onPrimary: model.requestPermissions,
+                    onPrimary: model.requestAccessibilityPermission,
                     onOpenSettings: model.openAccessibilitySettings
                 )
 
@@ -2455,7 +2458,7 @@ struct ActionLauncherRootView: View {
                     granted: screenGranted,
                     statusLabel: permissionStatusLabel(model.screenRecordingStatus),
                     primaryActionTitle: "Grant",
-                    onPrimary: model.requestPermissions,
+                    onPrimary: model.requestScreenRecordingPermission,
                     onOpenSettings: model.openScreenRecordingSettings
                 )
             }

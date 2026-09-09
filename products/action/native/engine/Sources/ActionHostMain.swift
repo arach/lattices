@@ -287,20 +287,9 @@ func screenRecordingStatus() -> PermissionState {
     CGPreflightScreenCaptureAccess() ? .granted : .denied
 }
 
-@discardableResult
-func requestScreenRecording() -> PermissionState {
-    if CGPreflightScreenCaptureAccess() {
-        return .granted
-    }
-
-    return CGRequestScreenCaptureAccess() ? .granted : .denied
-}
-
-func snapshot(promptAccessibility: Bool, requestScreenRecordingPermission: Bool) -> PermissionSnapshot {
+func snapshot(promptAccessibility: Bool) -> PermissionSnapshot {
     let accessibility = accessibilityStatus(prompt: promptAccessibility)
-    let screenRecording = requestScreenRecordingPermission
-        ? requestScreenRecording()
-        : screenRecordingStatus()
+    let screenRecording = screenRecordingStatus()
     let bundleId = Bundle.main.bundleIdentifier ?? "unknown"
     let bundlePath = Bundle.main.bundlePath
 
@@ -3916,9 +3905,11 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
             )
         )
     case .status:
-        try writer.write(snapshot(promptAccessibility: false, requestScreenRecordingPermission: false))
+        try writer.write(snapshot(promptAccessibility: false))
     case .request:
-        try writer.write(snapshot(promptAccessibility: true, requestScreenRecordingPermission: true))
+        _ = accessibilityStatus(prompt: true)
+        _ = await actionRequestScreenRecordingAccess()
+        try writer.write(snapshot(promptAccessibility: false))
     case .openAccessibilitySettings:
         openSettingsPane(anchor: "Privacy_Accessibility")
         try writer.write(ActionHostResponse(status: "opened", outputPath: nil, detail: "accessibility"))

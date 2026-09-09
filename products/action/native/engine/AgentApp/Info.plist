@@ -26,5 +26,7 @@
   <true/>
   <key>NSPrincipalClass</key>
   <string>NSApplication</string>
+  <key>NSScreenCaptureUsageDescription</key>
+  <string>Action captures screens and windows when you create or run a visual automation.</string>
 </dict>
 </plist>
