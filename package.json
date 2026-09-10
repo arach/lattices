@@ -15,7 +15,7 @@
     "node": ">=18"
   },
   "bin": {
-    "lattices": "./bin/lattices.ts",
+    "lattices": "./bin/lattices",
     "lattices-app": "./bin/lattices-app.ts"
   },
   "keywords": [

@@ -4141,7 +4141,9 @@ unpacked install inside the Action-owned identity.
 
 ## Action Browser MCP
 
-Server: `plugins/action-browser/server/index.ts`
+Server: `bin/mcp/toolsets/browser/index.ts` in the lattices repo root — the
+browser tools are a toolset inside the lattices MCP, served by `lattices mcp`.
+See [docs/mcp.md](../../docs/mcp.md).
 
 ### Tools
 
@@ -4161,25 +4163,23 @@ Server: `plugins/action-browser/server/index.ts`
 - **Native runtime MCP** (`action`): observe / resolve / act / record on macOS
   through Action.app. This is what controls your *regular* Chrome window, and
   every other native app, via screen capture and accessibility.
-- **Browser MCP** (`action-browser` plugin): Action-owned Chrome identities plus
-  DOM-level tools over CDP.
+- **Browser MCP** (the `browser` toolset of `lattices mcp`): Action-owned Chrome
+  identities plus DOM-level tools over CDP.
 
-Install the browser plugin from the marketplace:
-
-```bash
-claude plugin marketplace add arach/action
-claude plugin install action-browser@action --scope user
-```
-
-Or point Claude at the local server with a default identity (replace the paths
-with your own checkout and `bun` location):
+Register it — no path, in any harness:
 
 ```bash
-claude mcp add action-browser -s user \
-  -e ACTION_ROOT="$HOME/dev/action" \
-  -e ACTION_BROWSER_PROFILE=work \
-  -- "$(which bun)" "$HOME/dev/action/plugins/action-browser/server/index.ts"
+claude mcp add lattices -s user -- lattices mcp
 ```
+
+To pin a default identity, add the environment variable to that entry:
+
+```bash
+claude mcp add lattices -s user -e ACTION_BROWSER_PROFILE=work -- lattices mcp
+```
+
+`ACTION_ROOT` is only needed for the Chrome Companion paths, when the tools run
+from a published `lattices` install rather than a checkout.
 
 ### Agent workflow
 

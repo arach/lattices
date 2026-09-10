@@ -1,5 +1,3 @@
-#!/usr/bin/env bun
-
 import { BrowserTimeoutError, CDPSession, deadlineFetchJson, withDeadline, checkDeadline, boundedWait, deadlineSleep, remainingTimeout } from "./transport.ts";
 
 import { mkdir } from "node:fs/promises";
@@ -36,18 +34,44 @@ import {
   windowBoundsFor,
   type ViewportOverride,
 } from "./viewport.ts";
-
-// Keep in step with every plugin manifest. `bun run plugin:version` checks and sets this.
-const SERVER_VERSION = "0.3.0";
+import {
+  MAX_CAPTURE_EDGE,
+  clipForRect,
+  measureElementExpression,
+  parseCaptureRequest,
+  type CaptureRect,
+} from "./capture.ts";
+import {
+  NAVIGATION_GRACE_MS,
+  NETWORK_IDLE_QUIET_MS,
+  NetworkIdleTracker,
+  SETTLE_MODES,
+  parseSettleRequest,
+  parseWaitMs,
+  POSTCONDITION_MARGIN_MS,
+  selectorStateExpression,
+  unsatisfiedNetworkIdleError,
+  unsatisfiedSelectorError,
+  type SettleRequest,
+} from "./settle.ts";
+import {
+  CONSOLE_LEVELS,
+  DEFAULT_CONSOLE_LIMIT,
+  LOG_REPLAY_MS,
+  MAX_CONSOLE_LIMIT,
+  RECORDER_SOURCE,
+  dedupeEntries,
+  mergeAndDedupe,
+  parseConsoleRequest,
+  readRecorderExpression,
+  selectEntries,
+  summarize,
+  toConsoleEntry,
+  type ConsoleEntry,
+  type ConsoleRequest,
+} from "./console.ts";
 
 type JsonObject = Record<string, unknown>;
-
-type JsonRpcRequest = {
-  jsonrpc: "2.0";
-  id?: string | number | null;
-  method: string;
-  params?: JsonObject;
-};
 
 type ChromeTarget = {
   id: string;
@@ -102,6 +126,14 @@ const sessionName = (process.env.ACTION_BROWSER_SESSION
   ?? `action-${process.pid}-${Math.random().toString(36).slice(2, 8)}`)
   .replace(/[^A-Za-z0-9._-]/g, "-");
 const idleTimeoutMs = Math.max(0, Number(process.env.ACTION_BROWSER_IDLE_TIMEOUT_MS ?? "900000") || 0);
+/**
+ * Total deadlines for the interaction tools, matching browser_open's contract: a
+ * budget for the whole call, not a per-step timeout. Shorter than open's 15s
+ * because an interaction acts on a page that is already loaded.
+ */
+const CLICK_WAIT_MS = 10_000;
+const FILL_WAIT_MS = 10_000;
+const CONSOLE_WAIT_MS = 10_000;
 const shutdownBudgetMs = Math.max(500, Number(process.env.ACTION_BROWSER_SHUTDOWN_TIMEOUT_MS ?? "4000") || 4_000);
 const chromeAppName = process.env.ACTION_BROWSER_CHROME_APP ?? "Google Chrome";
 const chromeBaseURL = `http://127.0.0.1:${debugPort}`;
@@ -117,6 +149,13 @@ let currentTargetId: string | undefined;
  * override is gone.
  */
 const viewportOverrides = new Map<string, ViewportOverride>();
+/**
+ * Targets that already carry the page-side console recorder. The script is
+ * installed with Page.addScriptToEvaluateOnNewDocument, which re-runs it on every
+ * new document for the life of the tab, so it is installed once per target rather
+ * than once per navigation.
+ */
+const consoleRecorderTargets = new Set<string>();
 let claimHeld = false;
 let ownsBrowser = false;
 let shuttingDown = false;
@@ -130,10 +169,19 @@ function sanitizeProfileName(name: string): string {
   return cleaned;
 }
 
+/**
+ * Where Action's own checkout lives, for the Chrome Companion extension paths
+ * below. This used to be `../../..` back when the server sat inside Action's
+ * plugin directory; now the server ships with the lattices CLI, so the Action
+ * tree is a sibling of `bin/` rather than an ancestor of this file -- and in a
+ * published npm install it is absent entirely. Companion features degrade to
+ * "not installed" in that case, which is the honest answer.
+ */
 function resolveActionRoot(): string {
   if (process.env.ACTION_ROOT) return resolve(process.env.ACTION_ROOT);
-  // plugins/action-browser/server -> repo root
-  return resolve(fileURLToPath(new URL("../../..", import.meta.url)));
+  // bin/mcp/toolsets/browser -> lattices root
+  const latticesRoot = resolve(fileURLToPath(new URL("../../../..", import.meta.url)));
+  return join(latticesRoot, "products/action");
 }
 
 function companionScriptsDir(): string {
@@ -258,7 +306,7 @@ const BROWSER_SURFACES = [
   },
 ] as const;
 
-const tools = [
+export const tools = [
   {
     name: "browser_profiles",
     title: "List Action Browser Identities",
@@ -317,10 +365,12 @@ const tools = [
         },
         confirm: {
           type: "boolean",
+          default: false,
           description: "When true, write cookies. When false/omitted, list matches only.",
         },
         listSourceProfiles: {
           type: "boolean",
+          default: false,
           description: "When true, list the user's regular Chrome profiles (directory name plus display name) and return.",
         },
       },
@@ -346,15 +396,16 @@ const tools = [
         mode: {
           type: "string",
           enum: ["action", "regular"],
+          default: "action",
           description: "action = Action browser identity with DOM tools (default). regular = open-only handoff to the user's normal Chrome; browser_snapshot / browser_click / browser_fill / browser_screenshot do not reach it.",
         },
         profile: {
           type: "string",
           description: "Action mode only. Action browser identity to use, e.g. agent-browser (blank) or work (seeded from a regular Chrome profile). Created on first use.",
         },
-        background: { type: "boolean", description: "Action mode only: keep Chrome hidden in the background. Defaults to true. Regular mode is always visible." },
-        waitMs: { type: "number", minimum: 0, maximum: 2_147_483_647, description: "Total deadline in milliseconds, including startup, connection, navigation, and readiness. Defaults to 15000; zero fails immediately." },
-        newTab: { type: "boolean", description: "Action mode only: create a separate tab instead of reusing this session's current tab. Defaults to false." },
+        background: { type: "boolean", default: true, description: "Action mode only: keep Chrome hidden in the background. Regular mode is always visible." },
+        waitMs: { type: "number", minimum: 0, maximum: 2_147_483_647, default: 15_000, description: "Total deadline in milliseconds, including startup, connection, navigation, and readiness. Zero fails immediately." },
+        newTab: { type: "boolean", default: false, description: "Action mode only: create a separate tab instead of reusing this session's current tab." },
       },
       required: ["url"],
       additionalProperties: false,
@@ -371,13 +422,13 @@ const tools = [
   {
     name: "browser_snapshot",
     title: "Inspect Browser Page",
-    description: "Read page metadata, visible text, and stable selectors for interactive elements in the active Action browser. Does not reach pages opened with mode=regular; use action.observe.snapshot for those.",
+    description: "Read page metadata, visible text, and stable selectors for interactive elements in the active Action browser, plus a console summary saying whether the page logged any errors. Does not reach pages opened with mode=regular; use action.observe.snapshot for those.",
     inputSchema: {
       type: "object",
       properties: {
         tabId: { type: "string", description: "Optional tab id from browser_open or browser_tabs." },
-        maxTextChars: { type: "number", description: "Maximum visible-text characters. Defaults to 12000." },
-        maxElements: { type: "number", description: "Maximum interactive elements. Defaults to 80." },
+        maxTextChars: { type: "number", default: 12_000, description: "Maximum visible-text characters." },
+        maxElements: { type: "number", default: 80, description: "Maximum interactive elements." },
       },
       additionalProperties: false,
     },
@@ -386,13 +437,22 @@ const tools = [
   {
     name: "browser_click",
     title: "Click Browser Element",
-    description: "Click a DOM element by CSS selector or visible text in the active Action browser. Does not reach pages opened with mode=regular; use action.act.execute for those.",
+    description: "Click a DOM element by CSS selector or visible text in the active Action browser, and wait for a named result rather than guessing. Use settle and/or waitForSelector so the next tool call sees the page the click produced. Does not reach pages opened with mode=regular; use action.act.execute for those.",
     inputSchema: {
       type: "object",
       properties: {
         tabId: { type: "string", description: "Optional tab id." },
         selector: { type: "string", description: "Preferred CSS selector from browser_snapshot." },
         text: { type: "string", description: "Visible text fallback when a selector is unavailable." },
+        waitMs: { type: "number", minimum: 0, maximum: 2_147_483_647, default: 10000, description: "Total deadline in milliseconds for the interaction and everything it waits for. Exceeding it fails with a message naming what never happened." },
+        settle: {
+          type: "string",
+          enum: [...SETTLE_MODES],
+          default: "paint",
+          description: "What counts as done. none = return immediately. paint = wait for the next two frames (a re-render). navigation = if a navigation starts, wait for the new document to be ready; if none starts within 1.5s, stop waiting. network-idle = wait until no request has been in flight for 500ms.",
+        },
+        waitForSelector: { type: "string", description: "Additionally wait until this CSS selector is visible (or, with waitForSelectorGone, until it stops matching). This is the postcondition: if it never holds, the call fails saying so instead of returning a page that never changed." },
+        waitForSelectorGone: { type: "boolean", default: false, description: "Invert waitForSelector: wait until it stops matching. Use for a spinner that must disappear or a dialog that must close." },
       },
       additionalProperties: false,
     },
@@ -401,13 +461,22 @@ const tools = [
   {
     name: "browser_fill",
     title: "Fill Browser Field",
-    description: "Set the value of an input, textarea, select, or contenteditable element in the active Action browser and dispatch input/change events. Does not reach pages opened with mode=regular.",
+    description: "Set the value of an input, textarea, select, or contenteditable element in the active Action browser and dispatch input/change events. Waits for nothing by default, because most fills do not navigate; pass settle or waitForSelector when this one triggers a search, a validation message, or a form submit. Does not reach pages opened with mode=regular.",
     inputSchema: {
       type: "object",
       properties: {
         tabId: { type: "string", description: "Optional tab id." },
         selector: { type: "string", description: "CSS selector for the field." },
         value: { type: "string", description: "Text value to enter." },
+        waitMs: { type: "number", minimum: 0, maximum: 2_147_483_647, default: 10000, description: "Total deadline in milliseconds for the interaction and everything it waits for. Exceeding it fails with a message naming what never happened." },
+        settle: {
+          type: "string",
+          enum: [...SETTLE_MODES],
+          default: "none",
+          description: "What counts as done. none = return immediately. paint = wait for the next two frames (a re-render). navigation = if a navigation starts, wait for the new document to be ready; if none starts within 1.5s, stop waiting. network-idle = wait until no request has been in flight for 500ms.",
+        },
+        waitForSelector: { type: "string", description: "Additionally wait until this CSS selector is visible (or, with waitForSelectorGone, until it stops matching). This is the postcondition: if it never holds, the call fails saying so instead of returning a page that never changed." },
+        waitForSelectorGone: { type: "boolean", default: false, description: "Invert waitForSelector: wait until it stops matching. Use for a spinner that must disappear or a dialog that must close." },
       },
       required: ["selector", "value"],
       additionalProperties: false,
@@ -436,6 +505,7 @@ const tools = [
         target: {
           type: "string",
           enum: ["tab", "window"],
+          default: "tab",
           description: "tab = emulate the size for this tab only (default, exact, reversible). window = resize the real Chrome window, which affects every tab in it, may be clamped by the display, and drops any emulated viewport on this tab first so the new window size is what the page actually sees.",
         },
         tabId: { type: "string", description: "Optional tab id from browser_open or browser_tabs. Defaults to this session's current tab." },
@@ -443,11 +513,13 @@ const tools = [
           type: "number",
           minimum: MIN_DEVICE_SCALE_FACTOR,
           maximum: MAX_DEVICE_SCALE_FACTOR,
-          description: "target=tab only. Device pixel ratio. Defaults to 1, which makes screenshot pixels equal CSS pixels; use 2 for a retina-density capture.",
+          default: 1,
+          description: "target=tab only. Device pixel ratio. 1 makes screenshot pixels equal CSS pixels; use 2 for a retina-density capture.",
         },
         mobile: {
           type: "boolean",
-          description: "target=tab only. Emulate a mobile device: honour the viewport meta tag and enable touch. Defaults to false, which is desktop responsive mode.",
+          default: false,
+          description: "target=tab only. Emulate a mobile device: honour the viewport meta tag and enable touch. False is desktop responsive mode.",
         },
         matchMedia: {
           type: "array",
@@ -456,9 +528,17 @@ const tools = [
         },
         reset: {
           type: "boolean",
+          default: false,
           description: `When true, drop the override: target=tab returns the tab to the real window viewport, target=window restores the default ${DEFAULT_WINDOW_SIZE.width}x${DEFAULT_WINDOW_SIZE.height} window. Cannot be combined with width or height.`,
         },
       },
+      // "width and height are required unless reset is true" is a real constraint
+      // that a flat `required` list cannot say. Spelling it out here rejects an
+      // empty call at the schema instead of at runtime.
+      anyOf: [
+        { required: ["width", "height"] },
+        { required: ["reset"], properties: { reset: { const: true } } },
+      ],
       additionalProperties: false,
     },
     annotations: { readOnlyHint: false, idempotentHint: true },
@@ -466,18 +546,55 @@ const tools = [
   {
     name: "browser_screenshot",
     title: "Capture Browser Screenshot",
-    description: "Capture the current Action browser page as a PNG, save it locally, and return the image directly to the agent. Does not reach pages opened with mode=regular; capture those with Action's native screen tools.",
+    description: "Capture the active Action browser page as a PNG, save it locally, and return the image to the agent. Four areas, one at a time: the viewport (default), one element via selector, an explicit clip, or fullPage. Prefer selector for reviewing a single component -- it is captured at scale 1, so the PNG needs no cropping and its pixels still correspond to CSS pixels. Does not reach pages opened with mode=regular; capture those with Action's native screen tools.",
     inputSchema: {
       type: "object",
       properties: {
         tabId: { type: "string", description: "Optional tab id." },
         outputPath: { type: "string", description: "Optional absolute PNG path." },
-        fullPage: { type: "boolean", description: "Capture the full document instead of the viewport. Defaults to false." },
-        includeImage: { type: "boolean", description: "Include image bytes in the MCP response. Defaults to true." },
+        selector: { type: "string", description: "Capture just this element, at its exact rendered size. Use a selector from browser_snapshot. Fails with the rendered size when the element has none, rather than returning a blank frame." },
+        padding: { type: "number", minimum: 0, default: 0, description: "selector only. CSS pixels of breathing room around the element, clamped to the document edges." },
+        clip: {
+          type: "object",
+          description: "Capture an explicit rectangle in document coordinates (page origin, not viewport origin).",
+          properties: {
+            x: { type: "number", minimum: 0 },
+            y: { type: "number", minimum: 0 },
+            width: { type: "number", exclusiveMinimum: 0 },
+            height: { type: "number", exclusiveMinimum: 0 },
+          },
+          required: ["x", "y", "width", "height"],
+          additionalProperties: false,
+        },
+        fullPage: { type: "boolean", default: false, description: `Capture the whole document instead of the viewport. Emitted at scale 1 like every other area, but a document past Chrome's ${MAX_CAPTURE_EDGE}px limit is cut off -- the result says so. Reach for selector or clip when the target is one component.` },
+        includeImage: { type: "boolean", default: true, description: "Include image bytes in the MCP response." },
       },
       additionalProperties: false,
     },
     annotations: { readOnlyHint: true, idempotentHint: false },
+  },
+  {
+    name: "browser_console",
+    title: "Read Browser Console",
+    description: "Read what the active Action browser page logged: console calls, uncaught errors, unhandled rejections, and Chrome's own log (failed subresources, blocked requests, CSP violations). Ask this when a page looks blank or wrong -- a screenshot cannot say why it failed. History is complete for pages opened with browser_open; the reply's coverage field says so per call.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        tabId: { type: "string", description: "Optional tab id. Defaults to this session's current tab." },
+        levels: {
+          type: "array",
+          items: { type: "string", enum: [...CONSOLE_LEVELS] },
+          minItems: 1,
+          default: [...CONSOLE_LEVELS],
+          description: "Levels to return. Narrow to [\"error\", \"warn\"] when triaging a broken page.",
+        },
+        limit: { type: "integer", minimum: 1, maximum: MAX_CONSOLE_LIMIT, default: DEFAULT_CONSOLE_LIMIT, description: "Most recent entries to return, newest last." },
+        clear: { type: "boolean", default: false, description: "Empty the page-side buffer after reading, so the next call reports only what happened next." },
+        waitMs: { type: "number", minimum: 0, maximum: 2_147_483_647, default: 10_000, description: "Total deadline in milliseconds." },
+      },
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true, idempotentHint: true },
   },
   {
     name: "browser_close",
@@ -490,6 +607,7 @@ const tools = [
         scope: {
           type: "string",
           enum: ["tab", "browser"],
+          default: "tab",
           description: "Close a single tab (default) or quit Chrome once no other live session still claims it.",
         },
       },
@@ -756,7 +874,12 @@ function scheduleIdleRelease(): void {
   idleTimer = timer;
 }
 
-async function shutdown(reason: string): Promise<void> {
+/**
+ * Give Chrome up, within a budget. The router calls this and then exits; this
+ * function deliberately does not exit itself, so a second toolset's shutdown is
+ * not cut short by the first one finishing.
+ */
+async function shutdownBrowser(reason: string): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
   if (idleTimer) clearTimeout(idleTimer);
@@ -766,18 +889,15 @@ async function shutdown(reason: string): Promise<void> {
     Bun.sleep(shutdownBudgetMs).then(() => undefined),
   ]);
   note("shutdown", { reason, owned, closed: outcome?.closed ?? false, timedOut: owned && outcome === undefined });
-  process.exit(0);
 }
 
-function installLifecycleHooks(): void {
-  for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"] as const) {
-    process.on(signal, () => {
-      void shutdown(signal);
-    });
-  }
-  process.on("exit", () => {
-    releaseBrowserSync();
-  });
+/**
+ * The last-resort release, run from a `process.on("exit")` handler where nothing
+ * may await. Owner dies, browser dies -- even on a path that never reached the
+ * graceful shutdown above.
+ */
+function shutdownBrowserSync(): void {
+  releaseBrowserSync();
 }
 
 async function useProfile(nextName: string): Promise<{
@@ -919,10 +1039,13 @@ async function listTargets(): Promise<ChromeTarget[]> {
   await ensureChrome();
   const targets = (await fetchJson<ChromeTarget[]>("/json/list"))
     .filter((target) => target.type === "page" && Boolean(target.webSocketDebuggerUrl));
-  if (viewportOverrides.size > 0) {
+  if (viewportOverrides.size > 0 || consoleRecorderTargets.size > 0) {
     const live = new Set(targets.map((target) => target.id));
     for (const id of viewportOverrides.keys()) {
       if (!live.has(id)) viewportOverrides.delete(id);
+    }
+    for (const id of consoleRecorderTargets) {
+      if (!live.has(id)) consoleRecorderTargets.delete(id);
     }
   }
   return targets;
@@ -1143,6 +1266,227 @@ async function waitUntilReady(
   }
 }
 
+/**
+ * Install the page-side console recorder on a tab, once. Failure is not fatal:
+ * an older Chrome or a restricted page still gets the Log-domain half of
+ * browser_console, and the result says which sources it actually has.
+ */
+async function installConsoleRecorder(session: CDPSession, targetId: string): Promise<boolean> {
+  if (consoleRecorderTargets.has(targetId)) return true;
+  try {
+    await session.call("Page.addScriptToEvaluateOnNewDocument", { source: RECORDER_SOURCE });
+    consoleRecorderTargets.add(targetId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+type RecorderRead = {
+  installed: boolean;
+  fromDocumentStart: boolean;
+  entries: ConsoleEntry[];
+  url?: string;
+};
+
+/**
+ * Read the in-page ring. If the recorder is absent -- the tab predates it, or it
+ * could not be installed -- inject it now so the *next* call has history, and say
+ * plainly that this call does not.
+ */
+async function readPageConsole(session: CDPSession, targetId: string, clear: boolean): Promise<RecorderRead> {
+  let raw = await evaluateValue(session, readRecorderExpression(clear)) as JsonObject | undefined;
+  if (raw?.installed !== true) {
+    await installConsoleRecorder(session, targetId);
+    try {
+      // Seed the current document too, so a later read on this same page works.
+      await evaluateValue(session, RECORDER_SOURCE);
+      raw = await evaluateValue(session, readRecorderExpression(false)) as JsonObject | undefined;
+    } catch {
+      // A page mid-navigation can drop the evaluation.
+    }
+  }
+  const entries = Array.isArray(raw?.entries) ? raw.entries as Record<string, unknown>[] : [];
+  return {
+    installed: raw?.installed === true,
+    fromDocumentStart: raw?.fromDocumentStart === true,
+    url: typeof raw?.url === "string" ? raw.url : undefined,
+    entries: entries.map((entry) => toConsoleEntry(entry, "console")),
+  };
+}
+
+/**
+ * Collect what Chrome's Log domain has already stored. Enabling the domain
+ * replays its buffer, which is where subresource 404s, blocked requests, and CSP
+ * violations live -- the failures a page never told its own console about.
+ */
+async function readChromeLog(session: CDPSession): Promise<ConsoleEntry[]> {
+  const collected: ConsoleEntry[] = [];
+  const stopLog = session.on("Log.entryAdded", (params) => {
+    const entry = params.entry as Record<string, unknown> | undefined;
+    if (!entry) return;
+    collected.push(toConsoleEntry({
+      level: entry.level,
+      source: entry.source,
+      text: entry.text,
+      at: typeof entry.timestamp === "number" ? entry.timestamp : undefined,
+      url: entry.url,
+    }, "chrome"));
+  });
+  const stopException = session.on("Runtime.exceptionThrown", (params) => {
+    const details = params.exceptionDetails as Record<string, unknown> | undefined;
+    if (!details) return;
+    const thrown = details.exception as Record<string, unknown> | undefined;
+    collected.push(toConsoleEntry({
+      level: "error",
+      source: "exception",
+      text: thrown?.description ?? details.text,
+      at: typeof params.timestamp === "number" ? params.timestamp : undefined,
+      url: details.url,
+    }, "exception"));
+  });
+  try {
+    await session.call("Log.enable");
+    await session.call("Runtime.enable");
+    // The replay arrives as events, not as the enable response.
+    await deadlineSleep(LOG_REPLAY_MS);
+  } catch {
+    // Neither domain is guaranteed; the page-side recorder still answers.
+  } finally {
+    stopLog();
+    stopException();
+  }
+  return collected;
+}
+
+/** Everything both sources know about the current page, already merged. */
+async function collectConsole(
+  session: CDPSession,
+  targetId: string,
+  request: ConsoleRequest,
+): Promise<{ entries: ConsoleEntry[]; all: ConsoleEntry[]; page: RecorderRead }> {
+  const log = await readChromeLog(session);
+  const page = await readPageConsole(session, targetId, request.clear);
+  const all = mergeAndDedupe(page.entries, log);
+  return { entries: selectEntries(all, request), all, page };
+}
+
+/**
+ * Wait for the postcondition the caller named. Returns what actually happened, so
+ * a click that did not navigate says so rather than looking the same as one that
+ * did.
+ */
+async function settleInteraction(
+  session: CDPSession,
+  request: SettleRequest,
+  label: string,
+): Promise<JsonObject> {
+  const detail: JsonObject = { requested: request.mode };
+
+  switch (request.mode) {
+    case "none":
+      break;
+
+    case "paint":
+      await settleLayout(session);
+      await deadlineSleep(250);
+      break;
+
+    case "navigation": {
+      const before = await currentLoaderId(session);
+      let navigated = false;
+      const graceEnds = Date.now() + Math.min(NAVIGATION_GRACE_MS, Math.max(0, request.waitMs));
+      // A click that navigates does so promptly. One that does not must not cost
+      // the caller the whole deadline waiting to find that out.
+      while (Date.now() < graceEnds) {
+        const now = await currentLoaderId(session);
+        if (now && now !== before) {
+          navigated = true;
+          break;
+        }
+        await deadlineSleep(100);
+      }
+      if (navigated) {
+        const readiness = await waitUntilReady(session, remainingTimeout(request.waitMs));
+        detail.readyState = readiness.readyState;
+        detail.url = readiness.documentUrl;
+        detail.timedOut = readiness.timedOut;
+      } else {
+        await settleLayout(session);
+      }
+      detail.navigated = navigated;
+      break;
+    }
+
+    case "network-idle": {
+      const tracker = new NetworkIdleTracker(Date.now());
+      const stopStart = session.on("Network.requestWillBeSent", (params) => {
+        if (typeof params.requestId === "string") tracker.started(params.requestId, Date.now());
+      });
+      const stopFinish = session.on("Network.loadingFinished", (params) => {
+        if (typeof params.requestId === "string") tracker.settled(params.requestId, Date.now());
+      });
+      const stopFail = session.on("Network.loadingFailed", (params) => {
+        if (typeof params.requestId === "string") tracker.settled(params.requestId, Date.now());
+      });
+      try {
+        await session.call("Network.enable");
+        while (!tracker.isIdle(Date.now())) {
+          if (remainingTimeout(request.waitMs) <= POSTCONDITION_MARGIN_MS) {
+            throw unsatisfiedNetworkIdleError(tracker.pending, request.waitMs, label);
+          }
+          await deadlineSleep(100);
+        }
+        detail.idle = true;
+      } catch (error) {
+        detail.idle = false;
+        detail.pending = tracker.pending;
+        if (error instanceof BrowserTimeoutError) throw unsatisfiedNetworkIdleError(tracker.pending, request.waitMs, label);
+        throw error;
+      } finally {
+        stopStart();
+        stopFinish();
+        stopFail();
+        detail.quietForMs = tracker.quietFor(Date.now());
+        detail.quietThresholdMs = NETWORK_IDLE_QUIET_MS;
+      }
+      break;
+    }
+  }
+
+  if (request.selector) {
+    detail.waitForSelector = request.selector;
+    detail.selectorState = request.selectorState;
+    try {
+      while (await evaluateValue(session, selectorStateExpression(request.selector, request.selectorState)) !== true) {
+        // Answer before the outer deadline does, so the failure names the
+        // postcondition instead of reading as a generic timeout.
+        if (remainingTimeout(request.waitMs) <= POSTCONDITION_MARGIN_MS) {
+          throw unsatisfiedSelectorError(request, label);
+        }
+        await deadlineSleep(100);
+      }
+    } catch (error) {
+      if (error instanceof BrowserTimeoutError) throw unsatisfiedSelectorError(request, label);
+      throw error;
+    }
+    detail.selectorSatisfied = true;
+  }
+
+  return detail;
+}
+
+async function currentLoaderId(session: CDPSession): Promise<string | undefined> {
+  try {
+    const frameTree = (await session.call("Page.getFrameTree")).frameTree as JsonObject | undefined;
+    const frame = frameTree?.frame as JsonObject | undefined;
+    return typeof frame?.loaderId === "string" ? frame.loaderId : undefined;
+  } catch {
+    // Navigation can replace the frame between polls; the next poll sees it.
+    return undefined;
+  }
+}
+
 async function evaluateValue(session: CDPSession, expression: string): Promise<unknown> {
   const response = await session.call("Runtime.evaluate", {
     expression,
@@ -1190,13 +1534,22 @@ function errorResult(data: JsonObject): ToolResult {
   };
 }
 
+/**
+ * Tools that take a total deadline, and what it defaults to. A tool that can wait
+ * on the page must be bounded, or an agent loop inherits the page's worst case.
+ */
+const TOTAL_DEADLINES: Record<string, number> = {
+  browser_open: 15_000,
+  browser_click: CLICK_WAIT_MS,
+  browser_fill: FILL_WAIT_MS,
+  browser_console: CONSOLE_WAIT_MS,
+};
+
 async function callTool(name: string, args: JsonObject): Promise<ToolResult> {
-  if (name !== "browser_open") return callToolImpl(name, args);
-  const waitMs = args.waitMs === undefined ? 15_000 : args.waitMs;
-  if (typeof waitMs !== "number" || !Number.isFinite(waitMs) || waitMs < 0 || waitMs > 2_147_483_647) {
-    throw new Error("waitMs must be a finite nonnegative number no greater than 2147483647.");
-  }
-  return withDeadline(waitMs, "browser_open", () => callToolImpl(name, args));
+  const fallback = TOTAL_DEADLINES[name];
+  if (fallback === undefined) return callToolImpl(name, args);
+  const waitMs = parseWaitMs(args.waitMs, fallback, name);
+  return withDeadline(waitMs, name, () => callToolImpl(name, args));
 }
 
 async function callToolImpl(name: string, args: JsonObject): Promise<ToolResult> {
@@ -1354,6 +1707,10 @@ async function callToolImpl(name: string, args: JsonObject): Promise<ToolResult>
       const session = await CDPSession.connect(target.webSocketDebuggerUrl);
       try {
         await session.call("Page.enable");
+        // Install the console recorder before navigating, so it is in place before
+        // the new document parses and browser_console can answer for the whole page
+        // rather than from whenever it was first asked.
+        await installConsoleRecorder(session, target.id);
         // Restore a sticky viewport before navigating so the first layout, and any
         // breakpoint-sensitive script the page runs on load, sees the right width.
         await applyViewportOverride(session, target.id);
@@ -1473,10 +1830,44 @@ async function callToolImpl(name: string, args: JsonObject): Promise<ToolResult>
           };
         })()`;
         const snapshot = await evaluateValue(session, expression) as JsonObject;
-        return textResult({ ok: true, tabId: target.id, ...snapshot });
+        // "Did this page work?" should be answerable on the call an agent already
+        // makes, not only by asking a second time. The full list stays behind
+        // browser_console; this is the count plus the errors themselves.
+        const page = await readPageConsole(session, target.id, false).catch(() => undefined);
+        const entries = page ? dedupeEntries(page.entries) : [];
+        const summary = page ? summarize(entries) : undefined;
+        const errors = entries.filter((entry) => entry.level === "error").slice(-5);
+        return textResult({
+          ok: true,
+          tabId: target.id,
+          ...snapshot,
+          ...(summary
+            ? {
+              console: {
+                ...summary,
+                // Page-side only. Chrome's own log -- failed subresources, CSP
+                // refusals -- is a second round trip, so browser_console can
+                // legitimately report more errors than this block does.
+                source: "page",
+                // `errors` is the count from the summary; these are the entries.
+                ...(errors.length > 0
+                  ? { recentErrors: errors, note: "Counts what the page itself logged; browser_console also reads Chrome's log." }
+                  : {}),
+                ...(page && !page.fromDocumentStart
+                  ? { partial: true, partialNote: "Recording started after this document did; call browser_console after a browser_open for complete history." }
+                  : {}),
+              },
+            }
+            : {}),
+        });
       });
 
-    case "browser_click":
+    case "browser_click": {
+      const settle = parseSettleRequest(args, {
+        defaultMode: "paint",
+        defaultWaitMs: CLICK_WAIT_MS,
+        label: "browser_click",
+      });
       return await withTarget(args.tabId, async (session, target) => {
         const selector = typeof args.selector === "string" ? args.selector : undefined;
         const text = typeof args.text === "string" ? args.text : undefined;
@@ -1494,11 +1885,17 @@ async function callToolImpl(name: string, args: JsonObject): Promise<ToolResult>
           return { selector: selector || element.tagName.toLowerCase(), text: (element.innerText || element.textContent || "").trim().slice(0, 300) };
         })()`;
         const result = await evaluateValue(session, expression) as JsonObject;
-        await deadlineSleep(250);
-        return textResult({ ok: true, tabId: target.id, result });
+        const settled = await settleInteraction(session, settle, "browser_click");
+        return textResult({ ok: true, tabId: target.id, result, settle: settled });
       });
+    }
 
-    case "browser_fill":
+    case "browser_fill": {
+      const settle = parseSettleRequest(args, {
+        defaultMode: "none",
+        defaultWaitMs: FILL_WAIT_MS,
+        label: "browser_fill",
+      });
       return await withTarget(args.tabId, async (session, target) => {
         const selector = asString(args.selector, "selector");
         const value = stringValue(args.value, "value");
@@ -1519,8 +1916,40 @@ async function callToolImpl(name: string, args: JsonObject): Promise<ToolResult>
           return { selector: ${JSON.stringify(selector)}, valueLength: ${value.length} };
         })()`;
         const result = await evaluateValue(session, expression) as JsonObject;
-        return textResult({ ok: true, tabId: target.id, result });
+        const settled = await settleInteraction(session, settle, "browser_fill");
+        return textResult({ ok: true, tabId: target.id, result, settle: settled });
       });
+    }
+
+    case "browser_console": {
+      const request = parseConsoleRequest(args);
+      return await withTarget(args.tabId, async (session, target) => {
+        await session.call("Page.enable");
+        const { entries, all, page } = await collectConsole(session, target.id, request);
+        const summary = summarize(all);
+        return textResult({
+          ok: true,
+          tabId: target.id,
+          url: page.url ?? target.url,
+          title: target.title,
+          ...summary,
+          // Say how much history this answer actually covers, so "no errors" is
+          // never mistaken for "no errors were recorded".
+          coverage: page.installed
+            ? (page.fromDocumentStart ? "document-start" : "partial")
+            : "chrome-log-only",
+          coverageNote: page.installed
+            ? (page.fromDocumentStart
+              ? "The page recorder was in place before this document parsed; this is its full history."
+              : "The page recorder was installed after this document started, so earlier console calls are missing. Reload with browser_open to get complete history.")
+            : "Only Chrome's own log was available for this tab. Reload with browser_open to record the page's console from the start.",
+          levels: request.levels,
+          entries,
+          ...(request.clear ? { cleared: true } : {}),
+        });
+      });
+    }
+
 
     case "browser_resize": {
       const request = parseResizeRequest(args);
@@ -1589,31 +2018,82 @@ async function callToolImpl(name: string, args: JsonObject): Promise<ToolResult>
       return textResult(result);
     }
 
-    case "browser_screenshot":
+    case "browser_screenshot": {
+      const request = parseCaptureRequest(args);
       return await withTarget(args.tabId, async (session, target) => {
         await session.call("Page.enable");
-        const fullPage = args.fullPage === true;
+        const fullPage = request.kind === "fullPage";
+        // Every clip goes out at scale 1, so a captured pixel is a CSS pixel times
+        // the device scale factor and nothing else. Rescaling is what makes a
+        // screenshot stop being evidence.
         let captureParams: JsonObject = {
           format: "png",
           fromSurface: true,
-          captureBeyondViewport: fullPage,
+          captureBeyondViewport: request.kind !== "viewport",
         };
+        let area: JsonObject = { kind: request.kind };
+        let clip: CaptureRect | undefined;
+
         if (fullPage) {
           const metrics = await session.call("Page.getLayoutMetrics");
           const contentSize = metrics.cssContentSize as JsonObject | undefined
             ?? metrics.contentSize as JsonObject | undefined;
           if (contentSize) {
-            captureParams = {
-              ...captureParams,
-              clip: {
-                x: 0,
-                y: 0,
-                width: Math.min(Number(contentSize.width ?? 1440), 16_384),
-                height: Math.min(Number(contentSize.height ?? 1000), 16_384),
-                scale: 1,
-              },
+            const width = Number(contentSize.width ?? 1440);
+            const height = Number(contentSize.height ?? 1000);
+            clip = {
+              x: 0,
+              y: 0,
+              width: Math.min(width, MAX_CAPTURE_EDGE),
+              height: Math.min(height, MAX_CAPTURE_EDGE),
+            };
+            area = {
+              kind: "fullPage",
+              documentSize: { width, height },
+              ...(width > MAX_CAPTURE_EDGE || height > MAX_CAPTURE_EDGE
+                ? {
+                  truncated: true,
+                  truncatedNote: `The document exceeds Chrome's ${MAX_CAPTURE_EDGE}px capture limit, so this frame is cut off rather than scaled down. Capture the part you need with selector or clip.`,
+                }
+                : { truncated: false }),
             };
           }
+        } else if (request.kind === "element") {
+          await settleLayout(session);
+          const measured = await evaluateValue(session, measureElementExpression(request.selector)) as JsonObject | undefined;
+          if (measured?.found !== true) {
+            throw new Error(`No element matched ${request.selector}. Call browser_snapshot for the selectors this page actually offers.`);
+          }
+          const width = Number(measured.width ?? 0);
+          const height = Number(measured.height ?? 0);
+          if (!(width > 0) || !(height > 0)) {
+            throw new Error(
+              `${request.selector} matched an element with no rendered size (${width}x${height}). `
+              + "It may be hidden, collapsed, or not laid out yet.",
+            );
+          }
+          const outcome = clipForRect(
+            { x: Number(measured.x ?? 0), y: Number(measured.y ?? 0), width, height },
+            request.padding,
+            { width: Number(measured.documentWidth ?? 0), height: Number(measured.documentHeight ?? 0) },
+          );
+          clip = outcome.clip;
+          area = {
+            kind: "element",
+            selector: request.selector,
+            tag: measured.tag,
+            padding: request.padding,
+            element: { x: measured.x, y: measured.y, width, height },
+            clamped: outcome.clamped,
+            truncated: outcome.truncated,
+          };
+        } else if (request.kind === "clip") {
+          clip = request.clip;
+          area = { kind: "clip", requested: request.clip };
+        }
+
+        if (clip) {
+          captureParams = { ...captureParams, clip: { ...clip, scale: 1 } };
         }
         const capture = await session.call("Page.captureScreenshot", captureParams);
         const data = asString(capture.data, "screenshot data");
@@ -1626,6 +2106,7 @@ async function callToolImpl(name: string, args: JsonObject): Promise<ToolResult>
           : join(artifactRoot, `browser-${new Date().toISOString().replace(/[:.]/g, "-")}.png`);
         await mkdir(dirname(outputPath), { recursive: true });
         await Bun.write(outputPath, Buffer.from(data, "base64"));
+        const viewport = await measureViewport(session).catch(() => undefined) as JsonObject | undefined;
         const metadata: JsonObject = {
           ok: true,
           tabId: target.id,
@@ -1634,9 +2115,16 @@ async function callToolImpl(name: string, args: JsonObject): Promise<ToolResult>
           outputPath,
           fullPage,
           mimeType: "image/png",
+          area,
+          ...(clip ? { clip } : {}),
+          // State the scale rather than leaving it to be assumed. At scale 1 a
+          // captured pixel is a CSS pixel times the device scale factor, so a
+          // measurement taken off this PNG is a measurement of the page.
+          scale: 1,
+          deviceScaleFactor: viewport?.devicePixelRatio ?? 1,
           // Say which viewport this frame is evidence of, so a breakpoint screenshot
           // is self-describing rather than a size the reader has to remember.
-          viewport: await measureViewport(session).catch(() => undefined),
+          viewport,
           emulated: viewportOverrides.has(target.id),
         };
         return {
@@ -1647,6 +2135,7 @@ async function callToolImpl(name: string, args: JsonObject): Promise<ToolResult>
           structuredContent: metadata,
         };
       });
+    }
 
     case "browser_close": {
       if (args.scope === "browser") {
@@ -1676,93 +2165,55 @@ async function callToolImpl(name: string, args: JsonObject): Promise<ToolResult>
   }
 }
 
-async function handleRequest(request: JsonRpcRequest): Promise<JsonObject | undefined> {
-  const id = request.id;
-  if (request.method.startsWith("notifications/") || id === undefined) {
-    return undefined;
-  }
+/**
+ * The browser toolset, as the lattices MCP router consumes it. The router owns
+ * the JSON-RPC framing; everything below the framing -- Chrome ownership, the
+ * claim registry, the idle timer -- stays here, unchanged from when this server
+ * spoke the protocol itself.
+ */
+export const browserToolset = {
+  name: "browser",
+  title: "Action Browser",
+  tools,
+  instructions: [
+    "Action Browser drives Action-owned Chrome identities, never the user's regular Chrome.",
+    "Three browsers exist. (1) The user's regular Chrome: browser_open mode=regular opens a URL there and nothing else; control it with Action's native screen + accessibility tools (action.observe.* then action.act.execute). (2) An Action browser: the default agent-browser identity, blank and isolated, with full DOM tools. (3) An Action browser identity seeded from a regular Chrome profile: same DOM tools, already signed in.",
+    "To act on a signed-in site, seed rather than hand off: browser_import_cookies { into: \"work\", source: \"Profile 1\", domains: [\"github.com\"] } to preview, again with confirm: true to write, then browser_open { url, profile: \"work\" }.",
+    "Fast path for anything public: browser_open \u2192 browser_screenshot.",
+    "Responsive checks: browser_open \u2192 browser_resize { width, height } \u2192 browser_screenshot. The size sticks to that tab until browser_resize { reset: true }.",
+    "Reviewing one component: browser_screenshot { selector } captures just that element at scale 1, so no cropping and no rescaling. Add padding for breathing room.",
+    "Interactions can be awaited instead of guessed at: browser_click { selector, waitForSelector } fails if the expected result never appears, and settle: \"navigation\" or \"network-idle\" waits for the page the click produced.",
+    "A blank or wrong-looking page: browser_console before another screenshot. It carries console calls, uncaught errors, and Chrome's own log of failed subresources.",
+    "browser_profiles lists identities and surfaces; browser_companion_status reports the extension bridge.",
+  ],
 
-  try {
-    switch (request.method) {
-      case "initialize":
-        return {
-          jsonrpc: "2.0",
-          id,
-          result: {
-            protocolVersion: String(request.params?.protocolVersion ?? "2025-06-18"),
-            capabilities: { tools: { listChanged: false } },
-            serverInfo: { name: "action-browser", version: SERVER_VERSION },
-            instructions: [
-              "Action Browser drives Action-owned Chrome identities, never the user's regular Chrome.",
-              "Three browsers exist. (1) The user's regular Chrome: browser_open mode=regular opens a URL there and nothing else; control it with Action's native screen + accessibility tools (action.observe.* then action.act.execute). (2) An Action browser: the default agent-browser identity, blank and isolated, with full DOM tools. (3) An Action browser identity seeded from a regular Chrome profile: same DOM tools, already signed in.",
-              "To act on a signed-in site, seed rather than hand off: browser_import_cookies { into: \"work\", source: \"Profile 1\", domains: [\"github.com\"] } to preview, again with confirm: true to write, then browser_open { url, profile: \"work\" }.",
-              "Fast path for anything public: browser_open → browser_screenshot.",
-              "Responsive checks: browser_open → browser_resize { width, height } → browser_screenshot. The size sticks to that tab until browser_resize { reset: true }.",
-              "browser_profiles lists identities and surfaces; browser_companion_status reports the extension bridge.",
-            ].join("\n"),
-          },
-        };
-      case "ping":
-        return { jsonrpc: "2.0", id, result: {} };
-      case "tools/list":
-        return { jsonrpc: "2.0", id, result: { tools } };
-      case "tools/call": {
-        scheduleIdleRelease();
-        const params = request.params ?? {};
-        const name = asString(params.name, "tool name");
-        const args = params.arguments && typeof params.arguments === "object"
-          ? params.arguments as JsonObject
-          : {};
-        return { jsonrpc: "2.0", id, result: await callTool(name, args) };
-      }
-      default:
-        return {
-          jsonrpc: "2.0",
-          id,
-          error: { code: -32601, message: `Method not found: ${request.method}` },
-        };
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (request.method === "tools/call") {
-      return {
-        jsonrpc: "2.0",
-        id,
-        result: {
-          isError: true,
-          content: [{ type: "text", text: JSON.stringify({ ok: false, error: message }, null, 2) }],
-          structuredContent: { ok: false, error: message },
-        },
-      };
-    }
-    return { jsonrpc: "2.0", id, error: { code: -32603, message } };
-  }
-}
+  /**
+   * Startup work, run once before the first request is served. The orphan sweep
+   * is load-bearing: it is what closes a Chrome whose owning session died
+   * without releasing its claim.
+   */
+  async init(): Promise<void> {
+    await sweepOrphans();
+  },
 
-async function main(): Promise<void> {
-  installLifecycleHooks();
-  await sweepOrphans();
+  /**
+   * Called before each of *this* toolset's tool calls. Scoped that way on
+   * purpose: a call into some other toolset is not browser activity and must not
+   * postpone the idle close.
+   */
+  onToolCall(): void {
+    scheduleIdleRelease();
+  },
 
-  let buffer = "";
-  const decoder = new TextDecoder();
+  callTool,
 
-  for await (const chunk of Bun.stdin.stream()) {
-    buffer += decoder.decode(chunk, { stream: true });
-    while (buffer.includes("\n")) {
-      const newline = buffer.indexOf("\n");
-      const line = buffer.slice(0, newline).trim();
-      buffer = buffer.slice(newline + 1);
-      if (!line) continue;
-      const request = JSON.parse(line) as JsonRpcRequest;
-      const response = await handleRequest(request);
-      if (response) process.stdout.write(`${JSON.stringify(response)}\n`);
-    }
-  }
+  /** Release Chrome on router shutdown, within this toolset's own budget. */
+  async shutdown(reason: string): Promise<void> {
+    await shutdownBrowser(reason);
+  },
 
-  await shutdown("stdin-eof");
-}
+  /** Synchronous last resort, for the router's `exit` handler. */
+  shutdownSync: shutdownBrowserSync,
+};
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.stack ?? error.message : String(error));
-  process.exit(1);
-});
+export type BrowserToolset = typeof browserToolset;

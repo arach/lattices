@@ -80,12 +80,16 @@ export async function deadlineFetchJson<T>(url: string, init?: RequestInit): Pro
 export class CDPSession {
   private nextId = 1;
   private pending = new Map<number, { resolve: (value: JsonObject) => void; reject: (error: Error) => void }>();
+  private listeners = new Map<string, Set<(params: JsonObject) => void>>();
 
   private constructor(private socket: WebSocket) {
     socket.addEventListener("message", event => {
-      let message: { id?: number; result?: JsonObject; error?: { message?: string } };
+      let message: { id?: number; method?: string; params?: JsonObject; result?: JsonObject; error?: { message?: string } };
       try { message = JSON.parse(String(event.data)); } catch { this.close(); return; }
-      if (!message.id) return;
+      if (!message.id) {
+        if (message.method) this.emit(message.method, message.params ?? {});
+        return;
+      }
       const waiter = this.pending.get(message.id);
       if (!waiter) return;
       this.pending.delete(message.id);
@@ -121,6 +125,37 @@ export class CDPSession {
     } finally { this.pending.delete(id); }
   }
 
+  /**
+   * Subscribe to a CDP event, returning an unsubscribe. Events were previously
+   * dropped on the floor; settle conditions and console capture both need them,
+   * and both need to stop listening cleanly when their wait ends.
+   */
+  on(method: string, handler: (params: JsonObject) => void): () => void {
+    let handlers = this.listeners.get(method);
+    if (!handlers) {
+      handlers = new Set();
+      this.listeners.set(method, handlers);
+    }
+    handlers.add(handler);
+    return () => {
+      handlers!.delete(handler);
+      if (handlers!.size === 0) this.listeners.delete(method);
+    };
+  }
+
+  private emit(method: string, params: JsonObject): void {
+    const handlers = this.listeners.get(method);
+    if (!handlers) return;
+    // Copy first: a handler is allowed to unsubscribe itself.
+    for (const handler of [...handlers]) {
+      try {
+        handler(params);
+      } catch {
+        // An observer must never break the command channel it rides on.
+      }
+    }
+  }
+
   private rejectPending(): void {
     for (const waiter of this.pending.values()) waiter.reject(new Error("Chrome DevTools connection closed."));
     this.pending.clear();
@@ -128,6 +163,7 @@ export class CDPSession {
 
   close(): void {
     this.rejectPending();
+    this.listeners.clear();
     this.socket.close();
   }
 }

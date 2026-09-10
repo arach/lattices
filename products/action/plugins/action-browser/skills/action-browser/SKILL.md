@@ -8,6 +8,17 @@ description: Use Action Browser when the user wants an agent to open a URL in a 
 Action Browser drives **Action-owned Chrome identities**. It never drives the
 user's regular Chrome.
 
+The `browser_*` tools are served by the lattices MCP, which ships with the
+`lattices` CLI. Agent config names the binary, never a path:
+
+```json
+{ "command": "lattices", "args": ["mcp"] }
+```
+
+If the tools are missing, the fix is `lattices mcp --list` (does the CLI serve
+them?) and then the harness's MCP config — not a plugin reinstall. This plugin
+carries the skill; it no longer carries the server.
+
 ## Which browser are we talking about?
 
 Three different browsers can be in play. Pick deliberately, and say which one
@@ -124,8 +135,11 @@ switch to Action's native tools rather than the browser tools.
 - `browser_profiles` lists identities; `browser_profile_info` shows the active one.
 - Any unused name creates a fresh blank identity on first open.
 - `browser_companion_status` reports the Chrome Companion extension dist and
-  localhost bridge. Richer DOM tooling lives in `packages/chrome-companion`;
-  load its `dist` unpacked once per identity when the user wants that path.
+  localhost bridge. Richer DOM tooling lives in Action's
+  `packages/chrome-companion`; load its `dist` unpacked once per identity when
+  the user wants that path. It needs an Action checkout — set `ACTION_ROOT` if
+  the tools are running from a published `lattices` install, where the companion
+  is not present and status truthfully reports it missing.
 
 ## Important behavior
 
