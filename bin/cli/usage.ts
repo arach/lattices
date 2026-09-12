@@ -116,6 +116,9 @@ Usage:
   lattices dev type           Print detected project type
   lattices mouse              Find mouse — sonar pulse at cursor position
   lattices mouse summon       Summon mouse to screen center
+  lattices mcp                MCP server over stdio (agent config: command "lattices", args ["mcp"])
+  lattices mcp --list         List MCP toolsets and their tools
+  lattices mcp --print-config <harness>  Print the agent config snippet
   lattices daemon status      Show daemon status
   lattices logs [limit]       Show activity log entries (aliases: log, activity, diag)
   lattices app                Launch the menu bar companion app

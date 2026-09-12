@@ -151,40 +151,51 @@ Action Browser is the smallest agent-ready surface: it opens an isolated, real
 Chrome profile in the background and exposes navigation, page inspection,
 lightweight DOM actions, and PNG screenshots through MCP.
 
-Install it from the Action plugin marketplace in Codex:
+The tools ship with the lattices CLI and are served by `lattices mcp`. Install
+the CLI once:
 
 ```bash
-codex plugin marketplace add arach/lattices
-codex plugin add action-browser@action
+bun install -g @arach/lattices
 ```
 
-Start a new Codex task after installation, then ask:
+Then register the server. Every harness gets the same entry, and none of them
+name a path — resolution follows the installed binary, so moving the repo or
+bumping the version leaves the config correct:
+
+```bash
+# Claude Code
+claude mcp add lattices -s user -- lattices mcp
+```
+
+```toml
+# Codex — ~/.codex/config.toml
+[mcp_servers.lattices]
+command = "lattices"
+args = ["mcp"]
+```
+
+```json
+// Kimi Code
+{ "mcpServers": { "lattices": { "command": "lattices", "args": ["mcp"] } } }
+```
+
+`lattices mcp --print-config <claude|codex|kimi>` prints these. Start a new task
+after registering, confirm with `/mcp` that `lattices` is connected, then ask:
 
 > Open https://example.com in Action Browser, take a screenshot, and show it to me.
 
-Claude Code uses its own plugin marketplace format. Install the same MCP bundle
-with the Claude Code CLI:
+The plugin marketplace now carries only the `action-browser` **skill** — prose
+about how to drive the tools, not the tools themselves. It is optional:
 
 ```bash
 claude plugin marketplace add arach/lattices
-claude plugin install action-browser@action --scope user
+claude plugin install action-browser@lattices --scope user
 ```
 
-Run `/reload-plugins` inside Claude Code to activate the MCP in the current
-session. Run `/mcp` to confirm that `action-browser` is connected, then use the
-same example prompt above.
-
-Kimi Code reads the root `kimi.plugin.json` and installs the same bundle
-directly from the GitHub repository. Pin the default branch — a bare
-repository URL installs the latest release, which may predate the manifest:
-
-```
-/plugins install https://github.com/arach/lattices/tree/main
-/reload
-```
-
-Run `/plugins info action-browser` to confirm the plugin loaded, then use the
-same example prompt above.
+That split is deliberate. The tools are addressed by name and cannot be broken
+by moving a checkout; the skill is installed the plugin way, and if that ever
+goes stale the cost is an agent with less guidance rather than an agent with no
+browser.
 
 This starter requires macOS, Google Chrome, and Bun. It drives **named Action-owned
 Chrome identities** (default `agent-browser`), never your regular Chrome. To act on
