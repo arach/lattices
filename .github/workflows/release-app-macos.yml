@@ -1,9 +1,7 @@
 name: Release App macOS
 
+# Hosted runner usage is opt in. Start this workflow manually from Actions.
 on:
-  push:
-    tags:
-      - 'app-macos-v*'
   workflow_dispatch:
     inputs:
       version:
@@ -27,8 +25,8 @@ jobs:
     timeout-minutes: 60
 
     env:
-      SHOULD_PUBLISH: ${{ (github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.publish)) && '1' || '0' }}
-      REQUESTED_PUBLISH: ${{ (github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.publish)) && '1' || '0' }}
+      SHOULD_PUBLISH: ${{ (github.event_name == 'workflow_dispatch' && inputs.publish) && '1' || '0' }}
+      REQUESTED_PUBLISH: ${{ (github.event_name == 'workflow_dispatch' && inputs.publish) && '1' || '0' }}
       HUDSON_READ_TOKEN: ${{ secrets.HUDSON_READ_TOKEN }}
 
     steps:

@@ -1,9 +1,7 @@
 name: Release Blink macOS
 
+# Hosted runner usage is opt in. Start this workflow manually from Actions.
 on:
-  push:
-    tags:
-      - 'blink-v*'
   workflow_dispatch:
     inputs:
       version:
@@ -83,7 +81,7 @@ jobs:
               exit 1
             fi
             version="${tag#blink-v}"
-            publish_release="true"
+            publish_release="${{ inputs.publish_release }}"
           else
             version="${{ inputs.version }}"
             publish_release="${{ inputs.publish_release }}"

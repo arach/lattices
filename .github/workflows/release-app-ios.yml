@@ -1,9 +1,7 @@
 name: Release App iOS
 
+# Hosted runner usage is opt in. Start this workflow manually from Actions.
 on:
-  push:
-    tags:
-      - 'app-ios-v*'
   workflow_dispatch:
     inputs:
       upload:
@@ -18,7 +16,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 75
     env:
-      SHOULD_UPLOAD: ${{ (github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.upload)) && '1' || '0' }}
+      SHOULD_UPLOAD: ${{ (github.event_name == 'workflow_dispatch' && inputs.upload) && '1' || '0' }}
       ASC_API_KEY_ID: ${{ vars.APP_STORE_CONNECT_KEY_ID || secrets.APP_STORE_CONNECT_KEY_ID }}
       ASC_API_ISSUER_ID: ${{ vars.APP_STORE_CONNECT_ISSUER_ID || secrets.APP_STORE_CONNECT_ISSUER_ID }}
     steps:

@@ -1,9 +1,7 @@
 name: Release Blink npm
 
+# Hosted runner usage is opt in. Start this workflow manually from Actions.
 on:
-  push:
-    tags:
-      - 'blink-npm-v*'
   workflow_dispatch:
     inputs:
       publish:
