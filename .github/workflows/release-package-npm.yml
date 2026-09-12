@@ -1,9 +1,7 @@
 name: Release Package npm
 
+# Hosted runner usage is opt in. Start this workflow manually from Actions.
 on:
-  push:
-    tags:
-      - 'npm-v*'
   workflow_dispatch:
     inputs:
       publish:

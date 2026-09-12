@@ -1,18 +1,7 @@
 name: Blink Guards
 
+# Hosted runner usage is opt in. Start this workflow manually from Actions.
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'products/blink/**'
-      - 'package.json'
-      - '.github/workflows/blink-guards.yml'
-  pull_request:
-    paths:
-      - 'products/blink/**'
-      - 'package.json'
-      - '.github/workflows/blink-guards.yml'
   workflow_dispatch:
 
 jobs:

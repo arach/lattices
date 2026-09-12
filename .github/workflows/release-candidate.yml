@@ -1,9 +1,7 @@
 name: Release Candidate
 
+# Hosted runner usage is opt in. Start this workflow manually from Actions.
 on:
-  push:
-    tags:
-      - 'candidate-v*'
   workflow_dispatch:
 
 jobs:
