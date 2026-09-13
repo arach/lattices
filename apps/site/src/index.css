@@ -5386,3 +5386,14 @@ button.nav-link {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* The complete brand drawing sits after the product story. */
+.action-brand-study {
+  width: min(960px, calc(100% - 48px));
+  margin: 72px auto;
+}
+@media (max-width: 680px) {
+  .action-brand-study { width: calc(100% - 32px); margin: 40px auto; }
+}
+
+.action-hero .action-hero-mark { margin: 0 0 20px; }

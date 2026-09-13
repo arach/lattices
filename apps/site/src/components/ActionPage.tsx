@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ActionMark } from "./ActionMark";
 import actionHeroArt from "../../../../products/action/docs/assets/brand/landing-hero.webp";
 import actionTraceField from "../../../../products/action/docs/assets/brand/landing-trace-field.webp";
 import actionProductFilm from "../../../../products/action/docs/assets/action-record-the-work.mp4";
@@ -52,6 +53,7 @@ export default function ActionPage() {
           </div>
           <div className="action-hero-inner">
             <div className="action-hero-copy">
+              <img className="action-hero-mark" src={`/brand/action/action-${theme}.svg`} width={80} height={80} alt="" />
               <p className="action-kicker action-hero-kicker">A Lattices product · native macOS automation</p>
               <h1 id="action-title">Action is a unified API for computer use.</h1>
               <p className="action-hero-lead">
@@ -76,6 +78,7 @@ export default function ActionPage() {
                 <span>inspectable runs</span>
               </p>
             </div>
+
           </div>
         </section>
 
@@ -201,6 +204,11 @@ export default function ActionPage() {
               </article>
             </div>
           </div>
+        </section>
+
+        <section className="action-brand-study" aria-label="Action logo construction">
+          <ActionMark theme={theme} padding={48}
+            label="Action logo construction: equal-width edges, cursor intersection, and architectural guides" />
         </section>
 
         <section className="action-final-cta" aria-labelledby="action-final-title">
