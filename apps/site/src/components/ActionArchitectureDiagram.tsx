@@ -85,13 +85,14 @@ function createArchitectureConfig(
   const canvas = compact ? compactCanvas : desktopCanvas;
   const materialForTier = (tier: number) => actionMaterials[layerPalette[architectureLayers.length - tier - 1]];
   const surfaceForTier = (tier: number) => materialForTier(tier)[dark ? "dark" : "light"];
-  const nodeForTier = (tier: number) => materialForTier(tier).node;
+  const nodeForTier = (tier: number) => ({ ...materialForTier(tier).node, opacity: 1 });
 
   return {
     id: `action-runtime-${theme}-${layerPalette.join("-")}`,
     title: "Action local runtime architecture",
     description: "The request path from an agent or operator to native macOS execution and inspectable evidence.",
     theme,
+    material: "retro-print",
     canvas,
     origin: compact ? { x: 180, y: 355 } : { x: 383, y: 510 },
     cornerRadius: 2,

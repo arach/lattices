@@ -15,7 +15,7 @@
     "render:gesture:poster": "remotion still scripts/remotion/gesture-completion.tsx GestureCompletion public/blog/gesture-completion-matrix-poster.png --frame 344"
   },
   "dependencies": {
-    "@arach/arc": "^0.3.1",
+    "@arach/arc": "^0.9.1",
     "motion": "^12.42.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
