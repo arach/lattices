@@ -4493,6 +4493,7 @@ button.nav-link {
 }
 
 .action-nav-download {
+  border-radius: 0;
   border-color: color-mix(in srgb, var(--action-coral) 70%, var(--action-rule));
   color: var(--action-ink);
 }
@@ -4604,23 +4605,29 @@ button.nav-link {
 }
 
 .action-secondary-cta {
-  border-color: var(--action-rule-strong);
+  border-color: var(--action-ink);
   border-radius: 0;
-  background: color-mix(in srgb, var(--action-paper-light) 52%, transparent);
+  background: transparent;
   color: var(--action-ink);
   font-family: "JetBrains Mono", monospace;
   font-size: 11px;
 }
 
+.action-secondary-cta:hover {
+  border-color: var(--action-coral);
+  background: transparent;
+  color: var(--action-coral);
+}
+
 .action-agent-entry {
   width: min(430px, 100%);
   margin-top: 16px;
-  padding: 12px 14px;
-  border-left: 2px solid var(--action-cyan);
+  padding: 12px 14px 12px 16px;
+  border-left: 1px solid var(--action-cyan);
   background: color-mix(in srgb, var(--action-paper-light) 72%, transparent);
   color: var(--action-copy);
   font-family: "JetBrains Mono", monospace;
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.55;
 }
 
@@ -5083,7 +5090,9 @@ button.nav-link {
 
 .action-purpose,
 .action-final-cta,
-.action-proof-inner {
+.action-proof-inner,
+.action-companion,
+.action-source {
   width: min(1200px, calc(100% - 48px));
   margin-inline: auto;
 }
@@ -5174,10 +5183,170 @@ button.nav-link {
   font-size: 24px;
 }
 
+.action-companion,
+.action-source {
+  display: grid;
+  grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+  gap: clamp(36px, 6vw, 88px);
+  align-items: center;
+  padding: 104px 0;
+  border-top: 1px solid var(--action-rule);
+}
+
+.action-companion-copy h2,
+.action-source-copy h2 {
+  font-family: "EB Garamond", Georgia, serif;
+  font-size: clamp(3rem, 5vw, 4.6rem);
+  font-weight: 500;
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+}
+
+.action-companion-copy p,
+.action-source-copy p {
+  max-width: 38ch;
+  margin-top: 20px;
+  color: var(--action-copy);
+  font-family: "EB Garamond", Georgia, serif;
+  font-size: 18px;
+  line-height: 1.52;
+}
+
+.action-source-copy code {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.82em;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.action-source-reqs {
+  display: grid;
+  gap: 8px;
+  margin: 28px 0 0;
+  padding: 0;
+  list-style: none;
+  color: color-mix(in srgb, var(--action-ink) 62%, transparent);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.action-source-reqs li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.action-source-reqs li::before {
+  width: 7px;
+  height: 1px;
+  background: var(--action-coral);
+  content: "";
+}
+
+.action-source-link {
+  display: inline-block;
+  margin-top: 28px;
+  color: var(--action-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.action-source-link:hover {
+  color: var(--action-coral);
+}
+
+.action-companion-art,
+.action-brand-study,
+.action-terminal {
+  margin: 0;
+  border: 1px solid var(--action-rule-strong);
+  box-shadow: 0 28px 70px color-mix(in srgb, var(--action-ink) 16%, transparent);
+}
+
+.action-companion-art,
+.action-brand-study {
+  padding: 10px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--action-paper-light) 84%, transparent), color-mix(in srgb, var(--action-paper-deep) 46%, transparent));
+}
+
+.action-companion-art img,
+.action-brand-study svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.action-terminal {
+  min-width: 0;
+  overflow: hidden;
+  background: #20282b;
+  color: #faf5eb;
+}
+
+.action-terminal-bar {
+  display: flex;
+  min-height: 43px;
+  align-items: center;
+  padding: 0 16px;
+  border-bottom: 1px solid rgba(250, 245, 235, 0.14);
+  color: rgba(250, 245, 235, 0.62);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 9px;
+  letter-spacing: 0.075em;
+  text-transform: uppercase;
+}
+
+.action-terminal-body {
+  margin: 0;
+  padding: 22px 18px 24px;
+  overflow-wrap: anywhere;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+}
+
+.action-terminal-body code {
+  display: grid;
+  gap: 2px;
+}
+
+.action-terminal-line,
+.action-terminal-output {
+  display: block;
+}
+
+.action-terminal-prompt {
+  margin-right: 8px;
+  color: #ef6a47;
+}
+
+.action-terminal-output {
+  color: #7fd4d8;
+}
+
 .action-final-cta {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(260px, 0.95fr);
+  gap: clamp(32px, 5vw, 72px);
+  align-items: center;
   padding-top: 104px;
   padding-bottom: 104px;
   border-color: var(--action-rule);
+}
+
+.action-final-copy .action-final-links {
+  margin-top: 32px;
+}
+
+.action-hero-mark {
+  display: block;
+  width: 56px;
+  height: 56px;
+  margin: 0 0 22px;
 }
 
 .action-footer {
@@ -5209,6 +5378,10 @@ button.nav-link {
   mix-blend-mode: screen;
 }
 
+:root[data-theme='dark'] .action-terminal {
+  background: #0c1213;
+}
+
 @media (max-width: 900px) {
   .action-hero {
     min-height: 760px;
@@ -5237,7 +5410,9 @@ button.nav-link {
   .action-architecture,
   .action-purpose,
   .action-final-cta,
-  .action-proof-inner {
+  .action-proof-inner,
+  .action-companion,
+  .action-source {
     width: calc(100% - 32px);
   }
 
@@ -5373,9 +5548,30 @@ button.nav-link {
     border-left: 0;
   }
 
-  .action-final-cta {
+  .action-proof-lines article {
+    min-height: 0;
+  }
+
+  .action-proof-lines h3 {
+    margin-top: 16px;
+  }
+
+  .action-final-cta,
+  .action-companion,
+  .action-source {
+    grid-template-columns: 1fr;
     padding-top: 76px;
     padding-bottom: 76px;
+  }
+
+  .action-companion-copy p,
+  .action-source-copy p {
+    max-width: 42ch;
+    font-size: 17px;
+  }
+
+  .action-brand-study {
+    order: -1;
   }
 }
 
@@ -5387,13 +5583,16 @@ button.nav-link {
   }
 }
 
-/* The complete brand drawing sits after the product story. */
-.action-brand-study {
-  width: min(960px, calc(100% - 48px));
-  margin: 72px auto;
+.action-download-notice {
+  position: fixed; z-index: 100; right: 24px; bottom: 24px;
+  width: min(420px, calc(100vw - 48px)); padding: 20px;
+  display: flex; gap: 16px; background: var(--action-paper-light); color: var(--action-ink);
+  border: 1px solid var(--action-coral); box-shadow: 0 18px 40px color-mix(in srgb, var(--action-ink) 18%, transparent);
+  font-size: 14px; line-height: 1.5;
 }
-@media (max-width: 680px) {
-  .action-brand-study { width: calc(100% - 32px); margin: 40px auto; }
+.action-download-notice p { margin: 6px 0; }
+.action-download-notice a { color: inherit; text-decoration: underline; }
+.action-download-notice button {
+  align-self: flex-start; background: none; border: 0; color: inherit;
+  min-width: 32px; min-height: 32px; cursor: pointer; font-size: 24px;
 }
-
-.action-hero .action-hero-mark { margin: 0 0 20px; }

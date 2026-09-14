@@ -1,0 +1,4 @@
+{
+  "releasesUrl": "https://api.github.com/repos/arach/lattices/releases?per_page=100",
+  "fallbackUrl": "https://github.com/arach/action/releases/latest/download/Action.dmg"
+}

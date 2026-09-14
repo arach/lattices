@@ -1,3 +1,4 @@
+import actionDownload from '../src/action-download.json' with { type: 'json' }
 import { copyFile, cp, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 import { marked } from 'marked'
@@ -24,8 +25,8 @@ const distDir = join(siteDir, 'dist')
 const actionAssetSourceDir = join(repoRoot, 'products', 'action', 'docs', 'assets')
 const actionMediaPath = '/action/media/'
 const SITE_URL = 'https://lattices.dev'
-const ACTION_RELEASES_API_URL = 'https://api.github.com/repos/arach/lattices/releases?per_page=100'
-const ACTION_LEGACY_DOWNLOAD_URL = 'https://github.com/arach/action/releases/latest/download/Action.dmg'
+const ACTION_RELEASES_API_URL = actionDownload.releasesUrl
+const ACTION_LEGACY_DOWNLOAD_URL = actionDownload.fallbackUrl
 const BLINK_RELEASES_API_URL = 'https://api.github.com/repos/arach/lattices/releases?per_page=100'
 const BLINK_LEGACY_DOWNLOAD_URL = 'https://github.com/arach/blink/releases/latest/download/Blink.dmg'
 const template = await readFile(join(distDir, 'index.html'), 'utf8')
@@ -545,6 +546,7 @@ async function copyActionDocs() {
     'action-record-the-work.mp4',
     'action-record-the-work.vtt',
     join('brand', 'landing-hero.webp'),
+    join('brand', 'landing-mira.webp'),
     join('brand', 'landing-trace-field.webp'),
   ]
 

@@ -51,24 +51,26 @@ It:
 
 ## Native Commands
 
+Prefer the package.json scripts from `products/action`. Extra arguments go after `--`.
+
 App host:
 
 ```bash
-native/engine/scripts/run-app-host.sh status
+bun run native:host -- status
 ```
 
 Agent:
 
 ```bash
-native/engine/scripts/run-agent.sh --port 4319
+bun run native:agent -- --port 4319
 ```
 
 Agent CLI:
 
 ```bash
-native/engine/scripts/run-agent-cli.sh status
-native/engine/scripts/run-agent-cli.sh ping
-native/engine/scripts/run-agent-cli.sh permissions.snapshot
+bun run native:agent-cli -- status
+bun run native:agent-cli -- ping
+bun run native:agent-cli -- permissions.snapshot
 ```
 
 ## What The Native Layer Owns
