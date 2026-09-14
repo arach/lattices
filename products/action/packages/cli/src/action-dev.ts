@@ -34,31 +34,27 @@ function printError(text: string): void {
 
 function usage(): string {
   return [
-    "action-dev: internal developer CLI for Action.app",
+    "Native Action.app developer commands. Run them with bun from products/action.",
     "",
     "Usage:",
-    "  action-dev help",
-    "  action-dev path",
-    "  action-dev alias",
-    "  action-dev build",
-    "  action-dev rebuild",
-    "  action-dev launch [--no-build]",
-    "  action-dev relaunch [--no-build]",
-    "  action-dev quit",
-    "  action-dev status",
-    "  action-dev doctor",
-    "  action-dev verify",
-    "  action-dev hud",
-    "  action-dev logs",
-    "  action-dev host <args...>",
-    "  action-dev agent <args...>",
-    "  action-dev agent-cli <args...>",
+    "  bun run native:app:build",
+    "  bun run native:rebuild",
+    "  bun run native:launch [-- --no-build]",
+    "  bun run native:relaunch [-- --no-build]",
+    "  bun run native:quit",
+    "  bun run native:permissions:status",
+    "  bun run native:doctor",
+    "  bun run native:verify",
+    "  bun run native:logs",
+    "  bun run native:host -- <args...>",
+    "  bun run native:agent -- <args...>",
+    "  bun run native:agent-cli -- <args...>",
     "",
     "Examples:",
-    "  action-dev build",
-    "  action-dev relaunch",
-    "  action-dev status",
-    "  action-dev logs",
+    "  bun run native:app:build",
+    "  bun run native:relaunch",
+    "  bun run native:host -- guided-calculator-demo",
+    "  bun run native:logs",
   ].join("\n");
 }
 
@@ -255,7 +251,7 @@ async function main(argv: string[]): Promise<void> {
       print(resolve(rootDir, "packages/cli/src/action-dev.ts"));
       return;
     case "alias":
-      print(`alias action-dev='bun ${resolve(rootDir, "packages/cli/src/action-dev.ts")}'`);
+      print("Use package.json scripts from products/action, for example: bun run native:relaunch");
       return;
     case "build":
       await runScript("build-app.sh");
@@ -284,7 +280,7 @@ async function main(argv: string[]): Promise<void> {
       return;
     case "quit":
       if (!(await politeQuitAction())) {
-        printError("Action did not quit gracefully within timeout. Run `action-dev relaunch` for forceful recovery.");
+        printError("Action did not quit gracefully within timeout. Run `bun run native:relaunch` for forceful recovery.");
         runtime.process.exit(1);
       }
       return;
@@ -326,7 +322,7 @@ async function main(argv: string[]): Promise<void> {
       await runScript("run-agent-cli.sh", args);
       return;
     default:
-      printError(`Unknown action-dev command: ${command}`);
+      printError(`Unknown native developer command: ${command}`);
       printError("");
       printError(usage());
       runtime.process.exit(1);

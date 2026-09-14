@@ -3828,7 +3828,7 @@ func waitForFinishedSignal(at path: String) throws {
 func terminateRunningActionApps(timeout: TimeInterval = 6) -> Bool {
     let bundleId = ActionAppIdentity.mainBundleIdentifier
 
-    // Everything except this process. `action-dev host quit-app` runs the same
+    // Everything except this process. `bun run native:host -- quit-app` runs the same
     // executable out of the same bundle, so it is itself an instance of
     // dev.lattices.Action: without this filter the command terminates itself
     // before it can write its reply, and the caller sees a hang followed by

@@ -18,7 +18,7 @@ Working today:
 - guided capture sessions with trace, screenshots, manifests, replay, and in-app review
 - current-surface inspection that can persist a screenshot, AX snapshot, and Apple Vision OCR
 - deterministic runtime actions exposed through local CLI and MCP entrypoints
-- a local HUD / console and repo-local native developer CLI
+- a local HUD / console and package.json scripts for the native app loop
 
 In active development:
 
@@ -95,7 +95,7 @@ The current development doctor also checks the local vision-secret manifest. Pro
 Launch the app:
 
 ```bash
-bun run action-dev -- launch
+bun run native:launch
 ```
 
 Run focused smoke checks:
@@ -117,27 +117,28 @@ bun run inspect:surface:vision
 bun run scenario:calculator
 ```
 
-Use the repo-local native CLI for the tightest app development loop:
+Use the native package scripts for the tightest app development loop. Run them from `products/action`:
 
 ```bash
-alias action-dev='bun packages/cli/src/action-dev.ts'
-action-dev relaunch
-action-dev host guided-calculator-demo
-action-dev logs
+bun run native:relaunch
+bun run native:host -- guided-calculator-demo
+bun run native:logs
 ```
 
-Useful native commands:
+Useful native scripts:
 
-- `action-dev build`
-- `action-dev rebuild`
-- `action-dev launch`
-- `action-dev relaunch`
-- `action-dev quit`
-- `action-dev doctor`
-- `action-dev hud`
-- `action-dev host <args...>`
-- `action-dev agent <args...>`
-- `action-dev agent-cli <args...>`
+- `bun run native:app:build`
+- `bun run native:rebuild`
+- `bun run native:launch`
+- `bun run native:relaunch`
+- `bun run native:quit`
+- `bun run native:doctor`
+- `bun run native:host -- <args...>`
+- `bun run native:agent -- <args...>`
+- `bun run native:agent-cli -- <args...>`
+- `bun run native:logs`
+
+From the Lattices repo root, `bun run action:launch` and `bun run action:dev` call `native:launch` and `native:relaunch`.
 
 The MCP server exposes health, session creation, snapshot/OCR/vision/AX observation, target resolution, deterministic actions, asynchronous recording, and artifact listing:
 
@@ -261,7 +262,7 @@ The release workflow builds, signs, notarizes, verifies, and uploads generic and
 - `native/engine` — Swift app host, local agent, recording probe, UI, and native scripts
 - `packages/protocol` — shared session, observation, target, action, and artifact types
 - `packages/runtime` — sessions, inspection, adapters, interaction, providers, and companion client
-- `packages/cli` — product and native-development CLI entrypoints
+- `packages/cli` — product CLI plus the scripts behind `bun run native:*`
 - `packages/mcp` — agent-facing MCP server
 - `packages/companion` — durable local job queue and observation store
 - `crates/action-supervisor` — companion process supervisor

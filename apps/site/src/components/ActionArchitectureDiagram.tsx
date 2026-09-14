@@ -80,7 +80,7 @@ function createArchitectureConfig(
   theme: "light" | "dark",
   compact: boolean,
   layerPalette: LayerPalette,
-): DiagramConfig {
+): DiagramConfig & { material: "retro-print" } {
   const dark = theme === "dark";
   const canvas = compact ? compactCanvas : desktopCanvas;
   const materialForTier = (tier: number) => actionMaterials[layerPalette[architectureLayers.length - tier - 1]];
