@@ -14,6 +14,30 @@ Lattices exposes the same execution model through four surfaces:
 The rule is simple: agents should learn the **canonical action model**
 first, then choose the transport that fits the environment.
 
+## Install the skills
+
+`arach/lattices` is the [skills.sh](https://skills.sh) catalog for the product
+family. Skills live under [`skills/`](https://github.com/arach/lattices/tree/main/skills).
+
+| Skill | Product |
+| --- | --- |
+| `lattices` | Workspace control, tiling, sessions, screen text |
+| `action` | Native observe / resolve / act / record |
+| `speech` | Spoken commands and voice intents |
+| `blink` | Spatial notes through the `blink` CLI |
+
+```bash
+npx skills add arach/lattices --list
+npx skills add arach/lattices --all --global --yes
+npx skills add arach/lattices --skill lattices --global --yes
+npx skills add arach/lattices --skill action --global --yes
+npx skills add arach/lattices --skill speech --global --yes
+npx skills add arach/lattices --skill blink --global --yes
+```
+
+Action Browser also remains a standalone plugin. Install it with
+`action-browser@action` from the Action marketplace.
+
 ## Canonical mutations
 
 These are the preferred action identifiers:

@@ -4181,7 +4181,7 @@ Server: `plugins/action-browser/server/index.ts`
 Install the browser plugin from the marketplace:
 
 ```bash
-claude plugin marketplace add arach/action
+claude plugin marketplace add arach/lattices
 claude plugin install action-browser@action --scope user
 ```
 

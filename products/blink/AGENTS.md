@@ -27,7 +27,12 @@ Tauri app remains at tag `v1-final`; port lessons and behavior, never its code.
 
 When operating Blink rather than changing its code, use the `blink` CLI for
 notes and edit `config.json` for behavior/appearance. Drive the GUI only when a
-task specifically requires the live visual surface.
+task specifically requires the live visual surface. The installable agent skill
+is `skills/blink` in the Lattices catalog:
+
+```bash
+npx skills add arach/lattices --skill blink --global --yes
+```
 
 ## State model
 

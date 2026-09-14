@@ -69,13 +69,48 @@ lattices search api --deep
 lattices place frontend left
 ```
 
+## Agent skills
+
+This repository is the skills.sh catalog for the Lattices product family.
+
+| Skill | Product | Use it for |
+| --- | --- | --- |
+| [`lattices`](skills/lattices/SKILL.md) | Lattices | Tile windows, launch sessions, search the screen |
+| [`action`](skills/action/SKILL.md) | Action | Observe, resolve, act, and record on macOS |
+| [`speech`](skills/speech/SKILL.md) | Lattices | Spoken commands and voice intents |
+| [`blink`](skills/blink/SKILL.md) | Blink | Create, place, and edit spatial notes |
+
+Install every skill globally:
+
+```sh
+npx skills add arach/lattices --all --global --yes
+```
+
+Install one skill:
+
+```sh
+npx skills add arach/lattices --skill lattices --global --yes
+npx skills add arach/lattices --skill action --global --yes
+npx skills add arach/lattices --skill speech --global --yes
+npx skills add arach/lattices --skill blink --global --yes
+```
+
+List without installing:
+
+```sh
+npx skills add arach/lattices --list
+```
+
+Action Browser remains a standalone plugin, `action-browser@action`.
+See [products/action](products/action).
+
 ## For agents & scripts
 
 ```js
 import { daemonCall } from '@arach/lattices/daemon-client'
 
 await daemonCall('session.launch', { path: '/Users/you/dev/api' })
-await daemonCall('window.tile', { session: 'api-a1b2c3', position: 'right' })
+await daemonCall('window.place', { session: 'api-a1b2c3', placement: 'right' })
 const hits = await daemonCall('windows.search', { query: 'myproject' })
 ```
 
