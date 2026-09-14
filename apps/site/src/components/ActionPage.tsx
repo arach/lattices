@@ -155,7 +155,7 @@ export default function ActionPage() {
               playsInline
               preload="metadata"
               poster={actionProductFilmPoster}
-              aria-label="Action product film: Drive any actions on the Mac, safely"
+              aria-label="Action product film: Give your agents a way to use your Mac"
             >
               <source src={actionProductFilm} type="video/mp4" />
               <track
