@@ -1,0 +1,9 @@
+Give your agents a way to use your Mac.
+
+Action connects your agent to native apps and the browser, using the permissions you allow.
+
+Watch it work. Record the screen, and keep screenshots and a log of its actions.
+
+Review what happened, then replay the run or share the recording.
+
+Action. Part of Lattices.
