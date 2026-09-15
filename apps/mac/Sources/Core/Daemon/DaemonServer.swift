@@ -12,6 +12,17 @@ final class DaemonServer: ObservableObject {
     @Published var clientCount: Int = 0
     @Published var isListening: Bool = false
 
+    private let port: UInt16
+    private let speechCapabilityURL: URL
+    private let speechEndpoint: URL
+    private(set) var listeningPort: UInt16 = 0
+
+    init(port: UInt16 = LatticesLocalEndpoints.agentAPIPort, speechCapabilityURL: URL = SpeechCompanionConnection.capabilityURL, speechEndpoint: URL = LatticesLocalEndpoints.speechCompanionURL) {
+        self.port = port
+        self.speechCapabilityURL = speechCapabilityURL
+        self.speechEndpoint = speechEndpoint
+    }
+
     private var serverFd: Int32 = -1
     private var clients: [UUID: WebSocketClient] = [:]
     private let lock = NSLock()
@@ -47,7 +58,7 @@ final class DaemonServer: ObservableObject {
         var addr = sockaddr_in()
         addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
         addr.sin_family = sa_family_t(AF_INET)
-        addr.sin_port = LatticesLocalEndpoints.agentAPIPort.bigEndian
+        addr.sin_port = port.bigEndian
         addr.sin_addr.s_addr = UInt32(0x7f000001).bigEndian // 127.0.0.1
 
         let bindResult = withUnsafePointer(to: &addr) {
@@ -61,6 +72,13 @@ final class DaemonServer: ObservableObject {
             serverFd = -1
             return
         }
+
+        var bound = sockaddr_in()
+        var boundLength = socklen_t(MemoryLayout<sockaddr_in>.size)
+        withUnsafeMutablePointer(to: &bound) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { _ = getsockname(serverFd, $0, &boundLength) }
+        }
+        listeningPort = UInt16(bigEndian: bound.sin_port)
 
         // 3. Listen
         guard listen(serverFd, 8) == 0 else {
@@ -98,6 +116,8 @@ final class DaemonServer: ObservableObject {
         acceptSource = nil
         lock.lock()
         for (_, client) in clients {
+            let speech = client.speechConnection
+            Task { await speech?.close() }
             close(client.fd)
         }
         clients.removeAll()
@@ -189,6 +209,8 @@ final class DaemonServer: ObservableObject {
         responseBytes.withUnsafeBufferPointer { ptr in
             _ = write(client.fd, ptr.baseAddress!, ptr.count)
         }
+
+        client.speechAuthorized = SpeechCompanionConnection.authorizes(handshake: request, tokenFile: speechCapabilityURL)
 
         // Register client
         lock.lock()
@@ -335,6 +357,30 @@ final class DaemonServer: ObservableObject {
             return
         }
 
+        if request.method.hasPrefix("speech.") {
+            guard client.speechAuthorized else {
+                sendResponse(DaemonResponse(id: request.id, result: nil, error: "Speech authorization required"), to: client)
+                return
+            }
+            if client.speechConnection == nil {
+                client.speechConnection = SpeechCompanionConnection(endpoint: speechEndpoint, tokenFile: speechCapabilityURL, response: { [weak self, weak client] result in
+                    self?.queue.async { [weak self, weak client] in
+                        guard let self, let client, self.isConnected(client) else { return }
+                        self.sendResponse(result, to: client)
+                    }
+                }, event: { [weak self, weak client] update in
+                    self?.queue.async { [weak self, weak client] in
+                        guard let self, let client, self.isConnected(client),
+                              let data = try? self.encoder.encode(update), let text = String(data: data, encoding: .utf8) else { return }
+                        self.sendWebSocketText(text, to: client)
+                    }
+                })
+            }
+            let connection = client.speechConnection
+            Task { await connection?.forward(request) }
+            return
+        }
+
         // These handlers can sleep or wait for the user. Keep them off the
         // serial socket queue so other clients, events, and RPCs still flow.
         if Self.blockingMethods.contains(request.method) {
@@ -367,6 +413,8 @@ final class DaemonServer: ObservableObject {
     // MARK: - Client Management
 
     private func removeClient(_ client: WebSocketClient) {
+        let speech = client.speechConnection
+        Task { await speech?.close() }
         close(client.fd)
         lock.lock()
         clients.removeValue(forKey: client.id)
@@ -444,6 +492,8 @@ final class DaemonServer: ObservableObject {
 // MARK: - Client State
 
 final class WebSocketClient {
+    var speechAuthorized = false
+    var speechConnection: SpeechCompanionConnection?
     let id: UUID
     let fd: Int32
     var buffer: [UInt8] = []

@@ -319,6 +319,7 @@ struct SettingsView: View {
                     subtitle: "Start Blink when you sign in",
                     icon: "power"
                 ) {
+                    CompanionMenuBarPreference()
                     Toggle("Launch at login", isOn: launchAtLogin)
                         .toggleStyle(.switch)
                         .labelsHidden()

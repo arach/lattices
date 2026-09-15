@@ -7,6 +7,8 @@ import { ProductsMenu } from "./SiteChrome";
 import { heroDesktopMaps, heroWindowLayouts, heroWindowMeta } from "./heroDesktopMap";
 import type { HeroDesktopPhase, HeroWindowId } from "./heroDesktopMap";
 
+const latticesDownloadURL = "https://github.com/arach/lattices/releases/download/v0.12.0/Lattices.dmg";
+
 export function LatticesLogo({ size = 20 }: { size?: number }) {
   // 3×3 grid with L-shape pattern (left column + bottom row bright, rest dim)
   const cells = [
@@ -805,9 +807,9 @@ export default function App() {
             </p>
             <div className="hero-actions">
               <a
-                href="https://github.com/arach/lattices/releases/latest/download/Lattices.dmg"
+                href={latticesDownloadURL}
                 className="hero-primary-cta"
-                onClick={() => trackCta('download_dmg_hero', 'https://github.com/arach/lattices/releases/latest/download/Lattices.dmg')}
+                onClick={() => trackCta('download_dmg_hero', latticesDownloadURL)}
               >
                 <DownloadIcon />
                 Download for macOS
@@ -996,11 +998,11 @@ export default function App() {
               <div className="app-kicker-row">
                 <span>Native macOS app</span>
                 <a
-                  href="https://github.com/arach/lattices/releases/latest/download/Lattices.dmg"
+                  href={latticesDownloadURL}
                   className="app-download-icon"
                   aria-label="Download Lattices for macOS"
                   title="Download Lattices for macOS"
-                  onClick={() => trackCta('download_dmg', 'https://github.com/arach/lattices/releases/latest/download/Lattices.dmg')}
+                  onClick={() => trackCta('download_dmg', latticesDownloadURL)}
                 >
                   <DownloadIcon />
                 </a>
@@ -1201,8 +1203,8 @@ export default function App() {
               <h3>Native macOS app</h3>
               <p>Manage projects, windows, and layers with a click.</p>
               <a
-                href="https://github.com/arach/lattices/releases/latest/download/Lattices.dmg"
-                onClick={() => trackCta('download_dmg_install', 'https://github.com/arach/lattices/releases/latest/download/Lattices.dmg')}
+                href={latticesDownloadURL}
+                onClick={() => trackCta('download_dmg_install', latticesDownloadURL)}
               >
                 Download for macOS <span aria-hidden="true">↗</span>
               </a>
@@ -1236,9 +1238,9 @@ export default function App() {
           <p>Free and open source. Running on your Mac in seconds.</p>
           <div className="cta-download-row">
             <a
-              href="https://github.com/arach/lattices/releases/latest/download/Lattices.dmg"
+              href={latticesDownloadURL}
               className="cta-download-button"
-              onClick={() => trackCta('download_dmg', 'https://github.com/arach/lattices/releases/latest/download/Lattices.dmg')}
+              onClick={() => trackCta('download_dmg', latticesDownloadURL)}
             >
               <span className="cta-download-icon">
                 <AppleIcon />
@@ -1302,6 +1304,7 @@ export default function App() {
             <a href="/blog">Blog</a>
             <a href="/action">Action</a>
             <a href="/blink">Blink</a>
+            <a href="/speech">Speech</a>
             <a href="/rss.xml">RSS</a>
             <a
               href="https://github.com/arach/lattices"

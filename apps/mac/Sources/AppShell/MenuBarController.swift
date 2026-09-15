@@ -71,6 +71,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
               let button = statusItem?.button else { return }
 
         if event.type == .rightMouseUp {
+            CompanionAppsMenu.refresh()
             contextMenu?.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height + 4), in: button)
         } else if let shown = popover, shown.isShown {
             shown.performClose(sender)

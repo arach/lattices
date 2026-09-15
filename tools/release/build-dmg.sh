@@ -91,6 +91,7 @@ if [ -f "$ASSISTANT_KNOWLEDGE" ]; then
     cp "$ASSISTANT_KNOWLEDGE" "$BUNDLE/Contents/Resources/docs/assistant-knowledge.md"
 fi
 
+bun "$ROOT/bin/build-companion-installer.ts" "$BUNDLE/Contents/MacOS/CompanionInstaller"
 echo "    App bundle created at $BUNDLE"
 
 # ── Codesign ──────────────────────────────────────────────
@@ -98,6 +99,9 @@ if [ "$SKIP_SIGN" = "1" ]; then
     echo "==> Skipping signing because LATTICES_SKIP_SIGN=1"
 else
     echo "==> Signing..."
+    codesign --force --options runtime --timestamp \
+        --entitlements "$ROOT/tools/release/CompanionInstaller.entitlements" \
+        --sign "$SIGN_IDENTITY" "$BUNDLE/Contents/MacOS/CompanionInstaller"
 
     codesign --force --options runtime --timestamp \
         --entitlements "$APP_DIR/Lattices.entitlements" \

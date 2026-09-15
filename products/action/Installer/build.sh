@@ -157,7 +157,7 @@ echo "Staging Action.app..."
 ditto "$APP_DIR" "$APP_STAGE"
 
 echo "Verifying staged app signature..."
-codesign --verify --deep --strict "$APP_STAGE"
+bash "$ROOT_DIR/../../tools/release/verify-companion-signature.sh" "$APP_STAGE"
 
 echo ""
 echo "Creating DMG..."

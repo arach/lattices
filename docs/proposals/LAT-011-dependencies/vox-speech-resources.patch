@@ -1,0 +1,195 @@
+diff --git a/Package.swift b/Package.swift
+index 7dcec5d..001f465 100644
+--- a/Package.swift
++++ b/Package.swift
+@@ -26,7 +26,9 @@ let package = Package(
+         .executable(name: "voxttsd", targets: ["VoxTTSRunner"]),
+         .executable(name: "voxd", targets: ["voxd"])
+     ],
+-    dependencies: [],
++    dependencies: [
++        .package(url: "https://github.com/moonshine-ai/moonshine-swift.git", from: "0.1.5")
++    ],
+     targets: [
+         .target(
+             name: "VoxCore",
+@@ -35,11 +37,13 @@ let package = Package(
+         .target(
+             name: "HudsonSpeechEngine",
+             dependencies: [
+-                "VoxCore"
++                "VoxCore",
++                .product(name: "MoonshineVoice", package: "moonshine-swift")
+             ],
+             path: "swift/Sources/HudsonSpeechEngine",
+             resources: [
+-                .copy("Resources/mlx_audio_provider.py")
++                .copy("Resources/mlx_audio_provider.py"),
++                .copy("Resources/models.json")
+             ]
+         ),
+         .target(
+diff --git a/docs.json b/docs.json
+index 4a52fa7..4c4f263 100644
+--- a/docs.json
++++ b/docs.json
+@@ -19,7 +19,7 @@
+       "id": "apple-embed",
+       "title": "Swift Embed Guide",
+       "description": "Agent-oriented instructions for integrating Vox directly into macOS and iOS apps such as Linea.",
+-      "content": "Use this guide when you are integrating Vox into a macOS or iOS app and want the app to call Vox directly in process. This is the default path for Apple-native clients such as Linea.\n\n## Choose the integration mode\n\n- Use embed mode when the caller is app code running inside a macOS or iOS process.\n- Use Vox Companion (`voxd`) when the caller lives outside the app process, such as a web app, browser extension, or Bun/Node tool.\n- Keep `voxd` out of the Apple app itself. If the goal is in-process app integration, embed the Swift packages directly instead.\n\n## What embed mode is today\n\nThe current public embed surface is low-level but usable:\n\n- ASR: `EngineManager`\n- TTS generation: `TTSEngineManager`, `SynthesisRequest`\n- optional Apple playback: `VoxAppleSpeech` / `AppleSpeechOutputController`\n- outputs: `TranscriptionOutput`, `SynthesisOutput`, `TTSVoiceInfo`\n- telemetry: `PerformanceRecorder`, `PerformanceSample`\n- provider composition: `ProviderRegistry`, `TTSProviderRegistry`, `ProvidersConfig`, `ProviderEntry`\n\nThere is not yet a polished one-object Apple SDK facade. Agents should usually create a thin app-local wrapper such as `VoiceService` or `LineaVoiceStack` and keep raw Vox types behind that boundary. Use `VoxAppleSpeech` when the app wants a reusable per-audible-surface playback controller; keep product policy in the app.\n\n## Package setup\n\n`VoxCore` and `VoxEngine` support direct transcription embedding on macOS 14+\nand iOS 17+. Minivox uses that same direct path on macOS 14+.\n\nFor a sibling repo during local development, prefer a local SwiftPM dependency:\n\n```swift\n.package(path: \"../vox/swift\")\n```\n\nAdd these product dependencies to the app target:\n\n- `VoxCore`\n- `VoxEngine`\n- `VoxAppleSpeech` when the app wants the optional reusable Apple speech-output controller\n\nOnly add `VoxService` or `VoxBridge` if the app intentionally embeds companion/runtime behavior. That is not the default Apple app path.\n\n## Minimal local-first service\n\n```swift\nimport Foundation\nimport VoxCore\nimport VoxEngine\n\nactor LineaVoiceStack {\n    private let clientId: String\n    private let asr: EngineManager\n    private let tts: TTSEngineManager\n    private let performance = PerformanceRecorder()\n\n    init(clientId: String = \"linea-ios\") {\n        self.clientId = clientId\n        self.asr = EngineManager()      // Parakeet\n        self.tts = TTSEngineManager()   // OpenAI TTS plus AVSpeech fallback\n    }\n\n    func warmup() async throws {\n        _ = try await asr.preload(modelId: \"parakeet:v3\") { _ in }\n        _ = try await tts.preload(modelId: TTSDefaults.modelId, voiceId: nil) { _ in }\n    }\n\n    func transcribe(fileURL: URL) async throws -> TranscriptionOutput {\n        let output = try await asr.transcribe(url: fileURL, modelId: \"parakeet:v3\")\n\n        await performance.record(\n            PerformanceSample(\n                clientId: clientId,\n                route: \"transcribe.file\",\n                modelId: output.modelId,\n                outcome: \"ok\",\n                textLength: output.text.count,\n                metrics: output.metrics.performanceMetrics\n            )\n        )\n\n        return output\n    }\n\n    func synthesize(text: String, voiceId: String? = nil) async throws -> SynthesisOutput {\n        let output = try await tts.synthesize(\n            SynthesisRequest(\n                text: text,\n                modelId: TTSDefaults.modelId,\n                voiceId: voiceId\n            )\n        )\n\n        await performance.record(\n            PerformanceSample(\n                clientId: clientId,\n                route: \"synthesize.generate\",\n                modelId: output.modelId,\n                voiceId: output.voiceId,\n                outcome: \"ok\",\n                textLength: text.count,\n                metrics: output.metrics.performanceMetrics\n            )\n        )\n\n        return output\n    }\n}\n```\n\n## App responsibilities\n\nIn embed mode, the app still owns:\n\n- microphone permission\n- audio capture\n- temp-file creation for ASR input\n- product-level spoken-output policy\n- interruption handling\n- product-level state and UX\n\nToday the ASR entrypoint takes a `URL`, not an in-memory audio buffer. Agents should capture audio, write it to a temporary file, then call `transcribe(url:modelId:)`.\n\n`TTSProvider` and `TTSEngineManager` stay generation-only. They return WAV bytes in `SynthesisOutput.audioData` and do not own playback. Apps may play those bytes themselves, or opt into `VoxAppleSpeech` for a reusable Apple playback controller.\n\n## Optional Apple speech output\n\n`VoxAppleSpeech` is an optional embed product. `AppleSpeechOutputController` is a per-audible-surface playback arbiter, not a VoiceService facade and not an app product-policy layer.\n\nUse it when an Apple app wants one controller per audible surface that:\n\n- composes `TTSEngineManager` for generated-audio models\n- uses live `AVSpeechSynthesizer.speak()` for `avspeech:system`, never `write()`-then-play\n- plays `SynthesisOutput.audioData` through an injectable `AVAudioPlayer`-style sink\n- replaces the previous pending generation or playback when a new request starts\n- cancels the in-flight `Task`, audio player, and system synthesizer on idempotent `stop()` / `cancel()`, including during the enqueue window\n- reports typed phases (`resolving` or `generating`, `starting`, `playing`, `finished`, `cancelled`, `failed`)\n- reports requested vs actual model/voice identity separately from the physical audio-output route; it does not invent a provider id\n\nDo not treat this controller as browser playback, OpenScout Ranger policy, or app product policy. Reply dedupe, markdown flattening, fallback copy, preference storage, queue priority, and telemetry double-recording stay in the app.\n\nAudio-session configuration is injectable and disabled by default. There is no singleton and no process-global playback mutex; two controllers may run independently.\n\nRoute/model capability (`SpeechOutputCapabilities`) tells the controller whether a model is live system delivery or generated bytes. That capability does not add `speak()` to `TTSProvider`.\n\n## Warm-up\n\nWarm-up must remain explicit.\n\n- ASR warm-up: `EngineManager.preload(modelId:progress:)`\n- TTS warm-up: `TTSEngineManager.preload(modelId:voiceId:progress:)`\n\nDo not hide warm-up behind app launch side effects unless the product intentionally chooses the `.eager` model download policy. Prefer `.onFirstUse` or warming on intent at a predictable app state transition.\n\n## Telemetry\n\nCompanion mode records telemetry automatically. Embed mode does not.\n\nIf the app wants parity with Vox Companion telemetry, record samples yourself with `PerformanceRecorder` and preserve these dimensions:\n\n- `clientId`\n- `route`\n- `modelId`\n- `voiceId` for synthesis\n\nUse the same route names Vox Companion uses:\n\n- `transcribe.file`\n- `synthesize.generate`\n\n`RuntimePaths.performanceLogURL()` resolves to:\n\n- macOS: `~/.vox/performance.jsonl`\n- iOS: `Application Support/Vox/performance.jsonl`\n\n## OpenAI TTS in embed mode\n\nThe default TTS surface is OpenAI-backed when an API key is configured:\n\n- ASR: `EngineManager()` -> `ParakeetProvider()`\n- TTS: `TTSEngineManager()` -> OpenAI TTS plus AVSpeech fallback\n- default TTS model: `TTSDefaults.modelId` = `gpt-4o-mini-tts`\n- local fallback TTS model: `TTSDefaults.localModelId` = `avspeech:system`\n\nPrefer passing secrets in code or app configuration rather than relying on process environment inside an iOS app.\n\n```swift\nlet ttsConfig = ProvidersConfig(providers: [\n    ProviderEntry(\n        id: \"avspeech\",\n        kind: .tts,\n        builtin: true,\n        models: [AVSpeechSynthesizerProvider.modelID]\n    ),\n    ProviderEntry(\n        id: \"openai-tts\",\n        kind: .tts,\n        builtin: true,\n        models: OpenAITTSProvider.supportedModelIDs,\n        env: [\"OPENAI_API_KEY\": apiKey]\n    )\n])\n\nlet tts = TTSEngineManager(provider: TTSProviderRegistry(config: ttsConfig))\n```\n\n## Linea default plan\n\nFor the first Linea integration, the default plan should be:\n\n- use embed mode on iOS and macOS\n- add `VoxCore` and `VoxEngine`, plus `VoxAppleSpeech` if the app wants reusable Apple playback\n- wrap Vox in one app-local actor or service\n- use `parakeet:v3` for ASR; `parakeet:v2` is the English-only TDT option\n- use `gpt-4o-mini-tts` for default TTS\n- use `avspeech:system` only when a local system voice fallback is required\n- record Vox-compatible telemetry from the app\n- use Vox Companion only for web surfaces or cross-process workflows\n\n## What agents should not assume\n\n- There is no public one-object Apple SDK facade yet. `VoxAppleSpeech` is optional playback, not that facade.\n- There is no public embed live-session coordinator yet.\n- There is no public embed warm-up coordinator helper.\n- Embed mode does not automatically write performance samples.\n- Apple apps do not need `@voxd/sdk` or `@voxd/client`.\n- `VoxAppleSpeech` does not own browser playback or app product policy.\n\n## First tasks in a sibling app repo\n\n1. Add `../vox/swift` as a local package dependency.\n2. Create a single `VoiceService` or `LineaVoiceStack` actor in app code.\n3. Warm the ASR and TTS engines explicitly.\n4. Feed ASR with file URLs, not raw buffers.\n5. Feed TTS output WAV data into the app playback layer, or use `AppleSpeechOutputController` for per-surface Apple playback.\n6. Emit `PerformanceSample` records with stable route names.\n7. Keep Companion mode out of the Apple app path unless the feature is genuinely web or cross-process.\n\nSee [Observability](./observability.md) for metric interpretation and [Architecture](./architecture.md) for package ownership."
++      "content": "Use this guide when you are integrating Vox into a macOS or iOS app and want the app to call Vox directly in process. This is the default path for Apple-native clients such as Linea.\n\n## Choose the integration mode\n\n- Use embed mode when the caller is app code running inside a macOS or iOS process.\n- Use Vox Companion (`voxd`) when the caller lives outside the app process, such as a web app, browser extension, or Bun/Node tool.\n- Keep `voxd` out of the Apple app itself. If the goal is in-process app integration, embed the Swift packages directly instead.\n\n## What embed mode is today\n\nThe current public embed surface is low-level but usable:\n\n- ASR: `EngineManager`\n- TTS generation: `TTSEngineManager`, `SynthesisRequest`\n- optional Apple playback: `VoxAppleSpeech` / `AppleSpeechOutputController`\n- outputs: `TranscriptionOutput`, `SynthesisOutput`, `TTSVoiceInfo`\n- telemetry: `PerformanceRecorder`, `PerformanceSample`\n- provider composition: `ProviderRegistry`, `TTSProviderRegistry`, `ProvidersConfig`, `ProviderEntry`\n\nThere is not yet a polished one-object Apple SDK facade. Agents should usually create a thin app-local wrapper such as `VoiceService` or `LineaVoiceStack` and keep raw Vox types behind that boundary. Use `VoxAppleSpeech` when the app wants a reusable per-audible-surface playback controller; keep product policy in the app.\n\n## Package setup\n\n`VoxCore` and `VoxEngine` support direct transcription embedding on macOS 14+\nand iOS 17+. Minivox uses that same direct path on macOS 14+.\n\nFor a sibling repo during local development, prefer a local SwiftPM dependency:\n\n```swift\n.package(path: \"../vox/swift\")\n```\n\nAdd these product dependencies to the app target:\n\n- `VoxCore`\n- `VoxEngine`\n- `VoxAppleSpeech` when the app wants the optional reusable Apple speech-output controller\n\nOnly add `VoxService` or `VoxBridge` if the app intentionally embeds companion/runtime behavior. That is not the default Apple app path.\n\n## Minimal local-first service\n\n```swift\nimport Foundation\nimport VoxCore\nimport VoxEngine\n\nactor LineaVoiceStack {\n    private let clientId: String\n    private let asr: EngineManager\n    private let tts: TTSEngineManager\n    private let performance = PerformanceRecorder()\n\n    init(clientId: String = \"linea-ios\") {\n        self.clientId = clientId\n        self.asr = EngineManager()      // Parakeet\n        self.tts = TTSEngineManager()   // OpenAI TTS plus AVSpeech fallback\n    }\n\n    func warmup() async throws {\n        _ = try await asr.preload(modelId: \"parakeet:v3\") { _ in }\n        _ = try await tts.preload(modelId: TTSDefaults.modelId, voiceId: nil) { _ in }\n    }\n\n    func transcribe(fileURL: URL) async throws -> TranscriptionOutput {\n        let output = try await asr.transcribe(url: fileURL, modelId: \"parakeet:v3\")\n\n        await performance.record(\n            PerformanceSample(\n                clientId: clientId,\n                route: \"transcribe.file\",\n                modelId: output.modelId,\n                outcome: \"ok\",\n                textLength: output.text.count,\n                metrics: output.metrics.performanceMetrics\n            )\n        )\n\n        return output\n    }\n\n    func synthesize(text: String, voiceId: String? = nil) async throws -> SynthesisOutput {\n        let output = try await tts.synthesize(\n            SynthesisRequest(\n                text: text,\n                modelId: TTSDefaults.modelId,\n                voiceId: voiceId\n            )\n        )\n\n        await performance.record(\n            PerformanceSample(\n                clientId: clientId,\n                route: \"synthesize.generate\",\n                modelId: output.modelId,\n                voiceId: output.voiceId,\n                outcome: \"ok\",\n                textLength: text.count,\n                metrics: output.metrics.performanceMetrics\n            )\n        )\n\n        return output\n    }\n}\n```\n\n## App responsibilities\n\nIn embed mode, the app still owns:\n\n- microphone permission\n- audio capture\n- temp-file creation for ASR input\n- product-level spoken-output policy\n- interruption handling\n- product-level state and UX\n\nToday the ASR entrypoint takes a `URL`, not an in-memory audio buffer. Agents should capture audio, write it to a temporary file, then call `transcribe(url:modelId:)`.\n\n`TTSProvider` and `TTSEngineManager` stay generation-only. They return WAV bytes in `SynthesisOutput.audioData` and do not own playback. Apps may play those bytes themselves, or opt into `VoxAppleSpeech` for a reusable Apple playback controller.\n\n## Optional Apple speech output\n\n`VoxAppleSpeech` is an optional embed product. `AppleSpeechOutputController` is a per-audible-surface playback arbiter, not a VoiceService facade and not an app product-policy layer.\n\nUse it when an Apple app wants one controller per audible surface that:\n\n- composes `TTSEngineManager` for generated-audio models\n- uses live `AVSpeechSynthesizer.speak()` for `avspeech:system`, never `write()`-then-play\n- plays `SynthesisOutput.audioData` through an injectable `AVAudioPlayer`-style sink\n- replaces the previous pending generation or playback when a new request starts\n- cancels the in-flight `Task`, audio player, and system synthesizer on idempotent `stop()` / `cancel()`, including during the enqueue window\n- reports typed phases (`resolving` or `generating`, `starting`, `playing`, `finished`, `cancelled`, `failed`)\n- reports requested vs actual model/voice identity separately from the physical audio-output route; it does not invent a provider id\n\nDo not treat this controller as browser playback, OpenScout Ranger policy, or app product policy. Reply dedupe, markdown flattening, fallback copy, preference storage, queue priority, and telemetry double-recording stay in the app.\n\nAudio-session configuration is injectable and disabled by default. There is no singleton and no process-global playback mutex; two controllers may run independently.\n\nRoute/model capability (`SpeechOutputCapabilities`) tells the controller whether a model is live system delivery or generated bytes. That capability does not add `speak()` to `TTSProvider`.\n\n## Warm-up\n\nWarm-up must remain explicit.\n\n- ASR warm-up: `EngineManager.preload(modelId:progress:)`\n- TTS warm-up: `TTSEngineManager.preload(modelId:voiceId:progress:)`\n\nDo not hide warm-up behind app launch side effects unless the product intentionally chooses the `.eager` model download policy. Prefer `.onFirstUse` or warming on intent at a predictable app state transition.\n\n## Telemetry\n\nCompanion mode records telemetry automatically. Embed mode does not.\n\nIf the app wants parity with Vox Companion telemetry, record samples yourself with `PerformanceRecorder` and preserve these dimensions:\n\n- `clientId`\n- `route`\n- `modelId`\n- `voiceId` for synthesis\n\nUse the same route names Vox Companion uses:\n\n- `transcribe.file`\n- `synthesize.generate`\n\n`RuntimePaths.performanceLogURL()` resolves to:\n\n- macOS: `~/.vox/performance.jsonl`\n- iOS: `Application Support/Vox/performance.jsonl`\n\n## OpenAI TTS in embed mode\n\nThe default TTS surface is OpenAI-backed when an API key is configured:\n\n- ASR: `EngineManager()` -> `ParakeetProvider()`\n- TTS: `TTSEngineManager()` -> OpenAI TTS plus AVSpeech fallback\n- default TTS model: `TTSDefaults.modelId` = `gpt-4o-mini-tts`\n- local fallback TTS model: `TTSDefaults.localModelId` = `avspeech:system`\n\nPrefer passing secrets in code or app configuration rather than relying on process environment inside an iOS app.\n\n```swift\nlet ttsConfig = ProvidersConfig(providers: [\n    ProviderEntry(\n        id: \"avspeech\",\n        kind: .tts,\n        builtin: true,\n        models: [AVSpeechSynthesizerProvider.modelID]\n    ),\n    ProviderEntry(\n        id: \"openai-tts\",\n        kind: .tts,\n        builtin: true,\n        models: OpenAITTSProvider.supportedModelIDs,\n        env: [\"OPENAI_API_KEY\": apiKey]\n    )\n])\n\nlet tts = TTSEngineManager(provider: TTSProviderRegistry(config: ttsConfig))\n```\n\n## Linea default plan\n\nFor the first Linea integration, the default plan should be:\n\n- use embed mode on iOS and macOS\n- add `VoxCore` and `VoxEngine`, plus `VoxAppleSpeech` if the app wants reusable Apple playback\n- wrap Vox in one app-local actor or service\n- use `parakeet:v3` for ASR; `parakeet:v2` is the English-only TDT option\n- use `gpt-4o-mini-tts` for default TTS\n- use `avspeech:system` only when a local system voice fallback is required\n- record Vox-compatible telemetry from the app\n- use Vox Companion only for web surfaces or cross-process workflows\n\n## What agents should not assume\n\n- There is no public one-object Apple SDK facade yet. `VoxAppleSpeech` is optional playback, not that facade.\n- There is no public embed live-session coordinator yet.\n- There is no public embed warm-up coordinator helper.\n- Embed mode does not automatically write performance samples.\n- Apple apps do not need `@voxd/sdk` or `@voxd/client`.\n- `VoxAppleSpeech` does not own browser playback or app product policy.\n\n## First tasks in a sibling app repo\n\n1. Add `../vox/swift` as a local package dependency.\n2. Create a single `VoiceService` or `LineaVoiceStack` actor in app code.\n3. Warm the ASR and TTS engines explicitly.\n4. Feed ASR with file URLs, not raw buffers.\n5. Feed TTS output WAV data into the app playback layer, or use `AppleSpeechOutputController` for per-surface Apple playback.\n6. Emit `PerformanceSample` records with stable route names.\n7. Keep Companion mode out of the Apple app path unless the feature is genuinely web or cross-process.\n\nSee [Observability](./observability.md) for metric interpretation and [Architecture](./architecture.md) for package ownership.\n\n## Packaged app resources\n\nCopy `Vox_HudsonSpeechEngine.bundle` into the signed app's `Contents/Resources`.\n`SpeechEngineResources` resolves the model catalog and mlx-audio provider script\nfrom that location in apps, and from SwiftPM resources in command-line builds.\nA packaged app does not fall back to a developer build directory."
+     },
+     {
+       "id": "runtime",
+@@ -96,7 +96,7 @@
+     {
+       "id": "apple-embed",
+       "title": "Apple Embed Facts",
+-      "content": "# Apple Embed Facts\n\n## Use embed mode when\n\n- target: macOS app or iOS app\n- caller: app process\n- requirement: voice in and voice out inside the app\n\n## Use companion mode when\n\n- target: web app or browser extension\n- caller: Bun/Node tool outside the app process\n- requirement: shared local voice service across processes\n\n## Do not do this\n\n- do not start `voxd` inside the Apple app just to call Vox APIs\n- do not use `@voxd/sdk` or `@voxd/client` from app code\n- do not hide warm-up as an implicit side effect\n\n## Add package dependency\n\n- preferred local dev dependency: `.package(path: \"../vox/swift\")`\n- required products for app embed: `VoxCore`, `VoxEngine`\n- optional product for Apple playback: `VoxAppleSpeech` / `AppleSpeechOutputController`\n- avoid `VoxService` and `VoxBridge` unless intentionally embedding companion/runtime behavior\n\n## Default embed engines\n\n- ASR default: `EngineManager()` -> `ParakeetProvider()`\n- TTS generation default: `TTSEngineManager()` -> `TTSProviderRegistry` with OpenAI TTS plus AVSpeech fallback\n- TTS playback is not on `TTSProvider`; optional Apple playback is `AppleSpeechOutputController`\n- default ASR model id: `parakeet:v3`\n- English-only ASR model id: `parakeet:v2`\n- default TTS model id: `TTSDefaults.modelId` = `gpt-4o-mini-tts`\n- local TTS model id: `TTSDefaults.localModelId` = `avspeech:system`\n- default TTS format: `TTSDefaults.format` = `wav`\n\n## Public types to use\n\n- ASR input: `URL`\n- ASR output: `TranscriptionOutput`\n- TTS request: `SynthesisRequest`\n- TTS output: `SynthesisOutput`\n- voices: `TTSVoiceInfo`\n- telemetry: `PerformanceRecorder`, `PerformanceSample`\n\n## Warm-up\n\n- call `asr.preload(modelId:progress:)`\n- call `tts.preload(modelId:voiceId:progress:)`\n- do not rely on `WarmupCoordinator`; it is not public in the embed surface\n\n## Telemetry parity\n\n- embed mode must record telemetry manually if parity is required\n- preserve fields: `clientId`, `route`, `modelId`, `voiceId`\n- preserve route names: `transcribe.file`, `synthesize.generate`\n- performance log path comes from `RuntimePaths.performanceLogURL()`\n\n## App owns these concerns\n\n- microphone permission\n- audio capture\n- temp-file creation for ASR input\n- product-level spoken-output policy (dedupe, markdown flattening, fallback copy, preferences, queue priority)\n- playback of `SynthesisOutput.audioData`, or an opt-in `AppleSpeechOutputController` per audible surface\n- interruption handling\n- product state and UI\n\n## OpenAI TTS rule\n\n- OpenAI TTS is the default API-backed model when an API key is configured\n- use `TTSDefaults.localModelId` when a caller intentionally wants AVSpeech\n- pass `OPENAI_API_KEY` via `ProviderEntry.env` or app config\n- do not rely on process environment inside iOS app code\n\n## Optional Apple playback\n\n- `VoxAppleSpeech` is optional and per audible surface, not a singleton\n- `avspeech:system` uses live `AVSpeechSynthesizer.speak()`, never `write()`-then-play\n- generated-audio models play `SynthesisOutput.audioData` through an injectable player sink\n- audio-session configuration is injectable and off by default\n- new requests replace pending generation/playback\n- stop/cancel are idempotent and must cancel Task, player, and synthesizer during the enqueue window\n- events report resolving/generating, starting, playing, finished, cancelled, failed\n- synthesis identity reports requested vs actual model/voice, not a guessed provider id\n- synthesis identity is separate from the physical audio-output route\n- do not put reply dedupe, markdown flattening, fallback copy, preference storage, queue priority, or telemetry double-recording in this controller\n\n## Known gaps\n\n- no public one-object Apple SDK facade yet; `VoxAppleSpeech` is playback, not that facade\n- no public embed live-session coordinator yet\n- no raw-buffer ASR API yet\n- no automatic telemetry recording in embed mode\n- `VoxAppleSpeech` does not own browser playback or app product policy\n\n## Linea default recipe\n\n- client id: `linea-ios` or `linea-macos`\n- ASR engine: `EngineManager()`\n- TTS engine: `TTSEngineManager()`\n- TTS default: `gpt-4o-mini-tts`\n- TTS local fallback: `avspeech:system`\n- use Vox Companion only for web or cross-process workflows"
++      "content": "# Apple Embed Facts\n\n## Use embed mode when\n\n- target: macOS app or iOS app\n- caller: app process\n- requirement: voice in and voice out inside the app\n\n## Use companion mode when\n\n- target: web app or browser extension\n- caller: Bun/Node tool outside the app process\n- requirement: shared local voice service across processes\n\n## Do not do this\n\n- do not start `voxd` inside the Apple app just to call Vox APIs\n- do not use `@voxd/sdk` or `@voxd/client` from app code\n- do not hide warm-up as an implicit side effect\n\n## Add package dependency\n\n- preferred local dev dependency: `.package(path: \"../vox/swift\")`\n- required products for app embed: `VoxCore`, `VoxEngine`\n- optional product for Apple playback: `VoxAppleSpeech` / `AppleSpeechOutputController`\n- avoid `VoxService` and `VoxBridge` unless intentionally embedding companion/runtime behavior\n\n## Default embed engines\n\n- ASR default: `EngineManager()` -> `ParakeetProvider()`\n- TTS generation default: `TTSEngineManager()` -> `TTSProviderRegistry` with OpenAI TTS plus AVSpeech fallback\n- TTS playback is not on `TTSProvider`; optional Apple playback is `AppleSpeechOutputController`\n- default ASR model id: `parakeet:v3`\n- English-only ASR model id: `parakeet:v2`\n- default TTS model id: `TTSDefaults.modelId` = `gpt-4o-mini-tts`\n- local TTS model id: `TTSDefaults.localModelId` = `avspeech:system`\n- default TTS format: `TTSDefaults.format` = `wav`\n\n## Public types to use\n\n- ASR input: `URL`\n- ASR output: `TranscriptionOutput`\n- TTS request: `SynthesisRequest`\n- TTS output: `SynthesisOutput`\n- voices: `TTSVoiceInfo`\n- telemetry: `PerformanceRecorder`, `PerformanceSample`\n\n## Warm-up\n\n- call `asr.preload(modelId:progress:)`\n- call `tts.preload(modelId:voiceId:progress:)`\n- do not rely on `WarmupCoordinator`; it is not public in the embed surface\n\n## Telemetry parity\n\n- embed mode must record telemetry manually if parity is required\n- preserve fields: `clientId`, `route`, `modelId`, `voiceId`\n- preserve route names: `transcribe.file`, `synthesize.generate`\n- performance log path comes from `RuntimePaths.performanceLogURL()`\n\n## App owns these concerns\n\n- microphone permission\n- audio capture\n- temp-file creation for ASR input\n- product-level spoken-output policy (dedupe, markdown flattening, fallback copy, preferences, queue priority)\n- playback of `SynthesisOutput.audioData`, or an opt-in `AppleSpeechOutputController` per audible surface\n- interruption handling\n- product state and UI\n\n## OpenAI TTS rule\n\n- OpenAI TTS is the default API-backed model when an API key is configured\n- use `TTSDefaults.localModelId` when a caller intentionally wants AVSpeech\n- pass `OPENAI_API_KEY` via `ProviderEntry.env` or app config\n- do not rely on process environment inside iOS app code\n\n## Optional Apple playback\n\n- `VoxAppleSpeech` is optional and per audible surface, not a singleton\n- `avspeech:system` uses live `AVSpeechSynthesizer.speak()`, never `write()`-then-play\n- generated-audio models play `SynthesisOutput.audioData` through an injectable player sink\n- audio-session configuration is injectable and off by default\n- new requests replace pending generation/playback\n- stop/cancel are idempotent and must cancel Task, player, and synthesizer during the enqueue window\n- events report resolving/generating, starting, playing, finished, cancelled, failed\n- synthesis identity reports requested vs actual model/voice, not a guessed provider id\n- synthesis identity is separate from the physical audio-output route\n- do not put reply dedupe, markdown flattening, fallback copy, preference storage, queue priority, or telemetry double-recording in this controller\n\n## Known gaps\n\n- no public one-object Apple SDK facade yet; `VoxAppleSpeech` is playback, not that facade\n- no public embed live-session coordinator yet\n- no raw-buffer ASR API yet\n- no automatic telemetry recording in embed mode\n- `VoxAppleSpeech` does not own browser playback or app product policy\n\n## Linea default recipe\n\n- client id: `linea-ios` or `linea-macos`\n- ASR engine: `EngineManager()`\n- TTS engine: `TTSEngineManager()`\n- TTS default: `gpt-4o-mini-tts`\n- TTS local fallback: `avspeech:system`\n- use Vox Companion only for web or cross-process workflows\n\n## Packaged app resources\n\nCopy `Vox_HudsonSpeechEngine.bundle` into the signed app's `Contents/Resources`.\n`SpeechEngineResources` resolves the model catalog and mlx-audio provider script\nfrom that location in apps, and from SwiftPM resources in command-line builds.\nA packaged app does not fall back to a developer build directory."
+     },
+     {
+       "id": "architecture",
+diff --git a/docs/agent/apple-embed.agent.md b/docs/agent/apple-embed.agent.md
+index 833ea62..afd7272 100644
+--- a/docs/agent/apple-embed.agent.md
++++ b/docs/agent/apple-embed.agent.md
+@@ -104,3 +104,10 @@
+ - TTS default: `gpt-4o-mini-tts`
+ - TTS local fallback: `avspeech:system`
+ - use Vox Companion only for web or cross-process workflows
++
++## Packaged app resources
++
++Copy `Vox_HudsonSpeechEngine.bundle` into the signed app's `Contents/Resources`.
++`SpeechEngineResources` resolves the model catalog and mlx-audio provider script
++from that location in apps, and from SwiftPM resources in command-line builds.
++A packaged app does not fall back to a developer build directory.
+diff --git a/docs/apple-embed.md b/docs/apple-embed.md
+index 12d037e..7e97ea0 100644
+--- a/docs/apple-embed.md
++++ b/docs/apple-embed.md
+@@ -239,3 +239,10 @@ For the first Linea integration, the default plan should be:
+ 7. Keep Companion mode out of the Apple app path unless the feature is genuinely web or cross-process.
+ 
+ See [Observability](./observability.md) for metric interpretation and [Architecture](./architecture.md) for package ownership.
++
++## Packaged app resources
++
++Copy `Vox_HudsonSpeechEngine.bundle` into the signed app's `Contents/Resources`.
++`SpeechEngineResources` resolves the model catalog and mlx-audio provider script
++from that location in apps, and from SwiftPM resources in command-line builds.
++A packaged app does not fall back to a developer build directory.
+diff --git a/llms-full.txt b/llms-full.txt
+index 2a4dca4..55b21ec 100644
+--- a/llms-full.txt
++++ b/llms-full.txt
+@@ -425,6 +425,13 @@ For the first Linea integration, the default plan should be:
+ 
+ See [Observability](./observability.md) for metric interpretation and [Architecture](./architecture.md) for package ownership.
+ 
++## Packaged app resources
++
++Copy `Vox_HudsonSpeechEngine.bundle` into the signed app's `Contents/Resources`.
++`SpeechEngineResources` resolves the model catalog and mlx-audio provider script
++from that location in apps, and from SwiftPM resources in command-line builds.
++A packaged app does not fall back to a developer build directory.
++
+ # Runtime
+ 
+ Source: /docs/runtime
+@@ -2465,6 +2472,13 @@ Source: docs/agent/apple-embed.agent.md
+ - TTS local fallback: `avspeech:system`
+ - use Vox Companion only for web or cross-process workflows
+ 
++## Packaged app resources
++
++Copy `Vox_HudsonSpeechEngine.bundle` into the signed app's `Contents/Resources`.
++`SpeechEngineResources` resolves the model catalog and mlx-audio provider script
++from that location in apps, and from SwiftPM resources in command-line builds.
++A packaged app does not fall back to a developer build directory.
++
+ # Architecture Facts
+ 
+ Source: docs/agent/architecture.agent.md
+diff --git a/swift/Sources/HudsonSpeechEngine/BuiltinExternalProvider.swift b/swift/Sources/HudsonSpeechEngine/BuiltinExternalProvider.swift
+index 40efee3..0e0a9aa 100644
+--- a/swift/Sources/HudsonSpeechEngine/BuiltinExternalProvider.swift
++++ b/swift/Sources/HudsonSpeechEngine/BuiltinExternalProvider.swift
+@@ -22,7 +22,7 @@ struct BuiltinExternalProvider {
+         kind: BuiltinExternalProviderKind,
+         env: [String: String]?
+     ) throws -> [String] {
+-        guard let scriptURL = Bundle.module.url(forResource: "mlx_audio_provider", withExtension: "py") else {
++        guard let scriptURL = SpeechEngineResources.url(forResource: "mlx_audio_provider", withExtension: "py") else {
+             throw BuiltinExternalProviderError.missingResource("mlx_audio_provider.py")
+         }
+ 
+diff --git a/swift/Sources/HudsonSpeechEngine/ModelCatalogStore.swift b/swift/Sources/HudsonSpeechEngine/ModelCatalogStore.swift
+index f66c488..a91c032 100644
+--- a/swift/Sources/HudsonSpeechEngine/ModelCatalogStore.swift
++++ b/swift/Sources/HudsonSpeechEngine/ModelCatalogStore.swift
+@@ -109,7 +109,7 @@ public final class ModelCatalogStore: @unchecked Sendable {
+     }
+ 
+     static func loadBundledCatalog() -> SpeechModelCatalog {
+-        if let url = Bundle.module.url(forResource: "models", withExtension: "json"),
++        if let url = SpeechEngineResources.url(forResource: "models", withExtension: "json"),
+            let data = try? Data(contentsOf: url),
+            let catalog = try? SpeechModelCatalog.decode(from: data) {
+             return catalog
+diff --git a/swift/Sources/HudsonSpeechEngine/SpeechEngineResources.swift b/swift/Sources/HudsonSpeechEngine/SpeechEngineResources.swift
+new file mode 100644
+index 0000000..4015e4f
+--- /dev/null
++++ b/swift/Sources/HudsonSpeechEngine/SpeechEngineResources.swift
+@@ -0,0 +1,18 @@
++import Foundation
++
++/// Resource lookup for both a signed Apple app and a SwiftPM executable. Signed
++/// apps keep resource bundles in Contents/Resources, never in the app root.
++public enum SpeechEngineResources {
++    public static func url(forResource name: String, withExtension extensionName: String) -> URL? {
++        resourceBundle(appBundle: .main)?.url(forResource: name, withExtension: extensionName)
++    }
++
++    static func resourceBundle(appBundle: Bundle) -> Bundle? {
++        if appBundle.bundleURL.pathExtension == "app" {
++            guard let resources = appBundle.resourceURL else { return nil }
++            // A broken packaged app must not silently use a developer build path.
++            return Bundle(url: resources.appendingPathComponent("Vox_HudsonSpeechEngine.bundle"))
++        }
++        return .module
++    }
++}
+diff --git a/swift/Tests/VoxEngineTests/SpeechEngineResourcesTests.swift b/swift/Tests/VoxEngineTests/SpeechEngineResourcesTests.swift
+new file mode 100644
+index 0000000..fba046e
+--- /dev/null
++++ b/swift/Tests/VoxEngineTests/SpeechEngineResourcesTests.swift
+@@ -0,0 +1,24 @@
++import Foundation
++import Testing
++@testable import HudsonSpeechEngine
++
++struct SpeechEngineResourcesTests {
++    @Test func packagedAppUsesOnlyContentsResources() throws {
++        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
++        let app = root.appendingPathComponent("Fixture.app")
++        let contents = app.appendingPathComponent("Contents")
++        try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
++        defer { try? FileManager.default.removeItem(at: root) }
++        let plist: [String: String] = ["CFBundleIdentifier": "test.speech.resources", "CFBundlePackageType": "APPL", "CFBundleExecutable": "Fixture"]
++        try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
++            .write(to: contents.appendingPathComponent("Info.plist"))
++        let bundle = try #require(Bundle(url: app))
++        #expect(SpeechEngineResources.resourceBundle(appBundle: bundle) == nil)
++        let resources = contents.appendingPathComponent("Resources/Vox_HudsonSpeechEngine.bundle")
++        try FileManager.default.createDirectory(at: resources, withIntermediateDirectories: true)
++        try Data("fixture".utf8).write(to: resources.appendingPathComponent("marker.txt"))
++        let resolved = try #require(SpeechEngineResources.resourceBundle(appBundle: bundle))
++        #expect(resolved.bundleURL.standardizedFileURL == resources.standardizedFileURL)
++        #expect(resolved.url(forResource: "marker", withExtension: "txt") != nil)
++    }
++}

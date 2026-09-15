@@ -2476,6 +2476,7 @@ struct ActionLauncherRootView: View {
 
     private var settingsAppearancePage: some View {
         VStack(alignment: .leading, spacing: 18) {
+            CompanionMenuBarPreference()
             // "Mode", not "Appearance": the pane is already called Appearance,
             // and a section label that repeats its own page reads as filler.
             ActionSettingsSection(title: "Mode") {
