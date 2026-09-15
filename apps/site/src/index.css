@@ -3762,6 +3762,7 @@ button.nav-link {
 
 .hero-apparatus .hero-workspace-stage {
   margin: 0;
+  transform: none;
   border-radius: 12px;
   box-shadow:
     0 30px 70px rgba(0, 0, 0, 0.42),

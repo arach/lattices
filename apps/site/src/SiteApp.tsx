@@ -113,8 +113,8 @@ function resolveRoute(path: string): Route {
   if (path === '/') {
     return {
       kind: 'home',
-      title: 'lattices — agentic window management',
-      description: 'When your desktop is full of windows, terminals, and agents, Lattices gives you one place to arrange, launch, and control all of it — by hand or from code.',
+      title: 'Lattices — the programmable workspace for Mac',
+      description: 'Organize windows, run your tools, and automate your workflow. Lattices puts your Mac workspace in your hands, with shortcuts, mouse gestures, and a local API.',
     }
   }
 
