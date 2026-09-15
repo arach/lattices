@@ -1,7 +1,7 @@
 # LAT-011: Independent companion apps
 
 Status: implementation and notarized release verification, 2026-09-14. Public
-asset download and installed desktop acceptance remain open; see the [evidence matrix](LAT-011-companion-app-implementation.md).
+releases and website are verified; installed desktop acceptance remains open; see the [evidence matrix](LAT-011-companion-app-implementation.md).
 
 ## Ownership
 
