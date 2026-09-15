@@ -23,6 +23,8 @@ Apple submission, source publication, release tags and asset uploads.
 - Hudson40 tests pass. A cancelled shared-cache waiter now returns immediately
   while other waiters retain the shared synthesis task; this fixes the actual
   cancellation deadlock found during release testing.
+- Lattices20 native release tests pass, including actual NSMenu dispatch and
+  ephemeral daemon authorization. TypeScript and installer17 tests/45 assertions pass.
 - Speech45 release tests pass. The exact notarized Speech process passes the
   proxy-exit/queue-survival probe with audio suppressed by a client reservation.
 - Blink, Action and Speech DMGs each pass actual read-only mounting, source and
