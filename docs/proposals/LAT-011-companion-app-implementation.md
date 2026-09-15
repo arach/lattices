@@ -1,7 +1,7 @@
 # LAT-011: Release acceptance
 
 Current status, 2026-09-14: all four release artifacts are Developer ID signed,
-Apple-notarized and stapled. Publication is the next step. Earlier preparation
+Apple-notarized, stapled and publicly released. Earlier preparation
 notes below are historical and do not describe current authorization or builds.
 
 | Product | Release | Notarization submission |
@@ -36,12 +36,23 @@ Apple submission, source publication, release tags and asset uploads.
 - The site exports Blink, Action and Speech pages. Desktop1440 and mobile390
   browser checks show no overflow or JavaScript errors; local links/assets resolve.
   Blink spacing was corrected within the existing product design. Source merge
-  does not deploy: Pages is manual workflow_dispatch. Production site deployment
-  has not occurred.
+  does not deploy automatically: Pages is manual workflow_dispatch. The authorized
+  production deployment succeeded in run34919050074 at merge56d92eff. Live root,
+  Blink, Action and Speech pages and product download routes were checked.
+
+## Publication
+
+Source PR126 merged at `56d92eff92eb9283cf0a972b91c64f39e04bbc65`. Public tags are
+`v0.12.0`, `blink-v2.1.0`, `action-v0.3.0`, and `speech-v0.2.0`; each carries its
+matching DMG in arach/lattices releases. Site: https://lattices.dev/ (including
+/blink/, /action/, /speech/). No DNS changes were needed.
 
 ## Remaining acceptance boundary
 
-Public asset download checks remain pending until publication. Installed desktop
+All four public downloads match the stapled local DMGs by SHA-256. Each companion
+passed the temporary-root installer probe again using its public download. The
+production release resolver selects the correct stable asset for all three;
+GitHub latest remains Lattices v0.12.0. Installed desktop
 Open actions, normal app termination with active user audio/recordings, and live
 menu-bar preference behavior are not exercised. No installed app was launched,
 quit or replaced; no test account or DNS/account changes were made. Native menu,
