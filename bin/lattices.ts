@@ -3208,6 +3208,13 @@ switch (command) {
     } catch { /* exit code forwarded */ }
     break;
   }
+  case "mcp": {
+    // Serve the MCP over stdio. Loaded on demand so the toolsets -- and the
+    // resources they own -- are never touched by an unrelated CLI invocation.
+    const { mcpCommand } = await import("./mcp/server.ts");
+    await mcpCommand(args.slice(1));
+    break;
+  }
   case "-h":
   case "--help":
   case "help":

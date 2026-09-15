@@ -36,6 +36,10 @@ The reply reports the *measured* viewport, not the requested one, plus `exact` /
 answers. `browser_screenshot` now also reports the `viewport` it captured at, so
 a breakpoint screenshot is self-describing.
 
+> Paths below are as of this report. The browser server has since moved to
+> `bin/mcp/toolsets/browser/` in the lattices repo root and is served by
+> `lattices mcp`; see [docs/mcp.md](../../../../docs/mcp.md).
+
 Files: `plugins/action-browser/server/viewport.ts` (new, pure argument contract),
 `viewport.test.ts` (new, 12 tests), `server/index.ts` (wiring),
 `skills/action-browser/SKILL.md`, `docs/browser-profiles.md`, `AGENTS.md`.
