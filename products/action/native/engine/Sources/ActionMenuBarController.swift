@@ -39,6 +39,8 @@ final class ActionMenuBarController: NSObject, NSPopoverDelegate {
             button.target = self
         }
 
+        CompanionMenuBarVisibility.shared.onChange = { [weak self] visible in self?.statusItem?.isVisible = visible }
+        statusItem?.isVisible = CompanionMenuBarVisibility.shared.isVisible
         contextMenu = buildContextMenu()
         startWatchingLiveState()
     }

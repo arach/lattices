@@ -5596,3 +5596,32 @@ button.nav-link {
   align-self: flex-start; background: none; border: 0; color: inherit;
   min-width: 32px; min-height: 32px; cursor: pointer; font-size: 24px;
 }
+
+/* Companion pages have text and controls rather than Action's full-bleed film art. */
+:is(.blink-page, .speech-page) .action-hero {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 64px;
+  align-items: center;
+  width: min(1200px, calc(100% - 48px));
+  min-height: 0;
+  margin-inline: auto;
+  padding: 88px 0;
+}
+:is(.blink-page, .speech-page) .action-hero-copy { width: 100%; padding: 0; }
+:is(.blink-page, .speech-page) .action-hero::after,
+:is(.blink-page, .speech-page) .action-proof::after { content: none; }
+:is(.blink-page, .speech-page) .action-proof {
+  padding: 72px max(24px, calc((100% - 1200px) / 2));
+}
+.speech-page .action-hero { grid-template-columns: 1fr; }
+.speech-page .action-hero-copy { max-width: 760px; }
+@media (max-width: 760px) {
+  :is(.blink-page, .speech-page) .action-hero {
+    width: calc(100% - 32px);
+    grid-template-columns: 1fr;
+    gap: 40px;
+    padding: 48px 0;
+  }
+  :is(.blink-page, .speech-page) .action-proof { padding: 48px 16px; }
+}

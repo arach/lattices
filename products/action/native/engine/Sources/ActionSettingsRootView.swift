@@ -27,10 +27,11 @@ struct ActionSettingsRootView: View {
                 }
             }
 
+            CompanionMenuBarPreference()
             Spacer(minLength: 0)
         }
         .padding(24)
-        .frame(width: 480, height: 260, alignment: .topLeading)
+        .frame(width: 480, height: 300, alignment: .topLeading)
         .background(StageHUDTheme.appBackground)
         .id(themeStore.revision)
     }

@@ -401,6 +401,7 @@ function signBundle(): void {
   } catch {}
 
   const sign = (signer: string, label: string) => {
+    runCodesign(["--force", "--options", "runtime", "--entitlements", resolve(cliRoot, "tools/release/CompanionInstaller.entitlements"), "--sign", signer, resolve(binaryDir, "CompanionInstaller")]);
     // Sign the Mach-O first, then the bundle — more reliable than --deep and
     // keeps a stable TeamIdentifier so macOS TCC grants survive rebuilds.
     const binaryArgs = ["--force", "--options", "runtime", "--sign", signer];
@@ -525,6 +526,7 @@ ${buildMetadata}    <key>LSMinimumSystemVersion</key>
 }
 
 function syncBundleResources(): void {
+  execFileSync(process.execPath, [resolve(cliRoot, "bin/build-companion-installer.ts"), resolve(binaryDir, "CompanionInstaller")], { stdio: "inherit" });
   mkdirSync(resourcesDir, { recursive: true });
   if (existsSync(iconPath)) {
     execSync(`cp '${iconPath}' '${resolve(resourcesDir, "AppIcon.icns")}'`);

@@ -141,7 +141,7 @@ export default function BlinkPage() {
             </article>
           </div>
           <p className="action-boundary-note">
-            Use Blink on its own, or pair it with Lattices when the whole workspace needs to stay organized. Action covers inspectable computer use.
+            Install Blink from the Apps menu in Lattices, or download it directly. Your notes stay open when Lattices quits. In Automatic mode, Blink hides its menu bar icon while Lattices is running; choose Always show in Blink settings to keep it visible.
           </p>
         </section>
 
@@ -192,6 +192,7 @@ export default function BlinkPage() {
           <div>
             <a href="/">Lattices</a>
             <a href="/action">Action</a>
+            <a href="/speech">Speech</a>
             <a href="/blink/llms.txt" data-router="reload">Blink docs</a>
             <a href={sourceUrl}>GitHub</a>
           </div>
