@@ -799,11 +799,11 @@ export default function App() {
         <section className="hero fade-in">
          <div className="hero-editorial">
           <div className="hero-copy">
-            <p className="hero-eyebrow">Native macOS workspace manager</p>
-            <h1>The workspace manager for you and your agents.</h1>
+            <p className="hero-eyebrow">The programmable workspace for Mac</p>
+            <h1>Your workspace in your hands.</h1>
             <p className="hero-sub">
-              Every window, terminal, and layout on your Mac organized and
-              accessible, by shortcut, mouse gesture, or API.
+              Organize windows, run your tools, and automate your workflow.
+              Control your Mac by shortcut, mouse gesture, or code.
             </p>
             <div className="hero-actions">
               <a
@@ -1007,10 +1007,10 @@ export default function App() {
                   <DownloadIcon />
                 </a>
               </div>
-              <h2 className="app-title">The whole workspace, visible.</h2>
+              <h2 className="app-title">A calmer computing experience.</h2>
               <p className="app-desc">
-                See every project, session, window, and layer in one native
-                SwiftUI control surface.
+                Keep the windows for coding, research, or deep work together.
+                Switch workspace layers when it’s time to change focus.
               </p>
               <ul className="app-features">
                 <li>See every project and live session</li>
@@ -1044,7 +1044,7 @@ export default function App() {
             <span className="workflow-number">01</span>
             <div>
               <h3>Window manager</h3>
-              <h2>Put every window in its place.</h2>
+              <h2>Tame your windows.</h2>
               <p>
                 Tile windows, group them into layers, launch whole projects,
                 and switch contexts from the app, a shortcut, or a mouse
@@ -1055,24 +1055,24 @@ export default function App() {
           <article>
             <span className="workflow-number">02</span>
             <div>
-              <h3>Computer use</h3>
-              <h2>Give agents fast, inspectable control.</h2>
+              <h3>Tools and terminals</h3>
+              <h2>Run your tools.</h2>
               <p>
-                Agents observe the screen, resolve accessible targets, stage
-                actions, execute on-device, and verify the result before
-                moving on.
+                Launch your editor, browser, and terminal commands as a project.
+                Keep your development server, tests, and coding agents
+                ready in their own panes.
               </p>
             </div>
           </article>
           <article>
             <span className="workflow-number">03</span>
             <div>
-              <h3>Collaboration</h3>
-              <h2>Share one live workspace.</h2>
+              <h3>Configuration</h3>
+              <h2>Make it yours.</h2>
               <p>
-                You and your agents work with the same windows and layers.
-                Actions stay visible to both sides, with a receipt for what
-                happened.
+                Define your tools and layouts in a config file. Add scripts
+                and agent workflows through the same API that controls
+                your desktop.
               </p>
             </div>
           </article>
@@ -1082,12 +1082,12 @@ export default function App() {
         <section className="section" id="config">
           <div className="config-head fade-in fade-in-delay-2">
             <h2 className="config-title">
-              Managed project layouts
+              Do more with less friction.
             </h2>
             <p className="config-desc">
-              Define a project scene — terminals, browser and editor windows,
-              commands, and placement — then bring the whole workspace back in
-              one step.
+              Set up your terminals, browser, editor, and commands once.
+              Bring the project back in one step, with each tool
+              in its place.
             </p>
           </div>
 
@@ -1141,13 +1141,12 @@ export default function App() {
           <div className="config-grid fade-in fade-in-delay-2">
             <div>
               <h2 className="config-title">
-                Your agents need the same desktop
+                A foundation for builders.
               </h2>
               <p className="config-desc">
-                Agent harnesses can run code, but computer use is still slow
-                and brittle. Lattices adds fast, typed workspace and
-                computer-use tools on localhost: search, place, activate,
-                observe, stage, execute, and verify.
+                Build custom workflows with an open-source app and a documented
+                local API. Give scripts and agents the tools to find windows,
+                arrange layouts, act on the screen, and verify the result.
               </p>
               <ul className="agent-methods">
                 <li><code>lattices.search</code> — title, app, session, or cwd</li>
