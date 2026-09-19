@@ -712,27 +712,45 @@ function HandsOnSection() {
   );
 }
 
+const gesturePreviewStart = 9.25;
+const gesturePreviewEnd = 11.65;
+
 function HeroGestureDemo() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const reducedMotion = useReducedMotion() ?? false;
 
   const playPreview = () => {
     if (reducedMotion) return;
-    void videoRef.current?.play();
+    const video = videoRef.current;
+    if (!video) return;
+    if (
+      video.currentTime < gesturePreviewStart ||
+      video.currentTime >= gesturePreviewEnd
+    ) {
+      video.currentTime = gesturePreviewStart;
+    }
+    void video.play();
   };
 
   const resetPreview = () => {
     const video = videoRef.current;
     if (!video) return;
     video.pause();
-    video.currentTime = 0;
+    video.currentTime = gesturePreviewStart;
+  };
+
+  const loopPreview = () => {
+    const video = videoRef.current;
+    if (!video || video.currentTime < gesturePreviewEnd) return;
+    video.currentTime = gesturePreviewStart;
+    void video.play();
   };
 
   return (
     <a
       className="hero-demo-peek"
       href="/blog/gesture-completion-matrix"
-      aria-label="Watch the 12-second mouse gesture demo"
+      aria-label="Watch the mouse gesture demo"
       onMouseEnter={playPreview}
       onMouseLeave={resetPreview}
       onFocus={playPreview}
@@ -746,11 +764,13 @@ function HeroGestureDemo() {
         preload="metadata"
         poster="/blog/gesture-completion-matrix-poster.png"
         aria-hidden="true"
+        onLoadedMetadata={resetPreview}
+        onTimeUpdate={loopPreview}
       >
         <source src="/blog/gesture-completion-matrix.mp4" type="video/mp4" />
       </video>
       <span className="hero-demo-peek-copy">
-        <span className="hero-demo-peek-label">12 sec demo</span>
+        <span className="hero-demo-peek-label">Gesture preview</span>
         <strong>Draw a gesture. Lattices does the rest.</strong>
         <span className="hero-demo-peek-link">Watch the demo &rarr;</span>
       </span>
