@@ -86,7 +86,13 @@
 }
 
 body {
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--text) 3.5%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--text) 3.5%, transparent) 1px, transparent 1px);
+  background-size:
+    32px 32px,
+    32px 32px;
   color: var(--text);
   min-height: 100vh;
 }
@@ -3302,7 +3308,9 @@ button.nav-link {
   content: "";
   position: absolute;
   inset: 0;
-  background-image: radial-gradient(circle, var(--hero-etch) 0 1px, transparent 1.5px);
+  background-image:
+    linear-gradient(var(--hero-etch-faint) 1px, transparent 1px),
+    linear-gradient(90deg, var(--hero-etch-faint) 1px, transparent 1px);
   background-size: 34px 34px;
   -webkit-mask-image: radial-gradient(ellipse 76% 58% at 50% 22%, #000, transparent 72%);
   mask-image: radial-gradient(ellipse 76% 58% at 50% 22%, #000, transparent 72%);
@@ -3313,6 +3321,7 @@ button.nav-link {
 .hero-eyebrow {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 13px;
   margin: 0 0 26px;
   color: var(--hero-accent);
