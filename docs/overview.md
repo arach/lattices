@@ -25,9 +25,11 @@ lattices addresses both sides with three layers:
 ### Programmable workspace
 
 The CLI and agent API expose everything: query what's on screen, search
-window text, tile layouts, manage sessions. Claude Code skills, MCP servers,
-or your own scripts can drive your desktop the same way you do. Your
-workspace becomes infrastructure you can observe and control programmatically.
+window text, tile layouts, manage sessions. Install the family skills with
+`npx skills add arach/lattices --all --global --yes` (`lattices`,
+`action`, `speech`, `blink`). Claude Code skills, MCP servers, or your own
+scripts can drive your desktop the same way you do. Your workspace becomes
+infrastructure you can observe and control programmatically.
 
 ### Smart layout manager
 

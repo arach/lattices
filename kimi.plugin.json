@@ -5,7 +5,10 @@
   "keywords": ["browser", "chrome", "screenshots", "computer-use", "mcp"],
   "author": "Arach",
   "homepage": "https://lattices.dev/action",
-  "skills": ["./products/action/plugins/action-browser/skills/"],
+  "skills": [
+    "./skills/",
+    "./products/action/plugins/action-browser/skills/"
+  ],
   "interface": {
     "displayName": "Action Browser",
     "shortDescription": "Real Chrome screenshots and simple browser actions",

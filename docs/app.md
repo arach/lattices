@@ -208,6 +208,25 @@ highlight around it for ~1 second so you can spot it immediately.
 Grant Screen Recording and Accessibility permissions in System
 Settings > Privacy & Security for all three paths to work.
 
+### Instant space switching
+
+With Accessibility permission, the app intercepts Ctrl+← / Ctrl+→ before
+Mission Control and switches Spaces through a synthetic Dock swipe under
+a screen-update freeze — the real switch path, so Dock's space model,
+Mission Control, and space-change observers all stay consistent, while
+the freeze makes it render as an instant cut (the SkyLight switch the
+mouse gesture uses remains as fallback). A small Lattices tray confirms
+the landing Space — a boxy row of logo cells, one per Space, with the
+active cell lit — docked top-center by default, and shows an amber
+"EDGE" state when there is no adjacent Space. Agents can move it via
+`settings.spaceBezel.set` (`top`, `bottom`, `center`, or `travelEdge`
+to dock at the edge of travel). Only bare Ctrl+arrows are claimed;
+Ctrl+Option+arrows still tile. While the feature is on, the app
+disables Mission Control's "Move left/right a space" symbolic hotkeys
+(they would replay the slide animation); the original setting is
+restored when the feature is toggled off or the app quits. Toggle it in
+Settings > Keyboard > "Instant Space Switching".
+
 ## Voice commands
 
 > See [Voice Commands](/docs/voice) for the full guide.
@@ -302,6 +321,7 @@ from Settings > Shortcuts.
 | Ctrl+Option+arrows | Tile halves          |
 | Ctrl+Option+mouse  | Aim HUD; release to tile, stay centered to cancel |
 | Ctrl+Option+1/2/3  | Tile thirds          |
+| Ctrl+Left/Right    | Instant Space switch |
 | Cmd+Option+1/2/3  | Switch workspace layer |
 | Ctrl+B  D         | Detach from session  |
 | Ctrl+B  X         | Kill current pane    |

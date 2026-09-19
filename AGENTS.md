@@ -32,6 +32,7 @@
 | Tests | `tests/` | CLI (node:test), dependency-free (bun test), e2e daemon |
 | Docs | `docs/` | User + agent documentation |
 | Site | `apps/site/` | Vite website, docs, and blog |
+| Agent skills | `skills/` | Family catalog: lattices, action, speech, blink (`npx skills add arach/lattices`) |
 | Action | `products/action/` | Native computer-use app, agent runtime, CLI/MCP surfaces, and release tooling |
 | Action Native | `products/action/native/engine/` | Signed Action.app, local agent, recording probe, and native scripts |
 | Blink | `products/blink/` | Spatial notes app, CLI, iOS companion, and landing |
@@ -72,6 +73,7 @@ bun run blink:build             # Blink app + CLI via products/blink Package.swi
 - Working with **daemon**? → Check apps/mac/Sources/Core/Daemon/DaemonServer.swift and apps/mac/Sources/Core/Daemon/LatticesApi.swift for WebSocket API
 - Working with **api**? → Check docs/api.md for the daemon RPC reference
 - Working with **agent docs**? → Check docs/agents.md and apps/site/scripts/agent-docs.mjs for raw markdown, prompt, and context artifacts
+- Working with **agent skills**? → Check skills/ (lattices, action, speech, blink)
 - Working with **Action**? → Read products/action/AGENTS.md before changing its app, runtime, capture, plugins, or release path
 - Working with **Blink**? → Read products/blink/AGENTS.md before changing notes, panels, CLI, or the iOS companion
 

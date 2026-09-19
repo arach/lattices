@@ -19,7 +19,7 @@ for keeping file structure as architecture.
 | `products/action/` | Action computer-use product. Contains its own Bun workspace, native app, runtime, plugins, and docs. |
 | `products/blink/` | Blink spatial-notes product. Contains its own Swift package, signed app, CLI, iOS companion, and landing. |
 | `docs/` | Markdown docs and engineering proposals. |
-| `tools/agents/skills/` | Agent skill pack for driving Lattices. |
+| `skills/` | Family skill catalog for skills.sh: lattices, action, speech, blink. |
 | `assets/` | Shared release/app assets. |
 | `scripts/` | User/dev entry-point scripts: `install.sh`, `uninstall.sh`, `build.sh`, `run.sh` (root `install.sh` is a shim forwarding here). |
 | `tools/release/` | Maintainer scripts for building and shipping. |
@@ -60,9 +60,10 @@ products/
 docs/
   proposals/
 
+skills/           # family skill catalog (lattices, action, speech, blink)
+
 tools/
   release/        # release/build scripts
-  agents/skills/  # agent skill pack
 ```
 
 This is intentionally similar to the `apps/` and `packages/` split used by
