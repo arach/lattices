@@ -506,25 +506,31 @@ function HeroWorkspaceStage() {
 
   return (
     <div className="hero-desktop-demo" id="workspace-demo">
-      <div className="hero-desktop-comparison" role="group" aria-label="Compare the desktop without and with Lattices">
-        <button
-          type="button"
-          className={!organized ? "is-active" : ""}
-          aria-pressed={!organized}
-          onClick={() => selectPhase("messy")}
-        >
-          <span aria-hidden="true">○</span>
-          Without Lattices
-        </button>
-        <button
-          type="button"
-          className={organized ? "is-active" : ""}
-          aria-pressed={organized}
-          onClick={() => selectPhase("organized")}
-        >
-          <span aria-hidden="true">●</span>
-          With Lattices
-        </button>
+      <div className="hero-stage-bar">
+        <span className="hero-stage-label">
+          <i aria-hidden="true" />
+          Desktop 0 · live simulation
+        </span>
+        <div className="hero-desktop-comparison" role="group" aria-label="Compare the desktop without and with Lattices">
+          <button
+            type="button"
+            className={!organized ? "is-active" : ""}
+            aria-pressed={!organized}
+            onClick={() => selectPhase("messy")}
+          >
+            <span aria-hidden="true">○</span>
+            Without Lattices
+          </button>
+          <button
+            type="button"
+            className={organized ? "is-active" : ""}
+            aria-pressed={organized}
+            onClick={() => selectPhase("organized")}
+          >
+            <span aria-hidden="true">●</span>
+            With Lattices
+          </button>
+        </div>
       </div>
 
       <div
@@ -582,7 +588,8 @@ function HeroWorkspaceStage() {
         </div>
       </div>
 
-      <div className="hero-agent-harness" role="group" aria-label="A coding agent reading the same desktop over the local API">
+      <div className="hero-understage">
+        <div className="hero-agent-harness" role="group" aria-label="A coding agent reading the same desktop over the local API">
         <div className="hero-harness-head">
           <span className="hero-harness-dot" aria-hidden="true" />
           <span>claude · agent session</span>
@@ -641,6 +648,14 @@ function HeroWorkspaceStage() {
             <b aria-hidden="true">⎿</b> codex left half · 3 stacked right · done
           </motion.span>
         </div>
+        </div>
+        <HeroGestureDemo />
+      </div>
+
+      <div className="hero-stage-foot" aria-hidden="true">
+        <span>Lattices engine</span>
+        <span className="hero-plinth-state">state: synced</span>
+        <PixelMascot />
       </div>
     </div>
   );
@@ -657,11 +672,9 @@ const handsShortcuts: Array<{ keys: string[]; action: string }> = [
 
 function HandsOnSection() {
   return (
-    <section className="hands-section fade-in" id="hands">
-      <div className="hands-copy">
-        <div className="cua-kicker">Keyboard and mouse</div>
-        <h2>Shortcuts and mouse gestures, not just the palette.</h2>
-        <p>
+    <section className="home-sec fade-in" id="hands">
+      <SectionHead kicker="Keyboard and mouse" title="Shortcuts and mouse gestures, not just the palette.">
+        <p className="sec-lede">
           Caps Lock is Hyper. ⌃⌥ tiles halves and grids. Hold a mouse button,
           draw a direction or a shape, release. The app replays that path in
           a 3×3 <em>matrix</em> — the same completer as the logo.
@@ -670,7 +683,7 @@ function HandsOnSection() {
           <a href="/docs/app">Shortcut reference &rarr;</a>
           <a href="/docs/mouse-gestures">Mouse gestures &rarr;</a>
         </div>
-      </div>
+      </SectionHead>
 
       <div className="hands-stage">
         <div className="hands-panel">
@@ -699,27 +712,45 @@ function HandsOnSection() {
   );
 }
 
+const gesturePreviewStart = 9.25;
+const gesturePreviewEnd = 11.65;
+
 function HeroGestureDemo() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const reducedMotion = useReducedMotion() ?? false;
 
   const playPreview = () => {
     if (reducedMotion) return;
-    void videoRef.current?.play();
+    const video = videoRef.current;
+    if (!video) return;
+    if (
+      video.currentTime < gesturePreviewStart ||
+      video.currentTime >= gesturePreviewEnd
+    ) {
+      video.currentTime = gesturePreviewStart;
+    }
+    void video.play();
   };
 
   const resetPreview = () => {
     const video = videoRef.current;
     if (!video) return;
     video.pause();
-    video.currentTime = 0;
+    video.currentTime = gesturePreviewStart;
+  };
+
+  const loopPreview = () => {
+    const video = videoRef.current;
+    if (!video || video.currentTime < gesturePreviewEnd) return;
+    video.currentTime = gesturePreviewStart;
+    void video.play();
   };
 
   return (
     <a
       className="hero-demo-peek"
       href="/blog/gesture-completion-matrix"
-      aria-label="Watch the 12-second mouse gesture demo"
+      aria-label="Watch the mouse gesture demo"
       onMouseEnter={playPreview}
       onMouseLeave={resetPreview}
       onFocus={playPreview}
@@ -733,17 +764,46 @@ function HeroGestureDemo() {
         preload="metadata"
         poster="/blog/gesture-completion-matrix-poster.png"
         aria-hidden="true"
+        onLoadedMetadata={resetPreview}
+        onTimeUpdate={loopPreview}
       >
         <source src="/blog/gesture-completion-matrix.mp4" type="video/mp4" />
       </video>
       <span className="hero-demo-peek-copy">
-        <span className="hero-demo-peek-label">12 sec demo</span>
+        <span className="hero-demo-peek-label">Gesture preview</span>
         <strong>Draw a gesture. Lattices does the rest.</strong>
         <span className="hero-demo-peek-link">Watch the demo &rarr;</span>
       </span>
     </a>
   );
 }
+
+function SectionHead({ kicker, title, children }: { kicker: string; title: string; children?: ReactNode }) {
+  return (
+    <header className="sec-head">
+      <p className="sec-kicker">{kicker}</p>
+      <h2 className="sec-title">{title}</h2>
+      {children}
+    </header>
+  );
+}
+
+const tickerMethods = [
+  "agent api · ws://127.0.0.1:9399",
+  "lattices.search",
+  "windows.search",
+  "terminals.search",
+  "ocr.search",
+  "window.focus",
+  "window.place",
+  "layer.activate",
+  "space.optimize",
+  "session.ensure",
+  "panes.launch",
+  "computer.windowState",
+  "computer.elementAction",
+  "computer.verify",
+];
 
 export default function App() {
   const [paneLayout, setPaneLayout] = useState<PaneLayout>(2);
@@ -797,9 +857,8 @@ export default function App() {
       {/* Hero */}
       <main>
         <section className="hero fade-in">
-         <div className="hero-editorial">
-          <div className="hero-copy">
-            <p className="hero-eyebrow">The programmable workspace for Mac</p>
+          <div className="hero-inner">
+            <p className="hero-eyebrow">The programmable workspace for macOS</p>
             <h1>Your workspace in your hands.</h1>
             <p className="hero-sub">
               Organize windows, run your tools, and automate your workflow.
@@ -824,32 +883,27 @@ export default function App() {
               <li>API driven</li>
               <li>Built for macOS</li>
             </ul>
-            <HeroGestureDemo />
           </div>
 
-          <div className="hero-apparatus">
-            <div className="hero-rail" aria-hidden="true">
-              <span>Windows</span>
-              <span>Terminal</span>
-              <span>Layout</span>
-              <span>Agent API</span>
-            </div>
-            <div className="hero-apparatus-body">
-              <HeroWorkspaceStage />
-              <ol className="hero-index" aria-hidden="true">
-                <li>01</li>
-                <li>02</li>
-                <li>03</li>
-              </ol>
-            </div>
-            <div className="hero-plinth" aria-hidden="true">
-              <span>Lattices engine</span>
-              <span className="hero-plinth-state">state: synced</span>
-              <PixelMascot />
-            </div>
+          <div className="hero-stage">
+            <HeroWorkspaceStage />
           </div>
-         </div>
         </section>
+
+        <div className="home-ticker" aria-hidden="true">
+          <div className="home-ticker-track">
+            {[0, 1].map((copy) => (
+              <div className="home-ticker-seq" key={copy}>
+                {tickerMethods.map((method) => (
+                  <span className="home-ticker-item" key={method}>
+                    {method}
+                    <i aria-hidden="true" />
+                  </span>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
 
         <section className="section shared-state-section" id="shared-state">
          <div className="shared-state-inner">
@@ -888,15 +942,15 @@ export default function App() {
         <HandsOnSection />
 
         {/* Computer use (CUA) */}
-        <section className="section cua-section" id="cua">
-          <div className="cua-head fade-in">
-            <div className="cua-kicker">Action · a Lattices product</div>
-            <h2>Computer use you can control</h2>
-            <p>
-              Action is the focused computer-use product in the Lattices family.
-              Observe the screen, stage each action for review, execute on-device,
-              then verify the result.
-            </p>
+        <section className="home-sec" id="cua">
+          <div className="fade-in">
+            <SectionHead kicker="Action · a Lattices product" title="Computer use you can control">
+              <p className="sec-lede">
+                Action is the focused computer-use product in the Lattices family.
+                Observe the screen, stage each action for review, execute on-device,
+                then verify the result.
+              </p>
+            </SectionHead>
           </div>
 
           <div className="cua-showcase fade-in fade-in-delay-1">
@@ -960,7 +1014,7 @@ export default function App() {
         </section>
 
         {showLatsDevTeaser && (
-          <section className="next-section fade-in fade-in-delay-2">
+          <section className="home-sec next-section fade-in fade-in-delay-2">
             <div className="next-card">
               <div className="next-copy">
                 <div className="next-kicker">Opening for TestFlight</div>
@@ -992,7 +1046,7 @@ export default function App() {
         )}
 
         {/* macOS app */}
-        <section className="app-section" id="app">
+        <section className="home-sec" id="app">
           <div className="app-grid">
             <div className="app-copy">
               <div className="app-kicker-row">
@@ -1039,10 +1093,11 @@ export default function App() {
         </section>
 
         {/* Product spine */}
-        <section className="workflow-spine fade-in fade-in-delay-2" id="features">
-          <article>
-            <span className="workflow-number">01</span>
-            <div>
+        <section className="home-sec fade-in fade-in-delay-2" id="features">
+          <SectionHead kicker="The product spine" title="Three jobs, one surface." />
+          <div className="home-spine">
+            <article>
+              <span className="home-spine-num">01</span>
               <h3>Window manager</h3>
               <h2>Tame your windows.</h2>
               <p>
@@ -1050,11 +1105,9 @@ export default function App() {
                 and switch contexts from the app, a shortcut, or a mouse
                 gesture.
               </p>
-            </div>
-          </article>
-          <article>
-            <span className="workflow-number">02</span>
-            <div>
+            </article>
+            <article>
+              <span className="home-spine-num">02</span>
               <h3>Tools and terminals</h3>
               <h2>Run your tools.</h2>
               <p>
@@ -1062,11 +1115,9 @@ export default function App() {
                 Keep your development server, tests, and coding agents
                 ready in their own panes.
               </p>
-            </div>
-          </article>
-          <article>
-            <span className="workflow-number">03</span>
-            <div>
+            </article>
+            <article>
+              <span className="home-spine-num">03</span>
               <h3>Configuration</h3>
               <h2>Make it yours.</h2>
               <p>
@@ -1074,21 +1125,20 @@ export default function App() {
                 and agent workflows through the same API that controls
                 your desktop.
               </p>
-            </div>
-          </article>
+            </article>
+          </div>
         </section>
 
         {/* Config */}
-        <section className="section" id="config">
-          <div className="config-head fade-in fade-in-delay-2">
-            <h2 className="config-title">
-              Do more with less friction.
-            </h2>
-            <p className="config-desc">
-              Set up your terminals, browser, editor, and commands once.
-              Bring the project back in one step, with each tool
-              in its place.
-            </p>
+        <section className="home-sec" id="config">
+          <div className="fade-in fade-in-delay-2">
+            <SectionHead kicker="Configuration" title="Do more with less friction.">
+              <p className="sec-lede">
+                Set up your terminals, browser, editor, and commands once.
+                Bring the project back in one step, with each tool
+                in its place.
+              </p>
+            </SectionHead>
           </div>
 
           <div className="config-grid fade-in fade-in-delay-2">
@@ -1137,13 +1187,14 @@ export default function App() {
         </section>
 
         {/* Agent-managed workspaces */}
-        <section className="section" id="agents">
+        <section className="home-sec" id="agents">
           <div className="config-grid fade-in fade-in-delay-2">
             <div>
-              <h2 className="config-title">
+              <p className="sec-kicker">Agent API</p>
+              <h2 className="sec-title">
                 A foundation for builders.
               </h2>
-              <p className="config-desc">
+              <p className="sec-lede">
                 Build custom workflows with an open-source app and a documented
                 local API. Give scripts and agents the tools to find windows,
                 arrange layouts, act on the screen, and verify the result.
@@ -1177,21 +1228,23 @@ export default function App() {
           </div>
         </section>
 
-        <section className="local-trust fade-in" id="local-first">
-          <div>
-            <div className="cua-kicker">Local core, open source</div>
-            <h2>The core runs on your Mac.</h2>
+        <section className="home-sec" id="local-first">
+          <div className="local-trust fade-in">
+            <div>
+              <p className="sec-kicker">Local core, open source</p>
+              <h2>The core runs on your Mac.</h2>
+            </div>
+            <p>
+              Lattices runs as a local service and exposes a typed API over
+              localhost. Workspace control and action traces stay on-device.
+              Optional vision-model features may send screen context to the
+              provider you configure. The source is open, and agent actions are
+              recorded and verifiable.
+            </p>
           </div>
-          <p>
-            Lattices runs as a local service and exposes a typed API over
-            localhost. Workspace control and action traces stay on-device.
-            Optional vision-model features may send screen context to the
-            provider you configure. The source is open, and agent actions are
-            recorded and verifiable.
-          </p>
         </section>
 
-        <section className="install-chooser fade-in" id="install">
+        <section className="home-sec install-chooser fade-in" id="install">
           <div className="install-chooser-head">
             <div className="cua-kicker">Three ways in. One workspace.</div>
             <h2>Start where you work.</h2>
