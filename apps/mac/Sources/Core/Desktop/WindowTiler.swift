@@ -851,11 +851,33 @@ enum WindowTiler {
         adjacentSpaceContext(offset: offset, from: cgPoint)?.target
     }
 
+    /// Marker written onto synthetic Ctrl+←/→ events posted by
+    /// `switchToAdjacentSpaceViaSystemShortcut` so `SpaceSwitchInterceptor`
+    /// doesn't swallow its own fallback. ("LSPC")
+    static let spaceShortcutSyntheticMarker: Int64 = 0x4C535043
+
+    struct SpaceSwitchOutcome {
+        let offset: Int
+        let switched: Bool
+        /// The space we aimed for (nil when already at the edge).
+        let target: SpaceInfo?
+        /// Index of the space the display was on when the switch was requested.
+        let currentIndex: Int?
+        let totalSpaces: Int
+        /// `NSScreen.screens` index of the display that owns the spaces.
+        let displayIndex: Int
+    }
+
     @discardableResult
     static func switchToAdjacentSpace(offset: Int, from cgPoint: CGPoint? = nil) -> Bool {
+        switchToAdjacentSpaceWithOutcome(offset: offset, from: cgPoint).switched
+    }
+
+    @discardableResult
+    static func switchToAdjacentSpaceWithOutcome(offset: Int, from cgPoint: CGPoint? = nil) -> SpaceSwitchOutcome {
         guard let context = adjacentSpaceContext(offset: offset, from: cgPoint) else {
             DiagnosticLog.shared.warn("switchToAdjacentSpace: no adjacent space for offset \(offset) from \(formatCGPoint(cgPoint ?? currentMouseCGPoint()))")
-            return false
+            return SpaceSwitchOutcome(offset: offset, switched: false, target: nil, currentIndex: nil, totalSpaces: 0, displayIndex: 0)
         }
 
         let spaces = context.display.spaces.map(\.id)
@@ -864,11 +886,22 @@ enum WindowTiler {
             "switchToAdjacentSpace: offset=\(offset) point=\(formatCGPoint(context.point)) displayId=\(context.display.displayId) active=\(context.activeSpaceId) displayCurrent=\(context.display.currentSpaceId) resolved=\(context.currentSpaceId) target=\(targetText) spaces=\(spaces)"
         )
 
+        let outcome = { (switched: Bool) in
+            SpaceSwitchOutcome(
+                offset: offset,
+                switched: switched,
+                target: context.target,
+                currentIndex: context.display.spaces.first(where: { $0.id == context.currentSpaceId })?.index,
+                totalSpaces: context.display.spaces.count,
+                displayIndex: context.display.displayIndex
+            )
+        }
+
         if let target = context.target {
             let switched = switchToSpace(spaceId: target.id)
             DiagnosticLog.shared.info("switchToAdjacentSpace: SkyLight \(switched ? "reached" : "missed") target \(target.id)")
             if switched {
-                return true
+                return outcome(true)
             }
         }
 
@@ -883,18 +916,18 @@ enum WindowTiler {
                 } else {
                     DiagnosticLog.shared.info("switchToAdjacentSpace: system shortcut changed \(context.currentSpaceId) → \(finalSpaceId)")
                 }
-                return true
+                return outcome(true)
             }
 
-            guard let target = context.target else {
+            guard context.target != nil else {
                 DiagnosticLog.shared.info("switchToAdjacentSpace: system shortcut stayed on \(context.currentSpaceId) and there is no adjacent space")
-                return false
+                return outcome(false)
             }
 
-            DiagnosticLog.shared.warn("switchToAdjacentSpace: system shortcut stayed on \(context.currentSpaceId), falling back to SkyLight target \(target.id)")
+            DiagnosticLog.shared.warn("switchToAdjacentSpace: system shortcut stayed on \(context.currentSpaceId), falling back to SkyLight target \(context.target?.id ?? 0)")
         }
 
-        return false
+        return outcome(false)
     }
 
     /// Find a window by its title tag and return its CGWindowID and owner PID
@@ -2580,6 +2613,8 @@ enum WindowTiler {
         }
         down.flags = .maskControl
         up.flags = .maskControl
+        down.setIntegerValueField(.eventSourceUserData, value: spaceShortcutSyntheticMarker)
+        up.setIntegerValueField(.eventSourceUserData, value: spaceShortcutSyntheticMarker)
         down.post(tap: .cghidEventTap)
         usleep(12_000)
         up.post(tap: .cghidEventTap)

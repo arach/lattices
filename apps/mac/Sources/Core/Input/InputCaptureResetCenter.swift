@@ -16,5 +16,6 @@ enum InputCaptureResetCenter {
         ScreenOverlayCanvasController.shared.resetInputCapture(reason: reason)
         MouseGestureController.shared.resetForSystemInputBoundary(reason: reason)
         KeyboardRemapController.shared.resetForSystemInputBoundary(reason: reason)
+        SpaceSwitchInterceptor.shared.resetForSystemInputBoundary(reason: reason)
     }
 }

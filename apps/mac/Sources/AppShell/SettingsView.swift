@@ -137,6 +137,7 @@ struct SettingsContentView: View {
     @ObservedObject var permChecker: PermissionChecker = .shared
     @ObservedObject var mouseGestureController: MouseGestureController = .shared
     @ObservedObject var keyboardRemapController: KeyboardRemapController = .shared
+    @ObservedObject var spaceSwitchInterceptor: SpaceSwitchInterceptor = .shared
     @ObservedObject var assistantSession: WorkspaceAssistantSession = .shared
     var onBack: (() -> Void)? = nil
 
@@ -706,6 +707,55 @@ struct SettingsContentView: View {
                                 "Accessibility",
                                 granted: permChecker.accessibility,
                                 detail: "Required for Caps Lock as Hyper and tap-for-Escape handling."
+                            ) {
+                                permChecker.requestAccessibility()
+                            }
+                        }
+                    }
+                }
+
+                settingsCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(alignment: .top, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text("Instant Space Switching")
+                                    .font(Typo.monoBold(12))
+                                    .foregroundColor(Palette.text)
+                                Text("Ctrl+←/→ jumps straight to the next Space — no slide animation — with a small Lattices confirmation.")
+                                    .font(Typo.caption(10))
+                                    .foregroundColor(Palette.textMuted)
+                            }
+
+                            Spacer()
+
+                            SettingsSwitch(isOn: $prefs.spaceSwitchKeysEnabled)
+                        }
+
+                        HStack(spacing: 10) {
+                            statusToken(
+                                prefs.spaceSwitchKeysEnabled ? "Enabled" : "Off",
+                                color: prefs.spaceSwitchKeysEnabled ? Palette.running : Palette.textDim
+                            )
+                            if !permChecker.accessibility {
+                                statusToken("Accessibility needed", color: Palette.detach)
+                            }
+                            Spacer(minLength: 0)
+                        }
+
+                        breakerStatusRow(
+                            state: spaceSwitchInterceptor.breakerState,
+                            label: "Space switching"
+                        ) {
+                            spaceSwitchInterceptor.reArmAfterBreakerTrip()
+                        }
+
+                        if !permChecker.accessibility {
+                            cardDivider
+
+                            permissionSettingsRow(
+                                "Accessibility",
+                                granted: permChecker.accessibility,
+                                detail: "Required to intercept Ctrl+←/→ before Mission Control."
                             ) {
                                 permChecker.requestAccessibility()
                             }

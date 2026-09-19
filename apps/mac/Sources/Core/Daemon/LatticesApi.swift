@@ -3778,6 +3778,30 @@ final class LatticesApi {
             }
         ))
 
+        api.register(Endpoint(
+            method: "settings.spaceBezel.get",
+            description: "Return the space-switch bezel placement",
+            access: .read,
+            params: [],
+            returns: .custom("Object with position and supported options"),
+            handler: { _ in
+                Self.spaceBezelSettingsResponse()
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "settings.spaceBezel.set",
+            description: "Update space-switch bezel placement (Ctrl+arrow confirmation tray)",
+            access: .mutate,
+            params: [
+                Param(name: "position", type: "string", required: false, description: "Bezel placement: top, bottom, center, or travelEdge (docks at the screen edge the desktop moves toward)"),
+            ],
+            returns: .custom("Updated space bezel settings"),
+            handler: { params in
+                try Self.updateSpaceBezelSettings(params)
+            }
+        ))
+
         // ── Mouse Finder ────────────────────────────────────────
 
         api.register(Endpoint(
@@ -4504,6 +4528,37 @@ private extension LatticesApi {
         }
 
         return cursorAppearanceSettingsResponse()
+    }
+
+    static func spaceBezelSettingsResponse() -> JSON {
+        let prefs = Preferences.shared
+        return .object([
+            "ok": .bool(true),
+            "position": .string(prefs.spaceSwitchBezelPosition.rawValue),
+            "positionOptions": .array(SpaceSwitchBezelPosition.allCases.map { position in
+                .object([
+                    "id": .string(position.rawValue),
+                    "label": .string(position.label),
+                ])
+            }),
+        ])
+    }
+
+    static func updateSpaceBezelSettings(_ params: JSON?) throws -> JSON {
+        guard let raw = params?["position"]?.stringValue, !raw.isEmpty else {
+            return spaceBezelSettingsResponse()
+        }
+        guard let parsed = SpaceSwitchBezelPosition(rawValue: raw) else {
+            let options = SpaceSwitchBezelPosition.allCases.map(\.rawValue).joined(separator: ", ")
+            throw RouterError.custom("Unsupported bezel position: \(raw). Use \(options).")
+        }
+        let apply = { Preferences.shared.spaceSwitchBezelPosition = parsed }
+        if Thread.isMainThread {
+            apply()
+        } else {
+            DispatchQueue.main.sync(execute: apply)
+        }
+        return spaceBezelSettingsResponse()
     }
 
     static func parsePlacement(from json: JSON?) -> PlacementSpec? {

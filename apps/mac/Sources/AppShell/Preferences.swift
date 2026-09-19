@@ -36,6 +36,26 @@ enum TilePointerHUDStyle: String, CaseIterable, Identifiable {
     }
 }
 
+/// Where the Ctrl+←/→ Space-switch confirmation pill lands on screen.
+enum SpaceSwitchBezelPosition: String, CaseIterable, Identifiable {
+    /// Docks at the screen edge the desktop is moving toward.
+    case travelEdge
+    case top
+    case center
+    case bottom
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .travelEdge: return "Travel edge"
+        case .top: return "Top"
+        case .center: return "Center"
+        case .bottom: return "Bottom"
+        }
+    }
+}
+
 class Preferences: ObservableObject {
     static let shared = Preferences()
 
@@ -122,6 +142,16 @@ class Preferences: ObservableObject {
 
     @Published var keyboardRemapsEnabled: Bool {
         didSet { UserDefaults.standard.set(keyboardRemapsEnabled, forKey: "keyboardRemaps.enabled") }
+    }
+
+    /// Intercept Ctrl+←/→ and switch Spaces through the SkyLight path
+    /// (instant, no slide animation) with a small branded confirmation.
+    @Published var spaceSwitchKeysEnabled: Bool {
+        didSet { UserDefaults.standard.set(spaceSwitchKeysEnabled, forKey: "spaceSwitchKeys.enabled") }
+    }
+
+    @Published var spaceSwitchBezelPosition: SpaceSwitchBezelPosition {
+        didSet { UserDefaults.standard.set(spaceSwitchBezelPosition.rawValue, forKey: "spaceSwitchKeys.bezelPosition") }
     }
 
     // MARK: - Search & OCR
@@ -289,6 +319,19 @@ class Preferences: ObservableObject {
             self.keyboardRemapsEnabled = UserDefaults.standard.bool(forKey: "keyboardRemaps.enabled")
         } else {
             self.keyboardRemapsEnabled = true
+        }
+
+        if UserDefaults.standard.object(forKey: "spaceSwitchKeys.enabled") != nil {
+            self.spaceSwitchKeysEnabled = UserDefaults.standard.bool(forKey: "spaceSwitchKeys.enabled")
+        } else {
+            self.spaceSwitchKeysEnabled = true
+        }
+
+        if let saved = UserDefaults.standard.string(forKey: "spaceSwitchKeys.bezelPosition"),
+           let position = SpaceSwitchBezelPosition(rawValue: saved) {
+            self.spaceSwitchBezelPosition = position
+        } else {
+            self.spaceSwitchBezelPosition = .top
         }
         // Search & OCR. Default off until the user explicitly enables it from
         // the Permissions Assistant or Search settings. Honors any explicit

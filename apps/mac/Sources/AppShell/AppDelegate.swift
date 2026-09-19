@@ -46,6 +46,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         TilePointerController.shared.start()
         MouseGestureController.shared.start()
         KeyboardRemapController.shared.start()
+        SpaceSwitchInterceptor.shared.start()
         SecureEventInputMonitor.shared.start()
         installTerminationSignalHandlers()
 
@@ -129,6 +130,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         FocusModeController.shared.resetForTermination()
         removeSystemInputBoundaryObservers()
         SecureEventInputMonitor.shared.stop()
+        SpaceSwitchInterceptor.shared.stop()
         KeyboardRemapController.shared.stop()
         AppServicesBootstrap.stop()
     }
