@@ -597,14 +597,10 @@ final class MouseGestureController: ObservableObject {
         }
 
         // Browser apps own side-button navigation and middle-click tab
-        // behavior. Do not pass a native down and later synthesize an up:
-        // that can still trigger Back/Forward while a gesture is being drawn.
-        guard !frontmostAppShouldBypassGestures() else {
-            DispatchQueue.main.async { [weak self] in
-                self?.processMouseDownPassthrough(snapshot: snapshot, reason: .ignoredApp)
-            }
-            return Unmanaged.passUnretained(event)
-        }
+        // behavior. Let the native click flow through untouched; only if a
+        // drag direction locks do we balance the native down with a synthetic
+        // up and claim the rest of the stroke as a gesture.
+        let passthroughClick = frontmostAppShouldBypassGestures()
 
         // Mark this button as actively tracked before the OS sees a follow-up
         // drag/up — the tap thread reads this on subsequent events to decide
@@ -612,16 +608,16 @@ final class MouseGestureController: ObservableObject {
         setTrackingButton(
             buttonNumber,
             startPoint: snapshot.location,
-            nativeClickPassthrough: false,
+            nativeClickPassthrough: passthroughClick,
             tuning: tuning
         )
         DispatchQueue.main.async { [weak self] in
             self?.processMouseDownConsume(
                 snapshot: snapshot,
-                nativeClickPassthrough: false
+                nativeClickPassthrough: passthroughClick
             )
         }
-        return nil
+        return passthroughClick ? Unmanaged.passUnretained(event) : nil
     }
 
     private enum MouseDownPassthroughReason {
