@@ -583,6 +583,19 @@ private enum CGS {
         return unsafeBitCast(sym, to: SetCurrentSpaceFunc.self)
     }()
 
+    // Screen-update freeze used to hide the Dock-swipe transition.
+    typealias UpdateFunc = @convention(c) (Int32) -> Int32
+
+    static let disableUpdate: UpdateFunc? = {
+        guard let h = handle, let sym = dlsym(h, "SLSDisableUpdate") else { return nil }
+        return unsafeBitCast(sym, to: UpdateFunc.self)
+    }()
+
+    static let reenableUpdate: UpdateFunc? = {
+        guard let h = handle, let sym = dlsym(h, "SLSReenableUpdate") else { return nil }
+        return unsafeBitCast(sym, to: UpdateFunc.self)
+    }()
+
     // Move windows between spaces
     typealias AddWindowsToSpacesFunc = @convention(c) (Int32, CFArray, CFArray) -> Void
     typealias RemoveWindowsFromSpacesFunc = @convention(c) (Int32, CFArray, CFArray) -> Void
@@ -898,6 +911,20 @@ enum WindowTiler {
         }
 
         if let target = context.target {
+            // Preferred path: a synthetic Dock swipe under a screen-update
+            // freeze. It runs the real switch path — kCGSSpaceDidChange fires,
+            // Dock's space model and Mission Control stay consistent — while
+            // the freeze hides the transition. SkyLight is the fallback; it
+            // switches instantly but leaves Dock's space bookkeeping stale.
+            if switchToAdjacentSpaceViaGesture(
+                direction: offset,
+                displayId: context.display.displayId,
+                targetSpaceId: target.id
+            ) {
+                DiagnosticLog.shared.info("switchToAdjacentSpace: gesture switch reached target \(target.id)")
+                return outcome(true)
+            }
+
             let switched = switchToSpace(spaceId: target.id)
             DiagnosticLog.shared.info("switchToAdjacentSpace: SkyLight \(switched ? "reached" : "missed") target \(target.id)")
             if switched {
@@ -928,6 +955,54 @@ enum WindowTiler {
         }
 
         return outcome(false)
+    }
+
+    /// Switch to an adjacent Space through the real Dock-swipe path while
+    /// screen updates are frozen, so the transition renders as an instant cut
+    /// but the system's space bookkeeping (Dock model, Mission Control,
+    /// `kCGSSpaceDidChange` observers) stays consistent — unlike
+    /// `SLSManagedDisplaySetCurrentSpace`, which skips all of it.
+    /// Returns true when the display lands on `targetSpaceId`.
+    private static func switchToAdjacentSpaceViaGesture(direction: Int, displayId: String, targetSpaceId: Int) -> Bool {
+        guard let mainConn = CGS.mainConnectionID,
+              let disable = CGS.disableUpdate,
+              let enable = CGS.reenableUpdate else { return false }
+        let cid = mainConn()
+
+        let initial = getDisplaySpaces().first(where: { $0.displayId == displayId })?.currentSpaceId ?? 0
+
+        _ = disable(cid)
+        defer { _ = enable(cid) }
+
+        for phase: Int64 in [1, 2, 4] {   // began, changed, ended
+            postDockSwipe(phase: phase, direction: direction)
+        }
+
+        let deadline = Date().addingTimeInterval(0.5)
+        while Date() < deadline {
+            usleep(8_000)
+            let current = getDisplaySpaces().first(where: { $0.displayId == displayId })?.currentSpaceId ?? 0
+            if current == targetSpaceId { return true }
+            if current != 0 && current != initial { break }   // landed on the wrong space — stop waiting
+        }
+        return false
+    }
+
+    /// One phase of a synthetic Dock swipe (the trackpad "swipe between
+    /// spaces" gesture). `FLT_TRUE_MIN`-scale progress commits the switch
+    /// immediately with no visible travel; all three phases are required for
+    /// WindowServer to complete it.
+    private static func postDockSwipe(phase: Int64, direction: Int) {
+        guard let ev = CGEvent(source: nil) else { return }
+        let dir = Double(direction)
+        ev.setIntegerValueField(CGEventField(rawValue: 55)!, value: 30)   // kCGSEventDockControl
+        ev.setIntegerValueField(CGEventField(rawValue: 110)!, value: 23)  // IOHIDEventTypeDockSwipe
+        ev.setIntegerValueField(CGEventField(rawValue: 132)!, value: phase)
+        ev.setDoubleValueField(CGEventField(rawValue: 124)!, value: Double(Float.leastNonzeroMagnitude) * dir)
+        ev.setIntegerValueField(CGEventField(rawValue: 123)!, value: 1)   // horizontal motion
+        ev.setDoubleValueField(CGEventField(rawValue: 129)!, value: 2000 * dir)
+        ev.setDoubleValueField(CGEventField(rawValue: 130)!, value: 2000 * dir)
+        ev.post(tap: .cgSessionEventTap)
     }
 
     /// Find a window by its title tag and return its CGWindowID and owner PID
