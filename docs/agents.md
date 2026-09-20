@@ -38,6 +38,12 @@ npx skills add arach/lattices --skill blink --global --yes
 Action Browser also remains a standalone plugin. Install it with
 `action-browser@action` from the Action marketplace.
 
+To install the Action product itself, run `lattices action install` — it
+downloads the latest signed `Action.app` release to `/Applications`.
+`lattices action status` reports install, runtime, and agent state;
+`lattices action call <method>` talks to the Action agent on
+ws://127.0.0.1:4319 without a monorepo checkout.
+
 ## Canonical mutations
 
 These are the preferred action identifiers:

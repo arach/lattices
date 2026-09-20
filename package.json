@@ -48,6 +48,8 @@
   "scripts": {
     "dev": "bun --cwd apps/site dev",
     "site:build": "bun --cwd apps/site build",
+    "studio:dev": "bun --cwd design/studio dev",
+    "studio:build": "bun --cwd design/studio build",
     "action": "bun --cwd products/action action",
     "action:dev": "bun --cwd products/action native:relaunch",
     "action:launch": "bun --cwd products/action native:launch",
@@ -56,8 +58,6 @@
     "action:native:doctor": "bun --cwd products/action native:doctor",
     "blink:check": "swift test --package-path products/blink",
     "blink:build": "swift build --package-path products/blink",
-    "studio:dev": "bun --cwd apps/studio dev",
-    "studio:build": "bun --cwd apps/studio build",
     "docs:agent": "bun --cwd apps/site agent-docs",
     "check": "bun run check:types && bun run check:app",
     "check:types": "tsc --noEmit",

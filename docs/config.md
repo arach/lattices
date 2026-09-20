@@ -147,6 +147,12 @@ Run `lattices init` in your project directory to generate a starter
 | `lattices app update`        | Download the latest menu bar app and relaunch     |
 | `lattices app build`         | Rebuild the menu bar app from source              |
 | `lattices app restart`       | Rebuild and relaunch the menu bar app             |
+| `lattices action`            | Action product status (install, agent, checkout)  |
+| `lattices action install`    | Download the latest Action.app release to /Applications |
+| `lattices action launch`     | Open Action.app (`--launch` also works on install) |
+| `lattices action quit`       | Quit Action.app                                   |
+| `lattices action call <m>`   | Raw Action agent call (ws://127.0.0.1:4319)       |
+| `lattices action <cmd>`      | Forward to the Action CLI (monorepo checkout)     |
 | `lattices layer [name\|index]` | Switch to a workspace layer by name or index      |
 | `lattices windows [--json]`  | List all visible windows                          |
 | [`lattices map [--json]`](/docs/workspace-map) | Read-only current-Space terminal/JSON map |

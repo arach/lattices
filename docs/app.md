@@ -267,6 +267,18 @@ The settings window has five tabs:
 - hold Caps Lock -> Hyper (`Control` + `Option` + `Shift` + `Command`)
 - tap Caps Lock -> Escape
 
+With **Spatial Lens** enabled, holding physical Control + Option reveals
+eight contextual placement targets around the pointer. Choose a side to preview
+left, right, top, or bottom placement, or choose a corner for quarter placement.
+A deliberate outer flick well beyond a side target previews the physically adjacent display in that direction;
+release either modifier to commit the one visible proposal. Pull back before
+release to return to the original display; release in the neutral center or
+press another key to cancel.
+
+Repeated placement follows the window's live geometry: half, third,
+two-thirds, then half again. The exact Control + Option hold deliberately
+excludes Command and Shift, so Caps Lock continues to own the Hyper layer.
+
 Rules live in `~/.lattices/keyboard-remaps.json`, and the Settings toggle
 can turn the layer off. Keyboard remaps require Accessibility permission
 because they use a local event tap.
@@ -312,6 +324,7 @@ from Settings > Shortcuts.
 | Ctrl+Cmd+M         | Hands-off mode       |
 | Hyper+Space        | Hyperspace window survey |
 | Hyper+G            | In-place window tools |
+| Hold Ctrl+Option + pointer | Preview Spatial Lens placement; release to commit |
 | Hyper+H            | Window navigation hints |
 | Hyper+5            | Omni search          |
 | Hyper+6            | Cheat sheet          |

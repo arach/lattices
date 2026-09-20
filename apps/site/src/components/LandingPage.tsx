@@ -417,7 +417,7 @@ const handsShortcuts: Array<{ keys: string[]; action: string }> = [
 function HandsOnSection() {
   return (
     <section className="home-sec fade-in" id="hands">
-      <SectionHead kicker="Keyboard and mouse" title="Shortcuts and mouse gestures, not just the palette.">
+      <SectionHead title="Shortcuts and mouse gestures, not just the palette.">
         <p className="sec-lede">
           Caps Lock is Hyper. ⌃⌥ tiles halves and grids. Hold a mouse button,
           draw a direction or a shape, release. The app replays that path in
@@ -456,10 +456,10 @@ function HandsOnSection() {
   );
 }
 
-function SectionHead({ kicker, title, children }: { kicker: string; title: string; children?: ReactNode }) {
+function SectionHead({ kicker, title, children }: { kicker?: string; title: string; children?: ReactNode }) {
   return (
     <header className="sec-head">
-      <p className="sec-kicker">{kicker}</p>
+      {kicker && <p className="sec-kicker">{kicker}</p>}
       <h2 className="sec-title">{title}</h2>
       {children}
     </header>
@@ -536,7 +536,7 @@ export default function App() {
       <main>
         <section className="hero fade-in">
           <div className="hero-inner">
-            <p className="hero-eyebrow">The programmable workspace for macOS</p>
+
             <h1>Your workspace in your hands.</h1>
             <p className="hero-sub">
               Organize windows, run your tools, and automate your workflow.
@@ -586,7 +586,6 @@ export default function App() {
         <section className="section shared-state-section" id="shared-state">
          <div className="shared-state-inner">
           <div className="shared-state-copy fade-in">
-            <div className="cua-kicker">One state, two operators</div>
             <h2>Same desktop, whether you drive or your agent does.</h2>
             <p>
               Agents can write code and run tests, but arranging the Mac around
@@ -622,7 +621,7 @@ export default function App() {
         {/* Computer use (CUA) */}
         <section className="home-sec" id="cua">
           <div className="fade-in">
-            <SectionHead kicker="Action · a Lattices product" title="Computer use you can control">
+            <SectionHead title="Computer use you can control">
               <p className="sec-lede">
                 Action is the focused computer-use product in the Lattices family.
                 Observe the screen, stage each action for review, execute on-device,
@@ -651,9 +650,6 @@ export default function App() {
 
             <div className="cua-stage-panel">
               <div className="cua-stage-copy">
-                <p className="cua-stage-eyebrow">
-                  {activeCuaStep.number} / {activeCuaStep.title}
-                </p>
                 <h3>{activeCuaStep.heading}</h3>
                 <p>{activeCuaStep.caption}</p>
               </div>
@@ -695,12 +691,11 @@ export default function App() {
           <section className="home-sec next-section fade-in fade-in-delay-2">
             <div className="next-card">
               <div className="next-copy">
-                <div className="next-kicker">Opening for TestFlight</div>
                 <h2>Lats.dev for iPad</h2>
                 <p>
-                  A new app and domain for controlling your Mac workspace from
-                  beside the keyboard: trackpad gestures, window actions, live state,
-                  and shortcuts tuned for iPad. Early testing starts next.
+                  Opening for TestFlight. A new app and domain for controlling
+                  your Mac workspace from beside the keyboard: trackpad gestures,
+                  window actions, live state, and shortcuts tuned for iPad.
                 </p>
               </div>
               <div className="next-preview" aria-hidden="true">
@@ -727,8 +722,8 @@ export default function App() {
         <section className="home-sec" id="app">
           <div className="app-grid">
             <div className="app-copy">
-              <div className="app-kicker-row">
-                <span>Native macOS app</span>
+              <div className="app-title-row">
+                <h2 className="app-title">The whole workspace, visible.</h2>
                 <a
                   href={latticesDownloadURL}
                   className="app-download-icon"
@@ -739,7 +734,6 @@ export default function App() {
                   <DownloadIcon />
                 </a>
               </div>
-              <h2 className="app-title">A calmer computing experience.</h2>
               <p className="app-desc">
                 Keep the windows for coding, research, or deep work together.
                 Switch workspace layers when it’s time to change focus.
@@ -909,7 +903,6 @@ export default function App() {
         <section className="home-sec" id="local-first">
           <div className="local-trust fade-in">
             <div>
-              <p className="sec-kicker">Local core, open source</p>
               <h2>The core runs on your Mac.</h2>
             </div>
             <p>
@@ -924,7 +917,6 @@ export default function App() {
 
         <section className="home-sec install-chooser fade-in" id="install">
           <div className="install-chooser-head">
-            <div className="cua-kicker">Three ways in. One workspace.</div>
             <h2>Start where you work.</h2>
           </div>
           <div className="install-chooser-grid">
@@ -950,8 +942,17 @@ export default function App() {
               <small><code>npm i -g @arach/lattices</code></small>
             </article>
             <article>
-              <span className="install-chooser-label">SDK</span>
-              <h3>Typed agent SDK</h3>
+              <span className="install-chooser-label">Skills</span>
+              <h3>Agent skills</h3>
+              <p>Install lattices, action, speech, and blink for every coding agent.</p>
+              <a href="/docs/agents">
+                Get the catalog <span aria-hidden="true">→</span>
+              </a>
+              <small><code>npx skills add arach/lattices</code></small>
+            </article>
+            <article>
+              <span className="install-chooser-label">API</span>
+              <h3>Typed agent API</h3>
               <p>Build agents and scripts against the whole desktop.</p>
               <a href="/docs/api">
                 Read the API <span aria-hidden="true">→</span>
@@ -959,7 +960,7 @@ export default function App() {
               <small><code>npm i @lattices/sdk</code></small>
             </article>
           </div>
-          <p className="install-chooser-footnote">Same service, same live state — pick the surface that fits.</p>
+          <p className="install-chooser-footnote">Same service, same live state. Pick the surface that fits.</p>
         </section>
 
         {/* CTA */}

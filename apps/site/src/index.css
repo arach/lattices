@@ -14,8 +14,8 @@
   --border: rgba(255, 255, 255, 0.06);
   --border-lit: rgba(255, 255, 255, 0.1);
   --text: rgba(255, 255, 255, 0.92);
-  --text-dim: rgba(255, 255, 255, 0.62);
-  --text-muted: rgba(255, 255, 255, 0.4);
+  --text-dim: rgba(255, 255, 255, 0.72);
+  --text-muted: rgba(255, 255, 255, 0.52);
   --green: #33c773;
   --green-glow: rgba(51, 199, 115, 0.15);
   --amber: #f5a623;
@@ -54,8 +54,8 @@
   --border: rgba(16, 21, 24, 0.08);
   --border-lit: rgba(16, 21, 24, 0.14);
   --text: #101518;
-  --text-dim: rgba(16, 21, 24, 0.6);
-  --text-muted: rgba(16, 21, 24, 0.35);
+  --text-dim: rgba(16, 21, 24, 0.68);
+  --text-muted: rgba(16, 21, 24, 0.52);
   --green: #1a9d52;
   --green-glow: rgba(26, 157, 82, 0.12);
   --amber: #c47b00;
@@ -531,7 +531,7 @@ button.nav-link {
   background: transparent;
   color: var(--text-muted);
   font-family: "JetBrains Mono", monospace;
-  font-size: 10px;
+  font-size: 12px;
   cursor: pointer;
   transition: color 0.16s, background-color 0.16s, box-shadow 0.16s;
 }
@@ -558,7 +558,7 @@ button.nav-link {
 }
 
 .hero-desktop-comparison button span {
-  font-size: 8px;
+  font-size: 12px;
 }
 
 .hero-workspace-stage {
@@ -1484,29 +1484,28 @@ button.nav-link {
 
 .install-chooser-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
 }
 
 .install-chooser-grid article {
   display: flex;
-  min-height: 260px;
+  min-height: 220px;
   flex-direction: column;
   align-items: flex-start;
   border: 1px solid var(--border);
   border-radius: 14px;
-  padding: 25px;
+  padding: 22px;
   background: color-mix(in srgb, var(--surface) 72%, transparent);
   text-align: left;
 }
 
 .install-chooser-label {
-  margin-bottom: 34px;
+  margin-bottom: 22px;
   color: var(--green);
   font-family: "JetBrains Mono", monospace;
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 0.04em;
 }
 
 .install-chooser-grid h3 {
@@ -1536,10 +1535,12 @@ button.nav-link {
 .install-chooser-grid small {
   margin-top: 10px;
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .install-chooser-grid small code {
+  display: block;
+  overflow-wrap: anywhere;
   font-size: inherit;
 }
 
@@ -2717,17 +2718,11 @@ button.nav-link {
 
 /* ── Menu bar app section ──────────────────────────── */
 
-.app-kicker-row {
+.app-title-row {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  align-items: flex-start;
+  gap: 12px;
   margin-bottom: 16px;
-  color: var(--green);
-  font-family: "JetBrains Mono", monospace;
-  font-size: 10px;
-  font-weight: 650;
-  letter-spacing: 0.11em;
-  text-transform: uppercase;
 }
 
 .app-grid {
@@ -2741,12 +2736,17 @@ button.nav-link {
   min-width: 0;
 }
 
+.app-title-row .app-title {
+  flex: 1;
+  margin: 0;
+}
+
 .app-title {
   max-width: 420px;
   margin-bottom: 14px;
   font-size: clamp(2rem, 3.7vw, 3rem);
   font-weight: 650;
-  letter-spacing: -0.045em;
+  letter-spacing: -0.03em;
   line-height: 1.02;
   text-wrap: balance;
 }
@@ -2805,6 +2805,11 @@ button.nav-link {
   border-color: var(--border-lit);
   background: color-mix(in srgb, var(--text) 4%, transparent);
   color: var(--text);
+}
+
+.app-download-icon:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
 }
 
 .app-download-icon svg {
@@ -3398,9 +3403,10 @@ button.nav-link {
   border-right: 1px solid var(--hero-rule);
   color: var(--hero-ink-dim);
   font-family: "JetBrains Mono", monospace;
-  font-size: 10px;
-  letter-spacing: 0.11em;
+  font-size: 12px;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .hero-meta li:last-child {
