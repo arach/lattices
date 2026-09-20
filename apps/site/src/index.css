@@ -86,7 +86,13 @@
 }
 
 body {
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--text) 3.5%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--text) 3.5%, transparent) 1px, transparent 1px);
+  background-size:
+    32px 32px,
+    32px 32px;
   color: var(--text);
   min-height: 100vh;
 }
@@ -408,11 +414,13 @@ button.nav-link {
   padding: 34px 0 30px;
 }
 
-.hero-copy {
+.hero-inner {
   position: relative;
   z-index: 2;
   max-width: 860px;
   margin: 0 auto;
+  padding: 0 24px;
+  text-align: center;
 }
 
 .hero h1 {
@@ -1214,28 +1222,6 @@ button.nav-link {
   box-shadow: 0 0 10px color-mix(in srgb, var(--green) 70%, transparent);
 }
 
-.hands-section {
-  padding: 84px 0;
-}
-
-.hands-copy h2 {
-  max-width: 680px;
-  margin: 0;
-  font-size: clamp(1.7rem, 3.2vw, 2.5rem);
-  font-weight: 650;
-  line-height: 1.08;
-  letter-spacing: -0.042em;
-  text-wrap: balance;
-}
-
-.hands-copy p {
-  max-width: 620px;
-  margin-top: 18px;
-  color: var(--text-dim);
-  font-size: 15px;
-  line-height: 1.75;
-}
-
 .hands-links {
   display: flex;
   flex-wrap: wrap;
@@ -1322,11 +1308,6 @@ button.nav-link {
   color: var(--text-muted);
   font-size: 12px;
   line-height: 1.45;
-}
-
-.hands-copy em {
-  font-style: italic;
-  color: var(--text);
 }
 
 .gesture-primer {
@@ -1465,56 +1446,6 @@ button.nav-link {
   color: var(--text-muted);
   font-size: 12px;
   line-height: 1.45;
-}
-
-.workflow-spine {
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
-  padding: 28px 0;
-}
-
-.workflow-spine article {
-  display: grid;
-  grid-template-columns: 70px minmax(0, 1fr);
-  gap: 18px;
-  padding: 34px 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.workflow-spine article:last-child {
-  border-bottom: 0;
-}
-
-.workflow-number {
-  color: var(--text-muted);
-  font-family: "JetBrains Mono", monospace;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-}
-
-.workflow-spine h3 {
-  margin-bottom: 8px;
-  color: var(--green);
-  font-family: "JetBrains Mono", monospace;
-  font-size: 11px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.workflow-spine h2 {
-  margin: 0;
-  font-size: clamp(1.5rem, 3vw, 2.25rem);
-  font-weight: 620;
-  line-height: 1.08;
-  letter-spacing: -0.038em;
-}
-
-.workflow-spine p {
-  max-width: 700px;
-  margin-top: 13px;
-  color: var(--text-dim);
-  font-size: 14px;
-  line-height: 1.7;
 }
 
 .local-trust {
@@ -1916,25 +1847,6 @@ button.nav-link {
   align-items: start;
 }
 
-.config-head {
-  max-width: 560px;
-  margin-bottom: 20px;
-}
-
-.config-title {
-  font-size: 1.6rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  margin-bottom: 10px;
-}
-
-.config-desc {
-  color: var(--text-dim);
-  font-size: 14px;
-  line-height: 1.5;
-  margin-bottom: 0;
-}
-
 /* ── Code block ────────────────────────────────────── */
 
 .code-block {
@@ -2164,17 +2076,6 @@ button.nav-link {
 
 /* ── CUA (computer use) section ─────────────────────── */
 
-.section.cua-section {
-  border-top: 1px solid var(--border);
-  padding-top: 56px;
-  padding-bottom: 12px;
-}
-
-.cua-head {
-  max-width: 680px;
-  margin-bottom: 24px;
-}
-
 .cua-kicker {
   display: inline-flex;
   align-items: center;
@@ -2188,19 +2089,6 @@ button.nav-link {
 
 .cua-kicker::before {
   content: none;
-}
-
-.cua-head h2 {
-  font-size: 1.6rem;
-  font-weight: 700;
-  letter-spacing: 0;
-  margin-bottom: 10px;
-}
-
-.cua-head p {
-  color: var(--text-dim);
-  font-size: 14px;
-  line-height: 1.55;
 }
 
 .cua-showcase {
@@ -2829,10 +2717,6 @@ button.nav-link {
 
 /* ── Menu bar app section ──────────────────────────── */
 
-.app-section {
-  padding: 56px 0 48px;
-}
-
 .app-kicker-row {
   display: flex;
   align-items: center;
@@ -3165,9 +3049,29 @@ button.nav-link {
 /* ── CTA ───────────────────────────────────────────── */
 
 .cta {
-  padding: 56px 0;
+  position: relative;
+  overflow: hidden;
+  padding: 96px 0;
   text-align: center;
   border-top: 1px solid var(--border);
+}
+
+/* The lattice returns to close the page. */
+
+.cta::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, var(--hero-etch) 0 1px, transparent 1.5px);
+  background-size: 34px 34px;
+  -webkit-mask-image: radial-gradient(ellipse 62% 70% at 50% 60%, #000, transparent 74%);
+  mask-image: radial-gradient(ellipse 62% 70% at 50% 60%, #000, transparent 74%);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.cta > * {
+  position: relative;
 }
 
 .cta h2 {
@@ -3390,26 +3294,34 @@ button.nav-link {
   text-align: left;
 }
 
-.hero-editorial {
+/* Centered statement over the live desktop stage. */
+
+.hero {
   position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 0.84fr) minmax(0, 1.16fr);
-  gap: clamp(36px, 4.4vw, 76px);
-  align-items: center;
-  max-width: 1280px;
-  margin: 0 auto;
+  padding: 88px 0 44px;
+  overflow: hidden;
 }
 
-.hero-copy {
-  position: relative;
-  z-index: 2;
-  max-width: none;
-  margin: 0;
+/* A faint lattice — the product's namesake — fades out toward the edges. */
+
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(var(--hero-etch-faint) 1px, transparent 1px),
+    linear-gradient(90deg, var(--hero-etch-faint) 1px, transparent 1px);
+  background-size: 34px 34px;
+  -webkit-mask-image: radial-gradient(ellipse 76% 58% at 50% 22%, #000, transparent 72%);
+  mask-image: radial-gradient(ellipse 76% 58% at 50% 22%, #000, transparent 72%);
+  opacity: 0.65;
+  pointer-events: none;
 }
 
 .hero-eyebrow {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 13px;
   margin: 0 0 26px;
   color: var(--hero-accent);
@@ -3420,7 +3332,8 @@ button.nav-link {
   text-transform: uppercase;
 }
 
-.hero-eyebrow::before {
+.hero-eyebrow::before,
+.hero-eyebrow::after {
   content: "";
   width: 32px;
   height: 1px;
@@ -3428,39 +3341,35 @@ button.nav-link {
 }
 
 .hero h1 {
-  max-width: 15ch;
-  margin: 0 0 24px;
+  max-width: 16ch;
+  margin: 0 auto 22px;
   color: var(--hero-ink);
-  font-size: clamp(2.5rem, 4.1vw, 3.9rem);
+  font-size: clamp(2.9rem, 5.6vw, 4.6rem);
   font-weight: 700;
   line-height: 0.98;
-  letter-spacing: -0.045em;
+  letter-spacing: -0.05em;
   text-wrap: balance;
 }
 
 .hero-sub {
-  max-width: 42ch;
-  margin: 0 0 32px;
+  max-width: 46ch;
+  margin: 0 auto 32px;
   color: var(--hero-ink-dim);
-  font-size: clamp(1rem, 1.4vw, 1.06rem);
+  font-size: clamp(1rem, 1.4vw, 1.08rem);
   line-height: 1.6;
   text-wrap: pretty;
 }
 
-.hero-actions {
-  justify-content: flex-start;
-}
-
 .hero-primary-cta,
 .hero-secondary-cta {
-  border-radius: 2px;
+  border-radius: 8px;
   font-size: 13px;
   letter-spacing: 0.01em;
 }
 
 .hero-primary-cta {
   border-color: var(--green);
-  box-shadow: none;
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--green) 26%, transparent);
 }
 
 .hero-secondary-cta {
@@ -3477,8 +3386,9 @@ button.nav-link {
 .hero-meta {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 0 18px;
-  margin: 34px 0 0;
+  margin: 32px 0 0;
   padding: 0;
   list-style: none;
 }
@@ -3504,16 +3414,20 @@ button.nav-link {
   color: var(--hero-accent);
 }
 
+/* Understage card — the gesture demo sits beside the agent transcript. */
+
 .hero-demo-peek {
-  display: grid;
-  grid-template-columns: 118px minmax(0, 1fr);
-  gap: 14px;
-  width: min(100%, 390px);
-  margin-top: 28px;
-  padding-top: 14px;
-  border-top: 1px solid var(--hero-rule);
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  width: 100%;
+  border: 1px solid var(--border-lit);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--surface);
   color: var(--hero-ink);
   text-decoration: none;
+  transition: border-color 180ms ease;
 }
 
 .hero-demo-peek:focus-visible {
@@ -3523,36 +3437,37 @@ button.nav-link {
 
 .hero-demo-peek-media {
   display: block;
-  width: 118px;
-  aspect-ratio: 8 / 5;
-  border: 1px solid var(--hero-rule);
-  border-radius: 2px;
+  width: 100%;
+  aspect-ratio: 16 / 7;
+  border-bottom: 1px solid var(--border);
   background: var(--hero-ink);
   object-fit: cover;
-  transition: border-color 180ms ease, filter 180ms ease;
+  transition: filter 180ms ease;
 }
 
 .hero-demo-peek-copy {
   display: flex;
   min-width: 0;
+  flex: 1;
   flex-direction: column;
   justify-content: center;
-  gap: 5px;
+  gap: 6px;
+  padding: 16px 18px 18px;
 }
 
 .hero-demo-peek-label,
 .hero-demo-peek-link {
   color: var(--hero-ink-dim);
   font-family: "JetBrains Mono", monospace;
-  font-size: 9px;
+  font-size: 9.5px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
 .hero-demo-peek-copy strong {
-  max-width: 23ch;
-  font-size: 13px;
-  line-height: 1.32;
+  max-width: 30ch;
+  font-size: 14px;
+  line-height: 1.35;
 }
 
 .hero-demo-peek-link {
@@ -3560,9 +3475,12 @@ button.nav-link {
   transition: color 180ms ease;
 }
 
+.hero-demo-peek:hover {
+  border-color: var(--hero-accent);
+}
+
 .hero-demo-peek:hover .hero-demo-peek-media,
 .hero-demo-peek:focus-visible .hero-demo-peek-media {
-  border-color: var(--hero-accent);
   filter: contrast(1.04);
 }
 
@@ -3571,156 +3489,112 @@ button.nav-link {
   color: var(--hero-ink);
 }
 
-/* Apparatus scaffolding — measurement, not ornament. */
+/* The stage: a labeled instrument bar, the live desktop, two overlapping
+   understage cards, and a plinth line with the mascot. */
 
-.hero-apparatus {
-  position: relative;
-  z-index: 0;
-  isolation: isolate;
-}
-
-/* The drawing is precise, but not digitally sterile. These two static layers
-   make an uneven field of printer dots, rubbed graphite, and partial drafting
-   marks around the apparatus only. */
-
-.hero-apparatus::before {
-  content: "";
-  position: absolute;
-  z-index: -2;
-  inset: -18% -10% -24% -20%;
-  background-image:
-    radial-gradient(circle, var(--hero-dither) 0 0.7px, transparent 0.9px),
-    radial-gradient(circle, var(--hero-etch) 0 0.55px, transparent 0.8px),
-    radial-gradient(circle, var(--hero-etch-faint) 0 0.65px, transparent 0.85px);
-  background-position: 1px 2px, 4px 1px, -3px 5px;
-  background-size: 5px 5px, 7px 7px, 11px 11px;
-  opacity: 0.72;
-  -webkit-mask-image:
-    radial-gradient(ellipse 42% 50% at 31% 28%, #000 8%, rgba(0, 0, 0, 0.74) 44%, transparent 77%),
-    radial-gradient(ellipse 48% 54% at 76% 58%, #000 3%, rgba(0, 0, 0, 0.62) 41%, transparent 79%),
-    radial-gradient(ellipse 28% 24% at 58% 92%, rgba(0, 0, 0, 0.74), transparent 76%);
-  mask-image:
-    radial-gradient(ellipse 42% 50% at 31% 28%, #000 8%, rgba(0, 0, 0, 0.74) 44%, transparent 77%),
-    radial-gradient(ellipse 48% 54% at 76% 58%, #000 3%, rgba(0, 0, 0, 0.62) 41%, transparent 79%),
-    radial-gradient(ellipse 28% 24% at 58% 92%, rgba(0, 0, 0, 0.74), transparent 76%);
-  pointer-events: none;
-}
-
-.hero-apparatus::after {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  inset: -14% -8% -18% -14%;
-  background:
-    linear-gradient(90deg, transparent 0 7%, var(--hero-etch) 7% 42%, transparent 42%) 0 11% / 100% 1px no-repeat,
-    linear-gradient(90deg, transparent 0 25%, var(--hero-etch-faint) 25% 87%, transparent 87%) 0 17% / 100% 1px no-repeat,
-    repeating-linear-gradient(90deg, var(--hero-etch) 0 2px, transparent 2px 9px) 18% 78% / 47% 1px no-repeat,
-    linear-gradient(90deg, transparent 0 58%, var(--hero-etch) 58% 98%, transparent 98%) 0 92% / 100% 1px no-repeat,
-    linear-gradient(0deg, transparent 0 18%, var(--hero-etch-faint) 18% 74%, transparent 74%) 18% 0 / 1px 100% no-repeat,
-    linear-gradient(0deg, transparent 0 7%, var(--hero-etch) 7% 48%, transparent 48%) 56% 0 / 1px 100% no-repeat,
-    repeating-linear-gradient(0deg, var(--hero-etch) 0 2px, transparent 2px 10px) 93% 13% / 1px 69% no-repeat,
-    radial-gradient(ellipse 56% 62% at 53% 51%, var(--hero-bloom), transparent 72%),
-    radial-gradient(ellipse 38% 30% at 66% 83%, var(--hero-charcoal), transparent 78%);
-  opacity: 0.92;
-  pointer-events: none;
-}
-
-.hero-rail {
+.hero-stage {
   position: relative;
   z-index: 1;
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  padding-top: 44px;
-  margin-bottom: 22px;
-  border-bottom: 1px solid var(--hero-rule);
+  width: min(1220px, calc(100% - 48px));
+  margin: 66px auto 0;
 }
 
-.hero-rail::before {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  inset: 7px -2% -4px -4%;
-  background:
-    linear-gradient(90deg, transparent 0 3%, var(--hero-etch) 3% 31%, transparent 31%) 0 8px / 100% 1px no-repeat,
-    repeating-linear-gradient(90deg, var(--hero-etch-faint) 0 1px, transparent 1px 7px) 26% 24px / 62% 1px no-repeat,
-    linear-gradient(90deg, transparent 0 48%, var(--hero-etch) 48% 100%) 0 33px / 100% 1px no-repeat;
-  opacity: 0.88;
-  pointer-events: none;
+.hero-stage-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 13px;
+  padding: 0 2px;
 }
 
-.hero-rail::after {
-  content: "";
-  position: absolute;
-  right: 6%;
-  bottom: 3px;
-  left: 11%;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--hero-etch) 12% 72%, transparent);
-  opacity: 0.66;
-  pointer-events: none;
-}
-
-.hero-rail span {
-  position: relative;
-  padding: 0 0 13px 11px;
-  border-left: 1px solid var(--hero-rule);
+.hero-stage-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
   color: var(--hero-ink-dim);
   font-family: "JetBrains Mono", monospace;
-  font-size: 9.5px;
+  font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.13em;
   text-transform: uppercase;
 }
 
-.hero-rail span::after {
-  content: "";
-  position: absolute;
-  bottom: -3px;
-  left: 11px;
-  width: 5px;
-  height: 5px;
-  background: var(--hero-ink-dim);
+.hero-stage-label i {
+  width: 7px;
+  height: 7px;
+  border-radius: 1.5px;
+  background: var(--hero-accent);
 }
 
-.hero-apparatus-body {
-  position: relative;
-  z-index: 1;
+.hero-desktop-demo {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  margin-top: 0;
 }
 
-.hero-index {
-  position: absolute;
-  top: 16%;
-  right: -30px;
-  display: grid;
-  gap: 44px;
+.hero-stage .hero-workspace-stage {
   margin: 0;
-  padding: 0;
-  list-style: none;
+  transform: none;
+  width: 100%;
+  border-radius: 18px;
+  box-shadow:
+    0 44px 90px rgba(8, 14, 18, 0.26),
+    0 1px 0 rgba(255, 255, 255, 0.45) inset;
 }
 
-.hero-index li {
-  color: var(--hero-ink-dim);
-  font-family: "JetBrains Mono", monospace;
-  font-size: 9.5px;
-  letter-spacing: 0.1em;
+.hero-stage .hero-desktop-screen {
+  border-radius: 17px;
 }
 
-.hero-index li::before {
-  content: "";
+.hero-video-stage {
+  aspect-ratio: 16 / 9;
+  background: var(--surface);
+}
+
+.hero-video-media {
   display: block;
-  width: 5px;
-  height: 5px;
-  margin-bottom: 7px;
-  background: var(--hero-rule);
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
-.hero-plinth {
+.hero-understage {
   position: relative;
-  z-index: 1;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  gap: 16px;
+  margin-top: -58px;
+  padding: 0 34px;
+}
+
+.hero-understage .hero-agent-harness {
+  width: 100%;
+  margin: 0;
+  border-color: var(--border-lit);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  box-shadow: 0 26px 54px color-mix(in srgb, #000 20%, transparent);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+.hero-understage .hero-harness-head {
+  border-bottom-color: var(--hero-rule);
+  color: var(--hero-ink-dim);
+}
+
+.hero-understage .hero-demo-peek {
+  box-shadow: 0 26px 54px color-mix(in srgb, #000 16%, transparent);
+}
+
+.hero-stage-foot {
   display: flex;
   align-items: center;
   gap: 18px;
-  margin-top: 38px;
+  margin-top: 22px;
   padding-top: 13px;
   border-top: 1px solid var(--hero-rule);
   color: var(--hero-ink-dim);
@@ -3728,11 +3602,6 @@ button.nav-link {
   font-size: 9.5px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-}
-
-.hero-plinth::before,
-.hero-plinth::after {
-  content: none;
 }
 
 .hero-plinth-state {
@@ -3760,76 +3629,207 @@ button.nav-link {
   color: var(--hero-ink-dim);
 }
 
-.hero-apparatus .hero-workspace-stage {
-  margin: 0;
-  transform: none;
-  border-radius: 12px;
-  box-shadow:
-    0 30px 70px rgba(0, 0, 0, 0.42),
-    -3px 4px 0 -2px var(--hero-etch),
-    4px -3px 0 -3px var(--hero-etch-faint),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+/* Shared section chrome. */
+
+.home-sec {
+  padding: 92px 0;
+  border-top: 1px solid var(--border);
 }
 
-.hero-apparatus .hero-desktop-screen {
-  /* Follow the inner edge of the 12px frame after its 1px border. */
-  border-radius: 11px;
+.shell > section.home-sec:first-of-type {
+  border-top: 0;
 }
 
-.hero-apparatus .hero-workspace-stage::before {
+.sec-head {
+  max-width: 760px;
+  margin-bottom: 42px;
+}
+
+.sec-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 16px;
+  color: var(--green);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.sec-kicker::before {
   content: "";
-  position: absolute;
-  z-index: 99;
-  inset: 4px;
-  border-top: 1px solid var(--hero-etch-faint);
-  border-left: 1px solid var(--hero-etch-faint);
-  border-radius: 8px 0 0;
-  opacity: 0.78;
-  pointer-events: none;
+  width: 22px;
+  height: 1px;
+  background: currentColor;
 }
 
-.hero-apparatus .hero-agent-harness {
-  width: 100%;
+.sec-title {
+  margin: 0;
+  font-size: clamp(1.9rem, 3.3vw, 2.7rem);
+  font-weight: 650;
+  line-height: 1.04;
+  letter-spacing: -0.045em;
+  text-wrap: balance;
+}
+
+.sec-lede {
   margin: 18px 0 0;
-  border-color: var(--hero-rule);
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--hero-ink) 5%, transparent);
+  max-width: 56ch;
+  color: var(--text-dim);
+  font-size: 15px;
+  line-height: 1.72;
+  text-wrap: pretty;
 }
 
-.hero-apparatus .hero-harness-head {
-  border-bottom-color: var(--hero-rule);
-  color: var(--hero-ink-dim);
+.sec-lede em {
+  font-style: italic;
+  color: var(--text);
 }
 
-/* The comparison control keeps its job and loses the floating pill. */
+.sec-head .hands-links {
+  margin-top: 22px;
+}
 
-.hero-desktop-demo {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
+.home-sec .hands-stage {
   margin-top: 0;
 }
 
-.hero-desktop-comparison {
-  align-self: flex-end;
-  margin-bottom: 14px;
-  border-radius: 0;
-  border-color: var(--hero-rule);
-  background: transparent;
-  box-shadow: none;
+.home-sec .local-trust {
+  margin-top: 0;
 }
 
-.hero-desktop-comparison button {
-  border-radius: 0;
-  color: var(--hero-ink-dim);
+.home-sec.install-chooser {
+  padding-top: 92px;
 }
 
-.hero-desktop-comparison button.is-active {
-  color: var(--hero-ink);
+.home-sec .install-chooser-head {
+  margin-bottom: 42px;
 }
 
-.hero-agent-harness {
-  border-radius: 2px;
+/* Method ticker between the hero and the rest of the page. */
+
+.home-ticker {
+  overflow: hidden;
+  padding: 13px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+
+.home-ticker-track {
+  display: flex;
+  width: max-content;
+  animation: homeTicker 52s linear infinite;
+}
+
+.home-ticker-seq {
+  display: flex;
+  flex: none;
+  align-items: center;
+}
+
+.home-ticker-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 22px;
+  padding-right: 22px;
+  color: var(--text-muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+.home-ticker-item i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--green);
+  opacity: 0.7;
+}
+
+.home-ticker-item:first-child {
+  color: var(--green);
+}
+
+@keyframes homeTicker {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-ticker-track {
+    animation: none;
+  }
+}
+
+/* Product spine — three cells divided by hairlines. */
+
+.home-spine {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.home-spine article {
+  padding: 6px 34px 6px 0;
+}
+
+.home-spine article + article {
+  padding-left: 34px;
+  border-left: 1px solid var(--border);
+}
+
+.home-spine-num {
+  display: block;
+  margin-bottom: 22px;
+  color: var(--text-muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+
+.home-spine h3 {
+  margin: 0 0 10px;
+  color: var(--green);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.home-spine h2 {
+  margin: 0 0 12px;
+  font-size: 1.5rem;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+}
+
+.home-spine p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 13.5px;
+  line-height: 1.68;
+}
+
+@media (max-width: 860px) {
+  .home-spine {
+    grid-template-columns: 1fr;
+  }
+
+  .home-spine article {
+    padding: 26px 0;
+  }
+
+  .home-spine article + article {
+    padding-left: 0;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
 }
 
 /* Two operators, two materials. */
@@ -3841,10 +3841,6 @@ button.nav-link {
 
 .shared-state-section .operator-row-label {
   color: var(--hero-accent);
-}
-
-.hero-apparatus .hero-harness-user b {
-  color: var(--hero-ink-dim);
 }
 
 .shared-state-copy h2 {
@@ -3901,22 +3897,28 @@ button.nav-link {
 }
 
 @media (max-width: 1080px) {
-  .hero-editorial {
-    grid-template-columns: 1fr;
-    gap: 44px;
-  }
-
   .hero h1 {
     max-width: 18ch;
   }
+}
 
-  .hero-index {
-    display: none;
+@media (max-width: 960px) {
+  .hero-understage {
+    grid-template-columns: 1fr;
+    margin-top: 16px;
+    padding: 0;
   }
 
-  .hero-apparatus::before,
-  .hero-apparatus::after {
-    inset-inline: -7%;
+  .hero-stage .hero-workspace-stage {
+    border-radius: 14px;
+  }
+
+  .hero-stage .hero-desktop-screen {
+    border-radius: 13px;
+  }
+
+  .home-sec {
+    padding: 64px 0;
   }
 }
 
@@ -3926,27 +3928,21 @@ button.nav-link {
   }
 
   .hero {
-    padding: 52px 20px 48px;
+    padding: 60px 0 34px;
   }
 
-  .hero-rail {
-    grid-template-columns: repeat(2, 1fr);
+  .hero-stage-bar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
   }
 
-  .hero-rail span:nth-child(n + 3) {
-    padding-top: 13px;
+  .hero-stage-label {
+    justify-content: center;
   }
 
   .hero-desktop-comparison {
     align-self: stretch;
-  }
-
-  .hero-apparatus::before {
-    opacity: 0.54;
-  }
-
-  .hero-apparatus::after {
-    opacity: 0.7;
   }
 }
 
@@ -4182,7 +4178,7 @@ button.nav-link {
   }
 
   .hero {
-    padding: 40px 16px 34px;
+    padding: 52px 0 30px;
   }
 
   .hero h1 {
@@ -4190,13 +4186,9 @@ button.nav-link {
     line-height: 1.02;
   }
 
-  .hero-rail span {
-    padding-left: 9px;
-    font-size: 9px;
-  }
-
-  .hero-rail span::after {
-    left: 9px;
+  .hero-stage {
+    width: calc(100% - 32px);
+    margin-top: 40px;
   }
 
   .shared-state-section {
@@ -4218,7 +4210,7 @@ button.nav-link {
   }
 
   .hero-desktop-demo {
-    margin-top: 30px;
+    margin-top: 0;
   }
 
   .hero-harness-body {
@@ -4268,21 +4260,12 @@ button.nav-link {
     padding: 3px 6px;
   }
 
-  .workflow-spine article {
-    grid-template-columns: 38px minmax(0, 1fr);
-    gap: 8px;
-  }
-
-  .workflow-spine p {
-    font-size: 13px;
-  }
-
   .local-trust {
     padding: 28px;
   }
 
-  .install-chooser {
-    padding: 72px 0 40px;
+  .home-sec {
+    padding: 56px 0;
   }
 
   .hero-badge {
@@ -4337,10 +4320,6 @@ button.nav-link {
     padding: 32px 0;
   }
 
-  .config-title {
-    font-size: 1.3rem;
-  }
-
   .app-title {
     font-size: 2rem;
   }
@@ -4362,7 +4341,7 @@ button.nav-link {
   }
 
   .cta {
-    padding: 40px 0;
+    padding: 64px 0;
   }
 
   .cta h2 {

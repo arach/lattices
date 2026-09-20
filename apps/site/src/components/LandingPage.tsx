@@ -1,11 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
-import { motion, useReducedMotion } from "motion/react";
+import type { ReactNode } from "react";
+import { useReducedMotion } from "motion/react";
 import { ThemeToggle } from "./ThemeToggle";
 import { GestureMatrix } from "./GestureMatrix";
 import { ProductsMenu } from "./SiteChrome";
-import { heroDesktopMaps, heroWindowLayouts, heroWindowMeta } from "./heroDesktopMap";
-import type { HeroDesktopPhase, HeroWindowId } from "./heroDesktopMap";
 
 const latticesDownloadURL = "https://github.com/arach/lattices/releases/download/v0.12.0/Lattices.dmg";
 
@@ -365,282 +363,43 @@ const cuaSteps: Array<{
 
 const showLatsDevTeaser = import.meta.env.PUBLIC_SHOW_LATS_DEV_TEASER === "true";
 
-function HeroWindowContent({ id }: { id: HeroWindowId }) {
-  if (id === "agent") {
-    return (
-      <div className="desktop-terminal-lines desktop-agent-lines">
-        <span><b>~/dev/atlas</b> codex</span>
-        <span className="agent-prompt">› fix the flaky session test</span>
-        <span className="terminal-dim">• reading src/auth/session.ts</span>
-        <span className="terminal-dim">• editing refreshSession()</span>
-        <span>$ bun test auth</span>
-        <span className="terminal-ready">✓ 12 passed, 0 failed</span>
-      </div>
-    );
-  }
-
-  if (id === "editor") {
-    return (
-      <div className="desktop-editor">
-        <div className="desktop-editor-sidebar">
-          <strong>ATLAS</strong>
-          <span>src</span>
-          <span className="is-active">session.ts</span>
-          <span>auth.ts</span>
-          <span>routes.ts</span>
-        </div>
-        <div className="desktop-code-lines" aria-hidden="true">
-          <span><i>export async function</i> refreshSession() {'{'}</span>
-          <span className="indent"><i>const</i> s = <i>await</i> sessions.get(token)</span>
-          <span className="indent"><i>if</i> (s.expired) <i>return</i> renew(s)</span>
-          <span className="indent"><i>return</i> s</span>
-          <span>{'}'}</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (id === "browser") {
-    return (
-      <div className="desktop-browser-view">
-        <div className="desktop-browser-mark">atlas · localhost:5173</div>
-        <div className="desktop-browser-ready"><i /> Ready</div>
-        <span>vite preview</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="desktop-terminal-lines">
-      <span><b>~/dev/atlas</b> bun dev</span>
-      <span className="terminal-dim">VITE v7.3.3</span>
-      <span><i>➜</i> Local: http://localhost:5173</span>
-      <span className="terminal-ready">✓ Ready in 612ms</span>
-    </div>
-  );
-}
-
-function HeroDesktopWindow({
-  id,
-  phase,
-  reducedMotion,
-  children,
-}: {
-  id: HeroWindowId;
-  phase: HeroDesktopPhase;
-  reducedMotion: boolean;
-  children: ReactNode;
-}) {
-  const layout = heroWindowLayouts[id][phase];
-  const meta = heroWindowMeta[id];
-
-  return (
-    <motion.div
-      className={`hero-desktop-window hero-window-${id}${meta.focused ? " is-focused" : ""}`}
-      style={{ "--window-tint": meta.tint, zIndex: layout.z } as CSSProperties}
-      animate={{
-        left: `${layout.left}%`,
-        top: `${layout.top}%`,
-        width: `${layout.width}%`,
-        height: `${layout.height}%`,
-      }}
-      transition={{ duration: reducedMotion ? 0 : 0.74, ease: [0.16, 1, 0.3, 1] }}
-    >
-      <div className="hero-window-bar">
-        <span className="hero-window-lights"><i /><i /><i /></span>
-        <span className="hero-window-title">{meta.title}</span>
-        <span className="hero-window-app">{meta.app}</span>
-      </div>
-      <div className="hero-window-body">{children}</div>
-    </motion.div>
-  );
-}
-
 function HeroWorkspaceStage() {
   const prefersReducedMotion = useReducedMotion() ?? false;
-  const [phaseChoice, setPhaseChoice] = useState<HeroDesktopPhase>("messy");
-  // The loop alternates who organizes the mess: your keycast, then the agent.
-  const [driver, setDriver] = useState<"you" | "agent">("you");
-  const [autoPlay, setAutoPlay] = useState(true);
-  const [inView, setInView] = useState(true);
-  const stageRef = useRef<HTMLDivElement | null>(null);
-  // Reduced-motion visitors land on the organized result instead of the loop.
-  const phase = prefersReducedMotion && autoPlay ? "organized" : phaseChoice;
-  const organized = phase === "organized";
-
-  useEffect(() => {
-    const stage = stageRef.current;
-    if (!stage || typeof IntersectionObserver === "undefined") return;
-    const observer = new IntersectionObserver(
-      ([entry]) => setInView(entry.isIntersecting),
-      { threshold: 0.35 },
-    );
-    observer.observe(stage);
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    if (!autoPlay || prefersReducedMotion || !inView) return;
-    // Linger on the organized result — longest after the agent's turn, so
-    // the tiled desktop and the full two-command transcript sit together.
-    // The messy beat holds long enough to read the scatter; longer on agent
-    // turns, where the request and tool call appear before the snap.
-    const delay = organized
-      ? driver === "agent" ? 7200 : 4600
-      : driver === "you" ? 3000 : 4200;
-    const timer = window.setTimeout(() => {
-      if (organized) {
-        setDriver(driver === "you" ? "agent" : "you");
-        setPhaseChoice("messy");
-      } else {
-        setPhaseChoice("organized");
-      }
-    }, delay);
-    return () => window.clearTimeout(timer);
-  }, [autoPlay, organized, driver, prefersReducedMotion, inView]);
-
-  const selectPhase = (next: HeroDesktopPhase) => {
-    setAutoPlay(false);
-    setPhaseChoice(next);
-  };
 
   return (
     <div className="hero-desktop-demo" id="workspace-demo">
-      <div className="hero-desktop-comparison" role="group" aria-label="Compare the desktop without and with Lattices">
-        <button
-          type="button"
-          className={!organized ? "is-active" : ""}
-          aria-pressed={!organized}
-          onClick={() => selectPhase("messy")}
-        >
-          <span aria-hidden="true">○</span>
-          Without Lattices
-        </button>
-        <button
-          type="button"
-          className={organized ? "is-active" : ""}
-          aria-pressed={organized}
-          onClick={() => selectPhase("organized")}
-        >
-          <span aria-hidden="true">●</span>
-          With Lattices
-        </button>
+      <div className="hero-stage-bar">
+        <span className="hero-stage-label">
+          <i aria-hidden="true" />
+          Homepage · live capture
+        </span>
       </div>
 
-      <div
-        ref={stageRef}
-        className={`hero-workspace-stage is-${phase}`}
-        role="img"
-        aria-label={organized
-          ? "A simulated Mac desktop with four windows tiled by Lattices, an agent terminal in focus"
-          : "A simulated Mac desktop with four overlapping, scattered windows"}
-      >
-        <div className="hero-laptop-camera" aria-hidden="true"><i /></div>
-        <div className="hero-desktop-screen">
-          <div className="hero-macos-bar">
-            <span className="hero-macos-brand"><span className="hero-macos-apple" aria-hidden="true"><AppleIcon /></span> Terminal</span>
-            <span className="hero-macos-menu">File&nbsp;&nbsp; Edit&nbsp;&nbsp; View&nbsp;&nbsp; Window</span>
-            <span className="hero-macos-status"><span className="hero-macos-lattices">⌁ lattices</span>&nbsp;&nbsp; 9:41 AM</span>
-          </div>
-
-          {(Object.keys(heroWindowMeta) as HeroWindowId[]).map((id) => (
-            <HeroDesktopWindow
-              key={id}
-              id={id}
-              phase={phase}
-              reducedMotion={prefersReducedMotion}
-            >
-              <HeroWindowContent id={id} />
-            </HeroDesktopWindow>
-          ))}
-
-          <motion.div
-            className="hero-keycast"
-            aria-hidden="true"
-            initial={false}
-            animate={{ opacity: !organized && autoPlay && driver === "you" ? 1 : 0 }}
-            transition={
-              !organized && autoPlay && driver === "you"
-                ? { duration: 0.26, delay: 1.4 }
-                : { duration: 0.18 }
-            }
-          >
-            <kbd>⌃</kbd>
-            <kbd>⌥</kbd>
-            <kbd>G</kbd>
-            <span>organize</span>
-          </motion.div>
-
-          <motion.div
-            className="hero-desktop-result"
-            animate={{ opacity: organized ? 1 : 0, y: organized ? 0 : 6 }}
-            transition={{ duration: prefersReducedMotion ? 0 : 0.24, delay: organized ? 0.5 : 0 }}
-            aria-hidden={!organized}
-          >
-            <i /> 4 windows organized
-          </motion.div>
-        </div>
+      <div className="hero-workspace-stage hero-video-stage">
+        {prefersReducedMotion ? (
+          <img
+            className="hero-video-media"
+            src="/hero/lattices-homepage-hero-loop-poster.jpg"
+            alt="The Lattices homepage hero preview"
+          />
+        ) : (
+          <video
+            className="hero-video-media"
+            src="/hero/lattices-homepage-hero-loop.mp4"
+            poster="/hero/lattices-homepage-hero-loop-poster.jpg"
+            autoPlay
+            loop
+            muted
+            playsInline
+            aria-label="Looping preview of the Lattices homepage"
+          />
+        )}
       </div>
 
-      <div className="hero-agent-harness" role="group" aria-label="A coding agent reading the same desktop over the local API">
-        <div className="hero-harness-head">
-          <span className="hero-harness-dot" aria-hidden="true" />
-          <span>claude · agent session</span>
-          <span className="hero-harness-transport">ws://localhost · live</span>
-        </div>
-        <div className="hero-harness-body">
-          <span className="hero-harness-user">
-            <b>&gt;</b> what&apos;s on my screen?
-          </span>
-          <span className="hero-harness-tool">
-            <i aria-hidden="true">⏺</i> lattices — map
-          </span>
-          <motion.div
-            key={driver === "agent" ? "agent" : phase}
-            className="hero-harness-result hero-harness-map-result"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: prefersReducedMotion ? 0 : 0.3, delay: prefersReducedMotion ? 0 : 0.6 }}
-          >
-            <span>
-              <b aria-hidden="true">⎿</b> 4 windows · {driver === "agent" || !organized ? "3 overlapping" : "tiled main-left"} · focused: atlas — codex
-            </span>
-            <pre className="hero-harness-map" aria-hidden="true">{heroDesktopMaps[phase]}</pre>
-          </motion.div>
-          <motion.span
-            className="hero-harness-user"
-            initial={false}
-            animate={{ opacity: driver === "agent" ? 1 : 0 }}
-            transition={{ duration: driver === "agent" ? 0.3 : 0.2, delay: driver === "agent" ? 0.9 : 0 }}
-            style={{ visibility: driver === "agent" ? "visible" : "hidden" }}
-            aria-hidden={driver !== "agent"}
-          >
-            <b>&gt;</b> put codex on the left half, stack the rest on the right
-          </motion.span>
-          <motion.span
-            className="hero-harness-tool"
-            initial={false}
-            animate={{ opacity: driver === "agent" ? 1 : 0 }}
-            transition={{ duration: driver === "agent" ? 0.3 : 0.2, delay: driver === "agent" ? 2.1 : 0 }}
-            style={{ visibility: driver === "agent" ? "visible" : "hidden" }}
-            aria-hidden={driver !== "agent"}
-          >
-            <i aria-hidden="true">⏺</i> lattices — space.optimize
-          </motion.span>
-          <motion.span
-            className="hero-harness-result"
-            initial={false}
-            animate={{ opacity: driver === "agent" && organized ? 1 : 0 }}
-            transition={{
-              duration: driver === "agent" && organized ? 0.3 : 0.2,
-              delay: driver === "agent" && organized ? 0.9 : 0,
-            }}
-            style={{ visibility: driver === "agent" && organized ? "visible" : "hidden" }}
-            aria-hidden={driver !== "agent" || !organized}
-          >
-            <b aria-hidden="true">⎿</b> codex left half · 3 stacked right · done
-          </motion.span>
-        </div>
+      <div className="hero-stage-foot" aria-hidden="true">
+        <span>Lattices engine</span>
+        <span className="hero-plinth-state">state: synced</span>
+        <PixelMascot />
       </div>
     </div>
   );
@@ -657,11 +416,9 @@ const handsShortcuts: Array<{ keys: string[]; action: string }> = [
 
 function HandsOnSection() {
   return (
-    <section className="hands-section fade-in" id="hands">
-      <div className="hands-copy">
-        <div className="cua-kicker">Keyboard and mouse</div>
-        <h2>Shortcuts and mouse gestures, not just the palette.</h2>
-        <p>
+    <section className="home-sec fade-in" id="hands">
+      <SectionHead kicker="Keyboard and mouse" title="Shortcuts and mouse gestures, not just the palette.">
+        <p className="sec-lede">
           Caps Lock is Hyper. ⌃⌥ tiles halves and grids. Hold a mouse button,
           draw a direction or a shape, release. The app replays that path in
           a 3×3 <em>matrix</em> — the same completer as the logo.
@@ -670,7 +427,7 @@ function HandsOnSection() {
           <a href="/docs/app">Shortcut reference &rarr;</a>
           <a href="/docs/mouse-gestures">Mouse gestures &rarr;</a>
         </div>
-      </div>
+      </SectionHead>
 
       <div className="hands-stage">
         <div className="hands-panel">
@@ -699,51 +456,32 @@ function HandsOnSection() {
   );
 }
 
-function HeroGestureDemo() {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const reducedMotion = useReducedMotion() ?? false;
-
-  const playPreview = () => {
-    if (reducedMotion) return;
-    void videoRef.current?.play();
-  };
-
-  const resetPreview = () => {
-    const video = videoRef.current;
-    if (!video) return;
-    video.pause();
-    video.currentTime = 0;
-  };
-
+function SectionHead({ kicker, title, children }: { kicker: string; title: string; children?: ReactNode }) {
   return (
-    <a
-      className="hero-demo-peek"
-      href="/blog/gesture-completion-matrix"
-      aria-label="Watch the 12-second mouse gesture demo"
-      onMouseEnter={playPreview}
-      onMouseLeave={resetPreview}
-      onFocus={playPreview}
-      onBlur={resetPreview}
-    >
-      <video
-        ref={videoRef}
-        className="hero-demo-peek-media"
-        muted
-        playsInline
-        preload="metadata"
-        poster="/blog/gesture-completion-matrix-poster.png"
-        aria-hidden="true"
-      >
-        <source src="/blog/gesture-completion-matrix.mp4" type="video/mp4" />
-      </video>
-      <span className="hero-demo-peek-copy">
-        <span className="hero-demo-peek-label">12 sec demo</span>
-        <strong>Draw a gesture. Lattices does the rest.</strong>
-        <span className="hero-demo-peek-link">Watch the demo &rarr;</span>
-      </span>
-    </a>
+    <header className="sec-head">
+      <p className="sec-kicker">{kicker}</p>
+      <h2 className="sec-title">{title}</h2>
+      {children}
+    </header>
   );
 }
+
+const tickerMethods = [
+  "agent api · ws://127.0.0.1:9399",
+  "lattices.search",
+  "windows.search",
+  "terminals.search",
+  "ocr.search",
+  "window.focus",
+  "window.place",
+  "layer.activate",
+  "space.optimize",
+  "session.ensure",
+  "panes.launch",
+  "computer.windowState",
+  "computer.elementAction",
+  "computer.verify",
+];
 
 export default function App() {
   const [paneLayout, setPaneLayout] = useState<PaneLayout>(2);
@@ -797,9 +535,8 @@ export default function App() {
       {/* Hero */}
       <main>
         <section className="hero fade-in">
-         <div className="hero-editorial">
-          <div className="hero-copy">
-            <p className="hero-eyebrow">The programmable workspace for Mac</p>
+          <div className="hero-inner">
+            <p className="hero-eyebrow">The programmable workspace for macOS</p>
             <h1>Your workspace in your hands.</h1>
             <p className="hero-sub">
               Organize windows, run your tools, and automate your workflow.
@@ -824,32 +561,27 @@ export default function App() {
               <li>API driven</li>
               <li>Built for macOS</li>
             </ul>
-            <HeroGestureDemo />
           </div>
 
-          <div className="hero-apparatus">
-            <div className="hero-rail" aria-hidden="true">
-              <span>Windows</span>
-              <span>Terminal</span>
-              <span>Layout</span>
-              <span>Agent API</span>
-            </div>
-            <div className="hero-apparatus-body">
-              <HeroWorkspaceStage />
-              <ol className="hero-index" aria-hidden="true">
-                <li>01</li>
-                <li>02</li>
-                <li>03</li>
-              </ol>
-            </div>
-            <div className="hero-plinth" aria-hidden="true">
-              <span>Lattices engine</span>
-              <span className="hero-plinth-state">state: synced</span>
-              <PixelMascot />
-            </div>
+          <div className="hero-stage">
+            <HeroWorkspaceStage />
           </div>
-         </div>
         </section>
+
+        <div className="home-ticker" aria-hidden="true">
+          <div className="home-ticker-track">
+            {[0, 1].map((copy) => (
+              <div className="home-ticker-seq" key={copy}>
+                {tickerMethods.map((method) => (
+                  <span className="home-ticker-item" key={method}>
+                    {method}
+                    <i aria-hidden="true" />
+                  </span>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
 
         <section className="section shared-state-section" id="shared-state">
          <div className="shared-state-inner">
@@ -888,15 +620,15 @@ export default function App() {
         <HandsOnSection />
 
         {/* Computer use (CUA) */}
-        <section className="section cua-section" id="cua">
-          <div className="cua-head fade-in">
-            <div className="cua-kicker">Action · a Lattices product</div>
-            <h2>Computer use you can control</h2>
-            <p>
-              Action is the focused computer-use product in the Lattices family.
-              Observe the screen, stage each action for review, execute on-device,
-              then verify the result.
-            </p>
+        <section className="home-sec" id="cua">
+          <div className="fade-in">
+            <SectionHead kicker="Action · a Lattices product" title="Computer use you can control">
+              <p className="sec-lede">
+                Action is the focused computer-use product in the Lattices family.
+                Observe the screen, stage each action for review, execute on-device,
+                then verify the result.
+              </p>
+            </SectionHead>
           </div>
 
           <div className="cua-showcase fade-in fade-in-delay-1">
@@ -960,7 +692,7 @@ export default function App() {
         </section>
 
         {showLatsDevTeaser && (
-          <section className="next-section fade-in fade-in-delay-2">
+          <section className="home-sec next-section fade-in fade-in-delay-2">
             <div className="next-card">
               <div className="next-copy">
                 <div className="next-kicker">Opening for TestFlight</div>
@@ -992,7 +724,7 @@ export default function App() {
         )}
 
         {/* macOS app */}
-        <section className="app-section" id="app">
+        <section className="home-sec" id="app">
           <div className="app-grid">
             <div className="app-copy">
               <div className="app-kicker-row">
@@ -1039,10 +771,11 @@ export default function App() {
         </section>
 
         {/* Product spine */}
-        <section className="workflow-spine fade-in fade-in-delay-2" id="features">
-          <article>
-            <span className="workflow-number">01</span>
-            <div>
+        <section className="home-sec fade-in fade-in-delay-2" id="features">
+          <SectionHead kicker="The product spine" title="Three jobs, one surface." />
+          <div className="home-spine">
+            <article>
+              <span className="home-spine-num">01</span>
               <h3>Window manager</h3>
               <h2>Tame your windows.</h2>
               <p>
@@ -1050,11 +783,9 @@ export default function App() {
                 and switch contexts from the app, a shortcut, or a mouse
                 gesture.
               </p>
-            </div>
-          </article>
-          <article>
-            <span className="workflow-number">02</span>
-            <div>
+            </article>
+            <article>
+              <span className="home-spine-num">02</span>
               <h3>Tools and terminals</h3>
               <h2>Run your tools.</h2>
               <p>
@@ -1062,11 +793,9 @@ export default function App() {
                 Keep your development server, tests, and coding agents
                 ready in their own panes.
               </p>
-            </div>
-          </article>
-          <article>
-            <span className="workflow-number">03</span>
-            <div>
+            </article>
+            <article>
+              <span className="home-spine-num">03</span>
               <h3>Configuration</h3>
               <h2>Make it yours.</h2>
               <p>
@@ -1074,21 +803,20 @@ export default function App() {
                 and agent workflows through the same API that controls
                 your desktop.
               </p>
-            </div>
-          </article>
+            </article>
+          </div>
         </section>
 
         {/* Config */}
-        <section className="section" id="config">
-          <div className="config-head fade-in fade-in-delay-2">
-            <h2 className="config-title">
-              Do more with less friction.
-            </h2>
-            <p className="config-desc">
-              Set up your terminals, browser, editor, and commands once.
-              Bring the project back in one step, with each tool
-              in its place.
-            </p>
+        <section className="home-sec" id="config">
+          <div className="fade-in fade-in-delay-2">
+            <SectionHead kicker="Configuration" title="Do more with less friction.">
+              <p className="sec-lede">
+                Set up your terminals, browser, editor, and commands once.
+                Bring the project back in one step, with each tool
+                in its place.
+              </p>
+            </SectionHead>
           </div>
 
           <div className="config-grid fade-in fade-in-delay-2">
@@ -1137,13 +865,14 @@ export default function App() {
         </section>
 
         {/* Agent-managed workspaces */}
-        <section className="section" id="agents">
+        <section className="home-sec" id="agents">
           <div className="config-grid fade-in fade-in-delay-2">
             <div>
-              <h2 className="config-title">
+              <p className="sec-kicker">Agent API</p>
+              <h2 className="sec-title">
                 A foundation for builders.
               </h2>
-              <p className="config-desc">
+              <p className="sec-lede">
                 Build custom workflows with an open-source app and a documented
                 local API. Give scripts and agents the tools to find windows,
                 arrange layouts, act on the screen, and verify the result.
@@ -1177,21 +906,23 @@ export default function App() {
           </div>
         </section>
 
-        <section className="local-trust fade-in" id="local-first">
-          <div>
-            <div className="cua-kicker">Local core, open source</div>
-            <h2>The core runs on your Mac.</h2>
+        <section className="home-sec" id="local-first">
+          <div className="local-trust fade-in">
+            <div>
+              <p className="sec-kicker">Local core, open source</p>
+              <h2>The core runs on your Mac.</h2>
+            </div>
+            <p>
+              Lattices runs as a local service and exposes a typed API over
+              localhost. Workspace control and action traces stay on-device.
+              Optional vision-model features may send screen context to the
+              provider you configure. The source is open, and agent actions are
+              recorded and verifiable.
+            </p>
           </div>
-          <p>
-            Lattices runs as a local service and exposes a typed API over
-            localhost. Workspace control and action traces stay on-device.
-            Optional vision-model features may send screen context to the
-            provider you configure. The source is open, and agent actions are
-            recorded and verifiable.
-          </p>
         </section>
 
-        <section className="install-chooser fade-in" id="install">
+        <section className="home-sec install-chooser fade-in" id="install">
           <div className="install-chooser-head">
             <div className="cua-kicker">Three ways in. One workspace.</div>
             <h2>Start where you work.</h2>
