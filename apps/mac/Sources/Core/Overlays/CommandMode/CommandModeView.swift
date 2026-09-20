@@ -35,6 +35,7 @@ struct CommandModeView: View {
     @State private var mouseDragMonitor: Any?
     @State private var mouseUpMonitor: Any?
     @State private var panelOriginY: CGFloat = 0
+    @State private var panelOriginX: CGFloat = 0
     @State private var hoveredWindowId: UInt32?
     @FocusState private var isSearchFieldFocused: Bool
 
@@ -118,8 +119,10 @@ struct CommandModeView: View {
             } else {
                 inventoryGrid
             }
-            divider
-            chordFooter
+            if showsChordFooter {
+                divider
+                chordFooter
+            }
         }
         .frame(width: contentWidth)
         .background(Palette.bg)
@@ -225,6 +228,78 @@ struct CommandModeView: View {
     // MARK: - Desktop Inventory Content
 
     private func desktopInventoryContent(contentWidth: CGFloat) -> some View {
+        Group {
+            if isEmbedded {
+                windowsPageContent
+            } else {
+                floatingPanelContent(contentWidth: contentWidth)
+            }
+        }
+    }
+
+    /// The Windows page (`AppPage.desktopInventory`, embedded in the app shell).
+    /// Filters live in their own pane, an inspector pane stands in for the
+    /// chord footer, and OCR matches render inline under their row instead of
+    /// in a detached snippet list. See design/studio/.../shell/WindowsPanel.tsx
+    /// and the "windows" exhibit's change ledger for the rationale.
+    private var windowsPageContent: some View {
+        VStack(spacing: 0) {
+            if state.isOrganizeFlow {
+                organizeBanner
+                divider
+            }
+
+            HStack(spacing: 0) {
+                filterSidebar
+                Rectangle().fill(Palette.border).frame(width: 0.5)
+
+                ZStack {
+                    Group {
+                        if let snapshot = state.filteredSnapshot, !snapshot.displays.isEmpty {
+                            windowsMainList(snapshot: snapshot)
+                        } else {
+                            desktopEmptyState
+                        }
+                    }
+                    marqueeOverlay
+                }
+                .coordinateSpace(name: "inventoryPanel")
+                .background(inventoryPanelOriginTracker)
+                .onPreferenceChange(WindowRowFrameKey.self) { frames in
+                    state.rowFrames = frames
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                Rectangle().fill(Palette.border).frame(width: 0.5)
+                inspectorPane
+            }
+            .frame(maxHeight: .infinity)
+        }
+        .pageActions(windowsPageActions)
+    }
+
+    private var windowsPageActions: [PageAction] {
+        [
+            PageAction(id: "windows.copy", title: "Copy inventory", icon: "doc.on.doc") {
+                state.copyInventoryToClipboard()
+            },
+            PageAction(
+                id: "windows.tile",
+                title: "Tile selection",
+                icon: "rectangle.3.group",
+                isPrimary: true,
+                isEnabled: !state.selectedWindowIds.isEmpty
+            ) {
+                state.showAndDistributeSelected()
+            },
+        ]
+    }
+
+    /// The compact quick-access overlay (backtick toggle, `CommandModeWindow`).
+    /// This keeps the original pill-filter + chord-footer layout — the Windows
+    /// page redesign above targets the embedded `AppPage` surface, not this
+    /// floating panel.
+    private func floatingPanelContent(contentWidth: CGFloat) -> some View {
         VStack(spacing: 0) {
             if state.isOrganizeFlow {
                 organizeBanner
@@ -250,16 +325,7 @@ struct CommandModeView: View {
                 marqueeOverlay
             }
             .coordinateSpace(name: "inventoryPanel")
-            .background(
-                GeometryReader { geo in
-                    Color.clear.onAppear {
-                        panelOriginY = geo.frame(in: .global).origin.y
-                    }
-                    .onChange(of: geo.frame(in: .global).origin.y) { newY in
-                        panelOriginY = newY
-                    }
-                }
-            )
+            .background(inventoryPanelOriginTracker)
             .onPreferenceChange(WindowRowFrameKey.self) { frames in
                 state.rowFrames = frames
             }
@@ -267,50 +333,38 @@ struct CommandModeView: View {
         }
     }
 
-    @ViewBuilder
-    private func inventoryColumns(snapshot: DesktopInventorySnapshot, contentWidth: CGFloat) -> some View {
-        if shouldShowEmbeddedSidebar(snapshot: snapshot, contentWidth: contentWidth),
-           let display = snapshot.displays.first {
-            embeddedSingleDisplayLayout(display: display, contentWidth: contentWidth)
-        } else {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: 0) {
-                    let total = snapshot.displays.count
-                    ForEach(Array(snapshot.displays.enumerated()), id: \.element.id) { idx, display in
-                        if idx > 0 {
-                            Rectangle()
-                                .fill(Palette.border)
-                                .frame(width: 0.5)
-                        }
-                        displayColumn(display, index: idx, total: total)
-                            .frame(width: displayColumnWidth(for: contentWidth))
-                    }
-                }
+    /// Tracks the "inventoryPanel" coordinate space's global origin so mouse
+    /// events (reported in window coordinates) can be converted to panel-local
+    /// points for marquee selection. Shared by both layouts above.
+    private var inventoryPanelOriginTracker: some View {
+        GeometryReader { geo in
+            Color.clear.onAppear {
+                panelOriginY = geo.frame(in: .global).origin.y
+                panelOriginX = geo.frame(in: .global).origin.x
+            }
+            .onChange(of: geo.frame(in: .global).origin.y) { newY in
+                panelOriginY = newY
+            }
+            .onChange(of: geo.frame(in: .global).origin.x) { newX in
+                panelOriginX = newX
             }
         }
     }
 
-    private func shouldShowEmbeddedSidebar(snapshot: DesktopInventorySnapshot, contentWidth: CGFloat) -> Bool {
-        isEmbedded && snapshot.displays.count == 1 && contentWidth >= 900
-    }
-
-    private func embeddedSingleDisplayLayout(
-        display: DesktopInventorySnapshot.DisplayInfo,
-        contentWidth: CGFloat
-    ) -> some View {
-        let sidebarWidth = min(max(contentWidth * 0.20, 200), 260)
-        let mainWidth = max(contentWidth - sidebarWidth - 0.5, 620)
-
-        return HStack(alignment: .top, spacing: 0) {
-            displayColumn(display, index: 0, total: 1)
-                .frame(width: mainWidth)
-
-            Rectangle()
-                .fill(Palette.border)
-                .frame(width: 0.5)
-
-            embeddedInventorySidebar(display: display)
-                .frame(width: sidebarWidth)
+    private func inventoryColumns(snapshot: DesktopInventorySnapshot, contentWidth: CGFloat) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(alignment: .top, spacing: 0) {
+                let total = snapshot.displays.count
+                ForEach(Array(snapshot.displays.enumerated()), id: \.element.id) { idx, display in
+                    if idx > 0 {
+                        Rectangle()
+                            .fill(Palette.border)
+                            .frame(width: 0.5)
+                    }
+                    displayColumn(display, index: idx, total: total)
+                        .frame(width: displayColumnWidth(for: contentWidth))
+                }
+            }
         }
     }
 
@@ -554,7 +608,7 @@ struct CommandModeView: View {
                     .font(Typo.mono(9))
                     .foregroundColor(Palette.textDim)
             }
-            Text("\(display.visibleFrame.w)×\(display.visibleFrame.h)")
+            Text(verbatim: "\(display.visibleFrame.w)×\(display.visibleFrame.h)")
                 .font(Typo.mono(9))
                 .foregroundColor(Palette.textDim)
             Spacer()
@@ -566,208 +620,532 @@ struct CommandModeView: View {
         .padding(.vertical, 8)
     }
 
-    private func embeddedInventorySidebar(display: DesktopInventorySnapshot.DisplayInfo) -> some View {
+    // MARK: - Windows Page — Filter Sidebar
+
+    private static let filterSidebarWidth: CGFloat = 168
+    private static let inspectorWidth: CGFloat = 248
+
+    /// Displays, spaces, and apps as a scannable list with counts, instead of
+    /// a pill strip fighting the toolbar for space.
+    private var filterSidebar: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                sidebarCard(title: "Overview") {
-                    sidebarMetric(label: "Display", value: display.name)
-                    sidebarMetric(
-                        label: "Visible",
-                        value: "\(display.visibleFrame.w)×\(display.visibleFrame.h)"
-                    )
-                    sidebarMetric(
-                        label: "Current Space",
-                        value: "Space \(display.currentSpaceIndex)"
-                    )
-                    sidebarMetric(
-                        label: "Windows",
-                        value: "\(windowCount(in: display)) total"
-                    )
-                    sidebarMetric(
-                        label: "Apps",
-                        value: "\(uniqueAppCount(in: display)) active"
-                    )
-                    sidebarMetric(
-                        label: "Lattices",
-                        value: "\(latticesWindowCount(in: display)) tagged"
-                    )
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("FILTER")
+                        .font(Typo.mono(8))
+                        .foregroundColor(Palette.textMuted)
+                        .padding(.horizontal, 8)
+                        .padding(.bottom, 2)
+
+                    filterRow(.all, count: state.desktopSnapshot?.allWindows.count ?? 0)
+                    ForEach(eligibleFilterPresets, id: \.rawValue) { preset in
+                        filterRow(preset, count: presetCount(preset))
+                    }
                 }
 
-                sidebarCard(title: "Spaces") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(display.spaces) { space in
-                            HStack(alignment: .top, spacing: 8) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    HStack(spacing: 5) {
-                                        Text("Space \(space.index)")
-                                            .font(Typo.monoBold(10))
-                                            .foregroundColor(space.isCurrent ? Palette.running : Palette.text)
-                                        if space.isCurrent {
-                                            Text("active")
-                                                .font(Typo.mono(8))
-                                                .foregroundColor(Palette.running.opacity(0.75))
-                                        }
-                                    }
-                                    Text("\(spaceWindowCount(space)) windows across \(space.apps.count) apps")
-                                        .font(Typo.mono(9))
-                                        .foregroundColor(Palette.textDim)
-                                }
-                                Spacer()
-                                Text("\(spaceLatticesCount(space))")
+                if let snapshot = state.desktopSnapshot, snapshot.displays.count > 1 {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("DISPLAYS")
+                            .font(Typo.mono(8))
+                            .foregroundColor(Palette.textMuted)
+                            .padding(.horizontal, 8)
+                            .padding(.bottom, 2)
+
+                        ForEach(snapshot.displays) { display in
+                            let count = display.spaces.reduce(0) { $0 + $1.apps.reduce(0) { $0 + $1.windows.count } }
+                            HStack(spacing: 6) {
+                                Circle()
+                                    .fill(display.isMain ? Palette.running : Palette.textMuted)
+                                    .frame(width: 5, height: 5)
+                                Text(display.name)
+                                    .font(Typo.mono(10))
+                                    .foregroundColor(Palette.textDim)
+                                    .lineLimit(1)
+                                Spacer(minLength: 4)
+                                Text("\(count)")
                                     .font(Typo.mono(9))
                                     .foregroundColor(Palette.textMuted)
                             }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
                         }
                     }
                 }
 
-                sidebarCard(title: state.selectedWindowIds.isEmpty ? "Top Apps" : "Selection") {
-                    if state.selectedWindowIds.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Select a window to inspect it here.")
-                                .font(Typo.mono(9))
-                                .foregroundColor(Palette.textDim)
+                if let snapshot = state.desktopSnapshot {
+                    let allSpaces = snapshot.displays.flatMap(\.spaces)
+                    if allSpaces.count > 1 {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("SPACES")
+                                .font(Typo.mono(8))
+                                .foregroundColor(Palette.textMuted)
+                                .padding(.horizontal, 8)
+                                .padding(.bottom, 2)
 
-                            ForEach(topApps(in: display), id: \.name) { app in
-                                HStack(spacing: 8) {
-                                    Text(app.name)
-                                        .font(Typo.monoBold(10))
-                                        .foregroundColor(Palette.text)
-                                        .lineLimit(1)
-                                    Spacer()
-                                    Text("\(app.count)")
+                            ForEach(allSpaces) { space in
+                                let count = space.apps.reduce(0) { $0 + $1.windows.count }
+                                HStack(spacing: 6) {
+                                    Text("Space \(space.index)")
+                                        .font(Typo.mono(10))
+                                        .foregroundColor(space.isCurrent ? Palette.running : Palette.textDim)
+                                    if space.isCurrent {
+                                        Text("active")
+                                            .font(Typo.mono(7))
+                                            .foregroundColor(Palette.running.opacity(0.8))
+                                            .padding(.horizontal, 3)
+                                            .padding(.vertical, 1)
+                                            .background(
+                                                RoundedRectangle(cornerRadius: 2)
+                                                    .fill(Palette.running.opacity(0.12))
+                                            )
+                                    }
+                                    Spacer(minLength: 4)
+                                    Text("\(count)")
                                         .font(Typo.mono(9))
-                                        .foregroundColor(Palette.textMuted)
+                                        .foregroundColor(space.isCurrent ? Palette.text : Palette.textMuted)
                                 }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
                             }
                         }
-                    } else {
-                        selectionSidebarContent
-                    }
-                }
-
-                sidebarCard(title: "Keys") {
-                    VStack(alignment: .leading, spacing: 7) {
-                        sidebarShortcut("Arrows", "move through windows")
-                        sidebarShortcut("/", "search by title or OCR")
-                        sidebarShortcut("M", "jump to Screen Map")
-                        sidebarShortcut("T", "tile selected window")
-                        sidebarShortcut("Esc", "back or clear selection")
                     }
                 }
             }
-            .padding(12)
+            .padding(10)
+        }
+        .frame(width: Self.filterSidebarWidth)
+        .background(Palette.surface.opacity(0.35))
+    }
+
+    /// Presets with at least one matching window earn a row.
+    private var eligibleFilterPresets: [FilterPreset] {
+        FilterPreset.allCases.filter { $0 != .all && presetCount($0) > 0 }
+    }
+
+    /// Counts are always against the full desktop, not the active filter —
+    /// you should see the shape of the desktop before narrowing it.
+    private func presetCount(_ preset: FilterPreset) -> Int {
+        guard let snapshot = state.desktopSnapshot else { return 0 }
+        switch preset {
+        case .all:
+            return snapshot.allWindows.count
+        case .lattices:
+            return snapshot.allWindows.filter(\.isLattices).count
+        case .currentSpace:
+            return snapshot.displays
+                .flatMap { $0.spaces.filter(\.isCurrent) }
+                .flatMap { $0.apps.flatMap(\.windows) }
+                .count
+        case .terminals, .editors, .browsers:
+            guard let types = preset.appTypes else { return 0 }
+            return snapshot.allWindows.filter { win in
+                guard let name = win.appName else { return false }
+                return types.contains(AppTypeClassifier.classify(name))
+            }.count
         }
     }
 
-    @ViewBuilder
-    private var selectionSidebarContent: some View {
-        let selected = selectedWindows
+    private func filterRow(_ preset: FilterPreset, count: Int) -> some View {
+        let isActive = preset == .all ? state.activePreset == nil : state.activePreset == preset
+        return Button {
+            toggleFilter(preset)
+        } label: {
+            HStack(spacing: 6) {
+                Text(preset.rawValue)
+                    .font(Typo.mono(10))
+                    .foregroundColor(isActive ? Palette.text : Palette.textDim)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                Text("\(count)")
+                    .font(Typo.mono(9))
+                    .foregroundColor(isActive ? Palette.text.opacity(0.8) : Palette.textMuted)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(isActive ? Palette.running.opacity(0.14) : Color.clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
 
-        if selected.count > 1 {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("\(selected.count) windows selected")
-                    .font(Typo.monoBold(10))
+    private func toggleFilter(_ preset: FilterPreset) {
+        if preset == .all {
+            state.activePreset = nil
+            return
+        }
+        if state.activePreset == preset {
+            state.activePreset = nil
+        } else {
+            state.activePreset = preset
+            state.clearSelection()
+        }
+    }
+
+    // MARK: - Windows Page — Main List
+
+    private func windowsMainList(snapshot: DesktopInventorySnapshot) -> some View {
+        VStack(spacing: 0) {
+            if state.isSearching {
+                searchBar
+                divider
+            }
+
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        if state.isFlatSorted {
+                            columnHeaders
+                            ForEach(state.flatWindowList) { win in
+                                inventoryRow(window: win, appLabel: win.appName)
+                                ocrSnippetRow(for: win.id)
+                                if state.isSelected(win.id), let path = win.inventoryPath {
+                                    inventoryPathLabel(path)
+                                }
+                            }
+                        } else {
+                            columnHeaders
+                            let populatedDisplays = snapshot.displays.filter { display in
+                                display.spaces.contains { !$0.apps.isEmpty }
+                            }
+                            ForEach(populatedDisplays) { display in
+                                if populatedDisplays.count > 1 {
+                                    displayGroupHeader(display)
+                                }
+                                ForEach(display.spaces) { space in
+                                    spaceHeader(space, display: display)
+                                    ForEach(space.apps) { appGroup in
+                                        appGroupRows(appGroup, dimmed: !space.isCurrent)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+                .onChange(of: state.selectedWindowIds) { newIds in
+                    guard let id = newIds.first else { return }
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        proxy.scrollTo(id, anchor: .center)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Groups by display when more than one is present — the single-display
+    /// case doesn't need a header repeating what's already implied.
+    private func displayGroupHeader(_ display: DesktopInventorySnapshot.DisplayInfo) -> some View {
+        HStack(spacing: 6) {
+            Text(display.name)
+                .font(Typo.monoBold(11))
+                .foregroundColor(Palette.text)
+            if display.isMain {
+                Text("main")
+                    .font(Typo.mono(8))
+                    .foregroundColor(Palette.running.opacity(0.7))
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Palette.running.opacity(0.10))
+                    )
+            }
+            Text(verbatim: "\(display.visibleFrame.w)×\(display.visibleFrame.h)")
+                .font(Typo.mono(9))
+                .foregroundColor(Palette.textDim)
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 10)
+        .padding(.bottom, 2)
+    }
+
+    // MARK: - Windows Page — Inspector
+
+    /// Stands in for the chord footer: selecting a window shows what Lattices
+    /// knows about it beside the list, with the placement grid right there.
+    /// The keyboard chords keep working — this just stops being the only way in.
+    @ViewBuilder
+    private var inspectorPane: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                if state.selectedWindowIds.count > 1 {
+                    inspectorMultiSelection
+                } else if let window = inspectedWindow {
+                    inspectorSingleWindow(window)
+                } else {
+                    inspectorEmptyState
+                }
+            }
+            .padding(14)
+        }
+        .frame(width: Self.inspectorWidth)
+        .background(Palette.surface.opacity(0.35))
+    }
+
+    private var inspectedWindow: DesktopInventorySnapshot.InventoryWindowInfo? {
+        guard let id = state.selectedWindowId else { return nil }
+        return state.flatWindowList.first { $0.id == id }
+    }
+
+    private var inspectorEmptyState: some View {
+        VStack(spacing: 14) {
+            Spacer().frame(height: 16)
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(Palette.border, style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                    .frame(width: 40, height: 40)
+                Image(systemName: "macwindow.on.rectangle")
+                    .font(.system(size: 16))
+                    .foregroundColor(Palette.textMuted)
+            }
+            VStack(spacing: 4) {
+                Text("No Selection")
+                    .font(Typo.monoBold(11))
+                    .foregroundColor(Palette.textDim)
+                Text("Select a window to inspect its frame, space, and placement.")
+                    .font(Typo.mono(9))
+                    .foregroundColor(Palette.textMuted)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 8)
+
+            Divider()
+                .overlay(Palette.border)
+                .padding(.vertical, 4)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("KEYBOARD CONTROLS")
+                    .font(Typo.mono(8))
+                    .foregroundColor(Palette.textMuted)
+                inspectorShortcutTip(key: "Double-click", label: "Focus window")
+                inspectorShortcutTip(key: "Shift-click", label: "Range select")
+                inspectorShortcutTip(key: "⌘-click", label: "Multi-select")
+                inspectorShortcutTip(key: "⌘K", label: "Search")
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func inspectorShortcutTip(key: String, label: String) -> some View {
+        HStack(spacing: 6) {
+            Text(key)
+                .font(Typo.mono(8))
+                .foregroundColor(Palette.textDim)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
+                .background(
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Palette.surface)
+                        .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(Palette.border, lineWidth: 0.5))
+                )
+            Text(label)
+                .font(Typo.mono(9))
+                .foregroundColor(Palette.textMuted)
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func inspectorSingleWindow(_ window: DesktopInventorySnapshot.InventoryWindowInfo) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(window.isLattices ? Palette.running.opacity(0.25) : Palette.surfaceHov)
+                    .frame(width: 22, height: 22)
+                    .overlay(
+                        Text(String((window.appName ?? "?").prefix(1)).uppercased())
+                            .font(Typo.monoBold(10))
+                            .foregroundColor(window.isLattices ? Palette.running : Palette.textDim)
+                    )
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(window.appName ?? "Unknown")
+                        .font(Typo.monoBold(11))
+                        .foregroundColor(window.isLattices ? Palette.running : Palette.text)
+                    Text(windowTitle(window))
+                        .font(Typo.mono(9))
+                        .foregroundColor(Palette.textDim)
+                        .lineLimit(2)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                if let display = displayName(for: window) {
+                    inspectorMetric(label: "Display", value: display)
+                }
+                if let space = window.spaceIndex {
+                    inspectorMetric(label: "Space", value: "\(space)")
+                }
+                inspectorMetric(
+                    label: "Frame",
+                    value: "\(Int(window.frame.x)),\(Int(window.frame.y))  \(sizeText(window.frame))"
+                )
+                inspectorMetric(label: "Tile", value: window.tilePosition?.label ?? "\u{2014}")
+                inspectorMetric(label: "Session", value: window.latticesSession ?? "\u{2014}")
+                inspectorMetric(label: "PID", value: "\(window.pid)")
+            }
+
+            inspectorPlacementGrid(current: window.tilePosition) { position in
+                applyPlacement(position, to: window)
+            }
+
+            inspectorActions(for: window)
+        }
+    }
+
+    private var inspectorMultiSelection: some View {
+        let windows = state.flatWindowList.filter { state.selectedWindowIds.contains($0.id) }
+        return VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(windows.count) windows selected")
+                    .font(Typo.monoBold(11))
                     .foregroundColor(Palette.text)
                 if !state.selectedWindowSummaryText.isEmpty {
                     Text(state.selectedWindowSummaryText)
                         .font(Typo.mono(9))
                         .foregroundColor(Palette.textDim)
                 }
-                ForEach(Array(selected.prefix(5)), id: \.id) { window in
-                    HStack(spacing: 8) {
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(Array(windows.prefix(6)), id: \.id) { window in
+                    HStack(spacing: 6) {
                         Text(window.appName ?? "Unknown")
                             .font(Typo.monoBold(9))
                             .foregroundColor(window.isLattices ? Palette.running : Palette.text)
                             .lineLimit(1)
-                        Spacer()
+                        Spacer(minLength: 4)
                         Text(sizeText(window.frame))
                             .font(Typo.mono(9))
                             .foregroundColor(Palette.textMuted)
                     }
                 }
-            }
-        } else if let window = selected.first {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(window.appName ?? "Unknown")
-                    .font(Typo.monoBold(10))
-                    .foregroundColor(window.isLattices ? Palette.running : Palette.text)
-                Text(window.title.isEmpty ? "(untitled)" : window.title)
-                    .font(Typo.mono(9))
-                    .foregroundColor(Palette.textDim)
-                    .fixedSize(horizontal: false, vertical: true)
-                sidebarMetric(label: "Size", value: sizeText(window.frame))
-                if let tile = window.tilePosition?.label {
-                    sidebarMetric(label: "Tile", value: tile)
-                }
-                if let session = window.latticesSession {
-                    sidebarMetric(label: "Session", value: session)
-                }
-                if let path = window.inventoryPath {
-                    Text(path.description)
-                        .font(Typo.mono(8))
+                if windows.count > 6 {
+                    Text("+\(windows.count - 6) more")
+                        .font(Typo.mono(9))
                         .foregroundColor(Palette.textMuted)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
+            }
+
+            inspectorPlacementGrid(current: nil) { position in
+                state.showAndDistributeSelected(in: .tile(position))
+            }
+
+            HStack(spacing: 6) {
+                inspectorActionButton(icon: "eye", label: "Focus All") { state.focusAllSelected() }
+                inspectorActionButton(icon: "sparkle", label: "Highlight") { state.highlightAllSelected() }
             }
         }
     }
 
-    private func sidebarCard<Content: View>(
-        title: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title.uppercased())
-                .font(Typo.mono(9))
-                .foregroundColor(Palette.textMuted)
-            content()
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Palette.surface.opacity(0.55))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(Palette.border, lineWidth: 0.5)
-                )
-        )
-    }
-
-    private func sidebarMetric(label: String, value: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
+    private func inspectorMetric(label: String, value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(label.uppercased())
                 .font(Typo.mono(8))
                 .foregroundColor(Palette.textMuted)
-                .frame(width: 74, alignment: .leading)
+                .frame(width: 52, alignment: .leading)
             Text(value)
                 .font(Typo.mono(9))
                 .foregroundColor(Palette.text)
-                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(1)
+                .truncationMode(.middle)
             Spacer(minLength: 0)
         }
     }
 
-    private func sidebarShortcut(_ key: String, _ label: String) -> some View {
-        HStack(spacing: 8) {
-            Text(key)
-                .font(Typo.monoBold(9))
-                .foregroundColor(Palette.text)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(Palette.bg.opacity(0.8))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .strokeBorder(Palette.border, lineWidth: 0.5)
-                        )
-                )
-            Text(label)
+    private func displayName(for window: DesktopInventorySnapshot.InventoryWindowInfo) -> String? {
+        state.filteredSnapshot?.displays.first { display in
+            display.spaces.contains { $0.apps.contains { $0.windows.contains { $0.id == window.id } } }
+        }?.name
+    }
+
+    /// The 3×3 "Move to" grid — the same primary positions the desktop
+    /// inventory's tiling mode and context menu already offer.
+    private static let placementGrid: [[TilePosition]] = [
+        [.topLeft, .top, .topRight],
+        [.left, .center, .right],
+        [.bottomLeft, .bottom, .bottomRight],
+    ]
+
+    private func inspectorPlacementGrid(
+        current: TilePosition?,
+        apply: @escaping (TilePosition) -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("MOVE TO")
                 .font(Typo.mono(9))
-                .foregroundColor(Palette.textDim)
+                .foregroundColor(Palette.textMuted)
+            VStack(spacing: 3) {
+                ForEach(Array(Self.placementGrid.enumerated()), id: \.offset) { _, row in
+                    HStack(spacing: 3) {
+                        ForEach(row) { position in
+                            placementCell(position, isActive: current == position) {
+                                apply(position)
+                            }
+                        }
+                    }
+                }
+            }
         }
+    }
+
+    private func placementCell(_ position: TilePosition, isActive: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            RoundedRectangle(cornerRadius: 3)
+                .fill(isActive ? Palette.running.opacity(0.22) : Palette.surface)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 3)
+                        .strokeBorder(isActive ? Palette.running.opacity(0.55) : Palette.border, lineWidth: 0.5)
+                )
+                .frame(width: 26, height: 20)
+        }
+        .buttonStyle(.plain)
+        .help(position.label)
+    }
+
+    /// Single-window placement goes straight through `WindowTiler`, matching
+    /// the row context menu's "Tile Window" submenu.
+    private func applyPlacement(_ position: TilePosition, to window: DesktopInventorySnapshot.InventoryWindowInfo) {
+        WindowTiler.tileWindowById(wid: window.id, pid: window.pid, to: position)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            state.refreshDesktopInventory()
+        }
+    }
+
+    private func inspectorActions(for window: DesktopInventorySnapshot.InventoryWindowInfo) -> some View {
+        HStack(spacing: 6) {
+            inspectorActionButton(icon: "eye", label: "Focus") {
+                WindowTiler.navigateToWindowById(wid: window.id, pid: window.pid)
+            }
+            inspectorActionButton(icon: "sparkle", label: "Highlight") {
+                WindowTiler.highlightWindowById(wid: window.id)
+            }
+        }
+    }
+
+    private func inspectorActionButton(icon: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: icon).font(.system(size: 9))
+                Text(label).font(Typo.mono(9))
+            }
+            .foregroundColor(Palette.textDim)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(Palette.surface)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 5)
+                            .strokeBorder(Palette.border, lineWidth: 0.5)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     private func spaceHeader(_ space: DesktopInventorySnapshot.SpaceGroup, display: DesktopInventorySnapshot.DisplayInfo) -> some View {
@@ -778,23 +1156,23 @@ struct CommandModeView: View {
             if space.isCurrent {
                 Text("active")
                     .font(Typo.mono(8))
-                    .foregroundColor(Palette.running.opacity(0.7))
+                    .foregroundColor(Palette.running.opacity(0.8))
                     .padding(.horizontal, 4)
                     .padding(.vertical, 1)
                     .background(
                         RoundedRectangle(cornerRadius: 2)
-                            .fill(Palette.running.opacity(0.10))
+                            .fill(Palette.running.opacity(0.12))
                     )
             }
-            Spacer()
             let windowCount = space.apps.reduce(0) { $0 + $1.windows.count }
-            Text("\(windowCount)")
+            Text("· \(windowCount) window\(windowCount == 1 ? "" : "s")")
                 .font(Typo.mono(9))
                 .foregroundColor(Palette.textMuted)
+            Spacer()
         }
         .padding(.horizontal, 14)
-        .padding(.top, 6)
-        .padding(.bottom, 2)
+        .padding(.top, 8)
+        .padding(.bottom, 3)
     }
 
     private var columnHeaders: some View {
@@ -886,7 +1264,7 @@ struct CommandModeView: View {
                     .padding(.top, 4)
                     .padding(.bottom, 1)
                 ForEach(appGroup.windows) { win in
-                    inventoryRow(window: win, indented: true)
+                    inventoryRow(window: win, appLabel: appGroup.appName, indented: true)
                     ocrSnippetRow(for: win.id)
                     if state.isSelected(win.id), let path = win.inventoryPath {
                         inventoryPathLabel(path)
@@ -923,6 +1301,27 @@ struct CommandModeView: View {
         }
     }
 
+    private func cleanedWindowTitle(_ title: String, appName: String?, indented: Bool = false) -> String {
+        guard let app = appName, !app.isEmpty else { return title.isEmpty ? "(untitled)" : title }
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedTitle.isEmpty { return "(untitled)" }
+        // Case 1: Exact match "Activity Monitor" == "Activity Monitor"
+        if trimmedTitle.caseInsensitiveCompare(app) == .orderedSame {
+            return indented ? trimmedTitle : ""
+        }
+        // Case 2: Prefixed with app name e.g. "Tailscale Launch Failure" with app "Tailscale"
+        if trimmedTitle.lowercased().hasPrefix(app.lowercased()) {
+            var remainder = String(trimmedTitle.dropFirst(app.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            if remainder.hasPrefix("—") || remainder.hasPrefix("-") || remainder.hasPrefix(":") || remainder.hasPrefix("·") {
+                remainder = String(remainder.dropFirst()).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            if !remainder.isEmpty {
+                return remainder
+            }
+        }
+        return trimmedTitle
+    }
+
     /// Unified inventory row — handles both single-app rows (with appLabel) and
     /// sub-rows under a multi-window app header (with indented).
     private func inventoryRow(
@@ -945,24 +1344,28 @@ struct CommandModeView: View {
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundColor(Palette.running)
                     } else {
-                        Text(isLattices ? "●" : "•")
-                            .font(.system(size: 7))
-                            .foregroundColor(isLattices ? Palette.running : Palette.textDim)
+                        Circle()
+                            .fill(isLattices ? Palette.running : Palette.textDim.opacity(0.6))
+                            .frame(width: 4, height: 4)
+                            .padding(.horizontal, 2)
                     }
                 }
-                if let app = appLabel {
+                if let app = appLabel, !indented {
                     Text(app)
                         .font(Typo.monoBold(10))
                         .foregroundColor(isLattices ? Palette.running : Palette.text)
                 }
-                Text(windowTitle(window))
-                    .font(Typo.mono(10))
-                    .foregroundColor(
-                        isLattices
-                            ? Palette.running.opacity(appLabel != nil && !isSelected ? 0.7 : 1.0)
-                            : (isSelected ? Palette.text : Palette.textDim)
-                    )
-                    .lineLimit(1)
+                let cleanTitle = cleanedWindowTitle(windowTitle(window), appName: appLabel ?? window.appName, indented: indented)
+                if !cleanTitle.isEmpty {
+                    Text(cleanTitle)
+                        .font(Typo.mono(10))
+                        .foregroundColor(
+                            isLattices
+                                ? Palette.running.opacity(appLabel != nil && !isSelected && !indented ? 0.7 : 1.0)
+                                : (isSelected ? Palette.text : Palette.textDim)
+                        )
+                        .lineLimit(1)
+                }
                 if isLattices, let session = window.latticesSession, appLabel == nil {
                     Text("[\(session)]")
                         .font(Typo.mono(9))
@@ -1203,53 +1606,6 @@ struct CommandModeView: View {
         state.flatWindowList.filter { state.selectedWindowIds.contains($0.id) }
     }
 
-    private func windowCount(in display: DesktopInventorySnapshot.DisplayInfo) -> Int {
-        display.spaces.reduce(0) { total, space in
-            total + spaceWindowCount(space)
-        }
-    }
-
-    private func uniqueAppCount(in display: DesktopInventorySnapshot.DisplayInfo) -> Int {
-        Set(display.spaces.flatMap { $0.apps.map(\.appName) }).count
-    }
-
-    private func latticesWindowCount(in display: DesktopInventorySnapshot.DisplayInfo) -> Int {
-        display.spaces.reduce(0) { total, space in
-            total + spaceLatticesCount(space)
-        }
-    }
-
-    private func spaceWindowCount(_ space: DesktopInventorySnapshot.SpaceGroup) -> Int {
-        space.apps.reduce(0) { total, app in
-            total + app.windows.count
-        }
-    }
-
-    private func spaceLatticesCount(_ space: DesktopInventorySnapshot.SpaceGroup) -> Int {
-        space.apps.reduce(0) { total, app in
-            total + app.windows.filter(\.isLattices).count
-        }
-    }
-
-    private func topApps(
-        in display: DesktopInventorySnapshot.DisplayInfo
-    ) -> [(name: String, count: Int)] {
-        var counts: [String: Int] = [:]
-        for space in display.spaces {
-            for app in space.apps {
-                counts[app.appName, default: 0] += app.windows.count
-            }
-        }
-        return counts
-            .map { (name: $0.key, count: $0.value) }
-            .sorted { lhs, rhs in
-                if lhs.count == rhs.count { return lhs.name < rhs.name }
-                return lhs.count > rhs.count
-            }
-            .prefix(5)
-            .map { $0 }
-    }
-
     /// Group items by their group label
     private var groupedItems: [(String, [CommandModeInventory.Item])] {
         var result: [(String, [CommandModeInventory.Item])] = []
@@ -1328,6 +1684,16 @@ struct CommandModeView: View {
 
     // MARK: - Chord Footer
 
+    /// The Windows page replaces the browsing-mode chord legend with the
+    /// inspector pane; the floating quick-access panel, the session chord
+    /// view, and the transient tiling/grid-preview modes still need it. The
+    /// restore banner is functional (not a hint legend), so it always shows.
+    private var showsChordFooter: Bool {
+        if state.savedPositions != nil { return true }
+        if isEmbedded && isDesktopInventory && state.desktopMode == .browsing { return false }
+        return true
+    }
+
     private var chordFooter: some View {
         VStack(spacing: 4) {
             // Restore banner — shown when positions are saved
@@ -1389,7 +1755,11 @@ struct CommandModeView: View {
                 divider
             }
 
-            if isDesktopInventory && state.desktopMode == .gridPreview {
+            if isEmbedded && isDesktopInventory && state.desktopMode == .browsing {
+                // Windows page: the inspector pane covers browsing-mode
+                // discoverability now — nothing else to say here.
+                EmptyView()
+            } else if isDesktopInventory && state.desktopMode == .gridPreview {
                 // Grid preview hints
                 HStack(spacing: 12) {
                     chordHint(key: "←→↑↓", label: "region")
@@ -2031,11 +2401,13 @@ struct CommandModeView: View {
         // Convert to SwiftUI top-left: screen Y is bottom-up, SwiftUI Y is top-down
         let screenHeight = NSScreen.main?.frame.height ?? 0
         let flippedY = screenHeight - screenPoint.y
-        // Subtract the panel's global origin to get panel-local coordinates
+        // Subtract the panel's global origin to get panel-local coordinates.
+        // The Windows page layout puts a filter sidebar to the left of the
+        // list, so the list no longer starts at the window's left edge —
+        // panelOriginX corrects for that the same way panelOriginY does.
         let panelY = flippedY - panelOriginY
-        // X is relative to window — we need global X minus panel X
-        // For simplicity, use the window point X directly since the panel fills the window width
-        return CGPoint(x: windowPoint.x, y: panelY)
+        let panelX = windowPoint.x - panelOriginX
+        return CGPoint(x: panelX, y: panelY)
     }
 
     /// Convert NSEvent to flipped window-local coordinates (Y=0 at top of window content)

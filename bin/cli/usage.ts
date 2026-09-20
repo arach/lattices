@@ -123,6 +123,11 @@ Usage:
   lattices app build          Rebuild the menu bar app
   lattices app restart        Rebuild and relaunch the menu bar app
   lattices app quit           Stop the menu bar app
+  lattices action             Action product status (install, agent, checkout)
+  lattices action install     Download the latest Action.app release to /Applications
+  lattices action launch      Open Action.app (--launch with install)
+  lattices action call <m>    Raw Action agent call (ws://127.0.0.1:4319)
+  lattices action <cmd>       Forward to the Action CLI (monorepo checkout)
   lattices help               Show this help
 
 Config (.lattices.json):

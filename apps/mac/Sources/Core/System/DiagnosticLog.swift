@@ -192,6 +192,15 @@ final class AppFeedback {
         }
     }
 
+    /// Confirmation feedback without the prepared tap sound. Spatial Lens is
+    /// continuous and pointer-led, so an audible commit tick is unnecessarily
+    /// noisy while a subtle physical acknowledgement remains useful.
+    func commitHaptic() {
+        runOnMain {
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+        }
+    }
+
     private func playTap() {
         DispatchQueue.main.async {
             self.tapSound?.stop()
