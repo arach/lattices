@@ -1,0 +1,722 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #111113;
+    --surface: #1c1c1e;
+    --surface-2: #242426;
+    --border: rgba(255, 255, 255, 0.075);
+    --border-lit: rgba(255, 255, 255, 0.13);
+    --text: rgba(255, 255, 255, 0.92);
+    --text-dim: rgba(255, 255, 255, 0.62);
+    --text-muted: rgba(255, 255, 255, 0.4);
+    --green: #33c773;
+    --green-soft: rgba(51, 199, 115, 0.13);
+    --amber: #f5a623;
+    --hero-ground: #0a0f0e;
+    --hero-ink: #ece5d6;
+    --hero-ink-dim: rgba(236, 229, 214, 0.66);
+    --hero-rule: rgba(236, 229, 214, 0.18);
+    --sans: "Space Grotesk", -apple-system, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    background-color: var(--bg);
+    background-image:
+      linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+    background-size: 32px 32px;
+    color: var(--text);
+    font-family: var(--sans);
+  }
+
+  a { color: inherit; text-decoration: none; }
+  .board { width: min(1240px, calc(100vw - 48px)); margin: 0 auto; padding: 44px 0 72px; }
+
+  .board-kicker,
+  .study-kicker,
+  .eyebrow {
+    margin: 0;
+    color: var(--green);
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 650;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+
+  .board-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 0.45fr);
+    gap: 48px;
+    align-items: end;
+    padding-bottom: 34px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  h1 {
+    max-width: 760px;
+    margin: 12px 0 0;
+    font-size: clamp(38px, 5vw, 68px);
+    font-weight: 650;
+    letter-spacing: -0.055em;
+    line-height: 0.95;
+    text-wrap: balance;
+  }
+
+  .board-lede {
+    max-width: 720px;
+    margin: 20px 0 0;
+    color: var(--text-dim);
+    font-size: 16px;
+    line-height: 1.65;
+  }
+
+  .head-aside {
+    display: grid;
+    gap: 12px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  .head-aside strong { color: var(--text); font-weight: 550; }
+  .head-aside span { display: flex; justify-content: space-between; gap: 18px; border-bottom: 1px solid var(--border); padding-bottom: 9px; }
+
+  .study-index {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1px;
+    margin-top: 24px;
+    border: 1px solid var(--border);
+    background: var(--border);
+  }
+  .study-index a {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    min-height: 46px;
+    padding: 0 14px;
+    background: rgba(28,28,30,0.84);
+    color: var(--text-dim);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .study-index a:hover { color: var(--text); background: rgba(36,36,38,0.9); }
+  .study-index span { color: var(--green); }
+
+  .map {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 1px;
+    margin: 24px 0 48px;
+    border: 1px solid var(--border);
+    background: var(--border);
+  }
+
+  .map-step {
+    min-height: 88px;
+    padding: 14px;
+    background: rgba(28,28,30,0.84);
+    color: var(--text-muted);
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .map-step strong { display: block; margin-top: 8px; color: var(--text); font-size: 11px; letter-spacing: 0; text-transform: none; }
+  .map-step.is-hot { background: var(--green-soft); color: var(--green); }
+  .map-step.is-context { color: var(--amber); background: rgba(245,166,36,0.07); }
+
+  .study {
+    margin-top: 54px;
+    padding-top: 30px;
+    border-top: 1px solid var(--border-lit);
+  }
+
+  .study-head {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr) minmax(260px, 0.42fr);
+    gap: 28px;
+    align-items: start;
+  }
+
+  .study-no {
+    color: var(--text-muted);
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+
+  .study h2 {
+    margin: 10px 0 0;
+    font-size: clamp(25px, 3.2vw, 42px);
+    font-weight: 640;
+    letter-spacing: -0.045em;
+    line-height: 1.02;
+  }
+
+  .study-thesis {
+    margin: 16px 0 0;
+    max-width: 720px;
+    color: var(--text-dim);
+    font-size: 14px;
+    line-height: 1.65;
+  }
+
+  .study-note {
+    border-left: 1px solid var(--green);
+    padding-left: 14px;
+    color: var(--text-muted);
+    font-family: var(--mono);
+    font-size: 10px;
+    line-height: 1.7;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .frame {
+    position: relative;
+    overflow: hidden;
+    margin-top: 26px;
+    border: 1px solid var(--border-lit);
+    border-radius: 18px;
+    background: var(--hero-ground);
+    box-shadow: 0 24px 80px rgba(0,0,0,0.34);
+  }
+
+  .frame::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(rgba(236,229,214,0.032) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(236,229,214,0.032) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+
+  .browser-bar {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    height: 34px;
+    padding: 0 14px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(28,28,30,0.84);
+    color: var(--text-muted);
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .browser-bar i { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,0.16); margin-right: 6px; }
+  .browser-bar span { margin-left: auto; }
+
+  .page {
+    position: relative;
+    z-index: 1;
+    width: min(980px, calc(100% - 32px));
+    margin: 0 auto;
+    padding: 24px 0 40px;
+    color: var(--hero-ink);
+  }
+
+  .ghost-nav,
+  .ghost-section {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: var(--hero-ink-dim);
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .ghost-nav { height: 38px; border-bottom: 1px solid var(--hero-rule); }
+  .ghost-nav .links { display: flex; gap: 14px; }
+
+  .ghost-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(300px, 1.1fr);
+    gap: 34px;
+    align-items: center;
+    padding: 46px 0 36px;
+  }
+
+  .ghost-hero h3 {
+    margin: 8px 0 0;
+    max-width: 340px;
+    font-size: clamp(32px, 4vw, 52px);
+    font-weight: 650;
+    letter-spacing: -0.055em;
+    line-height: 0.98;
+  }
+  .ghost-hero p { margin: 14px 0 0; color: var(--hero-ink-dim); font-size: 12px; line-height: 1.55; }
+
+  .stage-mock {
+    position: relative;
+    min-height: 220px;
+    border: 1px solid var(--hero-rule);
+    border-radius: 15px;
+    background:
+      radial-gradient(circle at 72% 38%, rgba(51,199,115,0.13), transparent 34%),
+      linear-gradient(180deg, rgba(236,229,214,0.08), rgba(236,229,214,0.025));
+    overflow: hidden;
+  }
+  .stage-mock::before {
+    content: "";
+    position: absolute;
+    inset: 18px;
+    border: 1px solid rgba(236,229,214,0.11);
+    border-radius: 10px;
+  }
+  .stage-mock .window { position: absolute; border: 1px solid rgba(236,229,214,0.15); border-radius: 6px; background: rgba(10,15,14,0.55); }
+  .stage-mock .a { left: 34px; top: 44px; width: 52%; height: 46%; }
+  .stage-mock .b { right: 32px; top: 34px; width: 28%; height: 28%; }
+  .stage-mock .c { right: 46px; bottom: 34px; width: 34%; height: 30%; border-color: rgba(51,199,115,0.34); box-shadow: 0 0 26px rgba(51,199,115,0.10); }
+  .stage-mock .dot { position: absolute; right: 18px; bottom: 16px; width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 14px var(--green); }
+
+  .insert-label {
+    position: relative;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+    color: var(--green);
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 650;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .insert-label::before { content: ""; width: 22px; height: 1px; background: var(--green); }
+
+  .family-module {
+    position: relative;
+    margin-top: 10px;
+    padding: 28px;
+    border: 1px solid var(--hero-rule);
+    border-radius: 18px;
+    background:
+      linear-gradient(180deg, rgba(236,229,214,0.065), transparent 140px),
+      rgba(28,28,30,0.44);
+  }
+  .family-module-head {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 24px;
+  }
+  .family-module h3 {
+    margin: 9px 0 0;
+    max-width: 520px;
+    font-size: clamp(24px, 3vw, 38px);
+    font-weight: 640;
+    letter-spacing: -0.045em;
+    line-height: 1.02;
+  }
+  .family-module-head p { max-width: 560px; margin: 10px 0 0; color: var(--hero-ink-dim); font-size: 12px; line-height: 1.6; }
+  .family-module-head > a {
+    flex-shrink: 0;
+    color: var(--green);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .family-grid {
+    display: grid;
+    grid-template-columns: 1.2fr repeat(3, minmax(0, 0.8fr));
+    gap: 10px;
+  }
+  .product-card {
+    position: relative;
+    min-height: 172px;
+    padding: 16px;
+    border: 1px solid var(--hero-rule);
+    border-radius: 12px;
+    background: rgba(10,15,14,0.48);
+    overflow: hidden;
+  }
+  .product-card::after {
+    content: "";
+    position: absolute;
+    right: -24px;
+    bottom: -28px;
+    width: 110px;
+    height: 110px;
+    border: 1px solid rgba(236,229,214,0.08);
+    border-radius: 24px;
+    transform: rotate(45deg);
+  }
+  .product-card.primary { min-height: 194px; background: rgba(236,229,214,0.055); }
+  .product-card .index { color: var(--text-muted); font-family: var(--mono); font-size: 9px; }
+  .product-card strong { display: block; margin-top: 28px; font-size: 19px; letter-spacing: -0.02em; }
+  .product-card.primary strong { font-size: 28px; }
+  .product-card small { display: block; margin-top: 7px; color: var(--hero-ink-dim); font-size: 11px; line-height: 1.45; }
+  .product-card .meta { position: absolute; left: 16px; bottom: 14px; color: var(--green); font-family: var(--mono); font-size: 8px; letter-spacing: 0.11em; text-transform: uppercase; }
+  .product-card .arrow { position: absolute; right: 14px; bottom: 12px; color: var(--hero-ink-dim); font-size: 15px; }
+
+  .next-ghost {
+    margin-top: 36px;
+    padding: 28px 0 18px;
+    border-top: 1px solid var(--hero-rule);
+  }
+  .next-ghost .rule-copy { max-width: 420px; color: var(--hero-ink-dim); font-size: 11px; line-height: 1.55; }
+  .next-ghost .ghost-lines { flex: 1; max-width: 360px; display: grid; gap: 8px; }
+  .next-ghost i { height: 9px; border-radius: 5px; background: rgba(236,229,214,0.07); }
+  .next-ghost i:first-child { width: 82%; }
+  .next-ghost i:nth-child(2) { width: 64%; }
+
+  .family-rail {
+    display: grid;
+    grid-template-columns: 140px minmax(0, 1fr);
+    align-items: stretch;
+    margin-top: 10px;
+    border: 1px solid var(--hero-rule);
+    border-radius: 14px;
+    background: rgba(28,28,30,0.42);
+    overflow: hidden;
+  }
+  .rail-label {
+    display: flex;
+    align-items: center;
+    padding: 18px;
+    border-right: 1px solid var(--hero-rule);
+    color: var(--green);
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+  }
+  .rail-items { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .rail-item {
+    position: relative;
+    min-height: 96px;
+    padding: 15px 14px;
+    border-right: 1px solid var(--hero-rule);
+  }
+  .rail-item:last-child { border-right: 0; }
+  .rail-item .n { color: var(--text-muted); font-family: var(--mono); font-size: 8px; }
+  .rail-item strong { display: block; margin-top: 12px; font-size: 15px; }
+  .rail-item small { display: block; margin-top: 5px; color: var(--hero-ink-dim); font-size: 10px; line-height: 1.4; }
+  .rail-item .go { position: absolute; right: 12px; top: 13px; color: var(--green); font-size: 12px; }
+  .rail-item.all { background: rgba(51,199,115,0.055); }
+
+  .context-page {
+    display: grid;
+    gap: 14px;
+    margin-top: 10px;
+  }
+  .context-section {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 0.42fr) minmax(0, 0.58fr);
+    gap: 28px;
+    align-items: center;
+    min-height: 182px;
+    padding: 24px;
+    border: 1px solid var(--hero-rule);
+    border-radius: 15px;
+    background: rgba(28,28,30,0.38);
+    overflow: hidden;
+  }
+  .context-section h3 { margin: 8px 0 0; font-size: 24px; letter-spacing: -0.035em; line-height: 1.05; }
+  .context-section p { margin: 9px 0 0; color: var(--hero-ink-dim); font-size: 11px; line-height: 1.55; }
+  .context-visual { min-height: 110px; border: 1px solid var(--hero-rule); border-radius: 10px; background: rgba(10,15,14,0.48); position: relative; }
+  .context-visual::before { content: ""; position: absolute; inset: 18px; border: 1px solid rgba(236,229,214,0.1); border-radius: 7px; }
+  .product-callout {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    display: grid;
+    gap: 2px;
+    min-width: 136px;
+    padding: 10px 11px;
+    border: 1px solid rgba(51,199,115,0.35);
+    border-radius: 10px;
+    background: rgba(10,15,14,0.82);
+    box-shadow: 0 12px 30px rgba(0,0,0,0.28);
+  }
+  .product-callout b { font-size: 12px; }
+  .product-callout span { color: var(--hero-ink-dim); font-family: var(--mono); font-size: 8px; letter-spacing: 0.1em; text-transform: uppercase; }
+  .product-callout a { color: var(--green); font-family: var(--mono); font-size: 8px; letter-spacing: 0.08em; text-transform: uppercase; }
+
+  .notes {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 14px;
+  }
+  .note {
+    min-height: 112px;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: rgba(28,28,30,0.72);
+  }
+  .note b { display: block; margin-bottom: 8px; font-family: var(--mono); font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text); }
+  .note p { margin: 0; color: var(--text-dim); font-size: 11px; line-height: 1.55; }
+  .note.hot { border-color: rgba(51,199,115,0.28); background: rgba(51,199,115,0.055); }
+  .note.hot b { color: var(--green); }
+
+  .verdict {
+    margin-top: 60px;
+    padding: 34px;
+    border: 1px solid rgba(51,199,115,0.28);
+    border-radius: 18px;
+    background:
+      radial-gradient(circle at 90% 0%, rgba(51,199,115,0.12), transparent 34%),
+      rgba(28,28,30,0.8);
+  }
+  .verdict h2 { margin: 10px 0 0; max-width: 760px; font-size: clamp(28px, 4vw, 48px); line-height: 0.98; letter-spacing: -0.05em; }
+  .verdict p { max-width: 780px; margin: 16px 0 0; color: var(--text-dim); font-size: 14px; line-height: 1.7; }
+  .verdict-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 28px; }
+  .verdict-cell { border: 1px solid var(--border); border-radius: 12px; padding: 15px; background: rgba(10,15,14,0.42); }
+  .verdict-cell b { display: block; font-family: var(--mono); font-size: 9px; letter-spacing: 0.13em; text-transform: uppercase; }
+  .verdict-cell p { margin-top: 8px; font-size: 11px; line-height: 1.55; }
+
+  @media (max-width: 900px) {
+    .board { width: min(100% - 28px, 1240px); padding-top: 28px; }
+    .board-head, .study-head, .ghost-hero, .context-section { grid-template-columns: 1fr; }
+    .map { grid-template-columns: repeat(2, 1fr); }
+    .study-index { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .family-grid, .rail-items, .notes, .verdict-grid { grid-template-columns: 1fr; }
+    .family-rail { grid-template-columns: 1fr; }
+    .rail-label { border-right: 0; border-bottom: 1px solid var(--hero-rule); }
+    .family-module-head { align-items: start; flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+<main class="board">
+  <header class="board-head">
+    <div>
+      <p class="board-kicker">Lattices Studio · homepage insertion study</p>
+      <h1>Where does the product family surface?</h1>
+      <p class="board-lede">
+        Three ways to make Lattices, Action, Blink, and Speech visible without
+        turning the homepage into a product directory. Each option uses the
+        existing page rhythm: warm graph paper, quiet rules, mono metadata,
+        green as the only signal color.
+      </p>
+    </div>
+    <div class="head-aside" aria-label="Study summary">
+      <span><b>Scope</b><strong>Homepage only</strong></span>
+      <span><b>Artifact</b><strong>Static mock</strong></span>
+      <span><b>Question</b><strong>Module or context?</strong></span>
+      <span><b>Constraint</b><strong>No nav dependency</strong></span>
+    </div>
+  </header>
+
+  <nav class="study-index" aria-label="Study index">
+    <a href="#candidate-a"><span>A</span> Dedicated module</a>
+    <a href="#candidate-b"><span>B</span> Exploration rail</a>
+    <a href="#candidate-c"><span>C</span> Contextual callouts</a>
+    <a href="#recommendation"><span>→</span> Recommendation</a>
+  </nav>
+
+  <section class="map" aria-label="Possible insertion points">
+    <div class="map-step">01<strong>Hero promise</strong></div>
+    <div class="map-step is-hot">02<strong>Family surface</strong></div>
+    <div class="map-step">03<strong>Two-operator proof</strong></div>
+    <div class="map-step is-context">04<strong>Product callouts</strong></div>
+    <div class="map-step">05<strong>Capability story</strong></div>
+    <div class="map-step">06<strong>Install paths</strong></div>
+  </section>
+
+  <article class="study" id="candidate-a">
+    <div class="study-head">
+      <span class="study-no">A / 01</span>
+      <div>
+        <p class="study-kicker">Dedicated module</p>
+        <h2>A family constellation after the hero.</h2>
+        <p class="study-thesis">
+          The strongest answer if the homepage needs to teach the family quickly.
+          It gives each product a real role, but costs the most vertical space.
+        </p>
+      </div>
+      <p class="study-note">Placement<br>After hero / ticker<br><br>Attention<br>High, second scroll stop</p>
+    </div>
+
+    <div class="frame">
+      <div class="browser-bar"><i></i><i></i><i></i><span>lattices.dev / candidate A</span></div>
+      <div class="page">
+        <div class="ghost-nav"><span>Lattices</span><span class="links"><span>Products</span><span>Docs</span><span>Blog</span></span></div>
+        <div class="ghost-hero">
+          <div>
+            <p class="eyebrow">The programmable workspace for macOS</p>
+            <h3>Your workspace in your hands.</h3>
+            <p>Organize windows, run your tools, and automate your workflow.</p>
+          </div>
+          <div class="stage-mock" aria-hidden="true"><span class="window a"></span><span class="window b"></span><span class="window c"></span><span class="dot"></span></div>
+        </div>
+
+        <span class="insert-label">Inserted module</span>
+        <section class="family-module" aria-label="Lattices product family">
+          <div class="family-module-head">
+            <div>
+              <p class="eyebrow">The Lattices family</p>
+              <h3>Four surfaces, one desktop.</h3>
+              <p>Start with the workspace core, then add the focused products when you need computer use, spatial notes, or queued speech.</p>
+            </div>
+            <a href="/products">All products →</a>
+          </div>
+          <div class="family-grid">
+            <a class="product-card primary" href="/"><span class="index">01</span><strong>Lattices</strong><small>Arrange, launch, and script the workspace itself.</small><span class="meta">Core app + API</span><span class="arrow">→</span></a>
+            <a class="product-card" href="/action"><span class="index">02</span><strong>Action</strong><small>Reviewable computer use, on device.</small><span class="meta">macOS app</span><span class="arrow">→</span></a>
+            <a class="product-card" href="/blink"><span class="index">03</span><strong>Blink</strong><small>Spatial notes pinned to the desktop.</small><span class="meta">macOS app</span><span class="arrow">→</span></a>
+            <a class="product-card" href="/speech"><span class="index">04</span><strong>Speech</strong><small>Play queued text without losing focus.</small><span class="meta">Menu bar app</span><span class="arrow">→</span></a>
+          </div>
+        </section>
+
+        <div class="ghost-section next-ghost"><span class="rule-copy">One state, two operators — same desktop, whether you drive or your agent does.</span><span class="ghost-lines"><i></i><i></i></span></div>
+      </div>
+    </div>
+
+    <div class="notes">
+      <div class="note hot"><b>Why it works</b><p>Users understand the core promise, then immediately see what else exists. The asymmetric grid makes Lattices primary and the companions clearly subordinate.</p></div>
+      <div class="note"><b>Cost</b><p>It adds a large section between the hero and the narrative proof. If it uses screenshots or long copy, it will read like a second landing page.</p></div>
+      <div class="note"><b>If used</b><p>Keep it typographic, link each card once, and let `/products` be the deeper browse surface. Do not restate the whole docs menu.</p></div>
+    </div>
+  </article>
+
+  <article class="study" id="candidate-b">
+    <div class="study-head">
+      <span class="study-no">B / 02</span>
+      <div>
+        <p class="study-kicker">Exploration rail</p>
+        <h2>A quiet family index under the hero.</h2>
+        <p class="study-thesis">
+          The least invasive option. It turns the product family into a readable
+          index without interrupting the story, but it may be too easy to miss.
+        </p>
+      </div>
+      <p class="study-note">Placement<br>Between hero and proof<br><br>Attention<br>Medium, browsable</p>
+    </div>
+
+    <div class="frame">
+      <div class="browser-bar"><i></i><i></i><i></i><span>lattices.dev / candidate B</span></div>
+      <div class="page">
+        <div class="ghost-nav"><span>Lattices</span><span class="links"><span>Products</span><span>Docs</span><span>Blog</span></span></div>
+        <div class="ghost-hero">
+          <div>
+            <p class="eyebrow">The programmable workspace for macOS</p>
+            <h3>Your workspace in your hands.</h3>
+            <p>Control your Mac by shortcut, mouse gesture, or code.</p>
+          </div>
+          <div class="stage-mock" aria-hidden="true"><span class="window a"></span><span class="window b"></span><span class="window c"></span><span class="dot"></span></div>
+        </div>
+
+        <span class="insert-label">Inserted rail</span>
+        <section class="family-rail" aria-label="Explore the family">
+          <div class="rail-label">Explore the family</div>
+          <div class="rail-items">
+            <a class="rail-item" href="/"><span class="n">01</span><strong>Lattices</strong><small>The workspace core.</small><span class="go">→</span></a>
+            <a class="rail-item" href="/action"><span class="n">02</span><strong>Action</strong><small>Computer use with review.</small><span class="go">→</span></a>
+            <a class="rail-item" href="/blink"><span class="n">03</span><strong>Blink</strong><small>Notes that stay spatial.</small><span class="go">→</span></a>
+            <a class="rail-item all" href="/products"><span class="n">04</span><strong>All products</strong><small>Speech + every surface.</small><span class="go">→</span></a>
+          </div>
+        </section>
+
+        <div class="ghost-section next-ghost"><span class="rule-copy">One state, two operators — same desktop, whether you drive or your agent does.</span><span class="ghost-lines"><i></i><i></i></span></div>
+      </div>
+    </div>
+
+    <div class="notes">
+      <div class="note hot"><b>Why it works</b><p>It behaves like a table of contents for the ecosystem: short, scannable, and aligned with the site’s index-card texture.</p></div>
+      <div class="note"><b>Cost</b><p>It may not teach enough. A name plus one line can be skipped unless the user already knows they want another product.</p></div>
+      <div class="note"><b>If used</b><p>Treat it as navigation furniture, not a sales section. It can coexist with a later product story, but should not be the only explanation.</p></div>
+    </div>
+  </article>
+
+  <article class="study" id="candidate-c">
+    <div class="study-head">
+      <span class="study-no">C / 03</span>
+      <div>
+        <p class="study-kicker">Contextual callouts</p>
+        <h2>Name the product inside each capability moment.</h2>
+        <p class="study-thesis">
+          The most editorial option: instead of a dedicated product block, each
+          relevant section labels the product responsible for that job.
+        </p>
+      </div>
+      <p class="study-note">Placement<br>Inside existing sections<br><br>Attention<br>Contextual, distributed</p>
+    </div>
+
+    <div class="frame">
+      <div class="browser-bar"><i></i><i></i><i></i><span>lattices.dev / candidate C</span></div>
+      <div class="page">
+        <div class="ghost-nav"><span>Lattices</span><span class="links"><span>Products</span><span>Docs</span><span>Blog</span></span></div>
+        <div class="context-page">
+          <section class="context-section">
+            <div>
+              <p class="eyebrow">Workspace control</p>
+              <h3>Tile windows and launch the whole project.</h3>
+              <p>Lattices owns the core workspace: window state, layers, tmux sessions, search, and the local agent API.</p>
+            </div>
+            <div class="context-visual"><div class="product-callout"><span>Product</span><b>Lattices</b><a href="/">Core app →</a></div></div>
+          </section>
+
+          <section class="context-section">
+            <div>
+              <p class="eyebrow">Computer use</p>
+              <h3>Observe, stage, execute, verify.</h3>
+              <p>Action takes the risky part — acting on the screen — and makes it reviewable instead of opaque.</p>
+            </div>
+            <div class="context-visual"><div class="product-callout"><span>Product</span><b>Action</b><a href="/action">Meet Action →</a></div></div>
+          </section>
+
+          <section class="context-section">
+            <div>
+              <p class="eyebrow">Ambient memory + playback</p>
+              <h3>Keep notes and speech out of the foreground.</h3>
+              <p>Blink and Speech cover the smaller ambient jobs: spatial notes and queued text playback.</p>
+            </div>
+            <div class="context-visual"><div class="product-callout"><span>Products</span><b>Blink · Speech</b><a href="/products">Explore →</a></div></div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <div class="notes">
+      <div class="note hot"><b>Why it works</b><p>Users learn the family at the exact moment a capability makes it relevant. This is the least marketing-shaped answer.</p></div>
+      <div class="note"><b>Cost</b><p>It is distributed, so nobody sees the whole family at once. It can also clutter sections if every product gets equal chrome.</p></div>
+      <div class="note"><b>If used</b><p>Use it as a product attribution layer. Pair with one dedicated family surface or `/products` so the full set is still discoverable.</p></div>
+    </div>
+  </article>
+
+  <section class="verdict" id="recommendation">
+    <p class="board-kicker">Recommendation</p>
+    <h2>Lead with A. Keep C as section metadata.</h2>
+    <p>
+      A dedicated module earns attention right after the hero without depending
+      on the dropdown. Contextual callouts can then clarify which product owns
+      each capability deeper in the page. The rail is a useful fallback if the
+      module feels too heavy, but alone it likely undersells the family.
+    </p>
+    <div class="verdict-grid">
+      <div class="verdict-cell"><b>Primary</b><p>Family module after the hero — one clear map of Lattices + companions.</p></div>
+      <div class="verdict-cell"><b>Secondary</b><p>Small product attribution chips inside relevant capability sections.</p></div>
+      <div class="verdict-cell"><b>Fallback</b><p>Compact rail if the homepage needs to stay visually spare.</p></div>
+    </div>
+  </section>
+</main>
+</body>
+</html>

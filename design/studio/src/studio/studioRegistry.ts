@@ -69,6 +69,20 @@ export const pages: readonly LatticesPage[] = [
       "apps/mac/Sources/Core/Overlays/HUD/HUDWindowHints.swift",
     ],
   },
+  {
+    href: "/studio/studies/product-family",
+    label: "Product family — homepage insertion",
+    bucket: "studies",
+    surface: "cross",
+    status: "concept",
+    blurb:
+      "Three homepage surfaces for making Lattices, Action, Blink, and Speech easier to discover: a post-hero family module, a compact exploration rail, and contextual product callouts.",
+    source: [
+      "apps/site/src/components/LandingPage.tsx",
+      "apps/site/src/components/SiteChrome.tsx",
+      "design/studio/public/product-family/board.html",
+    ],
+  },
 ];
 
 const defined = defineStudio({
