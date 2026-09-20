@@ -56,7 +56,7 @@ export default function FamilyPage() {
           number="03"
           label="Notes"
           kicker="Keep context where it belongs"
-          title="Leave the note on the desktop."
+          title="Have your assistant create and manage notes in your workspace."
           description="Pin working memory beside the window it describes, so the thought survives after the tab, task, or conversation moves on."
           product="Meet Blink"
           href="/blink"
