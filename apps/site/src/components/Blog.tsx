@@ -2,26 +2,37 @@ import { useEffect, useState } from 'react'
 import { blogPosts, getBlogPost, type BlogPost } from '../lib/content'
 import { formatBuildDate, getBuildMeta, type PostMeta } from '../lib/build-meta'
 import { MarkdownRenderer } from './MarkdownRenderer'
-import { LatticesMark } from './SiteChrome'
+import { SiteHeader } from './SiteChrome'
 
 export function BlogIndex() {
   return (
-    <>
-      <PostNav />
+    <div className="docs-page blog-page">
+      <SiteHeader />
       <main className="blog-container" data-pagefind-body>
-        <h1>Blog</h1>
-        {blogPosts.map((post) => (
-          <article className="blog-post" key={post.slug}>
-            <a href={`/blog/${post.slug}`}>
-              <h2 className="blog-post-title">{post.title}</h2>
+        <header className="blog-index-head">
+          <p className="products-kicker">Lattices blog</p>
+          <h1>Notes on workspaces, agents, and the Mac.</h1>
+          <p>
+            Short posts about what we are building across Lattices, Action, Blink,
+            and Speech.
+          </p>
+        </header>
+
+        <div className="blog-list">
+          {blogPosts.map((post) => (
+            <a className="blog-post" href={`/blog/${post.slug}`} key={post.slug}>
+              <span className="blog-post-date">{formatDate(post.date)}</span>
+              <span className="blog-post-copy">
+                <span className="blog-post-title">{post.title}</span>
+                <span className="blog-post-desc">{post.description}</span>
+                <TagList tags={post.tags} />
+              </span>
+              <span className="blog-post-arrow" aria-hidden="true">→</span>
             </a>
-            <p className="blog-post-meta">{formatDate(post.date)}</p>
-            <p className="blog-post-desc">{post.description}</p>
-            <TagList tags={post.tags} />
-          </article>
-        ))}
+          ))}
+        </div>
       </main>
-    </>
+    </div>
   )
 }
 
@@ -43,8 +54,8 @@ export function BlogPostPage({ slug }: { slug: string }) {
 
   if (!post) {
     return (
-      <>
-        <PostNav />
+      <div className="docs-page blog-page">
+        <SiteHeader />
         <main className="not-found-shell" data-pagefind-ignore>
           <div className="not-found-card">
             <p className="not-found-kicker">404</p>
@@ -55,7 +66,7 @@ export function BlogPostPage({ slug }: { slug: string }) {
             </p>
           </div>
         </main>
-      </>
+      </div>
     )
   }
 
@@ -66,65 +77,52 @@ export function BlogPostPage({ slug }: { slug: string }) {
   const showUpdated = updatedLabel && updatedLabel !== formatDate(post.date)
 
   return (
-    <>
-      <PostNav />
+    <div className="docs-page blog-page">
+      <SiteHeader />
       <article className="post-container" data-pagefind-body>
         <a href="/blog" className="post-back">← all posts</a>
-        <h1 className="post-title">{post.title}</h1>
-        <div className="post-meta">
-          {post.author && <span>{post.author} · </span>}
-          {formatDate(post.date)}
-          {showUpdated && <span> · updated {updatedLabel}</span>}
-          {meta?.editUrl && (
-            <a
-              href={meta.editUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="post-edit-link"
-            >
-              Edit on GitHub →
-            </a>
-          )}
-          <TagList tags={post.tags} />
-        </div>
+        <header className="post-header">
+          <p className="products-kicker">Lattices blog</p>
+          <h1 className="post-title">{post.title}</h1>
+          {post.description && <p className="post-dek">{post.description}</p>}
+          <div className="post-meta">
+            {post.author && <span>{post.author} · </span>}
+            {formatDate(post.date)}
+            {showUpdated && <span> · updated {updatedLabel}</span>}
+            {meta?.editUrl && (
+              <a
+                href={meta.editUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="post-edit-link"
+              >
+                Edit on GitHub →
+              </a>
+            )}
+            <TagList tags={post.tags} />
+          </div>
+        </header>
         <MarkdownRenderer content={post.content} className="prose" />
         <nav className="post-nav-pager" aria-label="More posts">
-          {older ? (
-            <a className="post-pager post-pager-prev" href={`/blog/${older.slug}`}>
+          {newer ? (
+            <a className="post-pager post-pager-prev" href={`/blog/${newer.slug}`}>
               <span className="post-pager-label">Newer</span>
-              <strong>{older.title}</strong>
+              <strong>{newer.title}</strong>
             </a>
           ) : (
             <span />
           )}
-          {newer ? (
-            <a className="post-pager post-pager-next" href={`/blog/${newer.slug}`}>
+          {older ? (
+            <a className="post-pager post-pager-next" href={`/blog/${older.slug}`}>
               <span className="post-pager-label">Older</span>
-              <strong>{newer.title}</strong>
+              <strong>{older.title}</strong>
             </a>
           ) : (
             <span />
           )}
         </nav>
       </article>
-    </>
-  )
-}
-
-function PostNav() {
-  return (
-    <nav className="post-nav" data-pagefind-ignore>
-      <div className="post-nav-inner">
-        <a href="/" className="post-nav-brand">
-          <LatticesMark />
-          <span>lattices</span>
-        </a>
-        <div className="post-nav-links">
-          <a href="/blog">Blog</a>
-          <a href="/docs/overview">Docs</a>
-        </div>
-      </div>
-    </nav>
+    </div>
   )
 }
 
@@ -132,11 +130,11 @@ function TagList({ tags }: { tags: BlogPost['tags'] }) {
   if (tags.length === 0) return null
 
   return (
-    <div className="post-tags">
+    <span className="post-tags">
       {tags.map((tag) => (
         <span className="post-tag" key={tag}>{tag}</span>
       ))}
-    </div>
+    </span>
   )
 }
 

@@ -3,6 +3,7 @@ import { BlogIndex, BlogPostPage } from './components/Blog'
 import ActionPage from './components/ActionPage'
 import BlinkPage from './components/BlinkPage'
 import SpeechPage from './components/SpeechPage'
+import ProductsPage from './components/ProductsPage'
 import { DocsPage } from './components/Docs'
 import LandingPage from './components/LandingPage'
 import ConceptExperimentPage from './components/ConceptExperimentPage'
@@ -53,6 +54,7 @@ export default function SiteApp() {
   if (route.kind === 'action') return <ActionPage />
   if (route.kind === 'blink') return <BlinkPage />
   if (route.kind === 'speech') return <SpeechPage />
+  if (route.kind === 'products') return <ProductsPage />
   if (route.kind === 'docs') return <DocsPage slug={route.slug} />
   if (route.kind === 'blog-index') return <BlogIndex />
   if (route.kind === 'blog-post') return <BlogPostPage slug={route.slug} />
@@ -71,6 +73,9 @@ export default function SiteApp() {
           </li>
           <li>
             <a href="/docs/quickstart">Quickstart</a> — running workspaces in 2 minutes
+          </li>
+          <li>
+            <a href="/products">Products</a> — Lattices, Action, Blink, and Speech
           </li>
           <li>
             <a href="/docs/api">Agent API</a> — WebSocket reference for agents and scripts
@@ -96,6 +101,7 @@ type Route =
   | { kind: 'action'; title: string; description: string }
   | { kind: 'blink'; title: string; description: string }
   | { kind: 'speech'; title: string; description: string }
+  | { kind: 'products'; title: string; description: string }
   | { kind: 'docs'; slug?: string; title: string; description: string }
   | { kind: 'blog-index'; title: string; description: string }
   | { kind: 'blog-post'; slug: string; title: string; description: string }
@@ -127,6 +133,14 @@ function resolveRoute(path: string): Route {
   }
 
   if (path === '/speech') return { kind: 'speech', title: 'Speech — a standalone player from Lattices', description: 'Queue text, choose a voice, and control playback independently.' }
+
+  if (path === '/products') {
+    return {
+      kind: 'products',
+      title: 'Products — Lattices',
+      description: 'Browse Lattices, Action, Blink, Speech, and the agent API.',
+    }
+  }
 
   if (path === '/blink') {
     return {

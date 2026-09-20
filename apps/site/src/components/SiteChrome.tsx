@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { productLinks } from '../data/products'
 import { ThemeToggle } from './ThemeToggle'
 
 declare global {
@@ -41,24 +42,6 @@ export function LatticesMark({ size = 20 }: { size?: number }) {
     </svg>
   )
 }
-
-const productLinks = [
-  {
-    href: '/docs/api',
-    title: 'API',
-    description: 'Unified workspace control for agents and scripts',
-  },
-  {
-    href: '/action',
-    title: 'Action',
-    description: 'Unified computer use on the Mac',
-  },
-  {
-    href: '/blink',
-    title: 'Blink',
-    description: 'Spatial notes that live on your desktop',
-  },
-]
 
 export function ProductsMenu() {
   const [open, setOpen] = useState(false)
@@ -114,6 +97,10 @@ export function ProductsMenu() {
               <small>{product.description}</small>
             </a>
           ))}
+          <a href="/products" className="products-menu-link products-menu-all" onClick={() => setOpen(false)}>
+            <span>All products</span>
+            <small>Browse the full Lattices family</small>
+          </a>
         </div>
       ) : null}
     </div>
@@ -124,9 +111,10 @@ export function SiteHeader() {
   const [searchOpen, setSearchOpen] = useState(false)
   // The initial theme is set synchronously by the inline script in index.html
   // to avoid a flash of wrong-theme content. This effect re-syncs on toggle.
-  const [theme, setTheme] = useState<'light' | 'dark'>(
-    () => (document.documentElement.getAttribute('data-theme') as 'light' | 'dark') || 'dark',
-  )
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    if (typeof document === 'undefined') return 'dark'
+    return (document.documentElement.getAttribute('data-theme') as 'light' | 'dark') || 'dark'
+  })
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -155,9 +143,9 @@ export function SiteHeader() {
             <span>lattices</span>
           </a>
           <nav className="site-links" aria-label="Primary navigation">
+            <ProductsMenu />
             <a href="/blog" className="nav-blog-link">Blog</a>
             <a href="/docs/overview">Docs</a>
-            <ProductsMenu />
             <button type="button" onClick={() => setSearchOpen(true)} aria-label="Open search (Cmd+K)">
               Search
               <span aria-hidden="true">⌘K</span>

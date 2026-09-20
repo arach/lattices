@@ -1,11 +1,12 @@
 import { LatticesLogo } from './LandingPage'
+import { ProductsMenu } from './SiteChrome'
 const downloadUrl = 'https://github.com/arach/lattices/releases/download/speech-v0.2.0/Speech.dmg'
 const sourceUrl = 'https://github.com/arach/lattices/tree/main/products/speech'
 export default function SpeechPage() {
   return <div className="action-page speech-page">
     <nav className="nav action-nav" aria-label="Speech navigation"><div className="nav-inner">
       <a href="/" className="nav-brand action-family-lockup"><LatticesLogo size={20} /><span className="nav-name">lattices</span><span aria-hidden="true">/</span><span>speech</span></a>
-      <div className="nav-links"><a className="nav-link" href={sourceUrl}>Source</a><a className="action-nav-download" href={downloadUrl}>Download</a></div>
+      <div className="nav-links"><ProductsMenu /><a className="nav-link" href={sourceUrl}>Source</a><a className="action-nav-download" href={downloadUrl}>Download</a></div>
     </div></nav>
     <main className="action-shell">
       <section className="action-hero" aria-labelledby="speech-title"><div className="action-hero-copy">
