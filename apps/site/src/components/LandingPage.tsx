@@ -1,11 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
-import { motion, useReducedMotion } from "motion/react";
+import type { ReactNode } from "react";
+import { useReducedMotion } from "motion/react";
 import { ThemeToggle } from "./ThemeToggle";
 import { GestureMatrix } from "./GestureMatrix";
 import { ProductsMenu } from "./SiteChrome";
-import { heroDesktopMaps, heroWindowLayouts, heroWindowMeta } from "./heroDesktopMap";
-import type { HeroDesktopPhase, HeroWindowId } from "./heroDesktopMap";
 
 const latticesDownloadURL = "https://github.com/arach/lattices/releases/download/v0.12.0/Lattices.dmg";
 
@@ -365,291 +363,37 @@ const cuaSteps: Array<{
 
 const showLatsDevTeaser = import.meta.env.PUBLIC_SHOW_LATS_DEV_TEASER === "true";
 
-function HeroWindowContent({ id }: { id: HeroWindowId }) {
-  if (id === "agent") {
-    return (
-      <div className="desktop-terminal-lines desktop-agent-lines">
-        <span><b>~/dev/atlas</b> codex</span>
-        <span className="agent-prompt">› fix the flaky session test</span>
-        <span className="terminal-dim">• reading src/auth/session.ts</span>
-        <span className="terminal-dim">• editing refreshSession()</span>
-        <span>$ bun test auth</span>
-        <span className="terminal-ready">✓ 12 passed, 0 failed</span>
-      </div>
-    );
-  }
-
-  if (id === "editor") {
-    return (
-      <div className="desktop-editor">
-        <div className="desktop-editor-sidebar">
-          <strong>ATLAS</strong>
-          <span>src</span>
-          <span className="is-active">session.ts</span>
-          <span>auth.ts</span>
-          <span>routes.ts</span>
-        </div>
-        <div className="desktop-code-lines" aria-hidden="true">
-          <span><i>export async function</i> refreshSession() {'{'}</span>
-          <span className="indent"><i>const</i> s = <i>await</i> sessions.get(token)</span>
-          <span className="indent"><i>if</i> (s.expired) <i>return</i> renew(s)</span>
-          <span className="indent"><i>return</i> s</span>
-          <span>{'}'}</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (id === "browser") {
-    return (
-      <div className="desktop-browser-view">
-        <div className="desktop-browser-mark">atlas · localhost:5173</div>
-        <div className="desktop-browser-ready"><i /> Ready</div>
-        <span>vite preview</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="desktop-terminal-lines">
-      <span><b>~/dev/atlas</b> bun dev</span>
-      <span className="terminal-dim">VITE v7.3.3</span>
-      <span><i>➜</i> Local: http://localhost:5173</span>
-      <span className="terminal-ready">✓ Ready in 612ms</span>
-    </div>
-  );
-}
-
-function HeroDesktopWindow({
-  id,
-  phase,
-  reducedMotion,
-  children,
-}: {
-  id: HeroWindowId;
-  phase: HeroDesktopPhase;
-  reducedMotion: boolean;
-  children: ReactNode;
-}) {
-  const layout = heroWindowLayouts[id][phase];
-  const meta = heroWindowMeta[id];
-
-  return (
-    <motion.div
-      className={`hero-desktop-window hero-window-${id}${meta.focused ? " is-focused" : ""}`}
-      style={{ "--window-tint": meta.tint, zIndex: layout.z } as CSSProperties}
-      animate={{
-        left: `${layout.left}%`,
-        top: `${layout.top}%`,
-        width: `${layout.width}%`,
-        height: `${layout.height}%`,
-      }}
-      transition={{ duration: reducedMotion ? 0 : 0.74, ease: [0.16, 1, 0.3, 1] }}
-    >
-      <div className="hero-window-bar">
-        <span className="hero-window-lights"><i /><i /><i /></span>
-        <span className="hero-window-title">{meta.title}</span>
-        <span className="hero-window-app">{meta.app}</span>
-      </div>
-      <div className="hero-window-body">{children}</div>
-    </motion.div>
-  );
-}
-
 function HeroWorkspaceStage() {
   const prefersReducedMotion = useReducedMotion() ?? false;
-  const [phaseChoice, setPhaseChoice] = useState<HeroDesktopPhase>("messy");
-  // The loop alternates who organizes the mess: your keycast, then the agent.
-  const [driver, setDriver] = useState<"you" | "agent">("you");
-  const [autoPlay, setAutoPlay] = useState(true);
-  const [inView, setInView] = useState(true);
-  const stageRef = useRef<HTMLDivElement | null>(null);
-  // Reduced-motion visitors land on the organized result instead of the loop.
-  const phase = prefersReducedMotion && autoPlay ? "organized" : phaseChoice;
-  const organized = phase === "organized";
-
-  useEffect(() => {
-    const stage = stageRef.current;
-    if (!stage || typeof IntersectionObserver === "undefined") return;
-    const observer = new IntersectionObserver(
-      ([entry]) => setInView(entry.isIntersecting),
-      { threshold: 0.35 },
-    );
-    observer.observe(stage);
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    if (!autoPlay || prefersReducedMotion || !inView) return;
-    // Linger on the organized result — longest after the agent's turn, so
-    // the tiled desktop and the full two-command transcript sit together.
-    // The messy beat holds long enough to read the scatter; longer on agent
-    // turns, where the request and tool call appear before the snap.
-    const delay = organized
-      ? driver === "agent" ? 7200 : 4600
-      : driver === "you" ? 3000 : 4200;
-    const timer = window.setTimeout(() => {
-      if (organized) {
-        setDriver(driver === "you" ? "agent" : "you");
-        setPhaseChoice("messy");
-      } else {
-        setPhaseChoice("organized");
-      }
-    }, delay);
-    return () => window.clearTimeout(timer);
-  }, [autoPlay, organized, driver, prefersReducedMotion, inView]);
-
-  const selectPhase = (next: HeroDesktopPhase) => {
-    setAutoPlay(false);
-    setPhaseChoice(next);
-  };
 
   return (
     <div className="hero-desktop-demo" id="workspace-demo">
       <div className="hero-stage-bar">
         <span className="hero-stage-label">
           <i aria-hidden="true" />
-          Desktop 0 · live simulation
+          Homepage · live capture
         </span>
-        <div className="hero-desktop-comparison" role="group" aria-label="Compare the desktop without and with Lattices">
-          <button
-            type="button"
-            className={!organized ? "is-active" : ""}
-            aria-pressed={!organized}
-            onClick={() => selectPhase("messy")}
-          >
-            <span aria-hidden="true">○</span>
-            Without Lattices
-          </button>
-          <button
-            type="button"
-            className={organized ? "is-active" : ""}
-            aria-pressed={organized}
-            onClick={() => selectPhase("organized")}
-          >
-            <span aria-hidden="true">●</span>
-            With Lattices
-          </button>
-        </div>
       </div>
 
-      <div
-        ref={stageRef}
-        className={`hero-workspace-stage is-${phase}`}
-        role="img"
-        aria-label={organized
-          ? "A simulated Mac desktop with four windows tiled by Lattices, an agent terminal in focus"
-          : "A simulated Mac desktop with four overlapping, scattered windows"}
-      >
-        <div className="hero-laptop-camera" aria-hidden="true"><i /></div>
-        <div className="hero-desktop-screen">
-          <div className="hero-macos-bar">
-            <span className="hero-macos-brand"><span className="hero-macos-apple" aria-hidden="true"><AppleIcon /></span> Terminal</span>
-            <span className="hero-macos-menu">File&nbsp;&nbsp; Edit&nbsp;&nbsp; View&nbsp;&nbsp; Window</span>
-            <span className="hero-macos-status"><span className="hero-macos-lattices">⌁ lattices</span>&nbsp;&nbsp; 9:41 AM</span>
-          </div>
-
-          {(Object.keys(heroWindowMeta) as HeroWindowId[]).map((id) => (
-            <HeroDesktopWindow
-              key={id}
-              id={id}
-              phase={phase}
-              reducedMotion={prefersReducedMotion}
-            >
-              <HeroWindowContent id={id} />
-            </HeroDesktopWindow>
-          ))}
-
-          <motion.div
-            className="hero-keycast"
-            aria-hidden="true"
-            initial={false}
-            animate={{ opacity: !organized && autoPlay && driver === "you" ? 1 : 0 }}
-            transition={
-              !organized && autoPlay && driver === "you"
-                ? { duration: 0.26, delay: 1.4 }
-                : { duration: 0.18 }
-            }
-          >
-            <kbd>⌃</kbd>
-            <kbd>⌥</kbd>
-            <kbd>G</kbd>
-            <span>organize</span>
-          </motion.div>
-
-          <motion.div
-            className="hero-desktop-result"
-            animate={{ opacity: organized ? 1 : 0, y: organized ? 0 : 6 }}
-            transition={{ duration: prefersReducedMotion ? 0 : 0.24, delay: organized ? 0.5 : 0 }}
-            aria-hidden={!organized}
-          >
-            <i /> 4 windows organized
-          </motion.div>
-        </div>
-      </div>
-
-      <div className="hero-understage">
-        <div className="hero-agent-harness" role="group" aria-label="A coding agent reading the same desktop over the local API">
-        <div className="hero-harness-head">
-          <span className="hero-harness-dot" aria-hidden="true" />
-          <span>claude · agent session</span>
-          <span className="hero-harness-transport">ws://localhost · live</span>
-        </div>
-        <div className="hero-harness-body">
-          <span className="hero-harness-user">
-            <b>&gt;</b> what&apos;s on my screen?
-          </span>
-          <span className="hero-harness-tool">
-            <i aria-hidden="true">⏺</i> lattices — map
-          </span>
-          <motion.div
-            key={driver === "agent" ? "agent" : phase}
-            className="hero-harness-result hero-harness-map-result"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: prefersReducedMotion ? 0 : 0.3, delay: prefersReducedMotion ? 0 : 0.6 }}
-          >
-            <span>
-              <b aria-hidden="true">⎿</b> 4 windows · {driver === "agent" || !organized ? "3 overlapping" : "tiled main-left"} · focused: atlas — codex
-            </span>
-            <pre className="hero-harness-map" aria-hidden="true">{heroDesktopMaps[phase]}</pre>
-          </motion.div>
-          <motion.span
-            className="hero-harness-user"
-            initial={false}
-            animate={{ opacity: driver === "agent" ? 1 : 0 }}
-            transition={{ duration: driver === "agent" ? 0.3 : 0.2, delay: driver === "agent" ? 0.9 : 0 }}
-            style={{ visibility: driver === "agent" ? "visible" : "hidden" }}
-            aria-hidden={driver !== "agent"}
-          >
-            <b>&gt;</b> put codex on the left half, stack the rest on the right
-          </motion.span>
-          <motion.span
-            className="hero-harness-tool"
-            initial={false}
-            animate={{ opacity: driver === "agent" ? 1 : 0 }}
-            transition={{ duration: driver === "agent" ? 0.3 : 0.2, delay: driver === "agent" ? 2.1 : 0 }}
-            style={{ visibility: driver === "agent" ? "visible" : "hidden" }}
-            aria-hidden={driver !== "agent"}
-          >
-            <i aria-hidden="true">⏺</i> lattices — space.optimize
-          </motion.span>
-          <motion.span
-            className="hero-harness-result"
-            initial={false}
-            animate={{ opacity: driver === "agent" && organized ? 1 : 0 }}
-            transition={{
-              duration: driver === "agent" && organized ? 0.3 : 0.2,
-              delay: driver === "agent" && organized ? 0.9 : 0,
-            }}
-            style={{ visibility: driver === "agent" && organized ? "visible" : "hidden" }}
-            aria-hidden={driver !== "agent" || !organized}
-          >
-            <b aria-hidden="true">⎿</b> codex left half · 3 stacked right · done
-          </motion.span>
-        </div>
-        </div>
-        <HeroGestureDemo />
+      <div className="hero-workspace-stage hero-video-stage">
+        {prefersReducedMotion ? (
+          <img
+            className="hero-video-media"
+            src="/hero/lattices-homepage-hero-loop-poster.jpg"
+            alt="The Lattices homepage hero preview"
+          />
+        ) : (
+          <video
+            className="hero-video-media"
+            src="/hero/lattices-homepage-hero-loop.mp4"
+            poster="/hero/lattices-homepage-hero-loop-poster.jpg"
+            autoPlay
+            loop
+            muted
+            playsInline
+            aria-label="Looping preview of the Lattices homepage"
+          />
+        )}
       </div>
 
       <div className="hero-stage-foot" aria-hidden="true">
@@ -709,72 +453,6 @@ function HandsOnSection() {
         </div>
       </div>
     </section>
-  );
-}
-
-const gesturePreviewStart = 9.25;
-const gesturePreviewEnd = 11.65;
-
-function HeroGestureDemo() {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const reducedMotion = useReducedMotion() ?? false;
-
-  const playPreview = () => {
-    if (reducedMotion) return;
-    const video = videoRef.current;
-    if (!video) return;
-    if (
-      video.currentTime < gesturePreviewStart ||
-      video.currentTime >= gesturePreviewEnd
-    ) {
-      video.currentTime = gesturePreviewStart;
-    }
-    void video.play();
-  };
-
-  const resetPreview = () => {
-    const video = videoRef.current;
-    if (!video) return;
-    video.pause();
-    video.currentTime = gesturePreviewStart;
-  };
-
-  const loopPreview = () => {
-    const video = videoRef.current;
-    if (!video || video.currentTime < gesturePreviewEnd) return;
-    video.currentTime = gesturePreviewStart;
-    void video.play();
-  };
-
-  return (
-    <a
-      className="hero-demo-peek"
-      href="/blog/gesture-completion-matrix"
-      aria-label="Watch the mouse gesture demo"
-      onMouseEnter={playPreview}
-      onMouseLeave={resetPreview}
-      onFocus={playPreview}
-      onBlur={resetPreview}
-    >
-      <video
-        ref={videoRef}
-        className="hero-demo-peek-media"
-        muted
-        playsInline
-        preload="metadata"
-        poster="/blog/gesture-completion-matrix-poster.png"
-        aria-hidden="true"
-        onLoadedMetadata={resetPreview}
-        onTimeUpdate={loopPreview}
-      >
-        <source src="/blog/gesture-completion-matrix.mp4" type="video/mp4" />
-      </video>
-      <span className="hero-demo-peek-copy">
-        <span className="hero-demo-peek-label">Gesture preview</span>
-        <strong>Draw a gesture. Lattices does the rest.</strong>
-        <span className="hero-demo-peek-link">Watch the demo &rarr;</span>
-      </span>
-    </a>
   );
 }
 

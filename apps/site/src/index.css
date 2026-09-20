@@ -3548,6 +3548,18 @@ button.nav-link {
   border-radius: 17px;
 }
 
+.hero-video-stage {
+  aspect-ratio: 16 / 9;
+  background: var(--surface);
+}
+
+.hero-video-media {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .hero-understage {
   position: relative;
   z-index: 5;
