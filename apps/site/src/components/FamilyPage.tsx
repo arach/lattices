@@ -67,7 +67,7 @@ export default function FamilyPage() {
           number="04"
           label="Speech"
           kicker="Stay in the flow"
-          title="Listen to the queue, not another tab."
+          title="Smart voice readouts with HUD readalong if you want it."
           description="Send text to a lightweight playback queue and keep working while long responses, drafts, and notes are read aloud."
           product="Meet Speech"
           href="/speech"
