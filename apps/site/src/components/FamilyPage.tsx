@@ -45,7 +45,7 @@ export default function FamilyPage() {
           number="02"
           label="Computer use"
           kicker="When the work leaves the terminal"
-          title="See the action before it happens."
+          title="Let your computers use your workspace."
           description="Observe the screen, stage a computer-use step, review the target, then execute and verify it on device."
           product="Meet Action"
           href="/action"
