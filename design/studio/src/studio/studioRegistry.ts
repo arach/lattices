@@ -76,7 +76,7 @@ export const pages: readonly LatticesPage[] = [
     surface: "cross",
     status: "concept",
     blurb:
-      "Four homepage surfaces for making Lattices, Action, Blink, and Speech easier to discover: a post-hero family module, a compact exploration rail, contextual product callouts, and a shared-desktop diagram.",
+      "Seven visual directions for surfacing the product family on the homepage: family module, exploration rail, contextual callouts, shared-desktop diagram, annotated hero, family ticker, and install register.",
     source: [
       "apps/site/src/components/LandingPage.tsx",
       "apps/site/src/components/SiteChrome.tsx",

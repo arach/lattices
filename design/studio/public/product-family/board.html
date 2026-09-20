@@ -93,7 +93,7 @@
 
   .study-index {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: 1px;
     margin-top: 24px;
     border: 1px solid var(--border);
@@ -622,52 +622,215 @@
   .product-callout span { color: var(--hero-ink-dim); font-family: var(--mono); font-size: 8px; letter-spacing: 0.1em; text-transform: uppercase; }
   .product-callout a { color: var(--green); font-family: var(--mono); font-size: 8px; letter-spacing: 0.08em; text-transform: uppercase; }
 
-  .notes {
+  .annotated-stage {
+    position: relative;
+    min-height: 300px;
+    border: 1px solid var(--hero-rule);
+    border-radius: 15px;
+    background:
+      radial-gradient(circle at 70% 36%, rgba(51,199,115,0.12), transparent 34%),
+      linear-gradient(180deg, rgba(236,229,214,0.08), rgba(236,229,214,0.025));
+    overflow: hidden;
+  }
+  .annotated-stage::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(236,229,214,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(236,229,214,0.03) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+  .a-menubar {
+    position: absolute;
+    inset: 0 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 26px;
+    padding: 0 12px;
+    border-bottom: 1px solid rgba(236,229,214,0.11);
+    background: rgba(10,15,14,0.55);
+    color: var(--hero-ink-dim);
+    font-family: var(--mono);
+    font-size: 8px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .a-menubar b { color: var(--green); font-weight: 550; }
+  .a-window { position: absolute; border: 1px solid rgba(236,229,214,0.15); border-radius: 7px; background: rgba(10,15,14,0.55); }
+  .a-window.w1 { left: 26px; top: 62px; width: 42%; height: 40%; }
+  .a-window.w2 { left: 47%; top: 84px; width: 28%; height: 36%; }
+  .a-window.w3 {
+    right: 24px;
+    top: 56px;
+    width: 24%;
+    height: 34%;
+    border-color: rgba(51,199,115,0.5);
+    box-shadow: 0 0 0 6px rgba(51,199,115,0.06), 0 0 30px rgba(51,199,115,0.14);
+  }
+  .a-blink {
+    position: absolute;
+    left: 30px;
+    bottom: 56px;
+    width: 128px;
+    padding: 10px;
+    border: 1px solid rgba(245,166,36,0.3);
+    border-radius: 8px;
+    background: rgba(36,31,22,0.74);
+    font-family: var(--mono);
+    font-size: 8px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--hero-ink);
+  }
+  .a-blink i { display: block; height: 4px; margin-top: 7px; border-radius: 3px; background: rgba(236,229,214,0.12); }
+  .a-blink i:last-child { width: 64%; }
+  .a-tag {
+    position: absolute;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 9px;
+    border: 1px solid rgba(51,199,115,0.32);
+    border-radius: 7px;
+    background: rgba(10,15,14,0.82);
+    color: var(--green);
+    font-family: var(--mono);
+    font-size: 8px;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .a-tag::before { content: ""; width: 16px; height: 1px; background: var(--green); }
+  .a-tag.action { right: calc(24% + 38px); top: 72px; }
+  .a-tag.blink { left: 172px; bottom: 66px; }
+  .a-tag.speech { right: 26px; top: 34px; }
+  .a-foot {
+    position: absolute;
+    inset: auto 0 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 32px;
+    padding: 0 12px;
+    border-top: 1px solid rgba(236,229,214,0.11);
+    background: rgba(10,15,14,0.55);
+    color: var(--hero-ink-dim);
+    font-family: var(--mono);
+    font-size: 8px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .a-foot b { color: var(--green); font-weight: 550; }
+
+  .ticker-mock {
+    margin-top: 10px;
+    border: 1px solid var(--hero-rule);
+    border-radius: 12px;
+    background: rgba(10,15,14,0.44);
+    overflow: hidden;
+  }
+  .ticker-row {
+    display: flex;
+    align-items: stretch;
+    border-bottom: 1px solid var(--hero-rule);
+  }
+  .ticker-row:last-child { border-bottom: 0; }
+  .ticker-row > span, .ticker-row > a {
+    flex: 1;
+    padding: 11px 14px;
+    border-right: 1px solid rgba(236,229,214,0.07);
+    color: var(--hero-ink-dim);
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ticker-row > *:last-child { border-right: 0; }
+  .ticker-row.family { background: var(--green-soft); }
+  .ticker-row.family > a { color: var(--green); font-weight: 550; }
+  .ticker-row.family > span { color: var(--text); }
+  .ticker-row.family .ticker-thesis { flex: 1.6; color: var(--hero-ink); }
+
+  .install-block {
+    margin-top: 10px;
+    padding: 26px;
+    border: 1px solid var(--hero-rule);
+    border-radius: 16px;
+    background:
+      linear-gradient(180deg, rgba(236,229,214,0.05), transparent 120px),
+      rgba(28,28,30,0.44);
+  }
+  .install-block h3 { margin: 9px 0 0; font-size: clamp(24px, 3vw, 36px); font-weight: 640; letter-spacing: -0.045em; }
+  .install-block > p { margin: 10px 0 0; max-width: 540px; color: var(--hero-ink-dim); font-size: 12px; line-height: 1.6; }
+  .chooser {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 10px;
-    margin-top: 14px;
+    gap: 1px;
+    margin: 20px 0 22px;
+    border: 1px solid var(--hero-rule);
+    background: var(--hero-rule);
+    border-radius: 10px;
+    overflow: hidden;
   }
-  .note {
-    min-height: 112px;
+  .chooser div {
     padding: 14px;
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    background: rgba(28,28,30,0.72);
+    background: rgba(10,15,14,0.52);
+    color: var(--hero-ink-dim);
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
   }
-  .note b { display: block; margin-bottom: 8px; font-family: var(--mono); font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text); }
-  .note p { margin: 0; color: var(--text-dim); font-size: 11px; line-height: 1.55; }
-  .note.hot { border-color: rgba(51,199,115,0.28); background: rgba(51,199,115,0.055); }
-  .note.hot b { color: var(--green); }
-
-  .verdict {
-    margin-top: 60px;
-    padding: 34px;
-    border: 1px solid rgba(51,199,115,0.28);
-    border-radius: 18px;
-    background:
-      radial-gradient(circle at 90% 0%, rgba(51,199,115,0.12), transparent 34%),
-      rgba(28,28,30,0.8);
+  .chooser div b { display: block; margin-top: 8px; color: var(--text); font-size: 12px; letter-spacing: 0; text-transform: none; }
+  .ledger {
+    border: 1px solid var(--hero-rule);
+    border-radius: 10px;
+    overflow: hidden;
+    font-family: var(--mono);
   }
-  .verdict h2 { margin: 10px 0 0; max-width: 760px; font-size: clamp(28px, 4vw, 48px); line-height: 0.98; letter-spacing: -0.05em; }
-  .verdict p { max-width: 780px; margin: 16px 0 0; color: var(--text-dim); font-size: 14px; line-height: 1.7; }
-  .verdict-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 28px; }
-  .verdict-cell { border: 1px solid var(--border); border-radius: 12px; padding: 15px; background: rgba(10,15,14,0.42); }
-  .verdict-cell b { display: block; font-family: var(--mono); font-size: 9px; letter-spacing: 0.13em; text-transform: uppercase; }
-  .verdict-cell p { margin-top: 8px; font-size: 11px; line-height: 1.55; }
+  .ledger-head, .ledger-row {
+    display: grid;
+    grid-template-columns: 0.8fr 2fr 1.4fr;
+    gap: 18px;
+    padding: 10px 14px;
+    align-items: center;
+  }
+  .ledger-head {
+    border-bottom: 1px solid var(--hero-rule);
+    color: var(--text-muted);
+    font-size: 8px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .ledger-row { border-bottom: 1px solid rgba(236,229,214,0.07); font-size: 10px; color: var(--hero-ink-dim); }
+  .ledger-row:last-child { border-bottom: 0; }
+  .ledger-row:hover { background: rgba(51,199,115,0.05); }
+  .ledger-row b { color: var(--text); font-weight: 550; }
+  .ledger-row a { color: var(--green); font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; }
 
   @media (max-width: 900px) {
     .board { width: min(100% - 28px, 1240px); padding-top: 28px; }
     .board-head, .study-head, .ghost-hero, .context-section { grid-template-columns: 1fr; }
     .map { grid-template-columns: repeat(2, 1fr); }
     .study-index { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .family-grid, .rail-items, .notes, .verdict-grid, .family-strip { grid-template-columns: 1fr; }
+    .family-grid, .rail-items, .family-strip, .chooser { grid-template-columns: 1fr; }
     .family-diagram-head { align-items: start; flex-direction: column; }
     .scene-label.action { right: 20px; top: 190px; }
     .scene-label.blink { right: 20px; bottom: 118px; }
+    .a-tag.action { right: 16px; top: 170px; }
+    .a-tag.blink { left: 16px; bottom: 120px; }
+    .a-tag.speech { right: 16px; top: 34px; }
     .family-rail { grid-template-columns: 1fr; }
     .rail-label { border-right: 0; border-bottom: 1px solid var(--hero-rule); }
     .family-module-head { align-items: start; flex-direction: column; }
+    .ledger-head, .ledger-row { grid-template-columns: 0.8fr 1.4fr 1fr; }
+    .ticker-row { flex-wrap: wrap; }
+    .ticker-row > span, .ticker-row > a { flex: 1 1 40%; }
   }
 </style>
 </head>
@@ -678,26 +841,28 @@
       <p class="board-kicker">Lattices Studio · homepage insertion study</p>
       <h1>Where does the product family surface?</h1>
       <p class="board-lede">
-        Three ways to make Lattices, Action, Blink, and Speech visible without
-        turning the homepage into a product directory. Each option uses the
-        existing page rhythm: warm graph paper, quiet rules, mono metadata,
-        green as the only signal color.
+        Seven visual directions for surfacing Lattices, Action, Blink, and
+        Speech — from a dedicated module to annotations inside the hero
+        picture itself. Each uses the existing page rhythm: warm graph paper,
+        quiet rules, mono metadata, green as the only signal color.
       </p>
     </div>
     <div class="head-aside" aria-label="Study summary">
       <span><b>Scope</b><strong>Homepage only</strong></span>
       <span><b>Artifact</b><strong>Static mock</strong></span>
-      <span><b>Question</b><strong>Module or context?</strong></span>
+      <span><b>Question</b><strong>List it, or draw it?</strong></span>
       <span><b>Constraint</b><strong>No nav dependency</strong></span>
     </div>
   </header>
 
   <nav class="study-index" aria-label="Study index">
-    <a href="#candidate-a"><span>A</span> Dedicated module</a>
-    <a href="#candidate-b"><span>B</span> Exploration rail</a>
-    <a href="#candidate-c"><span>C</span> Contextual callouts</a>
+    <a href="#candidate-a"><span>A</span> Module</a>
+    <a href="#candidate-b"><span>B</span> Rail</a>
+    <a href="#candidate-c"><span>C</span> Callouts</a>
     <a href="#candidate-d"><span>D</span> Shared desktop</a>
-    <a href="#recommendation"><span>→</span> Recommendation</a>
+    <a href="#candidate-e"><span>E</span> Annotated hero</a>
+    <a href="#candidate-f"><span>F</span> Family ticker</a>
+    <a href="#candidate-g"><span>G</span> Install register</a>
   </nav>
 
   <section class="map" aria-label="Possible insertion points">
@@ -757,12 +922,6 @@
         <div class="ghost-section next-ghost"><span class="rule-copy">One state, two operators — same desktop, whether you drive or your agent does.</span><span class="ghost-lines"><i></i><i></i></span></div>
       </div>
     </div>
-
-    <div class="notes">
-      <div class="note hot"><b>Why it works</b><p>Users understand the core promise, then immediately see what else exists. The asymmetric grid makes Lattices primary and the companions clearly subordinate.</p></div>
-      <div class="note"><b>Cost</b><p>It adds a large section between the hero and the narrative proof. If it uses screenshots or long copy, it will read like a second landing page.</p></div>
-      <div class="note"><b>If used</b><p>Keep it typographic, link each card once, and let `/products` be the deeper browse surface. Do not restate the whole docs menu.</p></div>
-    </div>
   </article>
 
   <article class="study" id="candidate-b">
@@ -805,12 +964,6 @@
 
         <div class="ghost-section next-ghost"><span class="rule-copy">One state, two operators — same desktop, whether you drive or your agent does.</span><span class="ghost-lines"><i></i><i></i></span></div>
       </div>
-    </div>
-
-    <div class="notes">
-      <div class="note hot"><b>Why it works</b><p>It behaves like a table of contents for the ecosystem: short, scannable, and aligned with the site’s index-card texture.</p></div>
-      <div class="note"><b>Cost</b><p>It may not teach enough. A name plus one line can be skipped unless the user already knows they want another product.</p></div>
-      <div class="note"><b>If used</b><p>Treat it as navigation furniture, not a sales section. It can coexist with a later product story, but should not be the only explanation.</p></div>
     </div>
   </article>
 
@@ -861,12 +1014,6 @@
           </section>
         </div>
       </div>
-    </div>
-
-    <div class="notes">
-      <div class="note hot"><b>Why it works</b><p>Users learn the family at the exact moment a capability makes it relevant. This is the least marketing-shaped answer.</p></div>
-      <div class="note"><b>Cost</b><p>It is distributed, so nobody sees the whole family at once. It can also clutter sections if every product gets equal chrome.</p></div>
-      <div class="note"><b>If used</b><p>Use it as a product attribution layer. Pair with one dedicated family surface or `/products` so the full set is still discoverable.</p></div>
     </div>
   </article>
 
@@ -934,30 +1081,135 @@
         </div>
       </div>
     </div>
+  </article>
 
-    <div class="notes">
-      <div class="note hot"><b>Why it works</b><p>It explains the family through the homepage’s own thesis: one desktop, one live state. The products appear as surfaces of the system rather than SKUs in a grid.</p></div>
-      <div class="note"><b>Cost</b><p>More craft risk than a card grid. If the zones do not read immediately, the diagram becomes a puzzle instead of an explanation.</p></div>
-      <div class="note"><b>If used</b><p>Pair it with lightweight product attribution in section kickers. Keep the product links as a quiet strip; do not add card chrome back in.</p></div>
+  <article class="study" id="candidate-e">
+    <div class="study-head">
+      <span class="study-no">E / 05</span>
+      <div>
+        <p class="study-kicker">Annotated hero</p>
+        <h2>The family lives inside the hero picture.</h2>
+        <p class="study-thesis">
+          Zero new vertical space — the desktop itself carries the family.
+          Blink pinned to the corner, Speech in the menu bar, Action ringing
+          the window it's about to drive, and a footer chip that names the set.
+        </p>
+      </div>
+      <p class="study-note">Placement<br>Inside the hero stage<br><br>Attention<br>Low, ambient</p>
+    </div>
+
+    <div class="frame">
+      <div class="browser-bar"><i></i><i></i><i></i><span>lattices.dev / candidate E</span></div>
+      <div class="page">
+        <div class="ghost-nav"><span>Lattices</span><span class="links"><span>Products</span><span>Docs</span><span>Blog</span></span></div>
+        <div class="ghost-hero">
+          <div>
+            <p class="eyebrow">The programmable workspace for macOS</p>
+            <h3>Your workspace in your hands.</h3>
+            <p>Organize windows, run your tools, and automate your workflow.</p>
+          </div>
+          <div class="annotated-stage" aria-hidden="true">
+            <div class="a-menubar"><span>lattices desktop</span><b>speech · queue 03</b></div>
+            <span class="a-window w1"></span>
+            <span class="a-window w2"></span>
+            <span class="a-window w3"></span>
+            <div class="a-blink">blink note<i></i><i></i></div>
+            <div class="a-tag action">action · staged</div>
+            <div class="a-tag blink">blink · pinned</div>
+            <div class="a-tag speech">speech · menu bar</div>
+            <div class="a-foot"><span>lattices · window lattice</span><b>4 products on this desktop →</b></div>
+          </div>
+        </div>
+
+        <div class="ghost-section next-ghost"><span class="rule-copy">One state, two operators — same desktop, whether you drive or your agent does.</span><span class="ghost-lines"><i></i><i></i></span></div>
+      </div>
     </div>
   </article>
 
-  <section class="verdict" id="recommendation">
-    <p class="board-kicker">Recommendation</p>
-    <h2>Lead with D. Ship D4 attribution either way.</h2>
-    <p>
-      Fable’s strongest direction reframes the family as one shared desktop
-      instead of a product list. The diagram earns the post-hero attention by
-      making the page’s own thesis visible. Kicker-level attribution is cheap,
-      honest, and fixes the current Action-only asymmetry; the rail remains the
-      spare fallback if the diagram does not read fast enough.
-    </p>
-    <div class="verdict-grid">
-      <div class="verdict-cell"><b>Primary</b><p>Shared-desktop diagram after the hero — the family as one system, not four SKUs.</p></div>
-      <div class="verdict-cell"><b>Secondary</b><p>Section-kicker product attribution, plus a complete family register near install.</p></div>
-      <div class="verdict-cell"><b>Fallback</b><p>Dedicated module if the diagram fails the two-second comprehension test.</p></div>
+  <article class="study" id="candidate-f">
+    <div class="study-head">
+      <span class="study-no">F / 06</span>
+      <div>
+        <p class="study-kicker">Family ticker</p>
+        <h2>The ticker already says “many surfaces, one system.”</h2>
+        <p class="study-thesis">
+          A second mono track under the API methods lists the family by name.
+          Ambient by design — awareness at the warmest spot on the page,
+          priced at a hairline.
+        </p>
+      </div>
+      <p class="study-note">Placement<br>Existing ticker band<br><br>Attention<br>Lowest possible</p>
     </div>
-  </section>
+
+    <div class="frame">
+      <div class="browser-bar"><i></i><i></i><i></i><span>lattices.dev / candidate F</span></div>
+      <div class="page">
+        <div class="ghost-nav"><span>Lattices</span><span class="links"><span>Products</span><span>Docs</span><span>Blog</span></span></div>
+        <div class="ghost-hero">
+          <div>
+            <p class="eyebrow">The programmable workspace for macOS</p>
+            <h3>Your workspace in your hands.</h3>
+            <p>Organize windows, run your tools, and automate your workflow.</p>
+          </div>
+          <div class="stage-mock" aria-hidden="true"><span class="window a"></span><span class="window b"></span><span class="window c"></span><span class="dot"></span></div>
+        </div>
+
+        <span class="insert-label">Extended ticker</span>
+        <div class="ticker-mock" aria-label="Ticker band with family ledger">
+          <div class="ticker-row">
+            <span>ws://127.0.0.1:9399</span><span>lattices.search</span><span>window.place</span><span>session.attach</span><span>ocr.search</span><span>layers.save</span>
+          </div>
+          <div class="ticker-row family">
+            <a href="/">lattices</a><a href="/action">action</a><a href="/blink">blink</a><a href="/speech">speech</a><span class="ticker-thesis">— one desktop, one state</span>
+          </div>
+        </div>
+
+        <div class="ghost-section next-ghost"><span class="rule-copy">One state, two operators — same desktop, whether you drive or your agent does.</span><span class="ghost-lines"><i></i><i></i></span></div>
+      </div>
+    </div>
+  </article>
+
+  <article class="study" id="candidate-g">
+    <div class="study-head">
+      <span class="study-no">G / 07</span>
+      <div>
+        <p class="study-kicker">Install register</p>
+        <h2>The install moment becomes the manifest.</h2>
+        <p class="study-thesis">
+          “Three ways in” is already family-shaped. A monospace ledger under
+          the chooser completes it — every product named with its role and
+          its route, exactly where download intent lives.
+        </p>
+      </div>
+      <p class="study-note">Placement<br>Inside #install<br><br>Attention<br>Low, intent-matched</p>
+    </div>
+
+    <div class="frame">
+      <div class="browser-bar"><i></i><i></i><i></i><span>lattices.dev / candidate G</span></div>
+      <div class="page">
+        <div class="ghost-nav"><span>Lattices</span><span class="links"><span>Products</span><span>Docs</span><span>Blog</span></span></div>
+        <div class="ghost-section next-ghost" style="margin-top:0;border-top:0;padding-top:10px;"><span class="rule-copy">Capability story ends — scroll reaches the install section.</span><span class="ghost-lines"><i></i><i></i></span></div>
+
+        <span class="insert-label">Extended section</span>
+        <section class="install-block" aria-label="Install with family register">
+          <p class="eyebrow">Install</p>
+          <h3>Three ways in. One workspace.</h3>
+          <div class="chooser">
+            <div>DMG<b>Lattices.app</b></div>
+            <div>npm<b>npm i -g lattices</b></div>
+            <div>SDK<b>Agent API · ws 9399</b></div>
+          </div>
+          <div class="ledger">
+            <div class="ledger-head"><span>name</span><span>role</span><span>get</span></div>
+            <div class="ledger-row"><b>lattices</b><span>workspace core — windows, tmux, layers, agent API</span><a href="/">.dmg · npm · sdk →</a></div>
+            <div class="ledger-row"><b>action</b><span>computer use, staged and reviewable</span><a href="/action">/action →</a></div>
+            <div class="ledger-row"><b>blink</b><span>spatial notes pinned to the desktop</span><a href="/blink">/blink →</a></div>
+            <div class="ledger-row"><b>speech</b><span>queued text playback from the menu bar</span><a href="/speech">/speech →</a></div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </article>
 </main>
 </body>
 </html>
