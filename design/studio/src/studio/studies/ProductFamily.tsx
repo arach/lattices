@@ -22,7 +22,7 @@ export function ProductFamilyStudy({ page }: { page: LatticesPage }) {
             title="Product family homepage insertion study"
             style={{
               width: "100%",
-              height: 8100,
+              height: 10800,
               border: 0,
               display: "block",
               background: "#111113",
@@ -30,8 +30,8 @@ export function ProductFamilyStudy({ page }: { page: LatticesPage }) {
           />
         </div>
         <p className="mt-4 font-mono text-[11px] leading-relaxed text-studio-ink-faint">
-          Static homepage study — seven product-family surfaces, from a dedicated
-          module to annotations inside the hero picture. No site code touched.
+          Static homepage study — a progressive capability narrative, with the
+          earlier product-family surfaces retained for comparison. No site code touched.
         </p>
       </section>
     </main>

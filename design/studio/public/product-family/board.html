@@ -93,7 +93,7 @@
 
   .study-index {
     display: grid;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
+    grid-template-columns: repeat(8, minmax(0, 1fr));
     gap: 1px;
     margin-top: 24px;
     border: 1px solid var(--border);
@@ -813,6 +813,195 @@
   .ledger-row b { color: var(--text); font-weight: 550; }
   .ledger-row a { color: var(--green); font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; }
 
+  .narrative-page {
+    display: grid;
+    gap: 1px;
+    border: 1px solid var(--hero-rule);
+    background: var(--hero-rule);
+  }
+  .narrative-hero,
+  .capability-chapter,
+  .narrative-close {
+    background: rgba(10,15,14,0.9);
+  }
+  .narrative-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 0.85fr) minmax(360px, 1.15fr);
+    gap: 48px;
+    align-items: center;
+    min-height: 390px;
+    padding: 44px;
+  }
+  .narrative-hero h3 {
+    max-width: 540px;
+    margin: 14px 0 0;
+    color: var(--hero-ink);
+    font-size: clamp(40px, 5.2vw, 72px);
+    font-weight: 650;
+    letter-spacing: -0.065em;
+    line-height: 0.92;
+  }
+  .narrative-hero p:not(.eyebrow) {
+    max-width: 480px;
+    margin: 18px 0 0;
+    color: var(--hero-ink-dim);
+    font-size: 14px;
+    line-height: 1.65;
+  }
+  .workspace-visual {
+    position: relative;
+    min-height: 300px;
+    border: 1px solid var(--hero-rule);
+    border-radius: 16px;
+    background:
+      linear-gradient(var(--hero-rule) 1px, transparent 1px),
+      linear-gradient(90deg, var(--hero-rule) 1px, transparent 1px),
+      #101514;
+    background-size: 32px 32px;
+    overflow: hidden;
+  }
+  .workspace-visual::before,
+  .workspace-visual::after {
+    content: "";
+    position: absolute;
+    border: 1px solid rgba(236,229,214,0.24);
+    border-radius: 9px;
+    background: rgba(36,36,38,0.92);
+    box-shadow: 0 16px 45px rgba(0,0,0,0.22);
+  }
+  .workspace-visual::before { inset: 38px 36% 78px 28px; }
+  .workspace-visual::after { inset: 78px 28px 38px 52%; }
+  .workspace-command {
+    position: absolute;
+    z-index: 2;
+    left: 50%;
+    bottom: 24px;
+    transform: translateX(-50%);
+    width: min(72%, 340px);
+    padding: 12px 14px;
+    border: 1px solid rgba(51,199,115,0.45);
+    border-radius: 8px;
+    background: rgba(10,15,14,0.92);
+    color: var(--green);
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .capability-ticker {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    background: rgba(10,15,14,0.92);
+  }
+  .capability-ticker span {
+    padding: 12px 14px;
+    border-right: 1px solid var(--hero-rule);
+    color: var(--hero-ink-dim);
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-align: center;
+    text-transform: uppercase;
+  }
+  .capability-ticker span:last-child { border-right: 0; }
+  .capability-chapter {
+    display: grid;
+    grid-template-columns: 90px minmax(0, 0.8fr) minmax(340px, 1.2fr);
+    gap: 32px;
+    align-items: center;
+    min-height: 310px;
+    padding: 38px 44px;
+  }
+  .chapter-no {
+    align-self: start;
+    color: var(--green);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+  }
+  .chapter-copy h4 {
+    margin: 8px 0 0;
+    color: var(--hero-ink);
+    font-size: clamp(28px, 3.5vw, 48px);
+    font-weight: 630;
+    letter-spacing: -0.05em;
+    line-height: 1;
+  }
+  .chapter-copy > p {
+    max-width: 440px;
+    margin: 15px 0 0;
+    color: var(--hero-ink-dim);
+    font-size: 13px;
+    line-height: 1.65;
+  }
+  .product-reveal {
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+    margin-top: 18px;
+    color: var(--green);
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+  }
+  .product-reveal::before { content: ""; width: 22px; height: 1px; background: var(--green); }
+  .chapter-visual {
+    position: relative;
+    min-height: 210px;
+    border: 1px solid var(--hero-rule);
+    border-radius: 12px;
+    background: rgba(28,28,30,0.66);
+    overflow: hidden;
+  }
+  .agent-turns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    height: 210px;
+    background: var(--hero-rule);
+  }
+  .agent-turns div { padding: 24px; background: #111614; }
+  .agent-turns span { color: var(--green); font-family: var(--mono); font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; }
+  .agent-turns b { display: block; margin-top: 46px; color: var(--hero-ink); font-size: 20px; font-weight: 550; letter-spacing: -0.03em; }
+  .agent-turns small { display: block; margin-top: 9px; color: var(--hero-ink-dim); font-size: 10px; line-height: 1.5; }
+  .action-visual .action-screen { position: absolute; inset: 22px 34% 22px 22px; border: 1px solid rgba(236,229,214,0.18); border-radius: 8px; background: #0c1110; }
+  .action-visual .action-target { position: absolute; left: 18%; top: 38%; width: 25%; height: 24%; border: 1px solid var(--green); background: var(--green-soft); }
+  .action-steps { position: absolute; inset: 22px 22px 22px 70%; display: grid; align-content: center; gap: 10px; }
+  .action-steps span { padding: 10px; border: 1px solid var(--hero-rule); border-radius: 6px; color: var(--hero-ink-dim); font-family: var(--mono); font-size: 8px; text-transform: uppercase; }
+  .action-steps span:nth-child(2) { border-color: rgba(51,199,115,0.45); color: var(--green); }
+  .notes-visual { background:
+    linear-gradient(var(--hero-rule) 1px, transparent 1px),
+    linear-gradient(90deg, var(--hero-rule) 1px, transparent 1px),
+    rgba(28,28,30,0.66); background-size: 32px 32px; }
+  .note-card {
+    position: absolute;
+    width: 150px;
+    padding: 18px;
+    border: 1px solid rgba(236,229,214,0.2);
+    background: #25241f;
+    color: var(--hero-ink);
+    font-size: 12px;
+    line-height: 1.45;
+    box-shadow: 0 18px 50px rgba(0,0,0,0.24);
+  }
+  .note-card.one { left: 12%; top: 34px; transform: rotate(-2deg); }
+  .note-card.two { right: 13%; bottom: 28px; transform: rotate(2deg); }
+  .note-card small { display: block; margin-top: 22px; color: var(--green); font-family: var(--mono); font-size: 8px; text-transform: uppercase; }
+  .speech-visual { display: grid; align-content: center; gap: 1px; padding: 22px; background: var(--hero-rule); }
+  .speech-item { display: grid; grid-template-columns: 28px 1fr auto; gap: 12px; align-items: center; padding: 13px; background: #111614; color: var(--hero-ink-dim); font-family: var(--mono); font-size: 9px; }
+  .speech-item b { color: var(--hero-ink); font-weight: 550; }
+  .speech-item.active { background: rgba(51,199,115,0.09); color: var(--green); }
+  .narrative-close {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 32px;
+    padding: 26px 44px;
+  }
+  .narrative-close strong { color: var(--hero-ink); font-size: 17px; font-weight: 560; letter-spacing: -0.025em; }
+  .narrative-close span { color: var(--green); font-family: var(--mono); font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; }
+
   @media (max-width: 900px) {
     .board { width: min(100% - 28px, 1240px); padding-top: 28px; }
     .board-head, .study-head, .ghost-hero, .context-section { grid-template-columns: 1fr; }
@@ -831,6 +1020,13 @@
     .ledger-head, .ledger-row { grid-template-columns: 0.8fr 1.4fr 1fr; }
     .ticker-row { flex-wrap: wrap; }
     .ticker-row > span, .ticker-row > a { flex: 1 1 40%; }
+    .narrative-hero, .capability-chapter { grid-template-columns: 1fr; }
+    .capability-chapter { gap: 18px; }
+    .chapter-no { align-self: auto; }
+    .capability-ticker { grid-template-columns: 1fr; }
+    .capability-ticker span { border-right: 0; border-bottom: 1px solid var(--hero-rule); }
+    .capability-ticker span:last-child { border-bottom: 0; }
+    .narrative-close { align-items: flex-start; flex-direction: column; }
   }
 </style>
 </head>
@@ -839,23 +1035,23 @@
   <header class="board-head">
     <div>
       <p class="board-kicker">Lattices Studio · homepage insertion study</p>
-      <h1>Where does the product family surface?</h1>
+      <h1>How does the family come together?</h1>
       <p class="board-lede">
-        Seven visual directions for surfacing Lattices, Action, Blink, and
-        Speech — from a dedicated module to annotations inside the hero
-        picture itself. Each uses the existing page rhythm: warm graph paper,
-        quiet rules, mono metadata, green as the only signal color.
+        The products should not arrive as a catalog. The lead direction unfolds
+        as a capability story: shape the workspace, collaborate with agents,
+        act on the screen, keep spatial notes, then listen without losing focus.
       </p>
     </div>
     <div class="head-aside" aria-label="Study summary">
       <span><b>Scope</b><strong>Homepage only</strong></span>
       <span><b>Artifact</b><strong>Static mock</strong></span>
-      <span><b>Question</b><strong>List it, or draw it?</strong></span>
-      <span><b>Constraint</b><strong>No nav dependency</strong></span>
+      <span><b>Question</b><strong>What can it do next?</strong></span>
+      <span><b>Constraint</b><strong>No product dump</strong></span>
     </div>
   </header>
 
   <nav class="study-index" aria-label="Study index">
+    <a href="#candidate-h"><span>H</span> Capability flow</a>
     <a href="#candidate-a"><span>A</span> Module</a>
     <a href="#candidate-b"><span>B</span> Rail</a>
     <a href="#candidate-c"><span>C</span> Callouts</a>
@@ -866,13 +1062,114 @@
   </nav>
 
   <section class="map" aria-label="Possible insertion points">
-    <div class="map-step">01<strong>Hero promise</strong></div>
-    <div class="map-step is-hot">02<strong>Family surface</strong></div>
-    <div class="map-step">03<strong>Two-operator proof</strong></div>
-    <div class="map-step is-context">04<strong>Product callouts</strong></div>
-    <div class="map-step">05<strong>Capability story</strong></div>
-    <div class="map-step">06<strong>Install paths</strong></div>
+    <div class="map-step">01<strong>Workspace + layout</strong></div>
+    <div class="map-step">02<strong>Human + agent</strong></div>
+    <div class="map-step is-hot">03<strong>Action</strong></div>
+    <div class="map-step is-context">04<strong>Spatial notes</strong></div>
+    <div class="map-step">05<strong>Speech</strong></div>
+    <div class="map-step">06<strong>One family</strong></div>
   </section>
+
+  <article class="study" id="candidate-h">
+    <div class="study-head">
+      <span class="study-no">H / Focus</span>
+      <div>
+        <p class="study-kicker">Progressive capability story</p>
+        <h2>Introduce the need first. Let the product appear second.</h2>
+        <p class="study-thesis">
+          The homepage stays about what the system can do. Lattices establishes
+          the workspace and agent model; Action, Blink, and Speech are revealed
+          only when the narrative reaches the job each one solves.
+        </p>
+      </div>
+      <p class="study-note">Structure<br>One continuous page<br><br>Family role<br>Emergent, not announced</p>
+    </div>
+
+    <div class="frame">
+      <div class="browser-bar"><i></i><i></i><i></i><span>lattices.dev / capability flow</span></div>
+      <div class="page">
+        <div class="ghost-nav"><span>Lattices</span><span class="links"><span>Products</span><span>Docs</span><span>Blog</span></span></div>
+        <div class="narrative-page">
+          <section class="narrative-hero">
+            <div>
+              <p class="eyebrow">A programmable workspace for macOS</p>
+              <h3>Shape the desktop around the work.</h3>
+              <p>Arrange windows, launch the right tools, and return to a complete working state instead of rebuilding it every morning.</p>
+            </div>
+            <div class="workspace-visual" aria-hidden="true">
+              <div class="workspace-command">Place editor left · terminal right →</div>
+            </div>
+          </section>
+
+          <div class="capability-ticker" aria-label="Capability sequence">
+            <span>Arrange</span><span>Collaborate</span><span>Act</span><span>Remember</span><span>Listen</span>
+          </div>
+
+          <section class="capability-chapter">
+            <span class="chapter-no">01 / Agents</span>
+            <div class="chapter-copy">
+              <p class="eyebrow">One state, two operators</p>
+              <h4>Your agent works in the same workspace.</h4>
+              <p>It can inspect what is open, find the right window, and reshape the desktop with you, without inventing a second environment.</p>
+              <span class="product-reveal">Built into Lattices</span>
+            </div>
+            <div class="chapter-visual agent-turns" aria-hidden="true">
+              <div><span>You</span><b>Open the work.</b><small>Sessions, windows, layers, and focus stay visible.</small></div>
+              <div><span>Agent</span><b>Continue the work.</b><small>The same live state is available through the local API.</small></div>
+            </div>
+          </section>
+
+          <section class="capability-chapter">
+            <span class="chapter-no">02 / Computer use</span>
+            <div class="chapter-copy">
+              <p class="eyebrow">When the work leaves the terminal</p>
+              <h4>See the action before it happens.</h4>
+              <p>Observe the screen, stage a computer-use step, review the target, then execute and verify it on device.</p>
+              <a class="product-reveal" href="/action">Meet Action →</a>
+            </div>
+            <div class="chapter-visual action-visual" aria-hidden="true">
+              <div class="action-screen"><span class="action-target"></span></div>
+              <div class="action-steps"><span>Observe</span><span>Review target</span><span>Execute</span></div>
+            </div>
+          </section>
+
+          <section class="capability-chapter">
+            <span class="chapter-no">03 / Notes</span>
+            <div class="chapter-copy">
+              <p class="eyebrow">Keep context where it belongs</p>
+              <h4>Leave the note on the desktop.</h4>
+              <p>Pin working memory beside the window it describes, so the thought survives after the tab, task, or conversation moves on.</p>
+              <a class="product-reveal" href="/blink">Meet Blink →</a>
+            </div>
+            <div class="chapter-visual notes-visual" aria-hidden="true">
+              <div class="note-card one">Check the release path before merging.<small>Pinned to terminal</small></div>
+              <div class="note-card two">The workspace remembers where this belongs.<small>Spatial note</small></div>
+            </div>
+          </section>
+
+          <section class="capability-chapter">
+            <span class="chapter-no">04 / Speech</span>
+            <div class="chapter-copy">
+              <p class="eyebrow">Stay in the flow</p>
+              <h4>Listen to the queue, not another tab.</h4>
+              <p>Send text to a lightweight playback queue and keep working while long responses, drafts, and notes are read aloud.</p>
+              <a class="product-reveal" href="/speech">Meet Speech →</a>
+            </div>
+            <div class="chapter-visual speech-visual" aria-hidden="true">
+              <div class="speech-item active"><span>▶</span><b>Why the family expanded</b><span>02:14</span></div>
+              <div class="speech-item"><span>02</span><b>Release notes draft</b><span>01:42</span></div>
+              <div class="speech-item"><span>03</span><b>Agent summary</b><span>00:58</span></div>
+            </div>
+          </section>
+
+          <footer class="narrative-close">
+            <strong>One desktop. The right tool appears when the work asks for it.</strong>
+            <span>Lattices · Action · Blink · Speech</span>
+          </footer>
+        </div>
+      </div>
+    </div>
+  </article>
 
   <article class="study" id="candidate-a">
     <div class="study-head">
