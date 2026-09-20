@@ -66,9 +66,9 @@ export default function FamilyPage() {
         <CapabilitySection
           number="04"
           label="Speech"
-          kicker="Stay in the flow"
+          kicker="A voice for agents"
           title="Smart voice readouts with HUD readalong if you want it."
-          description="Send text to a lightweight playback queue and keep working while long responses, drafts, and notes are read aloud."
+          description="A unified API for agents to say things out loud — a task finishes and its summary is queued and spoken in the background, across every agent you run. Powered by Lattices, it can go further: ambient readouts like your download finished."
           product="Meet Speech"
           href="/speech"
           visual={<SpeechVisual />}
