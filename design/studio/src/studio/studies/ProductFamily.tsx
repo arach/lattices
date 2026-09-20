@@ -22,7 +22,7 @@ export function ProductFamilyStudy({ page }: { page: LatticesPage }) {
             title="Product family homepage insertion study"
             style={{
               width: "100%",
-              height: 4700,
+              height: 6350,
               border: 0,
               display: "block",
               background: "#111113",
