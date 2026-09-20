@@ -208,7 +208,9 @@ async function install(shouldLaunch: boolean): Promise<void> {
 
     if (isRunning()) {
       console.log("Quitting running Action...");
-      quitApp();
+      if (!quitApp()) {
+        throw new Error("Action did not quit. The installed app was left unchanged; quit Action and retry.");
+      }
     }
     installAppFromDmg(dmgPath);
   } finally {
