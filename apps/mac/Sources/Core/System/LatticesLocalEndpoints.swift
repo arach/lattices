@@ -16,6 +16,10 @@ enum LatticesLocalEndpoints {
     /// Loopback bind host for all Lattices-local services.
     static let loopbackHost = "127.0.0.1"
 
+    /// Separate Speech app, owned by its own process.
+    static let speechCompanionPort: UInt16 = 9397
+    static var speechCompanionURL: URL { URL(string: "ws://\(loopbackHost):\(speechCompanionPort)")! }
+
     /// Agent API / daemon WebSocket (`DaemonServer`).
     static let agentAPIPort: UInt16 = 9399
 

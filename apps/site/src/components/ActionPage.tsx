@@ -320,6 +320,7 @@ export default function ActionPage() {
           <div>
             <a href="/">Lattices</a>
             <a href="/blink">Blink</a>
+            <a href="/speech">Speech</a>
             <a href="/action/llms.txt" data-router="reload">Action docs</a>
             <a href={sourceUrl}>GitHub</a>
           </div>

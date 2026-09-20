@@ -79,6 +79,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
         )
 
         if eventType == .rightMouseUp {
+            CompanionAppsMenu.refresh()
             contextMenu?.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height + 4), in: button)
         } else if let shown = popover, shown.isShown {
             // A popover whose window never made it onscreen still reports
@@ -151,6 +152,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
         menu.addItem(.separator())
 
         FrontWindowPlacementMenu.attach(to: menu)
+        CompanionAppsMenu.attach(to: menu)
 
         menu.addItem(.separator())
 

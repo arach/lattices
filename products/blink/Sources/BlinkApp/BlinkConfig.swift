@@ -11,6 +11,7 @@ struct BlinkConfig: Codable, Equatable {
         var restoreSession: Bool = true
         var defaultMode: String = "read"
         var launchAtLogin: Bool = false
+        var alwaysShowMenuBarIcon: Bool = false
 
         init() {}
         init(from decoder: Decoder) throws {
@@ -18,6 +19,7 @@ struct BlinkConfig: Codable, Equatable {
             restoreSession = try c.decodeIfPresent(Bool.self, forKey: .restoreSession) ?? true
             defaultMode = try c.decodeIfPresent(String.self, forKey: .defaultMode) ?? "read"
             launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
+            alwaysShowMenuBarIcon = try c.decodeIfPresent(Bool.self, forKey: .alwaysShowMenuBarIcon) ?? false
         }
     }
 

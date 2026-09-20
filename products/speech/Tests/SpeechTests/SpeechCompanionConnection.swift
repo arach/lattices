@@ -1,0 +1,1 @@
+../../../../apps/mac/Sources/Core/CompanionApps/SpeechCompanionConnection.swift

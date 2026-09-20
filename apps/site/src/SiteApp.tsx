@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { BlogIndex, BlogPostPage } from './components/Blog'
 import ActionPage from './components/ActionPage'
 import BlinkPage from './components/BlinkPage'
+import SpeechPage from './components/SpeechPage'
 import { DocsPage } from './components/Docs'
 import LandingPage from './components/LandingPage'
 import ConceptExperimentPage from './components/ConceptExperimentPage'
@@ -51,6 +52,7 @@ export default function SiteApp() {
   if (route.kind === 'experiment') return <ConceptExperimentPage />
   if (route.kind === 'action') return <ActionPage />
   if (route.kind === 'blink') return <BlinkPage />
+  if (route.kind === 'speech') return <SpeechPage />
   if (route.kind === 'docs') return <DocsPage slug={route.slug} />
   if (route.kind === 'blog-index') return <BlogIndex />
   if (route.kind === 'blog-post') return <BlogPostPage slug={route.slug} />
@@ -93,6 +95,7 @@ type Route =
   | { kind: 'experiment'; title: string; description: string }
   | { kind: 'action'; title: string; description: string }
   | { kind: 'blink'; title: string; description: string }
+  | { kind: 'speech'; title: string; description: string }
   | { kind: 'docs'; slug?: string; title: string; description: string }
   | { kind: 'blog-index'; title: string; description: string }
   | { kind: 'blog-post'; slug: string; title: string; description: string }
@@ -110,8 +113,8 @@ function resolveRoute(path: string): Route {
   if (path === '/') {
     return {
       kind: 'home',
-      title: 'lattices — agentic window management',
-      description: 'When your desktop is full of windows, terminals, and agents, Lattices gives you one place to arrange, launch, and control all of it — by hand or from code.',
+      title: 'Lattices — the programmable workspace for Mac',
+      description: 'Organize windows, run your tools, and automate your workflow. Lattices puts your Mac workspace in your hands, with shortcuts, mouse gestures, and a local API.',
     }
   }
 
@@ -122,6 +125,8 @@ function resolveRoute(path: string): Route {
       description: 'Action is the focused computer-use product from Lattices: native macOS automation, capture, and review for agents.',
     }
   }
+
+  if (path === '/speech') return { kind: 'speech', title: 'Speech — a standalone player from Lattices', description: 'Queue text, choose a voice, and control playback independently.' }
 
   if (path === '/blink') {
     return {

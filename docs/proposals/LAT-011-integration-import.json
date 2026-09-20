@@ -1,0 +1,90 @@
+{
+  "source": "/Users/arach/.codex/worktrees/19f1/lattices",
+  "copiedAt": 1789430793.965235,
+  "files": [
+    {
+      "path": "apps/mac/Sources/Core/CompanionApps/CompanionAppActions.swift",
+      "sha256": "df27d71bd11529a087a526f88b7162ab6b2bcfbffdc862288421b99610e0c5fb"
+    },
+    {
+      "path": "apps/mac/Sources/Core/CompanionApps/CompanionAppCatalog.swift",
+      "sha256": "ecb2562bdda624f7710d3bc07f19c5958a3a4ead311fede211911409b782202c"
+    },
+    {
+      "path": "apps/mac/Sources/Core/CompanionApps/CompanionAppDiscovery.swift",
+      "sha256": "f8953d59b341dc87cf59a042ae515e45b32d96b0578f4d95d099c394feca139b"
+    },
+    {
+      "path": "apps/mac/Sources/Core/CompanionApps/CompanionAppLauncher.swift",
+      "sha256": "d4f8500c902848432255fee5aa041b089ddae40377850dca9e8cdeaf1a4b08f3"
+    },
+    {
+      "path": "apps/mac/Sources/Core/CompanionApps/CompanionAppsMenu.swift",
+      "sha256": "4bdbc4f023bb0547c44d5e332dfa6349e559be6173168fee573697916e27fa6b"
+    },
+    {
+      "path": "apps/mac/Sources/Core/CompanionApps/CompanionProductCatalog.swift",
+      "sha256": "01f493d10ac798b0890854cc8fb27c81bef50f460892f7dc08baeb9143dfeb6e"
+    },
+    {
+      "path": "apps/mac/Tests/CompanionAppCatalogTests.swift",
+      "sha256": "ff32e9042334d4cd5dac0b960ad243f2297330940686ec763a0236c311ab498c"
+    },
+    {
+      "path": "apps/mac/Tests/CompanionAppDiscoveryTests.swift",
+      "sha256": "08e404cea588474f3ef239b8d41ffc7d8b82d7cef57791785f5e30d002d93db1"
+    },
+    {
+      "path": "bin/companion-commit.ts",
+      "sha256": "d20e638e72b706f8e94a0848d309de7e59fa37411602a84890333565255e9b86"
+    },
+    {
+      "path": "bin/companion-install.ts",
+      "sha256": "68d853bd0c88d98862e009e7f558ee3bcf29118a2913171e9eb440bbe88664aa"
+    },
+    {
+      "path": "bin/companion-installer.ts",
+      "sha256": "f761ab32af375556ba96ea6b66b3203cd2b3796f61bcd388015ae38595f2fc50"
+    },
+    {
+      "path": "bin/companion-lock.ts",
+      "sha256": "15a3bddec9ebd769b6bdd57b803b6cab0e3e7f71f37e63c8751ac3515702bf5c"
+    },
+    {
+      "path": "bin/companion-release.ts",
+      "sha256": "194f661ee16fd16216e2580c94590d8288fd79ec3cc6758253a8cc40c32742c9"
+    },
+    {
+      "path": "docs/proposals/LAT-011-companion-app-architecture.md",
+      "sha256": "1cdc6394e2b2b95f470bb985bbef2835d1724c9fdbb33ff8301de056307f27e8"
+    },
+    {
+      "path": "docs/proposals/LAT-011-companion-app-implementation.md",
+      "sha256": "7afba7fee235d803ee7050738768d4bb18d804789838fd05c364d3fd09368f52"
+    },
+    {
+      "path": "tests/companion-commit.test.ts",
+      "sha256": "fec63c11947e90d686f778d75e8b90f68425964f5bc49df67b6db70cb3eb127d"
+    },
+    {
+      "path": "tests/companion-install.test.ts",
+      "sha256": "6ccde34a1f82e1425d2568a5bafa831aa9d5aa5dbc589b389117a881eac17343"
+    },
+    {
+      "path": "tests/companion-lock.test.ts",
+      "sha256": "61ddecbc63a05d73bda52059fe7b8a31e77c57af195bf9a964eaedec2a0db2f6"
+    },
+    {
+      "path": "tests/companion-release.test.ts",
+      "sha256": "d00259c8fbc8b9b43d5335f432e2dd36ccc8aff23571aada50aee208641758ca"
+    },
+    {
+      "path": "tests/companion-trust.test.ts",
+      "sha256": "522b0d5bc4f01e0caeb8f61e17072ecfa27afd90db56f92fa7a3865f28156be7"
+    },
+    {
+      "path": "apps/mac/Sources/AppShell/MenuBarController.swift",
+      "sha256": "d87784c42aa2e43a84fd6e6f6031799437f46aef32e70d853451a4d360d8d265"
+    }
+  ]
+}
