@@ -1,137 +1,195 @@
 import AppKit
 import SwiftUI
 
+/// Home opens on the work already in progress — sessions you'd resume and the
+/// windows currently on screen — instead of a wall of cards that duplicate the
+/// sidebar. The page header (title + actions) is chrome furniture owned by
+/// AppShellView; this view is just the scrollable content below it.
 struct HomeDashboardView: View {
     var onNavigate: ((AppPage) -> Void)? = nil
 
-    @ObservedObject private var assistantSession = WorkspaceAssistantSession.shared
     @ObservedObject private var desktop = DesktopModel.shared
+    @ObservedObject private var scanner = ProjectScanner.shared
+    @ObservedObject private var workspace = WorkspaceManager.shared
 
     var body: some View {
-        VStack(spacing: 0) {
-            hero
-
-            Rectangle()
-                .fill(Palette.border)
-                .frame(height: 0.5)
-
-            activeWindowsSection
+        ScrollView {
+            content
+                .padding(.horizontal, 16)
+                .padding(.top, 18)
+                .padding(.bottom, 22)
         }
-        .background(Palette.bg)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(Palette.bg)
         .onAppear {
-            assistantSession.prepareForDisplay()
+            WorkspaceAssistantSession.shared.prepareForDisplay()
             desktop.start()        // guarded — no-op if already polling
             desktop.forcePoll()    // fresh snapshot on open
+            scanner.scan()
         }
     }
 
-    // MARK: - Hero (title + quick actions)
-
-    private var hero: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Lattices Home")
-                    .font(Typo.heading(18))
-                    .foregroundColor(Palette.text)
-
-                Text("Layout, search, chat, and screen context in one place.")
-                    .font(Typo.mono(11))
-                    .foregroundColor(Palette.textDim)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            HStack(spacing: 10) {
-                homeActionCard(
-                    title: "Chat",
-                    subtitle: "Scout workspace assistant",
-                    icon: "bubble.left.and.bubble.right",
-                    tint: assistantSession.isScoutAvailable == false ? Palette.detach : Palette.textDim
-                ) {
-                    if let onNavigate { onNavigate(.assistant) } else { AssistantAccess.show() }
-                }
-
-                homeActionCard(
-                    title: "Studio",
-                    subtitle: "Arrange windows & layers",
-                    icon: "rectangle.3.group",
-                    tint: Palette.textDim
-                ) { onNavigate?(.screenMap) }
-
-                homeActionCard(
-                    title: "Search",
-                    subtitle: "Find workspace context",
-                    icon: "magnifyingglass",
-                    tint: Palette.textDim
-                ) { onNavigate?(.desktopInventory) }
-
-                homeActionCard(
-                    title: "Runs",
-                    subtitle: "Review artifacts",
-                    icon: "record.circle",
-                    tint: Palette.running
-                ) { onNavigate?(.runs) }
-
-                homeActionCard(
-                    title: "Activity",
-                    subtitle: "Logs and diagnostics",
-                    icon: "list.bullet.rectangle",
-                    tint: Palette.textDim
-                ) { onNavigate?(.activity) }
+    @ViewBuilder
+    private var content: some View {
+        if layers.isEmpty {
+            mainColumn
+        } else {
+            HStack(alignment: .top, spacing: 24) {
+                mainColumn
+                asideColumn
+                    .frame(width: 220, alignment: .leading)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 10)
-        .padding(.bottom, 16)
-        .background(
-            LinearGradient(
-                colors: [Palette.running.opacity(0.08), Color.black.opacity(0.18)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+    }
+
+    private var mainColumn: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            sessionsSection
+            activeWindowsSection
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Section header
+
+    /// One heading style for every section: name, optional live count, optional
+    /// trailing action. Matches the "Sec" furniture in the design mock.
+    private func sectionHeader(
+        title: String,
+        count: Int? = nil,
+        actionTitle: String? = nil,
+        action: (() -> Void)? = nil
+    ) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(title)
+                .font(Typo.heading(13))
+                .foregroundColor(Palette.text)
+            if let count {
+                Text("\(count)")
+                    .font(Typo.mono(11))
+                    .foregroundColor(Palette.textMuted)
+            }
+            Spacer()
+            if let actionTitle, let action {
+                Button(action: action) {
+                    Text(actionTitle)
+                        .font(Typo.body(11))
+                        .foregroundColor(Palette.textMuted)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    // MARK: - Sessions
+
+    /// The three things you'd actually resume: running sessions first, then
+    /// recently scanned projects. Chat/Studio/Search/Runs/Activity already
+    /// live permanently in the sidebar, so they don't need a card here too.
+    private var sessions: [Project] {
+        Array(
+            scanner.projects.sorted { a, b in
+                if a.isRunning != b.isRunning { return a.isRunning }
+                return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
+            }
+            .prefix(3)
         )
     }
 
-    private func homeActionCard(
-        title: String,
-        subtitle: String,
-        icon: String,
-        tint: Color,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Image(systemName: icon)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(tint)
-                    Spacer()
-                    Circle().fill(tint.opacity(0.85)).frame(width: 6, height: 6)
+    private var sessionsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionHeader(title: "Sessions", count: sessions.count, actionTitle: "Manage") {
+                onNavigate?(.screenMap)
+            }
+
+            if sessions.isEmpty {
+                Text("No projects found")
+                    .font(Typo.body(12))
+                    .foregroundColor(Palette.textMuted)
+            } else {
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3),
+                    alignment: .leading,
+                    spacing: 10
+                ) {
+                    ForEach(sessions) { project in
+                        sessionCard(project)
+                    }
                 }
-                Text(title)
-                    .font(Typo.monoBold(12))
-                    .foregroundColor(Palette.text)
-                Text(subtitle)
+            }
+        }
+    }
+
+    private func sessionCard(_ project: Project) -> some View {
+        Button {
+            SessionManager.launch(project: project)
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Text(project.name)
+                        .font(Typo.heading(13))
+                        .foregroundColor(Palette.text)
+                        .lineLimit(1)
+                    Spacer(minLength: 6)
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(project.isRunning ? Palette.running : Palette.textMuted)
+                            .frame(width: 5, height: 5)
+                        Text(project.isRunning ? "RUNNING" : "STOPPED")
+                            .font(Typo.mono(9))
+                            .tracking(0.4)
+                    }
+                    .foregroundColor(project.isRunning ? Palette.running : Palette.textMuted)
+                }
+
+                Text(displayPath(project.path))
                     .font(Typo.mono(10))
                     .foregroundColor(Palette.textMuted)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                Spacer(minLength: 0)
+
+                HStack(spacing: 12) {
+                    ForEach(facts(for: project), id: \.self) { fact in
+                        Text(fact)
+                    }
+                }
+                .font(Typo.mono(10))
+                .foregroundColor(project.isRunning ? Palette.textDim : Palette.textMuted)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 96, alignment: .topLeading)
             .padding(12)
             .background(
                 RoundedRectangle(cornerRadius: 8)
                     .fill(Palette.surface.opacity(0.7))
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .strokeBorder(tint.opacity(0.18), lineWidth: 0.5)
+                            .strokeBorder(Palette.border, lineWidth: 0.5)
                     )
             )
         }
         .buttonStyle(.plain)
     }
 
-    // MARK: - Active windows snapshot
+    /// Real facts only — a stopped session has no live pane/window count, so
+    /// it gets its configured pane count instead of a fabricated "last run".
+    private func facts(for project: Project) -> [String] {
+        guard project.isRunning else {
+            return ["\(project.paneCount) panes configured"]
+        }
+        return ["tmux · \(project.paneCount) panes", "\(windowCount(for: project)) windows"]
+    }
+
+    private func windowCount(for project: Project) -> Int {
+        desktop.allWindows().filter { $0.latticesSession == project.sessionName }.count
+    }
+
+    private func displayPath(_ path: String) -> String {
+        (path as NSString).abbreviatingWithTildeInPath
+    }
+
+    // MARK: - Active windows
 
     /// On-screen windows, most-recently-interacted first, then frontmost order.
     private var activeWindows: [WindowEntry] {
@@ -158,44 +216,53 @@ struct HomeDashboardView: View {
 
     private var activeWindowsSection: some View {
         let windows = activeWindows
-        return VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
-                Text("Active windows")
-                    .font(Typo.monoBold(11))
-                    .foregroundColor(Palette.textDim)
-                Text("\(windows.count)")
-                    .font(Typo.mono(10))
-                    .foregroundColor(Palette.textMuted)
-                Spacer()
-                Button { onNavigate?(.desktopInventory) } label: {
-                    Text("Search all")
-                        .font(Typo.mono(10))
-                        .foregroundColor(Palette.textMuted)
-                }
-                .buttonStyle(.plain)
+        return VStack(alignment: .leading, spacing: 10) {
+            sectionHeader(title: "Active windows", count: windows.count, actionTitle: "Open in Windows") {
+                onNavigate?(.desktopInventory)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 14)
-            .padding(.bottom, 8)
 
             if windows.isEmpty {
                 emptyWindows
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 2) {
-                        ForEach(windows.prefix(14), id: \.wid) { window in
-                            WindowSnapshotRow(
-                                window: window,
-                                lastActive: desktop.lastInteractionDate(for: window.wid)
-                            )
-                        }
+                VStack(spacing: 2) {
+                    windowsColumnHeader
+                    ForEach(windows.prefix(14), id: \.wid) { window in
+                        WindowSnapshotRow(
+                            window: window,
+                            lastActive: desktop.lastInteractionDate(for: window.wid)
+                        )
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.bottom, 12)
                 }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    /// Column labels, so the trailing numbers read as data instead of decoration.
+    /// Widths are shared with `WindowSnapshotRow` via `HomeWindowColumn` so the
+    /// header and every row resolve to the same grid.
+    private var windowsColumnHeader: some View {
+        HStack(spacing: 10) {
+            Color.clear.frame(width: HomeWindowColumn.icon)
+            Text("App")
+                .frame(width: HomeWindowColumn.app, alignment: .leading)
+            Text("Window")
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text("Region")
+                .frame(width: HomeWindowColumn.region, alignment: .leading)
+            Text("Size")
+                .frame(width: HomeWindowColumn.size, alignment: .trailing)
+            Text("Active")
+                .frame(width: HomeWindowColumn.trailing, alignment: .trailing)
+        }
+        .font(Typo.caption(10))
+        .tracking(0.5)
+        .textCase(.uppercase)
+        .foregroundColor(Palette.textMuted)
+        .padding(.horizontal, 10)
+        .padding(.bottom, 6)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Palette.border).frame(height: 0.5)
+        }
     }
 
     private var emptyWindows: some View {
@@ -204,24 +271,88 @@ struct HomeDashboardView: View {
                 .font(.system(size: 20, weight: .light))
                 .foregroundColor(Palette.textMuted)
             Text("No active windows on screen")
-                .font(Typo.mono(11))
+                .font(Typo.body(12))
                 .foregroundColor(Palette.textDim)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         .padding(.vertical, 40)
     }
 
-    private func appIcon(pid: Int32) -> NSImage? {
-        NSRunningApplication(processIdentifier: pid)?.icon
+    // MARK: - Layouts (aside)
+
+    /// Saved layers double as named layouts — real config, not the mock's
+    /// placeholder "Dev three-up / Review / Focus" list. Empty when the user
+    /// hasn't configured any, which is an honest state, so the aside just
+    /// doesn't render rather than showing an explainer.
+    private var layers: [Layer] { workspace.config?.layers ?? [] }
+
+    private var asideColumn: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionHeader(title: "Layouts")
+            ForEach(Array(layers.enumerated()), id: \.element.id) { index, layer in
+                layoutRow(layer, index: index)
+            }
+        }
     }
+
+    private func layoutRow(_ layer: Layer, index: Int) -> some View {
+        let counts = workspace.layerRunningCount(index: index)
+        return Button {
+            workspace.focusLayer(index: index)
+        } label: {
+            HStack(spacing: 10) {
+                layoutGlyph(cells: layer.projects.count)
+                Text(layer.label)
+                    .font(Typo.body(12))
+                    .foregroundColor(Palette.text)
+                    .lineLimit(1)
+                Spacer(minLength: 6)
+                Text("\(counts.running)/\(counts.total)")
+                    .font(Typo.mono(10))
+                    .foregroundColor(counts.running > 0 ? Palette.running : Palette.textMuted)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 7)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func layoutGlyph(cells: Int) -> some View {
+        HStack(spacing: 1.5) {
+            ForEach(0..<max(min(cells, 3), 1), id: \.self) { _ in
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(Color.white.opacity(0.28))
+            }
+        }
+        .padding(1.5)
+        .frame(width: 27, height: 18)
+        .background(
+            RoundedRectangle(cornerRadius: 3)
+                .fill(Color.white.opacity(0.035))
+                .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(Palette.borderLit, lineWidth: 0.5))
+        )
+    }
+}
+
+// MARK: - Window table column widths
+
+/// Shared between the column header and every row so they can never resolve
+/// to different tracks.
+private enum HomeWindowColumn {
+    static let icon: CGFloat = 18
+    static let app: CGFloat = 108
+    static let region: CGFloat = 60
+    static let size: CGFloat = 68
+    static let trailing: CGFloat = 84
 }
 
 // MARK: - Window snapshot row
 
-/// One window in the Home "Active windows" snapshot. Left side is identity
-/// (icon + app + title); the trailing area shows region · size · last-active,
-/// and crossfades to quick actions (focus / tile left / tile right) on hover.
-/// The trailing area is a fixed-width ZStack so the swap never shifts the row.
+/// One window in the Home "Active windows" table. One fixed row height; the
+/// trailing column is a single reserved-width `ZStack` that swaps its content
+/// between metadata and quick actions on hover, so nothing else in the row
+/// ever moves.
 private struct WindowSnapshotRow: View {
     let window: WindowEntry
     let lastActive: Date?
@@ -232,33 +363,35 @@ private struct WindowSnapshotRow: View {
         Button(action: focus) {
             HStack(spacing: 10) {
                 icon
+                    .frame(width: HomeWindowColumn.icon)
 
                 Text(window.app)
-                    .font(Typo.monoBold(11))
+                    .font(Typo.heading(12))
                     .foregroundColor(Palette.text)
                     .lineLimit(1)
-                    .layoutPriority(1)
+                    .frame(width: HomeWindowColumn.app, alignment: .leading)
 
-                if !window.title.isEmpty, window.title != window.app {
-                    Text(window.title)
-                        .font(Typo.mono(10))
-                        .foregroundColor(Palette.textMuted)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
+                Text(secondaryTitle)
+                    .font(Typo.body(11))
+                    .foregroundColor(Palette.textDim)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-                Spacer(minLength: 8)
+                Text(regionLabel)
+                    .font(Typo.mono(10))
+                    .foregroundColor(Palette.textMuted)
+                    .frame(width: HomeWindowColumn.region, alignment: .leading)
 
-                actions
-                    .opacity(hovering ? 1 : 0)
-                    .allowsHitTesting(hovering)
-                    .animation(.easeOut(duration: 0.12), value: hovering)
+                Text(sizeLabel)
+                    .font(Typo.mono(10))
+                    .foregroundColor(Palette.textMuted)
+                    .frame(width: HomeWindowColumn.size, alignment: .trailing)
 
-                metadata
-                    .frame(width: 72, alignment: .trailing)
+                trailingSlot
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .frame(height: 34)
             .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
@@ -277,16 +410,25 @@ private struct WindowSnapshotRow: View {
         }
     }
 
-    private var metadata: some View {
-        HStack(spacing: 5) {
-            Text(regionLabel)
+    private var secondaryTitle: String {
+        (window.title.isEmpty || window.title == window.app) ? "" : window.title
+    }
+
+    /// One fixed-width slot: last-active time at rest, quick actions on hover.
+    /// Both live in the same `ZStack` frame so the swap never shifts the row.
+    private var trailingSlot: some View {
+        ZStack(alignment: .trailing) {
+            Text(timeAgo ?? "—")
+                .font(Typo.mono(10))
                 .foregroundColor(Palette.textMuted)
-            if let t = timeAgo {
-                Text("·").foregroundColor(Palette.textMuted)
-                Text(t).foregroundColor(Palette.textDim)
-            }
+                .opacity(hovering ? 0 : 1)
+
+            actions
+                .opacity(hovering ? 1 : 0)
+                .allowsHitTesting(hovering)
         }
-        .font(Typo.mono(9))
+        .frame(width: HomeWindowColumn.trailing, alignment: .trailing)
+        .animation(.easeOut(duration: 0.12), value: hovering)
     }
 
     private var actions: some View {
@@ -328,6 +470,8 @@ private struct WindowSnapshotRow: View {
     private var sizeLabel: String { "\(Int(window.frame.w))×\(Int(window.frame.h))" }
 
     /// Coarse horizontal region from the window's centre across the full desktop.
+    /// Not a true macOS Space index (that needs a live CGS query per window,
+    /// too costly to run for a whole table every poll) — a cheap, honest stand-in.
     private var regionLabel: String {
         let centerX = window.frame.x + window.frame.w / 2
         let totalWidth = NSScreen.screens.map(\.frame.maxX).max()

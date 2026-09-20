@@ -199,6 +199,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
             self?.handleFrontmostApplicationChanged(app)
         })
+        notificationObservers.append(center.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            // System-initiated Space change (Dock app activation, trackpad
+            // swipe, Mission Control). Switches Lattices performs show their
+            // own bezel — skip those so it doesn't double up.
+            guard CFAbsoluteTimeGetCurrent() - WindowTiler.lastProgrammaticSwitchAt > 0.8 else { return }
+            WindowTiler.showSpaceSwitchBezelForCurrentSpace()
+        })
     }
 
     private func removeSystemInputBoundaryObservers() {

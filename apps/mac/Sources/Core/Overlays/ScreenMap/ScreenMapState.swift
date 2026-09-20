@@ -2889,7 +2889,7 @@ final class ScreenMapController: ObservableObject {
         }
 
         var matched = 0
-        for spec in layout.windows {
+        for (windowIndex, spec) in layout.windows.enumerated() {
             // Find matching window(s) by app name (case-insensitive substring)
             let appLower = spec.app.lowercased()
             let candidates = ed.windows.indices.filter { idx in
@@ -2902,8 +2902,8 @@ final class ScreenMapController: ObservableObject {
             }
             guard let idx = candidates.first else { continue }
 
-            // Resolve tile position (check presets first, then built-in)
-            guard let fractions = wm.resolveTileFractions(spec.tile) else { continue }
+            // Named tiles, presets, or engine-computed fractions (master-stack)
+            guard let fractions = wm.resolveLayoutFractions(layout, windowIndex: windowIndex) else { continue }
 
             // Resolve display (spatial number → displayIndex)
             let display: DisplayGeometry

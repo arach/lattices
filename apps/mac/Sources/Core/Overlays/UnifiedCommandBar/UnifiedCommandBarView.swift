@@ -2,29 +2,50 @@ import AppKit
 import Combine
 import SwiftUI
 
-/// The unified command bar UI: a slim bar (state-indicator left · input · the
-/// mic+send action cluster right) with a detail panel that expands below it
-/// only when there's something to show. Mirrors the design-studio mock.
+/// The ⌘K navigator: one palette, four kinds of result.
 ///
-/// Texture is borrowed from the hands-off HUD chrome (`HUDChrome`): a layered
-/// carbon substrate, a luminous top-edge rim, gradient hairlines and the
-/// electric-cyan signal accent — crisp instrument-panel geometry, not a round
-/// popover.
+/// An input row (glyph · scope chip · field · mic), a body split between the
+/// result list and a preview of the highlighted result, and a footer that
+/// teaches the few keys that matter. Mirrors the shell studio's navigator
+/// exhibit; palette from `Theme.swift`.
 ///
-/// Phase A renders the search and command detail; the mic button is a stub
-/// until the voice leg lands in Phase B.
+/// Slash commands and voice still run through the same bar — they take the
+/// scope chip over while they own it, and the body swaps to their content.
 struct UnifiedCommandBarView: View {
     @ObservedObject var state: UnifiedCommandBarState
     var onCommit: () -> Void
     var onMic: () -> Void
+    /// Settings is reached through its browse row now; the callback stays for
+    /// the window's call site.
     var onSettings: () -> Void
     var onDismiss: () -> Void
 
     @FocusState private var focused: Bool
+    /// `nil` is "Everything". ⇥ narrows to one group.
+    @State private var scope: ResultGroup?
+    @State private var listHeight: CGFloat = 0
+    @State private var lastHoverPoint: NSPoint?
+    @State private var selectionSync = SelectionSync()
+    @State private var selectionWatch: AnyCancellable?
 
-    /// Tight radius — instrument panel, not a pill. (Studio mock is 0; a hair of
-    /// rounding keeps a floating overlay from looking knife-edged.)
-    private let radius: CGFloat = 5
+    private enum Metrics {
+        static let radius: CGFloat = 12
+        static let inputHeight: CGFloat = 46
+        static let previewWidth: CGFloat = 218
+        static let bodyMaxHeight: CGFloat = 340
+        static let rowHeight: CGFloat = 30
+        static let rowRadius: CGFloat = 6
+        static let thumbHeight: CGFloat = 98
+        /// Always drawn, so the pane's height never moves with the selection.
+        static let factRows = 3
+    }
+
+    /// The palette floats a step above `Palette.surface` (#1a1d22 in the mock).
+    private static let surface = Color(red: 0.102, green: 0.114, blue: 0.133)
+    /// The one hue on the surface: the highlighted result's glyph, the scope
+    /// chip, and the hot cell in the preview.
+    private static let accent = Palette.running
+    private static let accentText = Color(red: 0.56, green: 0.90, blue: 0.71)
 
     var body: some View {
         VStack(spacing: 0) {
@@ -32,10 +53,14 @@ struct UnifiedCommandBarView: View {
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(scopeShortcuts)
         // Focus must be asserted once the panel is *key* — setting it in onAppear
         // (before key) makes SwiftUI's makeFirstResponder fail silently and never
         // retry, so the field stays unfocused even though the window has focus.
-        .onAppear { DispatchQueue.main.async { focused = true } }
+        .onAppear {
+            DispatchQueue.main.async { focused = true }
+            watchSelection()
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
             focused = true
         }
@@ -44,178 +69,102 @@ struct UnifiedCommandBarView: View {
         .onChange(of: state.voice.phase) { _, phase in
             if phase == .idle { DispatchQueue.main.async { focused = true } }
         }
+        .onChange(of: allRows.map(\.id)) { _, _ in resultsChanged() }
+        .onChange(of: presentGroups) { _, groups in
+            if let s = scope, !groups.contains(s) { scope = nil }
+        }
+        .onChange(of: scope) { _, _ in
+            var sync = selectionSync
+            ensureVisible(&sync)
+            selectionSync = sync
+        }
     }
 
-    // The visible surface — bar plus optional expansion. Everything below it in
-    // the panel is transparent, so at rest you just see the bar.
     private var card: some View {
         VStack(spacing: 0) {
-            bar
+            inputRow
             if state.detail != .none {
-                HUDHairline()
+                rule
                 expansion
-                if state.detail != .welcome { footer }   // welcome carries its own row
+                rule
+                footer
             }
         }
-        .background(cardTexture)
-        .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+        .background(Self.surface)
+        .clipShape(RoundedRectangle(cornerRadius: Metrics.radius, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: radius, style: .continuous)
-                .strokeBorder(borderGradient, lineWidth: 0.75)
+            RoundedRectangle(cornerRadius: Metrics.radius, style: .continuous)
+                .strokeBorder(Palette.borderLit, lineWidth: 1)
         )
-        .overlay(alignment: .top) { topRim }
-        .shadow(color: Color.black.opacity(0.38), radius: 14, y: 6)
+        .overlay(alignment: .top) {
+            Color.white.opacity(0.05).frame(height: 1).padding(.horizontal, Metrics.radius)
+        }
+        .shadow(color: Color.black.opacity(0.5), radius: 8, y: 4)
+        .shadow(color: Color.black.opacity(0.6), radius: 20, y: 12)
         .animation(.easeOut(duration: 0.16), value: state.detail)
     }
 
-    // MARK: - Texture
-
-    /// Layered carbon substrate — base gradient + a faint cyan/rose accent wash
-    /// + a top ambient highlight. Lifted in spirit from `HUDPanelBackground`.
-    private var cardTexture: some View {
-        ZStack {
-            LinearGradient(
-                colors: [HUDChrome.baseTop, HUDChrome.baseBottom],
-                startPoint: .top, endPoint: .bottom
-            )
-            LinearGradient(
-                colors: [HUDChrome.cyan.opacity(0.06), .clear, HUDChrome.rose.opacity(0.035)],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            )
-            LinearGradient(
-                colors: [Color.white.opacity(0.06), .clear],
-                startPoint: .top, endPoint: .center
-            )
-        }
+    private var rule: some View {
+        Palette.border.frame(height: 1)
     }
 
-    /// Top-bright → bottom-dark border for depth (LiquidGlass feel).
-    private var borderGradient: LinearGradient {
-        LinearGradient(
-            colors: [Color.white.opacity(0.18), Color.white.opacity(0.05)],
-            startPoint: .top, endPoint: .bottom
-        )
-    }
+    // MARK: - Input row
 
-    /// Luminous specular rim across the very top edge — white centre, cyan core.
-    private var topRim: some View {
-        LinearGradient(
-            stops: [
-                .init(color: .clear, location: 0.0),
-                .init(color: Color.white.opacity(0.5), location: 0.28),
-                .init(color: HUDChrome.cyan.opacity(0.38), location: 0.5),
-                .init(color: Color.white.opacity(0.5), location: 0.72),
-                .init(color: .clear, location: 1.0),
-            ],
-            startPoint: .leading, endPoint: .trailing
-        )
-        .frame(height: 1)
-        .blur(radius: 0.4)
-    }
-
-    private var placeholder: String {
-        if state.commandMode { return "Type a command or placement…" }
-        return "Search, or type / for commands…"
-    }
-
-    // MARK: - Bar
-
-    private var bar: some View {
-        HStack(spacing: 0) {
-            HStack(spacing: 10) {
-                leftIndicator
-                centerInput
-                if !state.query.isEmpty && !state.voiceActive {
-                    clearButton
-                }
-            }
-            .padding(.horizontal, 14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            // Right action cluster — mic flush against send.
-            micButton
-            sendButton
-            dismissButton
-        }
-        .frame(height: 46)
-        // Bar reads as a raised surface over the darker expansion.
-        .background(
-            LinearGradient(
-                colors: [Color.white.opacity(0.05), Color.white.opacity(0.012)],
-                startPoint: .top, endPoint: .bottom
-            )
-        )
-    }
-
-    /// Left state-aware slot: a live waveform while listening, otherwise a
-    /// compact mode badge so the bar never opens in an unlabeled state.
-    @ViewBuilder private var leftIndicator: some View {
-        if state.voice.phase == .listening {
-            HStack(spacing: 7) {
+    private var inputRow: some View {
+        HStack(spacing: 10) {
+            Image(systemName: state.voiceActive ? "mic.fill" : "command")
+                .font(.system(size: 14, weight: .regular))
+                .foregroundColor(Palette.textMuted)
+                .frame(width: 16)
+            scopeChip
+            centerInput
+            if state.voice.phase == .listening {
                 WaveBar()
-                modeText("LISTENING", tone: HUDChrome.cyan)
                 ListeningTimer(startTime: state.voice.listenStartTime)
             }
-        } else {
-            HStack(spacing: 7) {
-                Image(systemName: leftGlyph)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(modeTone)
-                    .frame(width: 15)
-                modeText(modeLabel, tone: modeTone)
+            if !state.query.isEmpty && !state.voiceActive {
+                clearButton
             }
+            micButton
         }
+        .padding(.horizontal, 14)
+        .frame(height: Metrics.inputHeight)
     }
 
-    private var leftGlyph: String {
-        if state.voiceActive { return "mic" }
-        if state.wantsAssistant { return "sparkles" }
-        return state.commandMode ? "command" : "magnifyingglass"
+    /// One chip carries both mode and scope: the search scope while searching,
+    /// otherwise whichever mode has taken the bar over.
+    private var scopeChip: some View {
+        Text(scopeLabel)
+            .font(Typo.mono(11))
+            .foregroundColor(Self.accentText)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(RoundedRectangle(cornerRadius: 5).fill(Self.accent.opacity(0.13)))
+            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Self.accent.opacity(0.32), lineWidth: 1))
+            .fixedSize()
     }
 
-    private var modeLabel: String {
-        if state.voiceActive {
-            switch state.voice.phase {
-            case .connecting: return "VOICE"
-            case .listening: return "LISTENING"
-            case .transcribing: return "HEARING"
-            case .result: return voiceRetryable ? "VOICE · RETRY" : "VOICE RESULT"
-            case .idle: return "VOICE"
-            }
-        }
-        if state.wantsAssistant { return "ASK" }
-        return state.commandMode ? "COMMAND" : "SEARCH"
-    }
-
-    private var modeTone: Color {
-        if state.voice.phase == .result && voiceRetryable { return HUDChrome.cyan }
-        if state.voiceActive || state.wantsAssistant || state.commandMode { return HUDChrome.cyan }
-        return Palette.textMuted
-    }
-
-    private func modeText(_ text: String, tone: Color) -> some View {
-        Text(text)
-            .font(Typo.caption(9))
-            .tracking(0.9)
-            .foregroundColor(tone)
-            .lineLimit(1)
-            .fixedSize(horizontal: true, vertical: false)
+    private var scopeLabel: String {
+        if state.voiceActive { return state.voice.phase == .listening ? "Listening" : "Voice" }
+        if state.commandMode { return "Command" }
+        if state.wantsAssistant { return "Ask" }
+        return scope?.rawValue ?? "Everything"
     }
 
     /// Editable field normally; a read-only transcript line while voice is active.
     @ViewBuilder private var centerInput: some View {
         if state.voiceActive {
             Text(voiceTranscript)
-                .font(Typo.mono(14))
+                .font(Typo.body(15))
                 .foregroundColor(state.voice.finalText.isEmpty && state.voice.partialText.isEmpty
                                  ? Palette.textMuted : Palette.text)
                 .lineLimit(1)
                 .truncationMode(.head)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else {
-            TextField(placeholder, text: $state.query)
+            TextField("Search, or / for commands", text: $state.query)
                 .textFieldStyle(.plain)
-                .font(Typo.mono(14))
+                .font(Typo.body(15))
                 .foregroundColor(Palette.text)
                 .focused($focused)
                 .onSubmit { onCommit() }
@@ -246,126 +195,764 @@ struct UnifiedCommandBarView: View {
         .buttonStyle(.plain)
     }
 
-    /// Send reflects routing: solid cyan when there's something to act on, a
-    /// softer cyan "ask" tint (sparkle) when the text reads as a question.
-    @ViewBuilder private var sendButton: some View {
-        if state.voice.phase == .listening || state.voice.phase == .connecting {
-            actionButton(system: "stop.fill", primary: true, action: onCommit)
-                .help("Stop recording · ↵")
-        } else if state.voice.phase == .transcribing {
-            actionButton(system: "hourglass", primary: false, action: {})
-                .help("Transcribing")
-        } else if state.voice.phase == .result && voiceRetryable {
-            actionButton(system: "mic.fill", primary: true, action: onCommit)
-                .help("Try voice again · ↵")
-        } else if state.wantsAssistant {
-            Button(action: onCommit) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(HUDChrome.cyan)
-                    .frame(width: 44, height: 46)
-                    .background(HUDChrome.cyan.opacity(0.14))
-                    .overlay(HUDHairline(axis: .vertical), alignment: .leading)
-            }
-            .buttonStyle(.plain)
-            .help("Ask the assistant · ⌘↵")
-        } else {
-            actionButton(system: "return", primary: state.detail != .none, action: onCommit)
-        }
-    }
-
-    /// Mic lights cyan and fills while listening.
     private var micButton: some View {
         let listening = state.voice.phase == .listening
         return Button(action: onMic) {
             Image(systemName: listening ? "stop.circle.fill" : "mic")
                 .font(.system(size: 13, weight: .medium))
-                .foregroundColor(listening ? HUDChrome.onSignal : Palette.textMuted)
-                .frame(width: 44, height: 46)
-                .background(listening ? HUDChrome.cyan.opacity(0.95) : Color.clear)
-                .overlay(HUDHairline(axis: .vertical), alignment: .leading)
+                .foregroundColor(listening ? Self.accent : Palette.textMuted)
+                .frame(width: 20, height: 20)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(listening ? "Stop recording" : "Start recording")
+        .help(listening ? "Stop recording" : "Speak · hold ⌥")
     }
 
-    private var dismissButton: some View {
-        Button(action: onDismiss) {
-            Image(systemName: "xmark")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(Palette.textMuted)
-                .frame(width: 34, height: 46)
-                .overlay(HUDHairline(axis: .vertical), alignment: .leading)
+    /// ⇥ / ⇧⇥ cycle the scope chip. Key equivalents resolve before the field
+    /// editor sees the Tab, so the field keeps focus. (In slash mode the window's
+    /// key monitor consumes ⇥ for completion first.)
+    private var scopeShortcuts: some View {
+        Group {
+            Button("") { cycleScope(1) }.keyboardShortcut(.tab, modifiers: [])
+            Button("") { cycleScope(-1) }.keyboardShortcut(.tab, modifiers: .shift)
         }
-        .buttonStyle(.plain)
-        .help("Dismiss · Esc")
+        .opacity(0)
+        .frame(width: 0, height: 0)
+        .accessibilityHidden(true)
     }
 
-    private func actionButton(system: String, primary: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: system)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(primary ? HUDChrome.onSignal : Palette.textMuted)
-                .frame(width: 44, height: 46)
-                .background(primary ? HUDChrome.cyan : Color.clear)
-                .overlay(HUDHairline(axis: .vertical), alignment: .leading)
-        }
-        .buttonStyle(.plain)
+    private func cycleScope(_ delta: Int) {
+        let ring: [ResultGroup?] = [nil] + presentGroups
+        let i = ring.firstIndex(of: scope) ?? 0
+        scope = ring[(i + delta + ring.count) % ring.count]
     }
 
     // MARK: - Expansion
 
     @ViewBuilder private var expansion: some View {
         switch state.detail {
-        case .command:   commandList
-        case .search:    searchList(maxHeight: 400)
-        case .voice:     voiceList
-        case .welcome:   welcome
-        case .browse:
-            VStack(spacing: 0) {
-                welcome
-                HUDHairline()
-                searchList(maxHeight: 280)
-            }
-        case .nlCommand: nlCommandPanel
-        case .none:      EmptyView()
+        case .search, .browse, .welcome:
+            split(results: resultList, preview: previewPane(resultPreview))
+        case .command:
+            split(results: commandList, preview: previewPane(commandPreview))
+        case .nlCommand:
+            split(results: nlRow, preview: previewPane(nlPreview))
+        case .voice:
+            voiceList
+        case .none:
+            EmptyView()
         }
+    }
+
+    private func split<L: View, P: View>(results: L, preview: P) -> some View {
+        HStack(alignment: .top, spacing: 0) {
+            results.frame(maxWidth: .infinity, alignment: .topLeading)
+            Palette.border.frame(width: 1)
+            preview.frame(width: Metrics.previewWidth, alignment: .topLeading)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// The list hugs its content up to the body cap, then scrolls.
+    private func scrolling<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        ScrollView {
+            content()
+                .padding(6)
+                .background(
+                    GeometryReader { geo in
+                        Color.clear.preference(key: ListHeightKey.self, value: geo.size.height)
+                    }
+                )
+        }
+        .onPreferenceChange(ListHeightKey.self) { listHeight = $0 }
+        .frame(height: listHeight > 0 ? min(listHeight, Metrics.bodyMaxHeight) : nil)
+        .frame(maxHeight: Metrics.bodyMaxHeight)
+    }
+
+    private struct ListHeightKey: PreferenceKey {
+        static var defaultValue: CGFloat = 0
+        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+    }
+
+    // MARK: - Results (search · browse)
+
+    /// The four kinds the palette shows. `OmniResultKind` is finer-grained (it
+    /// drives icons and scoring); this is the reader's vocabulary.
+    enum ResultGroup: String, CaseIterable {
+        case windows = "Windows"
+        case sessions = "Sessions"
+        case pages = "Pages"
+        case commands = "Commands"
+
+        /// Browse rows that open an app page rather than run something.
+        private static let pageTitles: Set<String> = ["Studio", "Activity Log", "Workspace Assistant"]
+
+        static func of(_ item: OmniResult) -> ResultGroup {
+            switch item.kind {
+            case .window where item.icon.hasPrefix("rectangle."):
+                return .commands   // the browse menu's "Tile <app> Left" rows act, they aren't windows
+            case .window, .ocrContent, .process:
+                return .windows
+            case .project, .session, .layer, .group:
+                return .sessions
+            case .app:
+                return .commands
+            case .action:
+                return pageTitles.contains(item.title) ? .pages : .commands
+            }
+        }
+    }
+
+    /// A result with its flat index in `groupedResults` order — the index the
+    /// window's commit() activates — regardless of where the row is drawn.
+    private struct Row: Identifiable {
+        let idx: Int
+        let item: OmniResult
+        let group: ResultGroup
+        var id: UUID { item.id }
+    }
+
+    private struct Section: Identifiable {
+        let group: ResultGroup
+        let rows: [Row]
+        var id: String { group.rawValue }
+    }
+
+    private var allRows: [Row] {
+        var flat = 0
+        return state.search.groupedResults.flatMap { _, items in
+            items.map { item in
+                defer { flat += 1 }
+                return Row(idx: flat, item: item, group: ResultGroup.of(item))
+            }
+        }
+    }
+
+    private var presentGroups: [ResultGroup] {
+        let present = Set(allRows.map(\.group))
+        return ResultGroup.allCases.filter(present.contains)
+    }
+
+    /// Scoped, then regrouped in the four-kind order.
+    private var visibleRows: [Row] {
+        sections.flatMap(\.rows)
+    }
+
+    private var sections: [Section] {
+        let rows = scope.map { s in allRows.filter { $0.group == s } } ?? allRows
+        return ResultGroup.allCases.compactMap { group in
+            let inGroup = rows.filter { $0.group == group }
+            return inGroup.isEmpty ? nil : Section(group: group, rows: inGroup)
+        }
+    }
+
+    private var selectedRow: Row? {
+        allRows.first { $0.idx == state.search.selectedIndex }
+    }
+
+    private var resultList: some View {
+        let displays = WindowTiler.getDisplaySpaces()
+        return ScrollViewReader { proxy in
+            scrolling {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(sections.enumerated()), id: \.element.id) { i, section in
+                        groupLabel(section.group.rawValue, first: i == 0)
+                        ForEach(section.rows) { row in
+                            resultRow(row, displays: displays).id(row.id)
+                        }
+                    }
+                }
+            }
+            .onChange(of: state.search.selectedIndex) { _, _ in
+                if let row = selectedRow { proxy.scrollTo(row.id) }
+            }
+        }
+    }
+
+    private func resultRow(_ row: Row, displays: [DisplaySpaces]) -> some View {
+        let sel = row.idx == state.search.selectedIndex
+        let line = rowLine(row, displays: displays)
+        return Button {
+            select(row.idx)
+            onCommit()
+        } label: {
+            paletteRow(
+                selected: sel,
+                glyph: { Image(systemName: row.item.icon).font(.system(size: 12, weight: .medium)) },
+                lead: line.lead, tail: line.tail, ctx: line.ctx
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { inside in
+            // Only a moving mouse steals the highlight — rows sliding under a
+            // resting cursor while arrowing must not.
+            guard inside else { return }
+            let p = NSEvent.mouseLocation
+            guard p != lastHoverPoint else { return }
+            lastHoverPoint = p
+            select(row.idx)
+        }
+    }
+
+    /// One row of the list: lead in text weight, tail dimmed, context right.
+    /// Fixed height so the list never reflows as the highlight moves.
+    private func paletteRow<G: View>(
+        selected: Bool, @ViewBuilder glyph: () -> G,
+        lead: String, tail: String, ctx: String, trailing: AnyView? = nil
+    ) -> some View {
+        HStack(spacing: 9) {
+            glyph()
+                .foregroundColor(selected ? Self.accent : Palette.textMuted)
+                .frame(width: 16)
+            Text("\(Text(lead).fontWeight(.semibold).foregroundColor(Palette.text))\(Text(tail).foregroundColor(Palette.textDim))")
+                .font(Typo.body(12.5))
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 8)
+            if let trailing {
+                trailing
+            } else if !ctx.isEmpty {
+                Text(ctx)
+                    .font(Typo.mono(11))
+                    .foregroundColor(Palette.textMuted)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.horizontal, 8)
+        .frame(height: Metrics.rowHeight)
+        .background(
+            RoundedRectangle(cornerRadius: Metrics.rowRadius, style: .continuous)
+                .fill(Color.white.opacity(selected ? 0.09 : 0))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Metrics.rowRadius, style: .continuous)
+                        .strokeBorder(selected ? Palette.borderLit : Color.clear, lineWidth: 1)
+                )
+        )
+        .contentShape(Rectangle())
+    }
+
+    private func groupLabel(_ text: String, first: Bool) -> some View {
+        Text(text.uppercased())
+            .font(Typo.heading(11))
+            .tracking(0.55)
+            .foregroundColor(Palette.textMuted)
+            .padding(.horizontal, 8)
+            .padding(.top, first ? 2 : 9)
+            .padding(.bottom, 3)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private struct Line {
+        var lead: String
+        var tail: String
+        var ctx: String
+    }
+
+    private func rowLine(_ row: Row, displays: [DisplaySpaces]) -> Line {
+        let item = row.item
+        let tail = item.subtitle.isEmpty || item.subtitle == item.title ? "" : " — \(item.subtitle)"
+        var ctx = ""
+        switch row.group {
+        case .windows:
+            if let entry = Self.resolveWindow(for: item),
+               let space = Self.spaceOrdinal(for: entry, in: displays) {
+                ctx = "Space \(space)"
+            }
+        case .sessions:
+            if item.kind == .project, Self.project(for: item)?.isRunning == true {
+                ctx = "running"
+            } else if item.kind == .session, Self.tmuxSession(for: item) != nil {
+                ctx = "tmux"
+            }
+        case .pages, .commands:
+            break
+        }
+        return Line(lead: item.title, tail: tail, ctx: ctx)
+    }
+
+    // MARK: - Preview
+
+    private struct Preview {
+        var scene = ThumbScene()
+        var facts: [(String, String)] = []
+    }
+
+    /// What the thumbnail draws: the display's visible area with its windows
+    /// as dim cells and, when the result resolves to a place, a hot cell.
+    /// Rects are unit-square, CG orientation (y down).
+    private struct ThumbScene: Equatable {
+        var aspect: CGFloat = 16 / 10
+        var cells: [CGRect] = []
+        var hot: CGRect?
+    }
+
+    private func previewPane(_ preview: Preview) -> some View {
+        VStack(alignment: .leading, spacing: 11) {
+            Thumb(scene: preview.scene, accent: Self.accent)
+                .frame(height: Metrics.thumbHeight)
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(0..<Metrics.factRows, id: \.self) { i in
+                    let fact = i < preview.facts.count ? preview.facts[i] : ("", "")
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text(fact.0)
+                            .font(Typo.mono(11))
+                            .foregroundColor(Palette.textMuted)
+                            .lineLimit(1)
+                            .frame(width: 66, alignment: .leading)
+                        Text(fact.1)
+                            .font(Typo.mono(11))
+                            .foregroundColor(Palette.textDim)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    .frame(height: 16)
+                }
+            }
+        }
+        .padding(13)
+    }
+
+    private var resultPreview: Preview {
+        guard let row = selectedRow else { return Preview(scene: Self.scene(on: Self.frontScreen())) }
+        let item = row.item
+        var p = Preview()
+
+        if row.group == .commands, item.kind == .window {
+            // "Tile <app> Left" — the browse menu's placement rows on the front window.
+            let front = DesktopModel.shared.frontmostWindow()
+            let screen = front.map { WindowTiler.screenForWindowFrame($0.frame) } ?? Self.frontScreen()
+            let word = item.title.split(separator: " ").last.map(String.init) ?? ""
+            let spec = PlacementSpec(string: word.lowercased())
+            p.scene = Self.scene(on: screen, spaceIds: front?.spaceIds, hot: spec.map(Self.unit))
+            p.facts = [("Target", front?.app ?? "Front window"),
+                       ("Placement", word),
+                       ("Display", screen.localizedName)]
+            return p
+        }
+
+        if let entry = Self.resolveWindow(for: item) {
+            let screen = WindowTiler.screenForWindowFrame(entry.frame)
+            p.scene = Self.scene(on: screen, spaceIds: entry.spaceIds, hot: Self.unit(entry.frame, on: screen))
+            let space = Self.spaceOrdinal(for: entry, in: WindowTiler.getDisplaySpaces()).map(String.init) ?? "—"
+            p.facts = [("Display", screen.localizedName), ("Space", space)]
+            if let session = entry.latticesSession {
+                p.facts.append(("Session", session))
+            } else if item.kind == .ocrContent {
+                p.facts.append(("Match", item.subtitle))
+            } else {
+                p.facts.append(("Title", entry.title.isEmpty ? "—" : entry.title))
+            }
+            return p
+        }
+
+        p.scene = Self.scene(on: Self.frontScreen())
+        switch item.kind {
+        case .window, .ocrContent, .process:
+            p.facts = [("Display", "—"), ("Space", "—"),
+                       (item.kind == .ocrContent ? "Match" : "Title", item.subtitle)]
+        case .project:
+            if let project = Self.project(for: item) {
+                p.facts = [("Path", Self.tilde(project.path)),
+                           ("tmux", project.sessionName),
+                           ("Panes", String(project.paneCount))]
+            } else {
+                p.facts = [("Path", item.subtitle)]
+            }
+        case .session:
+            if let session = Self.tmuxSession(for: item) {
+                p.facts = [("tmux", session.name),
+                           ("Panes", String(session.panes.count)),
+                           ("State", session.attached ? "attached" : "detached")]
+            } else {
+                p.facts = [("cwd", item.subtitle)]
+            }
+        case .layer:
+            let workspace = WorkspaceManager.shared
+            let label = Self.suffix(of: item.title, after: ": ")
+            if let layers = workspace.config?.layers,
+               let index = layers.firstIndex(where: { $0.label == label }) {
+                let counts = workspace.layerRunningCount(index: index)
+                p.facts = [("Layer", label),
+                           ("Projects", String(layers[index].projects.count)),
+                           ("Running", "\(counts.running)/\(counts.total)")]
+            } else {
+                p.facts = [("Layer", label)]
+            }
+        case .group:
+            let workspace = WorkspaceManager.shared
+            let label = Self.suffix(of: item.title, after: " ")
+            if let group = workspace.config?.groups?.first(where: { $0.label == label }) {
+                p.facts = [("Group", group.label),
+                           ("Tabs", String(group.tabs.count)),
+                           ("State", workspace.isGroupRunning(group) ? "running" : "stopped")]
+            } else {
+                p.facts = [("Group", label)]
+            }
+        case .app:
+            let running = item.subtitle.hasPrefix("Running")
+            p.facts = [("App", item.title),
+                       ("State", running ? "running" : "not running"),
+                       ("Action", running ? "Bring to front" : "Launch")]
+        case .action:
+            p.facts = [(row.group == .pages ? "Page" : "Command", item.title),
+                       ("Detail", item.subtitle)]
+        }
+        return p
+    }
+
+    /// `OmniResult` carries no window identity, so window results are matched
+    /// back to the desktop by app + title. Only an unambiguous match previews —
+    /// a wrong preview is worse than none.
+    private static func resolveWindow(for item: OmniResult) -> WindowEntry? {
+        switch item.kind {
+        case .window, .ocrContent, .session, .project:
+            break
+        default:
+            return nil
+        }
+        let windows = DesktopModel.shared.allWindows().filter { $0.frame.w >= 120 && $0.frame.h >= 120 }
+        if item.kind == .project, let project = project(for: item) {
+            return windows.first { $0.latticesSession == project.sessionName }
+        }
+        if let tagged = windows.first(where: { $0.latticesSession == item.title }) {
+            return tagged
+        }
+        let sameApp = windows.filter { $0.app == item.title }
+        if let exact = sameApp.first(where: { $0.title == item.subtitle || "Window \($0.wid)" == item.subtitle }) {
+            return exact
+        }
+        return sameApp.count == 1 ? sameApp.first : nil
+    }
+
+    private static func project(for item: OmniResult) -> Project? {
+        ProjectScanner.shared.projects.first {
+            item.title == $0.name || item.title.hasSuffix(" " + $0.name)
+        }
+    }
+
+    private static func tmuxSession(for item: OmniResult) -> TmuxSession? {
+        TmuxModel.shared.sessions.first { $0.name == item.title }
+    }
+
+    private static func spaceOrdinal(for entry: WindowEntry, in displays: [DisplaySpaces]) -> Int? {
+        for display in displays {
+            if let space = display.spaces.first(where: { entry.spaceIds.contains($0.id) }) {
+                return space.index
+            }
+        }
+        return nil
+    }
+
+    private static func suffix(of title: String, after separator: String) -> String {
+        guard let range = title.range(of: separator) else { return title }
+        return String(title[range.upperBound...])
+    }
+
+    private static func tilde(_ path: String) -> String {
+        (path as NSString).abbreviatingWithTildeInPath
+    }
+
+    private static func frontScreen() -> NSScreen {
+        NSScreen.main ?? NSScreen.screens[0]
+    }
+
+    /// The screen's visible area in CG (top-left) coordinates.
+    private static func cgVisible(_ screen: NSScreen) -> CGRect {
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+        let v = screen.visibleFrame
+        return CGRect(x: v.minX, y: primaryHeight - v.maxY, width: v.width, height: v.height)
+    }
+
+    private static func unit(_ frame: WindowFrame, on screen: NSScreen) -> CGRect? {
+        let area = cgVisible(screen)
+        guard area.width > 0, area.height > 0 else { return nil }
+        let r = CGRect(x: frame.x, y: frame.y, width: frame.w, height: frame.h).intersection(area)
+        guard !r.isNull, r.width > 0, r.height > 0 else { return nil }
+        return CGRect(x: (r.minX - area.minX) / area.width, y: (r.minY - area.minY) / area.height,
+                      width: r.width / area.width, height: r.height / area.height)
+    }
+
+    private static func unit(_ spec: PlacementSpec) -> CGRect {
+        let (fx, fy, fw, fh) = spec.fractions
+        return CGRect(x: fx, y: fy, width: fw, height: fh)
+    }
+
+    /// Windows on `screen` in the given Space (the display's current one by
+    /// default), back to front, as thumbnail cells.
+    private static func scene(on screen: NSScreen, spaceIds: [Int]? = nil, hot: CGRect? = nil) -> ThumbScene {
+        let area = cgVisible(screen)
+        let spaces: Set<Int> = {
+            if let ids = spaceIds, !ids.isEmpty { return Set(ids) }
+            return Set(WindowTiler.getDisplaySpaces().map(\.currentSpaceId))
+        }()
+        let cells = DesktopModel.shared.allWindows()
+            .filter { entry in
+                entry.frame.w >= 120 && entry.frame.h >= 120
+                    && (entry.spaceIds.isEmpty || !spaces.isDisjoint(with: entry.spaceIds))
+                    && WindowTiler.screenForWindowFrame(entry.frame) == screen
+            }
+            .prefix(16)
+            .compactMap { unit($0.frame, on: screen) }
+            .reversed()
+        return ThumbScene(aspect: area.height > 0 ? area.width / area.height : 16 / 10,
+                          cells: Array(cells), hot: hot)
+    }
+
+    private struct Thumb: View {
+        let scene: ThumbScene
+        let accent: Color
+
+        var body: some View {
+            GeometryReader { geo in
+                let inset: CGFloat = 7
+                let box = CGSize(width: geo.size.width - inset * 2, height: geo.size.height - inset * 2)
+                let scale = min(box.width / scene.aspect, box.height)
+                let display = CGRect(
+                    x: inset + (box.width - scale * scene.aspect) / 2,
+                    y: inset + (box.height - scale) / 2,
+                    width: scale * scene.aspect, height: scale
+                )
+                ZStack(alignment: .topLeading) {
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .strokeBorder(Palette.border, lineWidth: 1)
+                        .frame(width: display.width, height: display.height)
+                        .offset(x: display.minX, y: display.minY)
+                    ForEach(Array(scene.cells.enumerated()), id: \.offset) { _, cell in
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                            .fill(Color.white.opacity(0.07))
+                            .frame(width: max(2, cell.width * display.width),
+                                   height: max(2, cell.height * display.height))
+                            .offset(x: display.minX + cell.minX * display.width,
+                                    y: display.minY + cell.minY * display.height)
+                    }
+                    if let hot = scene.hot {
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                            .fill(accent.opacity(0.19))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                    .strokeBorder(accent.opacity(0.32), lineWidth: 1)
+                            )
+                            .frame(width: max(2, hot.width * display.width),
+                                   height: max(2, hot.height * display.height))
+                            .offset(x: display.minX + hot.minX * display.width,
+                                    y: display.minY + hot.minY * display.height)
+                    }
+                }
+            }
+            .background(
+                LinearGradient(
+                    colors: [Color(red: 0.141, green: 0.157, blue: 0.180), Color(red: 0.078, green: 0.086, blue: 0.098)],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                )
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .strokeBorder(Palette.border, lineWidth: 1)
+            )
+            .animation(.easeOut(duration: 0.12), value: scene)
+        }
+    }
+
+    // MARK: - Selection sync
+
+    /// Keeps the highlight moving through the *drawn* order.
+    ///
+    /// `OmniSearchState.selectedIndex` is a flat index into `groupedResults`
+    /// order, and the window's commit() activates exactly that row — so the
+    /// highlighted row must always carry that index. But the palette draws rows
+    /// regrouped into four kinds, and possibly scoped, so an arrow step in flat
+    /// order can land on a row drawn elsewhere, or on a hidden one. Every
+    /// published change is read back and, when it was a ±1 step — or a clamped
+    /// step at either end, which `@Published` still fires — redirected to the
+    /// drawn neighbour. Programmatic picks (hover, click, scope) queue their
+    /// index so they pass through untouched.
+    ///
+    /// This belongs in `OmniSearchState` (group order + scope owned by the
+    /// engine); it lives here until that file can change.
+    private struct SelectionSync {
+        var lastSeen = 0
+        var pending: [Int] = []
+        var resultIDs: [UUID] = []
+    }
+
+    private func watchSelection() {
+        guard selectionWatch == nil else { return }
+        // Delivered after the set lands, so a redirect isn't overwritten by the
+        // assignment that triggered it.
+        selectionWatch = state.search.$selectedIndex
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { syncSelection(to: $0) }
+    }
+
+    private func syncSelection(to new: Int) {
+        var sync = selectionSync
+        defer { selectionSync = sync }
+
+        let ids = allRows.map(\.id)
+        if ids != sync.resultIDs {
+            // Fresh results — the engine reset the index; nothing to redirect.
+            sync.resultIDs = ids
+            sync.pending.removeAll()
+            sync.lastSeen = new
+            ensureVisible(&sync)
+            return
+        }
+        if let i = sync.pending.firstIndex(of: new) {
+            sync.pending.removeFirst(i + 1)
+            sync.lastSeen = new
+            return
+        }
+
+        let old = sync.lastSeen
+        sync.lastSeen = new
+        let drawn = visibleRows
+        guard !drawn.isEmpty else { return }
+
+        let step: Int
+        switch new - old {
+        case 1, -1:
+            step = new - old
+        case 0 where new == 0:
+            step = -1                       // ↑ clamped at the flat start
+        case 0 where new == allRows.count - 1:
+            step = 1                        // ↓ clamped at the flat end
+        default:
+            ensureVisible(&sync)            // a direct set — leave it alone
+            return
+        }
+        guard let pos = drawn.firstIndex(where: { $0.idx == old }) else {
+            ensureVisible(&sync)
+            return
+        }
+        let target = drawn[max(0, min(drawn.count - 1, pos + step))].idx
+        if target != new { pick(target, &sync) }
+    }
+
+    private func resultsChanged() {
+        var sync = selectionSync
+        defer { selectionSync = sync }
+        sync.resultIDs = allRows.map(\.id)
+        sync.pending.removeAll()
+        sync.lastSeen = state.search.selectedIndex
+        ensureVisible(&sync)
+    }
+
+    private func ensureVisible(_ sync: inout SelectionSync) {
+        let drawn = visibleRows
+        guard !drawn.contains(where: { $0.idx == state.search.selectedIndex }),
+              let first = drawn.first else { return }
+        pick(first.idx, &sync)
+    }
+
+    private func pick(_ idx: Int, _ sync: inout SelectionSync) {
+        sync.pending.append(idx)
+        sync.lastSeen = idx
+        state.search.selectedIndex = idx
+    }
+
+    private func select(_ idx: Int) {
+        var sync = selectionSync
+        pick(idx, &sync)
+        selectionSync = sync
+    }
+
+    // MARK: - Slash commands
+
+    private var commandList: some View {
+        let cmds = state.search.command.suggestions
+        return scrolling {
+            VStack(alignment: .leading, spacing: 0) {
+                if let ctx = state.search.command.contextLabel {
+                    groupLabel(ctx, first: true)
+                }
+                ForEach(Array(cmds.enumerated()), id: \.element.id) { idx, s in
+                    if let sec = s.section, idx == 0 || cmds[idx - 1].section != sec {
+                        groupLabel(sec, first: idx == 0 && state.search.command.contextLabel == nil)
+                    }
+                    commandRow(s, idx: idx)
+                }
+            }
+        }
+    }
+
+    private func commandRow(_ s: CommandSuggestion, idx: Int) -> some View {
+        let sel = idx == state.search.command.selectedIndex
+        return Button {
+            state.search.command.selectedIndex = idx
+            onCommit()
+        } label: {
+            paletteRow(
+                selected: sel,
+                glyph: { suggestionGlyph(s, selected: sel) },
+                lead: s.label, tail: "", ctx: s.detail,
+                trailing: s.isFill ? AnyView(
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(Palette.textMuted)
+                ) : nil
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder private func suggestionGlyph(_ suggestion: CommandSuggestion, selected: Bool) -> some View {
+        if let spec = suggestion.previewSpec {
+            MiniPlacementGlyph(spec: spec, selected: selected)
+                .frame(width: 16, height: 12)
+        } else {
+            Image(systemName: suggestion.glyph)
+                .font(.system(size: 12, weight: .medium))
+        }
+    }
+
+    private var commandPreview: Preview {
+        let front = DesktopModel.shared.frontmostWindow()
+        guard let s = state.search.command.selected else {
+            return Preview(scene: Self.scene(on: Self.frontScreen(), spaceIds: front?.spaceIds))
+        }
+        let target = s.previewWid.flatMap { DesktopModel.shared.windows[$0] } ?? front
+        let screen = s.previewScreen
+            ?? target.map { WindowTiler.screenForWindowFrame($0.frame) }
+            ?? Self.frontScreen()
+        return Preview(
+            scene: Self.scene(on: screen, spaceIds: target?.spaceIds, hot: s.previewSpec.map(Self.unit)),
+            facts: [("Command", s.label),
+                    ("Placement", s.previewSpec?.wireValue ?? "—"),
+                    ("Target", target?.app ?? "Front window")]
+        )
     }
 
     // MARK: - NL command (typed natural language → an interpreted, runnable intent)
 
-    /// A single row previewing the intent the NL resolver inferred from the typed
-    /// text. Acts as autocomplete for "full intents": you type "tile chrome left"
-    /// and see exactly what ↵ will run.
-    @ViewBuilder private var nlCommandPanel: some View {
+    /// One row previewing the intent the resolver inferred from the typed text:
+    /// you type "tile chrome left" and see exactly what ↵ will run.
+    @ViewBuilder private var nlRow: some View {
         if let m = state.nlMatch {
             let s = nlSummary(m)
             Button(action: onCommit) {
-                HStack(spacing: 11) {
-                    Image(systemName: s.glyph)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(HUDChrome.cyan)
-                        .frame(width: 16)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(s.label)
-                            .font(Typo.mono(12))
-                            .foregroundColor(Palette.text)
-                            .lineLimit(1)
-                        Text("interpreted as a command")
-                            .font(Typo.caption(9))
-                            .foregroundColor(Palette.textMuted)
-                    }
-                    Spacer()
-                    helpHint("↵", "run")
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 9)
-                .background(rowSelection(true))
-                .contentShape(Rectangle())
+                paletteRow(
+                    selected: true,
+                    glyph: { Image(systemName: s.glyph).font(.system(size: 12, weight: .medium)) },
+                    lead: s.label, tail: "", ctx: ""
+                )
             }
             .buttonStyle(.plain)
-            .padding(.vertical, 4)
+            .padding(6)
         }
+    }
+
+    private var nlPreview: Preview {
+        let front = DesktopModel.shared.frontmostWindow()
+        let screen = front.map { WindowTiler.screenForWindowFrame($0.frame) } ?? Self.frontScreen()
+        var p = Preview(scene: Self.scene(on: screen, spaceIds: front?.spaceIds, hot: state.nlSpec.map(Self.unit)))
+        if let m = state.nlMatch {
+            p.facts = [("Command", nlSummary(m).label),
+                       ("Placement", state.nlSpec?.wireValue ?? "—"),
+                       ("Target", front?.app ?? "Front window")]
+        }
+        return p
     }
 
     /// Humanize an inferred intent + slots into a glyph and a one-line label.
@@ -399,95 +986,61 @@ struct UnifiedCommandBarView: View {
         }
     }
 
-    // MARK: - Welcome (the empty open state)
+    // MARK: - Footer
 
-    /// Two compact rows: things to try, then how to invoke voice / the assistant.
-    private var welcome: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Text("TRY")
-                    .font(Typo.caption(9)).tracking(1.1)
-                    .foregroundColor(Palette.textMuted)
-                welcomeChip("/tile right")
-                welcomeChip("4x4:1,2", fill: "/tile 4x4:1,2", placement: PlacementSpec(string: "4x4:1,2"))
-                welcomeChip("4x4 span", fill: "/tile 4x4:1,1-2,2", placement: PlacementSpec(string: "4x4:1,1-2,2"))
-            }
-            HStack(spacing: 16) {
-                helpHint("/", "commands")
-                helpHint("⌥", "hold to speak")
-                helpHint("⌘↵", "ask the assistant")
-                Spacer(minLength: 0)
-                settingsButton
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 11)
-    }
-
-    private func welcomeChip(_ label: String, fill: String? = nil, placement: PlacementSpec? = nil) -> some View {
-        Button { state.query = fill ?? label } label: {
-            HStack(spacing: 6) {
-                if let placement {
-                    MiniPlacementGlyph(spec: placement, selected: false)
-                        .frame(width: 18, height: 12)
-                }
-                Text(label)
-                    .font(Typo.mono(11))
-                    .lineLimit(1)
-            }
-            .foregroundColor(Palette.textDim)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 4)
-            .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(Palette.border, lineWidth: 0.5))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    // MARK: - Footer (gesture hints · settings)
-
-    /// Persistent footer under any expansion: command-key hints on the left, a
-    /// Settings link pinned bottom-right.
+    /// Three keys, not thirty: what ↵ does to the highlighted result, ⇥, and esc.
     private var footer: some View {
-        HStack(spacing: 16) {
-            if state.detail == .command {
-                helpHint("⇥", "complete")
-                helpHint("↵", "run")
-                helpHint("⌥", "speak")
-            } else if state.detail == .nlCommand {
-                helpHint("↵", "run command")
-                helpHint("⌘↵", "ask instead")
-            } else if state.detail == .voice {
-                voiceFooterHints
+        HStack(spacing: 15) {
+            ForEach(footerKeys, id: \.0) { key, label in
+                hint(key, label)
             }
             Spacer(minLength: 0)
-            settingsButton
+            hint("esc", "Close")
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .overlay(Rectangle().fill(Palette.border).frame(height: 0.5), alignment: .top)
+        .padding(.vertical, 9)
+        .background(Color.white.opacity(0.025))
     }
 
-    @ViewBuilder private var voiceFooterHints: some View {
-        switch state.voice.phase {
-        case .connecting:
-            helpHint("↵", "cancel")
-            helpHint("Esc", "cancel")
-        case .listening:
-            helpHint("↵", "finish")
-            helpHint("Esc", "finish")
-            helpHint("⌥", "release")
-        case .transcribing:
-            helpHint("Esc", "cancel")
-        case .result:
-            if voiceRetryable {
-                helpHint("↵", "try again")
-            } else {
-                helpHint("↵", "close")
+    private var footerKeys: [(String, String)] {
+        switch state.detail {
+        case .command:
+            return [("↵", "Run"), ("⇥", "Complete")]
+        case .nlCommand:
+            return [("↵", "Run"), ("⌘↵", "Ask instead")]
+        case .voice:
+            switch state.voice.phase {
+            case .connecting:   return [("↵", "Cancel")]
+            case .listening:    return [("↵", "Finish"), ("⌥", "Release to stop")]
+            case .transcribing: return []
+            case .result:       return [("↵", voiceRetryable ? "Try again" : "Close")]
+            case .idle:         return [("⌥", "Hold to speak")]
             }
-            helpHint("Esc", "close")
-        case .idle:
-            helpHint("⌥", "hold to speak")
+        default:
+            return [("↵", state.wantsAssistant ? "Ask" : verb(for: selectedRow)), ("⇥", "Narrow scope")]
+        }
+    }
+
+    private func verb(for row: Row?) -> String {
+        guard let row else { return "Open" }
+        switch row.group {
+        case .windows:  return "Focus"
+        case .pages:    return "Open"
+        case .commands: return "Run"
+        case .sessions:
+            // The browse menu bakes its verb into the title ("Attach lattices").
+            let first = row.item.title.split(separator: " ").first.map(String.init) ?? ""
+            if ["Attach", "Kill", "Launch", "Focus"].contains(first) { return first }
+            return row.item.kind == .project ? "Start" : "Attach"
+        }
+    }
+
+    private func hint(_ key: String, _ label: String) -> some View {
+        HStack(spacing: 6) {
+            KeyCap(key)
+            Text(label)
+                .font(Typo.body(11))
+                .foregroundColor(Palette.textMuted)
         }
     }
 
@@ -496,228 +1049,25 @@ struct UnifiedCommandBarView: View {
         return VoiceCommandState.isRetryableFailure(result)
     }
 
-    private var settingsButton: some View {
-        Button(action: onSettings) {
-            HStack(spacing: 5) {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 10, weight: .medium))
-                Text("Settings")
-                    .font(Typo.caption(9))
-                    .tracking(0.6)
-            }
-            .foregroundColor(Palette.textMuted)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help("Open Lattices settings")
-    }
-
-    private func helpHint(_ key: String, _ label: String) -> some View {
-        HStack(spacing: 6) {
-            Text(key)
-                .font(Typo.mono(9))
-                .foregroundColor(Palette.textDim)
-                .padding(.horizontal, 5)
-                .padding(.vertical, 2)
-                .background(
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.white.opacity(0.05))
-                        .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(Palette.border, lineWidth: 0.5))
-                )
-            Text(label)
-                .font(Typo.caption(9))
-                .tracking(0.6)
-                .foregroundColor(Palette.textMuted)
-        }
-    }
-
-    private var commandList: some View {
-        let cmds = state.search.command.suggestions
-        return ScrollView {
-            LazyVStack(alignment: .leading, spacing: 1) {
-                if let ctx = state.search.command.contextLabel {
-                    sectionLabel(ctx)
-                }
-                ForEach(Array(cmds.enumerated()), id: \.element.id) { idx, s in
-                    if let sec = s.section, idx == 0 || cmds[idx - 1].section != sec {
-                        sectionLabel(sec)
-                    }
-                    commandRow(s, idx: idx)
-                }
-            }
-            .padding(.vertical, 4)
-        }
-        .frame(maxHeight: 400)
-    }
-
-    private func commandRow(_ s: CommandSuggestion, idx: Int) -> some View {
-        let sel = idx == state.search.command.selectedIndex
-        return Button {
-            state.search.command.selectedIndex = idx
-            onCommit()
-        } label: {
-            HStack(spacing: 11) {
-                suggestionGlyph(s, selected: sel)
-                Text(s.label)
-                    .font(Typo.mono(12))
-                    .foregroundColor(sel ? HUDChrome.cyan : Palette.textDim)
-                    .lineLimit(1)
-                Spacer()
-                if s.isFill {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundColor(Palette.textMuted)
-                } else {
-                    Text(s.detail)
-                        .font(Typo.mono(10))
-                        .foregroundColor(Palette.textMuted)
-                        .lineLimit(1)
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 7)
-            .background(rowSelection(sel))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    @ViewBuilder private func suggestionGlyph(_ suggestion: CommandSuggestion, selected: Bool) -> some View {
-        if let spec = suggestion.previewSpec {
-            MiniPlacementGlyph(spec: spec, selected: selected)
-                .frame(width: 16, height: 12)
-                .frame(width: 16)
-        } else {
-            Image(systemName: suggestion.glyph)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(selected ? HUDChrome.cyan : Palette.textDim)
-                .frame(width: 16)
-        }
-    }
-
-    /// Flat selection indices computed OUTSIDE view rendering — mutating a
-    /// captured counter inside `ForEach` (the old approach) mis-numbered rows
-    /// because `LazyVStack` evaluates content lazily, out of order.
-    private struct IndexedRow: Identifiable {
-        let idx: Int
-        let item: OmniResult
-        var id: UUID { item.id }
-    }
-
-    private struct IndexedSection: Identifiable {
-        let group: String
-        let rows: [IndexedRow]
-        var id: String { group }
-    }
-
-    private var searchRows: [IndexedSection] {
-        var flat = 0
-        return state.search.groupedResults.map { group, items in
-            let rows = items.map { item -> IndexedRow in
-                defer { flat += 1 }
-                return IndexedRow(idx: flat, item: item)
-            }
-            return IndexedSection(group: group, rows: rows)
-        }
-    }
-
-    private func searchList(maxHeight: CGFloat) -> some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 1) {
-                ForEach(searchRows) { section in
-                    sectionLabel(section.group)
-                    ForEach(section.rows) { row in
-                        searchRow(row.item, idx: row.idx)
-                    }
-                }
-            }
-            .padding(.vertical, 4)
-        }
-        .frame(maxHeight: maxHeight)
-    }
-
-    private func searchRow(_ item: OmniResult, idx: Int) -> some View {
-        let sel = idx == state.search.selectedIndex
-        return Button {
-            state.search.selectedIndex = idx
-            onCommit()
-        } label: {
-            HStack(spacing: 11) {
-                Image(systemName: item.icon)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(sel ? HUDChrome.cyan : Palette.textDim)
-                    .frame(width: 16)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(item.title)
-                        .font(Typo.mono(12))
-                        .foregroundColor(sel ? HUDChrome.cyan : Palette.textDim)
-                        .lineLimit(1)
-                    Text(item.subtitle)
-                        .font(Typo.mono(10))
-                        .foregroundColor(Palette.textMuted)
-                        .lineLimit(1)
-                }
-                Spacer()
-                Text(item.kind.rawValue)
-                    .font(Typo.mono(9))
-                    .foregroundColor(Palette.textMuted)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 2)
-                            .strokeBorder(Palette.border, lineWidth: 0.5)
-                    )
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 7)
-            .background(rowSelection(sel))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    /// Selected-row treatment from the mock: cyan-soft wash + an inset cyan rail.
-    @ViewBuilder private func rowSelection(_ sel: Bool) -> some View {
-        if sel {
-            HUDChrome.cyan.opacity(0.12)
-                .overlay(alignment: .leading) {
-                    Rectangle().fill(HUDChrome.cyan).frame(width: 2)
-                }
-        } else {
-            Color.clear
-        }
-    }
-
-    private func sectionLabel(_ t: String) -> some View {
-        Text(t.uppercased())
-            .font(Typo.caption(9))
-            .tracking(1.1)
-            .foregroundColor(Palette.textMuted)
-            .padding(.horizontal, 14)
-            .padding(.top, 9)
-            .padding(.bottom, 3)
-            .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
     // MARK: - Voice expansion
 
-    /// Heard · Intent · Result — the slim voice readout (the heavy 3-column
-    /// HISTORY/LOG/AI layout from the standalone window is intentionally dropped).
+    /// Heard · Intent · Result — the slim voice readout, full width (there is
+    /// nothing to preview until a result lands).
     private var voiceList: some View {
-        ScrollView {
+        scrolling {
             VStack(alignment: .leading, spacing: 0) {
                 if !state.voice.finalText.isEmpty {
-                    voiceSection("Heard") {
+                    voiceSection("Heard", first: true) {
                         Text(state.voice.finalText)
-                            .font(Typo.mono(13))
+                            .font(Typo.body(13))
                             .foregroundColor(Palette.text)
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 } else if !state.voice.partialText.isEmpty {
-                    voiceSection("Hearing…") {
+                    voiceSection("Hearing…", first: true) {
                         Text(state.voice.partialText)
-                            .font(Typo.mono(13))
+                            .font(Typo.body(13))
                             .foregroundColor(Palette.textDim)
                     }
                 }
@@ -755,22 +1105,21 @@ struct UnifiedCommandBarView: View {
                     voiceSection("Result") { resultLine("done") }
                 }
             }
-            .padding(.vertical, 4)
         }
-        .frame(maxHeight: 400)
     }
 
-    private func voiceSection<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
+    private func voiceSection<Content: View>(_ label: String, first: Bool = false,
+                                             @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            sectionLabel(label)
+            groupLabel(label, first: first)
             content()
-                .padding(.horizontal, 14)
+                .padding(.horizontal, 8)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.bottom, 8)
     }
 
-    /// The resolved intent + its slots as the mock's chip row.
+    /// The resolved intent + its slots as a chip row.
     private func intentChips(_ intent: String) -> some View {
         let slots = state.voice.intentSlots
         return HStack(spacing: 6) {
@@ -783,22 +1132,22 @@ struct UnifiedCommandBarView: View {
 
     private func chip(_ text: String, signal: Bool) -> some View {
         Text(text)
-            .font(Typo.mono(10))
-            .foregroundColor(signal ? HUDChrome.cyan : Palette.textDim)
+            .font(Typo.mono(11))
+            .foregroundColor(signal ? Self.accentText : Palette.textDim)
             .padding(.horizontal, 7)
-            .padding(.vertical, 2)
-            .background(signal ? HUDChrome.cyan.opacity(0.12) : Color.clear)
+            .padding(.vertical, 3)
+            .background(RoundedRectangle(cornerRadius: 5).fill(signal ? Self.accent.opacity(0.13) : Color.clear))
             .overlay(
-                RoundedRectangle(cornerRadius: 2)
-                    .strokeBorder(signal ? HUDChrome.cyan.opacity(0.5) : Palette.border, lineWidth: 0.5)
+                RoundedRectangle(cornerRadius: 5)
+                    .strokeBorder(signal ? Self.accent.opacity(0.32) : Palette.border, lineWidth: 1)
             )
     }
 
     private func resultLine(_ text: String) -> some View {
         HStack(spacing: 8) {
-            Circle().fill(HUDChrome.cyan).frame(width: 6, height: 6)
+            Circle().fill(Self.accent).frame(width: 6, height: 6)
             Text(text)
-                .font(Typo.mono(12))
+                .font(Typo.body(12.5))
                 .foregroundColor(Palette.text)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -827,7 +1176,7 @@ private struct MiniPlacementGlyph: View {
         GeometryReader { geo in
             let size = geo.size
             let (fx, fy, fw, fh) = spec.fractions
-            let accent = selected ? HUDChrome.cyan : Palette.textDim
+            let accent = selected ? Palette.running : Palette.textDim
 
             ZStack(alignment: .topLeading) {
                 RoundedRectangle(cornerRadius: 2, style: .continuous)

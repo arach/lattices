@@ -7280,20 +7280,22 @@ struct ExposeView: View {
                                    icon: String,
                                    accent: Bool = false,
                                    destructive: Bool = false) -> some View {
-        HStack(spacing: 4) {
+        let hue: Color = destructive ? Palette.kill : (accent ? Palette.running : Palette.text)
+        return HStack(spacing: 4) {
             Image(systemName: icon)
-                .font(.system(size: 8, weight: .semibold))
+                .font(.system(size: 9, weight: .semibold))
             Text(title)
-                .font(Typo.monoBold(8))
+                .font(Typo.monoBold(9))
         }
-        .foregroundColor(destructive ? Palette.kill : (accent ? Palette.running : Palette.text))
-        .padding(.horizontal, 7).padding(.vertical, 4)
+        .foregroundColor(hue)
+        .padding(.horizontal, 8).padding(.vertical, 4)
         .background(
             Capsule()
-                .fill(Color.white.opacity(destructive ? 0.06 : (accent ? 0.10 : 0.05)))
+                .fill(Color.black.opacity(0.55))
+                .overlay(Capsule().fill(hue.opacity(destructive || accent ? 0.16 : 0.08)))
                 .overlay(Capsule().strokeBorder(
-                    destructive ? Palette.kill.opacity(0.35)
-                        : (accent ? Palette.running.opacity(0.35) : Palette.border),
+                    destructive ? Palette.kill.opacity(0.55)
+                        : (accent ? Palette.running.opacity(0.55) : Palette.borderLit),
                     lineWidth: 0.5))
         )
     }

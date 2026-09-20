@@ -48,8 +48,8 @@ struct MainView: View {
             mainContent
         }
         .frame(
-            minWidth: layout == .popover ? 380 : 0,
-            idealWidth: layout == .popover ? 380 : nil,
+            minWidth: layout == .popover ? MenuBarController.popoverWidth : 0,
+            idealWidth: layout == .popover ? MenuBarController.popoverWidth : nil,
             maxWidth: .infinity,
             maxHeight: .infinity,
             alignment: .top
@@ -95,47 +95,6 @@ struct MainView: View {
 
     private var mainContent: some View {
         VStack(spacing: 0) {
-            if layout == .popover {
-                HStack {
-                    Text("Lattices")
-                        .font(Typo.mono(14))
-                        .foregroundColor(Palette.text)
-                    buildChannelBadge
-
-                    Spacer()
-
-                    headerButton(icon: "house") {
-                        MenuBarController.shared.dismissPopover()
-                        ScreenMapWindowController.shared.showPage(.home)
-                    }
-                    headerButton(icon: "bubble.left.and.bubble.right") {
-                        AssistantAccess.show()
-                    }
-                    headerButton(icon: "rectangle.3.group") {
-                        MenuBarController.shared.dismissPopover()
-                        ScreenMapWindowController.shared.showPage(.screenMap)
-                    }
-                    headerButton(icon: "magnifyingglass") {
-                        MenuBarController.shared.dismissPopover()
-                        ScreenMapWindowController.shared.showPage(.desktopInventory)
-                    }
-                    headerButton(icon: "list.bullet.rectangle") {
-                        MenuBarController.shared.dismissPopover()
-                        ScreenMapWindowController.shared.showPage(.activity)
-                    }
-                    headerButton(icon: "command") {
-                        MenuBarController.shared.dismissPopover()
-                        UnifiedCommandBarWindow.shared.toggle(mode: .search)
-                    }
-                    headerButton(icon: "arrow.clockwise") { scanner.scan(); inventory.refresh() }
-                }
-                .padding(.horizontal, 18)
-                .padding(.top, 18)
-                .padding(.bottom, 12)
-            }
-            // Projects spotlight removed for now — embedded layout goes straight
-            // from the hero into the project area.
-
             // Permission banner — only when something is missing AND not snoozed
             if !visiblyMissingCapabilities.isEmpty {
                 permissionBanner
@@ -151,17 +110,7 @@ struct MainView: View {
             }
 
             if layout == .popover {
-                Rectangle()
-                    .fill(Palette.border)
-                    .frame(height: 0.5)
-
-                actionsSection
-
-                Rectangle()
-                    .fill(Palette.border)
-                    .frame(height: 0.5)
-
-                bottomBar
+                MiniHomeView(scanner: scanner)
             } else {
                 Rectangle()
                     .fill(Palette.border)
@@ -347,17 +296,10 @@ struct MainView: View {
             .padding(.bottom, 6)
 
             // Move is a one-line action that unfolds the placement grid —
-            // keeps the popover compact until you need window spots.
+            // keeps the actions footer compact until you need window spots.
             FrontWindowPlacementGrid(
                 onPlaced: {
                     MenuBarController.shared.dismissPopover()
-                },
-                onExpandedChange: { expanded in
-                    MenuBarController.shared.setPopoverContentHeight(
-                        expanded
-                            ? MenuBarController.popoverHeightExpanded
-                            : MenuBarController.popoverHeightCollapsed
-                    )
                 }
             )
 
@@ -686,24 +628,6 @@ struct MainView: View {
         .buttonStyle(.plain)
     }
 
-    private var buildChannelBadge: some View {
-        let tint = LatticesRuntime.isDevBuild ? Palette.detach : Palette.running
-
-        return Text(LatticesRuntime.buildChannelLabel)
-            .font(Typo.monoBold(9))
-            .foregroundColor(tint)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .background(
-                Capsule()
-                    .fill(tint.opacity(0.12))
-                    .overlay(
-                        Capsule()
-                            .strokeBorder(tint.opacity(0.28), lineWidth: 0.5)
-                    )
-            )
-    }
-
     // MARK: - tmux banner
 
     private var tmuxBanner: some View {
@@ -769,16 +693,6 @@ struct MainView: View {
     }
 
     // MARK: - Helpers
-
-    private func headerButton(icon: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(Palette.textDim)
-                .frame(width: 28, height: 28)
-        }
-        .buttonStyle(.plain)
-    }
 
     private func chooseScanRoot() {
         let panel = NSOpenPanel()

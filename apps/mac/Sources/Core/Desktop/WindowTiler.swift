@@ -911,6 +911,11 @@ enum WindowTiler {
         }
 
         if let target = context.target {
+            // The system observer will see kCGSSpaceDidChange — mark this as
+            // ours up front so it doesn't pop a second bezel on top of the
+            // one this switch shows.
+            noteProgrammaticSwitch()
+
             // Preferred path: a synthetic Dock swipe under a screen-update
             // freeze. It runs the real switch path — kCGSSpaceDidChange fires,
             // Dock's space model and Mission Control stay consistent — while
@@ -964,28 +969,44 @@ enum WindowTiler {
     /// `SLSManagedDisplaySetCurrentSpace`, which skips all of it.
     /// Returns true when the display lands on `targetSpaceId`.
     private static func switchToAdjacentSpaceViaGesture(direction: Int, displayId: String, targetSpaceId: Int) -> Bool {
-        guard let mainConn = CGS.mainConnectionID,
+        switchViaDockSwipes(delta: direction, displayId: displayId, targetSpaceId: targetSpaceId)
+    }
+
+    /// Switch a display by `delta` Spaces (signed) with one synthetic Dock
+    /// swipe per Space, all under a single screen-update freeze. Used by both
+    /// the adjacent Ctrl+arrow path and `switchToSpace` jumps (navigation,
+    /// placement fallbacks) so every switch Lattices performs runs the real
+    /// bookkeeping path. Returns true when the display lands on
+    /// `targetSpaceId`.
+    private static func switchViaDockSwipes(delta: Int, displayId: String, targetSpaceId: Int) -> Bool {
+        guard delta != 0,
+              let mainConn = CGS.mainConnectionID,
               let disable = CGS.disableUpdate,
               let enable = CGS.reenableUpdate else { return false }
         let cid = mainConn()
-
-        let initial = getDisplaySpaces().first(where: { $0.displayId == displayId })?.currentSpaceId ?? 0
+        let direction = delta > 0 ? 1 : -1
+        let steps = min(abs(delta), 8)
 
         _ = disable(cid)
         defer { _ = enable(cid) }
 
-        for phase: Int64 in [1, 2, 4] {   // began, changed, ended
-            postDockSwipe(phase: phase, direction: direction)
-        }
+        for _ in 0..<steps {
+            let before = getDisplaySpaces().first(where: { $0.displayId == displayId })?.currentSpaceId ?? 0
+            for phase: Int64 in [1, 2, 4] {   // began, changed, ended
+                postDockSwipe(phase: phase, direction: direction)
+            }
 
-        let deadline = Date().addingTimeInterval(0.5)
-        while Date() < deadline {
-            usleep(8_000)
-            let current = getDisplaySpaces().first(where: { $0.displayId == displayId })?.currentSpaceId ?? 0
-            if current == targetSpaceId { return true }
-            if current != 0 && current != initial { break }   // landed on the wrong space — stop waiting
+            let deadline = Date().addingTimeInterval(0.5)
+            while Date() < deadline {
+                usleep(8_000)
+                let current = getDisplaySpaces().first(where: { $0.displayId == displayId })?.currentSpaceId ?? 0
+                if current == targetSpaceId { return true }
+                if current != 0 && current != before { break }   // this step landed — advance to the next
+            }
+            let after = getDisplaySpaces().first(where: { $0.displayId == displayId })?.currentSpaceId ?? 0
+            if after == before { break }   // step did not move the display — stop swiping
         }
-        return false
+        return (getDisplaySpaces().first(where: { $0.displayId == displayId })?.currentSpaceId ?? 0) == targetSpaceId
     }
 
     /// One phase of a synthetic Dock swipe (the trackpad "swipe between
@@ -1042,6 +1063,31 @@ enum WindowTiler {
                 DiagnosticLog.shared.info(
                     "switchToSpace: requesting \(spaceId) on display \(display.displayIndex) id=\(display.displayId) from \(initialSpace)"
                 )
+                // Mark before the attempt: the system's space-change observer
+                // must not add a second bezel while this switch runs.
+                noteProgrammaticSwitch()
+
+                // Preferred path: real Dock swipes (one per Space) so the Dock
+                // model, Mission Control, and kCGSSpaceDidChange stay
+                // consistent — the raw setCurrentSpace below skips all of
+                // that and drifts the Dock one space per call. The swipe acts
+                // on the display under the cursor, so only use it when the
+                // target display is the one the pointer is on.
+                let ordered = display.spaces.sorted { $0.index < $1.index }
+                let cursorDisplayId = displaySpaces(containing: currentMouseCGPoint())?.displayId
+                if cursorDisplayId == display.displayId,
+                   let currentIndex = ordered.firstIndex(where: { $0.id == initialSpace }),
+                   let targetIndex = ordered.firstIndex(where: { $0.id == spaceId }),
+                   targetIndex != currentIndex,
+                   switchViaDockSwipes(
+                       delta: targetIndex - currentIndex,
+                       displayId: display.displayId,
+                       targetSpaceId: spaceId
+                   ) {
+                    DiagnosticLog.shared.info("switchToSpace: real path reached target \(spaceId) on display \(display.displayIndex)")
+                    return true
+                }
+
                 setSpace(cid, display.displayId as CFString, UInt64(spaceId))
                 guard verify else { return true }
 
@@ -1064,6 +1110,66 @@ enum WindowTiler {
 
         DiagnosticLog.shared.warn("switchToSpace: couldn't resolve display for space \(spaceId)")
         return false
+    }
+
+    /// Timestamp of the last switch Lattices itself performed. The system
+    /// space-change observer uses this to suppress a duplicate bezel right
+    /// after a programmatic switch (which shows its own).
+    private(set) static var lastProgrammaticSwitchAt: CFAbsoluteTime = 0
+
+    static func noteProgrammaticSwitch() {
+        lastProgrammaticSwitchAt = CFAbsoluteTimeGetCurrent()
+    }
+
+    /// Show the bezel for the Space the display is on right now — used when
+    /// the system switched Spaces on its own (Dock app activation, trackpad
+    /// swipe, Mission Control) so every space change gets the indicator.
+    static func showSpaceSwitchBezelForCurrentSpace() {
+        let all = getDisplaySpaces()
+        guard let display = all.first(where: { $0.spaces.contains(where: { $0.isCurrent }) }) ?? all.first else { return }
+        let ordered = display.spaces.sorted { $0.index < $1.index }
+        let currentIndex = ordered.first(where: { $0.id == display.currentSpaceId })?.index
+        let displayIndex = display.displayIndex
+        let total = ordered.count
+        DiagnosticLog.shared.info("SpaceSwitchBezel: system space change → bezel for index \(currentIndex ?? -1) of \(total)")
+        DispatchQueue.main.async {
+            let screen = NSScreen.screens.indices.contains(displayIndex)
+                ? NSScreen.screens[displayIndex]
+                : NSScreen.main
+            SpaceSwitchBezel.shared.show(
+                direction: 0,
+                targetIndex: currentIndex,
+                currentIndex: currentIndex,
+                total: total,
+                on: screen
+            )
+        }
+    }
+
+    /// Show the Space Switch bezel for a switch Lattices performed outside the
+    /// Ctrl+arrow / gesture paths (navigation jumps, placement fallbacks) so
+    /// every space change gets the same visual confirmation.
+    static func showSpaceSwitchBezel(forSpaceId spaceId: Int) {
+        let all = getDisplaySpaces()
+        guard let display = all.first(where: { $0.spaces.contains(where: { $0.id == spaceId }) }) else { return }
+        let ordered = display.spaces.sorted { $0.index < $1.index }
+        let targetIndex = ordered.first(where: { $0.id == spaceId })?.index
+        let currentIndex = ordered.first(where: { $0.id == display.currentSpaceId })?.index
+        let direction = (targetIndex ?? 0) - (currentIndex ?? 0)
+        let displayIndex = display.displayIndex
+        let total = ordered.count
+        DispatchQueue.main.async {
+            let screen = NSScreen.screens.indices.contains(displayIndex)
+                ? NSScreen.screens[displayIndex]
+                : NSScreen.main
+            SpaceSwitchBezel.shared.show(
+                direction: direction,
+                targetIndex: targetIndex,
+                currentIndex: currentIndex,
+                total: total,
+                on: screen
+            )
+        }
     }
 
     // MARK: - Move Window Between Spaces
@@ -1196,6 +1302,7 @@ enum WindowTiler {
         if let windowSpace = windowSpaces.first, windowSpace != currentSpace {
             diag.info("Switching from space \(currentSpace) → \(windowSpace)")
             switchToSpace(spaceId: windowSpace)
+            showSpaceSwitchBezel(forSpaceId: windowSpace)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                 raiseWindow(pid: pid, tag: tag, terminal: terminal)
                 highlightWindow(session: session)
@@ -1562,6 +1669,7 @@ enum WindowTiler {
         if let windowSpace = windowSpaces.first, windowSpace != currentSpace {
             diag.info("Switching from space \(currentSpace) → \(windowSpace)")
             switchToSpace(spaceId: windowSpace)
+            showSpaceSwitchBezel(forSpaceId: windowSpace)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                 raiseWindowById(wid: wid, pid: pid)
                 highlightWindowById(wid: wid)

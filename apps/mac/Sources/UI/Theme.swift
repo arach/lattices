@@ -230,3 +230,160 @@ extension View {
         modifier(AngularButton(color: color, filled: filled))
     }
 }
+
+// MARK: - Chrome metrics
+
+/// Ordinary macOS metrics for the app chrome. The rail, the per-page title bar,
+/// and the status bar all size themselves from here so the three agree on the
+/// same rhythm instead of each picking its own numbers.
+enum Chrome {
+    static let titleBarHeight: CGFloat = 46
+    static let statusBarHeight: CGFloat = 26
+    /// Horizontal inset shared by the title bar and the status bar, so the page
+    /// name and the first status slot sit on one vertical line.
+    static let inset: CGFloat = 16
+    static let controlHeight: CGFloat = 26
+    static let controlRadius: CGFloat = 6
+    /// Hairline between chrome bands and the content they frame.
+    static let hairline: CGFloat = 0.5
+}
+
+// MARK: - Page actions
+
+/// One control in a page's title bar.
+///
+/// Pages publish their own set with `.pageActions(...)` and the shell renders
+/// them, so every page's actions land in the same place wearing the same shape
+/// — the page decides *what* it can do, the chrome decides how that looks.
+struct PageAction: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let icon: String?
+    /// Rendered as a key cap after the title. Chords stay the second way in.
+    let shortcut: String?
+    let isPrimary: Bool
+    let isEnabled: Bool
+    let perform: () -> Void
+
+    init(
+        id: String,
+        title: String,
+        icon: String? = nil,
+        shortcut: String? = nil,
+        isPrimary: Bool = false,
+        isEnabled: Bool = true,
+        perform: @escaping () -> Void
+    ) {
+        self.id = id
+        self.title = title
+        self.icon = icon
+        self.shortcut = shortcut
+        self.isPrimary = isPrimary
+        self.isEnabled = isEnabled
+        self.perform = perform
+    }
+
+    /// Identity plus appearance. Closures can't be compared, and re-running a
+    /// title bar because a capture changed would defeat `onPreferenceChange`.
+    static func == (lhs: PageAction, rhs: PageAction) -> Bool {
+        lhs.id == rhs.id
+            && lhs.title == rhs.title
+            && lhs.icon == rhs.icon
+            && lhs.shortcut == rhs.shortcut
+            && lhs.isPrimary == rhs.isPrimary
+            && lhs.isEnabled == rhs.isEnabled
+    }
+}
+
+struct PageActionsKey: PreferenceKey {
+    static var defaultValue: [PageAction] { [] }
+
+    static func reduce(value: inout [PageAction], nextValue: () -> [PageAction]) {
+        value.append(contentsOf: nextValue())
+    }
+}
+
+extension View {
+    /// Publishes this page's title-bar actions up to the app shell.
+    func pageActions(_ actions: [PageAction]) -> some View {
+        preference(key: PageActionsKey.self, value: actions)
+    }
+}
+
+/// Title-bar control: 26pt tall, 6pt radius, hairline border. The primary
+/// variant is the only one that carries hue, and it carries the running green.
+struct PageActionButton: View {
+    let action: PageAction
+
+    @State private var isHovering = false
+
+    private var foreground: Color {
+        if !action.isEnabled { return Palette.textMuted }
+        if action.isPrimary  { return Palette.running }
+        return isHovering ? Palette.text : Palette.textDim
+    }
+
+    private var fill: Color {
+        if action.isPrimary { return Palette.running.opacity(isHovering ? 0.22 : 0.14) }
+        return isHovering ? Palette.surfaceHov : Palette.surface
+    }
+
+    private var stroke: Color {
+        if action.isPrimary { return Palette.running.opacity(0.32) }
+        return isHovering ? Palette.borderLit : Palette.border
+    }
+
+    var body: some View {
+        Button(action: action.perform) {
+            HStack(spacing: 6) {
+                if let icon = action.icon {
+                    Image(systemName: icon)
+                        .font(.system(size: 11, weight: .medium))
+                }
+                Text(action.title)
+                    .font(Typo.body(12))
+                if let shortcut = action.shortcut {
+                    KeyCap(shortcut)
+                }
+            }
+            .foregroundColor(foreground)
+            .padding(.horizontal, 10)
+            .frame(height: Chrome.controlHeight)
+            .background(
+                RoundedRectangle(cornerRadius: Chrome.controlRadius)
+                    .fill(fill)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Chrome.controlRadius)
+                            .strokeBorder(stroke, lineWidth: Chrome.hairline)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(!action.isEnabled)
+        .onHover { isHovering = $0 }
+        .accessibilityLabel(action.title)
+    }
+}
+
+/// A key cap. Monospace here is earned — chords are fixed-width data.
+struct KeyCap: View {
+    let key: String
+
+    init(_ key: String) { self.key = key }
+
+    var body: some View {
+        Text(key)
+            .font(Typo.mono(11))
+            .foregroundColor(Palette.textDim)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 2)
+            .background(
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.white.opacity(0.06))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .strokeBorder(Palette.border, lineWidth: Chrome.hairline)
+                    )
+            )
+    }
+}

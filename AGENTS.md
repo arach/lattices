@@ -16,6 +16,7 @@
 - Bare `lattices` (no args) shows a home/status screen — use `lattices start` (alias: `lattices tmux`) to create or attach a session
 - `lattices search <q> --deep` and `--all` both request all search sources (index + live terminal inspection)
 - Action is a separate Lattices product under `products/action/`; it keeps its own Bun workspace, signed `Action.app`, local agent runtime, and nested `AGENTS.md` contract.
+- `lattices action` (`bin/lattices-action.ts`) is the product-family entry point: installs `Action.app` from the latest `action-v*` GitHub release, reports status, launches/quits, calls the Action agent on ws://127.0.0.1:4319 (`lattices action call`), and forwards other verbs to the Action CLI when a `products/action` checkout is present.
 - Keep Action's AppKit and recording lifecycle separate from the Lattices menu bar app even though both products share this repository and website.
 - Blink is a separate Lattices product under `products/blink/`; it keeps its own Swift package, signed `Blink.app`, notes CLI, and nested `AGENTS.md` contract.
 - Keep Blink's note panels and NoteStore separate from the Lattices menu bar app even though both products share this repository and website.

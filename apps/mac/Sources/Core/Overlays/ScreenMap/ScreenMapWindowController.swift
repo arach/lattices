@@ -77,8 +77,11 @@ final class ScreenMapWindowController: ObservableObject {
         let w = AppWindowShell.makeWindow(
             config: .init(
                 title: "Lattices",
+                titleVisible: false,
                 initialSize: initialSize,
-                minSize: NSSize(width: 600, height: 400)
+                minSize: NSSize(width: 600, height: 400),
+                titlebarAppearsTransparent: true,
+                fullSizeContent: true
             ),
             rootView: view
         )

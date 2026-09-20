@@ -3208,6 +3208,14 @@ switch (command) {
     } catch { /* exit code forwarded */ }
     break;
   }
+  case "action": {
+    const { execFileSync } = await import("node:child_process");
+    const actionScript = resolve(import.meta.dir, "lattices-action.ts");
+    try {
+      execFileSync("bun", [actionScript, ...args.slice(1)], { stdio: "inherit" });
+    } catch { /* exit code forwarded */ }
+    break;
+  }
   case "-h":
   case "--help":
   case "help":
