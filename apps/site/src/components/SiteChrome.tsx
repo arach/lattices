@@ -44,6 +44,11 @@ export function LatticesMark({ size = 20 }: { size?: number }) {
 
 const productLinks = [
   {
+    href: '/family',
+    title: 'What it can do',
+    description: 'A guided tour of the Lattices family',
+  },
+  {
     href: '/docs/api',
     title: 'API',
     description: 'Unified workspace control for agents and scripts',
@@ -57,6 +62,11 @@ const productLinks = [
     href: '/blink',
     title: 'Blink',
     description: 'Spatial notes that live on your desktop',
+  },
+  {
+    href: '/speech',
+    title: 'Speech',
+    description: 'Queued text playback from the menu bar',
   },
 ]
 
@@ -125,7 +135,10 @@ export function SiteHeader() {
   // The initial theme is set synchronously by the inline script in index.html
   // to avoid a flash of wrong-theme content. This effect re-syncs on toggle.
   const [theme, setTheme] = useState<'light' | 'dark'>(
-    () => (document.documentElement.getAttribute('data-theme') as 'light' | 'dark') || 'dark',
+    () => {
+      if (typeof document === 'undefined') return 'dark'
+      return (document.documentElement.getAttribute('data-theme') as 'light' | 'dark') || 'dark'
+    },
   )
 
   useEffect(() => {
