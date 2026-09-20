@@ -52,8 +52,11 @@ struct MiniHomeView: View {
             middleBand
                 .frame(maxHeight: .infinity)
             rule
-            bottomBand
+            paneFooter
                 .frame(height: footerHeight)
+            rule
+            bottomBand
+                .frame(height: 30)
         }
         .onReceive(NotificationCenter.default.publisher(for: .latticesPopoverWillShow)) { _ in
             DesktopModel.shared.forcePoll()
@@ -94,16 +97,14 @@ struct MiniHomeView: View {
         }
     }
 
-    /// Bottom bar: spaces + lifecycle on the rail side, the pane's own
-    /// footer on the right.
+    /// Shared app controls span the entire popover, independent of the pane.
     private var bottomBand: some View {
-        HStack(spacing: 0) {
-            railFooter
-                .frame(width: 100)
-                .padding(.horizontal, 6)
-            paneFooter
-                .frame(maxWidth: .infinity, alignment: .leading)
+        ZStack {
+            spaceRow
+                .padding(.horizontal, 80)
+            lifecycleRow
         }
+        .padding(.horizontal, 8)
         .background(railBandBackground)
     }
 
@@ -140,14 +141,6 @@ struct MiniHomeView: View {
             Spacer(minLength: 0)
         }
         .padding(.top, 8)
-    }
-
-    /// Spaces over the lifecycle row — the rail's footer.
-    private var railFooter: some View {
-        VStack(spacing: 4) {
-            spaceRow
-            lifecycleRow
-        }
     }
 
     /// Monochrome gradient + faint lattice-dot texture + top shine — keeps the
@@ -207,8 +200,12 @@ struct MiniHomeView: View {
     /// Spaces on the popover's display — current space lit; click to switch.
     @ViewBuilder
     private var spaceRow: some View {
-        if let display = currentDisplaySpaces(), display.spaces.count > 1 {
+        if let display = currentDisplaySpaces(), !display.spaces.isEmpty {
             HStack(spacing: 4) {
+                Image(systemName: "display")
+                    .font(.system(size: 10))
+                    .foregroundColor(Palette.textMuted)
+                    .accessibilityLabel("Spaces on this display")
                 ForEach(display.spaces) { space in
                     Button {
                         _ = WindowTiler.switchToSpace(spaceId: space.id)
@@ -257,12 +254,16 @@ struct MiniHomeView: View {
             MiniHomeRailIcon(icon: "gearshape", help: "Settings") {
                 SettingsWindowController.shared.show()
             }
+            .frame(width: 28)
+            Spacer(minLength: 0)
             MiniHomeRailIcon(icon: "arrow.clockwise", help: "Restart Lattices") {
                 PermissionChecker.shared.quitAndRelaunch()
             }
+            .frame(width: 28)
             MiniHomeRailIcon(icon: "power", help: "Quit Lattices", tint: Palette.kill) {
                 NSApp.terminate(nil)
             }
+            .frame(width: 28)
         }
     }
 
@@ -287,12 +288,6 @@ struct MiniHomeView: View {
 
     // MARK: Pane dispatch
 
-    private var moveTargetLabel: String {
-        guard let w = desktop.frontmostWindow() else { return "Focus a window, then pick a slot" }
-        let t = w.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        return t.isEmpty ? w.app : "\(w.app) — \(t)"
-    }
-
     private var selectedLayerLabel: String? {
         guard let selectedLayer,
               let layers = workspace.config?.layers,
@@ -304,13 +299,13 @@ struct MiniHomeView: View {
     private var paneHeader: some View {
         switch pane {
         case .move:
-            MiniHomePaneHeader(title: "MOVE", subtitle: moveTargetLabel) { EmptyView() }
+            MiniHomePaneHeader(title: "MOVE", subtitle: nil) { EmptyView() }
         case .assistant:
             MiniHomePaneHeader(title: "ASSISTANT", subtitle: assistant.statusText) {
                 MiniHomeOpenLink(title: "Open") { AssistantAccess.show() }
             }
         case .home:
-            MiniHomePaneHeader(title: "HOME", subtitle: selectedLayerLabel) {
+            MiniHomePaneHeader(title: "Home", qualifier: selectedLayerLabel) {
                 MiniHomeOpenLink(title: "Open Home") {
                     MenuBarController.shared.dismissPopover()
                     ScreenMapWindowController.shared.showPage(.home)
@@ -401,6 +396,7 @@ private struct MiniHomeRailIcon: View {
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }
         .help(help)
+        .accessibilityLabel(help)
     }
 }
 
@@ -409,20 +405,31 @@ private struct MiniHomeRailIcon: View {
 private struct MiniHomePaneHeader<Trailing: View>: View {
     let title: String
     var subtitle: String? = nil
+    var qualifier: String? = nil
     let trailing: Trailing
 
-    init(title: String, subtitle: String? = nil, @ViewBuilder trailing: () -> Trailing) {
+    init(title: String, subtitle: String? = nil, qualifier: String? = nil, @ViewBuilder trailing: () -> Trailing) {
         self.title = title
         self.subtitle = subtitle
+        self.qualifier = qualifier
         self.trailing = trailing()
     }
 
     var body: some View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(Typo.geistMonoBold(10))
-                    .foregroundColor(Palette.textDim)
+                HStack(spacing: 6) {
+                    Text(title)
+                        .font(Typo.geistMonoBold(10))
+                        .foregroundColor(Palette.textDim)
+                    if let qualifier, !qualifier.isEmpty {
+                        Text("/ \(qualifier)")
+                            .font(Typo.mono(10))
+                            .foregroundColor(Palette.textMuted)
+                    }
+                }
+                .lineLimit(1)
+                .accessibilityElement(children: .combine)
                 if let subtitle, !subtitle.isEmpty {
                     Text(subtitle)
                         .font(Typo.mono(9))
@@ -620,9 +627,11 @@ struct MiniDesktopMap: View {
         let isFront = win.wid == frontWid
         let shape = RoundedRectangle(cornerRadius: 2, style: .continuous)
         let fill = isFront
-            ? Palette.running.opacity(0.45)
+            ? (zonesEnabled ? Color.white.opacity(0.12) : Palette.running.opacity(0.45))
             : Palette.textMuted.opacity(0.16)
-        let stroke = isFront ? Palette.running.opacity(0.9) : Palette.border
+        let stroke = isFront
+            ? (zonesEnabled ? Palette.text.opacity(0.8) : Palette.running.opacity(0.9))
+            : Palette.border
 
         if let onWindowTap {
             Button {
@@ -649,9 +658,21 @@ struct MiniDesktopMap: View {
         } else {
             shape
                 .fill(fill)
-                .overlay(shape.strokeBorder(stroke, lineWidth: isFront ? 1 : 0.5))
+                .overlay(shape.strokeBorder(stroke, lineWidth: isFront ? 1.5 : 0.5))
+                .overlay(alignment: .topLeading) {
+                    if isFront && r.width > 70 && r.height > 20 {
+                        Text("Current · \(win.app)")
+                            .font(Typo.mono(8))
+                            .foregroundColor(Palette.text)
+                            .lineLimit(1)
+                            .padding(4)
+                            .background(Palette.bg.opacity(0.9))
+                            .padding(3)
+                    }
+                }
                 .frame(width: max(r.width, 4), height: max(r.height, 3))
                 .offset(x: r.minX, y: r.minY)
+                .accessibilityLabel("\(isFront ? "Current window" : "Window"): \(win.app), \(win.title)")
         }
     }
 
@@ -670,18 +691,31 @@ struct MiniDesktopMap: View {
             onZone?(position)
         } label: {
             RoundedRectangle(cornerRadius: 3, style: .continuous)
-                .fill(Palette.running.opacity(isHovered ? 0.30 : 0.10))
+                .fill(Color.accentColor.opacity(isHovered ? 0.25 : 0))
                 .overlay(
                     RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .strokeBorder(Palette.running.opacity(isHovered ? 0.8 : 0.35), lineWidth: 0.75)
+                        .strokeBorder(
+                            isHovered ? Color.accentColor : Palette.textMuted,
+                            style: StrokeStyle(lineWidth: isHovered ? 1.5 : 0.5, dash: isHovered ? [] : [3, 3])
+                        )
                 )
+                .overlay {
+                    if isHovered {
+                        Text(position.label)
+                            .font(Typo.monoBold(9))
+                            .foregroundColor(Palette.text)
+                            .padding(4)
+                            .background(Palette.bg.opacity(0.9))
+                    }
+                }
                 .frame(width: cell.width - 3, height: cell.height - 3)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { hoveredZone = $0 ? position : nil }
         .offset(x: cell.minX + 1.5, y: cell.minY + 1.5)
-        .help(position.label)
+        .help("Move current window to \(position.label)")
+        .accessibilityLabel("Move current window to \(position.label)")
     }
 
     /// Configured tile slots for the selected layer, resolved to CG rects on
@@ -735,12 +769,33 @@ private struct MiniHomeMovePane: View {
     }
 
     var body: some View {
-        MiniDesktopMap(screen: frontScreen, zonesEnabled: canPlace) { position in
-            Self.place(position)
+        VStack(alignment: .leading, spacing: 8) {
+            if let target {
+                Text("Current window · \(target.app)")
+                    .font(Typo.monoBold(10))
+                    .foregroundColor(Palette.text)
+                if !target.title.isEmpty && target.title != target.app {
+                    Text(target.title)
+                        .font(Typo.mono(9))
+                        .foregroundColor(Palette.textDim)
+                        .lineLimit(1)
+                }
+            } else {
+                Text("Focus a window to move it")
+                    .font(Typo.mono(10))
+                    .foregroundColor(Palette.textDim)
+            }
+            MiniDesktopMap(screen: frontScreen, zonesEnabled: canPlace) { position in
+                Self.place(position)
+            }
+            if canPlace {
+                Text("Choose a destination to move this window")
+                    .font(Typo.mono(9))
+                    .foregroundColor(Palette.textDim)
+            }
         }
         .padding(.horizontal, 12)
-        .padding(.top, 8)
-        .padding(.bottom, 8)
+        .padding(.vertical, 8)
     }
 
     /// Shared with `MiniHomeMoveFooter` so pills and zones tile identically.
