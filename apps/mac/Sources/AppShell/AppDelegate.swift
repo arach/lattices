@@ -45,6 +45,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         WindowDragSnapController.shared.start()
         TilePointerController.shared.start()
         MouseGestureController.shared.start()
+        SpatialLensController.shared.start()
         KeyboardRemapController.shared.start()
         SpaceSwitchInterceptor.shared.start()
         SecureEventInputMonitor.shared.start()
@@ -132,6 +133,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         SecureEventInputMonitor.shared.stop()
         SpaceSwitchInterceptor.shared.stop()
         KeyboardRemapController.shared.stop()
+        SpatialLensController.shared.stop()
         AppServicesBootstrap.stop()
     }
 

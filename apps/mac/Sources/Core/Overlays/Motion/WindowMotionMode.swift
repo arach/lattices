@@ -487,7 +487,6 @@ private final class MotionPanel: NSPanel {
     private var cycleStep = 0
     private var ignoreResign = false        // swallow the transient key-resign while raising windows
     private var didMoveWindows = false       // did we move/raise any real window? (gates the Esc restore)
-    private let tileGap: CGFloat = 0.02     // even margin for the 2nd-tap "floating half"
     private let exposeGap: CGFloat = 0.012  // gutter between cells in the Exposé spread
     private let nudgeStep: CGFloat = 60
     private let resizeStep: CGFloat = 60
@@ -1209,11 +1208,9 @@ private final class MotionPanel: NSPanel {
 
     // MARK: - Single-window operations (on the active window)
 
-    /// Same logic for all four sides: a tap puts the window at that side's flush
-    /// half; tapping again *when already at that half* advances to the "floating
-    /// half" (the same half inset by an even gap on all four sides). Decided from
-    /// the window's CURRENT geometry (not session memory), so e.g. a full-width
-    /// window always goes to half first, and a floating half toggles back to flush.
+    /// Same geometry-derived cycle as Spatial Lens: half → third → two-thirds.
+    /// The current AX frame decides the next step, so this remains correct after
+    /// external moves and across separate Hyper+G sessions.
     private func cycleTile(_ side: MotionSide) {
         guard let el = ax(for: activeEntry), let cur = RealWindowAnimator.axFrame(el) else { return }
 
@@ -1224,34 +1221,22 @@ private final class MotionPanel: NSPanel {
         let currentCenter = CGPoint(x: cur.midX, y: primaryH - cur.midY)
         guard let screen = NSScreen.screens.first(where: { $0.frame.contains(currentCenter) }) ?? screen(for: activeEntry) else { return }
 
-        let halfFrame = WindowTiler.tileFrame(fractions: fractions(side, step: 0), on: screen)
-        let tolerance: CGFloat = 8
-        let alreadyHalf = abs(cur.minX - halfFrame.minX) < tolerance && abs(cur.minY - halfFrame.minY) < tolerance
-            && abs(cur.width - halfFrame.width) < tolerance && abs(cur.height - halfFrame.height) < tolerance
-        let step = alreadyHalf ? 1 : 0
-        lastSide = side
-        cycleStep = step
-        placeActive(to: WindowTiler.tileFrame(fractions: fractions(side, step: step), on: screen))
-    }
-
-    private func fractions(_ side: MotionSide, step: Int) -> (CGFloat, CGFloat, CGFloat, CGFloat) {
-        if step == 0 {
-            switch side {
-            case .left:   return TilePosition.left.rect
-            case .right:  return TilePosition.right.rect
-            case .top:    return TilePosition.top.rect
-            case .bottom: return TilePosition.bottom.rect
-            }
-        }
-        // 2nd tap: the same half region, inset by an even gap on all four sides
-        // so it floats (the gutter between two floating halves is 2·g).
-        let g = tileGap
+        let direction: SpatialDirection
         switch side {
-        case .left:   return (g,       g, 0.5 - 2 * g, 1 - 2 * g)
-        case .right:  return (0.5 + g, g, 0.5 - 2 * g, 1 - 2 * g)
-        case .top:    return (g,       g, 1 - 2 * g,   0.5 - 2 * g)
-        case .bottom: return (g, 0.5 + g, 1 - 2 * g,   0.5 - 2 * g)
+        case .left: direction = .left
+        case .right: direction = .right
+        case .top: direction = .up
+        case .bottom: direction = .down
         }
+        let visibleFrame = WindowTiler.tileFrame(fractions: (0, 0, 1, 1), on: screen)
+        let cycle = SpatialPlacementCycle.resolve(
+            direction: direction,
+            currentFrame: cur,
+            sourceVisibleFrame: visibleFrame
+        )
+        lastSide = side
+        cycleStep = cycle.cycleIndex
+        placeActive(to: WindowTiler.tileFrame(for: cycle.placement, on: screen))
     }
 
     private func tile(_ position: TilePosition) {

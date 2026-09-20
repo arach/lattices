@@ -641,11 +641,17 @@ final class ScreenMapEditorState: ObservableObject {
 
     /// Displays sorted by physical position (left-to-right, then top-to-bottom)
     var spatialDisplayOrder: [DisplayGeometry] {
-        displays.sorted { a, b in
-            if abs(a.cgRect.origin.x - b.cgRect.origin.x) > 10 {
-                return a.cgRect.origin.x < b.cgRect.origin.x
-            }
-            return a.cgRect.origin.y < b.cgRect.origin.y
+        let topology = DisplayTopology(displays: displays.map { display in
+            DisplayTopology.Display(
+                id: String(display.index),
+                apiIndex: display.index,
+                name: display.label,
+                frame: display.cgRect,
+                visibleFrame: display.cgRect
+            )
+        })
+        return topology.spatialOrder.compactMap { ordered in
+            displays.first(where: { $0.index == ordered.apiIndex })
         }
     }
 

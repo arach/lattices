@@ -416,6 +416,7 @@ final class KeyboardRemapController: ObservableObject {
     }
 
     private func activateCapsLayer(now: CFAbsoluteTime) {
+        guard !capsLayerActive else { return }
         capsLayerActive = true
         capsUsedAsModifier = false
         capsLayerActivatedAt = now

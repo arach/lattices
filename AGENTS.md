@@ -89,3 +89,14 @@ Full documentation lives in `docs/` — read these before changing behavior:
 - `docs/layers.md` — workspace layers and tab groups (`~/.lattices/workspace.json`)
 - `docs/api.md` — daemon RPC methods, events, wire protocol, agent integration patterns
 - `docs/agents.md` — agent-facing documentation and context artifacts
+
+## Active workspace ownership
+
+Use exactly two ongoing Lattices workspaces on this machine:
+
+- Native app and its supporting CLI: `/Users/arach/dev/lattices`, branch `codex/native-workspace`.
+- Website, documentation, Studio studies, and other non-native work: `/Users/arach/dev/lattices-design`, branch `codex/web-workspace`.
+
+Accumulate changes in these destinations. Do not create a feature worktree or switch the everyday native app to another checkout unless the user explicitly requests it. Build and relaunch the everyday app only from the native workspace; the web workspace is not an app installation source. Preserve the independent Action, Blink, and Speech lifecycles.
+
+Other pre-existing worktrees are inactive recovery copies. Their dirty files and unique branches must not be discarded. The September 20 consolidation recovery archive is `/Users/arach/Documents/Lattices-recovery-20260920-1410`.

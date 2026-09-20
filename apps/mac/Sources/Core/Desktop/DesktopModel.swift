@@ -118,10 +118,34 @@ final class DesktopModel: ObservableObject {
     func frontWindow(at point: CGPoint, on screen: NSScreen? = nil, excludingPid: Int32? = nil) -> WindowEntry? {
         for entry in allWindows() {
             if let excludingPid, entry.pid == excludingPid { continue }
-            guard entry.isOnScreen, !entry.title.isEmpty else { continue }
+            guard Self.isPlaceableTarget(entry) else { continue }
             if let screen, WindowTiler.screenForWindowFrame(entry.frame) != screen { continue }
             let r = CGRect(x: entry.frame.x, y: entry.frame.y, width: entry.frame.w, height: entry.frame.h)
             if r.contains(point) { return entry }
+        }
+        return nil
+    }
+
+    /// Fresh WindowServer hit-test for interactions that must target what is
+    /// under the pointer now. Unlike `frontWindow(at:)`, this does not depend
+    /// on the rate-limited desktop inventory or its asynchronous publication.
+    func liveFrontWindow(at point: CGPoint, excludingPid: Int32? = nil) -> WindowEntry? {
+        guard let list = CGWindowListCopyWindowInfo(
+            [.optionOnScreenOnly, .excludeDesktopElements],
+            kCGNullWindowID
+        ) as? [[String: Any]] else { return nil }
+
+        for (zIndex, info) in list.enumerated() {
+            guard let entry = Self.liveWindowEntry(from: info, zIndex: zIndex) else { continue }
+            if let excludingPid, entry.pid == excludingPid { continue }
+            guard Self.isPlaceableTarget(entry) else { continue }
+            let frame = CGRect(
+                x: entry.frame.x,
+                y: entry.frame.y,
+                width: entry.frame.w,
+                height: entry.frame.h
+            )
+            if frame.contains(point) { return entry }
         }
         return nil
     }
@@ -191,6 +215,43 @@ final class DesktopModel: ObservableObject {
             }
             return lhs.wid > rhs.wid
         }.first
+    }
+
+    private static func liveWindowEntry(from info: [String: Any], zIndex: Int) -> WindowEntry? {
+        guard let wid = info[kCGWindowNumber as String] as? UInt32,
+              let ownerName = info[kCGWindowOwnerName as String] as? String,
+              let pid = info[kCGWindowOwnerPID as String] as? Int32,
+              let boundsDict = info[kCGWindowBounds as String] as? NSDictionary,
+              (info[kCGWindowLayer as String] as? Int ?? 0) == 0
+        else { return nil }
+
+        if systemHelperProcesses.contains(ownerName) { return nil }
+        let isHelperByName = helperSuffixes.contains(where: { ownerName.hasSuffix($0) })
+            && !knownRealApps.contains(ownerName)
+        if isHelperByName { return nil }
+
+        var rect = CGRect.zero
+        guard CGRectMakeWithDictionaryRepresentation(boundsDict, &rect) else { return nil }
+        let title = info[kCGWindowName as String] as? String ?? ""
+        if ownerName.hasPrefix("com.apple.") && title.isEmpty { return nil }
+
+        var entry = WindowEntry(
+            wid: wid,
+            app: ownerName,
+            pid: pid,
+            title: title,
+            frame: WindowFrame(
+                x: Double(rect.origin.x),
+                y: Double(rect.origin.y),
+                w: Double(rect.width),
+                h: Double(rect.height)
+            ),
+            spaceIds: [],
+            isOnScreen: info[kCGWindowIsOnscreen as String] as? Bool ?? true,
+            latticesSession: SessionWindowLocator.extractSessionName(from: title)
+        )
+        entry.zIndex = zIndex
+        return entry
     }
 
     // MARK: - Polling
