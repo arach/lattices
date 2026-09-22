@@ -10,6 +10,7 @@ struct ScreenOverlayLayerID: Hashable {
 
 enum ScreenOverlayOwner: String {
     case dragSnap
+    case spatialLens
     case mouseGesture
     case hotkeyHints
     case focusHighlight
@@ -81,10 +82,16 @@ struct ScreenOverlaySnapZonesPayload {
     let zones: [ScreenOverlaySnapZone]
     let previewRect: CGRect?
     let previewLabel: String?
+    let palette: ScreenOverlaySnapPalette
     let zoneOpacity: CGFloat
     let highlightOpacity: CGFloat
     let previewOpacity: CGFloat
     let cornerRadius: CGFloat
+}
+
+enum ScreenOverlaySnapPalette: Equatable {
+    case mint
+    case spatialLens
 }
 
 struct ScreenOverlayTextPayload {
@@ -1449,6 +1456,7 @@ private final class ScreenOverlayCanvasView: NSView {
         let path = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
         let idleStrength = max(0.35, min(payload.zoneOpacity / 0.10, 1.4))
         let hoverStrength = max(0.35, min(payload.highlightOpacity / 0.22, 1.4))
+        let colors = snapPaletteColors(for: payload.palette)
 
         let shadow = NSShadow()
         shadow.shadowBlurRadius = zone.isHovered ? 18 : 10
@@ -1457,13 +1465,11 @@ private final class ScreenOverlayCanvasView: NSView {
 
         NSGraphicsContext.saveGraphicsState()
         shadow.set()
-        let baseTop = NSColor(
-            calibratedWhite: 0.13,
-            alpha: (zone.isHovered ? 0.42 * hoverStrength : 0.22 * idleStrength) * opacity
+        let baseTop = colors.zoneTop.withAlphaComponent(
+            (zone.isHovered ? 0.42 * hoverStrength : 0.22 * idleStrength) * opacity
         )
-        let baseBottom = NSColor(
-            calibratedWhite: 0.07,
-            alpha: (zone.isHovered ? 0.34 * hoverStrength : 0.15 * idleStrength) * opacity
+        let baseBottom = colors.zoneBottom.withAlphaComponent(
+            (zone.isHovered ? 0.34 * hoverStrength : 0.15 * idleStrength) * opacity
         )
         NSGradient(starting: baseTop, ending: baseBottom)?.draw(in: path, angle: -90)
         NSGraphicsContext.restoreGraphicsState()
@@ -1471,21 +1477,13 @@ private final class ScreenOverlayCanvasView: NSView {
         if zone.isHovered {
             let glowPath = path.copy() as! NSBezierPath
             glowPath.lineWidth = 6
-            NSColor(
-                calibratedRed: 0.25,
-                green: 0.84,
-                blue: 0.58,
-                alpha: payload.highlightOpacity * 0.28 * opacity
-            ).setStroke()
+            colors.glow.withAlphaComponent(payload.highlightOpacity * 0.28 * opacity).setStroke()
             glowPath.stroke()
         }
 
         path.lineWidth = zone.isHovered ? 1.6 : 1.0
-        NSColor(
-            calibratedRed: 0.52,
-            green: 0.94,
-            blue: 0.72,
-            alpha: (zone.isHovered ? 0.54 * hoverStrength : 0.10 * idleStrength) * opacity
+        colors.border.withAlphaComponent(
+            (zone.isHovered ? 0.54 * hoverStrength : 0.10 * idleStrength) * opacity
         ).setStroke()
         path.stroke()
 
@@ -1508,17 +1506,22 @@ private final class ScreenOverlayCanvasView: NSView {
         let previewRect = rect.insetBy(dx: 10, dy: 10)
         let radius = min(payload.cornerRadius, min(previewRect.width, previewRect.height) * 0.14)
         let path = NSBezierPath(roundedRect: previewRect, xRadius: radius, yRadius: radius)
+        let colors = snapPaletteColors(for: payload.palette)
 
-        NSColor(calibratedWhite: 1.0, alpha: payload.previewOpacity * 0.22 * opacity).setFill()
-        path.fill()
+        let fillAlpha: CGFloat = payload.palette == .spatialLens
+            ? max(0.10, payload.previewOpacity * 0.72) * opacity
+            : payload.previewOpacity * 0.22 * opacity
+        NSGradient(
+            starting: colors.previewTop.withAlphaComponent(fillAlpha),
+            ending: colors.previewBottom.withAlphaComponent(fillAlpha)
+        )?.draw(in: path, angle: -45)
 
         path.lineWidth = 1.6
-        path.setLineDash([10, 8], count: 2, phase: 0)
-        NSColor(
-            calibratedRed: 0.44,
-            green: 0.90,
-            blue: 0.68,
-            alpha: max(0.34, payload.previewOpacity * 3.2) * opacity
+        if payload.palette == .mint {
+            path.setLineDash([10, 8], count: 2, phase: 0)
+        }
+        colors.previewBorder.withAlphaComponent(
+            max(payload.palette == .spatialLens ? 0.48 : 0.34, payload.previewOpacity * 3.2) * opacity
         ).setStroke()
         path.stroke()
         path.setLineDash([], count: 0, phase: 0)
@@ -1541,6 +1544,41 @@ private final class ScreenOverlayCanvasView: NSView {
             tagPath.lineWidth = 1
             tagPath.stroke()
             drawLabel(label, in: tagRect, emphasized: true, opacity: opacity)
+        }
+    }
+
+    private struct SnapPaletteColors {
+        let zoneTop: NSColor
+        let zoneBottom: NSColor
+        let glow: NSColor
+        let border: NSColor
+        let previewTop: NSColor
+        let previewBottom: NSColor
+        let previewBorder: NSColor
+    }
+
+    private func snapPaletteColors(for palette: ScreenOverlaySnapPalette) -> SnapPaletteColors {
+        switch palette {
+        case .mint:
+            return SnapPaletteColors(
+                zoneTop: NSColor(calibratedWhite: 0.13, alpha: 1),
+                zoneBottom: NSColor(calibratedWhite: 0.07, alpha: 1),
+                glow: NSColor(calibratedRed: 0.25, green: 0.84, blue: 0.58, alpha: 1),
+                border: NSColor(calibratedRed: 0.52, green: 0.94, blue: 0.72, alpha: 1),
+                previewTop: .white,
+                previewBottom: .white,
+                previewBorder: NSColor(calibratedRed: 0.44, green: 0.90, blue: 0.68, alpha: 1)
+            )
+        case .spatialLens:
+            return SnapPaletteColors(
+                zoneTop: NSColor(calibratedRed: 0.16, green: 0.26, blue: 0.56, alpha: 1),
+                zoneBottom: NSColor(calibratedRed: 0.18, green: 0.10, blue: 0.42, alpha: 1),
+                glow: NSColor(calibratedRed: 0.42, green: 0.58, blue: 1.00, alpha: 1),
+                border: NSColor(calibratedRed: 0.58, green: 0.66, blue: 1.00, alpha: 1),
+                previewTop: NSColor(calibratedRed: 0.12, green: 0.58, blue: 1.00, alpha: 1),
+                previewBottom: NSColor(calibratedRed: 0.56, green: 0.30, blue: 1.00, alpha: 1),
+                previewBorder: NSColor(calibratedRed: 0.60, green: 0.68, blue: 1.00, alpha: 1)
+            )
         }
     }
 

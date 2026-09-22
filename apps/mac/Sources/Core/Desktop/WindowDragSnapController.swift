@@ -335,6 +335,7 @@ final class WindowDragSnapController {
                 zones: localZones,
                 previewRect: previewRect,
                 previewLabel: nil,
+                palette: .mint,
                 zoneOpacity: CGFloat(config.zoneOpacity ?? SnapZonesConfig.defaults.zoneOpacity ?? 0.10),
                 highlightOpacity: CGFloat(config.highlightOpacity ?? SnapZonesConfig.defaults.highlightOpacity ?? 0.22),
                 previewOpacity: CGFloat(config.previewOpacity ?? SnapZonesConfig.defaults.previewOpacity ?? 0.18),

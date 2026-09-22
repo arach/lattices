@@ -45,6 +45,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         WindowDragSnapController.shared.start()
         TilePointerController.shared.start()
         MouseGestureController.shared.start()
+        SpatialLensController.shared.start()
         KeyboardRemapController.shared.start()
         SpaceSwitchInterceptor.shared.start()
         SecureEventInputMonitor.shared.start()
@@ -132,6 +133,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         SecureEventInputMonitor.shared.stop()
         SpaceSwitchInterceptor.shared.stop()
         KeyboardRemapController.shared.stop()
+        SpatialLensController.shared.stop()
         AppServicesBootstrap.stop()
     }
 
@@ -198,6 +200,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
             self?.handleFrontmostApplicationChanged(app)
+        })
+        notificationObservers.append(center.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            // System-initiated Space change (Dock app activation, trackpad
+            // swipe, Mission Control). Switches Lattices performs show their
+            // own bezel — skip those so it doesn't double up.
+            guard CFAbsoluteTimeGetCurrent() - WindowTiler.lastProgrammaticSwitchAt > 0.8 else { return }
+            WindowTiler.showSpaceSwitchBezelForCurrentSpace()
         })
     }
 

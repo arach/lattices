@@ -140,6 +140,10 @@ class Preferences: ObservableObject {
         didSet { UserDefaults.standard.set(cursorMarkerSize.rawValue, forKey: "cursorMarker.size") }
     }
 
+    @Published var spatialLensEnabled: Bool {
+        didSet { UserDefaults.standard.set(spatialLensEnabled, forKey: "spatialLens.enabled") }
+    }
+
     @Published var keyboardRemapsEnabled: Bool {
         didSet { UserDefaults.standard.set(keyboardRemapsEnabled, forKey: "keyboardRemaps.enabled") }
     }
@@ -320,6 +324,9 @@ class Preferences: ObservableObject {
         } else {
             self.keyboardRemapsEnabled = true
         }
+
+        self.spatialLensEnabled = UserDefaults.standard.object(forKey: "spatialLens.enabled") == nil
+            || UserDefaults.standard.bool(forKey: "spatialLens.enabled")
 
         if UserDefaults.standard.object(forKey: "spaceSwitchKeys.enabled") != nil {
             self.spaceSwitchKeysEnabled = UserDefaults.standard.bool(forKey: "spaceSwitchKeys.enabled")

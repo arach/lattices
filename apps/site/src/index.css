@@ -250,6 +250,13 @@ button.nav-link {
   outline: none;
 }
 
+.products-menu .products-menu-link.products-menu-all {
+  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 7px 7px;
+}
+
 .products-menu-link > span,
 .products-menu-link > small {
   display: block;

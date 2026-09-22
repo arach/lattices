@@ -508,13 +508,13 @@ export default function App() {
             <span className="nav-name">lattices</span>
           </a>
           <div className="nav-links">
+            <ProductsMenu />
             <a href="/blog" className="nav-link nav-blog-link">
               Blog
             </a>
             <a href="/docs/overview" className="nav-link">
               Docs
             </a>
-            <ProductsMenu />
             <a
               href="https://github.com/arach/lattices"
               target="_blank"
@@ -1030,6 +1030,7 @@ export default function App() {
             <span>macOS only. tmux optional.</span>
           </div>
           <nav className="footer-links" aria-label="Footer">
+            <a href="/products">Products</a>
             <a href="/docs/overview">Docs</a>
             <a href="/blog">Blog</a>
             <a href="/action">Action</a>

@@ -6,6 +6,7 @@ import { useStudioRouter } from "studio/router";
 import { DeckBuilderStudy } from "@/studio/studies/DeckBuilder";
 import { CrossAppTabsStudy } from "@/studio/studies/CrossAppTabs";
 import { SpaceBezelStudy } from "@/studio/studies/SpaceBezel";
+import { ProductFamilyStudy } from "@/studio/studies/ProductFamily";
 import {
   HOME_HREF,
   pages,
@@ -23,6 +24,7 @@ export function renderStudioPage({ pathname, page }: RenderContext) {
   if (page?.href === "/studio/studies/deck-builder") return <DeckBuilderStudy page={page} />;
   if (page?.href === "/studio/studies/cross-app-tabs") return <CrossAppTabsStudy page={page} />;
   if (page?.href === "/studio/studies/space-bezel") return <SpaceBezelStudy page={page} />;
+  if (page?.href === "/studio/studies/product-family") return <ProductFamilyStudy page={page} />;
   if (page) return <PlaceholderPage page={page} />;
   return <NotFoundPage />;
 }

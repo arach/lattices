@@ -5,7 +5,8 @@
 Lattices is a macOS developer workspace manager that pairs tmux sessions with a native menu bar app for tiling, navigation, and project management.
 
 ## Structure
-- **CLI**: `bin/lattices.ts` (TypeScript, Bun/Node-compatible runtime) — main CLI entry point
+- **CLI**: `bin/lattices.ts` (TypeScript, Bun/Node-compatible runtime) — main CLI entry point, launched by the `bin/lattices` shell shim that resolves Bun
+- **MCP**: `bin/mcp/` — the lattices MCP server (`lattices mcp`), one toolset per domain. Action Browser's `browser_*` tools live in `bin/mcp/toolsets/browser/`. See `docs/mcp.md`
 - **App helper**: `bin/lattices-app.ts` — build/launch/quit/restart the menu bar app
 - **Swift menu bar app**: `apps/mac/Sources/` — native macOS app (SwiftUI + AppKit)
 - **Docs**: `docs/` — documentation source files
