@@ -1,28 +1,96 @@
-import { LatticesLogo } from './LandingPage'
-import { ProductsMenu } from './SiteChrome'
+import { SiteHeader } from './SiteChrome'
+
 const downloadUrl = 'https://github.com/arach/lattices/releases/download/speech-v0.2.0/Speech.dmg'
 const sourceUrl = 'https://github.com/arach/lattices/tree/main/products/speech'
+
+const features = [
+  {
+    title: 'A unified speak API',
+    description:
+      'Any agent can say things out loud through one local interface — queue text, pick a voice, and playback keeps running even if the client disconnects.',
+  },
+  {
+    title: 'Background by default',
+    description:
+      'A task finishes and its summary is queued and spoken while you keep working. Define it once and every agent you run gets a voice.',
+  },
+  {
+    title: 'A readalong when you want it',
+    description:
+      'Speech shows a lightweight HUD over the workspace while it reads — follow along, or let it run quietly and check the queue later.',
+  },
+]
+
 export default function SpeechPage() {
-  return <div className="action-page speech-page">
-    <nav className="nav action-nav" aria-label="Speech navigation"><div className="nav-inner">
-      <a href="/" className="nav-brand action-family-lockup"><LatticesLogo size={20} /><span className="nav-name">lattices</span><span aria-hidden="true">/</span><span>speech</span></a>
-      <div className="nav-links"><ProductsMenu /><a className="nav-link" href={sourceUrl}>Source</a><a className="action-nav-download" href={downloadUrl}>Download</a></div>
-    </div></nav>
-    <main className="action-shell">
-      <section className="action-hero" aria-labelledby="speech-title"><div className="action-hero-copy">
-        <h1 id="speech-title">Keep listening.</h1>
-        <p className="action-hero-lead">Speech is a standalone player from Lattices. Queue text, choose a voice, and control playback from its own menu bar app.</p>
-        <div className="action-hero-actions"><a className="hero-primary-cta action-primary-cta" href={downloadUrl}>Download Speech</a><a className="hero-secondary-cta" href={sourceUrl}>Read the source</a></div>
-        <p className="action-platform-note">macOS 26+ · Apple silicon</p>
-      </div></section>
-      <section className="action-proof" aria-labelledby="speech-controls"><div className="action-section-heading"><h2 id="speech-controls">A player that owns its playback.</h2></div>
-        <div className="action-proof-lines">
-          <article><h3>Independent of the workspace</h3><p>Install from the Apps menu in Lattices or download directly. Speech owns its queue and keeps running when a client disconnects.</p></article>
-          <article><h3>Your choice of voice</h3><p>Use system voices or configure a supported cloud or local provider. Speech keeps provider settings and playback controls together.</p></article>
-          <article><h3>One place to return</h3><p>Automatic mode hides the companion icon while Lattices is running. Choose Always show in Speech settings, or reopen Speech to reach its controls.</p></article>
-        </div>
-      </section>
-    </main>
-    <footer className="action-footer"><div className="action-footer-inner"><span>Speech is a Lattices product.</span><div><a href="/">Lattices</a><a href="/blink">Blink</a><a href="/action">Action</a><a href={sourceUrl}>Source</a></div></div></footer>
-  </div>
+  return (
+    <div className="family-page speech-page">
+      <SiteHeader />
+      <main>
+        <section className="family-hero" aria-labelledby="speech-title">
+          <div className="family-hero-copy">
+            <p className="family-kicker">Speech — a voice for agents</p>
+            <h1 id="speech-title">Give your agents a voice.</h1>
+            <p>
+              Speech is a standalone player from Lattices: one API for agents and
+              scripts to queue spoken readouts, with an optional HUD readalong.
+              Powered by Lattices, it can go ambient — a download finished, a
+              build done — spoken in the background.
+            </p>
+            <div className="family-hero-actions">
+              <a href={downloadUrl}>Download Speech</a>
+              <a href={sourceUrl}>Read the source</a>
+            </div>
+            <p className="speech-platform-note">macOS 26+ · Apple silicon</p>
+          </div>
+          <div className="family-speech-visual speech-queue-hero" aria-hidden="true">
+            <div className="is-playing">
+              <span>▶</span>
+              <strong>Agent summary — release build</strong>
+              <time>02:14</time>
+            </div>
+            <div>
+              <span>02</span>
+              <strong>Download finished</strong>
+              <time>00:08</time>
+            </div>
+            <div>
+              <span>03</span>
+              <strong>Release notes draft</strong>
+              <time>01:42</time>
+            </div>
+          </div>
+        </section>
+
+        <section className="speech-features" aria-label="What Speech does">
+          {features.map((feature) => (
+            <article key={feature.title}>
+              <h2>{feature.title}</h2>
+              <p>{feature.description}</p>
+            </article>
+          ))}
+        </section>
+
+        <section className="family-close">
+          <div>
+            <p className="family-kicker">Independent, always listening</p>
+            <h2>Speech owns its queue and keeps running when a client disconnects.</h2>
+          </div>
+          <nav aria-label="Lattices products">
+            <a href="/">Lattices</a>
+            <a href="/action">Action</a>
+            <a href="/blink">Blink</a>
+            <a href="/family">Family</a>
+          </nav>
+        </section>
+      </main>
+      <footer className="family-footer">
+        <span>Speech is a Lattices product.</span>
+        <nav aria-label="Footer">
+          <a href="/docs/overview">Docs</a>
+          <a href="/blog">Blog</a>
+          <a href="https://github.com/arach/lattices">GitHub</a>
+        </nav>
+      </footer>
+    </div>
+  )
 }

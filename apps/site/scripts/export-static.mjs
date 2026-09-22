@@ -20,6 +20,7 @@ import ActionPage from '../src/components/ActionPage.tsx'
 import BlinkPage from '../src/components/BlinkPage.tsx'
 import SpeechPage from '../src/components/SpeechPage.tsx'
 import ProductsPage from '../src/components/ProductsPage.tsx'
+import FamilyPage from '../src/components/FamilyPage.tsx'
 
 const siteDir = resolve(import.meta.dirname, '..')
 const repoRoot = resolve(siteDir, '..', '..')
@@ -86,6 +87,12 @@ await writeRoute(
 )
 await writeRoute('/speech', 'Speech — a standalone player from Lattices', 'Queue text, choose a voice, and control playback independently.', renderToString(createElement(SpeechPage)))
 await writeRoute('/products', 'Products — Lattices', 'Browse Lattices, Action, Blink, Speech, and the agent API.', renderToString(createElement(ProductsPage)))
+await writeRoute(
+  '/family',
+  'What Lattices can do — Lattices',
+  'A guided tour from workspace layout and agent collaboration to computer use, spatial notes, and speech.',
+  renderToString(createElement(FamilyPage)),
+)
 await copyBlinkDocs()
 await writeBlinkDownloadRedirect()
 
@@ -157,6 +164,7 @@ async function writeSitemap() {
     { loc: `${SITE_URL}/blink`, priority: '0.9' },
     { loc: `${SITE_URL}/speech`, priority: '0.9' },
     { loc: `${SITE_URL}/products`, priority: '0.9' },
+    { loc: `${SITE_URL}/family`, priority: '0.9' },
     { loc: `${SITE_URL}/blink/agents.md`, priority: '0.7' },
     { loc: `${SITE_URL}/blog`, priority: '0.8' },
     ...docs.map((doc) => ({

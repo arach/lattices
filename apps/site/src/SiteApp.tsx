@@ -7,6 +7,7 @@ import ProductsPage from './components/ProductsPage'
 import { DocsPage } from './components/Docs'
 import LandingPage from './components/LandingPage'
 import ConceptExperimentPage from './components/ConceptExperimentPage'
+import FamilyPage from './components/FamilyPage'
 import { defaultDoc, getBlogPost, getDoc } from './lib/content'
 
 export default function SiteApp() {
@@ -55,6 +56,7 @@ export default function SiteApp() {
   if (route.kind === 'blink') return <BlinkPage />
   if (route.kind === 'speech') return <SpeechPage />
   if (route.kind === 'products') return <ProductsPage />
+  if (route.kind === 'family') return <FamilyPage />
   if (route.kind === 'docs') return <DocsPage slug={route.slug} />
   if (route.kind === 'blog-index') return <BlogIndex />
   if (route.kind === 'blog-post') return <BlogPostPage slug={route.slug} />
@@ -102,6 +104,7 @@ type Route =
   | { kind: 'blink'; title: string; description: string }
   | { kind: 'speech'; title: string; description: string }
   | { kind: 'products'; title: string; description: string }
+  | { kind: 'family'; title: string; description: string }
   | { kind: 'docs'; slug?: string; title: string; description: string }
   | { kind: 'blog-index'; title: string; description: string }
   | { kind: 'blog-post'; slug: string; title: string; description: string }
@@ -139,6 +142,14 @@ function resolveRoute(path: string): Route {
       kind: 'products',
       title: 'Products — Lattices',
       description: 'Browse Lattices, Action, Blink, Speech, and the agent API.',
+    }
+  }
+
+  if (path === '/family') {
+    return {
+      kind: 'family',
+      title: 'What Lattices can do — Lattices',
+      description: 'A guided tour from workspace layout and agent collaboration to computer use, spatial notes, and speech.',
     }
   }
 

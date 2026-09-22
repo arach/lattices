@@ -86,6 +86,10 @@ export function ProductsMenu() {
       </button>
       {open ? (
         <div id="products-menu-panel" className="products-menu-panel" aria-label="Products">
+          <a href="/family" className="products-menu-link" onClick={() => setOpen(false)}>
+            <span>What it can do</span>
+            <small>A guided tour of the Lattices family</small>
+          </a>
           {productLinks.map((product) => (
             <a
               key={product.href}
