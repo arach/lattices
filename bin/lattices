@@ -1,0 +1,53 @@
+#!/bin/sh
+# The `lattices` entry point.
+#
+# This is a shell launcher rather than a bun-shebanged script on purpose. Agent
+# harnesses spawn MCP servers with whatever environment they happen to have, and
+# a GUI-launched app on macOS gets the bare system PATH -- no ~/.bun/bin. A
+# `#!/usr/bin/env bun` shebang fails outright there. Finding Bun ourselves is
+# what the retired run-action-browser-mcp.sh did, and dropping it along with the
+# script would have traded one silent "the browser tools are just gone" for
+# another.
+set -e
+
+# Resolve through however many symlinks the install put in the way: bun's global
+# bin links to the package, and a linked checkout adds one more hop.
+SELF="$0"
+while [ -L "$SELF" ]; do
+  TARGET="$(readlink "$SELF")"
+  case "$TARGET" in
+    /*) SELF="$TARGET" ;;
+    *) SELF="$(dirname "$SELF")/$TARGET" ;;
+  esac
+done
+BIN_DIR="$(cd "$(dirname "$SELF")" && pwd)"
+
+if [ -n "${LATTICES_BUN_BIN:-}" ]; then
+  BUN_BIN="${LATTICES_BUN_BIN}"
+  case "${BUN_BIN}" in
+    /*) ;;
+    *) BUN_BIN="$(command -v "${BUN_BIN}" || true)" ;;
+  esac
+elif command -v bun >/dev/null 2>&1; then
+  BUN_BIN="$(command -v bun)"
+else
+  BUN_BIN=""
+  for CANDIDATE in "${HOME}/.bun/bin/bun" /opt/homebrew/bin/bun /usr/local/bin/bun; do
+    if [ -x "$CANDIDATE" ]; then
+      BUN_BIN="$CANDIDATE"
+      break
+    fi
+  done
+fi
+
+case "${BUN_BIN}" in
+  /*) ;;
+  *) BUN_BIN="" ;;
+esac
+
+if [ -z "${BUN_BIN}" ] || [ ! -x "${BUN_BIN}" ]; then
+  echo "lattices requires Bun. Set LATTICES_BUN_BIN to its absolute executable path, or install Bun and reload your agent." >&2
+  exit 1
+fi
+
+exec "${BUN_BIN}" "${BIN_DIR}/lattices.ts" "$@"
