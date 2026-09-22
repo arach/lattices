@@ -1,7 +1,7 @@
 {
   "name": "action",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.3.0",
   "description": "Native-first macOS capture and demo workstation",
   "homepage": "https://lattices.dev/action",
   "repository": {
@@ -15,15 +15,13 @@
   "packageManager": "bun@1.3.5",
   "type": "module",
   "bin": {
-    "action": "./packages/cli/src/main.ts",
-    "action-dev": "./packages/cli/src/action-dev.ts"
+    "action": "./packages/cli/src/main.ts"
   },
   "workspaces": [
     "packages/*"
   ],
   "scripts": {
     "action": "bun packages/cli/src/main.ts",
-    "action-dev": "bun packages/cli/src/action-dev.ts",
     "companion": "bun packages/companion/src/server.ts",
     "companion:status": "CARGO_BIN=${CARGO_BIN:-$HOME/.cargo/bin/cargo}; \"$CARGO_BIN\" run --manifest-path crates/action-supervisor/Cargo.toml -- status --json",
     "companion:start": "CARGO_BIN=${CARGO_BIN:-$HOME/.cargo/bin/cargo}; \"$CARGO_BIN\" run --manifest-path crates/action-supervisor/Cargo.toml -- start --json",
@@ -54,7 +52,15 @@
     "mira:hide": "bun scripts/mira-overlay.mjs hide",
     "scenario:calculator": "bun packages/cli/src/main.ts scenario calculator-demo",
     "scenario:notes": "bun packages/cli/src/main.ts scenario notes-demo",
-    "native:dev": "bun packages/cli/src/action-dev.ts",
+    "native:dev": "bun packages/cli/src/action-dev.ts relaunch",
+    "native:launch": "bun packages/cli/src/action-dev.ts launch",
+    "native:relaunch": "bun packages/cli/src/action-dev.ts relaunch",
+    "native:quit": "bun packages/cli/src/action-dev.ts quit",
+    "native:logs": "bun packages/cli/src/action-dev.ts logs",
+    "native:rebuild": "bun packages/cli/src/action-dev.ts rebuild",
+    "native:host": "bun packages/cli/src/action-dev.ts host",
+    "native:agent": "bun packages/cli/src/action-dev.ts agent",
+    "native:agent-cli": "bun packages/cli/src/action-dev.ts agent-cli",
     "native:app:build": "native/engine/scripts/build-app.sh",
     "native:dmg:build": "Installer/build.sh",
     "native:doctor": "native/engine/scripts/doctor.sh",

@@ -303,3 +303,7 @@ relaunches full-size. The shaded state itself is session-only.
   open in a panel is safe.
 - Per-machine workspace state (open panels, per-note modes, window frames):
   UserDefaults today, with a planned migration to `.blink/workspace.json`.
+
+### Companion menu icon
+
+`behavior.alwaysShowMenuBarIcon` defaults to `false`: Blink hides its menu icon while Lattices is running and restores it when Lattices exits. Set it to `true` to keep a separate Blink icon. This setting hot-applies and is also available in Settings. Reopening Blink from Finder or Lattices Apps opens Settings even when the icon is hidden. It does not change notes or launch-at-login behavior.

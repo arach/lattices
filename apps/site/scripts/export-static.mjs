@@ -1,3 +1,4 @@
+import actionDownload from '../src/action-download.json' with { type: 'json' }
 import { copyFile, cp, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 import { marked } from 'marked'
@@ -17,6 +18,7 @@ import { renderMdxComponent } from './render-mdx.mjs'
 import { getLastUpdatedBatch, repoInfo } from './git-meta.mjs'
 import ActionPage from '../src/components/ActionPage.tsx'
 import BlinkPage from '../src/components/BlinkPage.tsx'
+import SpeechPage from '../src/components/SpeechPage.tsx'
 
 const siteDir = resolve(import.meta.dirname, '..')
 const repoRoot = resolve(siteDir, '..', '..')
@@ -24,10 +26,10 @@ const distDir = join(siteDir, 'dist')
 const actionAssetSourceDir = join(repoRoot, 'products', 'action', 'docs', 'assets')
 const actionMediaPath = '/action/media/'
 const SITE_URL = 'https://lattices.dev'
-const ACTION_RELEASES_API_URL = 'https://api.github.com/repos/arach/lattices/releases?per_page=100'
-const ACTION_LEGACY_DOWNLOAD_URL = 'https://github.com/arach/action/releases/latest/download/Action.dmg'
+const ACTION_RELEASES_API_URL = actionDownload.releasesUrl
+const ACTION_LEGACY_DOWNLOAD_URL = actionDownload.fallbackUrl
 const BLINK_RELEASES_API_URL = 'https://api.github.com/repos/arach/lattices/releases?per_page=100'
-const BLINK_LEGACY_DOWNLOAD_URL = 'https://github.com/arach/blink/releases/latest/download/Blink.dmg'
+const BLINK_LEGACY_DOWNLOAD_URL = 'https://github.com/arach/lattices/releases/download/blink-v2.1.0/Blink.dmg'
 const template = await readFile(join(distDir, 'index.html'), 'utf8')
 const shikiTheme = JSON.parse(await readFile(join(siteDir, 'src', 'data', 'lattices-shiki-theme.json'), 'utf8'))
 const highlighter = await createHighlighterCore({
@@ -81,6 +83,7 @@ await writeRoute(
   'Blink is spatial notes from Lattices: each note is a floating panel, and the desktop is the workspace.',
   renderToString(createElement(BlinkPage)),
 )
+await writeRoute('/speech', 'Speech — a standalone player from Lattices', 'Queue text, choose a voice, and control playback independently.', renderToString(createElement(SpeechPage)))
 await copyBlinkDocs()
 await writeBlinkDownloadRedirect()
 
@@ -150,6 +153,7 @@ async function writeSitemap() {
     { loc: `${SITE_URL}/action`, priority: '0.9' },
     { loc: `${SITE_URL}/action/agents`, priority: '0.7' },
     { loc: `${SITE_URL}/blink`, priority: '0.9' },
+    { loc: `${SITE_URL}/speech`, priority: '0.9' },
     { loc: `${SITE_URL}/blink/agents.md`, priority: '0.7' },
     { loc: `${SITE_URL}/blog`, priority: '0.8' },
     ...docs.map((doc) => ({
@@ -545,6 +549,7 @@ async function copyActionDocs() {
     'action-record-the-work.mp4',
     'action-record-the-work.vtt',
     join('brand', 'landing-hero.webp'),
+    join('brand', 'landing-mira.webp'),
     join('brand', 'landing-trace-field.webp'),
   ]
 

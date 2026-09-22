@@ -1,0 +1,462 @@
+{
+  "sourceCheckout": "/tmp/lattices-shared-speech",
+  "head": "92a2fe4850cbfdcf8fbaf696a0a05aaf5e94988e",
+  "sourceState": "dirty snapshot; no source edits performed",
+  "copiedAt": 1789431122.157471,
+  "files": [
+    {
+      "source": "apps/mac/Sources/Core/Speech/SpeechVoicePreferences.swift",
+      "sha256": "9205f73f1787b07c3f6b4a986f54303f9c312768424da8a448147c1a6d365c66",
+      "destination": "products/speech/Sources/Speech/SpeechVoicePreferences.swift"
+    },
+    {
+      "source": "apps/mac/Sources/Core/Speech/SpeechModels.swift",
+      "sha256": "732f4a441bc882788165f0994a3150c907a3ef24a6eb28896f68641649cfedee",
+      "destination": "products/speech/Sources/Speech/SpeechModels.swift"
+    },
+    {
+      "source": "apps/mac/Sources/Core/Speech/SpeechPlaybackHUDView.swift",
+      "sha256": "51e6045e63c01e99eed2cfde13e7a89459ce519a8c4bd92eb67f9a7ccf91bc97",
+      "destination": "products/speech/Sources/Speech/SpeechPlaybackHUDView.swift"
+    },
+    {
+      "source": "apps/mac/Sources/Core/Speech/SpeechQueue.swift",
+      "sha256": "8966f161fea3dea769cbc38edc59d9b75c219318f1d037e6ae5fb2442972d50d",
+      "destination": "products/speech/Sources/Speech/SpeechQueue.swift"
+    },
+    {
+      "source": "apps/mac/Sources/Core/Speech/SpeechPlayback.swift",
+      "sha256": "dd4ba63a7b8472a65c3805b9fc3b8c851b8b8120396220cd0309fe6ee1c8870e",
+      "destination": "products/speech/Sources/Speech/SpeechPlayback.swift"
+    },
+    {
+      "source": "apps/mac/Sources/Core/Speech/SpeechKokoro.swift",
+      "sha256": "b28ef5de459fb2e72a296723eeb6823c21b619cb6522b705129c792ecba3e126",
+      "destination": "products/speech/Sources/Speech/SpeechKokoro.swift"
+    },
+    {
+      "source": "apps/mac/Sources/Core/Speech/SpeechVoiceCatalog.swift",
+      "sha256": "96ea40d760030290a4c5e84a2cd68924d81322e59322df264f13d4957e07e5d4",
+      "destination": "products/speech/Sources/Speech/SpeechVoiceCatalog.swift"
+    },
+    {
+      "source": "apps/mac/Sources/Core/Speech/SpeechRpc.swift",
+      "sha256": "2a79aa717661d546bdcfee26cc7eda97bda391ca088e5ff5fa4b8e1c07579b43",
+      "destination": "products/speech/Sources/Speech/SpeechRpc.swift"
+    },
+    {
+      "source": "apps/mac/Sources/Core/Speech/SpeechPlaybackHUD.swift",
+      "sha256": "598406220c5bafab8039c1932bbb48d839148e41a9fa8962afb0e70ba1f72963",
+      "destination": "products/speech/Sources/Speech/SpeechPlaybackHUD.swift"
+    },
+    {
+      "source": "apps/mac/Sources/Core/Speech/HudsonSpeechRuntime.swift",
+      "sha256": "d4df368cb99ebe285d4f86851ef343fa1b0a7b08fea32c463d4ee422dede0b66",
+      "destination": "products/speech/Sources/Speech/HudsonSpeechRuntime.swift"
+    },
+    {
+      "source": "apps/mac/Sources/Core/Speech/SpeechSettingsView.swift",
+      "sha256": "a071f810dff14a7fd4c8a89ba84283887d96cccd7a35012e005d4576bf0e1ed4",
+      "destination": "products/speech/Sources/Speech/SpeechSettingsView.swift"
+    },
+    {
+      "source": "apps/mac/Sources/Core/Daemon/DaemonServer.swift",
+      "sha256": "57c87dcbe9e43796bc029d071eb8e15f391b65545e693b8c3e5c1c717d50e7fd",
+      "destination": "products/speech/Sources/Speech/DaemonServer.swift"
+    },
+    {
+      "source": "apps/mac/Sources/Core/Daemon/DaemonProtocol.swift",
+      "sha256": "7fd34263d875116f4992bd69d0902503413217d115f6df617aa6ffb2d9e6a179",
+      "destination": "products/speech/Sources/Speech/DaemonProtocol.swift"
+    },
+    {
+      "source": "apps/mac/Sources/Core/Daemon/SpeechRPCCapability.swift",
+      "sha256": "60e6d63773b28ea3ef68703f437f7e2c2393eca2bd6c214eb624c11a20ff2c5b",
+      "destination": "products/speech/Sources/Speech/SpeechRPCCapability.swift"
+    },
+    {
+      "source": "apps/mac/Sources/UI/Theme.swift",
+      "sha256": "674ddb0508a54e4b4f76b3b7d120dbc892e804864b232ad859043245925031e2",
+      "selection": "Palette and Typo"
+    },
+    {
+      "source": "apps/mac/Sources/Core/Overlays/HUD/HUDChrome.swift",
+      "sha256": "2e02568c78a7b39a2fcfa4514acf2d1960985bed385c4c312e01b68d55841c1d",
+      "selection": "HUDChrome token enum"
+    }
+  ],
+  "dependencies": {
+    "hudson": {
+      "checkout": "/tmp/hudson-shared-speech",
+      "head": "0c62490da3cb58d94e7a8556df058e43250230ce",
+      "patch": "docs/proposals/LAT-011-dependencies/hudson-shared-speech.patch",
+      "patchSHA256": "3d4475db4c4f1a1151cd784714070c41e163efbcc8c3a46f702bd9504e4b96b9",
+      "files": [
+        {
+          "path": "packages/native/apple/HudsonKit/Sources/HudsonUIAudio/HudTTS.swift",
+          "sha256": "f9edcd4b841cf2f6216c144ea3dbc71fddb9a7ed5ecb80117b2062ec60940c53"
+        },
+        {
+          "path": "packages/native/apple/HudsonKit/Sources/HudsonUIAudio/TTS/HudTTSTypes.swift",
+          "sha256": "c2176ee4c22077d7955bb48fe6af4ebcd26c4bcc0d5dfeaf49f65dafde4b31d2"
+        },
+        {
+          "path": "packages/native/apple/HudsonKit/Sources/HudsonUIAudio/TTS/Playback/HudSpeechPlayer.swift",
+          "sha256": "d659f928017b1dd51f8dcc76758baf5739b90676ff0b594c8666f931177ebb68"
+        },
+        {
+          "path": "packages/native/apple/HudsonKit/Sources/HudsonUIAudio/TTS/Playback/HudSystemSpeechSynthesizer.swift",
+          "sha256": "d9ee55652320b318b5b27863e6e903cd4d4a7661c36483fbf92934b9a093bcba"
+        },
+        {
+          "path": "packages/native/apple/HudsonKit/Tests/HudsonUITests/HudSpeechPlayerTests.swift",
+          "sha256": "4b3d5515c72c0a046bffe0de3858f99a8f5566c99ca254b207b1774db3e3a00f"
+        },
+        {
+          "path": "packages/native/apple/HudsonKit/Tests/HudsonUITests/HudSystemSpeechSynthesizerTests.swift",
+          "sha256": "59263c9f9d39ebca788c372a4ca2edd7be78484e61b7c0961903e1293cd109b6"
+        },
+        {
+          "path": "packages/native/apple/HudsonKit/Tests/HudsonUITests/HudTTSSpeakTests.swift",
+          "sha256": "38c24d617de45a1e9de2d3b9373157e94ca05132b6b8f5c729c6b08189cc49b6"
+        },
+        {
+          "path": "docs/proposals/hud-speech-cache-playback-api.md",
+          "sha256": "fadf8686b7ad0464b91a6978a3af554babbd51c88d29d725ffeb555e8a5807a0"
+        },
+        {
+          "path": "packages/native/apple/HudsonKit/Sources/HudsonUIAudio/TTS/Cache/HudSpeechCache.swift",
+          "sha256": "9c2d2bd91b29af9f81427dd25252e18914c3b2438ef629d3de53ac702cdf7159"
+        },
+        {
+          "path": "packages/native/apple/HudsonKit/Tests/HudsonUITests/HudSpeechCachePrecisionTests.swift",
+          "sha256": "d2fce9b1dad3bdec9292ad91535e75156890b69d08a18b551df74ff2c7b7c041"
+        },
+        {
+          "path": "packages/native/apple/HudsonKit/Tests/HudsonUITests/HudSpeechCacheTests.swift",
+          "sha256": "a00d8b1d5f1ff715daa82cf582ceda76452e692bd175b38c1e587ae68796a679"
+        }
+      ]
+    },
+    "vox": {
+      "checkout": "/Users/arach/.codex/worktrees/19f1/vox-speech-integration",
+      "head": "21c6e39a621a1ec9234a58bcdf7e140de52d8ff6",
+      "patch": "docs/proposals/LAT-011-dependencies/vox-speech-resources.patch",
+      "patchSHA256": "260aa052a28eb3f05ec89af98d655e80936506d1735565ef3bfa42870be8ca45",
+      "files": [
+        {
+          "path": "Package.swift",
+          "sha256": "996d42cb16ee1498ccc8f60fe78945becacab7278451bc37ac36f0167d26fb74"
+        },
+        {
+          "path": "docs.json",
+          "sha256": "9a2ec6e4605406684dc8dce4c9283815e4d6d2544ab9e77201c88d043446adbb"
+        },
+        {
+          "path": "docs/agent/apple-embed.agent.md",
+          "sha256": "56cef1dd97856843867e42d3b057b3e682dddcb8cae8be2d54d2e0cd497c6340"
+        },
+        {
+          "path": "docs/apple-embed.md",
+          "sha256": "744070cb951095dff6d28e182220f861da32e0a489179e17b29754da4ffb6787"
+        },
+        {
+          "path": "llms-full.txt",
+          "sha256": "1fb7d0ccf149d3cc486f4c614433f770fb1ab78fa07cb3667dfa7a10e8c8b6ee"
+        },
+        {
+          "path": "swift/Sources/HudsonSpeechEngine/BuiltinExternalProvider.swift",
+          "sha256": "d9f5041dcd0b5cfc9d6aa0fb05a68a3d98497a8f9dd9c42b50c0298b810c8625"
+        },
+        {
+          "path": "swift/Sources/HudsonSpeechEngine/ModelCatalogStore.swift",
+          "sha256": "2174004b33f3c2df773cc06d8b6a78e494cd96266d027afe9aba204d487744c9"
+        },
+        {
+          "path": "swift/Sources/HudsonSpeechEngine/SpeechEngineResources.swift",
+          "sha256": "525be6630a948315f66c462458de094a9b444e897cb2a29cda57d3e9f0dc4272"
+        },
+        {
+          "path": "swift/Tests/VoxEngineTests/SpeechEngineResourcesTests.swift",
+          "sha256": "4863d868b0345520eaf07d536c6c781891835a4a8d9930efb4a286d1e1027b58"
+        }
+      ]
+    }
+  },
+  "finalFiles": [
+    {
+      "path": "products/speech/Sources/Speech/CompanionMenuBarVisibility.swift",
+      "sha256": "d6167509c3874cbe5bb6321adc9f8b506dd590c48430a8c1c44922fd1ce2a828"
+    },
+    {
+      "path": "products/speech/Sources/Speech/DaemonProtocol.swift",
+      "sha256": "7fd34263d875116f4992bd69d0902503413217d115f6df617aa6ffb2d9e6a179"
+    },
+    {
+      "path": "products/speech/Sources/Speech/DaemonServer.swift",
+      "sha256": "204f10d0c68e05bed375cd5151cc10a963fb1989a877c7c86ef39c89586a844d"
+    },
+    {
+      "path": "products/speech/Sources/Speech/HudsonSpeechRuntime.swift",
+      "sha256": "77ae42bd1faaf5018e4504a6e3c4bf1817bb1c7463cc5f1434f0b54507e55af1"
+    },
+    {
+      "path": "products/speech/Sources/Speech/SpeechApi.swift",
+      "sha256": "7d9d4081829f871893d2f88a99b465719bbc9bc50bfc18b12652dfdfb4b27b15"
+    },
+    {
+      "path": "products/speech/Sources/Speech/SpeechApp.swift",
+      "sha256": "5dc78943834748919b36aba7def2e960436a3fa5b0ee9af02dad1fbc9aff694b"
+    },
+    {
+      "path": "products/speech/Sources/Speech/SpeechHUDChrome.swift",
+      "sha256": "2f1fac92f7af5d669b1a81a95b63a0dc5f6f851fc12e76347fa8c666835a27e2"
+    },
+    {
+      "path": "products/speech/Sources/Speech/SpeechKokoro.swift",
+      "sha256": "a78fe018236c916402e3d159d18fb82812b129aaaa618c52e7fe3feeebae6a9c"
+    },
+    {
+      "path": "products/speech/Sources/Speech/SpeechKokoroRuntime.swift",
+      "sha256": "ffec238a1f4447b84304077bf6bc0e1631e85089e76731ccc0e3145414a34a59"
+    },
+    {
+      "path": "products/speech/Sources/Speech/SpeechModels.swift",
+      "sha256": "732f4a441bc882788165f0994a3150c907a3ef24a6eb28896f68641649cfedee"
+    },
+    {
+      "path": "products/speech/Sources/Speech/SpeechPlayback.swift",
+      "sha256": "dd4ba63a7b8472a65c3805b9fc3b8c851b8b8120396220cd0309fe6ee1c8870e"
+    },
+    {
+      "path": "products/speech/Sources/Speech/SpeechPlaybackHUD.swift",
+      "sha256": "7748a061779fb3e52d88acd3afd19abf15d719c23803421a2a563597090bdad5"
+    },
+    {
+      "path": "products/speech/Sources/Speech/SpeechPlaybackHUDView.swift",
+      "sha256": "51e6045e63c01e99eed2cfde13e7a89459ce519a8c4bd92eb67f9a7ccf91bc97"
+    },
+    {
+      "path": "products/speech/Sources/Speech/SpeechQueue.swift",
+      "sha256": "653f6ebd7d1c6980962a6a8a4479eb00bbe0f9351b9310d712657d8641dec2fc"
+    },
+    {
+      "path": "products/speech/Sources/Speech/SpeechRPCCapability.swift",
+      "sha256": "34ccebcd503cbf677e7ce9b4723f0e795a5a18f6b2c02b3dc8cf47c903ba17c9"
+    },
+    {
+      "path": "products/speech/Sources/Speech/SpeechRpc.swift",
+      "sha256": "ded8dc1979b4dd5be98c2aedd5e6be610c126ea225366a92c8c127db5d056577"
+    },
+    {
+      "path": "products/speech/Sources/Speech/SpeechSettingsView.swift",
+      "sha256": "6ed5c1b291e63838b7d3350c8ac944f0c69ee38045fae335783fa26963705a0c"
+    },
+    {
+      "path": "products/speech/Sources/Speech/SpeechTheme.swift",
+      "sha256": "16ba2e1d32048b00f81b8b7bad412908f9db4c4c4d0ccf0c66a04e46760980f1"
+    },
+    {
+      "path": "products/speech/Sources/Speech/SpeechVoiceCatalog.swift",
+      "sha256": "96ea40d760030290a4c5e84a2cd68924d81322e59322df264f13d4957e07e5d4"
+    },
+    {
+      "path": "products/speech/Sources/Speech/SpeechVoicePreferences.swift",
+      "sha256": "000454bd17ec16bd6082d34c726c8dc9953e0abbc0b112c5635b2621ffc7dfb3"
+    },
+    {
+      "path": "products/speech/Tests/SpeechTests/CompanionMenuBarVisibilityTests.swift",
+      "sha256": "cc88bdd41d6893740e4010535dea553fc52d74dc38b0d395d93197bbebc2d5b6"
+    },
+    {
+      "path": "products/speech/Tests/SpeechTests/SpeechCompanionConnection.swift",
+      "sha256": "57a87d8bab8ec464173aa147f1b893a9cba0e514d35e3ec774d2f9116758869a"
+    },
+    {
+      "path": "products/speech/Tests/SpeechTests/SpeechForwardingTests.swift",
+      "sha256": "4932f1539819d81ca95d5be3e627b17ee244977f08b9bbe9ba2d3d716bd225df"
+    },
+    {
+      "path": "products/speech/Tests/SpeechTests/SpeechMigrationTests.swift",
+      "sha256": "3f45c0d423cf2cca05d8c74024d1eda97b717b5f72ed259fd7bdcdafebbabad9"
+    },
+    {
+      "path": "products/speech/Tests/SpeechTests/SpeechProviderSelectionTests.swift",
+      "sha256": "deb5c345708278c4b7167308eb72916059f7d25d99519527da365c1ea0aa2a66"
+    },
+    {
+      "path": "products/speech/Tests/SpeechTests/SpeechQueueTests.swift",
+      "sha256": "1cdb044e58f5ba4de5bae1ef36407c5e8f68f7fafc873d0b247e61d10a3753ef"
+    },
+    {
+      "path": "products/speech/Tests/SpeechTests/SpeechRPCCapabilityTests.swift",
+      "sha256": "086e1fc494a28cfdf042f4a8f92a13ecda78be8e305a89af09100d62969e91a2"
+    },
+    {
+      "path": "products/speech/Tests/SpeechTests/SpeechRpcContractTests.swift",
+      "sha256": "a14c2e49f9441b49dba5f44c22ff9bac9ee4d8d1b8d99f343a63b589ef92ee8a"
+    },
+    {
+      "path": "products/speech/Tests/SpeechTests/SpeechSocketIntegrationTests.swift",
+      "sha256": "6ff5cfd1f58f8d35998fed48069098429d7c6ca0ff3ba02a4a567b9e96ed8f13"
+    },
+    {
+      "path": "products/speech/Tests/SpeechTests/SpeechVoicePickerTests.swift",
+      "sha256": "43743320d76053487d7b11629957d42100a71f1e4cb97956cf499ce24c1e342b"
+    }
+  ],
+  "adaptations": [
+    "SpeechServer, SpeechApi and capability extracted from Lattices daemon; no workspace event ownership.",
+    "SpeechKokoroRuntime newly adapts Vox TTSEngineManager instead of LatticesVoiceRuntime.",
+    "Theme/HUDChrome/edge-glow support retained as independent tokens/views; bottom placement owned by Speech.",
+    "Imported Speech tests adapted to SpeechAppRuntime; migration and production forwarding regressions added.",
+    "Shared companion menu visibility is compiled separately into each app; preferences remain companion-owned, and Finder reopen exposes controls."
+  ],
+  "releaseVersion": "0.2.0",
+  "releaseFiles": [
+    {
+      "path": "products/speech/.gitignore",
+      "sha256": "9481feac156b7d2044d7fe444ec5697cfa379f0e4c672e2972e3407f9454c407"
+    },
+    {
+      "path": "products/speech/AGENTS.md",
+      "sha256": "ea69cedc1eed0b6213ee1794ca8be309c4ba8e3c4a0eef4acd6691bc05e05fc4"
+    },
+    {
+      "path": "products/speech/Info.plist",
+      "sha256": "dd32b60261e513fd077a90adebfc3ff043faad438f3a251a135dc47877fefcf8"
+    },
+    {
+      "path": "products/speech/Package.resolved",
+      "sha256": "166d8cd0d078f5df522b00c5267834177f3c3be6068a1d333d146819c92cdd0a"
+    },
+    {
+      "path": "products/speech/Package.swift",
+      "sha256": "574a197e130fabfe36de2beecd63f232418e034817ce948e72e78a3f522ed07b"
+    },
+    {
+      "path": "products/speech/Sources/Speech/CompanionMenuBarVisibility.swift",
+      "sha256": "d6167509c3874cbe5bb6321adc9f8b506dd590c48430a8c1c44922fd1ce2a828"
+    },
+    {
+      "path": "products/speech/Sources/Speech/DaemonProtocol.swift",
+      "sha256": "7fd34263d875116f4992bd69d0902503413217d115f6df617aa6ffb2d9e6a179"
+    },
+    {
+      "path": "products/speech/Sources/Speech/DaemonServer.swift",
+      "sha256": "204f10d0c68e05bed375cd5151cc10a963fb1989a877c7c86ef39c89586a844d"
+    },
+    {
+      "path": "products/speech/Sources/Speech/HudsonSpeechRuntime.swift",
+      "sha256": "77ae42bd1faaf5018e4504a6e3c4bf1817bb1c7463cc5f1434f0b54507e55af1"
+    },
+    {
+      "path": "products/speech/Sources/Speech/SpeechApi.swift",
+      "sha256": "7d9d4081829f871893d2f88a99b465719bbc9bc50bfc18b12652dfdfb4b27b15"
+    },
+    {
+      "path": "products/speech/Sources/Speech/SpeechApp.swift",
+      "sha256": "5dc78943834748919b36aba7def2e960436a3fa5b0ee9af02dad1fbc9aff694b"
+    },
+    {
+      "path": "products/speech/Sources/Speech/SpeechHUDChrome.swift",
+      "sha256": "2f1fac92f7af5d669b1a81a95b63a0dc5f6f851fc12e76347fa8c666835a27e2"
+    },
+    {
+      "path": "products/speech/Sources/Speech/SpeechKokoro.swift",
+      "sha256": "a78fe018236c916402e3d159d18fb82812b129aaaa618c52e7fe3feeebae6a9c"
+    },
+    {
+      "path": "products/speech/Sources/Speech/SpeechKokoroRuntime.swift",
+      "sha256": "ffec238a1f4447b84304077bf6bc0e1631e85089e76731ccc0e3145414a34a59"
+    },
+    {
+      "path": "products/speech/Sources/Speech/SpeechModels.swift",
+      "sha256": "732f4a441bc882788165f0994a3150c907a3ef24a6eb28896f68641649cfedee"
+    },
+    {
+      "path": "products/speech/Sources/Speech/SpeechPlayback.swift",
+      "sha256": "dd4ba63a7b8472a65c3805b9fc3b8c851b8b8120396220cd0309fe6ee1c8870e"
+    },
+    {
+      "path": "products/speech/Sources/Speech/SpeechPlaybackHUD.swift",
+      "sha256": "7748a061779fb3e52d88acd3afd19abf15d719c23803421a2a563597090bdad5"
+    },
+    {
+      "path": "products/speech/Sources/Speech/SpeechPlaybackHUDView.swift",
+      "sha256": "51e6045e63c01e99eed2cfde13e7a89459ce519a8c4bd92eb67f9a7ccf91bc97"
+    },
+    {
+      "path": "products/speech/Sources/Speech/SpeechQueue.swift",
+      "sha256": "653f6ebd7d1c6980962a6a8a4479eb00bbe0f9351b9310d712657d8641dec2fc"
+    },
+    {
+      "path": "products/speech/Sources/Speech/SpeechRPCCapability.swift",
+      "sha256": "34ccebcd503cbf677e7ce9b4723f0e795a5a18f6b2c02b3dc8cf47c903ba17c9"
+    },
+    {
+      "path": "products/speech/Sources/Speech/SpeechRpc.swift",
+      "sha256": "ded8dc1979b4dd5be98c2aedd5e6be610c126ea225366a92c8c127db5d056577"
+    },
+    {
+      "path": "products/speech/Sources/Speech/SpeechSettingsView.swift",
+      "sha256": "6ed5c1b291e63838b7d3350c8ac944f0c69ee38045fae335783fa26963705a0c"
+    },
+    {
+      "path": "products/speech/Sources/Speech/SpeechTheme.swift",
+      "sha256": "16ba2e1d32048b00f81b8b7bad412908f9db4c4c4d0ccf0c66a04e46760980f1"
+    },
+    {
+      "path": "products/speech/Sources/Speech/SpeechVoiceCatalog.swift",
+      "sha256": "96ea40d760030290a4c5e84a2cd68924d81322e59322df264f13d4957e07e5d4"
+    },
+    {
+      "path": "products/speech/Sources/Speech/SpeechVoicePreferences.swift",
+      "sha256": "000454bd17ec16bd6082d34c726c8dc9953e0abbc0b112c5635b2621ffc7dfb3"
+    },
+    {
+      "path": "products/speech/Tests/SpeechTests/CompanionMenuBarVisibilityTests.swift",
+      "sha256": "cc88bdd41d6893740e4010535dea553fc52d74dc38b0d395d93197bbebc2d5b6"
+    },
+    {
+      "path": "products/speech/Tests/SpeechTests/SpeechCompanionConnection.swift",
+      "sha256": "57a87d8bab8ec464173aa147f1b893a9cba0e514d35e3ec774d2f9116758869a"
+    },
+    {
+      "path": "products/speech/Tests/SpeechTests/SpeechForwardingTests.swift",
+      "sha256": "4932f1539819d81ca95d5be3e627b17ee244977f08b9bbe9ba2d3d716bd225df"
+    },
+    {
+      "path": "products/speech/Tests/SpeechTests/SpeechMigrationTests.swift",
+      "sha256": "3f45c0d423cf2cca05d8c74024d1eda97b717b5f72ed259fd7bdcdafebbabad9"
+    },
+    {
+      "path": "products/speech/Tests/SpeechTests/SpeechProviderSelectionTests.swift",
+      "sha256": "deb5c345708278c4b7167308eb72916059f7d25d99519527da365c1ea0aa2a66"
+    },
+    {
+      "path": "products/speech/Tests/SpeechTests/SpeechQueueTests.swift",
+      "sha256": "1cdb044e58f5ba4de5bae1ef36407c5e8f68f7fafc873d0b247e61d10a3753ef"
+    },
+    {
+      "path": "products/speech/Tests/SpeechTests/SpeechRPCCapabilityTests.swift",
+      "sha256": "086e1fc494a28cfdf042f4a8f92a13ecda78be8e305a89af09100d62969e91a2"
+    },
+    {
+      "path": "products/speech/Tests/SpeechTests/SpeechRpcContractTests.swift",
+      "sha256": "a14c2e49f9441b49dba5f44c22ff9bac9ee4d8d1b8d99f343a63b589ef92ee8a"
+    },
+    {
+      "path": "products/speech/Tests/SpeechTests/SpeechSocketIntegrationTests.swift",
+      "sha256": "6ff5cfd1f58f8d35998fed48069098429d7c6ca0ff3ba02a4a567b9e96ed8f13"
+    },
+    {
+      "path": "products/speech/Tests/SpeechTests/SpeechVoicePickerTests.swift",
+      "sha256": "43743320d76053487d7b11629957d42100a71f1e4cb97956cf499ce24c1e342b"
+    },
+    {
+      "path": "products/speech/tools/package.sh",
+      "sha256": "f93d54dd6e037cdeff5751c0b54972b46a0dfb3f617a8d03962fcf4d165e4ea9"
+    }
+  ]
+}

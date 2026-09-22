@@ -109,30 +109,17 @@ enum WindowMovementService {
         let movedWids: [UInt32]
     }
 
-    /// Live display topology in API index order, resolved through SkyLight +
-    /// UUID matching (never `NSScreen.screens` positional assumptions). Main
-    /// thread only. `anchorScreen` marks the clicked window's display.
+    /// Live displays in physical left-to-right order, while preserving the
+    /// stable SkyLight/API identity required by ActionRuntime. Main thread only.
+    /// `anchorScreen` marks the clicked window's display.
     static func displays(anchorScreen: NSScreen?) -> [WindowMoveMenuModel.Display] {
-        let screens = NSScreen.screens
-        let anchorNumber = screenNumber(anchorScreen)
-        let spaces = WindowTiler.getDisplaySpaces().sorted { $0.displayIndex < $1.displayIndex }
-        guard !spaces.isEmpty else {
-            // SkyLight unavailable — API display indices fall back to AppKit
-            // order, matching DisplayGeometryMapper's index fallback.
-            return screens.enumerated().map { offset, screen in
-                WindowMoveMenuModel.Display(
-                    index: offset,
-                    name: screen.localizedName,
-                    isCurrent: anchorNumber != nil && screenNumber(screen) == anchorNumber
-                )
-            }
-        }
-        return spaces.map { display in
-            let screen = DisplayGeometryMapper.screen(for: display, in: screens)
+        let topology = DisplayTopology.live()
+        let anchorID = anchorScreen.map(ScreenOverlayCanvasController.screenID(for:))
+        return topology.spatialOrder.map { display in
             return WindowMoveMenuModel.Display(
-                index: display.displayIndex,
-                name: screen?.localizedName ?? "Display \(display.displayIndex + 1)",
-                isCurrent: anchorNumber != nil && screenNumber(screen) == anchorNumber
+                index: display.apiIndex,
+                name: display.name,
+                isCurrent: display.id == anchorID
             )
         }
     }
@@ -184,24 +171,45 @@ enum WindowMovementService {
         slot: TilePosition,
         completion: @escaping (Outcome) -> Void
     ) {
+        placeTarget(
+            target,
+            on: display,
+            placement: .tile(slot),
+            placementLabel: slot.label,
+            source: "app.context-menu",
+            completion: completion
+        )
+    }
+
+    /// Place one window using any canonical PlacementSpec. Spatial Lens uses
+    /// this for its two-thirds cycle while context menus continue to pass named
+    /// tile slots through the convenience overload above.
+    static func placeTarget(
+        _ target: WindowMoveMenuModel.Target,
+        on display: WindowMoveMenuModel.Display,
+        placement: PlacementSpec,
+        placementLabel: String,
+        source: String,
+        completion: @escaping (Outcome) -> Void
+    ) {
         run(completion: completion) {
             let params = JSON.object([
                 "wid": .int(Int(target.wid)),
                 "display": .int(display.index),
-                "placement": .string(slot.rawValue),
+                "placement": placement.jsonValue,
             ])
             do {
-                let receipt = try ActionRuntime.shared.executeWindowPlace(params: params, source: "app.context-menu")
+                let receipt = try ActionRuntime.shared.executeWindowPlace(params: params, source: source)
                 switch receipt["status"]?.stringValue {
                 case "ok":
-                    return Outcome(ok: true, message: "Placed \(slot.label) on \(display.name)", movedWids: [target.wid])
+                    return Outcome(ok: true, message: "Placed \(placementLabel) on \(display.name)", movedWids: [target.wid])
                 case "blocked":
                     return Outcome(ok: false, message: "Grant Accessibility to move windows", movedWids: [])
                 default:
                     return Outcome(ok: false, message: "Placement not verified on \(display.name)", movedWids: [])
                 }
             } catch {
-                DiagnosticLog.shared.error("[Place] wid \(target.wid) → display \(display.index) \(slot.rawValue): \(error)")
+                DiagnosticLog.shared.error("[Place] wid \(target.wid) → display \(display.index) \(placement.wireValue): \(error)")
                 return Outcome(ok: false, message: "Placement failed: \(shortError(error))", movedWids: [])
             }
         }
@@ -235,10 +243,6 @@ enum WindowMovementService {
             let outcome = work()
             DispatchQueue.main.async { completion(outcome) }
         }
-    }
-
-    private static func screenNumber(_ screen: NSScreen?) -> NSNumber? {
-        screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
     }
 
     private static func shortError(_ error: Error) -> String {

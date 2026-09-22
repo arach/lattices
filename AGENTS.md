@@ -16,6 +16,7 @@
 - Bare `lattices` (no args) shows a home/status screen — use `lattices start` (alias: `lattices tmux`) to create or attach a session
 - `lattices search <q> --deep` and `--all` both request all search sources (index + live terminal inspection)
 - Action is a separate Lattices product under `products/action/`; it keeps its own Bun workspace, signed `Action.app`, local agent runtime, and nested `AGENTS.md` contract.
+- `lattices action` (`bin/lattices-action.ts`) is the product-family entry point: installs `Action.app` from the latest `action-v*` GitHub release, reports status, launches/quits, calls the Action agent on ws://127.0.0.1:4319 (`lattices action call`), and forwards other verbs to the Action CLI when a `products/action` checkout is present.
 - Keep Action's AppKit and recording lifecycle separate from the Lattices menu bar app even though both products share this repository and website.
 - Blink is a separate Lattices product under `products/blink/`; it keeps its own Swift package, signed `Blink.app`, notes CLI, and nested `AGENTS.md` contract.
 - Keep Blink's note panels and NoteStore separate from the Lattices menu bar app even though both products share this repository and website.
@@ -32,6 +33,7 @@
 | Tests | `tests/` | CLI (node:test), dependency-free (bun test), e2e daemon |
 | Docs | `docs/` | User + agent documentation |
 | Site | `apps/site/` | Vite website, docs, and blog |
+| Agent skills | `skills/` | Family catalog: lattices, action, speech, blink (`npx skills add arach/lattices`) |
 | Action | `products/action/` | Native computer-use app, agent runtime, CLI/MCP surfaces, and release tooling |
 | Action Native | `products/action/native/engine/` | Signed Action.app, local agent, recording probe, and native scripts |
 | Blink | `products/blink/` | Spatial notes app, CLI, iOS companion, and landing |
@@ -72,6 +74,7 @@ bun run blink:build             # Blink app + CLI via products/blink Package.swi
 - Working with **daemon**? → Check apps/mac/Sources/Core/Daemon/DaemonServer.swift and apps/mac/Sources/Core/Daemon/LatticesApi.swift for WebSocket API
 - Working with **api**? → Check docs/api.md for the daemon RPC reference
 - Working with **agent docs**? → Check docs/agents.md and apps/site/scripts/agent-docs.mjs for raw markdown, prompt, and context artifacts
+- Working with **agent skills**? → Check skills/ (lattices, action, speech, blink)
 - Working with **Action**? → Read products/action/AGENTS.md before changing its app, runtime, capture, plugins, or release path
 - Working with **Blink**? → Read products/blink/AGENTS.md before changing notes, panels, CLI, or the iOS companion
 
@@ -86,3 +89,14 @@ Full documentation lives in `docs/` — read these before changing behavior:
 - `docs/layers.md` — workspace layers and tab groups (`~/.lattices/workspace.json`)
 - `docs/api.md` — daemon RPC methods, events, wire protocol, agent integration patterns
 - `docs/agents.md` — agent-facing documentation and context artifacts
+
+## Active workspace ownership
+
+Use exactly two ongoing Lattices workspaces on this machine:
+
+- Native app and its supporting CLI: `/Users/arach/dev/lattices`, branch `codex/native-workspace`.
+- Website, documentation, Studio studies, and other non-native work: `/Users/arach/dev/lattices-design`, branch `codex/web-workspace`.
+
+Accumulate changes in these destinations. Do not create a feature worktree or switch the everyday native app to another checkout unless the user explicitly requests it. Build and relaunch the everyday app only from the native workspace; the web workspace is not an app installation source. Preserve the independent Action, Blink, and Speech lifecycles.
+
+Other pre-existing worktrees are inactive recovery copies. Their dirty files and unique branches must not be discarded. The September 20 consolidation recovery archive is `/Users/arach/Documents/Lattices-recovery-20260920-1410`.

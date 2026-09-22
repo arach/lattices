@@ -2,49 +2,47 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleIdentifier</key>
-    <string>dev.lattices.app</string>
-    <key>CFBundleName</key>
-    <string>Lattices</string>
-    <key>CFBundleDisplayName</key>
-    <string>Lattices</string>
-    <key>CFBundleExecutable</key>
-    <string>Lattices</string>
-    <key>CFBundleIconFile</key>
-    <string>AppIcon</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleURLTypes</key>
-    <array>
-        <dict>
-            <key>CFBundleURLName</key>
-            <string>dev.lattices.app</string>
-            <key>CFBundleURLSchemes</key>
-            <array>
-                <string>lattices</string>
-            </array>
-        </dict>
-    </array>
-    <key>CFBundleVersion</key>
-    <string>0.9.0</string>
-    <key>CFBundleShortVersionString</key>
-    <string>0.9.0</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>26.0</string>
-    <key>LSUIElement</key>
-    <true/>
-    <key>NSHighResolutionCapable</key>
-    <true/>
-    <key>NSMicrophoneUsageDescription</key>
-    <string>Lattices uses the microphone for Hudson Voice dictation and voice commands.</string>
-    <key>NSSupportsAutomaticTermination</key>
-    <true/>
-    <!-- Allow the Settings deck-builder WKWebView to load the local studio dev
-         server (http://localhost:3050) over the loopback interface. -->
-    <key>NSAppTransportSecurity</key>
-    <dict>
-        <key>NSAllowsLocalNetworking</key>
-        <true/>
-    </dict>
+	<key>CFBundleIdentifier</key>
+	<string>dev.lattices.app</string>
+	<key>CFBundleName</key>
+	<string>Lattices</string>
+	<key>CFBundleDisplayName</key>
+	<string>Lattices</string>
+	<key>CFBundleExecutable</key>
+	<string>Lattices</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>dev.lattices.app</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>lattices</string>
+			</array>
+		</dict>
+	</array>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.12.0</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>26.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Lattices uses the microphone for Hudson Voice dictation and voice commands.</string>
+	<key>NSSupportsAutomaticTermination</key>
+	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 </dict>
 </plist>

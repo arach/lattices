@@ -12,6 +12,7 @@
   "author": "Arach",
   "homepage": "https://lattices.dev/action",
   "skills": [
+    "./skills/",
     "./products/action/plugins/action-browser/skills/"
   ],
   "interface": {

@@ -15,6 +15,8 @@ enum InputCaptureResetCenter {
         DiagnosticLog.shared.warn("InputCapture: reset for \(reason)")
         ScreenOverlayCanvasController.shared.resetInputCapture(reason: reason)
         MouseGestureController.shared.resetForSystemInputBoundary(reason: reason)
+        SpatialLensController.shared.resetForSystemInputBoundary(reason: reason)
         KeyboardRemapController.shared.resetForSystemInputBoundary(reason: reason)
+        SpaceSwitchInterceptor.shared.resetForSystemInputBoundary(reason: reason)
     }
 }

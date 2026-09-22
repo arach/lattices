@@ -1,0 +1,104 @@
+[
+  {
+    "path": "/tmp/lattices-speech-review-final3/Speech.app/Contents/MacOS/Speech",
+    "sha256": "4d47bf64d10a3090ad3776ec8ed3e8ac05362ee1cdcd7522d50ca25f995945e2",
+    "signature": "ad hoc hardened runtime; not Developer ID or notarized"
+  },
+  {
+    "path": "/tmp/lattices-companion-installer-final2",
+    "sha256": "78e704164dd290566a314e24207cb2b2cc2f30fabd9bb1c9781f8e695cd2ee96",
+    "signature": "ad hoc hardened runtime; not Developer ID or notarized"
+  },
+  {
+    "path": "/tmp/lattices-speech-distribution-candidate/Speech.app/Contents/MacOS/Speech",
+    "sha256": "dbd9122be85886f417753494f03c6c1495468d5518e543705edeb627e68501fd",
+    "signature": "timestamped Developer ID Application team 2U83JFPW66; hardened runtime; unnotarized"
+  },
+  {
+    "path": "/tmp/lattices-speech-distribution-candidate/Speech.dmg",
+    "sha256": "f51ee382ddd270589819d18623666d313eae6c450d63dac98abf64c7b68252b2",
+    "signature": "DMG not separately signed; contains verified Developer ID app; unnotarized; hdiutil integrity verified"
+  },
+  {
+    "path": "/tmp/lattices-blink-distribution-candidate/Blink.app/Contents/MacOS/Blink",
+    "sha256": "e39c9be63dc9a8e1565f86baa2373f62fbbb69b7272564f93e51bc78b245d12b",
+    "signature": "timestamped Developer ID Application team 2U83JFPW66; hardened runtime; unnotarized; version 2.0.5"
+  },
+  {
+    "path": "/tmp/lattices-blink-distribution-candidate/Blink.dmg",
+    "sha256": "ce269b00c73e4250fce96155388424881629c679c6935cbfb484bf15192f251a",
+    "signature": "timestamped Developer ID; strict signature and hdiutil integrity verified; unnotarized"
+  },
+  {
+    "path": "/Users/arach/.codex/worktrees/19f1/lattices-integration/dist/Lattices.dmg",
+    "sha256": "5ef8cd8c47095bd59d82346574addaca5e0990fdb7a0bcd3946af8d82bd64966",
+    "version": "0.12.0",
+    "signature": "Developer ID team 2U83JFPW66; notarized and stapled",
+    "releaseCandidate": false,
+    "publicDownloadSHA256Verified": true,
+    "releaseURL": "https://github.com/arach/lattices/releases/tag/v0.12.0"
+  },
+  {
+    "path": "/Users/arach/.codex/worktrees/19f1/lattices-integration/dist/Lattices.app/Contents/MacOS/Lattices",
+    "sha256": "3659915aa2da8ef197a108b32b8ee5d866a9e0df264ffab1b085e403253b3238",
+    "version": "0.12.0",
+    "signature": "Developer ID team 2U83JFPW66; notarized and stapled",
+    "releaseCandidate": false,
+    "publicDownloadSHA256Verified": true,
+    "releaseURL": "https://github.com/arach/lattices/releases/tag/v0.12.0"
+  },
+  {
+    "path": "/private/tmp/lattices-blink-2.1.0/Blink.dmg",
+    "sha256": "a96c49fe574fc2d7a60ff929c0e8742aedd8008b2011ba62cfce85c518cdafff",
+    "version": "2.1.0",
+    "signature": "Developer ID team 2U83JFPW66; notarized and stapled",
+    "releaseCandidate": false,
+    "publicDownloadSHA256Verified": true,
+    "releaseURL": "https://github.com/arach/lattices/releases/tag/blink-v2.1.0"
+  },
+  {
+    "path": "/private/tmp/lattices-blink-2.1.0/Blink.app/Contents/MacOS/Blink",
+    "sha256": "65a24b48bdb99dfbd9ac15a4cd136100c65b9bcaf5dfe4d74c125d30eefed6f9",
+    "version": "2.1.0",
+    "signature": "Developer ID team 2U83JFPW66; notarized and stapled",
+    "releaseCandidate": false,
+    "publicDownloadSHA256Verified": true,
+    "releaseURL": "https://github.com/arach/lattices/releases/tag/blink-v2.1.0"
+  },
+  {
+    "path": "/private/tmp/lattices-action-0.3.0/Action.dmg",
+    "sha256": "98a0cebd762cc8a30ddf839cb7371ac2c8c0c03f72ea35844e394a08522e2f95",
+    "version": "0.3.0",
+    "signature": "Developer ID team 2U83JFPW66; notarized and stapled",
+    "releaseCandidate": false,
+    "publicDownloadSHA256Verified": true,
+    "releaseURL": "https://github.com/arach/lattices/releases/tag/action-v0.3.0"
+  },
+  {
+    "path": "/private/tmp/lattices-action-0.3.0/Action.app/Contents/MacOS/Action",
+    "sha256": "1869769e7c8cd6d8e44bd1e70fa3f03dc9f1bd6e471dc2c070672da72aa368b7",
+    "version": "0.3.0",
+    "signature": "Developer ID team 2U83JFPW66; notarized and stapled",
+    "releaseCandidate": false,
+    "publicDownloadSHA256Verified": true,
+    "releaseURL": "https://github.com/arach/lattices/releases/tag/action-v0.3.0"
+  },
+  {
+    "path": "/private/tmp/lattices-speech-0.2.0/Speech.dmg",
+    "sha256": "6b1824d1de60664132e6fb327ea06fa1e4f9ac6d407d60252358fb72ac5676db",
+    "version": "0.2.0",
+    "signature": "Developer ID team 2U83JFPW66; notarized and stapled",
+    "releaseCandidate": false,
+    "publicDownloadSHA256Verified": true,
+    "releaseURL": "https://github.com/arach/lattices/releases/tag/speech-v0.2.0"
+  },
+  {
+    "path": "/private/tmp/lattices-speech-0.2.0/Speech.app/Contents/MacOS/Speech",
+    "sha256": "9dbd5e0bece65484dc99db539195ad1d264113e6c5041fd8aec670e65005dd62",
+    "version": "0.2.0",
+    "signature": "Developer ID team 2U83JFPW66; notarized and stapled",
+    "releaseCandidate": false,
+    "publicDownloadSHA256Verified": true,
+    "releaseURL": "https://github.com/arach/lattices/releases/tag/speech-v0.2.0"
+  }
+]

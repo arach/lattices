@@ -641,11 +641,17 @@ final class ScreenMapEditorState: ObservableObject {
 
     /// Displays sorted by physical position (left-to-right, then top-to-bottom)
     var spatialDisplayOrder: [DisplayGeometry] {
-        displays.sorted { a, b in
-            if abs(a.cgRect.origin.x - b.cgRect.origin.x) > 10 {
-                return a.cgRect.origin.x < b.cgRect.origin.x
-            }
-            return a.cgRect.origin.y < b.cgRect.origin.y
+        let topology = DisplayTopology(displays: displays.map { display in
+            DisplayTopology.Display(
+                id: String(display.index),
+                apiIndex: display.index,
+                name: display.label,
+                frame: display.cgRect,
+                visibleFrame: display.cgRect
+            )
+        })
+        return topology.spatialOrder.compactMap { ordered in
+            displays.first(where: { $0.index == ordered.apiIndex })
         }
     }
 
@@ -2889,7 +2895,7 @@ final class ScreenMapController: ObservableObject {
         }
 
         var matched = 0
-        for spec in layout.windows {
+        for (windowIndex, spec) in layout.windows.enumerated() {
             // Find matching window(s) by app name (case-insensitive substring)
             let appLower = spec.app.lowercased()
             let candidates = ed.windows.indices.filter { idx in
@@ -2902,8 +2908,8 @@ final class ScreenMapController: ObservableObject {
             }
             guard let idx = candidates.first else { continue }
 
-            // Resolve tile position (check presets first, then built-in)
-            guard let fractions = wm.resolveTileFractions(spec.tile) else { continue }
+            // Named tiles, presets, or engine-computed fractions (master-stack)
+            guard let fractions = wm.resolveLayoutFractions(layout, windowIndex: windowIndex) else { continue }
 
             // Resolve display (spatial number → displayIndex)
             let display: DisplayGeometry

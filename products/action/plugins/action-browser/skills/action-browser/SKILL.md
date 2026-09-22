@@ -1,6 +1,8 @@
 ---
 name: action-browser
 description: Use Action Browser when the user wants an agent to open a URL in a real Chrome session, inspect a page, click or fill a DOM element, or capture a browser screenshot without setting up a headless browser.
+metadata:
+  internal: true
 ---
 
 # Action Browser

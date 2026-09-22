@@ -1,0 +1,58 @@
+{
+  "language_code": "eng",
+  "language_probability": 0.7033095359802246,
+  "text": "Action. Part of lattices",
+  "words": [
+    {
+      "text": "Action.",
+      "start": 0.059,
+      "end": 0.439,
+      "type": "word",
+      "logprob": -0.13618134989935374
+    },
+    {
+      "text": " ",
+      "start": 0.439,
+      "end": 0.619,
+      "type": "spacing",
+      "logprob": -0.0001262346631847322
+    },
+    {
+      "text": "Part",
+      "start": 0.619,
+      "end": 0.759,
+      "type": "word",
+      "logprob": -0.0001262346631847322
+    },
+    {
+      "text": " ",
+      "start": 0.759,
+      "end": 0.779,
+      "type": "spacing",
+      "logprob": -1.0728830375228426e-06
+    },
+    {
+      "text": "of",
+      "start": 0.779,
+      "end": 0.819,
+      "type": "word",
+      "logprob": -1.0728830375228426e-06
+    },
+    {
+      "text": " ",
+      "start": 0.819,
+      "end": 0.899,
+      "type": "spacing",
+      "logprob": -0.31772103905677795
+    },
+    {
+      "text": "lattices",
+      "start": 0.899,
+      "end": 1.459,
+      "type": "word",
+      "logprob": -0.31772103905677795
+    }
+  ],
+  "transcription_id": "i6hjQZVhrkEC58V1HNea",
+  "audio_duration_secs": 1.671875
+}

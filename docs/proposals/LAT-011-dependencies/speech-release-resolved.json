@@ -1,0 +1,33 @@
+{
+  "originHash" : "574a197e130fabfe36de2beecd63f232418e034817ce948e72e78a3f522ed07b",
+  "pins" : [
+    {
+      "identity" : "hudson",
+      "kind" : "remoteSourceControl",
+      "location" : "git@github.com:arach/hudson.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "71fee5e03192dffe48056dedc0efacc94925bb62"
+      }
+    },
+    {
+      "identity" : "moonshine-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/moonshine-ai/moonshine-swift.git",
+      "state" : {
+        "revision" : "45a14f9edf1f2a6913d3aff38c1fd4e72d5b7daa",
+        "version" : "0.1.5"
+      }
+    },
+    {
+      "identity" : "vox",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/arach/vox.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "9190158f071083f22d0bda2f73f4e8d5f8763a90"
+      }
+    }
+  ],
+  "version" : 3
+}

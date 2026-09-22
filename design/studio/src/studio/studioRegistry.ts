@@ -47,6 +47,16 @@ export const pages: readonly LatticesPage[] = [
     ],
   },
   {
+    href: "/studio/studies/space-bezel",
+    label: "Space bezel — lattice mark variants",
+    bucket: "studies",
+    surface: "macos",
+    status: "concept",
+    blurb:
+      "Three takes on the instant space-switch pill built on the 3×3 logo mechanic: matrix-as-map, matrix-as-arrow-glyph, and mark-only traversal. Press ←/→ to drive all three.",
+    source: ["apps/mac/Sources/Core/Overlays/HUD/SpaceSwitchBezel.swift"],
+  },
+  {
     href: "/studio/studies/cross-app-tabs",
     label: "Cross-app tabs — one topic, many tools",
     bucket: "studies",

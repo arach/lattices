@@ -1,0 +1,2315 @@
+diff --git a/packages/native/apple/HudsonKit/Sources/HudsonUIAudio/HudTTS.swift b/packages/native/apple/HudsonKit/Sources/HudsonUIAudio/HudTTS.swift
+index 2aae237..97e0c42 100644
+--- a/packages/native/apple/HudsonKit/Sources/HudsonUIAudio/HudTTS.swift
++++ b/packages/native/apple/HudsonKit/Sources/HudsonUIAudio/HudTTS.swift
+@@ -118,8 +118,9 @@ public final class HudTTS {
+         case .system:
+             let voiceIdentifier = systemVoiceIdentifier ?? voice ?? systemSpeech.selectedVoiceIdentifier
+             let audioData = try await systemSpeech.synthesizeAudioData(
+-                trimmed,
+-                voiceIdentifier: voiceIdentifier
++                text,
++                voiceIdentifier: voiceIdentifier,
++                rate: rate
+             )
+             return HudTTSResult(
+                 audioData: audioData,
+@@ -131,7 +132,7 @@ public final class HudTTS {
+         default:
+             return try await client.synthesize(
+                 HudTTSRequest(
+-                    text: trimmed,
++                    text: text,
+                     voice: voice,
+                     rate: rate,
+                     model: model,
+@@ -162,7 +163,7 @@ public final class HudTTS {
+             switch providerID {
+             case .system:
+                 activePlayback = .system
+-                systemSpeech.speak(trimmed, voiceIdentifier: systemVoiceIdentifier ?? voice) { [weak self] in
++                systemSpeech.speak(text, voiceIdentifier: systemVoiceIdentifier ?? voice) { [weak self] in
+                     Task { @MainActor in
+                         self?.finishSpeak(generation)
+                     }
+@@ -171,7 +172,7 @@ public final class HudTTS {
+             default:
+                 let result = try await client.synthesize(
+                     HudTTSRequest(
+-                        text: trimmed,
++                        text: text,
+                         voice: voice,
+                         rate: rate,
+                         model: model,
+@@ -182,7 +183,15 @@ public final class HudTTS {
+                 )
+                 guard isCurrentSpeak(generation) else { return }
+                 activePlayback = .cloud
+-                try speechPlayer.play(data: result.audioData, format: result.format) { [weak self] in
++                try speechPlayer.play(
++                    data: result.audioData,
++                    format: result.format,
++                    failure: { [weak self] _ in
++                        Task { @MainActor in
++                            self?.failSpeak(generation)
++                        }
++                    }
++                ) { [weak self] in
+                     Task { @MainActor in
+                         self?.finishSpeak(generation)
+                     }
+diff --git a/packages/native/apple/HudsonKit/Sources/HudsonUIAudio/TTS/HudTTSTypes.swift b/packages/native/apple/HudsonKit/Sources/HudsonUIAudio/TTS/HudTTSTypes.swift
+index af8c19c..55fa38d 100644
+--- a/packages/native/apple/HudsonKit/Sources/HudsonUIAudio/TTS/HudTTSTypes.swift
++++ b/packages/native/apple/HudsonKit/Sources/HudsonUIAudio/TTS/HudTTSTypes.swift
+@@ -24,7 +24,7 @@ public struct HudTTSProviderID: RawRepresentable, Codable, Hashable, Sendable, E
+     public static let edgeReadAloud = HudTTSProviderID(rawValue: "edge-read-aloud")
+ }
+ 
+-public enum HudTTSAudioFormat: String, Sendable {
++public enum HudTTSAudioFormat: String, Sendable, Codable {
+     case mp3
+     case wav
+     case caf
+@@ -32,7 +32,7 @@ public enum HudTTSAudioFormat: String, Sendable {
+ 
+ /// Provider-neutral expressive controls. Adapters use the values they support
+ /// and ignore the rest without changing the spoken text.
+-public struct HudTTSVoiceSettings: Equatable, Sendable {
++public struct HudTTSVoiceSettings: Equatable, Hashable, Sendable, Codable {
+     public var stability: Double?
+     public var similarityBoost: Double?
+     public var style: Double?
+@@ -78,7 +78,7 @@ public struct HudTTSRequest: Equatable, Sendable {
+     }
+ }
+ 
+-public struct HudTTSWordTiming: Equatable, Sendable {
++public struct HudTTSWordTiming: Equatable, Sendable, Codable {
+     public var word: String
+     /// Seconds from the start of the returned audio.
+     public var start: TimeInterval
+@@ -99,19 +99,23 @@ public struct HudTTSResult: Equatable, Sendable {
+     /// Word-level timings, when the provider produced them. Nil is normal:
+     /// most providers return none, and callers must not require it.
+     public var wordTimings: [HudTTSWordTiming]?
++    /// True when `HudSpeechCache` returned this payload from disk.
++    public var cached: Bool
+ 
+     public init(
+         audioData: Data,
+         format: HudTTSAudioFormat,
+         providerID: HudTTSProviderID,
+         voice: String,
+-        wordTimings: [HudTTSWordTiming]? = nil
++        wordTimings: [HudTTSWordTiming]? = nil,
++        cached: Bool = false
+     ) {
+         self.audioData = audioData
+         self.format = format
+         self.providerID = providerID
+         self.voice = voice
+         self.wordTimings = wordTimings
++        self.cached = cached
+     }
+ }
+ 
+diff --git a/packages/native/apple/HudsonKit/Sources/HudsonUIAudio/TTS/Playback/HudSpeechPlayer.swift b/packages/native/apple/HudsonKit/Sources/HudsonUIAudio/TTS/Playback/HudSpeechPlayer.swift
+index 3c5931a..ef5e060 100644
+--- a/packages/native/apple/HudsonKit/Sources/HudsonUIAudio/TTS/Playback/HudSpeechPlayer.swift
++++ b/packages/native/apple/HudsonKit/Sources/HudsonUIAudio/TTS/Playback/HudSpeechPlayer.swift
+@@ -8,7 +8,12 @@ protocol HudSpeechPlaying: AnyObject {
+     var currentTime: TimeInterval { get }
+     var duration: TimeInterval { get }
+ 
+-    func play(data: Data, format: HudTTSAudioFormat?, completion: (() -> Void)?) throws
++    func play(
++        data: Data,
++        format: HudTTSAudioFormat?,
++        failure: ((Error) -> Void)?,
++        completion: (() -> Void)?
++    ) throws
+     func pauseOrResume()
+     func seek(to time: TimeInterval) -> Bool
+     func stop()
+@@ -19,6 +24,7 @@ protocol HudSpeechPlaying: AnyObject {
+ public final class HudSpeechPlayer: NSObject, HudSpeechPlaying {
+     private var audioPlayer: AVAudioPlayer?
+     private var completionHandler: (() -> Void)?
++    private var failureHandler: ((Error) -> Void)?
+     private var progressTimer: Timer?
+ 
+     public private(set) var isPlaying = false
+@@ -32,6 +38,7 @@ public final class HudSpeechPlayer: NSObject, HudSpeechPlaying {
+     public func play(
+         data: Data,
+         format: HudTTSAudioFormat? = nil,
++        failure: ((Error) -> Void)? = nil,
+         completion: (() -> Void)? = nil
+     ) throws {
+         stop()
+@@ -43,15 +50,19 @@ public final class HudSpeechPlayer: NSObject, HudSpeechPlaying {
+         } else {
+             player = try AVAudioPlayer(data: data)
+         }
+-        try start(player: player, completion: completion)
++        try start(player: player, completion: completion, failure: failure)
+     }
+ 
+-    public func play(fileURL: URL, completion: (() -> Void)? = nil) throws {
++    public func play(
++        fileURL: URL,
++        failure: ((Error) -> Void)? = nil,
++        completion: (() -> Void)? = nil
++    ) throws {
+         stop()
+         configureAudioSession()
+ 
+         let player = try AVAudioPlayer(contentsOf: fileURL)
+-        try start(player: player, completion: completion)
++        try start(player: player, completion: completion, failure: failure)
+     }
+ 
+     private static func fileTypeHint(for format: HudTTSAudioFormat?) -> String? {
+@@ -63,7 +74,11 @@ public final class HudSpeechPlayer: NSObject, HudSpeechPlaying {
+         }
+     }
+ 
+-    private func start(player: AVAudioPlayer, completion: (() -> Void)?) throws {
++    private func start(
++        player: AVAudioPlayer,
++        completion: (() -> Void)?,
++        failure: ((Error) -> Void)?
++    ) throws {
+         player.delegate = self
+         player.prepareToPlay()
+         guard player.play() else {
+@@ -71,13 +86,18 @@ public final class HudSpeechPlayer: NSObject, HudSpeechPlaying {
+             throw HudTTSError.playbackFailed(message: "Speech audio could not be played.")
+         }
+ 
+-        adopt(player, completion: completion)
++        adopt(player, completion: completion, failure: failure)
+         startProgressTimer()
+     }
+ 
+-    func adopt(_ player: AVAudioPlayer, completion: (() -> Void)?) {
++    func adopt(
++        _ player: AVAudioPlayer,
++        completion: (() -> Void)?,
++        failure: ((Error) -> Void)? = nil
++    ) {
+         audioPlayer = player
+         completionHandler = completion
++        failureHandler = failure
+         currentTime = player.currentTime
+         duration = player.duration
+         isPlaying = true
+@@ -112,6 +132,7 @@ public final class HudSpeechPlayer: NSObject, HudSpeechPlaying {
+         audioPlayer?.stop()
+         audioPlayer = nil
+         completionHandler = nil
++        failureHandler = nil
+         isPlaying = false
+         currentTime = 0
+         duration = 0
+@@ -147,7 +168,25 @@ public final class HudSpeechPlayer: NSObject, HudSpeechPlaying {
+ extension HudSpeechPlayer: AVAudioPlayerDelegate {
+     nonisolated public func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+         Task { @MainActor in
+-            self.finishIfCurrent(player)
++            if flag {
++                self.finishIfCurrent(player)
++            } else {
++                self.failIfCurrent(
++                    player,
++                    error: HudTTSError.playbackFailed(message: "Speech audio did not finish playing.")
++                )
++            }
++        }
++    }
++
++    nonisolated public func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
++        Task { @MainActor in
++            self.failIfCurrent(
++                player,
++                error: HudTTSError.playbackFailed(
++                    message: error?.localizedDescription ?? "Speech audio could not be decoded."
++                )
++            )
+         }
+     }
+ 
+@@ -160,8 +199,22 @@ extension HudSpeechPlayer: AVAudioPlayerDelegate {
+         isPlaying = false
+         let completion = completionHandler
+         completionHandler = nil
++        failureHandler = nil
+         completion?()
+     }
++
++    func failIfCurrent(_ player: AVAudioPlayer, error: Error) {
++        guard audioPlayer === player else { return }
++        stopProgressTimer()
++        currentTime = player.currentTime
++        duration = player.duration
++        audioPlayer = nil
++        isPlaying = false
++        let failure = failureHandler
++        completionHandler = nil
++        failureHandler = nil
++        failure?(error)
++    }
+ }
+ 
+ @MainActor
+diff --git a/packages/native/apple/HudsonKit/Sources/HudsonUIAudio/TTS/Playback/HudSystemSpeechSynthesizer.swift b/packages/native/apple/HudsonKit/Sources/HudsonUIAudio/TTS/Playback/HudSystemSpeechSynthesizer.swift
+index 8097381..cfbd3d0 100644
+--- a/packages/native/apple/HudsonKit/Sources/HudsonUIAudio/TTS/Playback/HudSystemSpeechSynthesizer.swift
++++ b/packages/native/apple/HudsonKit/Sources/HudsonUIAudio/TTS/Playback/HudSystemSpeechSynthesizer.swift
+@@ -37,7 +37,7 @@ public final class HudSystemSpeechSynthesizer: NSObject {
+         stop()
+         configureAudioSession()
+ 
+-        let utterance = AVSpeechUtterance(string: trimmed)
++        let utterance = AVSpeechUtterance(string: text)
+         if let voiceIdentifier, !voiceIdentifier.isEmpty,
+            let voice = AVSpeechSynthesisVoice(identifier: voiceIdentifier) {
+             utterance.voice = voice
+@@ -68,7 +68,7 @@ public final class HudSystemSpeechSynthesizer: NSObject {
+         }
+     }
+ 
+-    public func synthesizeAudioData(_ text: String, voiceIdentifier: String? = nil) async throws -> Data {
++    public func synthesizeAudioData(_ text: String, voiceIdentifier: String? = nil, rate: Double? = nil) async throws -> Data {
+         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+         guard !trimmed.isEmpty else {
+             throw HudTTSError.emptyInput
+@@ -76,7 +76,7 @@ public final class HudSystemSpeechSynthesizer: NSObject {
+ 
+         stop()
+ 
+-        let utterance = AVSpeechUtterance(string: trimmed)
++        let utterance = AVSpeechUtterance(string: text)
+         if let voiceIdentifier, !voiceIdentifier.isEmpty,
+            let voice = AVSpeechSynthesisVoice(identifier: voiceIdentifier) {
+             utterance.voice = voice
+@@ -84,8 +84,8 @@ public final class HudSystemSpeechSynthesizer: NSObject {
+                   let voice = AVSpeechSynthesisVoice(identifier: selectedVoiceIdentifier) {
+             utterance.voice = voice
+         }
+-        utterance.rate = speechRate
+-        utterance.prefersAssistiveTechnologySettings = true
++        utterance.rate = try Self.audioRate(multiplier: rate, defaultRate: speechRate)
++        utterance.prefersAssistiveTechnologySettings = rate == nil
+ 
+         let outputURL = FileManager.default.temporaryDirectory
+             .appendingPathComponent("hudson-system-tts-\(UUID().uuidString)")
+@@ -135,6 +135,17 @@ public final class HudSystemSpeechSynthesizer: NSObject {
+         }
+     }
+ 
++    /// Explicit rates are multipliers of the standard speech rate; legacy
++    /// callers without a rate retain their configured playback preference.
++    static func audioRate(multiplier: Double?, defaultRate: Float) throws -> Float {
++        guard let multiplier else { return defaultRate }
++        guard multiplier.isFinite, multiplier > 0 else {
++            throw HudTTSError.synthesisFailed(provider: .system, message: "Speech rate must be finite and positive.")
++        }
++        let value = Double(AVSpeechUtteranceDefaultSpeechRate) * multiplier
++        return Float(min(max(value, Double(AVSpeechUtteranceMinimumSpeechRate)), Double(AVSpeechUtteranceMaximumSpeechRate)))
++    }
++
+     public func pauseOrResume() {
+         if synthesizer.isSpeaking {
+             synthesizer.pauseSpeaking(at: .word)
+diff --git a/packages/native/apple/HudsonKit/Tests/HudsonUITests/HudSpeechPlayerTests.swift b/packages/native/apple/HudsonKit/Tests/HudsonUITests/HudSpeechPlayerTests.swift
+index cc55864..504cdaa 100644
+--- a/packages/native/apple/HudsonKit/Tests/HudsonUITests/HudSpeechPlayerTests.swift
++++ b/packages/native/apple/HudsonKit/Tests/HudsonUITests/HudSpeechPlayerTests.swift
+@@ -26,6 +26,89 @@ struct HudSpeechPlayerTests {
+         #expect(!hud.isPlaying)
+         #expect(completions == 1)
+     }
++
++    @Test("unsuccessful finish calls failure and not completion")
++    func unsuccessfulFinishCallsFailure() throws {
++        let hud = HudSpeechPlayer()
++        let wav = silentWAV()
++        let player = try AVAudioPlayer(data: wav, fileTypeHint: AVFileType.wav.rawValue)
++        var completions = 0
++        var failures = 0
++        var failureMessage: String?
++
++        hud.adopt(
++            player,
++            completion: { completions += 1 },
++            failure: { error in
++                failures += 1
++                failureMessage = error.localizedDescription
++            }
++        )
++        hud.failIfCurrent(
++            player,
++            error: HudTTSError.playbackFailed(message: "Speech audio did not finish playing.")
++        )
++
++        #expect(!hud.isPlaying)
++        #expect(completions == 0)
++        #expect(failures == 1)
++        #expect(failureMessage == "Speech audio did not finish playing.")
++    }
++
++    @Test("decode error calls failure and not completion")
++    func decodeErrorCallsFailure() throws {
++        let hud = HudSpeechPlayer()
++        let wav = silentWAV()
++        let player = try AVAudioPlayer(data: wav, fileTypeHint: AVFileType.wav.rawValue)
++        var completions = 0
++        var failures = 0
++
++        hud.adopt(player, completion: { completions += 1 }, failure: { _ in failures += 1 })
++        hud.failIfCurrent(
++            player,
++            error: HudTTSError.playbackFailed(message: "Speech audio could not be decoded.")
++        )
++
++        #expect(!hud.isPlaying)
++        #expect(completions == 0)
++        #expect(failures == 1)
++    }
++
++    @Test("stale unsuccessful finish does not fail a newer player")
++    func staleFailureDoesNotFailNewerPlayer() throws {
++        let hud = HudSpeechPlayer()
++        let wav = silentWAV()
++        let first = try AVAudioPlayer(data: wav, fileTypeHint: AVFileType.wav.rawValue)
++        let second = try AVAudioPlayer(data: wav, fileTypeHint: AVFileType.wav.rawValue)
++        var completions = 0
++        var failures = 0
++
++        hud.adopt(first, completion: { completions += 1 }, failure: { _ in failures += 1 })
++        hud.adopt(second, completion: { completions += 1 }, failure: { _ in failures += 1 })
++
++        hud.failIfCurrent(first, error: HudTTSError.playbackFailed(message: "stale"))
++        #expect(hud.isPlaying)
++        #expect(completions == 0)
++        #expect(failures == 0)
++
++        hud.finishIfCurrent(second)
++        #expect(!hud.isPlaying)
++        #expect(completions == 1)
++        #expect(failures == 0)
++    }
++
++    @Test("existing completion-only callers still succeed")
++    func completionOnlyCallersStillSucceed() throws {
++        let hud = HudSpeechPlayer()
++        let wav = silentWAV()
++        let player = try AVAudioPlayer(data: wav, fileTypeHint: AVFileType.wav.rawValue)
++        var completions = 0
++
++        hud.adopt(player, completion: { completions += 1 })
++        hud.finishIfCurrent(player)
++        #expect(completions == 1)
++        #expect(!hud.isPlaying)
++    }
+ }
+ 
+ private func silentWAV(sampleCount: Int = 32) -> Data {
+diff --git a/packages/native/apple/HudsonKit/Tests/HudsonUITests/HudSystemSpeechSynthesizerTests.swift b/packages/native/apple/HudsonKit/Tests/HudsonUITests/HudSystemSpeechSynthesizerTests.swift
+index d66954a..c99d4d7 100644
+--- a/packages/native/apple/HudsonKit/Tests/HudsonUITests/HudSystemSpeechSynthesizerTests.swift
++++ b/packages/native/apple/HudsonKit/Tests/HudsonUITests/HudSystemSpeechSynthesizerTests.swift
+@@ -6,6 +6,20 @@ import Testing
+ @Suite("HudSystemSpeechSynthesizer identity")
+ @MainActor
+ struct HudSystemSpeechSynthesizerTests {
++    @Test("explicit audio rate overrides mutable preferences and rejects invalid numbers")
++    func explicitAudioRate() throws {
++        let baseline = try HudSystemSpeechSynthesizer.audioRate(multiplier: 1, defaultRate: 0.2)
++        let slower = try HudSystemSpeechSynthesizer.audioRate(multiplier: 0.5, defaultRate: 0.8)
++        #expect(baseline == AVSpeechUtteranceDefaultSpeechRate)
++        #expect(slower < baseline)
++        #expect(try HudSystemSpeechSynthesizer.audioRate(multiplier: nil, defaultRate: 0.2) == 0.2)
++        for invalid in [Double.nan, Double.infinity, 0, -1] {
++            #expect(throws: (any Error).self) {
++                try HudSystemSpeechSynthesizer.audioRate(multiplier: invalid, defaultRate: 0.2)
++            }
++        }
++    }
++
+     @Test("stale didFinish does not complete a newer utterance")
+     func staleFinishDoesNotCompleteNewerUtterance() {
+         let synthesizer = HudSystemSpeechSynthesizer()
+diff --git a/packages/native/apple/HudsonKit/Tests/HudsonUITests/HudTTSSpeakTests.swift b/packages/native/apple/HudsonKit/Tests/HudsonUITests/HudTTSSpeakTests.swift
+index 05afbed..f396cbe 100644
+--- a/packages/native/apple/HudsonKit/Tests/HudsonUITests/HudTTSSpeakTests.swift
++++ b/packages/native/apple/HudsonKit/Tests/HudsonUITests/HudTTSSpeakTests.swift
+@@ -5,6 +5,18 @@ import Testing
+ @Suite("HudTTS speak lifecycle")
+ @MainActor
+ struct HudTTSSpeakTests {
++    @Test("synthesis preserves exact text passed to the adapter")
++    func synthesisPreservesExactText() async throws {
++        let tts = HudTTS(
++            credentialSource: StaticSpeakCredentialSource(),
++            adapters: [ImmediateTTSAdapter()],
++            speechPlayer: RecordingSpeechPlayer()
++        )
++        let text = "  Hello.\n\n"
++        let result = try await tts.synthesize(text, providerID: .groq)
++        #expect(result.audioData == Data(text.utf8))
++    }
++
+     @Test("generation failure clears speaking state")
+     func generationFailureClearsSpeakingState() async {
+         let player = RecordingSpeechPlayer()
+@@ -246,12 +258,18 @@ private final class RecordingSpeechPlayer: HudSpeechPlaying {
+     var currentTime: TimeInterval = 0
+     var duration: TimeInterval = 1
+ 
+-    func play(data: Data, format: HudTTSAudioFormat?, completion: (() -> Void)?) throws {
++    func play(
++        data: Data,
++        format: HudTTSAudioFormat?,
++        failure: ((Error) -> Void)?,
++        completion: (() -> Void)?
++    ) throws {
+         if let playError {
+             throw playError
+         }
+         playCount += 1
+         completionHandler = completion
++        _ = failure
+         isPlaying = true
+     }
+ 
+diff --git a/docs/proposals/hud-speech-cache-playback-api.md b/docs/proposals/hud-speech-cache-playback-api.md
+new file mode 100644
+index 0000000..3fb93e1
+--- /dev/null
++++ b/docs/proposals/hud-speech-cache-playback-api.md
+@@ -0,0 +1,451 @@
++# HudSpeechCache and HudSpeechPlayerSession API
++
++Status: assignment spec for `codex/shared-speech` (isolated copy `/tmp/hudson-shared-speech`). Do not implement in the primary Hudson checkout.
++
++Date: 2026-09-14
++
++Depends on: SpeakEasy mapping in the prior investigation. This document is the concrete API. Implement this, not a second cache or a pause/seek patch on `HudSpeechPlayback`.
++
++## Decision
++
++1. **Cache** lives in `HudsonUIAudio` as `HudSpeechCache`. The key must include provider, model, voice, synthesis rate, instructions, and voice settings. Lattices `handsoff-worker` keys `kokoro_${sanitizedPhrase}.wav` and omits voice/settings. That key is invalid for the shared cache.
++2. **Queued playback with pause/seek** is a new `HudSpeechPlayerSession` built on `HudSpeechPlayer`. Do not add pause, seek, queue, or volume to `HudSpeechPlayback`.
++3. **`HudSpeechPlayback` stays** the per-surface Vox utterance API (`speak` replaces current, `stop`/`cancel` only). Apps that want "say this now and replace" keep using it.
++4. **Lattices hosts** the session and the Unix socket. Hands-Off later reads `HudSpeechCache` with a full key; do not keep `~/.lattices/tts-cache` as the shared format.
++
++## Why these two types
++
++Verified current behavior:
++
++| Type | Pause/seek | Queue | Cache | Vox | Role |
++| --- | --- | --- | --- | --- | --- |
++| `HudSpeechPlayer` | yes (`pauseOrResume`, `seek(to:)`, `play(data:)`, `play(fileURL:)`) | no | no | no | In-process AVAudioPlayer wrapper |
++| `HudTTS` | yes, via `HudSpeechPlayer` | no | no | no | Cloud/system speak helper |
++| `HudSpeechPlayback` | no (documented: no pause/seek, no singleton) | no | no | yes | Replace-current Vox output |
++| SpeakEasy `PlaybackEngine` | yes | yes | no (cache is TS) | no | Product player |
++| Lattices `handsoff-worker` | `afplay` | no | phrase filename only | yes, Kokoro | Canned acks |
++
++`HudSpeechPlayer` is the playback primitive. `HudSpeechPlayback` is the generation+output controller. Mixing them would break the Vox event contract (`HudSpeechPlaybackEvent` phases: resolving → generating → starting → playing → finished/cancelled/failed).
++
++---
++
++## Slice 1. `HudSpeechCache`
++
++Module: `HudsonUIAudio`.
++Files:
++
++- `packages/native/apple/HudsonKit/Sources/HudsonUIAudio/TTS/Cache/HudSpeechCache.swift`
++- `packages/native/apple/HudsonKit/Tests/HudsonUITests/HudSpeechCacheTests.swift`
++
++No Vox import. No SQLite in v1 (SpeakEasy uses SQLite because it is Node; Hudson stays Foundation).
++
++### Key
++
++```swift
++public struct HudSpeechCacheKey: Hashable, Sendable, Codable, Equatable {
++    public var text: String
++    public var providerID: String
++    public var modelID: String
++    public var voiceID: String
++    public var rate: Double
++    public var instructions: String
++    public var voiceSettings: HudTTSVoiceSettings?
++    public var format: HudTTSAudioFormat?
++
++    public init(
++        text: String,
++        providerID: String,
++        modelID: String,
++        voiceID: String,
++        rate: Double = 1.0,
++        instructions: String = "",
++        voiceSettings: HudTTSVoiceSettings? = nil,
++        format: HudTTSAudioFormat? = nil
++    )
++}
++```
++
++Canonical digest (the on-disk identity):
++
++1. Trim text, NFC-normalize, lowercase for the digest only. Store the original trimmed text in metadata.
++2. Trim `providerID`, `modelID`, `voiceID`. Empty `voiceID` or `modelID` is invalid; `lookup`/`store` throw `HudSpeechCacheError.incompleteKey`.
++3. `instructions`: trim; missing and `""` are the same.
++4. `rate`: format with `String(format: "%.3f", rate)` so `1` and `1.0` match.
++5. `voiceSettings`: include only non-nil fields, keys in this order: `stability`, `similarityBoost`, `style`, `useSpeakerBoost`. Omit the object when every field is nil.
++6. `format`: include the raw value when the caller requested a format. Omit when nil.
++7. UTF-8 payload, one line, pipe-separated, stable field order:
++
++```
++v1|{text}|{providerID}|{modelID}|{voiceID}|{rate}|{instructions}|{voiceSettingsJSON or ""}|{format or ""}
++```
++
++8. SHA-256 hex of that payload. Use the full 64-character hex as `digest`. File name is `"{digest}.{ext}"`.
++
++Do **not** use SpeakEasy UUID v5. Do **not** use Lattices `phrase.replace(/[^a-z]/gi, "_")`.
++
++Not part of the key:
++
++- `playbackRate`, `volume`, `sourceThreadID`, hostname, pid, cwd
++- credential values
++- word timings
++
++### Entry and stats
++
++```swift
++public struct HudSpeechCacheEntry: Sendable, Equatable {
++    public var digest: String
++    public var key: HudSpeechCacheKey
++    public var fileURL: URL
++    public var format: HudTTSAudioFormat
++    public var byteCount: Int
++    public var createdAt: Date
++    public var originalText: String
++}
++
++public struct HudSpeechCacheStats: Sendable, Equatable {
++    public var entries: Int
++    public var bytes: Int
++    public var hits: Int
++    public var misses: Int
++}
++
++public enum HudSpeechCacheError: Error, LocalizedError, Equatable {
++    case incompleteKey
++    case emptyAudio
++    case corruptIndex
++    case io(String)
++}
++```
++
++### Actor
++
++```swift
++public actor HudSpeechCache {
++    public static let defaultTTL: TimeInterval = 7 * 24 * 60 * 60
++    public static let defaultMaxBytes: Int = 100 * 1024 * 1024
++
++    public init(
++        directory: URL? = nil,
++        ttl: TimeInterval = HudSpeechCache.defaultTTL,
++        maxBytes: Int = HudSpeechCache.defaultMaxBytes
++    )
++
++    public func lookup(_ key: HudSpeechCacheKey) async throws -> HudSpeechCacheEntry?
++    public func store(
++        _ key: HudSpeechCacheKey,
++        data: Data,
++        format: HudTTSAudioFormat
++    ) async throws -> HudSpeechCacheEntry
++    public func stats() async -> HudSpeechCacheStats
++    public func removeExpired() async throws
++}
++```
++
++Default directory: `~/Library/Caches/Hudson/Speech/`.
++Layout:
++
++```
++~/Library/Caches/Hudson/Speech/
++  index.json          # 0600
++  <digest>.wav|mp3|caf
++```
++
++`index.json` schema version `1`:
++
++```json
++{
++  "version": 1,
++  "hits": 0,
++  "misses": 0,
++  "entries": {
++    "<digest>": {
++      "digest": "<digest>",
++      "file": "<digest>.wav",
++      "format": "wav",
++      "byteCount": 1234,
++      "createdAt": "2026-09-14T00:00:00Z",
++      "originalText": "Got it.",
++      "key": {
++        "text": "got it.",
++        "providerID": "mlx-audio",
++        "modelID": "mlx-community/Kokoro-82M-bf16",
++        "voiceID": "af_heart",
++        "rate": 1.0,
++        "instructions": "",
++        "voiceSettings": null,
++        "format": "wav"
++      }
++    }
++  }
++}
++```
++
++Behavior:
++
++- `lookup`: miss increments `misses` and returns nil. Hit requires the audio file to exist and not exceed TTL. Missing file or expiry deletes the index row, increments `misses`, returns nil. Do not throw on miss.
++- `store`: reject empty `Data` (`emptyAudio`). Write the audio file `0600`, then update `index.json` atomically (write temp, rename). Then evict oldest entries until `bytes <= maxBytes`.
++- Corrupt `index.json`: throw `corruptIndex` on `lookup`/`store`. Do not delete audio files automatically.
++- System/`avspeech` callers pass `cacheable: false` at the synthesizer layer. The cache actor itself does not special-case provider IDs.
++
++### Wire into existing doors
++
++`HudTTSResult` and `HudSpeechAudio` gain `public var cached: Bool = false`. Existing memberwise inits keep compiling with a default of `false`.
++
++`HudTTS.synthesize` (not `HudTTSClient.synthesize`):
++
++1. If `providerID == .system`, skip cache (SpeakEasy already disables system cache).
++2. Else build `HudSpeechCacheKey` from the request (`providerID.rawValue`, `model ?? adapter default`, `voice ?? adapter.defaultVoice`, `rate`, `instructions ?? ""`, `voiceSettings`).
++3. `lookup`. On hit, return `HudTTSResult(..., cached: true)` without calling the client.
++4. On miss, `client.synthesize`, `store`, return `cached: false`.
++
++`HudSpeechSynthesizer.synthesize`:
++
++1. Skip cache when `provider == .system`.
++2. Else key with `provider.providerId`, `modelId`, `voiceId ?? ""` (empty voice is incompleteKey; require a resolved voice before lookup, matching current Vox default-voice resolution after generate if needed). Practical rule: resolve voice first (existing `voices(modelId:)` default), then lookup.
++3. Same hit/miss path. Set `HudSpeechAudio.cached`.
++
++`HudTTSClient` stays a pure network door so credits can wrap generate vs cache at `HudTTS.synthesize`.
++
++Web `HudsonVoxSpeechResponse.cached` currently hardcoded `false` in `apps/web/app/lib/tts/voxBridge.ts`. After native reports the flag, copy it. Not required to land in the same PR as the Swift cache.
++
++### Lattices Hands-Off (later, isolated lattices copy)
++
++Replace:
++
++```
++~/.lattices/tts-cache/kokoro_${phrase.replace(/[^a-z]/gi, "_").toLowerCase()}.wav
++```
++
++with `HudSpeechCacheKey(text: phrase, providerID: "mlx-audio", modelID: KOKORO_MODEL_ID, voiceID: KOKORO_VOICE_ID, rate: 1, format: .wav)`.
++
++Until the Swift cache exists, do not invent a second JS hash. The worker can keep its local warmup files, but they are not the shared cache.
++
++---
++
++## Slice 2. `HudSpeechPlayerSession`
++
++Module: `HudsonUIAudio`.
++Files:
++
++- `packages/native/apple/HudsonKit/Sources/HudsonUIAudio/TTS/Playback/HudSpeechPlayerSession.swift`
++- `packages/native/apple/HudsonKit/Sources/HudsonUI/Primitives/HudSpeechPlaybackHUD.swift` (view only; session stays in UIAudio)
++- `packages/native/apple/HudsonKit/Tests/HudsonUITests/HudSpeechPlayerSessionTests.swift`
++
++`HudSpeechPlayback` / `HudsonVoice` are not modified in this slice.
++
++### Small extension to `HudSpeechPlaying`
++
++Today the protocol is `isPlaying`, `currentTime`, `duration`, `play(data:)`, `play(fileURL:)`, `pauseOrResume()`, `seek(to:)`, `stop()`.
++
++Add, with defaults implemented on `HudSpeechPlayer`:
++
++```swift
++var volume: Float { get set }          // 0...1, default 0.8
++var playbackRate: Float { get set }    // 0.5...2.0, default 1.0; set enableRate on AVAudioPlayer
++var audioLevel: Float { get }          // 0...1, 0 when not playing
++
++func pause()
++func resume() throws
++```
++
++Keep `pauseOrResume()` as a wrapper so `HudTTS` does not change. `pause()` is a no-op when already paused or idle. `resume()` throws `HudTTSError.playbackFailed` if there is no adopted player.
++
++`audioLevel`: enable `isMeteringEnabled` on `AVAudioPlayer`, `updateMeters()`, map `averagePower(forChannel: 0)` from about -40 dB...0 dB into 0...1. Do not import `HudsonKitExperimental`.
++
++Queue does **not** belong on `HudSpeechPlayer`.
++
++### Session
++
++```swift
++public enum HudSpeechPlayerState: String, Sendable, Codable, Equatable {
++    case idle, loading, playing, paused, failed
++}
++
++public enum HudSpeechQueuePriority: String, Sendable, Codable, Equatable {
++    case high, normal, low
++}
++
++public struct HudSpeechQueueItem: Identifiable, Sendable, Equatable, Codable {
++    public var id: UUID
++    public var fileURL: URL
++    public var title: String
++    public var text: String?
++    public var providerID: String?
++    public var modelID: String?
++    public var voiceID: String?
++    public var cacheDigest: String?
++    public var createdAt: Date
++    public var sourceThreadID: String?
++    public var synthesisRate: Double?
++}
++
++@MainActor
++@Observable
++public final class HudSpeechPlayerSession {
++    public private(set) var state: HudSpeechPlayerState
++    public private(set) var currentItem: HudSpeechQueueItem?
++    public private(set) var queue: [HudSpeechQueueItem]
++    public private(set) var currentTime: TimeInterval
++    public private(set) var duration: TimeInterval
++    public private(set) var audioLevel: Float
++    public private(set) var lastError: String?
++
++    public var volume: Float                 // mirrors player
++    public var playbackRate: Float           // mirrors player; not a cache key
++    public var autoplayEnabled: Bool
++
++    public init(player: any HudSpeechPlaying = HudSpeechPlayer())
++
++    public func enqueue(
++        _ item: HudSpeechQueueItem,
++        priority: HudSpeechQueuePriority = .normal,
++        interrupt: Bool = false,
++        autoplay: Bool? = nil
++    ) throws
++
++    public func pause()
++    public func resume() throws
++    public func togglePlayback() throws
++    public func stop()
++    public func skip() throws
++    public func seek(to time: TimeInterval) -> Bool
++    public func clearQueue()
++    public func remove(id: UUID)
++}
++```
++
++Enqueue rules (match SpeakEasy `PlaybackEngine`, minus completion channels):
++
++- `fileURL` must be absolute and exist, else throw `HudTTSError.playbackFailed`.
++- `interrupt: true` stops current, inserts at front.
++- `priority == .high` inserts at front; `.normal`/`.low` append. v1 may treat `.low` as append (SpeakEasy does).
++- If `(autoplay ?? autoplayEnabled)` and nothing is current, start the next item.
++- Starting an item sets `state = .loading`, calls `player.play(fileURL:)`, then `.playing`.
++- Player completion starts the next queued item when `autoplayEnabled`.
++- `stop()` clears current playback, keeps the queue.
++- `skip()` stops current and starts next.
++- `clearQueue()` does not stop current.
++- `sourceThreadID` is an opaque string. The HUD may show a control; Codex URL construction stays in the host.
++
++Do not add SpeakEasy `PlaybackChannel` / `completionActivityID` in v1.
++
++### HUD view
++
++```swift
++public struct HudSpeechPlaybackHUD: View {
++    public init(session: HudSpeechPlayerSession)
++}
++```
++
++Required chrome:
++
++- title of `currentItem`
++- spoken `text` with a progress indication from `currentTime` / `duration` (character-index estimate is enough; word timings are optional)
++- pause / resume / stop / skip
++- scrubber bound to `seek(to:)`
++- optional `sourceThreadID` caption, not a Codex deep link inside Hudson
++
++Use `HudPalette` / `HudFont` / `HudButton`. No purple.
++
++### Socket (Lattices binds, Hudson defines)
++
++Path: `/tmp/hudson-speech-player-\(getuid()).sock` so MCP/plugin can find it without Application Support probing. Document the path as `HudSpeechPlayerSocket.defaultPath`.
++
++Protocol version `1`. One JSON object per line. Same command set as SpeakEasy `src/player-protocol.ts`, Hudson field names:
++
++```json
++{
++  "protocolVersion": 1,
++  "requestId": "UUID",
++  "command": "enqueue",
++  "arguments": {
++    "item": {
++      "id": "UUID",
++      "fileURL": "/absolute/path.wav",
++      "title": "Ack",
++      "text": "Got it.",
++      "providerID": "mlx-audio",
++      "modelID": "mlx-community/Kokoro-82M-bf16",
++      "voiceID": "af_heart",
++      "cacheDigest": "optional hex",
++      "createdAt": "2026-09-14T00:00:00Z",
++      "sourceThreadID": null,
++      "synthesisRate": 1.0
++    },
++    "priority": "normal",
++    "interrupt": false,
++    "autoplay": true
++  }
++}
++```
++
++Commands: `enqueue`, `pause`, `resume`, `togglePlayback`, `stop`, `skip`, `seek`, `setVolume`, `setPlaybackRate`, `removeQueueItem`, `clearQueue`, `status`.
++
++Response always includes `ok`, `requestId`, and a snapshot (`state`, `currentItem`, `queue`, `currentTime`, `duration`, `volume`, `playbackRate`, `autoplayEnabled`, `audioLevel`). Errors are stable strings: `file_missing`, `path_not_absolute`, `player_unavailable`, `invalid_command`.
++
++Socket server code may live in HudsonUIAudio as `HudSpeechPlayerSocketServer` so Lattices only binds and retains it. If that pulls unwanted networking into UIAudio, put the server in `HudsonVoice` but keep the session type in UIAudio. Prefer UIAudio so SpeakEasy.app can adopt without linking Vox.
++
++v1 of this slice can ship session + HUD without the socket. The socket is required before MCP and the Codex plugin retarget.
++
++---
++
++## Explicit non-goals for these two slices
++
++- Editing `HudSpeechPlayback` (`speak`/`stop`/`cancel` only).
++- Adding Groq/Gemini/NVIDIA adapters.
++- SpeakEasy plugin retarget.
++- MCP server.
++- Promoting `HudLevelMeter`.
++- Migrating `~/.lattices/tts-cache` in the same PR as `HudSpeechCache` (follow-up in `/tmp/lattices-shared-speech`).
++- `afplay` fallback.
++
++## Tests
++
++Cache (`HudSpeechCacheTests`):
++
++- Same text/provider/model/voice/rate/instructions/settings/format → same digest.
++- Voice change, settings change, model change, instructions change → different digest.
++- Empty voice or model → `incompleteKey`.
++- Store then lookup returns `cached` bytes and increments hits.
++- Expired entry is a miss and the index row is removed.
++- `rate` 1 vs 1.0 vs 1.000 collide.
++- Text case and surrounding whitespace collide; stored `originalText` keeps the first stored trimmed original.
++- Empty data → `emptyAudio`.
++- `maxBytes` evicts the oldest file.
++
++Player (`HudSpeechPlayerSessionTests`), reuse `silentWAV()` from `HudSpeechPlayerTests`:
++
++- Enqueue with autoplay starts playing.
++- Pause then resume keeps the same item and advances `currentTime` only while playing.
++- Seek while paused updates `currentTime`.
++- Skip starts the next item.
++- Interrupt replaces current and plays the new item.
++- Missing file throws and leaves state idle/failed without crashing.
++- Stale finish of a replaced player does not complete the new item (existing `HudSpeechPlayer` test must still pass).
++
++Do not call paid TTS.
++
++```bash
++cd /tmp/hudson-shared-speech
++swift test --filter HudSpeechCacheTests
++swift test --filter HudSpeechPlayerTests
++swift test --filter HudSpeechPlayerSessionTests
++swift test --filter HudTTSSpeakTests
++swift test --filter HudSpeechPlaybackTests
++```
++
++`HudSpeechPlaybackTests` must stay green and unchanged.
++
++## Implementation order in this worktree
++
++1. `HudSpeechCache` + tests.
++2. `cached` on `HudTTSResult` / `HudSpeechAudio`; wrap `HudTTS.synthesize` only.
++3. `HudSpeechPlaying` volume/rate/level/pause/resume; `HudSpeechPlayerSession` + tests.
++4. `HudSpeechPlaybackHUD`.
++5. Optional in the same worktree: wrap `HudSpeechSynthesizer.synthesize`. Stop before Lattices/MCP unless assigned.
++
++## Assignment boundary
++
++Primary checkout: `/Users/arach/dev/hudson` (do not edit).
++Implement here: `/tmp/hudson-shared-speech` on `codex/shared-speech`.
++Lattices follow-up: `/tmp/lattices-shared-speech`.
+diff --git a/packages/native/apple/HudsonKit/Sources/HudsonUIAudio/TTS/Cache/HudSpeechCache.swift b/packages/native/apple/HudsonKit/Sources/HudsonUIAudio/TTS/Cache/HudSpeechCache.swift
+new file mode 100644
+index 0000000..23bf733
+--- /dev/null
++++ b/packages/native/apple/HudsonKit/Sources/HudsonUIAudio/TTS/Cache/HudSpeechCache.swift
+@@ -0,0 +1,641 @@
++import CryptoKit
++import Foundation
++
++/// Whether a cache call may reuse a stored or in-flight result.
++public enum HudSpeechCachePolicy: Sendable, Equatable {
++    /// Return a valid disk hit, or join an in-flight equal `.reuse` request.
++    case reuse
++    /// Always call the synthesis closure. Never read disk and never join an
++    /// in-flight `.reuse` request. A successful result overwrites the stored payload.
++    case fresh
++}
++
++/// Disk-backed identity for one synthesis request.
++///
++/// Text, voice, model, and instructions are stored exactly as supplied.
++/// Optional values retain presence as well as content. Credentials must not
++/// appear in `namespace` or any other field.
++public struct HudSpeechCacheIdentity: Sendable, Equatable, Hashable {
++    public var text: String
++    public var providerID: HudTTSProviderID
++    public var model: String?
++    public var voice: String?
++    public var rate: Double
++    public var instructions: String?
++    public var voiceSettings: HudTTSVoiceSettings?
++    public var namespace: String?
++
++    public init(
++        request: HudTTSRequest,
++        providerID: HudTTSProviderID,
++        namespace: String? = nil
++    ) {
++        self.text = request.text
++        self.providerID = providerID
++        self.model = request.model
++        self.voice = request.voice
++        self.rate = request.rate
++        self.instructions = request.instructions
++        self.voiceSettings = request.voiceSettings
++        self.namespace = namespace
++    }
++}
++
++public struct HudSpeechCacheStats: Sendable, Equatable {
++    public var hits: Int
++    public var misses: Int
++    public var entries: Int
++    public var bytes: Int
++}
++
++public enum HudSpeechCacheError: Error, LocalizedError, Equatable {
++    case emptyAudio
++    case io(String)
++
++    public var errorDescription: String? {
++        switch self {
++        case .emptyAudio:
++            return "Speech cache refused to store empty audio."
++        case .io(let message):
++            return message
++        }
++    }
++}
++
++/// Actor-owned speech cache for `HudTTSResult` payloads.
++///
++/// The cache does not read credentials or call providers. Pass a closure that
++/// forwards to `HudTTSClient.synthesize` (or any adapter):
++///
++/// ```swift
++/// let cache = HudSpeechCache(directory: dir, maxBytes: 50 * 1024 * 1024)
++/// let result = try await cache.synthesize(
++///     request,
++///     providerID: .openai,
++///     policy: .reuse
++/// ) { request, providerID in
++///     try await client.synthesize(request, providerID: providerID)
++/// }
++/// ```
++///
++/// Identity includes exact text, provider, model, voice, rate, instructions,
++/// voice settings, and an optional `namespace` for host or account separation.
++public actor HudSpeechCache {
++    public static let defaultMaxBytes = 100 * 1024 * 1024
++
++    public static func defaultDirectory() -> URL {
++        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
++            ?? FileManager.default.temporaryDirectory
++        return base
++            .appendingPathComponent("Hudson", isDirectory: true)
++            .appendingPathComponent("Speech", isDirectory: true)
++    }
++
++    private let directory: URL
++    private let maxBytes: Int
++    private let fileManager: FileManager
++    private var hits = 0
++    private var misses = 0
++    private var index: [String: IndexRecord] = [:]
++    private var inFlight: [String: InFlight] = [:]
++    private var latestWrite: [String: UUID] = [:]
++    private var latestFresh: [String: UUID] = [:]
++
++    public init(directory: URL, maxBytes: Int = HudSpeechCache.defaultMaxBytes) {
++        self.directory = directory
++        self.maxBytes = max(1, maxBytes)
++        self.fileManager = .default
++        try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
++        self.index = Self.loadIndex(from: directory)
++    }
++
++    public func stats() -> HudSpeechCacheStats {
++        HudSpeechCacheStats(
++            hits: hits,
++            misses: misses,
++            entries: index.count,
++            bytes: index.values.reduce(0) { $0 + $1.byteCount }
++        )
++    }
++
++    /// Synthesize `request` through `synthesize`, optionally reusing a stored result.
++    ///
++    /// A cancelled `.reuse` waiter does not cancel shared work until every waiter
++    /// has cancelled. Failed or cancelled synthesis is not written to disk.
++    public func synthesize(
++        _ request: HudTTSRequest,
++        providerID: HudTTSProviderID,
++        namespace: String? = nil,
++        policy: HudSpeechCachePolicy = .reuse,
++        synthesize: @escaping @Sendable (HudTTSRequest, HudTTSProviderID) async throws -> HudTTSResult
++    ) async throws -> HudTTSResult {
++        try Task.checkCancellation()
++        let identity = HudSpeechCacheIdentity(
++            request: request,
++            providerID: providerID,
++            namespace: namespace
++        )
++        let digest = identity.digest
++        let waiterID = UUID()
++
++        if policy == .reuse {
++            if var cached = loadValid(digest: digest, identity: identity) {
++                hits += 1
++                cached.cached = true
++                return cached
++            }
++            misses += 1
++
++            if let flight = inFlight[digest] {
++                return try await waitForInFlight(
++                    digest: digest,
++                    workID: flight.id,
++                    waiterID: waiterID,
++                    work: flight.task,
++                    identity: identity
++                )
++            }
++        }
++
++        let workID = UUID()
++        latestWrite[digest] = workID
++        if policy == .fresh {
++            latestFresh[digest] = workID
++        }
++        let work = Task {
++            try await synthesize(request, providerID)
++        }
++        if policy == .reuse {
++            inFlight[digest] = InFlight(id: workID, task: work, waiters: [waiterID])
++        }
++
++        return try await finish(
++            digest: digest,
++            workID: workID,
++            waiterID: waiterID,
++            work: work,
++            identity: identity,
++            persist: true,
++            freshWork: policy == .fresh
++        )
++    }
++
++    private func waitForInFlight(
++        digest: String,
++        workID: UUID,
++        waiterID: UUID,
++        work: Task<HudTTSResult, Error>,
++        identity: HudSpeechCacheIdentity
++    ) async throws -> HudTTSResult {
++        if inFlight[digest] == nil, var cached = loadValid(digest: digest, identity: identity) {
++            hits += 1
++            cached.cached = true
++            return cached
++        }
++        if var flight = inFlight[digest], flight.id == workID {
++            flight.waiters.insert(waiterID)
++            inFlight[digest] = flight
++        }
++
++        return try await finish(
++            digest: digest,
++            workID: workID,
++            waiterID: waiterID,
++            work: work,
++            identity: identity,
++            persist: true
++        )
++    }
++
++    private func finish(
++        digest: String,
++        workID: UUID,
++        waiterID: UUID,
++        work: Task<HudTTSResult, Error>,
++        identity: HudSpeechCacheIdentity?,
++        persist: Bool,
++        freshWork: Bool = false
++    ) async throws -> HudTTSResult {
++        do {
++            let result = try await withTaskCancellationHandler {
++                try await work.value
++            } onCancel: {
++                if freshWork {
++                    work.cancel()
++                }
++                Task {
++                    await self.abandonWaiter(
++                        digest: digest,
++                        workID: workID,
++                        waiterID: waiterID,
++                        cancelWorkIfLast: true
++                    )
++                }
++            }
++
++            try Task.checkCancellation()
++            var stored = result
++            stored.cached = false
++            guard !stored.audioData.isEmpty else { throw HudSpeechCacheError.emptyAudio }
++            if persist, let identity, shouldPersist(digest: digest, workID: workID, freshWork: freshWork) {
++                try store(digest: digest, identity: identity, result: stored)
++                latestWrite[digest] = nil
++            }
++            completeWork(digest: digest, workID: workID)
++
++            if Task.isCancelled {
++                throw CancellationError()
++            }
++            return stored
++        } catch {
++            abandonWaiter(
++                digest: digest,
++                workID: workID,
++                waiterID: waiterID,
++                cancelWorkIfLast: true
++            )
++            throw error
++        }
++    }
++
++    private func shouldPersist(digest: String, workID: UUID, freshWork: Bool) -> Bool {
++        if freshWork {
++            return latestFresh[digest] == workID
++        }
++        return latestWrite[digest] == workID
++    }
++
++    /// Drop one waiter. The last reuse waiter cancels shared work. Idempotent
++    /// so `onCancel` and the `finish` catch path can both run.
++    private func abandonWaiter(
++        digest: String,
++        workID: UUID,
++        waiterID: UUID,
++        cancelWorkIfLast: Bool
++    ) {
++        if var flight = inFlight[digest], flight.id == workID {
++            flight.waiters.remove(waiterID)
++            if flight.waiters.isEmpty {
++                if cancelWorkIfLast {
++                    flight.task.cancel()
++                }
++                inFlight[digest] = nil
++                releaseWriteClaim(digest: digest, workID: workID)
++            } else {
++                inFlight[digest] = flight
++            }
++            return
++        }
++        releaseWriteClaim(digest: digest, workID: workID)
++    }
++
++    private func completeWork(digest: String, workID: UUID) {
++        if let flight = inFlight[digest], flight.id == workID {
++            inFlight[digest] = nil
++        }
++        if latestFresh[digest] == workID {
++            latestFresh[digest] = nil
++        }
++    }
++
++    /// Give an in-flight reuse the write slot when a newer claim is abandoned.
++    private func releaseWriteClaim(digest: String, workID: UUID) {
++        if latestFresh[digest] == workID {
++            latestFresh[digest] = nil
++        }
++        guard latestWrite[digest] == workID else { return }
++        if let flight = inFlight[digest] {
++            latestWrite[digest] = flight.id
++        } else {
++            latestWrite[digest] = nil
++        }
++    }
++
++    private func loadValid(digest: String, identity: HudSpeechCacheIdentity) -> HudTTSResult? {
++        let metaURL = sidecarURL(digest)
++        let audioURL = audioURL(digest, formatHint: index[digest]?.format)
++        guard
++            let payload = try? Data(contentsOf: metaURL),
++            let sidecar = try? Self.makeDecoder().decode(Sidecar.self, from: payload)
++        else {
++            removeEntry(digest)
++            return nil
++        }
++
++        guard sidecar.version == 1, sidecar.digest == digest else {
++            removeEntry(digest)
++            return nil
++        }
++        guard sidecar.identity.digest == digest, sidecar.identity == StoredIdentity(identity) else {
++            removeEntry(digest)
++            return nil
++        }
++        guard let format = HudTTSAudioFormat(rawValue: sidecar.format) else {
++            removeEntry(digest)
++            return nil
++        }
++
++        guard sidecar.file == "\(digest).\(format.rawValue)" else {
++            removeEntry(digest)
++            return nil
++        }
++        let resolvedAudioURL = directory.appendingPathComponent("\(digest).\(format.rawValue)")
++        guard
++            let audio = try? Data(contentsOf: resolvedAudioURL),
++            !audio.isEmpty,
++            audio.count == sidecar.byteCount,
++            Self.sha256Hex(audio) == sidecar.audioSHA256
++        else {
++            removeEntry(digest)
++            return nil
++        }
++
++        if index[digest] == nil {
++            index[digest] = IndexRecord(
++                digest: digest,
++                file: sidecar.file,
++                format: sidecar.format,
++                byteCount: sidecar.byteCount,
++                createdAt: sidecar.createdAt
++            )
++            persistIndex()
++        }
++
++        _ = audioURL
++        return HudTTSResult(
++            audioData: audio,
++            format: format,
++            providerID: HudTTSProviderID(rawValue: sidecar.providerID),
++            voice: sidecar.voice,
++            wordTimings: sidecar.wordTimings?.map {
++                HudTTSWordTiming(word: $0.word, start: $0.start, end: $0.end)
++            },
++            cached: true
++        )
++    }
++
++    private func store(
++        digest: String,
++        identity: HudSpeechCacheIdentity,
++        result: HudTTSResult
++    ) throws {
++        guard !result.audioData.isEmpty else {
++            throw HudSpeechCacheError.emptyAudio
++        }
++        guard result.audioData.count <= maxBytes else {
++            removeEntry(digest)
++            persistIndex()
++            return
++        }
++
++        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
++
++        let fileName = "\(digest).\(result.format.rawValue)"
++        let audioURL = directory.appendingPathComponent(fileName)
++        let metaURL = sidecarURL(digest)
++        let createdAt = Date()
++        let sidecar = Sidecar(
++            version: 1,
++            digest: digest,
++            identity: StoredIdentity(identity),
++            format: result.format.rawValue,
++            voice: result.voice,
++            providerID: result.providerID.rawValue,
++            audioSHA256: Self.sha256Hex(result.audioData),
++            byteCount: result.audioData.count,
++            createdAt: createdAt,
++            file: fileName,
++            wordTimings: result.wordTimings?.map {
++                StoredTiming(word: $0.word, start: $0.start, end: $0.end)
++            }
++        )
++
++        let metaData = try Self.makeEncoder().encode(sidecar)
++
++        try writeAtomically(result.audioData, to: audioURL)
++        try writeAtomically(metaData, to: metaURL)
++        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: audioURL.path)
++        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: metaURL.path)
++
++        index[digest] = IndexRecord(
++            digest: digest,
++            file: fileName,
++            format: result.format.rawValue,
++            byteCount: result.audioData.count,
++            createdAt: createdAt
++        )
++        evictIfNeeded(keeping: digest)
++        persistIndex()
++    }
++
++    private func evictIfNeeded(keeping kept: String) {
++        var bytes = index.values.reduce(0) { $0 + $1.byteCount }
++        guard bytes > maxBytes else { return }
++
++        let oldest = index.values
++            .filter { $0.digest != kept }
++            .sorted { $0.createdAt < $1.createdAt }
++
++        for record in oldest {
++            guard bytes > maxBytes else { break }
++            bytes -= record.byteCount
++            removeEntry(record.digest)
++        }
++    }
++
++    private func removeEntry(_ digest: String) {
++        index.removeValue(forKey: digest)
++        try? fileManager.removeItem(at: sidecarURL(digest))
++        for format in [HudTTSAudioFormat.mp3, .wav, .caf] {
++            let orphan = directory.appendingPathComponent("\(digest).\(format.rawValue)")
++            try? fileManager.removeItem(at: orphan)
++        }
++    }
++
++    private func persistIndex() {
++        let payload = IndexFile(version: 1, entries: index)
++        guard let data = try? Self.makeEncoder().encode(payload) else { return }
++        let url = indexURL
++        try? writeAtomically(data, to: url)
++        try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
++    }
++
++    private func writeAtomically(_ data: Data, to url: URL) throws {
++        let temp = url.appendingPathExtension("tmp")
++        if fileManager.fileExists(atPath: temp.path) {
++            try fileManager.removeItem(at: temp)
++        }
++        try data.write(to: temp, options: [.atomic])
++        if fileManager.fileExists(atPath: url.path) {
++            _ = try fileManager.replaceItemAt(url, withItemAt: temp)
++        } else {
++            try fileManager.moveItem(at: temp, to: url)
++        }
++    }
++
++    private var indexURL: URL {
++        directory.appendingPathComponent("index.json")
++    }
++
++    private func sidecarURL(_ digest: String) -> URL {
++        directory.appendingPathComponent("\(digest).meta.json")
++    }
++
++    private func audioURL(_ digest: String, formatHint: String?) -> URL {
++        let ext = formatHint ?? HudTTSAudioFormat.wav.rawValue
++        return directory.appendingPathComponent("\(digest).\(ext)")
++    }
++
++    private static func loadIndex(from directory: URL) -> [String: IndexRecord] {
++        let url = directory.appendingPathComponent("index.json")
++        guard
++            let data = try? Data(contentsOf: url),
++            let decoded = try? makeDecoder().decode(IndexFile.self, from: data),
++            decoded.version == 1
++        else {
++            return [:]
++        }
++        return decoded.entries.filter { digest, record in
++            digest.count == 64 && digest.allSatisfy({ "0123456789abcdef".contains($0) })
++                && record.digest == digest
++                && HudTTSAudioFormat(rawValue: record.format) != nil
++                && record.file == "\(digest).\(record.format)"
++                && record.byteCount > 0
++        }
++    }
++
++    static func sha256Hex(_ data: Data) -> String {
++        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
++    }
++
++    private static func makeEncoder() -> JSONEncoder {
++        let encoder = JSONEncoder()
++        encoder.outputFormatting = [.sortedKeys]
++        encoder.dateEncodingStrategy = .iso8601
++        return encoder
++    }
++
++    private static func makeDecoder() -> JSONDecoder {
++        let decoder = JSONDecoder()
++        decoder.dateDecodingStrategy = .iso8601
++        return decoder
++    }
++}
++
++extension HudSpeechCacheIdentity {
++    var digest: String {
++        StoredIdentity(self).digest
++    }
++}
++
++private struct InFlight {
++    let id: UUID
++    let task: Task<HudTTSResult, Error>
++    var waiters: Set<UUID>
++}
++
++private struct IndexFile: Codable {
++    var version: Int
++    var entries: [String: IndexRecord]
++}
++
++private struct IndexRecord: Codable {
++    var digest: String
++    var file: String
++    var format: String
++    var byteCount: Int
++    var createdAt: Date
++}
++
++private struct Sidecar: Codable {
++    var version: Int
++    var digest: String
++    var identity: StoredIdentity
++    var format: String
++    var voice: String
++    var providerID: String
++    var audioSHA256: String
++    var byteCount: Int
++    var createdAt: Date
++    var file: String
++    var wordTimings: [StoredTiming]?
++}
++
++private struct StoredTiming: Codable {
++    var word: String
++    var start: TimeInterval
++    var end: TimeInterval
++}
++
++private struct StoredIdentity: Codable, Equatable {
++    var text: String
++    var providerID: String
++    var model: String?
++    var voice: String?
++    var rate: String
++    var instructions: String?
++    var voiceSettings: String
++    var namespace: String?
++
++    init(_ identity: HudSpeechCacheIdentity) {
++        text = identity.text
++        providerID = identity.providerID.rawValue
++        model = identity.model
++        voice = identity.voice
++        rate = String(identity.rate.bitPattern, radix: 16)
++        instructions = identity.instructions
++        voiceSettings = identity.voiceSettings.canonicalDigest
++        namespace = identity.namespace
++    }
++
++    var digest: String {
++        let payload = [
++            "v2",
++            "namespace=\(namespace.jsonLiteral)",
++            "provider=\(providerID.jsonLiteral)",
++            "model=\(model.jsonLiteral)",
++            "voice=\(voice.jsonLiteral)",
++            "rate=\(rate)",
++            "instructions=\(instructions.jsonLiteral)",
++            "voiceSettings=\(voiceSettings.jsonLiteral)",
++            "text=\(text.jsonLiteral)",
++        ].joined(separator: "\n")
++        return HudSpeechCache.sha256Hex(Data(payload.utf8))
++    }
++}
++
++private extension HudTTSVoiceSettings? {
++    var canonicalDigest: String {
++        guard let settings = self else { return "null" }
++        var parts: [String] = []
++        if let stability = settings.stability {
++            parts.append("stability=\(String(stability.bitPattern, radix: 16))")
++        }
++        if let similarityBoost = settings.similarityBoost {
++            parts.append("similarityBoost=\(String(similarityBoost.bitPattern, radix: 16))")
++        }
++        if let style = settings.style {
++            parts.append("style=\(String(style.bitPattern, radix: 16))")
++        }
++        if let useSpeakerBoost = settings.useSpeakerBoost {
++            parts.append("useSpeakerBoost=\(useSpeakerBoost ? "true" : "false")")
++        }
++        return "settings:" + parts.joined(separator: ",")
++    }
++}
++
++private extension String {
++    var jsonLiteral: String {
++        let encoded = try? JSONEncoder().encode(self)
++        return encoded.flatMap { String(data: $0, encoding: .utf8) } ?? "\"\""
++    }
++}
++
++private extension Optional where Wrapped == String {
++    var jsonLiteral: String {
++        switch self {
++        case .none: return "null"
++        case .some(let value): return value.jsonLiteral
++        }
++    }
++}
+diff --git a/packages/native/apple/HudsonKit/Tests/HudsonUITests/HudSpeechCachePrecisionTests.swift b/packages/native/apple/HudsonKit/Tests/HudsonUITests/HudSpeechCachePrecisionTests.swift
+new file mode 100644
+index 0000000..93b1670
+--- /dev/null
++++ b/packages/native/apple/HudsonKit/Tests/HudsonUITests/HudSpeechCachePrecisionTests.swift
+@@ -0,0 +1,100 @@
++import Foundation
++import Testing
++@testable import HudsonUIAudio
++
++@Suite("HudSpeechCache exact request identity")
++struct HudSpeechCachePrecisionTests {
++    @Test("cancelled providers that ignore cancellation cannot persist", arguments: [HudSpeechCachePolicy.reuse, .fresh])
++    func cancelledProvider(_ policy: HudSpeechCachePolicy) async throws {
++        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
++        defer { try? FileManager.default.removeItem(at: directory) }
++        let cache = HudSpeechCache(directory: directory)
++        let gate = CacheRegressionGate()
++        let job = Task {
++            try await cache.synthesize(HudTTSRequest(text: "cancelled"), providerID: .openai, policy: policy) { _, _ in
++                await gate.wait()
++                return HudTTSResult(audioData: Data([1]), format: .wav, providerID: .openai, voice: "test")
++            }
++        }
++        while !(await gate.entered) { await Task.yield() }
++        job.cancel()
++        await gate.release()
++        do {
++            _ = try await job.value
++            Issue.record("Cancelled request returned success")
++        } catch is CancellationError {} catch { throw error }
++        #expect(await cache.stats().entries == 0)
++    }
++
++    @Test("cancelled reuse does not leave a joinable finished flight")
++    func cancelledReuseDoesNotLeaveJoinableFlight() async throws {
++        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
++        defer { try? FileManager.default.removeItem(at: directory) }
++        let cache = HudSpeechCache(directory: directory)
++        let gate = CacheRegressionGate()
++        let counter = PrecisionSynthCounter()
++        let job = Task {
++            try await cache.synthesize(HudTTSRequest(text: "cancelled"), providerID: .openai, policy: .reuse) { _, _ in
++                await counter.increment()
++                await gate.wait()
++                return HudTTSResult(audioData: Data([1]), format: .wav, providerID: .openai, voice: "test")
++            }
++        }
++        while !(await gate.entered) { await Task.yield() }
++        job.cancel()
++        await gate.release()
++        do {
++            _ = try await job.value
++            Issue.record("Cancelled request returned success")
++        } catch is CancellationError {} catch { throw error }
++
++        let replayed = try await cache.synthesize(HudTTSRequest(text: "cancelled"), providerID: .openai, policy: .reuse) { _, _ in
++            await counter.increment()
++            return HudTTSResult(audioData: Data([2]), format: .wav, providerID: .openai, voice: "test")
++        }
++        #expect(replayed.cached == false)
++        #expect(replayed.audioData == Data([2]))
++        #expect(await counter.count == 2)
++        #expect(await cache.stats().entries == 1)
++    }
++
++    @Test("oversized audio is returned but not persisted")
++    func oversized() async throws {
++        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
++        defer { try? FileManager.default.removeItem(at: directory) }
++        let cache = HudSpeechCache(directory: directory, maxBytes: 2)
++        let result = try await cache.synthesize(HudTTSRequest(text: "large"), providerID: .openai) { _, _ in
++            HudTTSResult(audioData: Data([1, 2, 3]), format: .wav, providerID: .openai, voice: "test")
++        }
++        #expect(result.audioData.count == 3)
++        #expect(await cache.stats().bytes == 0)
++    }
++    @Test("nearby rates cannot reuse another request")
++    func distinctRates() {
++        let a = HudTTSRequest(text: "Ready", rate: 1.0000001)
++        let b = HudTTSRequest(text: "Ready", rate: 1.0000002)
++        #expect(HudSpeechCacheIdentity(request: a, providerID: .openai).digest != HudSpeechCacheIdentity(request: b, providerID: .openai).digest)
++    }
++
++    @Test("an omitted voice is distinct from an explicit empty voice")
++    func optionalVoice() {
++        let a = HudTTSRequest(text: "Ready", voice: nil)
++        let b = HudTTSRequest(text: "Ready", voice: "")
++        #expect(HudSpeechCacheIdentity(request: a, providerID: .openai).digest != HudSpeechCacheIdentity(request: b, providerID: .openai).digest)
++    }
++}
++
++private actor CacheRegressionGate {
++    private(set) var entered = false
++    private var continuation: CheckedContinuation<Void, Never>?
++    func wait() async {
++        entered = true
++        await withCheckedContinuation { continuation = $0 }
++    }
++    func release() { continuation?.resume(); continuation = nil }
++}
++
++private actor PrecisionSynthCounter {
++    private(set) var count = 0
++    func increment() { count += 1 }
++}
+diff --git a/packages/native/apple/HudsonKit/Tests/HudsonUITests/HudSpeechCacheTests.swift b/packages/native/apple/HudsonKit/Tests/HudsonUITests/HudSpeechCacheTests.swift
+new file mode 100644
+index 0000000..a1bc868
+--- /dev/null
++++ b/packages/native/apple/HudsonKit/Tests/HudsonUITests/HudSpeechCacheTests.swift
+@@ -0,0 +1,612 @@
++import Foundation
++import Testing
++@testable import HudsonUIAudio
++
++@Suite("HudSpeechCache", .serialized)
++struct HudSpeechCacheTests {
++    @Test("reuse hits after a successful store")
++    func reuseHitsAfterStore() async throws {
++        let env = try CacheTestEnv()
++        let counter = SynthCounter()
++        let first = try await env.cache.synthesize(env.request, providerID: .openai, policy: .reuse) {
++            await counter.synthesize($0, $1)
++        }
++        let second = try await env.cache.synthesize(env.request, providerID: .openai, policy: .reuse) {
++            await counter.synthesize($0, $1)
++        }
++
++        #expect(first.cached == false)
++        #expect(second.cached)
++        #expect(second.audioData == first.audioData)
++        #expect(second.voice == "alloy")
++        #expect(second.wordTimings?.count == 1)
++        #expect(await counter.count == 1)
++        #expect(await env.cache.stats().hits == 1)
++        #expect(await env.cache.stats().misses == 1)
++    }
++
++    @Test("every identity field invalidates the cache")
++    func everyIdentityFieldInvalidates() async throws {
++        let env = try CacheTestEnv()
++        let counter = SynthCounter()
++        _ = try await env.cache.synthesize(env.request, providerID: .openai, namespace: "host-a", policy: .reuse) {
++            await counter.synthesize($0, $1)
++        }
++
++        var request = env.request
++        request.text = "Hello, world?"
++        _ = try await env.cache.synthesize(request, providerID: .openai, namespace: "host-a", policy: .reuse) {
++            await counter.synthesize($0, $1)
++        }
++
++        request = env.request
++        request.model = "tts-1-hd"
++        _ = try await env.cache.synthesize(request, providerID: .openai, namespace: "host-a", policy: .reuse) {
++            await counter.synthesize($0, $1)
++        }
++
++        request = env.request
++        request.voice = "nova"
++        _ = try await env.cache.synthesize(request, providerID: .openai, namespace: "host-a", policy: .reuse) {
++            await counter.synthesize($0, $1)
++        }
++
++        request = env.request
++        request.rate = 1.25
++        _ = try await env.cache.synthesize(request, providerID: .openai, namespace: "host-a", policy: .reuse) {
++            await counter.synthesize($0, $1)
++        }
++
++        request = env.request
++        request.instructions = "speak slowly"
++        _ = try await env.cache.synthesize(request, providerID: .openai, namespace: "host-a", policy: .reuse) {
++            await counter.synthesize($0, $1)
++        }
++
++        request = env.request
++        request.voiceSettings = HudTTSVoiceSettings(stability: 0.4)
++        _ = try await env.cache.synthesize(request, providerID: .openai, namespace: "host-a", policy: .reuse) {
++            await counter.synthesize($0, $1)
++        }
++
++        _ = try await env.cache.synthesize(env.request, providerID: .elevenlabs, namespace: "host-a", policy: .reuse) {
++            await counter.synthesize($0, $1)
++        }
++
++        _ = try await env.cache.synthesize(env.request, providerID: .openai, namespace: "host-b", policy: .reuse) {
++            await counter.synthesize($0, $1)
++        }
++
++        #expect(await counter.count == 9)
++    }
++
++    @Test("punctuation and case are distinct identities")
++    func punctuationAndCaseAreDistinct() async throws {
++        let env = try CacheTestEnv()
++        let counter = SynthCounter()
++        for text in ["Hello", "hello", "Hello!", "Hello."] {
++            var request = env.request
++            request.text = text
++            _ = try await env.cache.synthesize(request, providerID: .openai, policy: .reuse) {
++                await counter.synthesize($0, $1)
++            }
++        }
++        #expect(await counter.count == 4)
++    }
++
++    @Test("fresh synthesizes even when a reusable payload exists")
++    func freshBypassesDiskAndInFlightReuse() async throws {
++        let env = try CacheTestEnv()
++        let counter = SynthCounter()
++        _ = try await env.cache.synthesize(env.request, providerID: .openai, policy: .reuse) {
++            await counter.synthesize($0, $1)
++        }
++
++        let fresh = try await env.cache.synthesize(env.request, providerID: .openai, policy: .fresh) {
++            await counter.synthesize($0, $1, audio: Data("fresh".utf8))
++        }
++        #expect(fresh.cached == false)
++        #expect(fresh.audioData == Data("fresh".utf8))
++
++        let reuse = try await env.cache.synthesize(env.request, providerID: .openai, policy: .reuse) {
++            await counter.synthesize($0, $1)
++        }
++        #expect(reuse.cached)
++        #expect(reuse.audioData == Data("fresh".utf8))
++        #expect(await counter.count == 2)
++    }
++
++    @Test("corrupt audio is a miss and can regenerate")
++    func corruptAudioIsAMiss() async throws {
++        let env = try CacheTestEnv()
++        let counter = SynthCounter()
++        _ = try await env.cache.synthesize(env.request, providerID: .openai, policy: .reuse) {
++            await counter.synthesize($0, $1)
++        }
++
++        let audioFiles = try FileManager.default.contentsOfDirectory(
++            at: env.directory,
++            includingPropertiesForKeys: nil
++        ).filter { $0.pathExtension == "mp3" }
++        let audioURL = try #require(audioFiles.first)
++        var bytes = try Data(contentsOf: audioURL)
++        bytes.append(0xFF)
++        try bytes.write(to: audioURL)
++
++        let regenerated = try await env.cache.synthesize(env.request, providerID: .openai, policy: .reuse) {
++            await counter.synthesize($0, $1, audio: Data("new".utf8))
++        }
++        #expect(regenerated.cached == false)
++        #expect(regenerated.audioData == Data("new".utf8))
++        #expect(await counter.count == 2)
++    }
++
++    @Test("truncated sidecar is a miss and can regenerate")
++    func truncatedSidecarIsAMiss() async throws {
++        let env = try CacheTestEnv()
++        let counter = SynthCounter()
++        _ = try await env.cache.synthesize(env.request, providerID: .openai, policy: .reuse) {
++            await counter.synthesize($0, $1)
++        }
++
++        let sidecars = try FileManager.default.contentsOfDirectory(
++            at: env.directory,
++            includingPropertiesForKeys: nil
++        ).filter { $0.lastPathComponent.hasSuffix(".meta.json") }
++        let sidecar = try #require(sidecars.first)
++        try Data("{".utf8).write(to: sidecar)
++
++        let regenerated = try await env.cache.synthesize(env.request, providerID: .openai, policy: .reuse) {
++            await counter.synthesize($0, $1, audio: Data("rebuilt".utf8))
++        }
++        #expect(regenerated.cached == false)
++        #expect(await counter.count == 2)
++    }
++
++    @Test("failed synthesis is not cached and can retry")
++    func failedSynthesisIsNotCached() async throws {
++        let env = try CacheTestEnv()
++        let counter = SynthCounter()
++
++        do {
++            _ = try await env.cache.synthesize(env.request, providerID: .openai, policy: .reuse) { _, _ in
++                await counter.increment()
++                throw HudTTSError.synthesisFailed(provider: .openai, message: "boom")
++            }
++            Issue.record("expected synthesisFailed")
++        } catch let HudTTSError.synthesisFailed(_, message) {
++            #expect(message == "boom")
++        }
++
++        let recovered = try await env.cache.synthesize(env.request, providerID: .openai, policy: .reuse) {
++            await counter.synthesize($0, $1)
++        }
++        #expect(recovered.cached == false)
++        #expect(await counter.count == 2)
++        #expect(await env.cache.stats().entries == 1)
++    }
++
++    @Test("equal concurrent reuse requests coalesce")
++    func concurrentReuseCoalesces() async throws {
++        let env = try CacheTestEnv()
++        let counter = SynthCounter()
++        let gate = CacheGate()
++
++        let first = Task {
++            try await env.cache.synthesize(env.request, providerID: .openai, policy: .reuse) { request, providerID in
++                await counter.increment()
++                await gate.markStartedAndWait()
++                return SynthCounter.result(for: request, providerID: providerID, audio: Data("shared".utf8))
++            }
++        }
++        await gate.waitUntilStarted()
++
++        let second = Task {
++            try await env.cache.synthesize(env.request, providerID: .openai, policy: .reuse) { request, providerID in
++                await counter.increment()
++                return SynthCounter.result(for: request, providerID: providerID, audio: Data("other".utf8))
++            }
++        }
++
++        await gate.release()
++        let firstResult = try await first.value
++        let secondResult = try await second.value
++
++        #expect(firstResult.audioData == Data("shared".utf8))
++        #expect(secondResult.audioData == Data("shared".utf8))
++        #expect(await counter.count == 1)
++    }
++
++    @Test("fresh does not join an in-flight reuse request")
++    func freshDoesNotJoinInFlightReuse() async throws {
++        let env = try CacheTestEnv()
++        let counter = SynthCounter()
++        let gate = CacheGate()
++
++        let reuse = Task {
++            try await env.cache.synthesize(env.request, providerID: .openai, policy: .reuse) { request, providerID in
++                await counter.increment()
++                await gate.markStartedAndWait()
++                return SynthCounter.result(for: request, providerID: providerID, audio: Data("reuse".utf8))
++            }
++        }
++        await gate.waitUntilStarted()
++
++        let fresh = try await env.cache.synthesize(env.request, providerID: .openai, policy: .fresh) { request, providerID in
++            await counter.increment()
++            return SynthCounter.result(for: request, providerID: providerID, audio: Data("fresh".utf8))
++        }
++
++        await gate.release()
++        let reuseResult = try await reuse.value
++
++        #expect(fresh.audioData == Data("fresh".utf8))
++        #expect(reuseResult.audioData == Data("reuse".utf8))
++        #expect(await counter.count == 2)
++    }
++
++    @Test("cancelling the only waiter cancels synthesis and does not cache")
++    func cancellationDoesNotCache() async throws {
++        let env = try CacheTestEnv()
++        let counter = SynthCounter()
++        let gate = CacheGate()
++
++        let task = Task {
++            try await env.cache.synthesize(env.request, providerID: .openai, policy: .reuse) { request, providerID in
++                await counter.increment()
++                await gate.markStarted()
++                try await Task.sleep(nanoseconds: 30_000_000_000)
++                return SynthCounter.result(for: request, providerID: providerID)
++            }
++        }
++        await gate.waitUntilStarted()
++        task.cancel()
++
++        do {
++            _ = try await task.value
++            Issue.record("expected CancellationError")
++        } catch is CancellationError {
++            // expected
++        } catch {
++            Issue.record("expected CancellationError, got \(error)")
++        }
++
++        #expect(await env.cache.stats().entries == 0)
++        #expect(await counter.count == 1)
++    }
++
++    @Test("bounded eviction removes the oldest payload")
++    func boundedEvictionRemovesOldest() async throws {
++        let directory = FileManager.default.temporaryDirectory
++            .appendingPathComponent("hud-speech-cache-\(UUID().uuidString)", isDirectory: true)
++        let cache = HudSpeechCache(directory: directory, maxBytes: 20)
++        let counter = SynthCounter()
++        defer { try? FileManager.default.removeItem(at: directory) }
++
++        let first = HudTTSRequest(text: "one", voice: "alloy", model: "tts-1")
++        let second = HudTTSRequest(text: "two", voice: "alloy", model: "tts-1")
++
++        _ = try await cache.synthesize(first, providerID: .openai, policy: .reuse) {
++            await counter.synthesize($0, $1, audio: Data(repeating: 1, count: 16))
++        }
++        _ = try await cache.synthesize(second, providerID: .openai, policy: .reuse) {
++            await counter.synthesize($0, $1, audio: Data(repeating: 2, count: 16))
++        }
++
++        let stats = await cache.stats()
++        #expect(stats.entries == 1)
++        #expect(stats.bytes == 16)
++
++        let regenerated = try await cache.synthesize(first, providerID: .openai, policy: .reuse) {
++            await counter.synthesize($0, $1, audio: Data(repeating: 3, count: 16))
++        }
++        #expect(regenerated.cached == false)
++        #expect(await counter.count == 3)
++    }
++
++    @Test("1.0 and 1.000000 rates share an identity")
++    func formattedRatesCollide() async throws {
++        let env = try CacheTestEnv()
++        let counter = SynthCounter()
++        var request = env.request
++        request.rate = 1.0
++        _ = try await env.cache.synthesize(request, providerID: .openai, policy: .reuse) {
++            await counter.synthesize($0, $1)
++        }
++        request.rate = 1.000000
++        let hit = try await env.cache.synthesize(request, providerID: .openai, policy: .reuse) {
++            await counter.synthesize($0, $1)
++        }
++        #expect(hit.cached)
++        #expect(await counter.count == 1)
++    }
++
++    @Test("cancelling one reuse waiter does not cancel shared synthesis")
++    func cancellingOneWaiterKeepsSharedWork() async throws {
++        let env = try CacheTestEnv()
++        let counter = SynthCounter()
++        let gate = CacheGate()
++
++        let first = Task {
++            try await env.cache.synthesize(env.request, providerID: .openai, policy: .reuse) { request, providerID in
++                await counter.increment()
++                await gate.markStartedAndWait()
++                return SynthCounter.result(for: request, providerID: providerID, audio: Data("shared".utf8))
++            }
++        }
++        await gate.waitUntilStarted()
++
++        let second = Task {
++            try await env.cache.synthesize(env.request, providerID: .openai, policy: .reuse) { request, providerID in
++                await counter.increment()
++                return SynthCounter.result(for: request, providerID: providerID, audio: Data("other".utf8))
++            }
++        }
++        while await env.cache.stats().misses < 2 {
++            await Task.yield()
++        }
++        second.cancel()
++        do {
++            _ = try await second.value
++            Issue.record("expected CancellationError")
++        } catch is CancellationError {
++            // expected
++        }
++
++        await gate.release()
++        let firstResult = try await first.value
++        #expect(firstResult.audioData == Data("shared".utf8))
++        #expect(await counter.count == 1)
++        #expect(await env.cache.stats().entries == 1)
++
++        let hit = try await env.cache.synthesize(env.request, providerID: .openai, policy: .reuse) {
++            await counter.synthesize($0, $1, audio: Data("late".utf8))
++        }
++        #expect(hit.cached)
++        #expect(hit.audioData == Data("shared".utf8))
++        #expect(await counter.count == 1)
++    }
++
++    @Test("in-flight reuse started after fresh cannot overwrite the fresh payload")
++    func freshWinsOverLaterInFlightReuse() async throws {
++        let env = try CacheTestEnv()
++        let counter = SynthCounter()
++        let freshGate = CacheGate()
++        let reuseGate = CacheGate()
++
++        let fresh = Task {
++            try await env.cache.synthesize(env.request, providerID: .openai, policy: .fresh) { request, providerID in
++                await counter.increment()
++                await freshGate.markStartedAndWait()
++                return SynthCounter.result(for: request, providerID: providerID, audio: Data("fresh".utf8))
++            }
++        }
++        await freshGate.waitUntilStarted()
++
++        let reuse = Task {
++            try await env.cache.synthesize(env.request, providerID: .openai, policy: .reuse) { request, providerID in
++                await counter.increment()
++                await reuseGate.markStartedAndWait()
++                return SynthCounter.result(for: request, providerID: providerID, audio: Data("reuse".utf8))
++            }
++        }
++        await reuseGate.waitUntilStarted()
++
++        await freshGate.release()
++        let freshResult = try await fresh.value
++        #expect(freshResult.audioData == Data("fresh".utf8))
++
++        await reuseGate.release()
++        let reuseResult = try await reuse.value
++        #expect(reuseResult.audioData == Data("reuse".utf8))
++
++        let hit = try await env.cache.synthesize(env.request, providerID: .openai, policy: .reuse) {
++            await counter.synthesize($0, $1, audio: Data("late".utf8))
++        }
++        #expect(hit.cached)
++        #expect(hit.audioData == Data("fresh".utf8))
++        #expect(await counter.count == 2)
++    }
++
++    @Test("bounded eviction can drop multiple older payloads")
++    func boundedEvictionDropsMultipleOlderPayloads() async throws {
++        let directory = FileManager.default.temporaryDirectory
++            .appendingPathComponent("hud-speech-cache-\(UUID().uuidString)", isDirectory: true)
++        let cache = HudSpeechCache(directory: directory, maxBytes: 30)
++        defer { try? FileManager.default.removeItem(at: directory) }
++
++        let first = HudTTSRequest(text: "one", voice: "alloy", model: "tts-1")
++        let second = HudTTSRequest(text: "two", voice: "alloy", model: "tts-1")
++        let third = HudTTSRequest(text: "three", voice: "alloy", model: "tts-1")
++
++        _ = try await cache.synthesize(first, providerID: .openai, policy: .reuse) { _, _ in
++            HudTTSResult(audioData: Data(repeating: 1, count: 12), format: .wav, providerID: .openai, voice: "alloy")
++        }
++        _ = try await cache.synthesize(second, providerID: .openai, policy: .reuse) { _, _ in
++            HudTTSResult(audioData: Data(repeating: 2, count: 12), format: .wav, providerID: .openai, voice: "alloy")
++        }
++        _ = try await cache.synthesize(third, providerID: .openai, policy: .reuse) { _, _ in
++            HudTTSResult(audioData: Data(repeating: 3, count: 20), format: .wav, providerID: .openai, voice: "alloy")
++        }
++
++        let stats = await cache.stats()
++        #expect(stats.entries == 1)
++        #expect(stats.bytes == 20)
++
++        let firstAgain = try await cache.synthesize(first, providerID: .openai, policy: .reuse) { _, _ in
++            HudTTSResult(audioData: Data(repeating: 9, count: 12), format: .wav, providerID: .openai, voice: "alloy")
++        }
++        #expect(firstAgain.cached == false)
++        #expect(firstAgain.audioData == Data(repeating: 9, count: 12))
++    }
++
++    @Test("malformed sidecars are misses and can regenerate")
++    func malformedSidecarsAreMisses() async throws {
++        let cases: [(String, (inout [String: Any]) -> Void)] = [
++            ("wrong version", { $0["version"] = 2 }),
++            ("digest mismatch", { $0["digest"] = String(repeating: "ab", count: 32) }),
++            ("unknown format", { $0["format"] = "ogg" }),
++            ("file name mismatch", { $0["file"] = "other.mp3" }),
++        ]
++
++        for (name, mutate) in cases {
++            let env = try CacheTestEnv()
++            let counter = SynthCounter()
++            _ = try await env.cache.synthesize(env.request, providerID: .openai, policy: .reuse) {
++                await counter.synthesize($0, $1)
++            }
++            try mutateSidecar(in: env.directory, mutate: mutate)
++
++            let regenerated = try await env.cache.synthesize(env.request, providerID: .openai, policy: .reuse) {
++                await counter.synthesize($0, $1, audio: Data("rebuilt-\(name)".utf8))
++            }
++            #expect(regenerated.cached == false, "\(name) should miss")
++            #expect(regenerated.audioData == Data("rebuilt-\(name)".utf8), "\(name) should regenerate")
++            #expect(await counter.count == 2, "\(name) should synthesize twice")
++        }
++    }
++
++    @Test("missing audio with an intact sidecar is a miss")
++    func missingAudioIsAMiss() async throws {
++        let env = try CacheTestEnv()
++        let counter = SynthCounter()
++        _ = try await env.cache.synthesize(env.request, providerID: .openai, policy: .reuse) {
++            await counter.synthesize($0, $1)
++        }
++
++        let audioFiles = try FileManager.default.contentsOfDirectory(
++            at: env.directory,
++            includingPropertiesForKeys: nil
++        ).filter { $0.pathExtension == "mp3" }
++        let audioURL = try #require(audioFiles.first)
++        try FileManager.default.removeItem(at: audioURL)
++
++        let regenerated = try await env.cache.synthesize(env.request, providerID: .openai, policy: .reuse) {
++            await counter.synthesize($0, $1, audio: Data("restored".utf8))
++        }
++        #expect(regenerated.cached == false)
++        #expect(regenerated.audioData == Data("restored".utf8))
++        #expect(await counter.count == 2)
++    }
++
++    @Test("sidecar identity mismatch is a miss")
++    func sidecarIdentityMismatchIsAMiss() async throws {
++        let env = try CacheTestEnv()
++        let counter = SynthCounter()
++        _ = try await env.cache.synthesize(env.request, providerID: .openai, policy: .reuse) {
++            await counter.synthesize($0, $1)
++        }
++        try mutateSidecar(in: env.directory) { json in
++            guard var identity = json["identity"] as? [String: Any] else { return }
++            identity["text"] = "tampered"
++            json["identity"] = identity
++        }
++
++        let regenerated = try await env.cache.synthesize(env.request, providerID: .openai, policy: .reuse) {
++            await counter.synthesize($0, $1, audio: Data("untampered".utf8))
++        }
++        #expect(regenerated.cached == false)
++        #expect(regenerated.audioData == Data("untampered".utf8))
++        #expect(await counter.count == 2)
++    }
++}
++
++private func mutateSidecar(in directory: URL, mutate: (inout [String: Any]) -> Void) throws {
++    let sidecars = try FileManager.default.contentsOfDirectory(
++        at: directory,
++        includingPropertiesForKeys: nil
++    ).filter { $0.lastPathComponent.hasSuffix(".meta.json") }
++    let sidecar = try #require(sidecars.first)
++    let data = try Data(contentsOf: sidecar)
++    let object = try JSONSerialization.jsonObject(with: data)
++    guard var json = object as? [String: Any] else {
++        throw HudSpeechCacheError.io("sidecar was not an object")
++    }
++    mutate(&json)
++    let mutated = try JSONSerialization.data(withJSONObject: json)
++    try mutated.write(to: sidecar)
++}
++
++private struct CacheTestEnv {
++    let directory: URL
++    let cache: HudSpeechCache
++    let request: HudTTSRequest
++
++    init() throws {
++        directory = FileManager.default.temporaryDirectory
++            .appendingPathComponent("hud-speech-cache-\(UUID().uuidString)", isDirectory: true)
++        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
++        cache = HudSpeechCache(directory: directory, maxBytes: 1024 * 1024)
++        request = HudTTSRequest(
++            text: "Hello, world",
++            voice: "alloy",
++            rate: 1.0,
++            model: "tts-1",
++            instructions: "clear",
++            voiceSettings: HudTTSVoiceSettings(stability: 0.5)
++        )
++    }
++}
++
++private actor SynthCounter {
++    private(set) var count = 0
++
++    func increment() {
++        count += 1
++    }
++
++    func synthesize(
++        _ request: HudTTSRequest,
++        _ providerID: HudTTSProviderID,
++        audio: Data = Data("audio".utf8)
++    ) -> HudTTSResult {
++        count += 1
++        return Self.result(for: request, providerID: providerID, audio: audio)
++    }
++
++    static func result(
++        for request: HudTTSRequest,
++        providerID: HudTTSProviderID,
++        audio: Data = Data("audio".utf8)
++    ) -> HudTTSResult {
++        HudTTSResult(
++            audioData: audio,
++            format: .mp3,
++            providerID: providerID,
++            voice: request.voice ?? "alloy",
++            wordTimings: [
++                HudTTSWordTiming(word: "Hello", start: 0, end: 0.4)
++            ]
++        )
++    }
++}
++
++private actor CacheGate {
++    private var started: CheckedContinuation<Void, Never>?
++    private var proceed: CheckedContinuation<Void, Never>?
++    private var didStart = false
++    private var released = false
++
++    func waitUntilStarted() async {
++        if didStart { return }
++        await withCheckedContinuation { started = $0 }
++    }
++
++    func markStarted() {
++        didStart = true
++        started?.resume()
++        started = nil
++    }
++
++    func markStartedAndWait() async {
++        markStarted()
++        if released { return }
++        await withCheckedContinuation { proceed = $0 }
++    }
++
++    func release() {
++        released = true
++        proceed?.resume()
++        proceed = nil
++    }
++}

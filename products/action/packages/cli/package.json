@@ -4,7 +4,6 @@
   "private": true,
   "type": "module",
   "bin": {
-    "action": "./src/main.ts",
-    "action-dev": "./src/action-dev.ts"
+    "action": "./src/main.ts"
   }
 }

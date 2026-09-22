@@ -1,0 +1,110 @@
+{
+  "hudson": {
+    "checkout": "/tmp/hudson-shared-speech",
+    "head": "0c62490da3cb58d94e7a8556df058e43250230ce",
+    "patch": "docs/proposals/LAT-011-dependencies/hudson-shared-speech.patch",
+    "patchSHA256": "3d4475db4c4f1a1151cd784714070c41e163efbcc8c3a46f702bd9504e4b96b9",
+    "files": [
+      {
+        "path": "packages/native/apple/HudsonKit/Sources/HudsonUIAudio/HudTTS.swift",
+        "sha256": "f9edcd4b841cf2f6216c144ea3dbc71fddb9a7ed5ecb80117b2062ec60940c53"
+      },
+      {
+        "path": "packages/native/apple/HudsonKit/Sources/HudsonUIAudio/TTS/HudTTSTypes.swift",
+        "sha256": "c2176ee4c22077d7955bb48fe6af4ebcd26c4bcc0d5dfeaf49f65dafde4b31d2"
+      },
+      {
+        "path": "packages/native/apple/HudsonKit/Sources/HudsonUIAudio/TTS/Playback/HudSpeechPlayer.swift",
+        "sha256": "d659f928017b1dd51f8dcc76758baf5739b90676ff0b594c8666f931177ebb68"
+      },
+      {
+        "path": "packages/native/apple/HudsonKit/Sources/HudsonUIAudio/TTS/Playback/HudSystemSpeechSynthesizer.swift",
+        "sha256": "d9ee55652320b318b5b27863e6e903cd4d4a7661c36483fbf92934b9a093bcba"
+      },
+      {
+        "path": "packages/native/apple/HudsonKit/Tests/HudsonUITests/HudSpeechPlayerTests.swift",
+        "sha256": "4b3d5515c72c0a046bffe0de3858f99a8f5566c99ca254b207b1774db3e3a00f"
+      },
+      {
+        "path": "packages/native/apple/HudsonKit/Tests/HudsonUITests/HudSystemSpeechSynthesizerTests.swift",
+        "sha256": "59263c9f9d39ebca788c372a4ca2edd7be78484e61b7c0961903e1293cd109b6"
+      },
+      {
+        "path": "packages/native/apple/HudsonKit/Tests/HudsonUITests/HudTTSSpeakTests.swift",
+        "sha256": "38c24d617de45a1e9de2d3b9373157e94ca05132b6b8f5c729c6b08189cc49b6"
+      },
+      {
+        "path": "docs/proposals/hud-speech-cache-playback-api.md",
+        "sha256": "fadf8686b7ad0464b91a6978a3af554babbd51c88d29d725ffeb555e8a5807a0"
+      },
+      {
+        "path": "packages/native/apple/HudsonKit/Sources/HudsonUIAudio/TTS/Cache/HudSpeechCache.swift",
+        "sha256": "9c2d2bd91b29af9f81427dd25252e18914c3b2438ef629d3de53ac702cdf7159"
+      },
+      {
+        "path": "packages/native/apple/HudsonKit/Tests/HudsonUITests/HudSpeechCachePrecisionTests.swift",
+        "sha256": "d2fce9b1dad3bdec9292ad91535e75156890b69d08a18b551df74ff2c7b7c041"
+      },
+      {
+        "path": "packages/native/apple/HudsonKit/Tests/HudsonUITests/HudSpeechCacheTests.swift",
+        "sha256": "a00d8b1d5f1ff715daa82cf582ceda76452e692bd175b38c1e587ae68796a679"
+      }
+    ]
+  },
+  "vox": {
+    "checkout": "/Users/arach/.codex/worktrees/19f1/vox-speech-integration",
+    "head": "21c6e39a621a1ec9234a58bcdf7e140de52d8ff6",
+    "patch": "docs/proposals/LAT-011-dependencies/vox-speech-resources.patch",
+    "patchSHA256": "260aa052a28eb3f05ec89af98d655e80936506d1735565ef3bfa42870be8ca45",
+    "files": [
+      {
+        "path": "Package.swift",
+        "sha256": "996d42cb16ee1498ccc8f60fe78945becacab7278451bc37ac36f0167d26fb74"
+      },
+      {
+        "path": "docs.json",
+        "sha256": "9a2ec6e4605406684dc8dce4c9283815e4d6d2544ab9e77201c88d043446adbb"
+      },
+      {
+        "path": "docs/agent/apple-embed.agent.md",
+        "sha256": "56cef1dd97856843867e42d3b057b3e682dddcb8cae8be2d54d2e0cd497c6340"
+      },
+      {
+        "path": "docs/apple-embed.md",
+        "sha256": "744070cb951095dff6d28e182220f861da32e0a489179e17b29754da4ffb6787"
+      },
+      {
+        "path": "llms-full.txt",
+        "sha256": "1fb7d0ccf149d3cc486f4c614433f770fb1ab78fa07cb3667dfa7a10e8c8b6ee"
+      },
+      {
+        "path": "swift/Sources/HudsonSpeechEngine/BuiltinExternalProvider.swift",
+        "sha256": "d9f5041dcd0b5cfc9d6aa0fb05a68a3d98497a8f9dd9c42b50c0298b810c8625"
+      },
+      {
+        "path": "swift/Sources/HudsonSpeechEngine/ModelCatalogStore.swift",
+        "sha256": "2174004b33f3c2df773cc06d8b6a78e494cd96266d027afe9aba204d487744c9"
+      },
+      {
+        "path": "swift/Sources/HudsonSpeechEngine/SpeechEngineResources.swift",
+        "sha256": "525be6630a948315f66c462458de094a9b444e897cb2a29cda57d3e9f0dc4272"
+      },
+      {
+        "path": "swift/Tests/VoxEngineTests/SpeechEngineResourcesTests.swift",
+        "sha256": "4863d868b0345520eaf07d536c6c781891835a4a8d9930efb4a286d1e1027b58"
+      }
+    ]
+  },
+  "releaseIntegration": {
+    "hudson": {
+      "pullRequest": "https://github.com/arach/hudson/pull/228",
+      "mergedRevision": "71fee5e03192dffe48056dedc0efacc94925bb62",
+      "tests": "40 passed; cancellation waiter deadlock fixed"
+    },
+    "vox": {
+      "pullRequest": "https://github.com/arach/vox/pull/31",
+      "mergedRevision": "9190158f071083f22d0bda2f73f4e8d5f8763a90"
+    },
+    "note": "Earlier patch records are historical import evidence. Final remote resolutions are adjacent release-resolved files."
+  }
+}

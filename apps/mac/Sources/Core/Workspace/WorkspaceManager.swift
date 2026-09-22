@@ -62,14 +62,66 @@ struct GridPreset: Codable {
 }
 
 struct LayoutWindowSpec: Codable {
+    let id: String?
     let app: String
-    let tile: String        // TilePosition name or preset name
+    let tile: String?       // TilePosition name, preset name, or omitted for engine layouts
     let display: Int?       // spatial display number (1-based), nil = current
     let title: String?      // optional title match for disambiguation
 }
 
+struct LayoutManagement: Codable, Equatable {
+    let reconcile: String?
+    let ambiguity: String?
+    let fullscreen: String?
+    let debounceMilliseconds: Int?
+}
+
 struct LayoutConfig: Codable {
+    let engine: String?
+    let gap: CGFloat?
+    let masterRatio: CGFloat?
+    let masterCount: Int?
+    let management: LayoutManagement?
     let windows: [LayoutWindowSpec]
+
+    var usesMasterStack: Bool {
+        switch engine?.lowercased() {
+        case "master-stack", "master":
+            return true
+        default:
+            return false
+        }
+    }
+
+    enum Placement {
+        case named(String)
+        case fractions(FractionalPlacement)
+    }
+
+    func placement(at index: Int) -> Placement? {
+        guard windows.indices.contains(index) else { return nil }
+        if let tile = windows[index].tile, !tile.isEmpty {
+            return .named(tile)
+        }
+        guard usesMasterStack, let box = masterStackFractions(at: index) else { return nil }
+        return .fractions(box)
+    }
+
+    func masterStackFractions(at index: Int) -> FractionalPlacement? {
+        guard windows.indices.contains(index) else { return nil }
+        let masters = max(masterCount ?? 1, 1)
+        let ratio = min(max(masterRatio ?? 0.62, 0.05), 0.95)
+        let stackWidth = 1 - ratio
+        if index < masters {
+            let height = 1 / CGFloat(masters)
+            return FractionalPlacement(x: 0, y: CGFloat(index) * height, w: ratio, h: height)
+        }
+        let stackIndex = index - masters
+        let stackCount = windows.count - masters
+        guard stackCount > 0, stackWidth > 0 else { return nil }
+        let height = 1 / CGFloat(stackCount)
+        return FractionalPlacement(x: ratio, y: CGFloat(stackIndex) * height, w: stackWidth, h: height)
+    }
 }
 
 struct GridFile: Codable {
@@ -386,6 +438,7 @@ class WorkspaceManager: ObservableObject {
     private let configPath: String
     private let gridConfigPath: String
     private let snapZonesConfigPath: String
+    private var gridConfigSourceToken = ""
     private var tmuxPath: String { TmuxQuery.resolvedPath ?? "/opt/homebrew/bin/tmux" }
     private let activeLayerKey = "lattices.activeLayerIndex"
 
@@ -444,6 +497,10 @@ class WorkspaceManager: ObservableObject {
     // MARK: - Grid Config I/O
 
     func loadGridConfig() {
+        let token = gridConfigSourceFingerprint()
+        if token == gridConfigSourceToken { return }
+        gridConfigSourceToken = token
+
         var presets: [String: GridPreset] = [:]
         var layouts: [String: LayoutConfig] = [:]
         var snapZones = SnapZonesConfig.defaults
@@ -459,7 +516,7 @@ class WorkspaceManager: ObservableObject {
                     snapZones = snap.merged(over: snapZones)
                 }
             } catch {
-                DiagnosticLog.shared.error("WorkspaceManager: failed to decode grid.json — \(error.localizedDescription)")
+                DiagnosticLog.shared.error("WorkspaceManager: failed to decode grid.json — \(Self.describeDecodingError(error))")
             }
         }
 
@@ -489,7 +546,7 @@ class WorkspaceManager: ObservableObject {
                     }
                 }
             } catch {
-                DiagnosticLog.shared.error("WorkspaceManager: failed to decode .lattices.json grid — \(error.localizedDescription)")
+                DiagnosticLog.shared.error("WorkspaceManager: failed to decode .lattices.json grid — \(Self.describeDecodingError(error))")
             }
         }
 
@@ -531,6 +588,52 @@ class WorkspaceManager: ObservableObject {
     /// Resolve a tile string to fractions: check user presets first, then built-in TilePosition
     func resolveTileFractions(_ tile: String) -> (CGFloat, CGFloat, CGFloat, CGFloat)? {
         resolvePlacement(tile)?.fractions
+    }
+
+    func resolveLayoutFractions(_ layout: LayoutConfig, windowIndex: Int) -> (CGFloat, CGFloat, CGFloat, CGFloat)? {
+        switch layout.placement(at: windowIndex) {
+        case .named(let tile):
+            return resolveTileFractions(tile)
+        case .fractions(let box):
+            return box.fractions
+        case nil:
+            return nil
+        }
+    }
+
+    private func gridConfigSourceFingerprint() -> String {
+        func stamp(_ path: String) -> String {
+            let url = URL(fileURLWithPath: path)
+            let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+            let mtime = values?.contentModificationDate?.timeIntervalSince1970 ?? 0
+            let size = values?.fileSize ?? -1
+            return "\(path):\(mtime):\(size)"
+        }
+        let projectGrid = (FileManager.default.currentDirectoryPath as NSString)
+            .appendingPathComponent(".lattices.json")
+        return [gridConfigPath, snapZonesConfigPath, projectGrid].map(stamp).joined(separator: "|")
+    }
+
+    static func describeDecodingError(_ error: Error) -> String {
+        guard let decoding = error as? DecodingError else {
+            return error.localizedDescription
+        }
+        func path(_ context: DecodingError.Context) -> String {
+            let keys = context.codingPath.map(\.stringValue).filter { !$0.isEmpty }
+            return keys.isEmpty ? "(root)" : keys.joined(separator: ".")
+        }
+        switch decoding {
+        case .keyNotFound(let key, let context):
+            return "missing key '\(key.stringValue)' at \(path(context))"
+        case .valueNotFound(let type, let context):
+            return "missing \(type) at \(path(context))"
+        case .typeMismatch(let type, let context):
+            return "type mismatch (\(type)) at \(path(context)): \(context.debugDescription)"
+        case .dataCorrupted(let context):
+            return "corrupted at \(path(context)): \(context.debugDescription)"
+        @unknown default:
+            return decoding.localizedDescription
+        }
     }
 
     func resolvePlacement(_ tile: String) -> PlacementSpec? {

@@ -104,6 +104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             // Appearance first, so applyTheme paints the resolved scheme.
             AppearanceManager.shared.apply(config.appearance)
             self?.panelManager.applyTheme(config)
+            CompanionMenuBarVisibility.shared.alwaysShow = config.behavior.alwaysShowMenuBarIcon
             self?.applyHotkeys(config)
             self?.applyLoginItem(config)
             // Reflect an appearance change (or any state) in the menu checkmarks.
@@ -124,10 +125,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
 
+        CompanionMenuBarVisibility.shared.usePreference(alwaysShow: BlinkConfigStore.shared.config.behavior.alwaysShowMenuBarIcon) { value in
+            guard BlinkConfigStore.shared.config.behavior.alwaysShowMenuBarIcon != value else { return }
+            BlinkConfigStore.shared.update { $0.behavior.alwaysShowMenuBarIcon = value }
+        }
+        CompanionMenuBarVisibility.shared.onChange = { [weak self] visible in self?.statusItem?.isVisible = visible }
+        statusItem.isVisible = CompanionMenuBarVisibility.shared.isVisible
         contextMenu = buildContextMenu()
 
         applyHotkeys(BlinkConfigStore.shared.config)
         applyLoginItem(BlinkConfigStore.shared.config)
+        if !CompanionMenuBarVisibility.shared.isVisible { openSettings() }
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        openSettings()
+        return true
     }
 
     /// Accessory apps do not show a menu bar, but AppKit still uses the main

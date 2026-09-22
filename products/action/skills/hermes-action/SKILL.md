@@ -5,7 +5,9 @@ description: Use when Hermes should drive the Action native macOS runtime throug
 
 # Hermes Action
 
-Use Action as Hermes' native macOS hands.
+Use Action as Hermes' native macOS hands. The public catalog skill is
+`skills/action` (`npx skills add arach/lattices --skill action`). This file
+is the Hermes-specific harness doctrine over the same MCP tools.
 
 ## Startup
 

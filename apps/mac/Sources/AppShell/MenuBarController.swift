@@ -1,18 +1,17 @@
 import AppKit
 import SwiftUI
 
-final class MenuBarController: NSObject, NSPopoverDelegate {
+final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
     static let shared = MenuBarController()
 
-    /// Collapsed quick-actions layout (Move row closed).
-    static let popoverHeightCollapsed: CGFloat = 360
-    /// Move grid unfolded — room for 3×3 slots + thirds row.
-    static let popoverHeightExpanded: CGFloat = 540
-    static let popoverWidth: CGFloat = 380
+    /// Mini-Home popover: rail (~100pt) + pane, fixed size.
+    static let popoverHeight: CGFloat = 430
+    static let popoverWidth: CGFloat = 500
 
     private var statusItem: NSStatusItem?
     private var popover: NSPopover?
     private var contextMenu: NSMenu?
+    private weak var actionMenuItem: NSMenuItem?
 
     var isPopoverShown: Bool {
         popover?.isShown == true
@@ -34,6 +33,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         }
 
         contextMenu = buildContextMenu()
+        contextMenu?.delegate = self
     }
 
     func warmUpPopover() {
@@ -45,7 +45,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         popover?.performClose(nil)
     }
 
-    /// Resize the menu-bar popover when inline sections expand (e.g. Move grid).
+    /// Resize the menu-bar popover's content area.
     func setPopoverContentHeight(_ height: CGFloat) {
         guard let popover else { return }
         let size = NSSize(width: Self.popoverWidth, height: height)
@@ -56,24 +56,38 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     private func showProjectsPopover() {
         guard let button = statusItem?.button else { return }
         let popover = makePopover()
-        // Always open collapsed; Move expands on demand.
         popover.contentSize = NSSize(
             width: Self.popoverWidth,
-            height: Self.popoverHeightCollapsed
+            height: Self.popoverHeight
         )
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-        popover.contentViewController?.view.window?.sharingType = .readOnly
-        popover.contentViewController?.view.window?.makeKey()
+        let window = popover.contentViewController?.view.window
+        window?.sharingType = .readOnly
+        window?.makeKey()
+        DiagnosticLog.shared.info(
+            "menuBar.popover shown=\(popover.isShown) visible=\(window?.isVisible == true) frame=\(window.map { NSStringFromRect($0.frame) } ?? "nil")"
+        )
     }
 
     @objc private func statusItemClicked(_ sender: Any?) {
-        guard let event = NSApp.currentEvent,
-              let button = statusItem?.button else { return }
+        guard let button = statusItem?.button else { return }
+        // No `guard let event` — action deliveries without a current event
+        // (AX presses, synthetic triggers) must still open the popover.
+        let eventType = NSApp.currentEvent?.type
+        DiagnosticLog.shared.info(
+            "menuBar.click event=\(eventType.map { "\($0.rawValue)" } ?? "nil") shown=\(popover?.isShown == true)"
+        )
 
-        if event.type == .rightMouseUp {
+        if eventType == .rightMouseUp {
+            CompanionAppsMenu.refresh()
             contextMenu?.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height + 4), in: button)
         } else if let shown = popover, shown.isShown {
+            // A popover whose window never made it onscreen still reports
+            // `isShown`, turning every later click into an invisible close —
+            // force-reset and reopen instead of trusting the flag.
+            let visible = shown.contentViewController?.view.window?.isVisible == true
             shown.performClose(sender)
+            if !visible { showProjectsPopover() }
         } else {
             showProjectsPopover()
         }
@@ -84,14 +98,18 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         let timed = DiagnosticLog.shared.startTimed("makePopover")
         let popover = NSPopover()
         popover.contentViewController = NSHostingController(rootView: MainView(scanner: ProjectScanner.shared))
-        popover.behavior = .transient
+        // .semitransient, not .transient: a menu-bar popover must survive the
+        // app losing activation (menu-bar auto-hide reorders the status item
+        // window, other apps retake focus) — .transient closes on any
+        // deactivation, which made left-click appear to do nothing.
+        popover.behavior = .semitransient
         // Keep resize of contentSize (Move expand/collapse) non-animated —
         // animating NSPopover + SwiftUI layout has crashed with nested material
         // resolve (EXC_BAD_ACCESS / stack guard) on recent macOS builds.
         popover.animates = false
         popover.contentSize = NSSize(
             width: Self.popoverWidth,
-            height: Self.popoverHeightCollapsed
+            height: Self.popoverHeight
         )
         popover.appearance = NSAppearance(named: .darkAqua)
         popover.delegate = self
@@ -101,11 +119,15 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     }
 
     func popoverWillShow(_ notification: Notification) {
-        AppActivationCoordinator.shared.refresh()
         NotificationCenter.default.post(name: .latticesPopoverWillShow, object: nil)
+        // Defer the activation-policy refresh until after the popover finishes
+        // ordering in — flipping accessory→regular mid-show can dismiss a
+        // transient popover before it ever renders.
+        DispatchQueue.main.async { AppActivationCoordinator.shared.refresh() }
     }
 
     func popoverDidClose(_ notification: Notification) {
+        DiagnosticLog.shared.info("menuBar.popover closed")
         AppActivationCoordinator.shared.refresh()
     }
 
@@ -130,6 +152,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         menu.addItem(.separator())
 
         FrontWindowPlacementMenu.attach(to: menu)
+        CompanionAppsMenu.attach(to: menu)
 
         menu.addItem(.separator())
 
@@ -158,6 +181,11 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         update.target = self
         menu.addItem(update)
 
+        let action = NSMenuItem(title: actionMenuTitle(), action: #selector(menuAction), keyEquivalent: "")
+        action.target = self
+        menu.addItem(action)
+        actionMenuItem = action
+
         menu.addItem(.separator())
 
         let settings = NSMenuItem(title: "Help & Settings…", action: #selector(menuSettings), keyEquivalent: ",")
@@ -183,6 +211,49 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     @objc private func menuRuns() { ScreenMapWindowController.shared.showPage(.runs) }
     @objc private func menuActivityLog() { ScreenMapWindowController.shared.showPage(.activity) }
     @MainActor @objc private func menuUpdate() { AppUpdater.shared.promptForUpdate() }
+
+    private func actionMenuTitle() -> String {
+        ActionProduct.isInstalled ? "Open Action" : "Install Action…"
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        actionMenuItem?.title = actionMenuTitle()
+    }
+
+    @objc private func menuAction() {
+        if ActionProduct.isInstalled {
+            ActionProduct.open()
+            return
+        }
+
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = "Install Action?"
+        alert.informativeText = "Action is native computer-use for macOS — observe, act, and record through a local agent. Lattices will download the latest signed release and install it to /Applications."
+        alert.addButton(withTitle: "Install")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        if ActionProduct.install() {
+            let started = NSAlert()
+            started.alertStyle = .informational
+            started.messageText = "Installing Action"
+            started.informativeText = "The download is running in the background. Action will open when it finishes — grant Accessibility and Screen Recording when prompted."
+            started.addButton(withTitle: "OK")
+            started.runModal()
+        } else {
+            let failed = NSAlert()
+            failed.alertStyle = .warning
+            failed.messageText = "Could Not Start the Installer"
+            failed.informativeText = "The lattices CLI was not found on this machine. Install Action manually from lattices.dev/action."
+            failed.addButton(withTitle: "Open lattices.dev/action")
+            failed.addButton(withTitle: "Cancel")
+            if failed.runModal() == .alertFirstButtonReturn {
+                NSWorkspace.shared.open(ActionProduct.siteURL)
+            }
+        }
+    }
+
     @objc private func menuSettings() { SettingsWindowController.shared.show() }
     @objc private func menuQuit() { NSApp.terminate(nil) }
 

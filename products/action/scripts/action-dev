@@ -11,32 +11,27 @@ APP_EXECUTABLE="$APP_DIR/Contents/MacOS/Action"
 
 usage() {
   cat <<'EOF'
-action-dev: local developer CLI for the native Action app
+Native Action.app developer commands. Prefer bun scripts from products/action.
 
 Usage:
-  action-dev help
-  action-dev path
-  action-dev alias
-  action-dev build
-  action-dev rebuild
-  action-dev launch [--no-build]
-  action-dev relaunch [--no-build]
-  action-dev quit
-  action-dev status
-  action-dev doctor
-  action-dev verify
-  action-dev hud
-  action-dev logs
-  action-dev host <args...>
-  action-dev agent <args...>
-  action-dev agent-cli <args...>
+  bun run native:app:build
+  bun run native:rebuild
+  bun run native:launch [-- --no-build]
+  bun run native:relaunch [-- --no-build]
+  bun run native:quit
+  bun run native:permissions:status
+  bun run native:doctor
+  bun run native:verify
+  bun run native:logs
+  bun run native:host -- <args...>
+  bun run native:agent -- <args...>
+  bun run native:agent-cli -- <args...>
 
 Examples:
-  action-dev build
-  action-dev relaunch
-  action-dev host guided-calculator-demo
-  action-dev agent-cli status
-  action-dev logs
+  bun run native:app:build
+  bun run native:relaunch
+  bun run native:host -- guided-calculator-demo
+  bun run native:logs
 EOF
 }
 

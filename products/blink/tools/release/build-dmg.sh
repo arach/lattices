@@ -10,11 +10,12 @@
 #   BLINK_NOTARY_PROFILE  notarytool keychain profile (default: notarytool)
 #   BLINK_SKIP_SIGN=1     unsigned local smoke build
 #   BLINK_SKIP_NOTARIZE=1 sign but don't notarize
+#   BLINK_ARTIFACT_DIR    output directory (default: products/blink/dist)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-BUILD_DIR="$ROOT/dist"
+BUILD_DIR="${BLINK_ARTIFACT_DIR:-$ROOT/dist}"
 APP_NAME="Blink"
 BUNDLE="$BUILD_DIR/$APP_NAME.app"
 DMG_PATH="$BUILD_DIR/$APP_NAME.dmg"
@@ -132,7 +133,7 @@ else
     codesign --force --options runtime --timestamp \
         --entitlements "$ENTITLEMENTS" --identifier "$BUNDLE_ID" --sign "$SIGN_IDENTITY" \
         "$BUNDLE"
-    codesign --verify --deep --strict --verbose=2 "$BUNDLE" 2>&1 | tail -3
+    bash "$ROOT/../../tools/release/verify-companion-signature.sh" "$BUNDLE"
 fi
 
 echo "==> Creating DMG"

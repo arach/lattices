@@ -137,6 +137,7 @@ struct SettingsContentView: View {
     @ObservedObject var permChecker: PermissionChecker = .shared
     @ObservedObject var mouseGestureController: MouseGestureController = .shared
     @ObservedObject var keyboardRemapController: KeyboardRemapController = .shared
+    @ObservedObject var spaceSwitchInterceptor: SpaceSwitchInterceptor = .shared
     @ObservedObject var assistantSession: WorkspaceAssistantSession = .shared
     var onBack: (() -> Void)? = nil
 
@@ -710,6 +711,95 @@ struct SettingsContentView: View {
                                 permChecker.requestAccessibility()
                             }
                         }
+                    }
+                }
+
+                settingsCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(alignment: .top, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text("Instant Space Switching")
+                                    .font(Typo.monoBold(12))
+                                    .foregroundColor(Palette.text)
+                                Text("Ctrl+←/→ jumps straight to the next Space — no slide animation — with a small Lattices confirmation.")
+                                    .font(Typo.caption(10))
+                                    .foregroundColor(Palette.textMuted)
+                            }
+
+                            Spacer()
+
+                            SettingsSwitch(isOn: $prefs.spaceSwitchKeysEnabled)
+                        }
+
+                        HStack(spacing: 10) {
+                            statusToken(
+                                prefs.spaceSwitchKeysEnabled ? "Enabled" : "Off",
+                                color: prefs.spaceSwitchKeysEnabled ? Palette.running : Palette.textDim
+                            )
+                            if !permChecker.accessibility {
+                                statusToken("Accessibility needed", color: Palette.detach)
+                            }
+                            Spacer(minLength: 0)
+                        }
+
+                        breakerStatusRow(
+                            state: spaceSwitchInterceptor.breakerState,
+                            label: "Space switching"
+                        ) {
+                            spaceSwitchInterceptor.reArmAfterBreakerTrip()
+                        }
+
+                        if !permChecker.accessibility {
+                            cardDivider
+
+                            permissionSettingsRow(
+                                "Accessibility",
+                                granted: permChecker.accessibility,
+                                detail: "Required to intercept Ctrl+←/→ before Mission Control."
+                            ) {
+                                permChecker.requestAccessibility()
+                            }
+                        }
+                    }
+                }
+
+                settingsCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(alignment: .top, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text("Spatial Lens")
+                                    .font(Typo.monoBold(12))
+                                    .foregroundColor(Palette.text)
+                                Text("Preview and place the window under your pointer without opening a separate mode.")
+                                    .font(Typo.caption(10))
+                                    .foregroundColor(Palette.textMuted)
+                            }
+
+                            Spacer()
+                            SettingsSwitch(isOn: $prefs.spatialLensEnabled)
+                        }
+
+                        HStack(spacing: 10) {
+                            statusToken(
+                                prefs.spatialLensEnabled ? "Enabled" : "Off",
+                                color: prefs.spatialLensEnabled ? Palette.running : Palette.textDim
+                            )
+                            statusToken("Control + Option", color: Palette.launch)
+                            if !permChecker.accessibility {
+                                statusToken("Accessibility needed", color: Palette.detach)
+                            }
+                            Spacer(minLength: 0)
+                        }
+
+                        cardDivider
+
+                        VStack(alignment: .leading, spacing: 7) {
+                            Text("Hold physical Control + Option over a window to reveal eight targets around the pointer.")
+                            Text("Choose a side or corner, then release either modifier to place. Release in the center to cancel.")
+                            Text("Sides cycle ½ → ⅓ → ⅔ on this display. Move well beyond a side target for a deliberate adjacent-display flick.")
+                        }
+                        .font(Typo.caption(9.5))
+                        .foregroundColor(Palette.textMuted.opacity(0.82))
                     }
                 }
             }

@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 560" width="1280" height="560">
+  <defs>
+    <radialGradient id="vignette" cx="50%" cy="42%" r="75%">
+      <stop offset="0%" stop-color="#0e1513"/>
+      <stop offset="55%" stop-color="#0a0f0e"/>
+      <stop offset="100%" stop-color="#070a09"/>
+    </radialGradient>
+    <radialGradient id="gridGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#e8b56b" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#e8b56b" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="sweep" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#e8b56b" stop-opacity="0"/>
+      <stop offset="70%" stop-color="#e8b56b" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#f2d5a0" stop-opacity="1"/>
+    </linearGradient>
+    <linearGradient id="echo" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#e8b56b" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#e8b56b" stop-opacity="0.5"/>
+    </linearGradient>
+    <pattern id="dots" width="44" height="44" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.4" fill="#ece5d6" opacity="0.05"/>
+    </pattern>
+    <filter id="softGlow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="14" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="wideGlow" x="-120%" y="-120%" width="340%" height="340%">
+      <feGaussianBlur stdDeviation="26"/>
+    </filter>
+  </defs>
+
+  <!-- ground -->
+  <rect width="1280" height="560" fill="url(#vignette)"/>
+  <rect width="1280" height="560" fill="url(#dots)"/>
+
+  <!-- inner frame -->
+  <rect x="26" y="26" width="1228" height="508" rx="22" fill="none" stroke="#ece5d6" stroke-opacity="0.07"/>
+
+  <!-- ambient halo behind the mark — hugs the bottom row, no top-row tint -->
+  <ellipse cx="990" cy="360" rx="300" ry="130" fill="url(#gridGlow)"/>
+
+  <!-- ── left: wordmark block ─────────────────────────────── -->
+  <text x="96" y="168" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace"
+        font-size="14" letter-spacing="4" fill="#e8b56b" opacity="0.9">MACOS · WORKSPACE</text>
+
+  <text x="92" y="258" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace"
+        font-size="86" font-weight="700" letter-spacing="-2" fill="#ece5d6">lattices</text>
+
+  <text x="96" y="316" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace"
+        font-size="21" fill="#ece5d6" opacity="0.72">Tile windows, keep tmux sessions,</text>
+  <text x="96" y="346" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace"
+        font-size="21" fill="#ece5d6" opacity="0.72">search the screen, drive the desktop.</text>
+
+  <!-- shortcut chips -->
+  <g font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace" font-size="15">
+    <rect x="96" y="392" width="196" height="38" rx="9" fill="#e8b56b" fill-opacity="0.06" stroke="#ece5d6" stroke-opacity="0.14"/>
+    <text x="112" y="417"><tspan fill="#e8b56b">⌃ ← →</tspan><tspan fill="#ece5d6" opacity="0.66">  spaces</tspan></text>
+
+    <rect x="304" y="392" width="152" height="38" rx="9" fill="#e8b56b" fill-opacity="0.06" stroke="#ece5d6" stroke-opacity="0.14"/>
+    <text x="320" y="417"><tspan fill="#e8b56b">⌃⌥</tspan><tspan fill="#ece5d6" opacity="0.66">  tile</tspan></text>
+
+    <rect x="468" y="392" width="216" height="38" rx="9" fill="#e8b56b" fill-opacity="0.06" stroke="#ece5d6" stroke-opacity="0.14"/>
+    <text x="484" y="417"><tspan fill="#e8b56b">◍ drag</tspan><tspan fill="#ece5d6" opacity="0.66">  gestures</tspan></text>
+  </g>
+
+  <!-- ── right: the lattice ───────────────────────────────── -->
+  <!-- top-edge sweep beam — sweeps right while the cell runs the bottom row -->
+  <rect x="860" y="118" width="240" height="3.5" rx="1.75" fill="url(#sweep)" opacity="0">
+    <animate attributeName="opacity" values="0;0;0.9;0.9;0;0" keyTimes="0;0.5;0.55;0.8;0.86;1" dur="6s" repeatCount="indefinite"/>
+    <animate attributeName="x" values="806;806;875;875" keyTimes="0;0.52;0.84;1" dur="6s" repeatCount="indefinite"/>
+  </rect>
+
+  <!-- grid: cells 78, gap 18 — origin 845,145 -->
+  <g>
+    <!-- dim cells -->
+    <g fill="#ece5d6" fill-opacity="0.10">
+      <rect x="941"  y="145" width="78" height="78" rx="18"/>
+      <rect x="1037" y="145" width="78" height="78" rx="18"/>
+      <rect x="941"  y="241" width="78" height="78" rx="18"/>
+      <rect x="1037" y="241" width="78" height="78" rx="18"/>
+    </g>
+    <!-- lit L: left column + full bottom row -->
+    <g fill="#ece5d6">
+      <rect x="845"  y="145" width="78" height="78" rx="18"/>
+      <rect x="845"  y="241" width="78" height="78" rx="18"/>
+      <rect x="845"  y="337" width="78" height="78" rx="18"/>
+      <rect x="941"  y="337" width="78" height="78" rx="18"/>
+      <rect x="1037" y="337" width="78" height="78" rx="18"/>
+    </g>
+
+    <!-- the traversal: active cell glides down the left column then across
+         the bottom row — the L path — with two delayed echo ghosts trailing -->
+    <!-- far echo -->
+    <rect x="845" y="145" width="78" height="78" rx="18" fill="#e8b56b" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0 0;0 0;0 0;0 96;0 96;0 192;96 192;96 192;192 192;192 192;192 192" keyTimes="0;0.10;0.22;0.30;0.42;0.52;0.62;0.72;0.84;0.94;1" dur="6s" begin="0.24s" repeatCount="indefinite" calcMode="spline" keySplines="0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1"/>
+      <animate attributeName="opacity" values="0;0;0.1;0.1;0;0" keyTimes="0;0.42;0.5;0.68;0.78;1" dur="6s" begin="0.24s" repeatCount="indefinite"/>
+    </rect>
+    <!-- near echo -->
+    <rect x="845" y="145" width="78" height="78" rx="18" fill="#e8b56b" opacity="0">
+      <animateTransform attributeName="transform" type="translate" values="0 0;0 0;0 0;0 96;0 96;0 192;96 192;96 192;192 192;192 192;192 192" keyTimes="0;0.10;0.22;0.30;0.42;0.52;0.62;0.72;0.84;0.94;1" dur="6s" begin="0.12s" repeatCount="indefinite" calcMode="spline" keySplines="0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1"/>
+      <animate attributeName="opacity" values="0;0;0.2;0.2;0;0" keyTimes="0;0.42;0.5;0.68;0.78;1" dur="6s" begin="0.12s" repeatCount="indefinite"/>
+    </rect>
+    <!-- leader -->
+    <rect x="845" y="145" width="78" height="78" rx="18" fill="#e8b56b" opacity="0.5" filter="url(#wideGlow)">
+      <animateTransform attributeName="transform" type="translate" values="0 0;0 0;0 0;0 96;0 96;0 192;96 192;96 192;192 192;192 192;192 192" keyTimes="0;0.10;0.22;0.30;0.42;0.52;0.62;0.72;0.84;0.94;1" dur="6s" repeatCount="indefinite" calcMode="spline" keySplines="0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1"/>
+      <animate attributeName="opacity" values="0;0.5;0.5;0;0" keyTimes="0;0.05;0.78;0.88;1" dur="6s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="845" y="145" width="78" height="78" rx="18" fill="#e8b56b" filter="url(#softGlow)">
+      <animateTransform attributeName="transform" type="translate" values="0 0;0 0;0 0;0 96;0 96;0 192;96 192;96 192;192 192;192 192;192 192" keyTimes="0;0.10;0.22;0.30;0.42;0.52;0.62;0.72;0.84;0.94;1" dur="6s" repeatCount="indefinite" calcMode="spline" keySplines="0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1"/>
+      <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.04;0.96;1" dur="6s" repeatCount="indefinite"/>
+      <animate attributeName="fill" values="#e8b56b;#e8b56b;#ece5d6;#ece5d6" keyTimes="0;0.84;0.94;1" dur="6s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="845" y="145" width="78" height="78" rx="18" fill="none" stroke="#f2d5a0" stroke-opacity="0.5">
+      <animateTransform attributeName="transform" type="translate" values="0 0;0 0;0 0;0 96;0 96;0 192;96 192;96 192;192 192;192 192;192 192" keyTimes="0;0.10;0.22;0.30;0.42;0.52;0.62;0.72;0.84;0.94;1" dur="6s" repeatCount="indefinite" calcMode="spline" keySplines="0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1;0.5 0 0.5 1"/>
+      <animate attributeName="stroke-opacity" values="0;0.5;0.5;0;0" keyTimes="0;0.05;0.78;0.88;1" dur="6s" repeatCount="indefinite"/>
+    </rect>
+  </g>
+
+  <!-- telemetry caption -->
+  <text x="845" y="478" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace"
+        font-size="14" fill="#ece5d6" opacity="0.42">space 4 → 5 · gesture · 83ms</text>
+</svg>

@@ -1,0 +1,35 @@
+/* Integration only: keep Blink's composition, textures, notes and serif voice. */
+#blink-landing {
+  --font-display: "Cormorant Garamond", Georgia, serif;
+  --font-text: "Space Grotesk", -apple-system, sans-serif;
+  --font-jetbrains-mono: "JetBrains Mono", monospace;
+  --logo-ink: var(--text);
+  --logo-dim: var(--line-2);
+  min-height: 100vh;
+  line-height: 1.5;
+}
+#blink-landing h2 { font-family: var(--font-display); font-size: clamp(32px, 3vw, 42px); font-weight: 600; }
+#blink-landing #top p:first-of-type,
+#blink-landing h2 + p { font-family: var(--font-text); font-size: 16px; line-height: 1.7; }
+#blink-landing .blink-family-header { position: fixed; inset: 0 0 auto; z-index: 60; color: var(--text); background: rgba(var(--bg-rgb), .94); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); font-family: var(--font-text); }
+#blink-landing .blink-family-inner { max-width: 1024px; margin: auto; min-height: 60px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+#blink-landing .blink-family-brand, #blink-landing .blink-family-brand a, #blink-landing .blink-family-links { display: flex; align-items: center; gap: 10px; }
+#blink-landing .blink-family-brand { font-family: var(--font-jetbrains-mono); font-size: 14px; }
+#blink-landing .blink-family-slash { color: var(--faint); }
+#blink-landing .blink-family-links { gap: 20px; font-size: 12px; }
+#blink-landing .blink-family-links .nav-link { color: var(--dim); font-size: 12px; }
+#blink-landing .products-menu-panel { background: var(--panel); color: var(--text); border-color: var(--line); }
+#blink-landing .products-menu-link { color: var(--text); }
+#blink-landing .products-menu-link small { color: var(--dim); }
+#blink-landing .blink-nav-download { background: var(--acc); color: var(--on-acc); padding: 8px 12px; border-radius: 5px; font-weight: 600; }
+#blink-landing .blink-section-nav { max-width: 1024px; margin: auto; display: flex; gap: 24px; padding: 0 24px 10px; font-size: 11px; color: var(--dim); }
+#blink-landing section { scroll-margin-top: 110px; }
+@media (max-width: 639px) {
+  #blink-landing .blink-family-inner { padding: 0 16px; gap: 10px; flex-wrap: wrap; min-height: 64px; }
+  #blink-landing .blink-family-brand { font-size: 12px; gap: 7px; }
+  #blink-landing .blink-family-brand a { gap: 5px; }
+  #blink-landing .blink-family-links { gap: 10px; }
+  #blink-landing .blink-agent-link, #blink-landing .blink-family-links [role="radiogroup"] { display: none; }
+  #blink-landing .blink-section-nav { padding: 0 16px 12px; gap: 20px; overflow-x: auto; white-space: nowrap; }
+  #blink-landing .products-menu-panel { right: 0; width: 260px; }
+}

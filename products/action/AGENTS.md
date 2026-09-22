@@ -140,6 +140,20 @@ This is the safest high-signal command because it:
 - verifies signature state
 - reports current Accessibility and Screen Recording status
 
+## Launch The App
+
+```bash
+bun run native:launch
+```
+
+Rebuild and relaunch after a native change:
+
+```bash
+bun run native:relaunch
+```
+
+From the Lattices repo root, `bun run action:launch` and `bun run action:dev` call the same scripts.
+
 ## Useful Smoke Commands
 
 Check permissions:

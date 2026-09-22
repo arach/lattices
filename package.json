@@ -1,6 +1,6 @@
 {
   "name": "@arach/lattices",
-  "version": "0.11.1",
+  "version": "0.12.0",
   "description": "Tile windows, search your screen, keep tmux sessions alive, and let AI agents control your Mac — CLI + daemon API",
   "homepage": "https://lattices.dev",
   "bugs": {
@@ -49,7 +49,8 @@
     "dev": "bun --cwd apps/site dev",
     "site:build": "bun --cwd apps/site build",
     "action": "bun --cwd products/action action",
-    "action:dev": "bun --cwd products/action action-dev",
+    "action:dev": "bun --cwd products/action native:relaunch",
+    "action:launch": "bun --cwd products/action native:launch",
     "action:check": "bun --cwd products/action typecheck && bun --cwd products/action check:no-wallpaper-writes",
     "action:native:build": "bun --cwd products/action native:app:build",
     "action:native:doctor": "bun --cwd products/action native:doctor",
@@ -61,7 +62,7 @@
     "check": "bun run check:types && bun run check:app",
     "check:types": "tsc --noEmit",
     "check:app": "env CLANG_MODULE_CACHE_PATH=/tmp/lattices-clang-cache SWIFTPM_TESTS_MODULECACHE=/tmp/lattices-swiftpm-cache swift build --package-path apps/mac",
-    "test": "node --experimental-strip-types --test tests/cli.test.mjs && bun test tests/dependency-free.test.ts",
+    "test": "node --experimental-strip-types --test tests/cli.test.mjs && bun test tests/dependency-free.test.ts tests/skills.test.ts",
     "test:cli": "node --experimental-strip-types --test tests/cli.test.mjs",
     "test:dependencies": "bun test tests/dependency-free.test.ts",
     "test:e2e": "node --experimental-strip-types --test tests/e2e-daemon.test.mjs",
