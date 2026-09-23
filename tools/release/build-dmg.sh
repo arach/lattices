@@ -80,6 +80,15 @@ if [ -d "$DECK_BUILDER_RESOURCES" ]; then
     cp -R "$DECK_BUILDER_RESOURCES" "$BUNDLE/Contents/Resources/DeckBuilder"
 fi
 
+# SwiftPM resource bundles (Vox speech engine, DeckKit, ...). A signed app
+# can't carry them in its root, where the generated Bundle.module accessor
+# looks, so they live in Contents/Resources and the packages resolve them
+# from there. Missing ones make the app trap at launch on other machines.
+for resource_bundle in "$APP_DIR"/.build/release/*.bundle; do
+    [ -d "$resource_bundle" ] || continue
+    cp -R "$resource_bundle" "$BUNDLE/Contents/Resources/"
+done
+
 # Keep privacy and transport declarations in one canonical plist, then inject
 # the requested release version. This prevents release-only drift from the dev
 # bundle (for example a missing microphone usage description).
