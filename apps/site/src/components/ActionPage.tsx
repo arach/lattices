@@ -10,6 +10,7 @@ import actionProductFilmCaptions from "../../../../products/action/docs/assets/a
 import actionProductFilmPoster from "../../../../products/action/docs/assets/action-record-the-work-poster.jpg";
 import { ActionArchitectureDiagram } from "./ActionArchitectureDiagram";
 import { LatticesLogo } from "./LandingPage";
+import { ProductsMenu } from "./SiteChrome";
 import { ThemeToggle } from "./ThemeToggle";
 
 const downloadUrl = "/action/download";
@@ -84,6 +85,7 @@ export default function ActionPage() {
             <span className="action-lockup-product">action</span>
           </a>
           <div className="nav-links">
+            <ProductsMenu />
             <a href="/" className="nav-link action-nav-optional">Lattices</a>
             <a href="/docs/agents" className="nav-link action-nav-optional">For agents</a>
             <a href={sourceUrl} className="nav-link action-nav-source">Source</a>

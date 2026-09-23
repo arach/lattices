@@ -1,11 +1,16 @@
 import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+const latticesVersion = (JSON.parse(
+  readFileSync(join(import.meta.dir, "../../package.json"), "utf8"),
+) as { version: string }).version;
+
 // Fake CDP transport only: these tests never launch or connect to real Chrome.
 for (const stalledPhase of ["health", "navigate", "readiness", "none"] as const) {
-  test(`MCP 0.3.0 browser_open bounds ${stalledPhase}`, async () => {
+  test(`lattices mcp browser_open bounds ${stalledPhase}`, async () => {
     const directory = await mkdtemp(join(tmpdir(), "action-browser-test-"));
     const server = Bun.serve({ port: 0, hostname: "127.0.0.1",
       async fetch(request, server) {
@@ -27,7 +32,7 @@ for (const stalledPhase of ["health", "navigate", "readiness", "none"] as const)
         ws.send(JSON.stringify({ id: request.id, result }));
       } },
     });
-    const child = Bun.spawn([process.execPath, join(import.meta.dir, "index.ts")], {
+    const child = Bun.spawn([process.execPath, join(import.meta.dir, "server.ts"), "--toolsets", "browser"], {
       stdin: "pipe", stdout: "pipe", stderr: "pipe",
       env: { ...process.env, ACTION_BROWSER_DEBUG_PORT: String(server.port), ACTION_BROWSER_PROFILE_ROOT: directory,
         ACTION_BROWSER_SESSION_DIR: join(directory, "sessions"), ACTION_BROWSER_IDLE_TIMEOUT_MS: "0" },
@@ -41,7 +46,12 @@ for (const stalledPhase of ["health", "navigate", "readiness", "none"] as const)
     const send = (id: number, method: string, params = {}) => child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
     try {
       send(1, "initialize");
-      expect((await next()).result.serverInfo.version).toBe("0.3.0");
+      // The server identifies as lattices, at the lattices version. Nothing here
+      // is pinned to a plugin version any more -- that pinning is what broke.
+      const initialize = (await next()).result;
+      expect(initialize.serverInfo.name).toBe("lattices");
+      expect(initialize.serverInfo.version).toBe(latticesVersion);
+      expect(initialize.instructions).toContain("Action Browser");
       send(2, "tools/list");
       expect((await next()).result.tools.find((tool: { name: string }) => tool.name === "browser_open").inputSchema.properties.mode).toBeDefined();
       const started = performance.now();

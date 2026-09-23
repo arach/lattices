@@ -19,6 +19,8 @@ import { getLastUpdatedBatch, repoInfo } from './git-meta.mjs'
 import ActionPage from '../src/components/ActionPage.tsx'
 import BlinkPage from '../src/components/BlinkPage.tsx'
 import SpeechPage from '../src/components/SpeechPage.tsx'
+import ProductsPage from '../src/components/ProductsPage.tsx'
+import FamilyPage from '../src/components/FamilyPage.tsx'
 
 const siteDir = resolve(import.meta.dirname, '..')
 const repoRoot = resolve(siteDir, '..', '..')
@@ -84,6 +86,13 @@ await writeRoute(
   renderToString(createElement(BlinkPage)),
 )
 await writeRoute('/speech', 'Speech — a standalone player from Lattices', 'Queue text, choose a voice, and control playback independently.', renderToString(createElement(SpeechPage)))
+await writeRoute('/products', 'Products — Lattices', 'Browse Lattices, Action, Blink, Speech, and the agent API.', renderToString(createElement(ProductsPage)))
+await writeRoute(
+  '/family',
+  'What Lattices can do — Lattices',
+  'A guided tour from workspace layout and agent collaboration to computer use, spatial notes, and speech.',
+  renderToString(createElement(FamilyPage)),
+)
 await copyBlinkDocs()
 await writeBlinkDownloadRedirect()
 
@@ -154,6 +163,8 @@ async function writeSitemap() {
     { loc: `${SITE_URL}/action/agents`, priority: '0.7' },
     { loc: `${SITE_URL}/blink`, priority: '0.9' },
     { loc: `${SITE_URL}/speech`, priority: '0.9' },
+    { loc: `${SITE_URL}/products`, priority: '0.9' },
+    { loc: `${SITE_URL}/family`, priority: '0.9' },
     { loc: `${SITE_URL}/blink/agents.md`, priority: '0.7' },
     { loc: `${SITE_URL}/blog`, priority: '0.8' },
     ...docs.map((doc) => ({
@@ -408,17 +419,32 @@ function renderDoc(doc) {
   `
 }
 
+function renderTagList(tags) {
+  if (!Array.isArray(tags) || tags.length === 0) return ''
+  return `<span class="post-tags">${tags.map((tag) => `<span class="post-tag">${escapeHtml(tag)}</span>`).join('')}</span>`
+}
+
 function renderBlogIndex(items) {
   return `
     <main class="blog-container" data-pagefind-body>
-      <h1>Blog</h1>
-      ${items.map((post) => `
-        <article class="blog-post">
-          <a href="/blog/${post.slug}"><h2 class="blog-post-title">${escapeHtml(post.data.title || titleFromSlug(post.slug))}</h2></a>
-          <p class="blog-post-meta">${formatDate(post.data.date)}</p>
-          <p class="blog-post-desc">${escapeHtml(post.data.description || '')}</p>
-        </article>
-      `).join('')}
+      <header class="blog-index-head">
+        <p class="products-kicker">Lattices blog</p>
+        <h1>Notes on workspaces, agents, and the Mac.</h1>
+        <p>Short posts about what we are building across Lattices, Action, Blink, and Speech.</p>
+      </header>
+      <div class="blog-list">
+        ${items.map((post) => `
+          <a class="blog-post" href="/blog/${post.slug}">
+            <span class="blog-post-date">${formatDate(post.data.date)}</span>
+            <span class="blog-post-copy">
+              <span class="blog-post-title">${escapeHtml(post.data.title || titleFromSlug(post.slug))}</span>
+              <span class="blog-post-desc">${escapeHtml(post.data.description || '')}</span>
+              ${renderTagList(post.data.tags)}
+            </span>
+            <span class="blog-post-arrow" aria-hidden="true">→</span>
+          </a>
+        `).join('')}
+      </div>
     </main>
   `
 }
@@ -433,17 +459,22 @@ function renderPost(post) {
   return `
     <article class="post-container" data-pagefind-body>
       <a href="/blog" class="post-back">← all posts</a>
-      <h1 class="post-title">${escapeHtml(post.data.title || titleFromSlug(post.slug))}</h1>
-      <div class="post-meta">
-        ${post.data.author ? `${escapeHtml(post.data.author)} · ` : ''}
-        ${formatDate(post.data.date)}
-        ${updated && updated !== post.data.date ? ` · updated ${formatDate(updated)}` : ''}
-        <a href="${repoInfo.editBlogUrl(post.slug)}" target="_blank" rel="noopener noreferrer" class="post-edit-link">Edit on GitHub →</a>
-      </div>
+      <header class="post-header">
+        <p class="products-kicker">Lattices blog</p>
+        <h1 class="post-title">${escapeHtml(post.data.title || titleFromSlug(post.slug))}</h1>
+        ${post.data.description ? `<p class="post-dek">${escapeHtml(post.data.description)}</p>` : ''}
+        <div class="post-meta">
+          ${post.data.author ? `${escapeHtml(post.data.author)} · ` : ''}
+          ${formatDate(post.data.date)}
+          ${updated && updated !== post.data.date ? ` · updated ${formatDate(updated)}` : ''}
+          <a href="${repoInfo.editBlogUrl(post.slug)}" target="_blank" rel="noopener noreferrer" class="post-edit-link">Edit on GitHub →</a>
+          ${renderTagList(post.data.tags)}
+        </div>
+      </header>
       <div class="prose">${rendered}</div>
       <nav class="post-nav-pager" aria-label="More posts">
-        ${older ? `<a class="post-pager post-pager-prev" href="/blog/${older.slug}"><span>Newer</span><strong>${escapeHtml(older.data.title || titleFromSlug(older.slug))}</strong></a>` : '<span></span>'}
-        ${newer ? `<a class="post-pager post-pager-next" href="/blog/${newer.slug}"><span>Older</span><strong>${escapeHtml(newer.data.title || titleFromSlug(newer.slug))}</strong></a>` : '<span></span>'}
+        ${newer ? `<a class="post-pager post-pager-prev" href="/blog/${newer.slug}"><span class="post-pager-label">Newer</span><strong>${escapeHtml(newer.data.title || titleFromSlug(newer.slug))}</strong></a>` : '<span></span>'}
+        ${older ? `<a class="post-pager post-pager-next" href="/blog/${older.slug}"><span class="post-pager-label">Older</span><strong>${escapeHtml(older.data.title || titleFromSlug(older.slug))}</strong></a>` : '<span></span>'}
       </nav>
     </article>
   `

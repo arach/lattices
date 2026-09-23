@@ -842,46 +842,118 @@
 .blog-container,
 .post-container,
 .not-found {
-  max-width: 720px;
+  max-width: 760px;
   margin: 0 auto;
   padding: 72px 24px 120px;
 }
 
-.blog-container h1,
+.products-index {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 80px 24px 120px;
+}
+
+.products-kicker {
+  margin: 0 0 12px;
+  color: var(--docs-accent);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.blog-index-head,
+.products-index-head {
+  max-width: 680px;
+  margin-bottom: 44px;
+}
+
+.blog-index-head h1,
+.products-index-head h1,
 .post-title,
 .not-found h1 {
-  margin: 0 0 40px;
-  color: #fff;
-  font-size: 2rem;
+  margin: 0;
+  color: var(--docs-text);
+  font-size: clamp(2rem, 5vw, 3.5rem);
   font-weight: 500;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.04em;
+  line-height: 1.04;
+}
+
+.blog-index-head > p:not(.products-kicker),
+.products-index-head > p:not(.products-kicker) {
+  margin: 16px 0 0;
+  color: var(--docs-muted);
+  font-size: 1.04rem;
+  line-height: 1.6;
+}
+
+.blog-list {
+  display: grid;
+  border-top: 1px solid var(--docs-border);
 }
 
 .blog-post {
-  margin-bottom: 40px;
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr) 24px;
+  gap: 20px;
+  padding: 24px 0;
+  border-bottom: 1px solid var(--docs-border);
+  color: var(--docs-text);
 }
 
-.blog-post-title {
-  margin: 0 0 6px;
-  color: #fff;
-  font-size: 1.2rem;
+.blog-post-date,
+.product-card-index,
+.product-card-meta {
+  color: var(--docs-muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.blog-post-copy,
+.product-card-copy {
+  display: grid;
+  gap: 8px;
+}
+
+.blog-post-title,
+.product-card-title {
+  color: var(--docs-text);
+  font-size: 1.12rem;
   font-weight: 500;
+  letter-spacing: -0.015em;
+  transition: color 0.15s ease;
 }
 
-.blog-post-title:hover {
+.blog-post:hover .blog-post-title,
+.blog-post:focus-visible .blog-post-title,
+.product-card:hover .product-card-title,
+.product-card:focus-visible .product-card-title {
   color: var(--docs-accent);
 }
 
-.blog-post-meta,
-.post-meta {
-  margin-bottom: 12px;
+.blog-post-desc,
+.product-card-desc {
   color: var(--docs-muted);
-  font-size: 0.9rem;
+  font-size: 0.94rem;
+  line-height: 1.55;
 }
 
-.blog-post-desc {
-  color: #999;
-  line-height: 1.5;
+.blog-post-arrow,
+.product-card-arrow {
+  align-self: center;
+  color: var(--docs-accent);
+  transition: transform 0.15s ease;
+}
+
+.blog-post:hover .blog-post-arrow,
+.blog-post:focus-visible .blog-post-arrow,
+.product-card:hover .product-card-arrow,
+.product-card:focus-visible .product-card-arrow {
+  transform: translateX(3px);
 }
 
 .post-back {
@@ -891,20 +963,134 @@
   font-size: 0.85rem;
 }
 
-.post-tags {
+.post-back:hover {
+  color: var(--docs-text);
+}
+
+.post-header {
+  margin-bottom: 44px;
+}
+
+.post-dek {
+  margin: 14px 0 0;
+  color: var(--docs-muted);
+  font-size: 1.06rem;
+  line-height: 1.6;
+}
+
+.post-meta {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--docs-border);
+  color: var(--docs-muted);
+  font-size: 0.9rem;
+}
+
+.post-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
   gap: 6px;
-  margin-top: 8px;
 }
 
 .post-tag {
   border: 1px solid var(--docs-border-lit);
-  border-radius: 4px;
+  border-radius: 999px;
   background: var(--docs-surface);
   color: var(--docs-muted);
   padding: 2px 8px;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.products-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.product-card {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 24px;
+  gap: 16px;
+  min-height: 164px;
+  padding: 22px;
+  border: 1px solid var(--docs-border);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--docs-text) 3%, transparent), transparent 72px),
+    var(--docs-surface);
+  box-shadow: var(--docs-shadow-sm);
+  color: var(--docs-text);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.product-card:hover,
+.product-card:focus-visible {
+  border-color: color-mix(in srgb, var(--docs-accent) 45%, var(--docs-border-lit));
+  box-shadow: var(--docs-shadow-md);
+  transform: translateY(-2px);
+}
+
+.product-card-index {
+  padding-top: 2px;
+}
+
+.product-card-meta {
+  margin-top: 12px;
+}
+
+.products-directory {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.7fr) minmax(0, 1.3fr);
+  gap: 32px;
+  margin-top: 56px;
+  padding-top: 32px;
+  border-top: 1px solid var(--docs-border);
+}
+
+.products-directory h2 {
+  margin: 0;
+  color: var(--docs-text);
+  font-size: 1.4rem;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.products-directory-list {
+  display: grid;
+  gap: 10px;
+}
+
+.products-directory-list a {
+  display: grid;
+  gap: 2px;
+  padding: 14px 16px;
+  border: 1px solid var(--docs-border);
+  border-radius: 8px;
+  background: var(--docs-surface);
+  color: var(--docs-text);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.products-directory-list a:hover,
+.products-directory-list a:focus-visible {
+  border-color: color-mix(in srgb, var(--docs-accent) 45%, var(--docs-border-lit));
+  background: color-mix(in srgb, var(--docs-accent) 5%, var(--docs-surface));
+}
+
+.products-directory-list span {
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.products-directory-list small {
+  color: var(--docs-muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
 }
 
 .search-overlay {
@@ -979,6 +1165,15 @@
     display: none;
   }
 
+  .products-grid,
+  .products-directory {
+    grid-template-columns: 1fr;
+  }
+
+  .products-directory {
+    gap: 20px;
+  }
+
   .docs-shell {
     display: block;
     padding: 24px 18px 64px;
@@ -1030,8 +1225,23 @@
 
   .blog-container,
   .post-container,
-  .not-found-shell {
+  .not-found-shell,
+  .products-index {
     padding: 48px 16px 80px;
+  }
+
+  .blog-post {
+    grid-template-columns: minmax(0, 1fr) 20px;
+    gap: 12px;
+  }
+
+  .blog-post-date {
+    grid-column: 1 / -1;
+  }
+
+  .product-card {
+    min-height: 0;
+    padding: 18px;
   }
 }
 

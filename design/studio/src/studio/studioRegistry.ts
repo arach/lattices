@@ -69,6 +69,20 @@ export const pages: readonly LatticesPage[] = [
       "apps/mac/Sources/Core/Overlays/HUD/HUDWindowHints.swift",
     ],
   },
+  {
+    href: "/studio/studies/product-family",
+    label: "Product family — homepage insertion",
+    bucket: "studies",
+    surface: "cross",
+    status: "concept",
+    blurb:
+      "A progressive homepage narrative where workspace, agents, Action, Blink, and Speech emerge in sequence, with earlier product-family surfaces retained for comparison.",
+    source: [
+      "apps/site/src/components/LandingPage.tsx",
+      "apps/site/src/components/SiteChrome.tsx",
+      "design/studio/public/product-family/board.html",
+    ],
+  },
 ];
 
 const defined = defineStudio({

@@ -70,10 +70,10 @@ test("Action Browser skill stays plugin-local", () => {
   expect(meta).toContain("internal: true");
 });
 
-test("Action plugin marketplace stays standalone", () => {
+test("Lattices marketplace keeps the Action Browser skill plugin", () => {
   const marketplace = JSON.parse(readFileSync(marketplacePath, "utf8"));
   const pluginNames = marketplace.plugins.map((plugin: { name: string }) => plugin.name);
 
-  expect(marketplace.name).toBe("action");
+  expect(marketplace.name).toBe("lattices");
   expect(pluginNames).toEqual(["action-browser"]);
 });
