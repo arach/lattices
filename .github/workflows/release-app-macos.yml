@@ -208,6 +208,9 @@ jobs:
 
           echo "LATTICES_NOTARY_PROFILE=lattices-notarytool" >> "$GITHUB_ENV"
 
+      - name: Install disk image packaging tool
+        run: brew install create-dmg
+
       - name: Build DMG
         shell: bash
         env:

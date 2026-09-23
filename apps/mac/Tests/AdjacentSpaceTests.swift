@@ -152,4 +152,30 @@ final class AdjacentSpaceTests: XCTestCase {
         XCTAssertEqual(previous?.trigger.direction, .left)
         XCTAssertEqual(next?.trigger.direction, .right)
     }
+
+    // MARK: - Ctrl+arrow stepping through Mission Control order
+
+    /// Fullscreen app Spaces (here 20) sit between desktops and are real
+    /// steps — a Ctrl+→ from desktop 10 lands on the fullscreen app.
+    func testAdjacentSpaceIdIncludesFullscreenSpaces() {
+        let ordered = [10, 20, 11]
+        XCTAssertEqual(WindowTiler.adjacentSpaceId(in: ordered, currentSpaceId: 10, offset: 1), 20)
+        XCTAssertEqual(WindowTiler.adjacentSpaceId(in: ordered, currentSpaceId: 20, offset: 1), 11)
+        XCTAssertEqual(WindowTiler.adjacentSpaceId(in: ordered, currentSpaceId: 20, offset: -1), 10)
+    }
+
+    /// Merged presses clamp at the ends instead of failing outright.
+    func testAdjacentSpaceIdClampsMergedOffsets() {
+        let ordered = [10, 11, 12]
+        XCTAssertEqual(WindowTiler.adjacentSpaceId(in: ordered, currentSpaceId: 11, offset: 5), 12)
+        XCTAssertEqual(WindowTiler.adjacentSpaceId(in: ordered, currentSpaceId: 11, offset: -5), 10)
+    }
+
+    func testAdjacentSpaceIdReportsEdgeAndUnknown() {
+        let ordered = [10, 11]
+        XCTAssertNil(WindowTiler.adjacentSpaceId(in: ordered, currentSpaceId: 11, offset: 1))
+        XCTAssertNil(WindowTiler.adjacentSpaceId(in: ordered, currentSpaceId: 10, offset: -1))
+        XCTAssertNil(WindowTiler.adjacentSpaceId(in: ordered, currentSpaceId: 99, offset: 1))
+        XCTAssertNil(WindowTiler.adjacentSpaceId(in: [], currentSpaceId: 10, offset: 1))
+    }
 }

@@ -556,7 +556,16 @@ struct SettingsContentView: View {
                 }
 
                 settingsPrefRow(
-                    "Ctrl+Option HUD",
+                    "Ctrl+Option hold",
+                    caption: "What holding Control+Option shows. Tile HUD is the gray picker; Spatial Lens places the window under the pointer."
+                ) {
+                    SettingsChoiceBar(
+                        selection: $prefs.ctrlOptionHoldMode,
+                        options: CtrlOptionHoldMode.allCases.map { ($0, $0.label) }
+                    )
+                }
+                settingsPrefRow(
+                    "Tile HUD style",
                     caption: "Loop is the radial ring. Matrix is the Lattices 3×3. While held, numpad 1–9 or arrow keys tile directly."
                 ) {
                     SettingsChoiceBar(
@@ -721,7 +730,7 @@ struct SettingsContentView: View {
                                 Text("Instant Space Switching")
                                     .font(Typo.monoBold(12))
                                     .foregroundColor(Palette.text)
-                                Text("Ctrl+←/→ jumps straight to the next Space — no slide animation — with a small Lattices confirmation.")
+                                Text("Ctrl+←/→ jumps straight to the next Space — no slide animation — with a small Lattices confirmation. Hold Shift for a landscape of every Space on that display.")
                                     .font(Typo.caption(10))
                                     .foregroundColor(Palette.textMuted)
                             }
@@ -747,6 +756,15 @@ struct SettingsContentView: View {
                             label: "Space switching"
                         ) {
                             spaceSwitchInterceptor.reArmAfterBreakerTrip()
+                        }
+
+                        cardDivider
+
+                        settingsPrefRow(
+                            "Slide echo",
+                            caption: "A quick swoosh at the pointer as you switch. Off, or with Reduce Motion, a thin top-edge sweep is used."
+                        ) {
+                            SettingsSwitch(isOn: $prefs.spaceSwitchGlideEnabled)
                         }
 
                         if !permChecker.accessibility {
@@ -776,7 +794,10 @@ struct SettingsContentView: View {
                             }
 
                             Spacer()
-                            SettingsSwitch(isOn: $prefs.spatialLensEnabled)
+                            SettingsSwitch(isOn: Binding(
+                                get: { prefs.ctrlOptionHoldMode == .spatialLens },
+                                set: { prefs.ctrlOptionHoldMode = $0 ? .spatialLens : .tileHUD }
+                            ))
                         }
 
                         HStack(spacing: 10) {
@@ -797,6 +818,7 @@ struct SettingsContentView: View {
                             Text("Hold physical Control + Option over a window to reveal eight targets around the pointer.")
                             Text("Choose a side or corner, then release either modifier to place. Release in the center to cancel.")
                             Text("Sides cycle ½ → ⅓ → ⅔ on this display. Move well beyond a side target for a deliberate adjacent-display flick.")
+                            Text("Takes over the Ctrl+Option hold from the Tile HUD.")
                         }
                         .font(Typo.caption(9.5))
                         .foregroundColor(Palette.textMuted.opacity(0.82))

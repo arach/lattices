@@ -1,6 +1,6 @@
 import Foundation
 
-struct WindowEntry: Codable, Identifiable {
+struct WindowEntry: Codable, Identifiable, Equatable {
     let wid: UInt32
     let app: String
     let pid: Int32

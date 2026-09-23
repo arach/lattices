@@ -731,6 +731,84 @@ async function updateApp(extraArgs: string[] = [], shouldLaunch = false): Promis
   relaunchIfNeeded(shouldLaunch || wasRunning || extraArgs.length > 0, extraArgs);
 }
 
+// ── Package upgrade (CLI + bundled app) ──────────────────────────────
+
+const NPM_PACKAGE = "@arach/lattices";
+
+function isSourceCheckout(): boolean {
+  return existsSync(resolve(cliRoot, ".git")) || existsSync(resolve(appDir, "Package.swift"));
+}
+
+// Reinstall with whichever package manager owns this global install, so the
+// package lands back at the same path the LaunchAgent points at.
+function globalInstallCommand(): [string, string[]] {
+  const spec = `${NPM_PACKAGE}@latest`;
+  if (cliRoot.includes("/.bun/install/global/")) return ["bun", ["add", "-g", spec]];
+  if (cliRoot.includes("/pnpm/")) return ["pnpm", ["add", "-g", spec]];
+  return ["npm", ["install", "-g", spec]];
+}
+
+async function latestPublishedVersion(): Promise<string | null> {
+  try {
+    const res = await httpsGet(`https://registry.npmjs.org/${NPM_PACKAGE.replace("/", "%2f")}/latest`);
+    const chunks: Buffer[] = [];
+    for await (const chunk of res) chunks.push(chunk as Buffer);
+    const version = JSON.parse(Buffer.concat(chunks).toString()).version;
+    return typeof version === "string" ? version : null;
+  } catch {
+    return null;
+  }
+}
+
+function runFreshHelper(args: string[]): void {
+  // Run the newly installed helper, not this process's stale in-memory copy.
+  try {
+    execFileSync(process.execPath, [selfScriptPath, ...args], { stdio: "inherit" });
+  } catch {}
+}
+
+async function upgradePackage(force: boolean): Promise<void> {
+  if (isSourceCheckout()) {
+    console.log(`This lattices runs from a source checkout (${cliRoot}).`);
+    console.log("Update it with: git pull && lattices app restart");
+    return;
+  }
+
+  const current = packageVersion();
+  const latest = await latestPublishedVersion();
+  if (latest && latest === current && !force) {
+    console.log(`lattices ${current} is up to date.`);
+    return;
+  }
+
+  const wasRunning = isRunning();
+  const startupInstalled = existsSync(launchAgentPath);
+  if (wasRunning) quit();
+
+  const [pm, pmArgs] = globalInstallCommand();
+  console.log(`Updating lattices ${current} → ${latest ?? "latest"}  (${pm} ${pmArgs.join(" ")})`);
+  try {
+    execFileSync(pm, pmArgs, { stdio: "inherit" });
+  } catch {
+    console.error("Update failed.");
+    if (pm === "npm") console.error("If npm needs elevated permissions, fix the global prefix rather than using sudo.");
+    if (wasRunning) launch();
+    process.exit(1);
+  }
+
+  if (!existsSync(selfScriptPath)) {
+    console.log(`lattices updated, but the install moved away from ${cliRoot}.`);
+    console.log("Run `lattices app install` to re-register startup and relaunch.");
+    return;
+  }
+
+  // Rewrite the LaunchAgent so it tracks the new install; relaunch if it was up.
+  if (startupInstalled) runFreshHelper(["install", ...(wasRunning ? [] : ["--no-launch"])]);
+  else if (wasRunning) runFreshHelper(["launch"]);
+
+  console.log(`lattices ${packageVersion()} installed.`);
+}
+
 const rawArgs = process.argv.slice(2);
 const firstArg = rawArgs[0];
 const cmd = firstArg && !firstArg.startsWith("-") ? firstArg : "launch";
@@ -788,6 +866,8 @@ if (cmd === "build") {
   }
 } else if (cmd === "status") {
   printAppStatus();
+} else if (cmd === "upgrade") {
+  await upgradePackage(flags.includes("--force"));
 } else if (cmd === "update") {
   if (shouldDetachUpdate && !isUpdateWorker) {
     spawnDetachedUpdateWorker(launchFlags, shouldLaunchAfterUpdate);

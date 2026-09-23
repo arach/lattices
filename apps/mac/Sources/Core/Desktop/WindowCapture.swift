@@ -110,7 +110,9 @@ enum WindowCapture {
     static func display(
         displayID: CGDirectDisplayID,
         showsCursor: Bool = true,
-        imageOption: CGWindowImageOption = [.bestResolution]
+        imageOption: CGWindowImageOption = [.bestResolution],
+        excludingWindowIDs: [CGWindowID] = [],
+        maximumPixelSize: CGFloat? = nil
     ) async -> CGImage? {
         guard hasScreenRecordingAccess() else { return nil }
         do {
@@ -122,13 +124,21 @@ enum WindowCapture {
                 return nil
             }
 
-            let filter = SCContentFilter(display: display, excludingWindows: [])
+            let excluded = content.windows.filter { excludingWindowIDs.contains($0.windowID) }
+            let filter = SCContentFilter(display: display, excludingWindows: excluded)
             filter.includeMenuBar = true
             let contentInfo = SCShareableContent.info(for: filter)
             let scale = outputScale(for: imageOption, contentInfo: contentInfo)
+            var pixelWidth = CGFloat(display.width) * scale
+            var pixelHeight = CGFloat(display.height) * scale
+            if let maximumPixelSize, max(pixelWidth, pixelHeight) > maximumPixelSize {
+                let fit = maximumPixelSize / max(pixelWidth, pixelHeight)
+                pixelWidth *= fit
+                pixelHeight *= fit
+            }
             let configuration = SCStreamConfiguration()
-            configuration.width = max(1, Int((CGFloat(display.width) * scale).rounded(.up)))
-            configuration.height = max(1, Int((CGFloat(display.height) * scale).rounded(.up)))
+            configuration.width = max(1, Int(pixelWidth.rounded(.up)))
+            configuration.height = max(1, Int(pixelHeight.rounded(.up)))
             configuration.captureResolution = captureResolution(for: imageOption)
             configuration.scalesToFit = true
             configuration.preservesAspectRatio = true
@@ -142,6 +152,67 @@ enum WindowCapture {
         } catch {
             logCaptureFailure("display \(displayID)", error)
             return nil
+        }
+    }
+
+    /// Small shots of specific windows, including ones on other Spaces.
+    /// One window list is fetched, then captures run a few at a time in the
+    /// given order; `onBatch` gets each group as soon as it lands. Stops
+    /// early when the calling task is cancelled.
+    @discardableResult
+    static func thumbnails(
+        windowIDs: [CGWindowID],
+        maximumPixelSize: CGFloat,
+        onBatch: (@Sendable ([CGWindowID: CGImage]) async -> Void)? = nil
+    ) async -> [CGWindowID: CGImage] {
+        guard hasScreenRecordingAccess(), !windowIDs.isEmpty else { return [:] }
+        do {
+            let content = try await SCShareableContent.current
+            let byID = Dictionary(content.windows.map { ($0.windowID, $0) }, uniquingKeysWith: { first, _ in first })
+            let windows = windowIDs.compactMap { byID[$0] }
+            var images: [CGWindowID: CGImage] = [:]
+            var index = 0
+            while index < windows.count {
+                if Task.isCancelled { break }
+                let end = min(index + 4, windows.count)
+                let chunk = windows[index..<end]
+                index = end
+                var batch: [CGWindowID: CGImage] = [:]
+                await withTaskGroup(of: (CGWindowID, CGImage)?.self) { group in
+                    for window in chunk {
+                        group.addTask {
+                            let filter = SCContentFilter(desktopIndependentWindow: window)
+                            let configuration = SCStreamConfiguration()
+                            let scale = max(window.frame.width, window.frame.height) > 1
+                                ? min(1, maximumPixelSize / max(window.frame.width, window.frame.height))
+                                : 1
+                            configuration.width = max(1, Int((window.frame.width * scale).rounded(.up)))
+                            configuration.height = max(1, Int((window.frame.height * scale).rounded(.up)))
+                            configuration.captureResolution = .nominal
+                            configuration.scalesToFit = true
+                            configuration.preservesAspectRatio = true
+                            configuration.showsCursor = false
+                            configuration.ignoreGlobalClipSingleWindow = true
+                            guard let image = try? await SCScreenshotManager.captureImage(
+                                contentFilter: filter,
+                                configuration: configuration
+                            ) else { return nil }
+                            return (window.windowID, image)
+                        }
+                    }
+                    for await item in group {
+                        if let (id, image) = item {
+                            batch[id] = image
+                        }
+                    }
+                }
+                images.merge(batch) { _, new in new }
+                if let onBatch, !batch.isEmpty { await onBatch(batch) }
+            }
+            return images
+        } catch {
+            logCaptureFailure("thumbnails", error)
+            return [:]
         }
     }
 

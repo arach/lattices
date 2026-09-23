@@ -48,6 +48,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         SpatialLensController.shared.start()
         KeyboardRemapController.shared.start()
         SpaceSwitchInterceptor.shared.start()
+        DispatchQueue.main.async { SpaceNumberMark.shared.refresh() }
         SecureEventInputMonitor.shared.start()
         installTerminationSignalHandlers()
 
@@ -206,6 +207,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil,
             queue: .main
         ) { _ in
+            SpaceNumberMark.shared.refresh()
             // System-initiated Space change (Dock app activation, trackpad
             // swipe, Mission Control). Switches Lattices performs show their
             // own bezel — skip those so it doesn't double up.

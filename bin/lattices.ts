@@ -3208,6 +3208,15 @@ switch (command) {
     } catch { /* exit code forwarded */ }
     break;
   }
+  case "update":
+  case "upgrade": {
+    const { execFileSync } = await import("node:child_process");
+    const appScript = resolve(import.meta.dir, "lattices-app.ts");
+    try {
+      execFileSync("bun", [appScript, "upgrade", ...args.slice(1)], { stdio: "inherit" });
+    } catch { /* exit code forwarded */ }
+    break;
+  }
   case "action": {
     const { execFileSync } = await import("node:child_process");
     const actionScript = resolve(import.meta.dir, "lattices-action.ts");

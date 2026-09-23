@@ -21,6 +21,10 @@ enum SpaceSwitchHotkeys {
     /// repeated plist churn on every preference/permission re-emission.
     private static var applied = false
 
+    /// True while Lattices holds the Mission Control Ctrl+arrow hotkeys
+    /// unregistered — a synthetic Ctrl+arrow does nothing then.
+    static var isHoldingSystemHotkeys: Bool { applied }
+
     static func disable() {
         guard !applied else { return }
         applied = true
