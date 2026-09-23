@@ -18,9 +18,14 @@
 
 <p align="center">
   <a href="https://lattices.dev">lattices.dev</a>
+  · <a href="https://lattices.dev/family">what it can do</a>
   · <a href="https://lattices.dev/docs/overview">docs</a>
   · <a href="https://github.com/arach/lattices/releases/latest">releases</a>
   · <a href="https://lattices.dev/docs/api">agent API</a>
+</p>
+
+<p align="center">
+  <img src="assets/readme-demo.gif" width="100%" alt="lattices — agent session, gesture preview, and synced workspace state" />
 </p>
 
 Native Swift menu bar app (`apps/mac`) plus a TypeScript CLI (`bin/lattices.ts`). The app hosts a localhost WebSocket daemon. Agents, scripts, and the CLI use the same surface.
@@ -209,13 +214,14 @@ Do not guess session hashes. Read them from `lattices sessions --json` or `tmux.
 
 ## Product family
 
-This repository ships three products.
+This repository ships four products. [lattices.dev/family](https://lattices.dev/family) walks the story end to end.
 
 | Product | Role | Root |
 | --- | --- | --- |
 | **Lattices** | Workspace: tiling, sessions, search, daemon | this tree |
 | **[Action](https://lattices.dev/action)** | Computer use: observe, act, record | [`products/action`](products/action) |
 | **[Blink](https://lattices.dev/blink)** | Spatial notes as floating panels | [`products/blink`](products/blink) |
+| **[Speech](https://lattices.dev/speech)** | A voice for agents: background readouts, HUD readalong | [`skills/speech`](skills/speech) |
 
 Action and Blink stay separately signed. Do not fold them into the Lattices menu bar app. `lattices action` installs and talks to Action.app (`ws://127.0.0.1:4319`).
 
