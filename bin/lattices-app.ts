@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { execFileSync, execSync, spawn } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, chmodSync, createWriteStream, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, chmodSync, createWriteStream, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { get } from "node:https";
@@ -538,6 +538,17 @@ function syncBundleResources(): void {
     const bundledDeckBuilderPath = resolve(resourcesDir, "DeckBuilder");
     rmSync(bundledDeckBuilderPath, { recursive: true, force: true });
     cpSync(deckBuilderResourcesPath, bundledDeckBuilderPath, { recursive: true });
+  }
+  // SwiftPM resource bundles resolve from Contents/Resources in a packaged
+  // app; mirror the release layout so dev builds exercise the same path.
+  const buildOutputDir = resolve(appDir, ".build/release");
+  if (existsSync(buildOutputDir)) {
+    for (const entry of readdirSync(buildOutputDir)) {
+      if (!entry.endsWith(".bundle")) continue;
+      const target = resolve(resourcesDir, entry);
+      rmSync(target, { recursive: true, force: true });
+      cpSync(resolve(buildOutputDir, entry), target, { recursive: true });
+    }
   }
   // Bundle the assistant knowledge base so the in-app chat assistant can load it
   // in shipped builds (dev builds fall back to the repo docs/ path).

@@ -106,12 +106,22 @@ public final class DeckTactileTheme: @unchecked Sendable {
     }
 
     public static func loadBuiltinCatalog() -> DeckTactileCatalog {
-        if let url = Bundle.module.url(forResource: "deck-tactile-catalog", withExtension: "json"),
+        if let url = deckKitResourceBundle()?.url(forResource: "deck-tactile-catalog", withExtension: "json"),
            let data = try? Data(contentsOf: url),
            let catalog = try? JSONDecoder().decode(DeckTactileCatalog.self, from: data) {
             return catalog
         }
         return DeckTactileCatalog()
+    }
+
+    /// Signed apps keep SwiftPM resource bundles in Contents/Resources, not the
+    /// app root that the generated `Bundle.module` checks before trapping.
+    private static func deckKitResourceBundle() -> Bundle? {
+        if Bundle.main.bundleURL.pathExtension == "app" {
+            guard let resources = Bundle.main.resourceURL else { return nil }
+            return Bundle(url: resources.appendingPathComponent("DeckKit_DeckKit.bundle"))
+        }
+        return .module
     }
 
     public static func loadCatalog(from url: URL) throws -> DeckTactileCatalog {
