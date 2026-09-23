@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import CoreGraphics
 
 /// Hold Ctrl+Option and move the mouse to aim. Dead-center is cancel;
@@ -35,6 +36,7 @@ final class TilePointerController {
     private var pollTimer: Timer?
     private var pendingArm: DispatchWorkItem?
     private var pendingDisarm: DispatchWorkItem?
+    private var subscriptions = Set<AnyCancellable>()
 
     private static let modifierKeyCodes: Set<UInt16> = [54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
 
@@ -82,6 +84,14 @@ final class TilePointerController {
             return event
         }
 
+        Preferences.shared.$ctrlOptionHoldMode
+            .receive(on: RunLoop.main)
+            .sink { [weak self] mode in
+                guard mode != .tileHUD else { return }
+                self?.dismiss(apply: false)
+            }
+            .store(in: &subscriptions)
+
         DiagnosticLog.shared.info("TilePointer: Ctrl+Option mouse aiming started")
     }
 
@@ -104,6 +114,7 @@ final class TilePointerController {
         pendingArm = nil
         pendingDisarm?.cancel()
         pendingDisarm = nil
+        subscriptions.removeAll()
         dismiss(apply: false)
     }
 
@@ -132,6 +143,9 @@ final class TilePointerController {
     /// Returns true when the key was consumed for a keyboard tile.
     @discardableResult
     private func handleKeyDown(_ event: NSEvent) -> Bool {
+        // When another feature owns the Ctrl+Option hold, chords fall through
+        // to the registered tiling hotkeys instead of committing here.
+        guard Preferences.shared.ctrlOptionHoldMode == .tileHUD else { return false }
         guard !Self.modifierKeyCodes.contains(event.keyCode) else { return false }
         guard Self.ctrlOptionHeld(event.modifierFlags) else {
             cancelApply()
@@ -160,6 +174,14 @@ final class TilePointerController {
     }
 
     private func handleFlags(_ flags: NSEvent.ModifierFlags) {
+        guard Preferences.shared.ctrlOptionHoldMode == .tileHUD else {
+            pendingArm?.cancel()
+            pendingArm = nil
+            if armed {
+                dismiss(apply: false)
+            }
+            return
+        }
         let mods = flags.intersection(.deviceIndependentFlagsMask)
         // If Command or Shift is held (e.g. Hyper key chord or transition),
         // immediately abort aiming so the Hyper key is never intercepted.

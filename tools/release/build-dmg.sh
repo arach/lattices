@@ -31,6 +31,8 @@ if [ "$SKIP_SIGN" != "1" ]; then
     echo "    Sign identity: $SIGN_IDENTITY"
 fi
 
+command -v create-dmg >/dev/null || { echo "Install the packaging dependency: brew install create-dmg" >&2; exit 1; }
+
 echo "==> Building Lattices v$VERSION (release)..."
 # Resolve the same declarative feature flags used by the dev and package
 # builders. In particular, this enables Hudson Voice when apps/mac/build.json
@@ -116,18 +118,7 @@ fi
 
 # ── Create DMG ────────────────────────────────────────────
 echo "==> Creating DMG..."
-DMG_STAGING=$(mktemp -d)
-cp -R "$BUNDLE" "$DMG_STAGING/"
-ln -s /Applications "$DMG_STAGING/Applications"
-
-hdiutil create \
-    -volname "Lattices" \
-    -srcfolder "$DMG_STAGING" \
-    -ov \
-    -format UDZO \
-    "$BUILD_DIR/$DMG_NAME"
-
-rm -rf "$DMG_STAGING"
+"$ROOT/tools/release/dmg/package.sh" "$BUNDLE" "$BUILD_DIR/$DMG_NAME"
 
 # Sign the DMG itself
 if [ "$SKIP_SIGN" = "1" ]; then

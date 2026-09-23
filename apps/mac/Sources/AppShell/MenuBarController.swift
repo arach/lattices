@@ -61,12 +61,23 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
             height: Self.popoverHeight
         )
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-        let window = popover.contentViewController?.view.window
+        let window = pinPopoverToActiveSpace(popover)
         window?.sharingType = .readOnly
         window?.makeKey()
         DiagnosticLog.shared.info(
-            "menuBar.popover shown=\(popover.isShown) visible=\(window?.isVisible == true) frame=\(window.map { NSStringFromRect($0.frame) } ?? "nil")"
+            "menuBar.popover shown=\(popover.isShown) visible=\(window?.isVisible == true) onScreen=\(window?.occlusionState.contains(.visible) == true) frame=\(window.map { NSStringFromRect($0.frame) } ?? "nil")"
         )
+    }
+
+    /// The status item is on every Space. `NSPopover` is not: it keeps the
+    /// window on the Space where it was first ordered in, so a later left
+    /// click on the current Space only toggles an off-screen panel.
+    @discardableResult
+    private func pinPopoverToActiveSpace(_ popover: NSPopover) -> NSWindow? {
+        guard let window = popover.contentViewController?.view.window else { return nil }
+        window.collectionBehavior.formUnion([.canJoinAllSpaces, .fullScreenAuxiliary])
+        window.orderFrontRegardless()
+        return window
     }
 
     @objc private func statusItemClicked(_ sender: Any?) {
@@ -82,12 +93,20 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
             CompanionAppsMenu.refresh()
             contextMenu?.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height + 4), in: button)
         } else if let shown = popover, shown.isShown {
-            // A popover whose window never made it onscreen still reports
-            // `isShown`, turning every later click into an invisible close —
-            // force-reset and reopen instead of trusting the flag.
-            let visible = shown.contentViewController?.view.window?.isVisible == true
-            shown.performClose(sender)
-            if !visible { showProjectsPopover() }
+            // `isShown` and `isVisible` stay true for a popover parked on
+            // another Space. Closing that ghost is what makes left-click
+            // look dead. Only dismiss a panel that is already on this Space.
+            let alreadyHere = shown.contentViewController?.view.window?
+                .occlusionState.contains(.visible) == true
+            if alreadyHere {
+                shown.performClose(sender)
+            } else {
+                let window = pinPopoverToActiveSpace(shown)
+                if window?.occlusionState.contains(.visible) != true {
+                    shown.performClose(sender)
+                    showProjectsPopover()
+                }
+            }
         } else {
             showProjectsPopover()
         }
@@ -119,6 +138,9 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
     }
 
     func popoverWillShow(_ notification: Notification) {
+        if let popover = notification.object as? NSPopover {
+            pinPopoverToActiveSpace(popover)
+        }
         NotificationCenter.default.post(name: .latticesPopoverWillShow, object: nil)
         // Defer the activation-policy refresh until after the popover finishes
         // ordering in — flipping accessory→regular mid-show can dismiss a

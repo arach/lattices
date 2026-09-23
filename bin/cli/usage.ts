@@ -121,8 +121,9 @@ Usage:
   lattices mcp --print-config <harness>  Print the agent config snippet
   lattices daemon status      Show daemon status
   lattices logs [limit]       Show activity log entries (aliases: log, activity, diag)
+  lattices update             Update lattices (CLI + app), keep startup, relaunch
   lattices app                Launch the menu bar companion app
-  lattices app update         Download the latest menu bar app and relaunch
+  lattices app update         Swap in the latest app release only (not the CLI)
   lattices app build          Rebuild the menu bar app
   lattices app restart        Rebuild and relaunch the menu bar app
   lattices app quit           Stop the menu bar app

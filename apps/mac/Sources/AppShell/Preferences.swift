@@ -36,6 +36,26 @@ enum TilePointerHUDStyle: String, CaseIterable, Identifiable {
     }
 }
 
+/// Which feature owns the physical Ctrl+Option hold. Exactly one may claim
+/// the gesture — running both renders two pickers and commits two placements.
+enum CtrlOptionHoldMode: String, CaseIterable, Identifiable {
+    /// The gray radial/matrix aim picker; release tiles the frontmost window.
+    case tileHUD
+    /// The labeled contextual lens; release places the window under the pointer.
+    case spatialLens
+    case off
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .tileHUD: return "Tile HUD"
+        case .spatialLens: return "Spatial Lens"
+        case .off: return "Off"
+        }
+    }
+}
+
 /// Where the Ctrl+←/→ Space-switch confirmation pill lands on screen.
 enum SpaceSwitchBezelPosition: String, CaseIterable, Identifiable {
     /// Docks at the screen edge the desktop is moving toward.
@@ -140,9 +160,12 @@ class Preferences: ObservableObject {
         didSet { UserDefaults.standard.set(cursorMarkerSize.rawValue, forKey: "cursorMarker.size") }
     }
 
-    @Published var spatialLensEnabled: Bool {
-        didSet { UserDefaults.standard.set(spatialLensEnabled, forKey: "spatialLens.enabled") }
+    @Published var ctrlOptionHoldMode: CtrlOptionHoldMode {
+        didSet { UserDefaults.standard.set(ctrlOptionHoldMode.rawValue, forKey: "ctrlOptionHold.mode") }
     }
+
+    /// Spatial Lens owns the Ctrl+Option hold only in lens mode.
+    var spatialLensEnabled: Bool { ctrlOptionHoldMode == .spatialLens }
 
     @Published var keyboardRemapsEnabled: Bool {
         didSet { UserDefaults.standard.set(keyboardRemapsEnabled, forKey: "keyboardRemaps.enabled") }
@@ -156,6 +179,12 @@ class Preferences: ObservableObject {
 
     @Published var spaceSwitchBezelPosition: SpaceSwitchBezelPosition {
         didSet { UserDefaults.standard.set(spaceSwitchBezelPosition.rawValue, forKey: "spaceSwitchKeys.bezelPosition") }
+    }
+
+    /// Speed streaks across the display on each switch. Off falls back to
+    /// the top-edge sweep.
+    @Published var spaceSwitchGlideEnabled: Bool {
+        didSet { UserDefaults.standard.set(spaceSwitchGlideEnabled, forKey: "spaceSwitchKeys.glide") }
     }
 
     // MARK: - Search & OCR
@@ -325,8 +354,16 @@ class Preferences: ObservableObject {
             self.keyboardRemapsEnabled = true
         }
 
-        self.spatialLensEnabled = UserDefaults.standard.object(forKey: "spatialLens.enabled") == nil
-            || UserDefaults.standard.bool(forKey: "spatialLens.enabled")
+        if let saved = UserDefaults.standard.string(forKey: "ctrlOptionHold.mode"),
+           let mode = CtrlOptionHoldMode(rawValue: saved) {
+            self.ctrlOptionHoldMode = mode
+        } else if UserDefaults.standard.object(forKey: "spatialLens.enabled") != nil,
+                  UserDefaults.standard.bool(forKey: "spatialLens.enabled") {
+            // An explicit Spatial Lens opt-in survives the single-owner migration.
+            self.ctrlOptionHoldMode = .spatialLens
+        } else {
+            self.ctrlOptionHoldMode = .tileHUD
+        }
 
         if UserDefaults.standard.object(forKey: "spaceSwitchKeys.enabled") != nil {
             self.spaceSwitchKeysEnabled = UserDefaults.standard.bool(forKey: "spaceSwitchKeys.enabled")
@@ -339,6 +376,12 @@ class Preferences: ObservableObject {
             self.spaceSwitchBezelPosition = position
         } else {
             self.spaceSwitchBezelPosition = .top
+        }
+
+        if UserDefaults.standard.object(forKey: "spaceSwitchKeys.glide") != nil {
+            self.spaceSwitchGlideEnabled = UserDefaults.standard.bool(forKey: "spaceSwitchKeys.glide")
+        } else {
+            self.spaceSwitchGlideEnabled = true
         }
         // Search & OCR. Default off until the user explicitly enables it from
         // the Permissions Assistant or Search settings. Honors any explicit

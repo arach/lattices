@@ -12,7 +12,7 @@ workspace from there.
 ```bash
 lattices app          # Build (or download) and launch
 lattices app install  # Register launch-at-login and launch now
-lattices app update   # Download the latest release and relaunch
+lattices app update   # Swap in the latest app release only
 lattices app build    # Rebuild from source
 lattices app restart  # Quit, rebuild, relaunch
 lattices app quit     # Stop the app
@@ -25,6 +25,18 @@ Use `lattices app install` when you want the companion to start now and
 open automatically at login. It installs a user LaunchAgent in
 `~/Library/LaunchAgents`; inspect it with `lattices app login status`
 and remove it with `lattices app login disable`.
+
+## Updating
+
+```bash
+lattices update       # Update the CLI and app together
+```
+
+`lattices update` reinstalls `@arach/lattices` with the package manager
+that owns your global install (npm, bun, or pnpm). It re-registers
+launch-at-login so the LaunchAgent points at the new install, and it
+relaunches the app if it was running. Pass `--force` to reinstall when
+you already have the latest version.
 
 ## Command palette
 

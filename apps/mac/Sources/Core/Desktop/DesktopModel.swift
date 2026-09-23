@@ -273,11 +273,47 @@ final class DesktopModel: ObservableObject {
         performPoll()
     }
 
-    private func performPoll() {
+    /// Rebuild the inventory now and return the fresh entries.
+    /// `allWindows()` only mirrors the last published snapshot, so callers
+    /// that need post-poll truth use this instead.
+    /// Safe off the main thread; shared state is only touched on main.
+    @discardableResult
+    func refreshNow() -> [WindowEntry] {
+        performPoll()
+    }
+
+    /// Which windows live on which Space, straight from the WindowServer —
+    /// ~10ms, no Accessibility pass and nothing published. Space membership
+    /// doesn't change when the user switches Spaces, so this is safe to
+    /// read before a switch lands. Safe off the main thread.
+    func spaceMembershipSnapshot() -> [WindowEntry] {
+        (collectCGWindows() ?? [:]).values.sorted { $0.zIndex < $1.zIndex }
+    }
+
+    @discardableResult
+    private func performPoll() -> [WindowEntry] {
+        guard var fresh = collectCGWindows() else {
+            if Thread.isMainThread {
+                lastPollTime = Date()
+                return allWindows()
+            }
+            return DispatchQueue.main.sync {
+                lastPollTime = Date()
+                return allWindows()
+            }
+        }
+
+        // AX reconciliation: check which CG windows actually exist in Accessibility
+        reconcileWithAX(&fresh)
+        return finishPoll(fresh)
+    }
+
+    /// The CG half of a poll: every real window with its Space IDs.
+    private func collectCGWindows() -> [UInt32: WindowEntry]? {
         guard let list = CGWindowListCopyWindowInfo(
             [.optionAll, .excludeDesktopElements],
             kCGNullWindowID
-        ) as? [[String: Any]] else { return }
+        ) as? [[String: Any]] else { return nil }
 
         var fresh: [UInt32: WindowEntry] = [:]
         var zCounter = 0
@@ -339,22 +375,31 @@ final class DesktopModel: ObservableObject {
             zCounter += 1
             fresh[wid] = entry
         }
+        return fresh
+    }
 
-        // AX reconciliation: check which CG windows actually exist in Accessibility
-        reconcileWithAX(&fresh)
-
-        // Diff
-        let oldKeys = Set(windows.keys)
-        let newKeys = Set(fresh.keys)
-        let added = Array(newKeys.subtracting(oldKeys))
-        let removed = Array(oldKeys.subtracting(newKeys))
-
-        let changed = added.count > 0 || removed.count > 0 || windowsContentChanged(old: windows, new: fresh)
+    private func finishPoll(_ fresh: [UInt32: WindowEntry]) -> [WindowEntry] {
         let focusedWid = resolveFocusedWindowID(in: fresh)
-        let focusedChanged = focusedWid != lastFocusedWindowID
         let interactionTime = Date()
+        let sorted = Array(fresh.values).sorted { $0.zIndex < $1.zIndex }
 
-        DispatchQueue.main.async {
+        // Diff and publish run entirely on main — every field counts, since a
+        // Space switch flips `isOnScreen` and reorders `zIndex` without
+        // touching titles, frames, or the window set. `refreshNow()` may run
+        // this body on the switch queue while the timer polls on main, so
+        // `windows`/`interactionDates`/`lastFocusedWindowID` must only be
+        // read and written here.
+        let apply = {
+            self.lastPollTime = Date()
+
+            let oldKeys = Set(self.windows.keys)
+            let newKeys = Set(fresh.keys)
+            let added = Array(newKeys.subtracting(oldKeys))
+            let removed = Array(oldKeys.subtracting(newKeys))
+
+            let changed = self.windows != fresh
+            let focusedChanged = focusedWid != self.lastFocusedWindowID
+
             var interactions = self.interactionDates.filter { fresh[$0.key] != nil }
             // Seed newly-discovered windows so the inventory's LAST SEEN column
             // is populated from first paint. interactionDates is in-memory only
@@ -375,15 +420,22 @@ final class DesktopModel: ObservableObject {
                 self.focusedWindowID = focusedWid
             }
             self.lastFocusedWindowID = focusedWid
+
+            if changed {
+                EventBus.shared.post(.windowsChanged(
+                    windows: Array(fresh.values),
+                    added: added,
+                    removed: removed
+                ))
+            }
+        }
+        if Thread.isMainThread {
+            apply()
+        } else {
+            DispatchQueue.main.async(execute: apply)
         }
 
-        if changed {
-            EventBus.shared.post(.windowsChanged(
-                windows: Array(fresh.values),
-                added: added,
-                removed: removed
-            ))
-        }
+        return sorted
     }
 
     private func resolveFocusedWindowID(in windows: [UInt32: WindowEntry]) -> UInt32? {
@@ -469,16 +521,5 @@ final class DesktopModel: ObservableObject {
         }
         return String(scalar).lowercased()
             .split(separator: " ").joined(separator: " ")
-    }
-
-    private func windowsContentChanged(old: [UInt32: WindowEntry], new: [UInt32: WindowEntry]) -> Bool {
-        // Quick check: if titles or frames changed for any existing window
-        for (wid, newEntry) in new {
-            guard let oldEntry = old[wid] else { continue }
-            if oldEntry.title != newEntry.title || oldEntry.frame != newEntry.frame {
-                return true
-            }
-        }
-        return false
     }
 }

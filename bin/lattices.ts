@@ -3208,6 +3208,15 @@ switch (command) {
     } catch { /* exit code forwarded */ }
     break;
   }
+  case "update":
+  case "upgrade": {
+    const { execFileSync } = await import("node:child_process");
+    const appScript = resolve(import.meta.dir, "lattices-app.ts");
+    try {
+      execFileSync("bun", [appScript, "upgrade", ...args.slice(1)], { stdio: "inherit" });
+    } catch { /* exit code forwarded */ }
+    break;
+  }
   case "mcp": {
     // Serve the MCP over stdio. Loaded on demand so the toolsets -- and the
     // resources they own -- are never touched by an unrelated CLI invocation.

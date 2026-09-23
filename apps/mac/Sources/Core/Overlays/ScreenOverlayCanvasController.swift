@@ -253,9 +253,14 @@ final class ScreenOverlayCanvasController {
 
     func warmUp() {
         reconcileScreens()
+        // Order in once so the first real show is warm, then take it back
+        // out: an idle full-screen window at the maximum level, joined to
+        // every Space, makes Mission Control render its Space thumbnails as
+        // bare wallpaper.
         for window in windowsByScreenID.values {
-            window.orderFrontRegardless()
             window.alphaValue = 0
+            window.orderFrontRegardless()
+            window.orderOut(nil)
         }
     }
 
@@ -442,6 +447,7 @@ final class ScreenOverlayCanvasController {
             window.overlayView.hoveredLayerID = agentActorsHidden ? nil : hoveredActorID
             if visibleLayers.isEmpty {
                 window.alphaValue = 0
+                window.orderOut(nil)
             } else {
                 window.alphaValue = 1
                 window.orderFrontRegardless()

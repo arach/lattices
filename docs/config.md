@@ -144,7 +144,8 @@ Run `lattices init` in your project directory to generate a starter
 | `lattices app install`       | Register launch-at-login and start now            |
 | `lattices app login status`  | Show launch-at-login registration                 |
 | `lattices app login disable` | Disable launch-at-login                           |
-| `lattices app update`        | Download the latest menu bar app and relaunch     |
+| `lattices update`            | Update lattices (CLI + app), keep startup, relaunch |
+| `lattices app update`        | Swap in the latest app release only (not the CLI) |
 | `lattices app build`         | Rebuild the menu bar app from source              |
 | `lattices app restart`       | Rebuild and relaunch the menu bar app             |
 | `lattices layer [name\|index]` | Switch to a workspace layer by name or index      |
@@ -168,7 +169,8 @@ Run `lattices init` in your project directory to generate a starter
 | `lattices app install`       | Register launch-at-login and start now            |
 | `lattices app login status`  | Show launch-at-login registration                 |
 | `lattices app login disable` | Disable launch-at-login                           |
-| `lattices app update`        | Download the latest menu bar app and relaunch     |
+| `lattices update`            | Update lattices (CLI + app), keep startup, relaunch |
+| `lattices app update`        | Swap in the latest app release only (not the CLI) |
 | `lattices app build`         | Rebuild the menu bar app from source              |
 | `lattices app restart`       | Rebuild and relaunch the menu bar app             |
 | `lattices app quit`          | Stop the menu bar app                             |

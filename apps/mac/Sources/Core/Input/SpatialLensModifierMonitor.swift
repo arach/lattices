@@ -98,7 +98,7 @@ final class SpatialLensModifierMonitor {
         }
         running = true
 
-        Preferences.shared.$spatialLensEnabled
+        Preferences.shared.$ctrlOptionHoldMode
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.refresh() }
             .store(in: &subscriptions)

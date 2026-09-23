@@ -1049,21 +1049,10 @@ final class MouseGestureController: ObservableObject {
     /// amber state instead of silently returning "No … Space".
     private func switchSpaceViaGesture(offset: Int, label: String, startPoint: CGPoint) -> GestureOutcome {
         let outcome = WindowTiler.switchToAdjacentSpaceWithOutcome(offset: offset, from: startPoint)
-        guard outcome.switched || outcome.target == nil else {
+        guard let plan = outcome.plan, outcome.switched || plan.isEdge else {
             return GestureOutcome(label: "\(label) Blocked", success: false, accessory: nil)
         }
-        DispatchQueue.main.async {
-            let screen = NSScreen.screens.indices.contains(outcome.displayIndex)
-                ? NSScreen.screens[outcome.displayIndex]
-                : NSScreen.main
-            SpaceSwitchBezel.shared.show(
-                direction: offset,
-                targetIndex: outcome.switched ? outcome.target?.index : nil,
-                currentIndex: outcome.currentIndex,
-                total: outcome.totalSpaces,
-                on: screen
-            )
-        }
+        WindowTiler.presentSpaceSwitchBezel(for: plan, switched: outcome.switched)
         return GestureOutcome(
             label: outcome.switched ? label : "No \(label)",
             success: outcome.switched,
@@ -1383,7 +1372,12 @@ private final class MouseGestureOverlay {
         window.ignoresMouseEvents = true
         window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
         window.contentView = overlayView
-        window.orderFrontRegardless()
+        // Ordered in on first draw, not here: every gesture-button press
+        // makes an overlay, and a plain click never draws.
+    }
+
+    deinit {
+        window.orderOut(nil)
     }
 
     func track(
@@ -1400,6 +1394,7 @@ private final class MouseGestureOverlay {
     ) {
         fadeTimer?.invalidate()
         window.alphaValue = 1
+        if !window.isVisible { window.orderFrontRegardless() }
         let localPath = localPath(from: pathPoints)
         if direction != nil || localPath.count > 1 {
             overlayView.state = .tracking(
@@ -1435,6 +1430,7 @@ private final class MouseGestureOverlay {
     ) {
         fadeTimer?.invalidate()
         window.alphaValue = 1
+        if !window.isVisible { window.orderFrontRegardless() }
         overlayView.state = .committed(
             origin: localPoint(from: origin),
             direction: direction,
@@ -1470,11 +1466,20 @@ private final class MouseGestureOverlay {
             return
         }
 
+        guard window.isVisible else {
+            finishDismissal()
+            return
+        }
+
+        // The window is captured strongly: a click-replay overlay can be
+        // freed mid-fade, and a window left ordered in at the maximum level
+        // on every Space turns Mission Control's thumbnails into wallpaper.
+        let window = window
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = fadeDuration
             window.animator().alphaValue = 0
         }, completionHandler: { [weak self] in
-            self?.window.orderOut(nil)
+            window.orderOut(nil)
             self?.finishDismissal()
         })
     }
