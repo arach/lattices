@@ -66,13 +66,16 @@ struct FoundationCompanionAppFileSystem: CompanionAppFileSystem {
     }
 }
 
-/// Launch Services plus standard Applications folders. Identity is re-read from
-/// disk; process presence, filename, and cached paths are not enough.
+/// A helper embedded in this app's `Contents/Helpers` wins. Otherwise Launch
+/// Services plus standard Applications folders. Identity is re-read from disk;
+/// process presence, filename, and cached paths are not enough.
 struct CompanionAppDiscovery {
     var launchServices: CompanionLaunchServicesLocating
     var identityReader: CompanionBundleIdentityReading
     var fileSystem: CompanionAppFileSystem
     var applicationsDirectories: [URL]
+    /// `Lattices.app/Contents/Helpers`, or nil when not running from an app bundle.
+    var helpersDirectory: URL? = nil
 
     static let system = CompanionAppDiscovery(
         launchServices: WorkspaceCompanionLaunchServices(),
@@ -83,19 +86,44 @@ struct CompanionAppDiscovery {
             URL(fileURLWithPath: "/System/Applications", isDirectory: true),
             FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent("Applications", isDirectory: true),
-        ]
+        ],
+        helpersDirectory: CompanionAppDiscovery.helpersDirectory(inAppAt: Bundle.main.bundleURL)
     )
 
+    /// Helpers ship in `<App>.app/Contents/Helpers`. A bare executable
+    /// (`swift run`, tests) has no bundle, so it has no embedded helpers.
+    static func helpersDirectory(inAppAt bundleURL: URL) -> URL? {
+        guard bundleURL.pathExtension == "app" else { return nil }
+        return bundleURL.appendingPathComponent("Contents/Helpers", isDirectory: true)
+    }
+
     func validatedURL(bundleIdentifier: String) -> URL? {
+        if let url = embeddedURL(bundleIdentifier: bundleIdentifier) {
+            return url
+        }
         if let url = launchServices.urlForApplication(bundleIdentifier: bundleIdentifier),
            identityReader.bundleIdentifier(at: url) == bundleIdentifier {
             return url.resolvingSymlinksInPath()
         }
         for directory in applicationsDirectories {
-            for item in fileSystem.contentsOfDirectory(directory) where item.pathExtension == "app" {
-                if identityReader.bundleIdentifier(at: item) == bundleIdentifier {
-                    return item.resolvingSymlinksInPath()
-                }
+            if let url = appBundle(in: directory, bundleIdentifier: bundleIdentifier) {
+                return url
+            }
+        }
+        return nil
+    }
+
+    /// The helper shipped inside this app. It is signed and versioned with
+    /// Lattices, so standalone copies are ignored while it is present.
+    func embeddedURL(bundleIdentifier: String) -> URL? {
+        guard let helpersDirectory else { return nil }
+        return appBundle(in: helpersDirectory, bundleIdentifier: bundleIdentifier)
+    }
+
+    private func appBundle(in directory: URL, bundleIdentifier: String) -> URL? {
+        for item in fileSystem.contentsOfDirectory(directory) where item.pathExtension == "app" {
+            if identityReader.bundleIdentifier(at: item) == bundleIdentifier {
+                return item.resolvingSymlinksInPath()
             }
         }
         return nil

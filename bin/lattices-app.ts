@@ -7,6 +7,7 @@ import { join, resolve } from "node:path";
 import { get } from "node:https";
 import type { IncomingMessage } from "node:http";
 import { resolveBuildEnv } from "./lattices-build-env";
+import { embedHelpers, signHelpers } from "./embedded-helpers";
 
 const __dirname = import.meta.dir;
 const appDir = resolve(__dirname, "../apps/mac");
@@ -401,6 +402,8 @@ function signBundle(): void {
   } catch {}
 
   const sign = (signer: string, label: string) => {
+    // Inside out: embedded helpers (Contents/Helpers) first, under the same signer.
+    signHelpers(bundlePath, signer);
     runCodesign(["--force", "--options", "runtime", "--entitlements", resolve(cliRoot, "tools/release/CompanionInstaller.entitlements"), "--sign", signer, resolve(binaryDir, "CompanionInstaller")]);
     // Sign the Mach-O first, then the bundle — more reliable than --deep and
     // keeps a stable TeamIdentifier so macOS TCC grants survive rebuilds.
@@ -586,6 +589,13 @@ function buildFromSource(): boolean {
   // release fallback when LatticesBuildChannel is missing from Info.plist.
   writeInfoPlist({ channel: "dev" });
   syncBundleResources();
+  try {
+    embedHelpers(bundlePath);
+  } catch (error) {
+    console.error(`Embedding helpers failed: ${(error as Error).message}`);
+    console.error("Set LATTICES_SKIP_HELPERS=1 to build without them.");
+    return false;
+  }
 
   // Re-sign the bundle so macOS TCC recognizes a stable identity across rebuilds.
   // Prefer a real local signing identity; only fall back to ad-hoc when necessary.

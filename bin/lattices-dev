@@ -55,10 +55,17 @@ sign_bundle() {
         ent_flags=(--entitlements "$ENTITLEMENTS")
     fi
 
+    # Inside out: embedded helpers first, under the same signer. No --deep on the
+    # outer bundle, which would re-sign the helpers with its identifier and entitlements.
+    sign_with() {
+        bun "$ROOT/bin/embedded-helpers.ts" sign "$BUNDLE" "$1" &&
+            codesign --force --options runtime --sign "$1" "${ent_flags[@]}" --identifier "$BUNDLE_ID" "$BUNDLE"
+    }
+
     identity="$(select_sign_identity)"
     if [ -n "$identity" ]; then
         dim "Signing with: $identity"
-        if ! codesign --force --options runtime --deep --sign "$identity" "${ent_flags[@]}" --identifier "$BUNDLE_ID" "$BUNDLE"; then
+        if ! sign_with "$identity"; then
             red "Signing with '$identity' failed. Falling back to ad-hoc."
             sign_status=1
         fi
@@ -68,7 +75,7 @@ sign_bundle() {
 
     if [ "$sign_status" -ne 0 ]; then
         dim "No usable signing identity found. Using ad-hoc signature."
-        codesign --force --options runtime --deep --sign - "${ent_flags[@]}" --identifier "$BUNDLE_ID" "$BUNDLE"
+        sign_with - || { red "Ad-hoc signing failed."; exit 1; }
     fi
 
     rm -f "$BUNDLE_BIN".cstemp
@@ -286,6 +293,7 @@ cmd_build() {
     if [ -d "$DECK_BUILDER_RESOURCES" ]; then
         cp -R "$DECK_BUILDER_RESOURCES" "$RESOURCES_DIR/DeckBuilder"
     fi
+    bun "$ROOT/bin/embedded-helpers.ts" embed "$BUNDLE"
     write_info_plist
     # Re-sign so TCC permissions persist across rebuilds
     sign_bundle
