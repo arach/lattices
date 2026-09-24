@@ -347,5 +347,7 @@ Lattices.app/Contents/Helpers/
 
 ## Open questions
 
-1. **`solo`** is the one new word in this pass. Alternatives considered:
-   `focusMode` (breaks rule 1), `spotlight` (collides with macOS Spotlight).
+None open. `solo` was the one new word in the last pass. The alternatives were
+`focusMode`, which breaks rule 1, and `spotlight`, which collides with macOS
+Spotlight. Review kept it: it is the standard mixer term for isolating one
+channel.
