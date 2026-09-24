@@ -52,7 +52,20 @@ helpers, only domains.
 4. **Sub-nouns only name a collection the domain owns**: `mouse.shortcuts.set`,
    `canvas.notes.create`, `sessions.layers.list`.
 5. **Exclusive access is always `lease` and `release`**, in every domain.
-6. **Surface forms.** MCP turns every dot after the domain into `_`, because MCP
+6. **One operation, one verb, in the domain it acts on.** How the verb gets done
+   is the backend's business, and `via` selects it. The default is native: the
+   daemon calls macOS directly, which is fast and exact. `via: "computer"` does the
+   same thing through computer use, visibly, the way a person would. That is
+   useful for recorded demos, or when the native route cannot reach the target.
+
+   ```
+   lattices.windows.focus(wid)                      // native
+   lattices.windows.focus(wid, { via: "computer" }) // cursor and clicks, on screen
+   ```
+
+   `computer.*` keeps only what has no structural equivalent: observe, click,
+   type, press, drag, scroll, aim.
+7. **Surface forms.** MCP turns every dot after the domain into `_`, because MCP
    forbids dots, and the server name supplies `lattices`.
 
 | Surface | Form | Example |
@@ -69,7 +82,7 @@ helpers, only domains.
 | See what is on screen right now | `computer.observe({ mode })`, where mode is `snapshot`, `ax`, `ocr` or `vision` |
 | Search what has been on screen before | `ocr.search` |
 | Find a window by name or project | `windows.search` |
-| Bring a window forward | `windows.focus` |
+| Bring a window forward | `windows.focus`, adding `{ via: "computer" }` to do it visibly |
 | Open an app | `apps.open` |
 | Click or type somewhere | `computer.click`, `computer.type` |
 | Save a screenshot or recording | `capture.screenshot`, `capture.record` |
@@ -154,8 +167,8 @@ accepting `speech.*`, so the daemon and helper protocols can change independentl
 | Old | New |
 | --- | --- |
 | Action `act_execute` with kind click / type / press-key / drag / scroll | `computer.click` / `type` / `press` / `drag` / `scroll` |
-| Action `act_execute` with kind focus-window, and `computer.focusWindow` | `windows.focus` |
-| Action `act_execute` with kind open-app, and `computer.launchApp` | `apps.open` |
+| Action `act_execute` with kind focus-window, and `computer.focusWindow` | `windows.focus({ via: "computer" })` |
+| Action `act_execute` with kind open-app, and `computer.launchApp` | `apps.open({ via: "computer" })` |
 | `computer.doubleClick`, `computer.rightClick` | `computer.click({ count: 2 })`, `computer.click({ button: "right" })` |
 | `computer.typeText`, `computer.typeWindowText`, `computer.typeElement`, `computer.setValue` | `computer.type`, with the target given as a point, window or element |
 | `computer.pressKey`, `computer.hotkey` | `computer.press` |
@@ -240,6 +253,7 @@ Lattices.app/Contents/Helpers/
 - Action stops shipping as its own product. Its native code becomes the only backend
   for `computer.*`, and the daemon's duplicates are removed as they are ported.
 - Helper bundle IDs are frozen.
+- An operation has one verb in the domain it acts on, and `via` chooses native (the default) or computer use. Computer use does not duplicate window, app or space verbs.
 
 ## Open questions
 
