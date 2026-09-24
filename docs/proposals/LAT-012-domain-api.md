@@ -1,8 +1,8 @@
-# LAT-012: One API, domain namespaces, embedded companions
+# LAT-012: One API, domain namespaces, embedded helpers
 
 Status: Proposed, 2026-09-23. Partially supersedes [LAT-011](LAT-011-companion-app-architecture.md)
-(distribution and discovery); LAT-011's runtime boundaries (ports, tokens,
-reservations, credentials) stand.
+(distribution and discovery). LAT-011's runtime boundaries still stand: ports,
+tokens, leases and credentials.
 
 ## Summary
 
@@ -16,153 +16,242 @@ lattices.computer.click(target)
 lattices.voice.say("Build finished")
 ```
 
-The companion apps (Blink, Action, Speech) remain separate processes, but they are
-the backends and user-facing surfaces for domains. They are not separate APIs.
-Agents, skills, the CLI and MCP only ever see domains.
+Some verbs are served by helpers (Voice, Blink, Action), which are separate
+processes embedded in Lattices.app. Agents, skills, the CLI and MCP never see
+helpers, only domains.
+
+## Glossary
+
+| Use | Meaning |
+| --- | --- |
+| **domain** | An API namespace agents see, such as `voice` or `windows`. |
+| **verb** | One method on a domain, such as `say` or `tile`. |
+| **backend** | The process that serves a verb: the daemon itself, or a helper. |
+| **helper** | An app embedded in `Lattices.app/Contents/Helpers`: Voice, Blink or Action. It has its own process, bundle ID and settings window. |
+| **daemon** | The Lattices process that hosts the router and the native backends. |
+| **router** | The daemon layer that resolves a name, applies aliases, and dispatches to a backend. |
+| **surface** | One projection of a name: SDK, CLI, daemon RPC or MCP. |
+
+**Retired:**
+- *companion* becomes helper.
+- *product*, *module* and *engine* become helper or backend.
+- *overlay* becomes canvas.
+- *Speech* becomes Voice. The name survives only in the frozen bundle ID `dev.lattices.Speech`.
+- Action's *drive* and *stage* vocabulary maps to verbs, as listed below.
+- *app* now means only Lattices.app itself, or a third-party app the user runs.
 
 ## Naming rules
 
-1. **The domain is a noun and the method is a verb.** One verb per call. A call
-   carries its domain and never a compound verb such as `act_execute`.
+1. **The domain is one lowercase noun, and the method is a verb.** One verb per
+   call, and never a compound verb such as `act_execute`.
 2. **Domains are plural where they name a collection**: `windows`, `spaces`,
-   `layers`, `sessions`, `terminals`. Mass nouns stay singular: `canvas`,
-   `computer`, `voice`, `ocr`, `capture`, `focus`.
-3. **Verbs are lowerCamel**, and each is a single verb where possible:
-   `tile`, `focus`, `say`, `pin`, `click`. A sub-noun is fine when the domain
-   owns a collection (`mouse.shortcuts.set`).
-4. **Surface forms** of one name:
+   `layers`, `sessions`, `tabs`, `apps`, `artifacts`. Mass nouns stay singular:
+   `canvas`, `computer`, `voice`, `capture`.
+3. **Read verbs** are `status`, `list`, `get` and `search`. Every domain that has
+   state answers `status`; there is no separate `health`, `recording` or `staged`.
+4. **Sub-nouns only name a collection the domain owns**: `mouse.shortcuts.set`,
+   `canvas.notes.create`, `sessions.layers.list`.
+5. **Exclusive access is always `lease` and `release`**, in every domain.
+6. **Surface forms.** MCP turns every dot after the domain into `_`, because MCP
+   forbids dots, and the server name supplies `lattices`.
 
 | Surface | Form | Example |
 | --- | --- | --- |
-| SDK | `lattices.<domain>.<verb>(…)` | `lattices.voice.say("hi")` |
-| CLI | `lattices <domain> <verb> …` | `lattices voice say "hi"` |
-| Daemon RPC | `<domain>.<verb>` | `voice.say` |
-| MCP | `<domain>_<verb>`. The server name supplies `lattices`, and MCP forbids dots. | `voice_say` |
+| SDK | `lattices.<domain>.<verb>(…)` | `lattices.mouse.shortcuts.set(…)` |
+| CLI | `lattices <domain> <verb> …` | `lattices mouse shortcuts set …` |
+| Daemon RPC | `<domain>.<verb>` | `mouse.shortcuts.set` |
+| MCP | `<domain>_<verb>` | `mouse_shortcuts_set` |
 
-## Domains
+## Which do I call?
 
-| Domain | Backend | Today |
+| I want to… | Call |
+| --- | --- |
+| See what is on screen right now | `computer.observe({ mode })`, where mode is `snapshot`, `ax`, `ocr` or `vision` |
+| Search what has been on screen before | `ocr.search` |
+| Find a window by name or project | `windows.search` |
+| Bring a window forward | `windows.focus` |
+| Open an app | `apps.open` |
+| Click or type somewhere | `computer.click`, `computer.type` |
+| Save a screenshot or recording | `capture.screenshot`, `capture.record` |
+| Put something on the screen for the user | `canvas.pin` for something that stays, `canvas.draw` for something transient |
+| Say something out loud | `voice.say` |
+| Work in a browser page | `browser.*`. The agent's own Chrome is the default target; see open question 3. |
+
+`mouse.*` is the user's physical pointer (find it, summon it, its shortcuts).
+The agent's synthetic cursor is `computer.aim`.
+
+## Domains and backends
+
+The backend is chosen per verb, not per domain. If a verb's helper is not
+installed, the call fails with `helper_not_installed`, names the helper, and
+gives the fix: "Lattices › Apps › Install Voice". There are no fallbacks.
+
+| Domain | Verbs | Backend |
 | --- | --- | --- |
-| `windows`, `spaces`, `layers`, `layout`, `sessions`, `terminals`, `tabStacks`, `projects`, `processes`, `focus`, `mouse`, `ocr`, `capture`, `runs`, `vision`, `deck`, `actions`, `intents`, `browser`, `settings`, `daemon`, `diagnostics`, `api` | Lattices (always present) | Mostly already `domain.verb`; see renames. |
-| `canvas` | Blink.app for persistent pins and panels, plus the Lattices overlay canvas (LAT-002) for transient drawing | Blink has its own CLI only. The daemon has `overlay.*`. |
-| `computer` | Lattices native (the existing `computer.*`) and Action.app (drive leases, recording, staging) | Two surfaces: the daemon's `computer.*` and Action's `action.*` MCP tools. |
-| `voice` | Voice.app (renamed from Speech) for output, and Lattices for input (listen) | `voice.*` is input only. `speech.*` is forwarded to Speech.app. |
-
-Install rule, for now: if you use a companion domain, install its app. A call to a
-missing app returns a plain error that names the app. There are no fallbacks.
+| `windows` | list, get, preview, search, tile, focus, move, place, present, resolve, pick | daemon |
+| `spaces` | list, optimize | daemon |
+| `layers` | list, activate, switch, assign, unassign, map | daemon |
+| `layout` | distribute | daemon |
+| `desktop` | snapshot (front window, layer, displays, sessions, permissions) | daemon |
+| `sessions` | launch, kill, detach, restart, sync, `layers.*` | daemon |
+| `groups` | launch, kill | daemon |
+| `tabs` | list, stack, add, select, layout, unstack | daemon |
+| `apps` | open | daemon |
+| `projects`, `processes`, `terminals`, `tmux` | list, scan, tree, search, capture, … (unchanged) | daemon |
+| `mouse` | find, summon, `shortcuts.*` | daemon |
+| `ocr` | search, history, recent, scan. This is the index of past screen text. Live reading is `computer.observe`. | daemon |
+| `capture` | screenshot, record, stop, status, stage, unstage | daemon now; Action's recording is folded in during phase 3 |
+| `artifacts` | list, analyze, zoom | daemon |
+| `runs` | create, list, get. A run is a receipt plus an artifact directory for one piece of agent work. | daemon |
+| `computer` | observe, resolve, click, type, press, drag, scroll, aim, note, play, verify, lease, release, status | daemon now; the Action helper from phase 3 |
+| `canvas` | draw, clear, `actors.*` | daemon (the LAT-002 overlay canvas) |
+| `canvas` | pin, unpin, move, focus, list, `notes.*`, `workspaces.*` | Blink helper |
+| `voice` | say, stop, pause, resume, skip, seek, list, use, lease, release | Voice helper |
+| `voice` | listen, stopListening, simulate, reconnect, status | daemon (`status` also reports the Voice helper) |
+| `browser` | open, tabs, snapshot, click, fill, screenshot, console, close, profiles, … | Action helper (agent's own Chrome) |
+| `intents`, `history` | see open question 2 | daemon |
+| `deck` | manifest, snapshot, perform. The iPad cockpit's state and actions. | daemon |
+| `search`, `assistant`, `handsoff`, `settings`, `daemon`, `diagnostics`, `api` | unchanged | daemon |
 
 ## Renames
 
-The router keeps every old name as an alias that resolves to the new one.
-`api.schema` and MCP advertise only new names. Aliases are one table in the
-router and cost nothing else.
+The router keeps each old name as an alias for its new name. `api.schema` and MCP
+advertise only new names. There is one exception, listed under breaking changes.
 
-### Core normalization
+### Core
 
 | Old | New |
 | --- | --- |
-| `window.tile`, `window.focus`, `window.move`, `window.place`, `window.present`, `window.resolve` | `windows.tile`, `windows.focus`, `windows.move`, `windows.place`, `windows.present`, `windows.resolve` |
+| `window.tile/focus/move/place/present/resolve` | `windows.tile/focus/move/place/present/resolve` |
 | `window.pick.start` | `windows.pick` |
 | `window.assignLayer`, `window.removeLayer`, `window.layerMap` | `layers.assign`, `layers.unassign`, `layers.map` |
 | `layer.activate`, `layer.switch` | `layers.activate`, `layers.switch` |
 | `space.optimize` | `spaces.optimize` |
-| `session.launch`, `session.kill`, `session.detach`, `session.restart`, `session.sync` | `sessions.launch`, `sessions.kill`, `sessions.detach`, `sessions.restart`, `sessions.sync` |
-| `session.layers.*` | `sessions.layers.*` |
-| `group.launch`, `group.kill` | `groups.launch`, `groups.kill` |
+| `session.*`, `session.layers.*` | `sessions.*`, `sessions.layers.*` |
+| `group.launch/kill` | `groups.launch/kill` |
+| `tabStacks.create/delete` and the rest of `tabStacks.*` | `tabs.stack/unstack` and `tabs.*` |
 | `lattices.search` | `search.query`. The `lattices.` prefix is reserved for the SDK root. |
-| `desktop.snapshot` | `spaces.snapshot` |
-| `layout.distribute` | `layout.distribute` (unchanged) |
+| `focus.*` (Focus Mode) | see open question 1 |
 
-### `voice` (output merged in from Speech)
+### voice
 
-| Old (`speech.*`, forwarded) | New |
+| Old | New |
 | --- | --- |
 | `speech.enqueue` | `voice.say` |
-| `speech.pause` / `resume` / `next` / `seek` | `voice.pause` / `voice.resume` / `voice.skip` / `voice.seek` |
-| `speech.stop` | `voice.hush` (see open question 1) |
-| `speech.voices` | `voice.voices` |
+| `speech.stop` / `pause` / `resume` / `next` / `seek` | `voice.stop` / `pause` / `resume` / `skip` / `seek` |
+| `speech.voices` | `voice.list` |
+| `speech.preferredVoice.set` | `voice.use`. The preferred voice is reported in `voice.status`. |
 | `speech.status` | merged into `voice.status` |
-| `speech.preferredVoice.*` | `voice.preferredVoice.*` |
-| `speech.playback.reserve` | `voice.reserve` |
+| `speech.playback.reserve` | `voice.lease`, plus `voice.release`. A lease still ends when its connection closes. |
 | `speech.changed` (event) | `voice.changed` |
-| existing `voice.listen` / `stop` / `simulate` / `reconnect` | unchanged |
+| `voice.stop` (stop listening) | `voice.stopListening`. **Breaking**: see below. |
 
-`DaemonServer` forwards the output verbs to Voice.app, as it forwards `speech.*`
-today. The Voice.app RPC keeps accepting `speech.*` internally, so the companion
-protocol does not have to change in step with the daemon.
+The daemon forwards output verbs to the Voice helper. The helper's own RPC keeps
+accepting `speech.*`, so the daemon and helper protocols can change independently.
 
-### `computer` (Action folded in)
+### computer, capture and apps (daemon `computer.*` and Action merged)
 
-| Old (Action MCP, advertised) | New |
+| Old | New |
 | --- | --- |
-| `act_execute` | split by its `kind` into one verb each: click, type, press-key, drag, scroll, focus-window and open-app become `computer.click`, `computer.type`, `computer.press`, `computer.drag`, `computer.scroll`, `computer.focus` and `computer.open` |
-| `observe_snapshot` / `observe_ocr` / `observe_vision` / `observe_ax` | `computer.observe` with `{ mode }`, or `computer.snapshot`, `computer.read`, `computer.look`, `computer.inspect` (open question 2) |
-| `resolve_target` | `computer.resolve` |
-| `drive_begin` / `drive_release` / `drive_status` | `computer.lease` / `computer.release` / `computer.status` |
-| `drive_note` / `drive_aim` / `drive_play` | `computer.note` / `computer.aim` / `computer.play` |
-| `record_start` / `record_stop` / `record_status` | `computer.record` / `computer.stopRecording` / `computer.recording` |
-| `stage_set` / `stage_clear` / `stage_status` | `computer.stage` / `computer.unstage` / `computer.staged` |
-| `session_create`, `driver_identify`, `artifacts_list`, `health` | `computer.session`, `computer.identify`, `runs.artifacts`, `computer.health` |
+| Action `act_execute` with kind click / type / press-key / drag / scroll | `computer.click` / `type` / `press` / `drag` / `scroll` |
+| Action `act_execute` with kind focus-window, and `computer.focusWindow` | `windows.focus` |
+| Action `act_execute` with kind open-app, and `computer.launchApp` | `apps.open` |
+| `computer.doubleClick`, `computer.rightClick` | `computer.click({ count: 2 })`, `computer.click({ button: "right" })` |
+| `computer.typeText`, `computer.typeWindowText`, `computer.typeElement`, `computer.setValue` | `computer.type`, with the target given as a point, window or element |
+| `computer.pressKey`, `computer.hotkey` | `computer.press` |
+| `computer.elementAction` | `computer.click` on an element target; other AX actions use `computer.click({ action })` |
+| Action `observe_snapshot/ocr/vision/ax`, `computer.windowState`, `ocr.snapshot`, `vision.analyzeWindow` | `computer.observe({ mode })` |
+| Action `resolve_target`, `computer.prepare` | `computer.resolve` |
+| Action `drive_begin/release/status`, `session_create`, `driver_identify` | `computer.lease` (identity and task go in its arguments) / `computer.release` / `computer.status` |
+| Action `drive_aim`, `computer.magicCursor`, `computer.showCursor` | `computer.aim` |
+| Action `drive_note`, `drive_play` | `computer.note`, `computer.play` |
+| Action `health` | `computer.status` |
+| Action `record_start/stop/status`, `capture.recordWindow/Region`, `capture.stopRecording` | `capture.record` / `capture.stop` / `capture.status` |
+| `capture.screenshotWindow/Region/Display` | `capture.screenshot({ target })` |
+| Action `stage_set/clear/status` | `capture.stage` / `capture.unstage` / `capture.status` |
+| Action `artifacts_list`, `runs.artifacts` | `artifacts.list` |
+| `vision.analyzeArtifact`, `capture.zoomArtifact` | `artifacts.analyze`, `artifacts.zoom` |
+| `computer.demoScout`, `computer.demoTerminal` | removed from the API; they become scripts |
 
-The existing daemon names `computer.typeText`, `computer.pressKey` and
-`computer.rightClick` become `computer.type`, `computer.press` and
-`computer.click { button: "right" }`, with aliases.
+### canvas
 
-### `canvas`
+Provisional until Blink has an RPC (phase 4):
 
-| Source | New |
+| Old | New |
 | --- | --- |
-| Blink `show` / `rm` / `move` / `focus` / `ls` | `canvas.pin` / `canvas.unpin` / `canvas.move` / `canvas.focus` / `canvas.list` |
-| Blink `desk`, `workspace` | `canvas.desks`, `canvas.workspace` |
-| daemon `overlay.publish` / `overlay.clear` | `canvas.draw` / `canvas.clear` |
-| daemon `overlay.actor.*` | `computer.cursor.*`. The synthetic cursor belongs to computer use. |
+| `overlay.publish`, `overlay.clear` | `canvas.draw`, `canvas.clear` |
+| `overlay.actor.publish/moveTo/visibility/hud` | `canvas.actors.put/move/show/attach` |
+| Blink `show` / `rm` / `desk open` / `desk move` / `ls` | `canvas.pin` / `canvas.unpin` / `canvas.focus` / `canvas.move` / `canvas.list` |
+| Blink `new` / `cat` / `write` / `append` / `search` | `canvas.notes.create/get/write/append/search` |
+| Blink `workspace init` / `workspace notes` | `canvas.workspaces.create` / `canvas.workspaces.list` |
 
-Blink gains a loopback RPC (the pattern Speech uses on 9397), and the daemon
-forwards `canvas.*` pin verbs to it.
+## Breaking changes
 
-## Packaging: companions inside Lattices.app
+- **`voice.stop` changes meaning.** It used to stop listening; now it stops
+  speaking. There is no alias. The daemon has no in-repo RPC callers (the Swift
+  code already calls `stopListening()`); `lattices voice stop` and the voice docs
+  are updated in the same change. For one release, a `voice.stop` call made while
+  listening and not speaking returns a hint pointing to `voice.stopListening`.
+
+## Packaging: helpers inside Lattices.app
 
 ```
 Lattices.app/Contents/Helpers/
-  Voice.app     dev.lattices.Speech   (bundle ID unchanged)
+  Voice.app     dev.lattices.Speech   (bundle ID frozen)
   Blink.app     dev.arach.blink
-  Action.app    dev.lattices.Action
+  Action.app    dev.lattices.Action   (no longer shipped on its own)
 ```
 
 - **Bundle IDs do not change.** All three shipped on 2026-09-15, and TCC grants,
-  preferences, Keychain approvals and the reservation token directory are keyed to
-  them. Only the display name and executable change for Speech, which becomes Voice.
-- **Discovery** checks the embedded helper first. A standalone copy in
-  `/Applications` or `~/Applications` is ignored when an embedded one exists; the
-  menu can offer to move it to the Trash.
-- **Signing** goes inside out: sign each helper, then the Lattices bundle, with the
-  same team (`2U83JFPW66`) and one notarization.
-- **Lifecycle** is unchanged from LAT-011. Helpers are launched on demand or from
-  the Apps menu, and quitting Lattices does not kill them.
-- **Size:** Kokoro model data downloads on first use only if the embedded build
-  turns out to be too large. Measure first.
-- The per-product DMG workflows and the on-demand installer stay in place until
-  the embedded build is released, and are removed after that.
+  preferences, Keychain approvals and the lease token directory are keyed to them.
+- **Discovery** prefers the embedded helper and ignores standalone copies in
+  `/Applications` or `~/Applications`. The Apps menu can offer to move them to the Trash.
+- **Signing** goes inside out: each helper first, then Lattices.app, under team
+  `2U83JFPW66`, with one notarization.
+- **Lifecycle** follows LAT-011. Helpers launch on demand or from the Apps menu,
+  and quitting Lattices does not kill them.
+- **Size:** Kokoro data downloads on first use only if the embedded build turns
+  out to be too large. Measure first.
+- **Action stops shipping on its own.** Its DMG, MCP server, plugins and
+  `lattices.dev/action` are retired after phase 3, once `lattices mcp` serves
+  `computer_*`, `capture_*` and `browser_*`. The per-helper DMG workflows and the
+  installer are removed once the embedded build ships.
 
 ## Phases
 
-1. **Voice.** Rename Speech to Voice (display name, executable, strings), embed it
-   in the Lattices build, add the `voice.*` output verbs with `speech.*` aliases,
-   and fix the dark-mode text in the controls window.
-2. **Router.** Add the alias table, apply the core normalization, update `api.schema`,
-   the CLI, the SDK and `skills/lattices`.
-3. **Computer.** Serve Action's tools as `computer_*` from the lattices MCP server
-   (as a `computer` toolset), keep the Action server's old names behind
-   `ACTION_MCP_TOOL_NAMES=legacy`, and embed Action.
-4. **Canvas.** Add a Blink RPC, forward `canvas.*`, move `overlay.*`, and embed Blink.
-5. **Docs and skills.** Merge `skills/speech`, `skills/action` and `skills/blink`
-   into domain sections of one skill set, and update docs, llms.txt and the site.
+1. **Voice.** Rename Speech to Voice (display name, executable, strings, skill),
+   embed it, add the `voice.*` output verbs, rename `voice.stop` to
+   `voice.stopListening`, and fix the dark-mode text in the controls window.
+2. **Router.** Add the alias table, apply the core renames, and update
+   `api.schema`, the CLI, the SDK and `skills/lattices`.
+3. **Computer.** Audit the daemon's `computer.*` against Action one verb at a time,
+   port daemon-only verbs into Action, make Action the backend, serve
+   `computer_*` / `capture_*` / `browser_*` from `lattices mcp`, embed Action, and
+   retire the standalone product.
+4. **Canvas.** Add a Blink RPC, forward the Blink verbs, move `overlay.*`, and embed Blink.
+5. **Docs and skills.** One skill with a section per domain; update docs,
+   llms.txt and the site.
+
+## Decisions (2026-09-23)
+
+- `voice.stop` stops speaking; `voice.stopListening` stops listening.
+- Observe is one verb with a mode.
+- `canvas` is one domain: Blink's persistent pins and notes, plus the overlay canvas.
+- Action stops shipping as its own product. Its native code becomes the only backend
+  for `computer.*`, and the daemon's duplicates are removed as they are ported.
+- Helper bundle IDs are frozen.
 
 ## Open questions
 
-1. `voice.stop` already means "stop listening". Should stopping speech be `voice.hush`,
-   or should `voice.stop` stop whatever voice activity is running?
-2. Should observe be one verb with a mode, or four verbs?
-3. When Action is installed, do the daemon's native `computer.click` and similar
-   route through Action, or do both implementations stay? This proposal keeps
-   both and makes no routing decision.
+1. **Focus Mode** (`focus.enter/exit/toggle/status`) collides with `windows.focus`.
+   It needs its own domain noun, for example `solo.enter`.
+2. **`actions` and `intents`.** `actions.execute` runs a canonical workspace
+   mutation and returns a receipt with undo; `intents.execute` runs a structured
+   intent from voice or an agent. A domain named `actions` next to the retired
+   Action product will confuse people. Proposal: `intents.run` and `intents.list`,
+   and `history.list` and `history.undo` for receipts, with `actions.execute`
+   folded into `intents.run`.
+3. **`browser` target.** The daemon's `browser.*` reads the user's own browser
+   through Accessibility (JavaScript only with `allowAutomation`), while Action's
+   `browser_*` drives the agent's own Chrome through the DOM. Proposal: one
+   `browser` domain with `target: "agent"` (the default) or `"user"`.
