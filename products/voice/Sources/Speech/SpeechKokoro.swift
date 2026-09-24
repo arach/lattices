@@ -24,9 +24,9 @@ struct SpeechKokoroStatus: Equatable, Sendable {
 
     static let compiledOut = SpeechKokoroStatus(
         available: false,
-        modelId: "mlx-community/Kokoro-82M-bf16",
+        modelId: "FluidInference/kokoro-82m-coreml",
         voiceId: "af_heart",
-        detail: "Kokoro is unavailable because HudsonVoice is not compiled into this build."
+        detail: "Kokoro is unavailable because FluidAudio is not compiled into this build."
     )
 }
 
@@ -40,7 +40,7 @@ protocol SpeechKokoroSynthesizing: AnyObject {
 
 enum SpeechKokoro {
     static var isCompiledIn: Bool {
-        #if canImport(VoxService)
+        #if canImport(FluidAudio)
         true
         #else
         false
@@ -49,7 +49,7 @@ enum SpeechKokoro {
 
     @MainActor
     static var shared: any SpeechKokoroSynthesizing {
-        #if canImport(VoxService)
+        #if canImport(FluidAudio)
         LiveSpeechKokoro.shared
         #else
         UnavailableSpeechKokoro.shared
@@ -72,22 +72,16 @@ final class UnavailableSpeechKokoro: SpeechKokoroSynthesizing {
     }
 }
 
-#if canImport(VoxService)
+#if canImport(FluidAudio)
 @MainActor
 final class LiveSpeechKokoro: SpeechKokoroSynthesizing {
     static let shared = LiveSpeechKokoro()
 
-    func cachedStatus() -> SpeechKokoroStatus {
-        SpeechKokoroRuntime.kokoroStatus()
-    }
+    func cachedStatus() -> SpeechKokoroStatus { SpeechKokoroRuntime.status }
 
-    func cachedVoices() -> [SpeechVoiceInfo] {
-        SpeechKokoroRuntime.kokoroStatus().voices
-    }
+    func cachedVoices() -> [SpeechVoiceInfo] { SpeechKokoroRuntime.status.voices }
 
-    func probe() async -> SpeechKokoroStatus {
-        await SpeechKokoroRuntime.probeKokoro()
-    }
+    func probe() async -> SpeechKokoroStatus { SpeechKokoroRuntime.status }
 
     func synthesize(text: String, voice: String?, rate: Double, model: String?) async throws -> HudTTSResult {
         try await SpeechKokoroRuntime.synthesizeKokoro(

@@ -99,18 +99,17 @@ struct SpeechSettingsView: View {
 private struct SpeechKokoroRow: View {
     @ObservedObject var catalog: SpeechVoiceCatalogStore
     @State private var status = SpeechKokoro.shared.cachedStatus()
-    @State private var checking = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             speechPrefRow(
                 "Kokoro",
-                caption: "On-device Vox synthesis. Text stays on this Mac."
+                caption: "Runs on the Neural Engine. Text stays on this Mac."
             ) {
-                Text(checking ? "Checking" : (status.available ? "Ready" : "Unavailable"))
+                Text(status.available ? "Ready" : "Unavailable")
                     .font(Typo.caption(11))
-                    .foregroundColor(checking ? Palette.textMuted : (status.available ? Palette.running : Palette.detach))
-                    .accessibilityValue(checking ? "Checking" : (status.available ? "Ready" : "Unavailable"))
+                    .foregroundColor(status.available ? Palette.running : Palette.detach)
+                    .accessibilityValue(status.available ? "Ready" : "Unavailable")
             }
 
             if let detail = status.detail, !status.available {
@@ -123,24 +122,14 @@ private struct SpeechKokoroRow: View {
             if status.available {
                 SpeechVoicePickerBlock(provider: SpeechProviders.kokoro, canPreview: true, catalog: catalog)
             }
-
-            Button("Recheck") {
-                Task { await refresh() }
-            }
-            .buttonStyle(.plain)
-            .font(Typo.caption(11))
-            .foregroundColor(Palette.textDim)
-            .disabled(checking)
         }
         .task { await refresh() }
     }
 
     @MainActor
     private func refresh() async {
-        checking = true
         status = await SpeechKokoro.shared.probe()
         await catalog.refresh(provider: SpeechProviders.kokoro)
-        checking = false
     }
 }
 
@@ -337,8 +326,8 @@ private struct SpeechVoicePickerBlock: View {
                     .fixedSize(horizontal: false, vertical: true)
             case .ready(let voices):
                 picker(voices)
-                if provider == SpeechProviders.openai, SpeechVoiceCatalogLoader.openaiCatalogIsPartial {
-                    Text("This build only has the HudTTS default OpenAI voice. The full list comes from Vox OpenAITTSProvider.")
+                if provider == SpeechProviders.openai {
+                    Text("This build lists only the default OpenAI voice.")
                         .font(Typo.caption(11))
                         .foregroundColor(Palette.textMuted)
                         .fixedSize(horizontal: false, vertical: true)

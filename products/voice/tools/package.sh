@@ -14,7 +14,7 @@ APP="$STAGE/Voice.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/Voice" "$APP/Contents/MacOS/Voice"
 cp "$ROOT/Info.plist" "$APP/Contents/Info.plist"
-# Vox SpeechEngineResources resolves packaged resources from Contents/Resources.
+# SwiftPM resource bundles load from Contents/Resources; a missing one traps on first use.
 for RESOURCE in "$BIN_DIR"/*.bundle; do
     [ -d "$RESOURCE" ] || continue
     cp -R "$RESOURCE" "$APP/Contents/Resources/"

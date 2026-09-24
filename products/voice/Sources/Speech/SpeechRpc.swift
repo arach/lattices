@@ -47,7 +47,7 @@ enum SpeechRpc {
             access: .mutate,
             params: [
                 Param(name: "text", type: "string", required: true, description: "Text to speak"),
-                Param(name: "provider", type: "string", required: false, description: "system, openai, elevenlabs, or kokoro (default system). kokoro requires the hosted Hudson/Vox runtime"),
+                Param(name: "provider", type: "string", required: false, description: "system, openai, elevenlabs, or kokoro (default system). kokoro runs on this Mac; its first request downloads the model"),
                 Param(name: "model", type: "string", required: false, description: "Provider model override"),
                 Param(name: "voice", type: "string", required: false, description: "Voice identifier"),
                 Param(name: "rate", type: "double", required: false, description: "Speaking rate 0.25-4.0 (default 1.0)"),

@@ -48,11 +48,19 @@ final class HudsonSpeechSynthesizer: SpeechSynthesizing {
             : request.provider == SpeechProviders.kokoro
                 ? kokoro.cachedStatus().voiceId
                 : nil
+        // Kokoro renders are cached under the engine's model id. Renders from
+        // the retired mlx-audio engine, cached without one, never replay.
+        var model = request.model
+        if request.provider == SpeechProviders.kokoro,
+           (model ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || model?.lowercased().contains("kokoro") == true {
+            model = kokoro.cachedStatus().modelId
+        }
         let synthesis = HudTTSRequest(
             text: request.text,
             voice: request.voice ?? defaultVoice,
             rate: request.rate,
-            model: request.model,
+            model: model,
             instructions: request.instructions,
             voiceSettings: settings
         )

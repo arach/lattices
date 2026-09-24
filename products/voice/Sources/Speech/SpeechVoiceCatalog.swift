@@ -2,9 +2,6 @@ import AVFoundation
 import Foundation
 import HudsonUI
 import HudsonUIAudio
-#if LATTICES_VOICE && canImport(HudsonSpeechEngine)
-import HudsonSpeechEngine
-#endif
 
 extension Notification.Name {
     static let speechCredentialsDidChange = Notification.Name("lattices.speech.credentialsDidChange")
@@ -23,9 +20,8 @@ enum SpeechVoiceCatalogState: Equatable {
     }
 }
 
-/// Loads picker catalogs from the real Hudson/Vox/ElevenLabs sources.
-/// Does not invent display names. OpenAI uses the Vox static TTS catalog when
-/// HudsonSpeechEngine is compiled in; otherwise only the HudTTS default.
+/// Loads picker catalogs from the real system, HudTTS, ElevenLabs and Kokoro
+/// sources. Does not invent display names. OpenAI lists only the HudTTS default.
 @MainActor
 struct SpeechVoiceCatalogLoader {
     var credentialSource: LatticesSpeechCredentialSource
@@ -86,21 +82,8 @@ struct SpeechVoiceCatalogLoader {
         }
     }
 
-    /// Vox `OpenAITTSProvider.supportedVoices` is the OpenAI TTS catalog.
-    /// There is no live OpenAI voices endpoint. Without HudsonSpeechEngine,
-    /// only the HudTTS adapter default is known.
+    /// OpenAI has no voices endpoint, so only the HudTTS adapter default is known.
     static func openaiVoices() -> [SpeechVoiceInfo] {
-        #if LATTICES_VOICE && canImport(HudsonSpeechEngine)
-        return OpenAITTSProvider.supportedVoices.map { id in
-            SpeechVoiceInfo(
-                id: id,
-                label: id.capitalized,
-                provider: SpeechProviders.openai,
-                available: true,
-                isDefault: id == "alloy"
-            )
-        }
-        #else
         let adapter = HudTTSProviders.OpenAI()
         return [SpeechVoiceInfo(
             id: adapter.defaultVoice,
@@ -109,15 +92,6 @@ struct SpeechVoiceCatalogLoader {
             available: true,
             isDefault: true
         )]
-        #endif
-    }
-
-    static var openaiCatalogIsPartial: Bool {
-        #if LATTICES_VOICE && canImport(HudsonSpeechEngine)
-        false
-        #else
-        true
-        #endif
     }
 
     private func loadElevenLabs() async -> SpeechVoiceCatalogState {
@@ -161,15 +135,14 @@ struct SpeechVoiceCatalogLoader {
         }
         let voices = kokoro.cachedVoices()
         if voices.isEmpty {
-            return .empty("mlx-audio did not report a Kokoro voice.")
+            return .empty("Kokoro reported no voices.")
         }
         return .ready(voices)
     }
 }
 
 enum SpeechElevenLabsVoiceCatalog {
-    /// Same contract as Vox `ElevenLabsTTSProvider.voices`: GET /v2/voices.
-    /// First page only (`page_size=100`).
+    /// GET /v2/voices, first page only (`page_size=100`).
     static func fetch(apiKey: String, session: URLSession) async throws -> [SpeechVoiceInfo] {
         var components = URLComponents(string: "https://api.elevenlabs.io/v2/voices")
         components?.queryItems = [URLQueryItem(name: "page_size", value: "100")]

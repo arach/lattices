@@ -11,12 +11,15 @@ RPC methods `speech.*`, RPC port, capability token path, UserDefaults domains,
 and Keychain service `dev.lattices.app.voice`. Internal Swift types and the
 `SpeechAppRuntime` module keep their Speech names.
 
-Reuse HudsonUIAudio and Vox providers. Keep existing credential service
+Reuse HudsonUIAudio providers. Kokoro renders in-process on the Neural Engine
+through FluidAudio's KokoroAne, pinned to Talkie's exact version; do not route it
+through Vox or a Python runtime. Keep existing credential service
 `dev.lattices.app.voice`; do not copy credential values into preferences or logs.
 Source provenance is recorded in SOURCE-PROVENANCE.json. The source checkout is
 an active snapshot and must remain untouched.
 
-Build/test with `swift test --package-path products/voice`. Remote Hudson and Vox defaults contain the shared speech changes.
+Build/test with `swift test --package-path products/voice`. The remote Hudson default contains the shared speech changes.
 Set SPEECH_HUDSON_PATH only for an explicit local dependency experiment.
-Set SPEECH_VOX_PATH and HUDSON_VOX_PATH to the same Vox checkout when testing
-unpublished Vox changes. Do not publish, install, or launch this app implicitly.
+Kokoro's live tests load the real model and run only with VOICE_KOKORO_LIVE=1;
+set VOICE_KOKORO_LIVE_OUT to a directory to keep their WAVs.
+Do not publish, install, or launch this app implicitly.

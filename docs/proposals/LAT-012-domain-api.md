@@ -305,8 +305,8 @@ Lattices.app/Contents/Helpers/
   `2U83JFPW66`, with one notarization.
 - **Lifecycle** follows LAT-011. Helpers launch on demand or from the Apps menu,
   and quitting Lattices does not kill them.
-- **Size:** Kokoro data downloads on first use only if the embedded build turns
-  out to be too large. Measure first.
+- **Size:** Voice does not embed Kokoro. Its Core ML models and lexicon (about 90 MB)
+  download to `~/.cache/fluidaudio` on the first Kokoro request.
 - **Action stops shipping on its own.** Its DMG, MCP server, plugins and
   `lattices.dev/action` are retired after phase 3, once `lattices mcp` serves
   `computer_*`, `capture_*` and `browser_*`. The per-helper DMG workflows and the

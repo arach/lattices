@@ -1,9 +1,6 @@
 import XCTest
 import HudsonUI
 import HudsonUIAudio
-#if LATTICES_VOICE && canImport(HudsonSpeechEngine)
-import HudsonSpeechEngine
-#endif
 @testable import SpeechAppRuntime
 
 @MainActor
@@ -79,18 +76,11 @@ final class SpeechVoicePickerTests: XCTestCase {
         _ = try queue.stop()
     }
 
-    func testOpenAICatalogComesFromVoxWhenCompiled() {
+    func testOpenAICatalogListsOnlyTheHudTTSDefault() {
         let voices = SpeechVoiceCatalogLoader.openaiVoices()
-        XCTAssertFalse(voices.isEmpty)
-        XCTAssertTrue(voices.contains(where: { $0.id == "alloy" }))
-        XCTAssertFalse(voices.contains(where: { $0.provider == "groq" }))
-        #if LATTICES_VOICE && canImport(HudsonSpeechEngine)
-        XCTAssertEqual(voices.map(\.id), OpenAITTSProvider.supportedVoices)
-        XCTAssertFalse(SpeechVoiceCatalogLoader.openaiCatalogIsPartial)
-        #else
         XCTAssertEqual(voices.map(\.id), [HudTTSProviders.OpenAI().defaultVoice])
-        XCTAssertTrue(SpeechVoiceCatalogLoader.openaiCatalogIsPartial)
-        #endif
+        XCTAssertEqual(voices.map(\.provider), ["openai"])
+        XCTAssertEqual(voices.first?.isDefault, true)
     }
 
     func testElevenLabsMissingKeyDoesNotInventVoices() async {
@@ -131,7 +121,7 @@ final class SpeechVoicePickerTests: XCTestCase {
     func testKokoroCatalogUsesProbedVoicesOnly() async {
         let kokoro = FakeSpeechKokoro(status: SpeechKokoroStatus(
             available: true,
-            modelId: "mlx-community/Kokoro-82M-bf16",
+            modelId: "FluidInference/kokoro-82m-coreml",
             voiceId: "af_heart",
             detail: nil,
             voices: [

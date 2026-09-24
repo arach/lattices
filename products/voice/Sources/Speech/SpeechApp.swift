@@ -1,20 +1,9 @@
 import SwiftUI
 import OSLog
-import HudsonSpeechEngine
 
 @main
 enum SpeechEntry {
     @MainActor static func main() {
-        if CommandLine.arguments.contains("--diagnose-resources") {
-            let root = Bundle.main.resourceURL!.appendingPathComponent("Vox_HudsonSpeechEngine.bundle")
-            guard SpeechEngineResources.url(forResource: "mlx_audio_provider", withExtension: "py") != nil else {
-                fputs("Bundled speech engine resources are missing\n", stderr)
-                exit(1)
-            }
-            let models = ModelCatalogStore().asrModels(readyOnly: false)
-            print("Voice resource catalog loaded: \(models.count) models; bundle=\(root.path)")
-            return
-        }
         if let index = CommandLine.arguments.firstIndex(of: "--diagnose-host"),
            CommandLine.arguments.indices.contains(index + 1) {
             let capability = URL(fileURLWithPath: CommandLine.arguments[index + 1])
