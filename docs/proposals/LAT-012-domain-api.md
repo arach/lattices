@@ -109,8 +109,8 @@ the name only has to not mislead.
 
 | Verb | Use when |
 | --- | --- |
-| `windows.place` | Put a window at a position on its current display: `left`, `top-right`, a grid cell, or a frame. Takes `wid` or `session`. The answer to "put Xcode on the left half". |
-| `windows.move` | Send a window to another display or Space. |
+| `windows.place` | Put a window at a position: `left`, `top-right`, a grid cell, or a frame, on this display or another (`display`). Takes `wid`, `session` or `app`. The answer to "put Xcode on the left half". |
+| `windows.move` | Send a window to another Space, or to another display keeping its relative size and position. Use `place` when you want a specific position. |
 | `windows.present` | Bring a window to the Space you are on and raise it, optionally placing it. Use it when the window may be on another Space. |
 | `windows.focus` | Raise and activate a window where it already is. |
 | `windows.pick` | Ask the user to click a window. Returns its `wid`. |
@@ -144,14 +144,15 @@ the name only has to not mislead.
 | --- | --- |
 | `computer.lease` / `release` | Take and give back the screen for computer use. Other agents wait. |
 | `voice.lease` / `release` | Hold the speaker so other agents do not talk over you. |
-| `solo.enter` / `exit` | The user's Focus Mode: enlarge the front window and black out everything around it. Visual only, not a lock. |
+| `solo.enter` / `exit` | The user's Focus Mode: resizes the front window and blacks out everything around it; the frame is restored on exit. Not a lock. |
 
 **Doing things by description**
 
 | Verb | Use when |
 | --- | --- |
 | `intents.run` | Do something described as an intent with slots, like voice does. Returns a receipt. |
-| `history.list` / `undo` | Past receipts, and undo of the latest undoable one. |
+| `runs.create` / `list` / `get` | A run is one piece of agent work with an artifact directory (recordings, screenshots, traces). Use it to group outputs, not to undo. |
+| `history.list` / `undo` | Receipts of workspace changes (`intents.run`), and undo of the latest undoable one. |
 | `assistant.preview` | Dry-run the hands-off planner on a transcript or snapshot. Executes nothing. |
 | `deck.*` | The iPad cockpit's buttons and state. Only the cockpit needs it. |
 
@@ -221,7 +222,7 @@ advertise only new names. There is one exception, listed under breaking changes.
 | `focus.enter/exit/toggle/status` (Focus Mode) | `solo.enter/exit/toggle/status`. `focus` collides with `windows.focus`. |
 | `ocr.recent` | merged into `ocr.history` with `wid` optional |
 | `tmux.sessions`, `tmux.inventory` | `tmux.list({ includeOrphans })` |
-| `actions.execute` | merged into `intents.run`. A domain named `actions` next to the retired Action helper reads as computer use. |
+| `actions.execute` | merged into `intents.run`. A domain named `actions` next to the retired Action helper reads as computer use. `intents.run` takes on the action runtime's receipts, batch and `dryRun`, so `history.undo` keeps working. |
 | `intents.execute` | `intents.run` |
 | `actions.history`, `actions.undo` | `history.list`, `history.undo` |
 | `handsoff.run` | merged into `assistant.preview({ transcript, snapshot })`. Both dry-run the same planner. |
