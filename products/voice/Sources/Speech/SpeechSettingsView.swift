@@ -301,6 +301,7 @@ private struct SpeechVoicePickerBlock: View {
     let provider: String
     let canPreview: Bool
     @ObservedObject var catalog: SpeechVoiceCatalogStore
+    @ObservedObject private var preferences = SpeechVoicePreferences.shared
     @State private var previewError: String?
     @State private var startingPreview = false
 
@@ -361,7 +362,7 @@ private struct SpeechVoicePickerBlock: View {
 
     @ViewBuilder
     private func picker(_ voices: [SpeechVoiceInfo]) -> some View {
-        let preferred = SpeechVoicePreferences.shared.preferredVoice(for: provider)
+        let preferred = preferences.preferredVoice(for: provider)
         let options = merged(voices, preferred: preferred)
         speechPrefRow("Voice", caption: "Used when a speech request does not name a voice.") {
             Picker("Voice", selection: selectionBinding(options: options)) {
@@ -386,7 +387,7 @@ private struct SpeechVoicePickerBlock: View {
         .foregroundColor(canPreview && !startingPreview ? Palette.textDim : Palette.textMuted)
         .disabled(!canPreview || startingPreview || selectedVoiceID(in: voices) == nil)
         .accessibilityLabel("Preview this voice")
-        .accessibilityHint("Speaks a short sample through the Speech playback HUD")
+        .accessibilityHint("Speaks a short sample through the Voice playback HUD")
     }
 
     private func preview(voices: [SpeechVoiceInfo]) {
@@ -402,7 +403,7 @@ private struct SpeechVoicePickerBlock: View {
     }
 
     private func selectedVoiceID(in voices: [SpeechVoiceInfo]) -> String? {
-        let options = merged(voices, preferred: SpeechVoicePreferences.shared.preferredVoice(for: provider))
+        let options = merged(voices, preferred: preferences.preferredVoice(for: provider))
         let current = selectionBinding(options: options).wrappedValue
         return current.isEmpty ? nil : current
     }
@@ -410,14 +411,14 @@ private struct SpeechVoicePickerBlock: View {
     private func selectionBinding(options: [SpeechVoiceInfo]) -> Binding<String> {
         Binding(
             get: {
-                let preferred = SpeechVoicePreferences.shared.preferredVoice(for: provider)
+                let preferred = preferences.preferredVoice(for: provider)
                 if let preferred, options.contains(where: { $0.id == preferred }) {
                     return preferred
                 }
                 return options.first(where: \.isDefault)?.id ?? options.first?.id ?? ""
             },
             set: { newValue in
-                SpeechVoicePreferences.shared.setPreferredVoice(newValue, for: provider)
+                preferences.setPreferredVoice(newValue, for: provider)
                 previewError = nil
             }
         )

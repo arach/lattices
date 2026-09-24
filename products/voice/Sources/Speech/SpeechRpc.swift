@@ -1,7 +1,9 @@
 import Foundation
 
 enum SpeechRpc {
-    static func register(on api: SpeechApi, queue: SpeechQueue = .shared) {
+    /// `preferences` defaults to `SpeechVoicePreferences.shared`, the store the
+    /// Settings picker and `speech.enqueue` read.
+    static func register(on api: SpeechApi, queue: SpeechQueue = .shared, preferences: SpeechVoicePreferences? = nil) {
         api.model(ApiModel(name: "SpeechJob", fields: [
             Field(name: "id", type: "string", required: true, description: "Job identifier"),
             Field(name: "state", type: "string", required: true, description: "queued, generating, playing, paused, completed, cancelled, or failed"),
@@ -21,6 +23,14 @@ enum SpeechRpc {
             Field(name: "queued", type: "[SpeechJob]", required: true, description: "Jobs waiting to play"),
             Field(name: "failure", type: "SpeechJob?", required: false, description: "Failure retained until dismissed"),
             Field(name: "recent", type: "[SpeechJob]", required: true, description: "Recently finished jobs"),
+            Field(name: "preferredVoices", type: "[SpeechPreferredVoice]", required: true, description: "Voice chosen per provider (Settings or speech.preferredVoice.set); used when a request names no voice. Providers with no choice are omitted"),
+        ]))
+
+        api.model(ApiModel(name: "SpeechPreferredVoice", fields: [
+            Field(name: "provider", type: "string", required: true, description: "Provider id"),
+            Field(name: "voice", type: "string", required: false, description: "Voice id; null when the choice was cleared"),
+            Field(name: "label", type: "string", required: false, description: "Display name (speech.preferredVoice.set only)"),
+            Field(name: "available", type: "bool", required: false, description: "Whether credentials or on-device voice are present (speech.preferredVoice.set only)"),
         ]))
 
         api.model(ApiModel(name: "SpeechVoice", fields: [
@@ -61,7 +71,7 @@ enum SpeechRpc {
             params: [],
             returns: .object(model: "SpeechStatus"),
             handler: { _ in
-                try runOnMain { queue.status().json() }
+                try runOnMain { statusJSON(queue.status(), preferences: preferences ?? .shared) }
             }
         ))
 
@@ -75,7 +85,7 @@ enum SpeechRpc {
             returns: .object(model: "SpeechStatus"),
             handler: { params in
                 try runOnMain {
-                    try queue.pause(jobId: params?["id"]?.stringValue).json()
+                    statusJSON(try queue.pause(jobId: params?["id"]?.stringValue), preferences: preferences ?? .shared)
                 }
             }
         ))
@@ -90,7 +100,7 @@ enum SpeechRpc {
             returns: .object(model: "SpeechStatus"),
             handler: { params in
                 try runOnMain {
-                    try queue.resume(jobId: params?["id"]?.stringValue).json()
+                    statusJSON(try queue.resume(jobId: params?["id"]?.stringValue), preferences: preferences ?? .shared)
                 }
             }
         ))
@@ -109,7 +119,7 @@ enum SpeechRpc {
                     guard let seconds = params?["seconds"]?.numericDouble else {
                         throw RouterError.missingParam("seconds")
                     }
-                    return try queue.seek(seconds: seconds, jobId: params?["id"]?.stringValue).json()
+                    return statusJSON(try queue.seek(seconds: seconds, jobId: params?["id"]?.stringValue), preferences: preferences ?? .shared)
                 }
             }
         ))
@@ -124,7 +134,7 @@ enum SpeechRpc {
             returns: .object(model: "SpeechStatus"),
             handler: { params in
                 try runOnMain {
-                    try queue.stop(jobId: params?["id"]?.stringValue).json()
+                    statusJSON(try queue.stop(jobId: params?["id"]?.stringValue), preferences: preferences ?? .shared)
                 }
             }
         ))
@@ -139,7 +149,7 @@ enum SpeechRpc {
             returns: .object(model: "SpeechStatus"),
             handler: { params in
                 try runOnMain {
-                    try queue.next(jobId: params?["id"]?.stringValue).json()
+                    statusJSON(try queue.next(jobId: params?["id"]?.stringValue), preferences: preferences ?? .shared)
                 }
             }
         ))
@@ -156,6 +166,69 @@ enum SpeechRpc {
                 }
             }
         ))
+
+        api.register(Endpoint(
+            method: "speech.preferredVoice.set",
+            description: "Choose the voice a provider uses when a request names none. Same setting as the Settings picker. An empty voice clears the choice",
+            access: .mutate,
+            params: [
+                Param(name: "voice", type: "string", required: true, description: "Voice id from speech.voices; empty clears the choice"),
+                Param(name: "provider", type: "string", required: false, description: "system, openai, elevenlabs, or kokoro (default system)"),
+            ],
+            returns: .object(model: "SpeechPreferredVoice"),
+            handler: { params in
+                try runOnMain {
+                    try setPreferredVoice(params, queue: queue, preferences: preferences ?? .shared)
+                }
+            }
+        ))
+    }
+
+    /// Validates `voice` against the provider's catalog (`queue.voices()`) and
+    /// persists it through `SpeechVoicePreferences`.
+    @MainActor static func setPreferredVoice(_ params: JSON?, queue: SpeechQueue, preferences: SpeechVoicePreferences) throws -> JSON {
+        guard let rawVoice = params?["voice"] else {
+            throw RouterError.missingParam("voice")
+        }
+        guard let voiceValue = rawVoice.stringValue else {
+            throw RouterError.custom("voice must be a string")
+        }
+        if let value = params?["provider"], value.stringValue == nil {
+            throw RouterError.custom("provider must be a string")
+        }
+        let provider = try SpeechProviders.normalize(params?["provider"]?.stringValue)
+        let voice = voiceValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !voice.isEmpty else {
+            preferences.setPreferredVoice(nil, for: provider)
+            return .object(["provider": .string(provider), "voice": .null])
+        }
+
+        let catalog = queue.voices()
+        guard let match = catalog.first(where: { $0.provider == provider && $0.id == voice }) else {
+            if !catalog.contains(where: { $0.provider == provider }) {
+                throw SpeechQueueError.noVoices(provider: provider)
+            }
+            let listedUnder = SpeechProviders.all.first { other in
+                other != provider && catalog.contains(where: { $0.provider == other && $0.id == voice })
+            }
+            throw SpeechQueueError.unknownVoice(voice, provider: provider, listedUnder: listedUnder)
+        }
+        preferences.setPreferredVoice(match.id, for: provider)
+        return .object([
+            "provider": .string(provider),
+            "voice": .string(match.id),
+            "label": .string(match.label),
+            "available": .bool(match.available),
+        ])
+    }
+
+    /// `SpeechStatus`: the queue snapshot plus the stored voice choices.
+    @MainActor static func statusJSON(_ snapshot: SpeechSnapshot, preferences: SpeechVoicePreferences) -> JSON {
+        guard case .object(var fields) = snapshot.json() else { return snapshot.json() }
+        fields["preferredVoices"] = .array(preferences.storedVoices().map { entry in
+            .object(["provider": .string(entry.provider), "voice": .string(entry.voice)])
+        })
+        return .object(fields)
     }
 
     @MainActor static func enqueue(_ params: JSON?, queue: SpeechQueue) throws -> JSON {

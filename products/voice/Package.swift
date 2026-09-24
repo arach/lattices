@@ -6,8 +6,8 @@ let hudson: Package.Dependency = env["SPEECH_HUDSON_PATH"].map { .package(name: 
     ?? .package(url: "git@github.com:arach/hudson.git", branch: "main")
 let vox: Package.Dependency = env["SPEECH_VOX_PATH"].map { .package(name: "vox", path: $0) }
     ?? .package(url: "https://github.com/arach/vox.git", branch: "main")
-let package = Package(name: "Speech", platforms: [.macOS(.v26)],
-    products: [.executable(name: "Speech", targets: ["SpeechAppRuntime"])],
+let package = Package(name: "Voice", platforms: [.macOS(.v26)],
+    products: [.executable(name: "Voice", targets: ["SpeechAppRuntime"])],
     dependencies: [hudson, vox], targets: [
         .executableTarget(name: "SpeechAppRuntime", dependencies: [
             .product(name: "HudsonUI", package: "hudson"),

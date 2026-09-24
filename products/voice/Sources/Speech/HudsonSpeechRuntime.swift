@@ -216,7 +216,7 @@ enum SpeechRuntime {
         try queue.enqueue(SpeechEnqueueRequest(
             text: text, provider: "system", model: nil, voice: nil, rate: 1,
             instructions: nil, voiceSettings: nil, cachePolicy: .reuse,
-            source: SpeechSourceMetadata(kind: "ui", label: "Speech", taskId: nil, sessionId: nil)
+            source: SpeechSourceMetadata(kind: "ui", label: "Voice", taskId: nil, sessionId: nil)
         ), playbackDeadline: Date().addingTimeInterval(2))
     }
 
@@ -263,7 +263,7 @@ enum SpeechRuntime {
             voiceSettings: nil,
             cachePolicy: .reuse,
             source: SpeechSourceMetadata(
-                kind: "preview", label: "Speech Settings", taskId: nil, sessionId: nil
+                kind: "preview", label: "Voice Settings", taskId: nil, sessionId: nil
             )
         ))
         SpeechPlaybackHUD.shared.showFromMenu()

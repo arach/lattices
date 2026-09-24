@@ -12,7 +12,7 @@ enum SpeechEntry {
                 exit(1)
             }
             let models = ModelCatalogStore().asrModels(readyOnly: false)
-            print("Speech resource catalog loaded: \(models.count) models; bundle=\(root.path)")
+            print("Voice resource catalog loaded: \(models.count) models; bundle=\(root.path)")
             return
         }
         if let index = CommandLine.arguments.firstIndex(of: "--diagnose-host"),
@@ -39,13 +39,25 @@ struct SpeechApp: App {
     @NSApplicationDelegateAdaptor(SpeechAppDelegate.self) private var delegate
     @ObservedObject private var visibility = CompanionMenuBarVisibility.shared
     var body: some Scene {
-        MenuBarExtra("Speech", systemImage: "waveform", isInserted: Binding(get: { visibility.isVisible }, set: { _ in })) {
+        MenuBarExtra("Voice", systemImage: "waveform", isInserted: Binding(get: { visibility.isVisible }, set: { _ in })) {
             Button("Show Playback") { SpeechPlaybackHUD.shared.showFromMenu() }
             SettingsLink()
             Divider()
-            Button("Quit Speech") { NSApplication.shared.terminate(nil) }.keyboardShortcut("q")
+            Button("Quit Voice") { NSApplication.shared.terminate(nil) }.keyboardShortcut("q")
         }
-        Settings { SpeechSettingsView().padding(20).frame(width: 540, height: 620).preferredColorScheme(.dark) }
+        Settings { SpeechControlsContent(padding: 20) }
+    }
+}
+/// Settings content for both the Settings scene and the controls window. The
+/// theme is dark-only, so it pins the color scheme and paints Palette.bg.
+struct SpeechControlsContent: View {
+    var padding: CGFloat = 0
+    var body: some View {
+        SpeechSettingsView()
+            .padding(padding)
+            .frame(width: 540, height: 620)
+            .background(Palette.bg)
+            .preferredColorScheme(.dark)
     }
 }
 final class SpeechAppDelegate: NSObject, NSApplicationDelegate {
@@ -62,8 +74,12 @@ final class SpeechAppDelegate: NSObject, NSApplicationDelegate {
     }
     private func showControls() {
         if controls == nil {
-            let window = NSWindow(contentViewController: NSHostingController(rootView: SpeechSettingsView().frame(width: 540, height: 620)))
-            window.title = "Speech"
+            let window = NSWindow(contentViewController: NSHostingController(rootView: SpeechControlsContent()))
+            window.title = "Voice"
+            // The theme is dark-only (white text on Palette.bg). Pin the window's
+            // appearance and background so text stays legible in light mode.
+            window.appearance = NSAppearance(named: .darkAqua)
+            window.backgroundColor = NSColor(Palette.bg)
             window.styleMask = [.titled, .closable, .resizable]
             window.isReleasedWhenClosed = false
             window.center()

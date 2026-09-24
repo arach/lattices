@@ -1,7 +1,7 @@
 import { SiteHeader } from './SiteChrome'
 
 const downloadUrl = 'https://github.com/arach/lattices/releases/download/speech-v0.2.0/Speech.dmg'
-const sourceUrl = 'https://github.com/arach/lattices/tree/main/products/speech'
+const sourceUrl = 'https://github.com/arach/lattices/tree/main/products/voice'
 
 const features = [
   {

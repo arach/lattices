@@ -8,11 +8,11 @@ IDENTITY="${SPEECH_SIGN_IDENTITY:--}"
 swift build --package-path "$ROOT" -c "$CONFIG"
 BIN_DIR="$(swift build --package-path "$ROOT" -c "$CONFIG" --show-bin-path)"
 mkdir -p "$OUTPUT"
-STAGE="$(mktemp -d "$OUTPUT/.speech-build.XXXXXX")"
+STAGE="$(mktemp -d "$OUTPUT/.voice-build.XXXXXX")"
 trap 'rm -rf "$STAGE"' EXIT
-APP="$STAGE/Speech.app"
+APP="$STAGE/Voice.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN_DIR/Speech" "$APP/Contents/MacOS/Speech"
+cp "$BIN_DIR/Voice" "$APP/Contents/MacOS/Voice"
 cp "$ROOT/Info.plist" "$APP/Contents/Info.plist"
 # Vox SpeechEngineResources resolves packaged resources from Contents/Resources.
 for RESOURCE in "$BIN_DIR"/*.bundle; do
@@ -24,10 +24,10 @@ codesign --verify --deep --strict "$APP"
 if [ "${SPEECH_DISTRIBUTABLE:-0}" = "1" ]; then
     bash "$ROOT/../../tools/release/verify-companion-signature.sh" "$APP"
 fi
-DEST="$OUTPUT/Speech.app"
+DEST="$OUTPUT/Voice.app"
 if [ -e "$DEST" ]; then echo "Artifact already exists: $DEST" >&2; exit 1; fi
 mv "$APP" "$DEST"
 if [ "${SPEECH_CREATE_DMG:-0}" = "1" ]; then
-    hdiutil create -volname Speech -srcfolder "$DEST" -ov -format UDZO "$OUTPUT/Speech.dmg"
+    hdiutil create -volname Voice -srcfolder "$DEST" -ov -format UDZO "$OUTPUT/Voice.dmg"
 fi
 printf 'Built %s\n' "$DEST"
