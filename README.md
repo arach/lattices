@@ -178,7 +178,7 @@ apps/mac/     menu bar app + daemon
 bin/          lattices CLI, app helper, daemon client
 swift/        LatticesTerminalKit, DeckKit
 docs/         user + agent docs
-skills/       lattices, action, speech, blink
+skills/       lattices, action, voice, blink
 products/     Action and Blink (separate signed apps)
 apps/site/    lattices.dev
 ```
@@ -229,7 +229,7 @@ npx skills add arach/lattices --all --global --yes
 | --- | --- |
 | [`lattices`](skills/lattices/SKILL.md) | Tile, sessions, search, daemon |
 | [`action`](skills/action/SKILL.md) | Observe, resolve, act, record |
-| [`speech`](skills/speech/SKILL.md) | Spoken commands |
+| [`voice`](skills/voice/SKILL.md) | Speaking and spoken commands |
 | [`blink`](skills/blink/SKILL.md) | Spatial notes |
 
 `npx skills add arach/lattices --list` lists without installing.

@@ -11,7 +11,7 @@ const actionBrowserSkill = join(
   "products/action/plugins/action-browser/skills/action-browser/SKILL.md",
 );
 
-const catalog = ["action", "blink", "lattices", "speech"] as const;
+const catalog = ["action", "blink", "lattices", "voice"] as const;
 
 function frontmatter(source: string): string {
   const match = source.match(/^---\n([\s\S]*?)\n---\n/);
@@ -51,8 +51,9 @@ test("action skill teaches the native drive loop", () => {
   expect(source).toContain("action-browser@action");
 });
 
-test("speech skill teaches voice simulate and intents", () => {
-  const source = readFileSync(join(skillsRoot, "speech", "SKILL.md"), "utf8");
+test("voice skill teaches say, simulate and intents", () => {
+  const source = readFileSync(join(skillsRoot, "voice", "SKILL.md"), "utf8");
+  expect(source).toContain("lattices voice say");
   expect(source).toContain("lattices voice simulate");
   expect(source).toContain("lattices voice intents");
   expect(source).toContain("window.place");

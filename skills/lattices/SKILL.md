@@ -43,6 +43,7 @@ Use `daemonCall` from `@arach/lattices` only in scripts.
 | Screen text | `lattices scan` |
 | Search screen text | `lattices scan search "<query>"` |
 | Switch a layer | `lattices layer <name-or-index>` |
+| Say something out loud | `lattices voice say "<text>"` (`voice stop` stops speaking) |
 | Raw RPC | `lattices call <method> '<json>'` |
 | Method catalog | `lattices call api.schema` |
 

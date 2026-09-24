@@ -235,9 +235,9 @@ advertise only new names. There is one exception, listed under breaking changes.
 | `speech.enqueue` | `voice.say` |
 | `speech.stop` / `pause` / `resume` / `next` / `seek` | `voice.stop` / `pause` / `resume` / `skip` / `seek` |
 | `speech.voices` | `voice.list` |
-| `speech.preferredVoice.set` | `voice.select`, matching `tabs.select`. The selected voice is reported in `voice.status`. |
-| `speech.status` | merged into `voice.status` |
-| `speech.playback.reserve` | `voice.lease`, plus `voice.release`. A lease still ends when its connection closes. |
+| `speech.preferredVoice.set` (new in phase 1) | `voice.select({ voice, provider })`, matching `tabs.select`. The helper keeps one choice per provider; `voice.status` reports them as `helper.status.preferredVoices`. An empty `voice` clears that provider's choice. |
+| `speech.status` | merged into `voice.status`, which adds `helper: { installed, authorized, reachable, speaking, status }` to the listening state |
+| `speech.playback.reserve` | `voice.lease`, plus `voice.release`. The helper has no release method: a lease ends when its connection closes, so `voice.release` closes the client's helper connection. |
 | `speech.changed` (event) | `voice.changed` |
 | `voice.stop` (stop listening) | `voice.stopListening`. **Breaking**: see below. |
 

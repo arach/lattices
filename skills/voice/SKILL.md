@@ -1,15 +1,19 @@
 ---
-name: speech
-description: Control Lattices by speech. Use when simulating a voice command, listing voice intents, checking the voice runtime, or turning spoken window management into the same canonical mutations as the lattices skill.
+name: voice
+description: The Lattices voice domain. Use when speaking out loud to the user (voice.say, stop, list, select), simulating a voice command, listing voice intents, checking the voice runtime, or turning spoken window management into the same canonical mutations as the lattices skill.
 compatibility: Requires macOS with the Lattices menu bar app running. Voice live session is ws://127.0.0.1:9398.
 metadata:
   author: arach
   homepage: https://lattices.dev/docs/voice
 ---
 
-# Speech
+# Voice
 
-Lattices hosts an in-process voice runtime. Speech is another client of the
+The `voice` domain covers both directions. Listening (spoken commands) runs in
+the Lattices daemon. Speaking runs in the Voice helper, which is embedded in
+Lattices.app.
+
+Lattices hosts an in-process voice runtime. Spoken commands are another client of the
 same execution layer as the CLI and daemon. Spoken commands must resolve
 into the same canonical mutations as the `lattices` skill
 (`window.place`, `layer.activate`, `space.optimize`).
@@ -32,6 +36,20 @@ Capability file:
 
 Override the voice port only for tests with `LATTICES_VOICE_PORT`.
 
+## Speaking
+
+```bash
+lattices voice say "Build finished"
+lattices voice stop          # stop speaking and clear the queue
+lattices voice list          # voices, with availability
+lattices voice select <id>   # default voice for later say calls
+```
+
+`voice.say` returns once the job is queued, not when speech ends. If the
+Voice helper is missing, calls fail with `helper_not_installed`; install it
+from Lattices › Apps. If it is installed but not running, they fail with
+`helper_unreachable`; open Voice from Lattices › Apps. There is no fallback.
+
 ## Agent surface
 
 Agents do not hold the microphone. They simulate speech through the CLI:
@@ -41,6 +59,9 @@ lattices voice intents
 lattices voice simulate "tile this left"
 lattices voice simulate "focus chrome" --dry-run
 ```
+
+`lattices voice stopListening` stops capture. `lattices voice stop` stops
+speaking (the Voice helper's output), not listening.
 
 `--dry-run` parses and does not execute. Read `lattices voice intents`
 before sending a novel phrase.
