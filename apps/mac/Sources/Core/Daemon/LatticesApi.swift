@@ -3492,10 +3492,10 @@ final class LatticesApi {
 
         api.register(Endpoint(
             method: "voice.status",
-            description: "Check voice runtime provider status",
+            description: "Voice status: the listening runtime (provider, listening, last transcript) and, under helper, the Voice helper that speaks (installed, reachable, speaking, and its queue status). Over the daemon socket the helper section is always present.",
             access: .read,
             params: [],
-            returns: .custom("Provider status with name and listening state"),
+            returns: .custom("{ provider, available, listening, lastTranscript, assistantHandoffPrompt, lastError, helper: { name, installed, authorized, reachable, speaking, status, error, message, hint? } }"),
             handler: { _ in
                 let audio = AudioLayer.shared
                 return .object([
@@ -3527,8 +3527,8 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "voice.stop",
-            description: "Stop voice capture and process the transcription",
+            method: "voice.stopListening",
+            description: "Stop voice capture and process the transcription. (voice.stop now stops speaking.)",
             access: .mutate,
             params: [],
             returns: .ok,
@@ -3539,6 +3539,9 @@ final class LatticesApi {
                 return .object(["ok": .bool(true)])
             }
         ))
+
+        // Speaking: forwarded to the Voice helper by DaemonServer.
+        VoiceHelperRouting.registerSchema(on: api)
 
         api.register(Endpoint(
             method: "voice.simulate",

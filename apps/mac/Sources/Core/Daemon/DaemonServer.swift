@@ -357,27 +357,13 @@ final class DaemonServer: ObservableObject {
             return
         }
 
-        if request.method.hasPrefix("speech.") {
-            guard client.speechAuthorized else {
-                sendResponse(DaemonResponse(id: request.id, result: nil, error: "Speech authorization required"), to: client)
-                return
-            }
-            if client.speechConnection == nil {
-                client.speechConnection = SpeechCompanionConnection(endpoint: speechEndpoint, tokenFile: speechCapabilityURL, response: { [weak self, weak client] result in
-                    self?.queue.async { [weak self, weak client] in
-                        guard let self, let client, self.isConnected(client) else { return }
-                        self.sendResponse(result, to: client)
-                    }
-                }, event: { [weak self, weak client] update in
-                    self?.queue.async { [weak self, weak client] in
-                        guard let self, let client, self.isConnected(client),
-                              let data = try? self.encoder.encode(update), let text = String(data: data, encoding: .utf8) else { return }
-                        self.sendWebSocketText(text, to: client)
-                    }
-                })
-            }
-            let connection = client.speechConnection
-            Task { await connection?.forward(request) }
+        if request.method == "voice.status" {
+            handleVoiceStatus(request, client: client)
+            return
+        }
+
+        if VoiceHelperRouting.isHelperVerb(request.method) {
+            handleVoiceHelperVerb(request, client: client)
             return
         }
 
@@ -396,6 +382,145 @@ final class DaemonServer: ObservableObject {
 
         let response = LatticesApi.shared.handle(request)
         sendResponse(response, to: client)
+    }
+
+    // MARK: - Voice helper routing (LAT-012)
+
+    /// `voice.*` output verbs and direct `speech.*` calls go to the Voice
+    /// helper. Only clients that presented the helper capability may use them.
+    private func handleVoiceHelperVerb(_ request: DaemonRequest, client: WebSocketClient) {
+        guard client.speechAuthorized else {
+            let error = request.method == "voice.stop" && AudioLayer.shared.isListening
+                ? VoiceHelperRouting.stopListeningHintError
+                : voiceUnavailableError(installed: VoiceHelperRouting.isInstalled())
+            sendResponse(DaemonResponse(id: request.id, result: nil, error: error), to: client)
+            return
+        }
+
+        if request.method == VoiceHelperRouting.releaseMethod {
+            let connection = client.speechConnection
+            client.speechConnection = nil
+            Task { [weak self, weak client] in
+                let released = await connection?.release() ?? false
+                self?.queue.async { [weak self, weak client] in
+                    guard let self, let client, self.isConnected(client) else { return }
+                    self.sendResponse(DaemonResponse(id: request.id, result: .object([
+                        "ok": .bool(true),
+                        "released": .bool(released),
+                    ]), error: nil), to: client)
+                }
+            }
+            return
+        }
+
+        guard let helperMethod = VoiceHelperRouting.helperMethod(for: request.method) else { return }
+        let forwarded = VoiceHelperRouting.renamed(request, to: helperMethod)
+
+        // One-release hint: voice.stop used to stop listening. When the daemon
+        // is listening and Voice is not speaking, point at voice.stopListening
+        // instead of silently stopping nothing.
+        if request.method == "voice.stop", AudioLayer.shared.isListening {
+            callHelper("speech.status", client: client) { [weak self] status in
+                guard let self else { return }
+                if status.error == nil, VoiceHelperRouting.isSpeaking(status.result) {
+                    self.forwardToHelper(forwarded, client: client)
+                } else {
+                    self.sendResponse(DaemonResponse(id: request.id, result: nil, error: VoiceHelperRouting.stopListeningHintError), to: client)
+                }
+            }
+            return
+        }
+
+        forwardToHelper(forwarded, client: client)
+    }
+
+    /// `voice.status`: the daemon's listening state plus the Voice helper's
+    /// `speech.status`, or why the helper could not be asked.
+    private func handleVoiceStatus(_ request: DaemonRequest, client: WebSocketClient) {
+        let base = LatticesApi.shared.handle(request)
+        guard base.error == nil, case .object(var object)? = base.result else {
+            sendResponse(base, to: client)
+            return
+        }
+        let finish: (JSON) -> Void = { [weak self] helper in
+            guard let self else { return }
+            object["helper"] = helper
+            self.sendResponse(DaemonResponse(id: request.id, result: .object(object), error: nil), to: client)
+        }
+        guard client.speechAuthorized else {
+            let installed = VoiceHelperRouting.isInstalled()
+            finish(VoiceHelperRouting.helperStatus(
+                installed: installed,
+                authorized: false,
+                status: nil,
+                error: voiceUnavailableError(installed: installed)
+            ))
+            return
+        }
+        callHelper("speech.status", client: client) { status in
+            if status.error == nil {
+                finish(VoiceHelperRouting.helperStatus(installed: true, authorized: true, status: status.result ?? .null, error: nil))
+            } else {
+                let error = status.error ?? VoiceHelperRouting.unreachableError
+                let installed = error == VoiceHelperRouting.notInstalledError ? false : VoiceHelperRouting.isInstalled()
+                finish(VoiceHelperRouting.helperStatus(installed: installed, authorized: true, status: nil, error: error))
+            }
+        }
+    }
+
+    /// Why a client without the helper capability can't use Voice.
+    private func voiceUnavailableError(installed: Bool) -> String {
+        VoiceHelperRouting.unauthorizedReason(
+            capabilityPresent: FileManager.default.fileExists(atPath: speechCapabilityURL.path),
+            installed: installed
+        )
+    }
+
+    private func helperConnection(for client: WebSocketClient) -> SpeechCompanionConnection {
+        if let connection = client.speechConnection { return connection }
+        let connection = SpeechCompanionConnection(endpoint: speechEndpoint, tokenFile: speechCapabilityURL, response: { [weak self, weak client] result in
+            self?.queue.async { [weak self, weak client] in
+                guard let self, let client, self.isConnected(client) else { return }
+                if result.id.hasPrefix(VoiceHelperRouting.internalIdPrefix) {
+                    client.helperCallbacks.removeValue(forKey: result.id)?(self.mappedHelperResponse(result))
+                    return
+                }
+                self.sendResponse(self.mappedHelperResponse(result), to: client)
+            }
+        }, event: { [weak self, weak client] update in
+            self?.queue.async { [weak self, weak client] in
+                guard let self, let client, self.isConnected(client) else { return }
+                for event in VoiceHelperRouting.clientEvents(for: update) {
+                    guard let data = try? self.encoder.encode(event), let text = String(data: data, encoding: .utf8) else { continue }
+                    self.sendWebSocketText(text, to: client)
+                }
+            }
+        })
+        client.speechConnection = connection
+        return connection
+    }
+
+    /// A helper connection failure means Voice is missing or not running.
+    private func mappedHelperResponse(_ response: DaemonResponse) -> DaemonResponse {
+        guard response.error == VoiceHelperRouting.unreachableError, !VoiceHelperRouting.isInstalled() else { return response }
+        return DaemonResponse(id: response.id, result: nil, error: VoiceHelperRouting.notInstalledError)
+    }
+
+    private func forwardToHelper(_ request: DaemonRequest, client: WebSocketClient) {
+        let connection = helperConnection(for: client)
+        Task { await connection.forward(request) }
+    }
+
+    /// Ask the helper something on the daemon's behalf. The reply comes back on
+    /// `queue`; after 2 s the call fails as unreachable.
+    private func callHelper(_ method: String, client: WebSocketClient, completion: @escaping (DaemonResponse) -> Void) {
+        let id = VoiceHelperRouting.internalIdPrefix + UUID().uuidString
+        client.helperCallbacks[id] = completion
+        forwardToHelper(DaemonRequest(id: id, method: method, params: nil), client: client)
+        queue.asyncAfter(deadline: .now() + 2) { [weak self, weak client] in
+            guard let self, let client, let callback = client.helperCallbacks.removeValue(forKey: id) else { return }
+            callback(self.mappedHelperResponse(DaemonResponse(id: id, result: nil, error: VoiceHelperRouting.unreachableError)))
+        }
     }
 
     private func isConnected(_ client: WebSocketClient) -> Bool {
@@ -494,6 +619,8 @@ final class DaemonServer: ObservableObject {
 final class WebSocketClient {
     var speechAuthorized = false
     var speechConnection: SpeechCompanionConnection?
+    /// Replies to requests the daemon sent the Voice helper itself. Touched only on the daemon queue.
+    var helperCallbacks: [String: (DaemonResponse) -> Void] = [:]
     let id: UUID
     let fd: Int32
     var buffer: [UInt8] = []

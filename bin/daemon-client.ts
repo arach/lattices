@@ -4,9 +4,30 @@
 
 import { createConnection, type Socket } from "node:net";
 import { randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 const DAEMON_HOST = "127.0.0.1";
 const DAEMON_PORT = 9399;
+
+// The Voice helper (bundle dev.lattices.Speech) writes this capability when it
+// runs. The daemon forwards voice output verbs only for clients that present it.
+const VOICE_CAPABILITY_FILE = join(
+  homedir(),
+  "Library/Application Support/Speech/RPC/capability"
+);
+const VOICE_TOKEN_HEADER = "x-lattices-speech-token";
+
+function voiceTokenHeader(method: string): string[] {
+  if (!method.startsWith("voice.") && !method.startsWith("speech.")) return [];
+  try {
+    const token = readFileSync(VOICE_CAPABILITY_FILE, "utf8").trim();
+    return token && !/[\r\n]/.test(token) ? [`${VOICE_TOKEN_HEADER}: ${token}`] : [];
+  } catch {
+    return [];
+  }
+}
 
 interface ParsedFrame {
   payload: string;
@@ -61,6 +82,7 @@ export async function daemonCall(
         `Connection: Upgrade`,
         `Sec-WebSocket-Key: ${key}`,
         `Sec-WebSocket-Version: 13`,
+        ...voiceTokenHeader(method),
         ``,
         ``,
       ].join("\r\n");
