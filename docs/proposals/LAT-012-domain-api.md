@@ -10,7 +10,7 @@ Lattices is a framework for operating a workspace, with parity between the user
 and agents. Every capability is addressed as `lattices.<domain>.<verb>`:
 
 ```
-lattices.windows.tile(wid, "left")
+lattices.windows.place(wid, "left")
 lattices.canvas.pin(note, at: "top-right")
 lattices.computer.click(target)
 lattices.voice.say("Build finished")
@@ -25,7 +25,7 @@ helpers, only domains.
 | Use | Meaning |
 | --- | --- |
 | **domain** | An API namespace agents see, such as `voice` or `windows`. |
-| **verb** | One method on a domain, such as `say` or `tile`. |
+| **verb** | One method on a domain, such as `say` or `place`. |
 | **backend** | The process that serves a verb: the daemon itself, or a helper. |
 | **helper** | An app embedded in `Lattices.app/Contents/Helpers`: Voice, Blink or Action. It has its own process, bundle ID and settings window. |
 | **daemon** | The Lattices process that hosts the router and the native backends. |
@@ -65,7 +65,11 @@ helpers, only domains.
 
    `computer.*` keeps only what has no structural equivalent: observe, click,
    type, press, drag, scroll, aim.
-7. **Surface forms.** MCP turns every dot after the domain into `_`, because MCP
+7. **Rename only on a real collision.** A name stays unless two verbs could be
+   mistaken for each other, or a name reads as something it is not. Otherwise
+   the fix is a "use when" line (below), not a new word. Two verbs that do the
+   same job merge into the one that already exists.
+8. **Surface forms.** MCP turns every dot after the domain into `_`, because MCP
    forbids dots, and the server name supplies `lattices`.
 
 | Surface | Form | Example |
@@ -88,10 +92,76 @@ helpers, only domains.
 | Save a screenshot or recording | `capture.screenshot`, `capture.record` |
 | Put something on the screen for the user | `canvas.pin` for something that stays, `canvas.draw` for something transient |
 | Say something out loud | `voice.say` |
-| Work in a browser page | `browser.*`. The agent's own Chrome is the default target; see open question 3. |
+| Work in a browser page | `browser.*`. `target: "agent"` (the default) is the agent's own Chrome; `"user"` is the user's browser. |
 
 `mouse.*` is the user's physical pointer (find it, summon it, its shortcuts).
 The agent's synthetic cursor is `computer.aim`.
+
+## Use when
+
+A cold test (a fresh agent given only the verb list, 2026-09-23) scored 4 of 11
+tasks confident. The misses were clusters of neighbouring verbs with no stated
+boundary. Each verb in these clusters carries its "use when" line into
+`api.schema`, the MCP tool description and the skill. The line is the contract;
+the name only has to not mislead.
+
+**Moving windows**
+
+| Verb | Use when |
+| --- | --- |
+| `windows.place` | Put a window at a position on its current display: `left`, `top-right`, a grid cell, or a frame. Takes `wid` or `session`. The answer to "put Xcode on the left half". |
+| `windows.move` | Send a window to another display or Space. |
+| `windows.present` | Bring a window to the Space you are on and raise it, optionally placing it. Use it when the window may be on another Space. |
+| `windows.focus` | Raise and activate a window where it already is. |
+| `windows.pick` | Ask the user to click a window. Returns its `wid`. |
+| `windows.resolve` | Dry run: which window a target means, and where `place` would put it. Moves nothing. |
+| `layout.distribute` | Arrange several windows at once in a grid. |
+
+**Reading the screen**
+
+| Verb | Use when |
+| --- | --- |
+| `desktop.snapshot` | Workspace state in one call: front window, layer, displays, sessions, permissions. No pixels. |
+| `computer.observe` | What an app shows right now: screenshot, AX tree, OCR text or a vision read, for the agent to act on. |
+| `ocr.search` | Text that has been on screen before, across all windows. |
+| `ocr.history` | The text timeline of one window (`wid`), or of all windows when `wid` is omitted. |
+| `ocr.scan` | Force a fresh OCR pass now instead of waiting for the next scheduled one. |
+| `capture.screenshot`, `capture.record` | Save a file for a person to look at. The agent reads the screen with `computer.observe`. |
+
+**Terminals**
+
+| Verb | Use when |
+| --- | --- |
+| `sessions.*` | Lattices project sessions: launch, kill, restart. |
+| `terminals.list`, `terminals.search` | Terminal tabs as the user sees them: app, cwd, running command, Claude or not. |
+| `terminals.capture` | Exact pane text from tmux. Better than OCR for terminals. |
+| `tmux.list` | Raw tmux sessions, including ones Lattices did not launch. |
+| `processes.list`, `processes.tree` | Developer processes and their children, linked to windows. |
+
+**Exclusive access and modes**
+
+| Verb | Use when |
+| --- | --- |
+| `computer.lease` / `release` | Take and give back the screen for computer use. Other agents wait. |
+| `voice.lease` / `release` | Hold the speaker so other agents do not talk over you. |
+| `solo.enter` / `exit` | The user's Focus Mode: enlarge the front window and black out everything around it. Visual only, not a lock. |
+
+**Doing things by description**
+
+| Verb | Use when |
+| --- | --- |
+| `intents.run` | Do something described as an intent with slots, like voice does. Returns a receipt. |
+| `history.list` / `undo` | Past receipts, and undo of the latest undoable one. |
+| `assistant.preview` | Dry-run the hands-off planner on a transcript or snapshot. Executes nothing. |
+| `deck.*` | The iPad cockpit's buttons and state. Only the cockpit needs it. |
+
+**Notes**
+
+| Verb | Use when |
+| --- | --- |
+| `canvas.notes.*` | Markdown notes that live in the workspace and can be pinned. |
+| `canvas.pin` | Show something to the user on screen until it is unpinned. |
+| `computer.caption` | One line in the computer-use HUD saying what the agent is about to do. |
 
 ## Domains and backends
 
@@ -101,7 +171,7 @@ gives the fix: "Lattices › Apps › Install Voice". There are no fallbacks.
 
 | Domain | Verbs | Backend |
 | --- | --- | --- |
-| `windows` | list, get, preview, search, tile, focus, move, place, present, resolve, pick | daemon |
+| `windows` | list, get, preview, search, place, move, present, focus, resolve, pick | daemon |
 | `spaces` | list, optimize | daemon |
 | `layers` | list, activate, switch, assign, unassign, map | daemon |
 | `layout` | distribute | daemon |
@@ -110,21 +180,24 @@ gives the fix: "Lattices › Apps › Install Voice". There are no fallbacks.
 | `groups` | launch, kill | daemon |
 | `tabs` | list, stack, add, select, layout, unstack | daemon |
 | `apps` | open | daemon |
-| `projects`, `processes`, `terminals`, `tmux` | list, scan, tree, search, capture, … (unchanged) | daemon |
+| `projects`, `processes`, `terminals`, `tmux` | list, scan, tree, search, capture (unchanged, except `tmux.list`) | daemon |
 | `mouse` | find, summon, `shortcuts.*` | daemon |
-| `ocr` | search, history, recent, scan. This is the index of past screen text. Live reading is `computer.observe`. | daemon |
+| `ocr` | search, history, scan. This is the index of past screen text. Live reading is `computer.observe`. | daemon |
+| `solo` | enter, exit, toggle, status (Focus Mode) | daemon |
 | `capture` | screenshot, record, stop, status, stage, unstage | daemon now; Action's recording is folded in during phase 3 |
 | `artifacts` | list, analyze, zoom | daemon |
 | `runs` | create, list, get. A run is a receipt plus an artifact directory for one piece of agent work. | daemon |
-| `computer` | observe, resolve, click, type, press, drag, scroll, aim, note, play, verify, lease, release, status | daemon now; the Action helper from phase 3 |
+| `computer` | observe, resolve, click, type, press, drag, scroll, aim, caption, play, verify, lease, release, status | daemon now; the Action helper from phase 3 |
 | `canvas` | draw, clear, `actors.*` | daemon (the LAT-002 overlay canvas) |
 | `canvas` | pin, unpin, move, focus, list, `notes.*`, `workspaces.*` | Blink helper |
-| `voice` | say, stop, pause, resume, skip, seek, list, use, lease, release | Voice helper |
+| `voice` | say, stop, pause, resume, skip, seek, list, select, lease, release | Voice helper |
 | `voice` | listen, stopListening, simulate, reconnect, status | daemon (`status` also reports the Voice helper) |
-| `browser` | open, tabs, snapshot, click, fill, screenshot, console, close, profiles, … | Action helper (agent's own Chrome) |
-| `intents`, `history` | see open question 2 | daemon |
+| `browser` | open, tabs, snapshot, click, fill, screenshot, console, close, profiles, …, with `target: "agent"` (default) or `"user"` | Action helper for `agent`; daemon (Accessibility) for `user` |
+| `intents` | list, run | daemon |
+| `history` | list, undo | daemon |
 | `deck` | manifest, snapshot, perform. The iPad cockpit's state and actions. | daemon |
-| `search`, `assistant`, `handsoff`, `settings`, `daemon`, `diagnostics`, `api` | unchanged | daemon |
+| `assistant` | preview | daemon |
+| `search`, `settings`, `daemon`, `diagnostics`, `api` | unchanged | daemon |
 
 ## Renames
 
@@ -135,7 +208,8 @@ advertise only new names. There is one exception, listed under breaking changes.
 
 | Old | New |
 | --- | --- |
-| `window.tile/focus/move/place/present/resolve` | `windows.tile/focus/move/place/present/resolve` |
+| `window.focus/move/place/present/resolve` | `windows.focus/move/place/present/resolve` |
+| `window.tile` (session only) | merged into `windows.place`, which already takes `session` |
 | `window.pick.start` | `windows.pick` |
 | `window.assignLayer`, `window.removeLayer`, `window.layerMap` | `layers.assign`, `layers.unassign`, `layers.map` |
 | `layer.activate`, `layer.switch` | `layers.activate`, `layers.switch` |
@@ -144,7 +218,14 @@ advertise only new names. There is one exception, listed under breaking changes.
 | `group.launch/kill` | `groups.launch/kill` |
 | `tabStacks.create/delete` and the rest of `tabStacks.*` | `tabs.stack/unstack` and `tabs.*` |
 | `lattices.search` | `search.query`. The `lattices.` prefix is reserved for the SDK root. |
-| `focus.*` (Focus Mode) | see open question 1 |
+| `focus.enter/exit/toggle/status` (Focus Mode) | `solo.enter/exit/toggle/status`. `focus` collides with `windows.focus`. |
+| `ocr.recent` | merged into `ocr.history` with `wid` optional |
+| `tmux.sessions`, `tmux.inventory` | `tmux.list({ includeOrphans })` |
+| `actions.execute` | merged into `intents.run`. A domain named `actions` next to the retired Action helper reads as computer use. |
+| `intents.execute` | `intents.run` |
+| `actions.history`, `actions.undo` | `history.list`, `history.undo` |
+| `handsoff.run` | merged into `assistant.preview({ transcript, snapshot })`. Both dry-run the same planner. |
+| daemon `browser.*` (user's browser) | `browser.*({ target: "user" })` |
 
 ### voice
 
@@ -153,7 +234,7 @@ advertise only new names. There is one exception, listed under breaking changes.
 | `speech.enqueue` | `voice.say` |
 | `speech.stop` / `pause` / `resume` / `next` / `seek` | `voice.stop` / `pause` / `resume` / `skip` / `seek` |
 | `speech.voices` | `voice.list` |
-| `speech.preferredVoice.set` | `voice.use`. The preferred voice is reported in `voice.status`. |
+| `speech.preferredVoice.set` | `voice.select`, matching `tabs.select`. The selected voice is reported in `voice.status`. |
 | `speech.status` | merged into `voice.status` |
 | `speech.playback.reserve` | `voice.lease`, plus `voice.release`. A lease still ends when its connection closes. |
 | `speech.changed` (event) | `voice.changed` |
@@ -177,7 +258,7 @@ accepting `speech.*`, so the daemon and helper protocols can change independentl
 | Action `resolve_target`, `computer.prepare` | `computer.resolve` |
 | Action `drive_begin/release/status`, `session_create`, `driver_identify` | `computer.lease` (identity and task go in its arguments) / `computer.release` / `computer.status` |
 | Action `drive_aim`, `computer.magicCursor`, `computer.showCursor` | `computer.aim` |
-| Action `drive_note`, `drive_play` | `computer.note`, `computer.play` |
+| Action `drive_note`, `drive_play` | `computer.caption`, `computer.play`. Not `note`, which collides with `canvas.notes`. |
 | Action `health` | `computer.status` |
 | Action `record_start/stop/status`, `capture.recordWindow/Region`, `capture.stopRecording` | `capture.record` / `capture.stop` / `capture.status` |
 | `capture.screenshotWindow/Region/Display` | `capture.screenshot({ target })` |
@@ -254,18 +335,16 @@ Lattices.app/Contents/Helpers/
   for `computer.*`, and the daemon's duplicates are removed as they are ported.
 - Helper bundle IDs are frozen.
 - An operation has one verb in the domain it acts on, and `via` chooses native (the default) or computer use. Computer use does not duplicate window, app or space verbs.
+- Rename only on a real collision (rule 7). Kept despite the cold test, with a
+  "use when" line instead: `windows.present`, `windows.move`, `mouse.find`,
+  `desktop.snapshot`, `deck.*`, and the separate `capture` and `computer.observe`.
+- `windows.tile` merges into `windows.place`; `ocr.recent` into `ocr.history`;
+  `handsoff.run` into `assistant.preview`; `actions.execute` into `intents.run`.
+- Focus Mode becomes `solo.*`. `computer.note` becomes `computer.caption`.
+  `voice.use` becomes `voice.select`.
+- `browser` is one domain with `target: "agent"` (default) or `"user"`.
 
 ## Open questions
 
-1. **Focus Mode** (`focus.enter/exit/toggle/status`) collides with `windows.focus`.
-   It needs its own domain noun, for example `solo.enter`.
-2. **`actions` and `intents`.** `actions.execute` runs a canonical workspace
-   mutation and returns a receipt with undo; `intents.execute` runs a structured
-   intent from voice or an agent. A domain named `actions` next to the retired
-   Action product will confuse people. Proposal: `intents.run` and `intents.list`,
-   and `history.list` and `history.undo` for receipts, with `actions.execute`
-   folded into `intents.run`.
-3. **`browser` target.** The daemon's `browser.*` reads the user's own browser
-   through Accessibility (JavaScript only with `allowAutomation`), while Action's
-   `browser_*` drives the agent's own Chrome through the DOM. Proposal: one
-   `browser` domain with `target: "agent"` (the default) or `"user"`.
+1. **`solo`** is the one new word in this pass. Alternatives considered:
+   `focusMode` (breaks rule 1), `spotlight` (collides with macOS Spotlight).
