@@ -53,8 +53,8 @@ private final class RecordingResponseWriter {
             )
             try data.write(to: url)
         } else {
-            FileHandle.standardOutput.write(data)
-            FileHandle.standardOutput.write(Data([0x0a]))
+            try FileHandle.standardOutput.write(contentsOf: data)
+            try FileHandle.standardOutput.write(contentsOf: Data([0x0a]))
         }
     }
 }
@@ -85,7 +85,7 @@ private final class RecordingDebugLogger {
                 try Data(line.utf8).write(to: url)
             }
         } catch {
-            FileHandle.standardError.write(Data("Lattices recording debug log failed: \(error.localizedDescription)\n".utf8))
+            try? FileHandle.standardError.write(contentsOf: Data("Lattices recording debug log failed: \(error.localizedDescription)\n".utf8))
         }
     }
 }
