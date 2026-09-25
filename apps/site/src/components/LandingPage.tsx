@@ -5,7 +5,7 @@ import { ThemeToggle } from "./ThemeToggle";
 import { GestureMatrix } from "./GestureMatrix";
 import { ProductsMenu } from "./SiteChrome";
 
-const latticesDownloadURL = "https://github.com/arach/lattices/releases/download/v0.12.2/Lattices.dmg";
+const latticesDownloadURL = "https://github.com/arach/lattices/releases/download/v0.12.3/Lattices.dmg";
 
 export function LatticesLogo({ size = 20 }: { size?: number }) {
   // 3×3 grid with L-shape pattern (left column + bottom row bright, rest dim)
