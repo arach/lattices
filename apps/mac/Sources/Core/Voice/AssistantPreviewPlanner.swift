@@ -126,8 +126,8 @@ final class AssistantPreviewPlanner {
         proc.terminationHandler = { _ in semaphore.signal() }
 
         try proc.run()
-        inPipe.fileHandleForWriting.write(inputData)
-        inPipe.fileHandleForWriting.write(Data("\n".utf8))
+        try? inPipe.fileHandleForWriting.write(contentsOf: inputData)
+        try? inPipe.fileHandleForWriting.write(contentsOf: Data("\n".utf8))
         try? inPipe.fileHandleForWriting.close()
 
         if semaphore.wait(timeout: .now() + timeoutSeconds) == .timedOut {
