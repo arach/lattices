@@ -1,10 +1,10 @@
 import { useId, type SVGProps } from 'react';
-import { latticesPalette } from '../lib/marks';
+import { actionAccent, latticesPalette } from '../lib/marks';
 
 export interface ActionPalette {
   paper: string;
   ink: string;
-  /** Defaults to the ink: the mark is one colour, like every Lattices mark. */
+  /** Defaults to the accent, Action's coral; `accent={false}` draws it in the ink. */
   cursor: string;
   guide: string;
   grid: string;
@@ -12,6 +12,8 @@ export interface ActionPalette {
 
 export interface ActionMarkProps extends Omit<SVGProps<SVGSVGElement>, 'children' | 'name'> {
   theme?: 'light' | 'dark';
+  /** The cursor's colour, or `false` for one ink. Defaults to Action's coral. */
+  accent?: string | false;
   /** Show the architectural construction layer. Defaults to true. */
   guides?: boolean;
   /** These layers default to the guides setting, but can be controlled separately. */
@@ -38,7 +40,7 @@ export interface ActionMarkProps extends Omit<SVGProps<SVGSVGElement>, 'children
  * Geometry is fixed; presentation is configurable.
  */
 export function ActionMark({
-  theme = 'light', guides = true, grid = guides, annotations = guides,
+  theme = 'light', accent, guides = true, grid = guides, annotations = guides,
   titleBlock = guides, background = true, padding = 0, palette,
   label = 'Action logo', decorative = false,
   figure = 'FIG. A', name = 'ACTION', organization = 'LATTICES',
@@ -52,7 +54,8 @@ export function ActionMark({
   const ink = palette?.ink ?? latticesPalette[theme].ink;
   const colors: ActionPalette = {
     paper: theme === 'dark' ? '#19282a' : '#f4efe6',
-    ink, cursor: ink, guide: theme === 'dark' ? '#819d96' : '#71908d',
+    ink, cursor: accent === false ? ink : accent ?? actionAccent[theme],
+    guide: theme === 'dark' ? '#819d96' : '#71908d',
     grid: '#367b7c', ...palette,
   };
   return (

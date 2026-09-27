@@ -13,8 +13,9 @@ import Foundation
 /// This is a port. The source of truth is `ActionMark` in
 /// `apps/site/src/components/ActionMark.tsx` (STUDY 03), and the numbers below
 /// are copied from it. `bun run brand` in `apps/site` renders the brand kit and
-/// `Action.icns` from that component. The app draws the mark itself in two
-/// places, the menu bar status item and the brand chip, and both use this.
+/// the app icon (`Action.icon`, `Assets.car` and `Action.icns`) from that
+/// component. The app draws the mark itself in two places, the menu bar status
+/// item and the brand chip, and both use this.
 ///
 /// Paths are authored in the component's coordinates, with **y pointing down**,
 /// then mapped onto whatever rect the caller hands in, so the mark is
@@ -142,8 +143,9 @@ public enum ActionBrandMark {
 
     /// The `action` built-in theme's HUD coral (`ActionThemeBuiltin.swift`),
     /// which means "live" everywhere in the app. The status item turns this
-    /// colour while a drive holds the machine. Generic RGB, the space the
-    /// theme's colours are built in, so the two match.
+    /// colour while a drive holds the machine, and the app icon and the brand
+    /// chip draw the cursor in it. Generic RGB, the space the theme's colours
+    /// are built in, so the two match.
     public static let coral = CGColor(red: 0.937, green: 0.416, blue: 0.278, alpha: 1)
 
     // MARK: - Geometry
