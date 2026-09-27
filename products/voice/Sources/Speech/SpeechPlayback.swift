@@ -79,9 +79,10 @@ enum SpeechProviders {
     static let elevenlabs = "elevenlabs"
     static let kokoro = "kokoro"
 
-    static let supported: Set<String> = [
-        system, openai, elevenlabs, kokoro,
-    ]
+    /// Display and reporting order.
+    static let all = [system, openai, elevenlabs, kokoro]
+
+    static let supported = Set(all)
 
     /// Cloud TTS adapters Lattices registers for Speech. Groq and Gemini exist
     /// in HudsonUIAudio but are not Speech catalog choices.

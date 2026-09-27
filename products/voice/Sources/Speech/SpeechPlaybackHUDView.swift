@@ -12,7 +12,7 @@ struct SpeechPlaybackHUDView: View {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 statusGlyph(for: job?.state)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(job?.text ?? "Speech idle")
+                    Text(job?.text ?? "Voice idle")
                         .font(Typo.body(13))
                         .foregroundColor(Palette.text)
                         .lineLimit(2)
@@ -40,7 +40,7 @@ struct SpeechPlaybackHUDView: View {
             if let failure = snapshot.failure ?? (job?.state == .failed ? job : nil),
                let error = failure.error, !error.isEmpty {
                 HStack(alignment: .top) {
-                    Text("Speech failed: \(error)")
+                    Text("Voice failed: \(error)")
                         .font(Typo.caption(11))
                         .foregroundColor(HUDChrome.rose)
                         .fixedSize(horizontal: false, vertical: true)

@@ -32,15 +32,15 @@ final class SpeechProviderSelectionTests: XCTestCase {
     func testVoiceCatalogOmitsGroqGeminiAndReportsKokoroFromLiveProbeOnly() {
         let availableKokoro = FakeSpeechKokoro(status: SpeechKokoroStatus(
             available: true,
-            modelId: "mlx-community/Kokoro-82M-bf16",
+            modelId: "FluidInference/kokoro-82m-coreml",
             voiceId: "af_heart",
             detail: nil
         ))
         let unavailableKokoro = FakeSpeechKokoro(status: SpeechKokoroStatus(
             available: false,
-            modelId: "mlx-community/Kokoro-82M-bf16",
+            modelId: "FluidInference/kokoro-82m-coreml",
             voiceId: "af_heart",
-            detail: "mlx-audio did not report a Kokoro voice."
+            detail: "Kokoro reported no voices."
         ))
 
         let available = HudsonSpeechVoiceCatalog(
@@ -74,10 +74,10 @@ final class SpeechProviderSelectionTests: XCTestCase {
         }
     }
 
-    func testKokoroSynthesisUsesHostedRuntimeAndDoesNotFallBack() async throws {
+    func testKokoroSynthesisUsesKokoroEngineAndDoesNotFallBack() async throws {
         let kokoro = FakeSpeechKokoro(status: SpeechKokoroStatus(
             available: true,
-            modelId: "mlx-community/Kokoro-82M-bf16",
+            modelId: "FluidInference/kokoro-82m-coreml",
             voiceId: "af_heart",
             detail: nil
         ))
@@ -111,9 +111,10 @@ final class SpeechProviderSelectionTests: XCTestCase {
         XCTAssertEqual(payload.provider, "kokoro")
         XCTAssertEqual(payload.voice, "af_heart")
         XCTAssertEqual(kokoro.synthesizeCount, 1)
+        XCTAssertEqual(kokoro.lastModel, "FluidInference/kokoro-82m-coreml")
 
         kokoro.result = nil
-        kokoro.error = SpeechQueueError.providerFailed("Kokoro is unavailable because the Hudson/Vox runtime is not running")
+        kokoro.error = SpeechQueueError.providerFailed("Kokoro failed: offline")
         do {
             _ = try await synth.synthesize(SpeechSynthesisRequest(
                 text: "Should fail",
@@ -127,8 +128,59 @@ final class SpeechProviderSelectionTests: XCTestCase {
             ))
             XCTFail("Unavailable Kokoro must not fall back to system or cloud speech")
         } catch let error as SpeechQueueError {
-            XCTAssertEqual(error, .providerFailed("Kokoro is unavailable because the Hudson/Vox runtime is not running"))
+            XCTAssertEqual(error, .providerFailed("Kokoro failed: offline"))
         }
+    }
+
+    func testKokoroRequestsAreCachedUnderTheEngineModel() async throws {
+        let kokoro = FakeSpeechKokoro(status: SpeechKokoroStatus(
+            available: true,
+            modelId: "FluidInference/kokoro-82m-coreml",
+            voiceId: "af_heart",
+            detail: nil
+        ))
+        kokoro.result = HudTTSResult(
+            audioData: Data([0x52, 0x49, 0x46, 0x46]),
+            format: .wav,
+            providerID: HudTTSProviderID(rawValue: "kokoro"),
+            voice: "af_heart"
+        )
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("lattices-kokoro-model-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = HudSpeechCache(directory: directory)
+        let synth = HudsonSpeechSynthesizer(
+            tts: HudTTS(credentialSource: EmptySpeechCredentials(), adapters: SpeechProviders.cloudAdapters()),
+            cache: cache,
+            kokoro: kokoro
+        )
+        // A render cached by the retired mlx-audio engine, which keyed Kokoro without a model.
+        let stale = HudTTSRequest(text: "Cached before", voice: "af_heart", rate: 1, model: nil)
+        _ = try await cache.synthesize(stale, providerID: HudTTSProviderID(rawValue: "kokoro"),
+                                       namespace: "dev.lattices.app.voice", policy: .reuse) { _, provider in
+            HudTTSResult(audioData: Data([0x00]), format: .wav, providerID: provider, voice: "af_heart")
+        }
+        let replayed = try await cache.synthesize(stale, providerID: HudTTSProviderID(rawValue: "kokoro"),
+                                                  namespace: "dev.lattices.app.voice", policy: .reuse) { _, _ in
+            throw SpeechQueueError.providerFailed("the stale render must replay from the cache")
+        }
+        XCTAssertTrue(replayed.cached)
+
+        for model in [nil, " ", "mlx-community/Kokoro-82M-bf16"] as [String?] {
+            let payload = try await synth.synthesize(SpeechSynthesisRequest(
+                text: "Cached before", provider: "kokoro", model: model, voice: nil, rate: 1,
+                instructions: nil, voiceSettings: nil, cachePolicy: .reuse
+            ))
+            XCTAssertEqual(payload.data, Data([0x52, 0x49, 0x46, 0x46]))
+            XCTAssertEqual(kokoro.lastModel, "FluidInference/kokoro-82m-coreml")
+        }
+        XCTAssertEqual(kokoro.synthesizeCount, 1, "Every Kokoro model spelling shares one cache entry")
+
+        _ = try? await synth.synthesize(SpeechSynthesisRequest(
+            text: "Cached before", provider: "kokoro", model: "tts-1", voice: nil, rate: 1,
+            instructions: nil, voiceSettings: nil, cachePolicy: .reuse
+        ))
+        XCTAssertEqual(kokoro.lastModel, "tts-1", "A non-Kokoro model reaches the engine, which rejects it")
     }
 }
 
@@ -138,6 +190,7 @@ private final class FakeSpeechKokoro: SpeechKokoroSynthesizing {
     var result: HudTTSResult?
     var error: Error?
     var synthesizeCount = 0
+    var lastModel: String?
 
     init(status: SpeechKokoroStatus) {
         self.status = status
@@ -151,6 +204,7 @@ private final class FakeSpeechKokoro: SpeechKokoroSynthesizing {
 
     func synthesize(text: String, voice: String?, rate: Double, model: String?) async throws -> HudTTSResult {
         synthesizeCount += 1
+        lastModel = model
         if let error { throw error }
         if let result { return result }
         throw SpeechQueueError.providerFailed("fake Kokoro has no audio")

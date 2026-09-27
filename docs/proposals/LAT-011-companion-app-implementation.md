@@ -74,7 +74,7 @@ Date: 2026-09-14. [Architecture](LAT-011-companion-app-architecture.md).
 - Isolated Vox patch: `/Users/arach/.codex/worktrees/19f1/vox-speech-integration`, branch `codex/speech-app-resource-resolution`.
 - No commits or publications were made. Original Grok and active shared-speech trees were preserved.
 - [Dependency manifest](LAT-011-dependencies/manifest.json) records base commits, file hashes and portable patches for unpublished Hudson work and the Vox manifest/resource fix. Both patches passed git apply --cached --check against their recorded base commits using isolated temporary indexes. Apply each patch to its recorded base in a fresh owning-repository checkout. Resolved files are evidence snapshots, not new version-pinning policy.
-- [Speech provenance](../../products/speech/SOURCE-PROVENANCE.json) records imported dirty-source hashes, adaptations and final source/test hashes. [Import ledger](LAT-011-integration-import.json) records the supervisor's original integration import.
+- [Speech provenance](../../products/voice/SOURCE-PROVENANCE.json) records imported dirty-source hashes, adaptations and final source/test hashes. [Import ledger](LAT-011-integration-import.json) records the supervisor's original integration import.
 
 ## Requirement-by-requirement evidence
 
@@ -116,13 +116,13 @@ From the authoritative Lattices tree, after restoring the dependency bases/patch
 SPEECH_HUDSON_PATH=/tmp/hudson-shared-speech \
 SPEECH_VOX_PATH=/Users/arach/.codex/worktrees/19f1/vox-speech-integration \
 HUDSON_VOX_PATH=/Users/arach/.codex/worktrees/19f1/vox-speech-integration \
-swift test --package-path products/speech
+swift test --package-path products/voice
 swift test --package-path apps/mac --filter 'CompanionApp|CompanionDaemonBoundary'
 bun test tests/companion-release.test.ts tests/companion-install.test.ts tests/companion-commit.test.ts tests/companion-lock.test.ts tests/companion-trust.test.ts
 SPEECH_REVIEW_APP=/tmp/lattices-speech-review-final3/Speech.app bun tests/companion-speech-lifecycle.ts
 ```
 
-`products/speech/tools/package.sh` accepts the same dependency environment plus
+`products/voice/tools/package.sh` accepts the same dependency environment plus
 `SPEECH_BUILD_CONFIGURATION`, `SPEECH_ARTIFACT_DIR` and `SPEECH_SIGN_IDENTITY`.
 The Lattices build resolves its existing sibling Hudson dependency via the local
 `../hudson` symlink to `/Users/arach/dev/hudson`; Speech uses the explicit paths above.
@@ -162,7 +162,7 @@ Speech candidate command (using the dependency environment in Reproduction):
 SPEECH_BUILD_CONFIGURATION=release \
 SPEECH_ARTIFACT_DIR=/tmp/lattices-speech-distribution-candidate \
 SPEECH_SIGN_IDENTITY=7674A1E3313C27B3969E1861F3A57728FE9D9072 \
-SPEECH_DISTRIBUTABLE=1 SPEECH_CREATE_DMG=1 bash products/speech/tools/package.sh
+SPEECH_DISTRIBUTABLE=1 SPEECH_CREATE_DMG=1 bash products/voice/tools/package.sh
 ```
 
 Choose a fresh artifact directory when repeating. Blink command below was executed with the exact dependency environment above; Action remains a prepared local-candidate command:

@@ -5,9 +5,11 @@
 	<key>CFBundleIdentifier</key>
 	<string>dev.lattices.Speech</string>
 	<key>CFBundleName</key>
-	<string>Speech</string>
+	<string>Voice</string>
+	<key>CFBundleDisplayName</key>
+	<string>Voice</string>
 	<key>CFBundleExecutable</key>
-	<string>Speech</string>
+	<string>Voice</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>CFBundlePackageType</key>

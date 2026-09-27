@@ -30,4 +30,4 @@ An 824 px tile in a 1024 canvas with continuous corners, shared by every Lattice
 
 Measured glyph bounds in viewBox units: 1.992, 1.992, 16.006 × 16.016.
 
-On macOS the export also writes `products/speech/assets/AppIcon.icns`, which the app build copies into the bundle.
+On macOS the export also writes `products/voice/assets/AppIcon.icns`, which the app build copies into the bundle.

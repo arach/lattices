@@ -92,7 +92,10 @@ Usage:
   lattices layer session [n]   List or switch session layers (runtime, no restart)
   lattices layer delete <name> Delete a session layer
   lattices layer clear         Clear all session layers
-  lattices voice status       Voice provider status
+  lattices voice say <text>   Speak text through the Voice helper
+  lattices voice stop         Stop speaking (pause, resume, skip, seek, list, select too)
+  lattices voice stopListening  Stop voice capture
+  lattices voice status       Listening state and Voice helper status
   lattices voice simulate <t> Parse and execute a voice command
   lattices voice intents      List all available intents
   lattices actor app <app> [message]  Show a clickable app-icon actor

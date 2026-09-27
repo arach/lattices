@@ -2,7 +2,7 @@ import { SiteHeader } from './SiteChrome'
 import { SpeechMark } from './SpeechMark'
 
 const downloadUrl = 'https://github.com/arach/lattices/releases/download/speech-v0.2.0/Speech.dmg'
-const sourceUrl = 'https://github.com/arach/lattices/tree/main/products/speech'
+const sourceUrl = 'https://github.com/arach/lattices/tree/main/products/voice'
 
 const features = [
   {
@@ -263,20 +263,20 @@ export default function SpeechPage() {
             <p>
               Speech is Swift all the way down — the RPC server, the queue, the
               HUD, and the Vox/Kokoro providers all live in{' '}
-              <code>products/speech</code>.
+              <code>products/voice</code>.
             </p>
             <ul className="speech-source-reqs">
               <li>macOS 26+ on Apple silicon</li>
               <li>Swift toolchain</li>
               <li>No permissions required to speak</li>
             </ul>
-            <a href={sourceUrl} className="speech-source-link">Browse products/speech →</a>
+            <a href={sourceUrl} className="speech-source-link">Browse products/voice →</a>
           </div>
           <div className="speech-terminal" aria-label="Speech source commands">
-            <div className="speech-terminal-bar">products/speech</div>
+            <div className="speech-terminal-bar">products/voice</div>
             <pre className="speech-terminal-body">
               <code>
-                <span className="speech-terminal-line"><span className="speech-terminal-prompt">$</span> swift test --package-path products/speech</span>
+                <span className="speech-terminal-line"><span className="speech-terminal-prompt">$</span> swift test --package-path products/voice</span>
                 <span className="speech-terminal-output">Speech tests passed</span>
                 <span className="speech-terminal-line"><span className="speech-terminal-prompt">$</span> tools/package.sh</span>
                 <span className="speech-terminal-output">Speech.dmg signed + notarized</span>

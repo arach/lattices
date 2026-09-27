@@ -162,7 +162,7 @@ const products: Product[] = [
     tile: '#141416',
     edge: 'rgba(255,255,255,.08)',
     glyph: 0.56,
-    icns: ['products/speech/assets/AppIcon.icns'],
+    icns: ['products/voice/assets/AppIcon.icns'],
     colours: [
       ['Ink on light', latticesPalette.light.ink],
       ['Queued bars on light', `${latticesPalette.light.dim} at ${latticesPalette.light.dimOpacity * 100}%`],

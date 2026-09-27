@@ -151,9 +151,9 @@ final class SpeechPlaybackHUD {
             panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
             panel.becomesKeyOnlyIfNeeded = true
             panel.animationBehavior = .none
-            panel.title = "Speech playback"
+            panel.title = "Voice playback"
             panel.setAccessibilityRole(.window)
-            panel.setAccessibilityLabel("Speech playback")
+            panel.setAccessibilityLabel("Voice playback")
             panel.setAccessibilityIdentifier("speech-playback-hud")
             let hosting = SpeechHUDHostingView(rootView: view)
             hosting.frame = NSRect(origin: .zero, size: SpeechHUDPresentation.panelSize)

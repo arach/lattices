@@ -82,7 +82,19 @@ actor SpeechCompanionConnection {
         if let connection, socket !== connection { return }
         let ids = pending; pending.removeAll()
         close()
-        for id in ids { response(DaemonResponse(id: id, result: nil, error: "Speech is unavailable. Open Speech from Apps and retry.")) }
+        for id in ids { response(DaemonResponse(id: id, result: nil, error: Self.unreachableError)) }
+    }
+    /// Kept in sync with VoiceHelperRouting.unreachableError; the daemon turns it
+    /// into `helper_not_installed` when the Voice app is missing.
+    static let unreachableError = "helper_unreachable: Voice is installed but not responding. Open Voice from Lattices › Apps and retry."
+    /// Ends this caller's playback lease by closing its helper socket. In-flight
+    /// requests fail instead of hanging; queued speech stays with the helper.
+    func release() -> Bool {
+        let hadSocket = socket != nil
+        let ids = pending
+        close()
+        for id in ids { response(DaemonResponse(id: id, result: nil, error: "voice.release closed the Voice connection before this request finished")) }
+        return hadSocket
     }
     #if SPEECH_FORWARDING_TESTS
     func testConnection() -> URLSessionWebSocketTask? { socket }

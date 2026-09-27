@@ -23,6 +23,6 @@ final class CompanionDaemonBoundaryTests: XCTestCase {
         let response = try JSONDecoder().decode(DaemonResponse.self, from: data)
         XCTAssertEqual(response.id, "denied")
         XCTAssertNotNil(response.error)
-        XCTAssertTrue(response.error?.contains("authorization") == true)
+        XCTAssertEqual(response.error.map(VoiceHelperRouting.errorCode), "helper_unauthorized")
     }
 }

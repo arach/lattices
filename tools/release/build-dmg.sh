@@ -103,6 +103,10 @@ if [ -f "$ASSISTANT_KNOWLEDGE" ]; then
 fi
 
 bun "$ROOT/bin/build-companion-installer.ts" "$BUNDLE/Contents/MacOS/CompanionInstaller"
+
+# Helper apps (Voice) go in Contents/Helpers, built by their products' own
+# packaging scripts. See bin/embedded-helpers.ts.
+bun "$ROOT/bin/embedded-helpers.ts" embed "$BUNDLE"
 echo "    App bundle created at $BUNDLE"
 
 # ── Codesign ──────────────────────────────────────────────
@@ -110,6 +114,10 @@ if [ "$SKIP_SIGN" = "1" ]; then
     echo "==> Skipping signing because LATTICES_SKIP_SIGN=1"
 else
     echo "==> Signing..."
+    # Inside out: embedded helpers first, then nested executables, then the
+    # bundle. No --deep, which would re-sign the helpers as Lattices.
+    bun "$ROOT/bin/embedded-helpers.ts" sign "$BUNDLE" "$SIGN_IDENTITY" --timestamp
+
     codesign --force --options runtime --timestamp \
         --entitlements "$ROOT/tools/release/CompanionInstaller.entitlements" \
         --sign "$SIGN_IDENTITY" "$BUNDLE/Contents/MacOS/CompanionInstaller"
@@ -119,7 +127,7 @@ else
         --sign "$SIGN_IDENTITY" \
         "$BUNDLE"
 
-    echo "    Signed Lattices.app"
+    echo "    Signed embedded helpers and Lattices.app"
 
     # Verify
     codesign --verify --deep --strict --verbose=2 "$BUNDLE" 2>&1 | tail -3

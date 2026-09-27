@@ -137,6 +137,8 @@ enum SpeechQueueError: LocalizedError, Equatable {
     case jobMismatch(String)
     case providerFailed(String)
     case invalidRate
+    case unknownVoice(String, provider: String, listedUnder: String?)
+    case noVoices(provider: String)
 
     var errorDescription: String? {
         switch self {
@@ -170,6 +172,12 @@ enum SpeechQueueError: LocalizedError, Equatable {
             return message
         case .invalidRate:
             return "Speech rate must be between 0.25 and 4.0"
+        case .unknownVoice(let voice, let provider, let listedUnder?):
+            return "Unknown \(provider) voice: \(voice). It is listed under \(listedUnder); pass provider \"\(listedUnder)\""
+        case .unknownVoice(let voice, let provider, nil):
+            return "Unknown \(provider) voice: \(voice). Choose an id from the voice list"
+        case .noVoices(let provider):
+            return "No \(provider) voices are listed on this Mac"
         }
     }
 }

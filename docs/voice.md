@@ -41,6 +41,42 @@ Override the voice port only for tests/dev with `LATTICES_VOICE_PORT`
 4. Hold **Option** and speak a command
 5. Release **Option** — Lattices transcribes and executes
 
+## Voice API
+
+The `voice` domain covers listening and speaking. The daemon serves
+listening. The Voice helper (Lattices › Apps) speaks; the daemon forwards
+those calls to it.
+
+| Verb | CLI | Does |
+|------|-----|------|
+| `voice.say` | `lattices voice say "text"` | Speak text. Returns the job id; the job is queued, not finished. |
+| `voice.stop` | `lattices voice stop` | Stop speaking and clear the queue. |
+| `voice.pause` / `voice.resume` | `lattices voice pause` / `resume` | Pause or resume the current job. |
+| `voice.skip` | `lattices voice skip` | Skip to the next queued job. |
+| `voice.seek` | `lattices voice seek <seconds>` | Seek the current job. |
+| `voice.list` | `lattices voice list` | List voices. |
+| `voice.select` | `lattices voice select <voice>` | Choose the default voice for a provider. |
+| `voice.lease` / `voice.release` | — | Hold the speaker so other agents do not talk over you. A lease also ends when the connection closes. |
+| `voice.listen` | `lattices voice listen` | Start voice capture. |
+| `voice.stopListening` | `lattices voice stopListening` | Stop voice capture and run the transcript. |
+| `voice.simulate` | `lattices voice simulate "text"` | Parse and run a command as if spoken. |
+| `voice.status` | `lattices voice status` | Listening state, plus the Voice helper under `helper`. |
+
+`voice.stop` used to stop listening. It now stops speaking. For one
+release, a `voice.stop` made while Lattices is listening and nothing is
+speaking fails with `voice_stop_changed` and points to
+`voice.stopListening`.
+
+If the Voice helper is not installed, the speaking verbs fail with
+`helper_not_installed` and the fix: **Lattices › Apps › Install Voice**.
+If it is installed but not running, they fail with `helper_unreachable`;
+open Voice from **Lattices › Apps**. There is no fallback. Speaking verbs
+need the helper's local capability
+(`~/Library/Application Support/Speech/RPC/capability`), which exists only
+while Voice runs; the `lattices` CLI sends it for you, and a client that
+does not gets `helper_unauthorized`. The daemon still accepts the older `speech.*` names, and
+sends each `speech.changed` event again as `voice.changed`.
+
 ## Keyboard shortcuts
 
 | Key | Action |

@@ -1383,43 +1383,174 @@ Common flags:
   });
 }
 
+const VOICE_SUBCOMMANDS = new Set([
+  "status", "say", "stop", "pause", "resume", "skip", "seek", "list", "select",
+  "listen", "stopListening", "simulate", "sim", "intents",
+]);
+
+function voiceUsage(): void {
+  console.log("Usage: lattices voice <subcommand> [--json]\n");
+  console.log("Speaking (Voice helper):");
+  console.log('  say <text>        Speak text [--voice <id>] [--provider <id>] [--rate <n>]');
+  console.log("  stop              Stop speaking and clear the queue");
+  console.log("  pause | resume    Pause or resume the current job");
+  console.log("  skip              Skip to the next queued job");
+  console.log("  seek <seconds>    Seek the current job");
+  console.log("  list              List voices");
+  console.log("  select <voice>    Choose the default voice [--provider <id>]");
+  console.log("\nListening (Lattices):");
+  console.log("  listen            Start voice capture");
+  console.log("  stopListening     Stop voice capture and run the transcript");
+  console.log("  simulate <text>   Parse and execute a voice command [--dry-run]");
+  console.log("  intents           List all available intents");
+  console.log("  status            Listening state and Voice helper status");
+  console.log("\nExamples:");
+  console.log('  lattices voice say "Build finished"');
+  console.log('  lattices voice simulate "tile this left"');
+  console.log('  lattices voice simulate "focus chrome" --dry-run');
+}
+
+function takeFlag(args: string[], name: string): string | undefined {
+  const index = args.indexOf(name);
+  if (index === -1) return undefined;
+  const value = args[index + 1];
+  args.splice(index, value === undefined ? 1 : 2);
+  return value;
+}
+
+function printVoiceQueue(status: any): void {
+  const current = status?.current;
+  if (current) {
+    console.log(`Speaking: ${current.state} "${String(current.text ?? "").slice(0, 60)}"`);
+  } else {
+    console.log("Speaking: idle");
+  }
+  const queued = Array.isArray(status?.queued) ? status.queued.length : 0;
+  if (queued) console.log(`Queued: ${queued}`);
+  if (status?.failure?.error) console.log(`\x1b[31mFailure:\x1b[0m ${status.failure.error}`);
+}
+
 async function voiceCommand(subcommand?: string, ...rest: string[]): Promise<void> {
-  if (subcommand !== "status" && subcommand !== "simulate" && subcommand !== "sim" && subcommand !== "intents") {
-    console.log("Usage: lattices voice <subcommand>\n");
-    console.log("  status      Show voice provider status");
-    console.log("  simulate    Parse and execute a voice command");
-    console.log("  intents     List all available intents");
-    console.log("\nExamples:");
-    console.log('  lattices voice simulate "tile this left"');
-    console.log('  lattices voice simulate "focus chrome" --dry-run');
+  if (!subcommand || !VOICE_SUBCOMMANDS.has(subcommand)) {
+    voiceUsage();
     return;
   }
 
-  if (subcommand === "simulate" || subcommand === "sim") {
-    const text = rest.join(" ");
-    if (!text) {
-      console.log("Usage: lattices voice simulate <text>");
-      return;
-    }
+  const args = [...rest];
+  const jsonOut = args.includes("--json");
+  if (jsonOut) args.splice(args.indexOf("--json"), 1);
+  const HELPER_TIMEOUT = 10000;
+
+  const emit = (result: unknown, human: () => void) => {
+    if (jsonOut) console.log(JSON.stringify(result, null, 2));
+    else human();
+  };
+
+  if ((subcommand === "simulate" || subcommand === "sim") && !args.filter(a => a !== "--dry-run").join(" ")) {
+    console.log("Usage: lattices voice simulate <text>");
+    return;
   }
 
   await withDaemon(async ({ daemonCall }) => {
     switch (subcommand) {
     case "status": {
-      const status = await daemonCall("voice.status") as any;
-      console.log(`Provider: ${status.provider}`);
-      console.log(`Available: ${status.available}`);
-      console.log(`Listening: ${status.listening}`);
-      if (status.lastTranscript) console.log(`Last: "${status.lastTranscript}"`);
+      const status = await daemonCall("voice.status", null, HELPER_TIMEOUT) as any;
+      emit(status, () => {
+        console.log(`Provider: ${status.provider}`);
+        console.log(`Available: ${status.available}`);
+        console.log(`Listening: ${status.listening}`);
+        if (status.lastTranscript) console.log(`Last: "${status.lastTranscript}"`);
+        const helper = status.helper;
+        if (helper) {
+          if (helper.reachable) {
+            console.log(`Voice helper: running`);
+            printVoiceQueue(helper.status);
+          } else {
+            console.log(`Voice helper: ${helper.error ?? "unavailable"}`);
+            if (helper.hint) console.log(`  ${helper.hint}`);
+            else if (helper.message && helper.message !== helper.error) console.log(`  ${helper.message}`);
+          }
+        }
+      });
+      break;
+    }
+    case "say": {
+      const voice = takeFlag(args, "--voice");
+      const provider = takeFlag(args, "--provider");
+      const rate = takeFlag(args, "--rate");
+      const text = args.join(" ").trim();
+      if (!text) {
+        console.log('Usage: lattices voice say <text> [--voice <id>] [--provider <id>] [--rate <n>]');
+        return;
+      }
+      const params: Record<string, unknown> = { text, source: { kind: "cli", label: "lattices voice say" } };
+      if (voice) params.voice = voice;
+      if (provider) params.provider = provider;
+      if (rate) params.rate = Number(rate);
+      const result = await daemonCall("voice.say", params, HELPER_TIMEOUT) as any;
+      emit(result, () => console.log(`${result.state} ${result.id}`));
+      break;
+    }
+    case "stop":
+    case "pause":
+    case "resume":
+    case "skip": {
+      const result = await daemonCall(`voice.${subcommand}`, null, HELPER_TIMEOUT);
+      emit(result, () => printVoiceQueue(result));
+      break;
+    }
+    case "seek": {
+      const seconds = Number(args[0]);
+      if (!Number.isFinite(seconds)) {
+        console.log("Usage: lattices voice seek <seconds>");
+        return;
+      }
+      const result = await daemonCall("voice.seek", { seconds }, HELPER_TIMEOUT);
+      emit(result, () => printVoiceQueue(result));
+      break;
+    }
+    case "list": {
+      const voices = await daemonCall("voice.list", null, HELPER_TIMEOUT) as any[];
+      emit(voices, () => {
+        for (const v of voices) {
+          const marks = [v.default ? "default" : "", v.available ? "" : "unavailable"].filter(Boolean).join(", ");
+          console.log(`  ${v.provider.padEnd(11)} ${v.id}  ${v.label}${marks ? `  (${marks})` : ""}`);
+        }
+      });
+      break;
+    }
+    case "select": {
+      const provider = takeFlag(args, "--provider");
+      const voice = args.join(" ").trim();
+      if (!voice) {
+        console.log("Usage: lattices voice select <voice> [--provider <id>]");
+        return;
+      }
+      const params: Record<string, unknown> = { voice };
+      if (provider) params.provider = provider;
+      const result = await daemonCall("voice.select", params, HELPER_TIMEOUT);
+      emit(result, () => console.log(`Selected ${voice}${provider ? ` for ${provider}` : ""}`));
+      break;
+    }
+    case "listen": {
+      const result = await daemonCall("voice.listen") as any;
+      emit(result, () => console.log(`Listening (${result.provider})`));
+      break;
+    }
+    case "stopListening": {
+      const result = await daemonCall("voice.stopListening");
+      emit(result, () => console.log("Stopped listening"));
       break;
     }
     case "simulate":
     case "sim": {
-      const text = rest.join(" ");
-      const execute = !rest.includes("--dry-run");
-      const dryFlag = rest.includes("--dry-run");
-      const cleanText = dryFlag ? rest.filter(r => r !== "--dry-run").join(" ") : text;
+      const execute = !args.includes("--dry-run");
+      const cleanText = args.filter(r => r !== "--dry-run").join(" ");
       const result = await daemonCall("voice.simulate", { text: cleanText, execute }, 15000) as any;
+      if (jsonOut) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
       if (!result.parsed) {
         console.log(`\x1b[33mNo match:\x1b[0m "${cleanText}"`);
         return;
@@ -1436,6 +1567,10 @@ async function voiceCommand(subcommand?: string, ...rest: string[]): Promise<voi
     }
     case "intents": {
       const intents = await daemonCall("intents.list") as any[];
+      if (jsonOut) {
+        console.log(JSON.stringify(intents, null, 2));
+        return;
+      }
       for (const intent of intents) {
         const slots = intent.slots.map((s: any) => `${s.name}:${s.type}${s.required ? "*" : ""}`).join(", ");
         console.log(`  \x1b[1m${intent.intent}\x1b[0m  ${intent.description}`);

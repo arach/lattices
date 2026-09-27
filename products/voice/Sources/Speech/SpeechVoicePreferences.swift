@@ -1,9 +1,12 @@
+import Combine
 import Foundation
 
 /// Per-provider preferred Speech voice. Stored in UserDefaults on this Mac.
 /// Explicit `speech.enqueue` / MCP `voice` values are not written here.
+/// Settings and `speech.preferredVoice.set` both write through this object, and
+/// the Settings picker observes it so an RPC change shows up while it is open.
 @MainActor
-final class SpeechVoicePreferences {
+final class SpeechVoicePreferences: ObservableObject {
     static var shared = SpeechVoicePreferences()
 
     static func migrateLegacyDefaults(to destination: UserDefaults = .standard, legacyDomains: [[String: Any]]? = nil) {
@@ -38,10 +41,18 @@ final class SpeechVoicePreferences {
 
     func setPreferredVoice(_ voice: String?, for provider: String) {
         let cleaned = voice?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        objectWillChange.send()
         if cleaned.isEmpty {
             defaults.removeObject(forKey: Self.key(provider))
         } else {
             defaults.set(cleaned, forKey: Self.key(provider))
+        }
+    }
+
+    /// Stored choices in provider order. Providers with no choice are omitted.
+    func storedVoices() -> [(provider: String, voice: String)] {
+        SpeechProviders.all.compactMap { provider in
+            preferredVoice(for: provider).map { (provider: provider, voice: $0) }
         }
     }
 

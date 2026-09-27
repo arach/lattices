@@ -11,15 +11,19 @@
  *   import { resolveBuildEnv } from "./lattices-build-env";  // TS callers
  *   eval "$(bun bin/lattices-build-env.ts shell)"            // bash callers
  *   bun bin/lattices-build-env.ts json                       // inspect
+ *
+ * Both modes take an optional manifest path after the mode; the default is
+ * apps/mac/build.json. Voice's package script passes products/voice/build.json.
  */
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 // Feature catalog: feature name -> build env HudsonKit gates on at SwiftPM
-// manifest-eval time. HudsonVoice (Vox/Parakeet dictation) is an optional
-// backend HudsonKit only declares when HUDSONKIT_WITH_VOICE=1 is set at build
-// time. Name a *feature* here; never sprinkle the env var across build scripts.
+// manifest-eval time. HudsonKit declares HudsonVoice (Vox/Parakeet dictation)
+// unless HUDSONKIT_WITH_VOICE=0, which resolveBuildEnv sets for any app that
+// doesn't name the voice feature. Name a *feature* here; never sprinkle the env
+// var across build scripts.
 export const FEATURE_CATALOG: Record<string, { env: Record<string, string>; note: string }> = {
   voice: { env: { HUDSONKIT_WITH_VOICE: "1" }, note: "HudsonVoice — Vox/Parakeet dictation" },
 };
@@ -64,7 +68,7 @@ export function resolveBuildEnv(manifestPath?: string): Record<string, string> {
 // --- CLI: emit the resolved env for shell / json consumers -------------------
 if (import.meta.main) {
   const mode = process.argv[2] ?? "shell";
-  const env = resolveBuildEnv();
+  const env = resolveBuildEnv(process.argv[3]);
   if (mode === "json") {
     console.log(JSON.stringify(env, null, 2));
   } else if (mode === "shell") {

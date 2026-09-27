@@ -99,18 +99,17 @@ struct SpeechSettingsView: View {
 private struct SpeechKokoroRow: View {
     @ObservedObject var catalog: SpeechVoiceCatalogStore
     @State private var status = SpeechKokoro.shared.cachedStatus()
-    @State private var checking = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             speechPrefRow(
                 "Kokoro",
-                caption: "On-device Vox synthesis. Text stays on this Mac."
+                caption: "Runs on the Neural Engine. Text stays on this Mac."
             ) {
-                Text(checking ? "Checking" : (status.available ? "Ready" : "Unavailable"))
+                Text(status.available ? "Ready" : "Unavailable")
                     .font(Typo.caption(11))
-                    .foregroundColor(checking ? Palette.textMuted : (status.available ? Palette.running : Palette.detach))
-                    .accessibilityValue(checking ? "Checking" : (status.available ? "Ready" : "Unavailable"))
+                    .foregroundColor(status.available ? Palette.running : Palette.detach)
+                    .accessibilityValue(status.available ? "Ready" : "Unavailable")
             }
 
             if let detail = status.detail, !status.available {
@@ -123,24 +122,14 @@ private struct SpeechKokoroRow: View {
             if status.available {
                 SpeechVoicePickerBlock(provider: SpeechProviders.kokoro, canPreview: true, catalog: catalog)
             }
-
-            Button("Recheck") {
-                Task { await refresh() }
-            }
-            .buttonStyle(.plain)
-            .font(Typo.caption(11))
-            .foregroundColor(Palette.textDim)
-            .disabled(checking)
         }
         .task { await refresh() }
     }
 
     @MainActor
     private func refresh() async {
-        checking = true
         status = await SpeechKokoro.shared.probe()
         await catalog.refresh(provider: SpeechProviders.kokoro)
-        checking = false
     }
 }
 
@@ -301,6 +290,7 @@ private struct SpeechVoicePickerBlock: View {
     let provider: String
     let canPreview: Bool
     @ObservedObject var catalog: SpeechVoiceCatalogStore
+    @ObservedObject private var preferences = SpeechVoicePreferences.shared
     @State private var previewError: String?
     @State private var startingPreview = false
 
@@ -336,8 +326,8 @@ private struct SpeechVoicePickerBlock: View {
                     .fixedSize(horizontal: false, vertical: true)
             case .ready(let voices):
                 picker(voices)
-                if provider == SpeechProviders.openai, SpeechVoiceCatalogLoader.openaiCatalogIsPartial {
-                    Text("This build only has the HudTTS default OpenAI voice. The full list comes from Vox OpenAITTSProvider.")
+                if provider == SpeechProviders.openai {
+                    Text("This build lists only the default OpenAI voice.")
                         .font(Typo.caption(11))
                         .foregroundColor(Palette.textMuted)
                         .fixedSize(horizontal: false, vertical: true)
@@ -361,7 +351,7 @@ private struct SpeechVoicePickerBlock: View {
 
     @ViewBuilder
     private func picker(_ voices: [SpeechVoiceInfo]) -> some View {
-        let preferred = SpeechVoicePreferences.shared.preferredVoice(for: provider)
+        let preferred = preferences.preferredVoice(for: provider)
         let options = merged(voices, preferred: preferred)
         speechPrefRow("Voice", caption: "Used when a speech request does not name a voice.") {
             Picker("Voice", selection: selectionBinding(options: options)) {
@@ -386,7 +376,7 @@ private struct SpeechVoicePickerBlock: View {
         .foregroundColor(canPreview && !startingPreview ? Palette.textDim : Palette.textMuted)
         .disabled(!canPreview || startingPreview || selectedVoiceID(in: voices) == nil)
         .accessibilityLabel("Preview this voice")
-        .accessibilityHint("Speaks a short sample through the Speech playback HUD")
+        .accessibilityHint("Speaks a short sample through the Voice playback HUD")
     }
 
     private func preview(voices: [SpeechVoiceInfo]) {
@@ -402,7 +392,7 @@ private struct SpeechVoicePickerBlock: View {
     }
 
     private func selectedVoiceID(in voices: [SpeechVoiceInfo]) -> String? {
-        let options = merged(voices, preferred: SpeechVoicePreferences.shared.preferredVoice(for: provider))
+        let options = merged(voices, preferred: preferences.preferredVoice(for: provider))
         let current = selectionBinding(options: options).wrappedValue
         return current.isEmpty ? nil : current
     }
@@ -410,14 +400,14 @@ private struct SpeechVoicePickerBlock: View {
     private func selectionBinding(options: [SpeechVoiceInfo]) -> Binding<String> {
         Binding(
             get: {
-                let preferred = SpeechVoicePreferences.shared.preferredVoice(for: provider)
+                let preferred = preferences.preferredVoice(for: provider)
                 if let preferred, options.contains(where: { $0.id == preferred }) {
                     return preferred
                 }
                 return options.first(where: \.isDefault)?.id ?? options.first?.id ?? ""
             },
             set: { newValue in
-                SpeechVoicePreferences.shared.setPreferredVoice(newValue, for: provider)
+                preferences.setPreferredVoice(newValue, for: provider)
                 previewError = nil
             }
         )
