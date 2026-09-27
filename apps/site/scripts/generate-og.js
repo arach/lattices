@@ -1,4 +1,5 @@
 import puppeteer from "puppeteer";
+import { readFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
@@ -23,22 +24,33 @@ const PAD_TOP = G * 4; // 120px
 const PAD_SIDE = G * 4; // 120px
 const PAD_BOTTOM = G * 2; // 60px
 
-// ── Logo (3×3 L-shape grid mark) ────────────────────────────────
+// ── Marks and icons from the brand kits (bun run brand) ─────────
+function kitFile(slug, file) {
+  return readFileSync(join(publicDir, "brand", slug, file), "utf8");
+}
+
+// The Lattices mark, cropped to its drawn grid so the cells fill the box.
 function logoMark(size = 120) {
-  const gap = 6;
-  const cell = (size - gap * 2) / 3;
-  const r = Math.round(cell * 0.12);
-  const bright = "rgba(255,255,255,0.85)";
-  const dim = "rgba(255,255,255,0.06)";
-  const pattern = [
-    bright, dim, dim,
-    bright, dim, dim,
-    bright, bright, bright,
-  ];
-  const cells = pattern
-    .map((c) => `<div style="border-radius: ${r}px; background: ${c};"></div>`)
-    .join("");
-  return `<div style="display: grid; grid-template-columns: repeat(3, ${cell}px); gap: ${gap}px; width: ${size}px; height: ${size}px;">${cells}</div>`;
+  return kitFile("lattices", "lattices-dark.svg")
+    .replace(/ width="\d+" height="\d+"/, ` width="${size}" height="${size}"`)
+    .replace('viewBox="0 0 20 20"', 'viewBox="2 2 16 16"');
+}
+
+// The family half of the lockup: the full mark, padding and all, as in the site header.
+function familyLockup() {
+  const mark = kitFile("lattices", "lattices-dark.svg")
+    .replace(/ width="\d+" height="\d+"/, ' width="34" height="34"');
+  return `<div class="family">${mark}<span>lattices</span><span class="family-slash">/</span></div>`;
+}
+
+// The icon canvas pads its tile by 100/1024; pull the image out by that much so
+// the tile itself, not the canvas, lines up with the content edge.
+const ICON = 360;
+const ICON_INSET = (100 / 1024) * ICON;
+
+function appIcon(slug) {
+  const svg = Buffer.from(kitFile(slug, `${slug}-icon.svg`)).toString("base64");
+  return `<img class="app-icon" src="data:image/svg+xml;base64,${svg}" width="${ICON}" height="${ICON}" alt="">`;
 }
 
 // ── Screen Map mockup ───────────────────────────────────────────
@@ -228,14 +240,44 @@ const pages = [
       "20+ RPC methods over WebSocket. Window tiling, screen map, terminal discovery, and more.",
     mockup: "api",
   },
+  {
+    filename: "og-action.png",
+    product: "action",
+    tag: "lattices.dev/action",
+    title: "action",
+    subtitle:
+      "Native macOS automation, capture, and review for agents.",
+    accent: ["#c58a70", "#9a6450"],
+  },
+  {
+    filename: "og-blink.png",
+    product: "blink",
+    tag: "lattices.dev/blink",
+    title: "blink",
+    subtitle:
+      "Spatial notes: each note is a floating panel, and the desktop is the workspace.",
+    accent: ["#f0b45a", "#c2872f"],
+  },
+  {
+    filename: "og-speech.png",
+    product: "speech",
+    tag: "lattices.dev/speech",
+    title: "speech",
+    subtitle:
+      "Queue text, choose a voice, and control playback independently.",
+  },
 ];
+
+const latticesAccent = ["#33c773", "#1a8f4a"];
 
 // ── HTML builder ────────────────────────────────────────────────
 function buildHTML(config) {
-  const { tag, title, subtitle } = config;
+  const { tag, title, subtitle, product } = config;
+  const [accentFrom, accentTo] = config.accent ?? latticesAccent;
 
-  const rightContent =
-    config.mockup === "screenmap"
+  const rightContent = product
+    ? appIcon(product)
+    : config.mockup === "screenmap"
       ? screenMapMockup()
       : config.mockup === "terminal"
         ? terminalMockup()
@@ -328,6 +370,13 @@ function buildHTML(config) {
       gap: ${G * 2}px;
     }
 
+    /* Product cards centre the text on the icon, between the crosses. */
+    .content.centered {
+      align-items: center;
+      padding-top: 0;
+      padding-bottom: 0;
+    }
+
     .left {
       flex: 1;
       display: flex;
@@ -342,6 +391,26 @@ function buildHTML(config) {
     }
 
     .logo { margin-bottom: ${G}px; }
+
+    .family {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      height: 40px;
+      margin-bottom: ${G}px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 22px;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.72);
+    }
+
+    .family-slash { color: rgba(255, 255, 255, 0.28); font-weight: 400; }
+
+    .app-icon {
+      display: block;
+      margin-right: -${ICON_INSET}px;
+      filter: drop-shadow(0 24px 40px rgba(0, 0, 0, 0.55));
+    }
 
     .title {
       font-family: 'JetBrains Mono', monospace;
@@ -379,7 +448,7 @@ function buildHTML(config) {
       position: absolute;
       bottom: 0; left: 0; right: 0;
       height: 4px;
-      background: linear-gradient(90deg, #33c773, #1a8f4a);
+      background: linear-gradient(90deg, ${accentFrom}, ${accentTo});
     }
   </style>
 </head>
@@ -393,9 +462,9 @@ function buildHTML(config) {
   <div class="cross-br-h"></div>
   <div class="cross-br-v"></div>
 
-  <div class="content">
+  <div class="content${product ? " centered" : ""}">
     <div class="left">
-      <div class="logo">${logoMark(120)}</div>
+      ${product ? familyLockup() : `<div class="logo">${logoMark(120)}</div>`}
       <div class="title">${title}</div>
       <div class="subtitle">${subtitle}</div>
       <div class="tag">${tag}</div>

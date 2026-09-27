@@ -106,6 +106,18 @@
   --logo-ink: var(--docs-accent);
 }
 
+.site-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.site-lockup-slash {
+  color: var(--docs-muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 14px;
+}
+
 .site-mark {
   display: block;
 }
@@ -1221,6 +1233,13 @@
   .site-header-inner,
   .post-nav-inner {
     padding-inline: 16px;
+  }
+
+  /* A product lockup keeps both marks but only the product's name, as
+     /action/agents does, and gives up the theme toggle, as Blink does. */
+  .site-lockup > .site-brand:first-child > span,
+  .site-lockup ~ .site-links .theme-toggle {
+    display: none;
   }
 
   .blog-container,

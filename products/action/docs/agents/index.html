@@ -9,10 +9,12 @@
   <meta property="og:type" content="website">
   <meta property="og:title" content="Action for agents — start here">
   <meta property="og:description" content="What Action gives an AI agent, how to connect it, and which browser to drive.">
-  <meta property="og:image" content="https://lattices.dev/og.png">
+  <meta property="og:image" content="https://lattices.dev/og-action.png">
   <meta property="og:url" content="https://lattices.dev/action/agents/">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="canonical" href="https://lattices.dev/action/agents/">
+  <link rel="icon" type="image/svg+xml" href="/brand/action/action-favicon.svg">
+  <link rel="apple-touch-icon" href="/brand/action/action-touch-icon.png">
   <link rel="alternate" type="text/plain" href="../llms.txt" title="llms.txt">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -91,10 +93,12 @@
       letter-spacing: -0.02em;
       text-decoration: none;
     }
-    .brand img { width: 31px; height: 31px; border-radius: 8px; }
-    .brand span { color: var(--slate); font-weight: 400; }
+    .brand img { display: block; }
+    .brand-product { color: var(--coral); }
+    .lockup { display: inline-flex; flex-shrink: 0; align-items: center; gap: 8px; }
+    .lockup-slash { color: rgb(32 40 43 / 0.4); font: 400 0.78rem var(--mono); }
     .nav-links { display: flex; align-items: center; gap: 24px; margin: 0; padding: 0; list-style: none; }
-    .nav-links a { color: var(--slate); font: 500 0.67rem var(--mono); letter-spacing: 0.02em; text-decoration: none; }
+    .nav-links a { color: var(--slate); font: 500 0.67rem var(--mono); letter-spacing: 0.02em; text-decoration: none; white-space: nowrap; }
     .nav-links a:hover { color: var(--coral); }
     .nav-links a[aria-current="page"] { color: var(--ink); }
 
@@ -246,6 +250,7 @@
       html { font-size: 17px; }
       .nav-inner { min-height: 64px; }
       .nav-links { gap: 14px; }
+      .lockup-family { display: none; }
       .page-head { padding: 52px 0 40px; }
       .section { padding: 48px 0; }
       table, thead, tbody, tr, th, td { display: block; }
@@ -275,10 +280,17 @@
 
   <header class="site-nav">
     <nav class="shell nav-inner" aria-label="Primary navigation">
-      <a class="brand" href="https://lattices.dev/action" aria-label="Action home">
-        <img src="/action/action-mark.svg" alt="">
-        action<span>.app</span>
-      </a>
+      <div class="lockup">
+        <a class="brand" href="https://lattices.dev/" aria-label="Lattices home">
+          <img src="/brand/lattices/lattices-light.svg" alt="" width="20" height="20">
+          <span class="lockup-family">lattices</span>
+        </a>
+        <span class="lockup-slash" aria-hidden="true">/</span>
+        <a class="brand brand-product" href="https://lattices.dev/action" aria-label="Action home">
+          <img src="/brand/action/action-light.svg" alt="" width="16" height="16">
+          action
+        </a>
+      </div>
       <ul class="nav-links">
         <li><a href="#connect-title">Install</a></li>
         <li><a href="./" aria-current="page">For agents</a></li>

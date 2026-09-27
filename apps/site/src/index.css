@@ -148,14 +148,6 @@ code {
   --logo-ink: var(--green);
 }
 
-.lattices-logo {
-  display: block;
-}
-
-.lattices-logo-cell {
-  transition: fill 0.15s ease;
-}
-
 .nav-name {
   font-family: "JetBrains Mono", monospace;
   font-weight: 600;
@@ -5137,6 +5129,13 @@ button.nav-link {
     display: none;
   }
 
+  /* The lockup keeps both marks but only the product's name, as
+     /action/agents does, and the theme toggle goes, as on Blink. */
+  .action-family-lockup .nav-name,
+  .action-page .nav-links .theme-toggle {
+    display: none;
+  }
+
   .action-nav-download {
     padding: 0 11px;
   }
@@ -6404,12 +6403,15 @@ button.nav-link {
   }
 }
 
-@media (max-width: 680px) {
+/* Below this the optional links no longer fit beside the lockup. */
+@media (max-width: 760px) {
   .action-nav-optional,
   .action-nav-source {
     display: none;
   }
+}
 
+@media (max-width: 680px) {
   .action-page .nav-inner,
   .action-footer-inner,
   .action-hero-inner,
