@@ -16,6 +16,16 @@ export const latticesPalette = {
   dark: { ink: '#f2f2f2', dim: '#ffffff', dimOpacity: 0.18 },
 } as const
 
+/**
+ * Speech keeps the Lattices ink but lifts its queued bars on dark. Its icon and
+ * favicon always sit on a dark tile, where the family's 18% reads at about 1.7:1;
+ * 35% brings them to 3.2:1. The live site reads `--speech-dim`, which matches.
+ */
+export const speechPalette = {
+  light: latticesPalette.light,
+  dark: { ...latticesPalette.dark, dimOpacity: 0.35 },
+} as const
+
 /** The family grid: a 20-unit box, 2 units of padding, 1.2-unit gaps, 1-unit corners. */
 export const latticesGrid = { box: 20, pad: 2, gap: 1.2, radius: 1 } as const
 
