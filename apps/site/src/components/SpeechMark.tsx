@@ -1,10 +1,11 @@
 import type { SVGProps } from 'react'
-import { latticesGrid, latticesPalette, type BrandTheme } from '../lib/marks'
+import { latticesGrid, speechPalette, type BrandTheme } from '../lib/marks'
 
 /**
  * Four bars of a waveform on the Lattices grid. The first two are lit and the
  * rest dim: a readout part-way through, spoken words in ink and the queue still
- * ahead of the playhead faded — the same lit/dim split as the Lattices L.
+ * ahead of the playhead faded — the same lit/dim split as the Lattices L, with
+ * the queued bars a step brighter on dark (`speechPalette`).
  */
 const speechBars = [
   { height: 0.5, spoken: true },
@@ -28,7 +29,7 @@ export function SpeechMark({
   const { box, pad, gap, radius } = latticesGrid
   const span = box - 2 * pad
   const width = (span - gap * (speechBars.length - 1)) / speechBars.length
-  const colors = theme ? latticesPalette[theme] : undefined
+  const colors = theme ? speechPalette[theme] : undefined
 
   return (
     <svg
@@ -54,7 +55,7 @@ export function SpeechMark({
           className={colors ? undefined : 'site-mark-cell'}
           fill={colors ? (spoken ? colors.ink : colors.dim) : undefined}
           fillOpacity={colors && !spoken ? colors.dimOpacity : undefined}
-          style={colors ? undefined : { fill: spoken ? 'var(--logo-ink)' : 'var(--logo-dim)' }}
+          style={colors ? undefined : { fill: spoken ? 'var(--logo-ink)' : 'var(--speech-dim)' }}
         />
       ))}
     </svg>

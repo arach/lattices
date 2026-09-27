@@ -20,7 +20,7 @@ import { ActionMark } from '../src/components/ActionMark'
 import { BlinkMark } from '../src/components/blink/BlinkMark'
 import { LatticesMark } from '../src/components/LatticesMark'
 import { SpeechMark } from '../src/components/SpeechMark'
-import { blinkIcon, blinkPalette, latticesPalette } from '../src/lib/marks'
+import { blinkIcon, blinkPalette, latticesPalette, speechPalette } from '../src/lib/marks'
 
 type Theme = 'light' | 'dark'
 type Box = { x: number; y: number; width: number; height: number }
@@ -165,13 +165,13 @@ const products: Product[] = [
     icns: ['products/voice/assets/AppIcon.icns'],
     colours: [
       ['Ink on light', latticesPalette.light.ink],
-      ['Queued bars on light', `${latticesPalette.light.dim} at ${latticesPalette.light.dimOpacity * 100}%`],
+      ['Queued bars on light', `${speechPalette.light.dim} at ${speechPalette.light.dimOpacity * 100}%`],
       ['Ink on dark', latticesPalette.dark.ink],
-      ['Queued bars on dark', `${latticesPalette.dark.dim} at ${latticesPalette.dark.dimOpacity * 100}%`],
+      ['Queued bars on dark', `${speechPalette.dark.dim} at ${speechPalette.dark.dimOpacity * 100}%`],
       ['Icon tile', '#141416'],
     ],
     notes: [
-      'Four waveform bars on the Lattices grid, the first two lit: a readout part-way through, with the words still queued dimmed. It uses the Lattices palette and cell geometry.',
+      'Four waveform bars on the Lattices grid, the first two lit: a readout part-way through, with the words still queued dimmed. It uses the Lattices palette and cell geometry, except that the queued bars sit at 35% on dark, against the family’s 18%, so they read on the icon’s dark tile.',
     ],
   },
 ]

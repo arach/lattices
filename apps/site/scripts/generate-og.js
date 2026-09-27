@@ -1,72 +1,89 @@
 import puppeteer from "puppeteer";
 import { readFileSync } from "fs";
-import { join, dirname } from "path";
+import { join, dirname, extname } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const publicDir = join(__dirname, "..", "public");
+const repoRoot = join(__dirname, "..", "..", "..");
 
-// ── Grid & layout constants ─────────────────────────────────────
-// 30px grid: GCD(1200, 630) = 30, so it tiles perfectly in both axes.
-// Both crosses land exactly on grid intersections.
+// ── Grid ────────────────────────────────────────────────────────
+// 30px grid: GCD(1200, 630) = 30, so it tiles exactly: 40 columns, 21 rows.
 const G = 30;
 const W = 1200;
-const H = 630; // 630 / 30 = 21 rows, 1200 / 30 = 40 cols
+const H = 630;
 
-// Crosses: 2G (60px) from each edge → perfectly symmetric
-const CROSS_D = G * 2; // 60px
-const TL = { x: CROSS_D, y: CROSS_D }; // (60, 60)
-const BR = { x: W - CROSS_D, y: H - CROSS_D }; // (1140, 570)
-const CROSS_LEN = G * 6; // 180px arms
+// A registration cross 2G in from the top-left corner, its arms running 6G.
+const CROSS = { x: G * 2, y: G * 2, len: G * 6 };
 
-// Content starts 4G (120px) from top — one visual row below the cross
-const PAD_TOP = G * 4; // 120px
-const PAD_SIDE = G * 4; // 120px
-const PAD_BOTTOM = G * 2; // 60px
+// ── The guide ───────────────────────────────────────────────────
+// Every card shares one layout, so the family reads as a set:
+//   brand    the card's own mark, cropped to its drawn bounds, fitted to a 4G box at (4G, 4G)
+//   copy     the title 1G below the mark, then subtitle and tag, in a 12G column
+//   preview  from (18G, 4G) out past the right and bottom edges: 660 × 510 visible
+//   family   product cards sign off at the foot of the column with the Lattices mark
+const BRAND = G * 4; // the box's size, and its inset from the top and left edges
+const COLUMN = G * 12;
+const PREVIEW = { x: G * 18, y: G * 4, w: W - G * 18, h: H - G * 4 };
 
-// ── Marks and icons from the brand kits (bun run brand) ─────────
+// ── Marks from the brand kits (bun run brand) ───────────────────
 function kitFile(slug, file) {
   return readFileSync(join(publicDir, "brand", slug, file), "utf8");
 }
 
-// The Lattices mark, cropped to its drawn grid so the cells fill the box.
-function logoMark(size = 120) {
-  return kitFile("lattices", "lattices-dark.svg")
-    .replace(/ width="\d+" height="\d+"/, ` width="${size}" height="${size}"`)
-    .replace('viewBox="0 0 20 20"', 'viewBox="2 2 16 16"');
+// Each kit's README records its glyph's measured bounds. Cropping to them lets
+// every mark fill the same box, however much padding its own canvas carries.
+function glyphBounds(slug) {
+  const n = String.raw`(\d+(?:\.\d+)?)`; // not [\d.]+, which takes the sentence's full stop
+  const found = kitFile(slug, "README.md").match(
+    new RegExp(`Measured glyph bounds in viewBox units: ${n}, ${n}, ${n} × ${n}`),
+  );
+  if (!found) {
+    throw new Error(`brand/${slug}/README.md has no glyph bounds; run bun run brand ${slug}`);
+  }
+  return found.slice(1).map(Number);
 }
 
-// The family half of the lockup: the full mark, padding and all, as in the site header.
-function familyLockup() {
-  const mark = kitFile("lattices", "lattices-dark.svg")
-    .replace(/ width="\d+" height="\d+"/, ' width="34" height="34"');
-  return `<div class="family">${mark}<span>lattices</span><span class="family-slash">/</span></div>`;
+// The kit's mark for dark grounds, with its longer side at `size`.
+function mark(slug, size) {
+  const [x, y, w, h] = glyphBounds(slug);
+  const scale = size / Math.max(w, h);
+  return kitFile(slug, `${slug}-dark.svg`).replace(/<svg\b[^>]*>/, (tag) =>
+    tag
+      .replace(/\s(?:width|height|style|viewBox)="[^"]*"/g, "")
+      .replace(
+        "<svg",
+        `<svg viewBox="${x} ${y} ${w} ${h}" width="${+(w * scale).toFixed(2)}" height="${+(h * scale).toFixed(2)}"`,
+      ),
+  );
 }
 
-// The icon canvas pads its tile by 100/1024; pull the image out by that much so
-// the tile itself, not the canvas, lines up with the content edge.
-const ICON = 360;
-const ICON_INSET = (100 / 1024) * ICON;
+// ── Previews ────────────────────────────────────────────────────
+// Each fills the preview window: product art cropped to cover it, or an
+// interface mock drawn at that size.
+const MIME = { ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp" };
 
-function appIcon(slug) {
-  const svg = Buffer.from(kitFile(slug, `${slug}-icon.svg`)).toString("base64");
-  return `<img class="app-icon" src="data:image/svg+xml;base64,${svg}" width="${ICON}" height="${ICON}" alt="">`;
+function artPreview(path, position = "center") {
+  const data = readFileSync(join(repoRoot, path)).toString("base64");
+  return `<img class="art" src="data:${MIME[extname(path)]};base64,${data}" style="object-position: ${position}" alt="">`;
 }
 
-// ── Screen Map mockup ───────────────────────────────────────────
-function screenMapMockup() {
+function lights() {
+  return `<div class="lights"><i style="background: #ff5f57"></i><i style="background: #febc2e"></i><i style="background: #28c840"></i></div>`;
+}
+
+// The app's screen map, drawn at its compact 360px width and scaled up to fill the window.
+function screenMapPreview() {
+  const zoom = PREVIEW.w / 360;
+  const layer = (color, name, count, active = false) => `
+          <div style="display: flex; align-items: center; gap: 5px; padding: 4px 10px; font-size: 9px; ${active ? "background: rgba(51,199,115,0.08); color: rgba(255,255,255,0.6); border-radius: 4px; margin: 0 4px;" : "color: rgba(255,255,255,0.35);"}">
+            <div style="width: 5px; height: 5px; border-radius: 50%; background: ${color};"></div>${name}
+            <span style="margin-left: auto; color: rgba(255,255,255,${active ? 0.25 : 0.15});">${count}</span>
+          </div>`;
+  const key = (label, lit = false) => `
+        <div style="font-size: 8px; padding: 3px 8px; border-radius: 3px; ${lit ? "background: rgba(51,199,115,0.1); border: 1px solid rgba(51,199,115,0.2); color: #33c773;" : "background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); color: rgba(255,255,255,0.3);"}">${label}</div>`;
   return `
-    <div style="
-      width: 360px;
-      background: #18181a;
-      border-radius: 14px;
-      border: 1px solid rgba(255,255,255,0.08);
-      box-shadow: 0 24px 48px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.03);
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-      font-family: 'JetBrains Mono', monospace;
-    ">
+    <div class="mock" style="width: 360px; height: ${(PREVIEW.h / zoom).toFixed(2)}px; zoom: ${zoom.toFixed(4)};">
       <div style="display: flex; align-items: center; padding: 12px 16px 8px; gap: 8px;">
         <div style="display: flex; gap: 6px;">
           <div style="width: 10px; height: 10px; border-radius: 50%; background: #ff5f57;"></div>
@@ -79,30 +96,12 @@ function screenMapMockup() {
       <div style="flex: 1; display: flex; overflow: hidden;">
         <div style="width: 86px; border-right: 1px solid rgba(255,255,255,0.06); padding: 8px 0; flex-shrink: 0;">
           <div style="font-size: 8px; font-weight: 600; color: rgba(255,255,255,0.25); padding: 0 10px 6px; letter-spacing: 0.1em;">LAYERS</div>
-          <div style="display: flex; align-items: center; gap: 5px; padding: 4px 10px; font-size: 9px; color: rgba(255,255,255,0.35);">
-            <div style="width: 5px; height: 5px; border-radius: 50%; background: #33c773;"></div>All
-            <span style="margin-left: auto; color: rgba(255,255,255,0.15);">19</span>
-          </div>
-          <div style="display: flex; align-items: center; gap: 5px; padding: 4px 10px; font-size: 9px; color: rgba(255,255,255,0.35);">
-            <div style="width: 5px; height: 5px; border-radius: 50%; background: #f5a623;"></div>L0
-            <span style="margin-left: auto; color: rgba(255,255,255,0.15);">6</span>
-          </div>
-          <div style="display: flex; align-items: center; gap: 5px; padding: 4px 10px; font-size: 9px; background: rgba(51,199,115,0.08); color: rgba(255,255,255,0.6); border-radius: 4px; margin: 0 4px;">
-            <div style="width: 5px; height: 5px; border-radius: 50%; background: #33c773;"></div>L1
-            <span style="margin-left: auto; color: rgba(255,255,255,0.25);">4</span>
-          </div>
-          <div style="display: flex; align-items: center; gap: 5px; padding: 4px 10px; font-size: 9px; color: rgba(255,255,255,0.35);">
-            <div style="width: 5px; height: 5px; border-radius: 50%; background: #f07c4f;"></div>L2
-            <span style="margin-left: auto; color: rgba(255,255,255,0.15);">7</span>
-          </div>
-          <div style="display: flex; align-items: center; gap: 5px; padding: 4px 10px; font-size: 9px; color: rgba(255,255,255,0.35);">
-            <div style="width: 5px; height: 5px; border-radius: 50%; background: #e74c8a;"></div>L3
-            <span style="margin-left: auto; color: rgba(255,255,255,0.15);">4</span>
-          </div>
-          <div style="display: flex; align-items: center; gap: 5px; padding: 4px 10px; font-size: 9px; color: rgba(255,255,255,0.35);">
-            <div style="width: 5px; height: 5px; border-radius: 50%; background: #e74c8a;"></div>L4
-            <span style="margin-left: auto; color: rgba(255,255,255,0.15);">3</span>
-          </div>
+          ${layer("#33c773", "All", 19)}
+          ${layer("#f5a623", "L0", 6)}
+          ${layer("#33c773", "L1", 4, true)}
+          ${layer("#f07c4f", "L2", 7)}
+          ${layer("#e74c8a", "L3", 4)}
+          ${layer("#e74c8a", "L4", 3)}
         </div>
         <div style="flex: 1; position: relative; padding: 10px; display: flex; flex-direction: column;">
           <div style="display: flex; gap: 4px; margin-bottom: 8px; padding: 0 2px;">
@@ -133,11 +132,7 @@ function screenMapMockup() {
         </div>
       </div>
       <div style="padding: 8px 12px; border-top: 1px solid rgba(255,255,255,0.06); display: flex; gap: 4px; flex-wrap: wrap;">
-        <div style="font-size: 8px; padding: 3px 8px; border-radius: 3px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); color: rgba(255,255,255,0.3);">s spread</div>
-        <div style="font-size: 8px; padding: 3px 8px; border-radius: 3px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); color: rgba(255,255,255,0.3);">t tile</div>
-        <div style="font-size: 8px; padding: 3px 8px; border-radius: 3px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); color: rgba(255,255,255,0.3);">d distrib</div>
-        <div style="font-size: 8px; padding: 3px 8px; border-radius: 3px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); color: rgba(255,255,255,0.3);">g grow</div>
-        <div style="font-size: 8px; padding: 3px 8px; border-radius: 3px; background: rgba(51,199,115,0.1); border: 1px solid rgba(51,199,115,0.2); color: #33c773;">f flatten</div>
+        ${key("s spread")}${key("t tile")}${key("d distrib")}${key("g grow")}${key("f flatten", true)}
       </div>
       <div style="display: flex; align-items: center; padding: 6px 14px; border-top: 1px solid rgba(255,255,255,0.04); font-size: 8px; color: rgba(255,255,255,0.2);">
         <div style="display: flex; align-items: center; gap: 5px;">
@@ -149,64 +144,137 @@ function screenMapMockup() {
     </div>`;
 }
 
-// ── Terminal mockup ─────────────────────────────────────────────
-function terminalMockup() {
+// The docs site on its Configuration page, with the real nav.
+function docsPreview() {
+  const nav = [
+    ["Introduction", ["Overview", "Quickstart"]],
+    ["Architecture & API", ["Concepts", "Agent API", "Agent Guide", "Embedded SDK"]],
+    ["User Guide", ["Configuration", "Layers & Tab Groups", "Screen OCR & Search", "Mouse Gestures"]],
+  ];
+  const groups = nav
+    .map(
+      ([title, items]) => `
+        <div class="docs-group">${title}</div>
+        ${items.map((item) => `<div class="docs-item${item === "Configuration" ? " is-active" : ""}">${item}</div>`).join("")}`,
+    )
+    .join("");
   return `
-    <div style="
-      width: 320px; height: 220px;
-      background: #18181a;
-      border-radius: 14px;
-      border: 1px solid rgba(255,255,255,0.08);
-      box-shadow: 0 24px 48px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.03);
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-      font-family: 'JetBrains Mono', monospace;
-    ">
-      <div style="padding: 14px 16px 10px; display: flex; gap: 7px;">
-        <div style="width: 10px; height: 10px; border-radius: 50%; background: #ff5f57;"></div>
-        <div style="width: 10px; height: 10px; border-radius: 50%; background: #febc2e;"></div>
-        <div style="width: 10px; height: 10px; border-radius: 50%; background: #28c840;"></div>
-      </div>
-      <div style="flex: 1; padding: 8px 18px; font-size: 13px; line-height: 1.8;">
-        <div style="color: #33c773;">$ lattices start my-app</div>
-        <div style="color: rgba(255,255,255,0.35);">&#x2714; Created session my-app</div>
-        <div style="color: rgba(255,255,255,0.35);">&#x2714; 3 panes configured</div>
-        <div style="color: rgba(255,255,255,0.35);">&#x2714; Attached to my-app</div>
-        <div style="color: #33c773; margin-top: 4px;">$ <span style="opacity: 0.5;">&#x2588;</span></div>
+    <div class="mock">
+      <div class="chrome">${lights()}<span class="chrome-title">lattices.dev/docs/config</span></div>
+      <div class="docs">
+        <nav class="docs-nav">${groups}</nav>
+        <article class="docs-page">
+          <div class="docs-kicker">User Guide</div>
+          <h1>Configuration</h1>
+          <p>Place a <code>.lattices.json</code> file in your project root to define your workspace layout.</p>
+          <pre class="code">{
+  <b>"ensure"</b>: <em>true</em>,
+  <b>"panes"</b>: [
+    { <b>"name"</b>: "shell", <b>"size"</b>: <em>60</em> },
+    { <b>"name"</b>: "server", <b>"cmd"</b>: "bun dev" },
+    { <b>"name"</b>: "tests", <b>"cmd"</b>: "bun test --watch" }
+  ]
+}</pre>
+          <h2>Layouts</h2>
+          <div class="panes">
+            <div class="is-main">shell<small>60%</small></div>
+            <div>server<small>bun dev</small></div>
+            <div>tests<small>bun test --watch</small></div>
+          </div>
+        </article>
       </div>
     </div>`;
 }
 
-// ── API mockup ──────────────────────────────────────────────────
-function apiMockup() {
+// A session from the config above: the main-vertical layout, titled the way lattices titles it.
+function terminalPreview() {
+  const prompt = `<span class="t-prompt">~/dev/my-app $</span>`;
   return `
-    <div style="
-      width: 320px; height: 220px;
-      background: #18181a;
-      border-radius: 14px;
-      border: 1px solid rgba(255,255,255,0.08);
-      box-shadow: 0 24px 48px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.03);
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-      font-family: 'JetBrains Mono', monospace;
-    ">
-      <div style="padding: 12px 16px 8px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid rgba(255,255,255,0.06);">
-        <div style="font-size: 11px; color: #33c773; padding: 3px 8px; background: rgba(51,199,115,0.1); border-radius: 4px;">WS</div>
-        <div style="font-size: 12px; color: rgba(255,255,255,0.5);">127.0.0.1:9399</div>
+    <div class="mock">
+      <div class="chrome">${lights()}<span class="chrome-title">[lattices:my-app-3f9a2c] shell</span></div>
+      <div class="term">
+        <div class="term-pane">
+          <div>${prompt} cat .lattices.json</div>
+          <pre>{
+  <b>"ensure"</b>: <em>true</em>,
+  <b>"panes"</b>: [
+    { <b>"name"</b>: "shell", <b>"size"</b>: <em>60</em> },
+    { <b>"name"</b>: "server", <b>"cmd"</b>: "bun dev" },
+    { <b>"name"</b>: "tests", <b>"cmd"</b>: "bun test --watch" }
+  ]
+}</pre>
+          <div>${prompt} <span class="t-cursor"></span></div>
+        </div>
+        <div class="term-stack">
+          <div class="term-pane">
+            <div>${prompt} bun dev</div>
+            <div class="t-dim">VITE ready in 212 ms</div>
+            <div class="t-dim">➜ Local: <span class="t-soft">localhost:5173</span></div>
+          </div>
+          <div class="term-pane">
+            <div>${prompt} bun test --watch</div>
+            <div class="t-ok">12 pass</div>
+            <div class="t-dim">0 fail</div>
+            <div class="t-dim">Ran 12 tests across 3 files.</div>
+          </div>
+        </div>
       </div>
-      <div style="flex: 1; padding: 10px 18px; font-size: 11.5px; line-height: 1.9;">
-        <div style="color: rgba(255,255,255,0.25);">&#x2192; windows.list</div>
-        <div style="color: rgba(255,255,255,0.25);">&#x2192; windows.tile</div>
-        <div style="color: rgba(255,255,255,0.25);">&#x2192; screenmap.snapshot</div>
-        <div style="color: rgba(255,255,255,0.25);">&#x2192; terminals.search</div>
-        <div style="color: rgba(255,255,255,0.25);">&#x2192; sessions.create</div>
+      <div class="tmux-status">[my-app-3f9a2c] 0:zsh*</div>
+    </div>`;
+}
+
+// Real calls against the daemon, in the order an agent would make them.
+function apiPreview() {
+  const call = (method, params, result) => `
+        <div>
+          <div><span class="rpc-dir">→</span> <span class="rpc-method">${method}</span> <span class="rpc-params">${params}</span></div>
+          <div class="rpc-result"><span class="rpc-dir">←</span> ${result}</div>
+        </div>`;
+  return `
+    <div class="mock">
+      <div class="chrome">
+        <span class="ws-badge">WS</span>
+        <span class="chrome-title">ws://127.0.0.1:9399</span>
+        <span class="chrome-meta"><span class="live"></span>connected</span>
+      </div>
+      <div class="rpc-log">
+        ${call("windows.search", `{"query":"vox"}`, `[{"wid":265,"app":"iTerm2","matchSource":"ocr"},\n   {"wid":318,"app":"Zed","matchSource":"title"}]`)}
+        ${call("terminals.search", `{"cwd":"vox","hasClaude":true}`, `[{"tty":"/dev/ttys003","tmuxSession":"vox-8c21d0"}, …]`)}
+        ${call("window.place", `{"wid":265,"placement":"left"}`, `{"ok":true,"status":"ok", …}`)}
+        ${call("voice.say", `{"text":"vox is on the left."}`, `{"id":"job_9f3","state":"queued"}`)}
+        <div><span class="rpc-dir">→</span> <span class="t-cursor"></span></div>
+      </div>
+    </div>`;
+}
+
+// The /speech page's two visuals on one desk: the queue window, and the HUD
+// reading along over the workspace, spoken words lit like the mark's bars.
+function speechPreview() {
+  return `
+    <div class="speech-desk">
+      <div class="speech-window">
+        <div class="chrome">${lights()}<span class="chrome-title">Speech</span><span class="chrome-meta">voice af_heart</span></div>
+        <div class="speech-queue">
+          <div class="is-playing"><span>▶</span><strong>Agent summary — release build</strong><time>02:14</time></div>
+          <div><span>02</span><strong>Download finished</strong><time>00:08</time></div>
+          <div><span>03</span><strong>Release notes draft</strong><time>01:42</time></div>
+        </div>
+        <div class="speech-foot"><span class="live"></span>ws://127.0.0.1:9397<span class="chrome-meta">2 queued</span></div>
+      </div>
+      <div class="speech-hud">
+        <span class="speech-hud-dot"></span>
+        <div class="speech-hud-text">
+          <strong>Reading · Agent summary</strong>
+          <span><b>the release build finished —</b> thirty-four tests passed…</span>
+        </div>
+        <time>01:58</time>
       </div>
     </div>`;
 }
 
 // ── Pages config ────────────────────────────────────────────────
+const latticesAccent = ["#33c773", "#1a8f4a"];
+
 const pages = [
   {
     filename: "og.png",
@@ -214,7 +282,7 @@ const pages = [
     title: "lattices",
     subtitle:
       "Screen map, window tiling, and workspace management for macOS developers.",
-    mockup: "screenmap",
+    preview: screenMapPreview,
   },
   {
     filename: "og-docs.png",
@@ -222,7 +290,7 @@ const pages = [
     title: "lattices",
     subtitle:
       "CLI reference, Screen Map guide, RPC API, and configuration docs.",
-    mockup: "screenmap",
+    preview: docsPreview,
   },
   {
     filename: "og-cli.png",
@@ -230,7 +298,7 @@ const pages = [
     title: "lattices cli",
     subtitle:
       "Declarative tmux sessions. Define your layouts in JSON, launch with one command.",
-    mockup: "terminal",
+    preview: terminalPreview,
   },
   {
     filename: "og-api.png",
@@ -238,7 +306,7 @@ const pages = [
     title: "lattices api",
     subtitle:
       "20+ RPC methods over WebSocket. Window tiling, screen map, terminal discovery, and more.",
-    mockup: "api",
+    preview: apiPreview,
   },
   {
     filename: "og-action.png",
@@ -248,6 +316,8 @@ const pages = [
     subtitle:
       "Native macOS automation, capture, and review for agents.",
     accent: ["#c58a70", "#9a6450"],
+    preview: () =>
+      artPreview("products/action/assets/brand/landing/landing-hero-observe-act-record.webp", "85% center"),
   },
   {
     filename: "og-blink.png",
@@ -257,6 +327,7 @@ const pages = [
     subtitle:
       "Spatial notes: each note is a floating panel, and the desktop is the workspace.",
     accent: ["#f0b45a", "#c2872f"],
+    preview: () => artPreview("products/blink/landing/public/hero-desk.png"),
   },
   {
     filename: "og-speech.png",
@@ -265,23 +336,14 @@ const pages = [
     title: "speech",
     subtitle:
       "Queue text, choose a voice, and control playback independently.",
+    preview: speechPreview,
   },
 ];
-
-const latticesAccent = ["#33c773", "#1a8f4a"];
 
 // ── HTML builder ────────────────────────────────────────────────
 function buildHTML(config) {
   const { tag, title, subtitle, product } = config;
   const [accentFrom, accentTo] = config.accent ?? latticesAccent;
-
-  const rightContent = product
-    ? appIcon(product)
-    : config.mockup === "screenmap"
-      ? screenMapMockup()
-      : config.mockup === "terminal"
-        ? terminalMockup()
-        : apiMockup();
 
   return `<!DOCTYPE html>
 <html>
@@ -313,104 +375,44 @@ function buildHTML(config) {
       background-size: ${G}px ${G}px;
     }
 
-    /* ── Crosses: symmetric at ${CROSS_D}px from each edge ── */
-
-    /* TL at (${TL.x}, ${TL.y}) — arms go right + down, fade out */
-    .cross-tl-h {
+    /* ── Cross at (${CROSS.x}, ${CROSS.y}): arms run right and down, fading out ── */
+    .cross-h, .cross-v {
       position: absolute;
-      top: ${TL.y}px; left: ${TL.x}px;
-      width: ${CROSS_LEN}px; height: 1px;
+      top: ${CROSS.y}px; left: ${CROSS.x}px;
+    }
+    .cross-h {
+      width: ${CROSS.len}px; height: 1px;
       background: linear-gradient(to right, rgba(255,255,255,0.25), rgba(255,255,255,0.06) 50%, transparent);
     }
-    .cross-tl-v {
-      position: absolute;
-      top: ${TL.y}px; left: ${TL.x}px;
-      width: 1px; height: ${CROSS_LEN}px;
+    .cross-v {
+      width: 1px; height: ${CROSS.len}px;
       background: linear-gradient(to bottom, rgba(255,255,255,0.25), rgba(255,255,255,0.06) 50%, transparent);
     }
 
-    /* BR at (${BR.x}, ${BR.y}) — arms go left + up, fade out */
-    .cross-br-h {
-      position: absolute;
-      top: ${BR.y}px; left: ${BR.x - CROSS_LEN}px;
-      width: ${CROSS_LEN}px; height: 1px;
-      background: linear-gradient(to right, transparent, rgba(255,255,255,0.06) 50%, rgba(255,255,255,0.25));
-    }
-    .cross-br-v {
-      position: absolute;
-      top: ${BR.y - CROSS_LEN}px; left: ${BR.x}px;
-      width: 1px; height: ${CROSS_LEN}px;
-      background: linear-gradient(to bottom, transparent, rgba(255,255,255,0.06) 50%, rgba(255,255,255,0.25));
-    }
-
-    /* ── Subtle glows ────────────────────── */
-    .glow-1 {
+    .glow {
       position: absolute;
       top: -${G * 2}px; left: -${G * 2}px;
       width: ${G * 12}px; height: ${G * 12}px;
       border-radius: 50%;
       background: radial-gradient(circle, rgba(255,255,255,0.03) 0%, transparent 70%);
     }
-    .glow-2 {
+
+    /* ── Copy column ─────────────────────── */
+    .copy {
       position: absolute;
-      bottom: -${G * 4}px; right: ${G * 6}px;
-      width: ${G * 14}px; height: ${G * 14}px;
-      border-radius: 50%;
-      background: radial-gradient(circle, rgba(255,255,255,0.02) 0%, transparent 70%);
-    }
-
-    /* ── Layout ──────────────────────────── */
-    .content {
-      position: relative;
-      z-index: 10;
-      display: flex;
-      align-items: flex-start; /* logo top = mockup top */
-      height: 100%;
-      padding: ${PAD_TOP}px ${PAD_SIDE}px ${PAD_BOTTOM}px;
-      gap: ${G * 2}px;
-    }
-
-    /* Product cards centre the text on the icon, between the crosses. */
-    .content.centered {
-      align-items: center;
-      padding-top: 0;
-      padding-bottom: 0;
-    }
-
-    .left {
-      flex: 1;
+      top: ${BRAND}px; left: ${BRAND}px;
+      width: ${COLUMN}px;
       display: flex;
       flex-direction: column;
-      min-width: 0;
     }
 
-    .right {
-      display: flex;
-      align-items: flex-start;
-      flex-shrink: 0;
-    }
-
-    .logo { margin-bottom: ${G}px; }
-
-    .family {
+    .brand {
+      width: ${BRAND}px; height: ${BRAND}px;
       display: flex;
       align-items: center;
-      gap: 12px;
-      height: 40px;
       margin-bottom: ${G}px;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 22px;
-      font-weight: 600;
-      color: rgba(255, 255, 255, 0.72);
     }
-
-    .family-slash { color: rgba(255, 255, 255, 0.28); font-weight: 400; }
-
-    .app-icon {
-      display: block;
-      margin-right: -${ICON_INSET}px;
-      filter: drop-shadow(0 24px 40px rgba(0, 0, 0, 0.55));
-    }
+    .brand svg { display: block; }
 
     .title {
       font-family: 'JetBrains Mono', monospace;
@@ -425,7 +427,6 @@ function buildHTML(config) {
       font-size: 17px;
       color: rgba(255, 255, 255, 0.4);
       line-height: 1.5;
-      max-width: 400px;
       margin-bottom: 24px;
     }
 
@@ -444,6 +445,215 @@ function buildHTML(config) {
       letter-spacing: 0.02em;
     }
 
+    /* ── Family sign-off: product cards only ── */
+    .family {
+      position: absolute;
+      left: ${BRAND}px; bottom: ${G * 2}px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 20px;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.72);
+    }
+    .family svg { display: block; }
+
+    /* ── Preview window: runs off the right and bottom edges ── */
+    .preview {
+      position: absolute;
+      left: ${PREVIEW.x}px; top: ${PREVIEW.y}px;
+      width: ${PREVIEW.w}px; height: ${PREVIEW.h}px;
+      border-top-left-radius: 16px;
+      overflow: hidden;
+      background: #18181a;
+      box-shadow: 0 0 0 1px rgba(255,255,255,0.09), -24px -12px 64px rgba(0,0,0,0.5);
+    }
+    .art { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+    .mock {
+      width: 100%; height: 100%;
+      display: flex;
+      flex-direction: column;
+      font-family: 'JetBrains Mono', monospace;
+      color: rgba(255,255,255,0.7);
+    }
+    .chrome {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      height: 46px;
+      padding: 0 20px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      flex-shrink: 0;
+    }
+    .lights { display: flex; gap: 8px; }
+    .lights i { display: block; width: 12px; height: 12px; border-radius: 50%; }
+    .chrome-title { font-size: 13px; color: rgba(255,255,255,0.45); }
+    .chrome-meta { margin-left: auto; font-size: 13px; color: rgba(255,255,255,0.3); }
+
+    pre { font-family: inherit; white-space: pre; }
+    pre b { font-weight: 400; color: #7ec8e3; }
+    pre em { font-style: normal; color: #33c773; }
+
+    /* docs */
+    .docs { flex: 1; display: flex; min-height: 0; }
+    .docs-nav {
+      width: 196px;
+      flex-shrink: 0;
+      padding: 22px 0 0 22px;
+      border-right: 1px solid rgba(255,255,255,0.06);
+      font-family: 'Space Grotesk', sans-serif;
+    }
+    .docs-group {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.28);
+      margin: 18px 0 8px;
+    }
+    .docs-group:first-child { margin-top: 0; }
+    .docs-item { font-size: 14px; color: rgba(255,255,255,0.45); padding: 5px 0 5px 12px; border-left: 2px solid transparent; }
+    .docs-item.is-active { color: #33c773; border-left-color: #33c773; }
+    .docs-page { flex: 1; padding: 28px 30px 0; font-family: 'Space Grotesk', sans-serif; min-width: 0; }
+    .docs-kicker {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.3);
+      margin-bottom: 10px;
+    }
+    .docs-page h1 { font-size: 32px; font-weight: 600; letter-spacing: -0.02em; color: rgba(255,255,255,0.92); margin-bottom: 12px; }
+    .docs-page h2 { font-size: 20px; font-weight: 600; color: rgba(255,255,255,0.85); margin: 18px 0 0; }
+    .docs-page p { font-size: 15px; line-height: 1.55; color: rgba(255,255,255,0.55); }
+    .docs-page code { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: rgba(255,255,255,0.8); }
+    .docs-page .code {
+      margin-top: 16px;
+      padding: 16px 18px;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px;
+      background: #111113;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      line-height: 1.65;
+      color: rgba(255,255,255,0.6);
+    }
+
+    .panes {
+      display: grid;
+      grid-template-columns: 60% 1fr;
+      grid-template-rows: 96px 96px;
+      gap: 6px;
+      margin-top: 12px;
+    }
+    .panes div {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 12px;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      background: rgba(255,255,255,0.02);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: rgba(255,255,255,0.7);
+    }
+    .panes .is-main { grid-row: 1 / 3; border-color: rgba(51,199,115,0.3); background: rgba(51,199,115,0.06); }
+    .panes small { font-size: 11px; color: rgba(255,255,255,0.35); }
+
+    /* terminal */
+    .term { flex: 1; display: grid; grid-template-columns: 60% 1fr; min-height: 0; background: #141416; }
+    .term-stack { display: grid; grid-template-rows: 1fr 1fr; border-left: 1px solid rgba(255,255,255,0.1); }
+    .term-stack .term-pane + .term-pane { border-top: 1px solid rgba(255,255,255,0.1); }
+    .term-pane { padding: 16px 14px; font-size: 12px; line-height: 1.7; color: rgba(255,255,255,0.7); overflow: hidden; }
+    .term-pane pre { color: rgba(255,255,255,0.55); margin: 2px 0; }
+    .t-prompt { color: #33c773; }
+    .t-dim { color: rgba(255,255,255,0.38); }
+    .t-soft { color: rgba(255,255,255,0.6); }
+    .t-ok { color: #33c773; }
+    .t-cursor { display: inline-block; width: 8px; height: 15px; vertical-align: -3px; background: rgba(255,255,255,0.5); }
+    .tmux-status {
+      flex-shrink: 0;
+      height: 26px;
+      padding: 0 12px;
+      display: flex;
+      align-items: center;
+      background: rgba(51,199,115,0.14);
+      color: #33c773;
+      font-size: 12px;
+    }
+
+    /* api */
+    .ws-badge { font-size: 12px; color: #33c773; padding: 4px 9px; background: rgba(51,199,115,0.1); border-radius: 5px; }
+    .rpc-log { flex: 1; padding: 22px 22px 0; display: flex; flex-direction: column; gap: 20px; font-size: 15px; line-height: 1.7; }
+    .rpc-dir { color: rgba(255,255,255,0.3); }
+    .rpc-method { color: #33c773; }
+    .rpc-params { color: rgba(255,255,255,0.6); }
+    .rpc-result { color: rgba(255,255,255,0.38); white-space: pre; }
+    .live { width: 7px; height: 7px; border-radius: 50%; background: #33c773; display: inline-block; margin-right: 8px; vertical-align: 1px; }
+
+    /* speech: the queue window and the HUD, on a desk ruled like the page's */
+    .speech-desk {
+      position: relative;
+      width: 100%; height: 100%;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px);
+      background-size: 32px 32px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .speech-window {
+      position: absolute;
+      top: 28px; left: 28px; right: 0;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-right: 0;
+      border-radius: 12px 0 0 12px;
+      background: #1c1c1e;
+      overflow: hidden;
+    }
+    .speech-queue { display: grid; gap: 1px; background: rgba(255,255,255,0.06); }
+    .speech-queue > div {
+      display: grid;
+      grid-template-columns: 36px 1fr auto;
+      gap: 12px;
+      align-items: center;
+      padding: 20px 24px;
+      background: #1c1c1e;
+      color: rgba(255,255,255,0.4);
+      font-size: 13px;
+    }
+    .speech-queue strong { color: rgba(255,255,255,0.92); font-weight: 550; font-size: 16px; }
+    .speech-queue .is-playing { background: rgba(51,199,115,0.15); color: #33c773; }
+    .speech-foot {
+      display: flex;
+      align-items: center;
+      height: 42px;
+      padding: 0 24px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      font-size: 12px;
+      color: rgba(255,255,255,0.3);
+    }
+    .speech-hud {
+      position: absolute;
+      left: 60px; right: 60px; bottom: 60px;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 14px;
+      align-items: center;
+      padding: 16px 24px;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 999px;
+      background: #1c1c1e;
+      box-shadow: 0 18px 40px -18px rgba(0,0,0,0.9);
+    }
+    .speech-hud-dot { width: 8px; height: 8px; border-radius: 50%; background: #33c773; box-shadow: 0 0 10px #33c773; }
+    .speech-hud-text { display: grid; gap: 4px; min-width: 0; }
+    .speech-hud-text strong { color: rgba(255,255,255,0.92); font-size: 13px; font-weight: 550; }
+    .speech-hud-text span { color: rgba(255,255,255,0.35); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .speech-hud-text b { font-weight: 400; color: rgba(255,255,255,0.85); }
+    .speech-hud time { color: #33c773; font-size: 13px; }
+
     .accent-bar {
       position: absolute;
       bottom: 0; left: 0; right: 0;
@@ -454,25 +664,19 @@ function buildHTML(config) {
 </head>
 <body>
   <div class="grid"></div>
-  <div class="glow-1"></div>
-  <div class="glow-2"></div>
+  <div class="glow"></div>
+  <div class="cross-h"></div>
+  <div class="cross-v"></div>
 
-  <div class="cross-tl-h"></div>
-  <div class="cross-tl-v"></div>
-  <div class="cross-br-h"></div>
-  <div class="cross-br-v"></div>
-
-  <div class="content${product ? " centered" : ""}">
-    <div class="left">
-      ${product ? familyLockup() : `<div class="logo">${logoMark(120)}</div>`}
-      <div class="title">${title}</div>
-      <div class="subtitle">${subtitle}</div>
-      <div class="tag">${tag}</div>
-    </div>
-    <div class="right">
-      ${rightContent}
-    </div>
+  <div class="copy">
+    <div class="brand">${mark(product ?? "lattices", BRAND)}</div>
+    <div class="title">${title}</div>
+    <div class="subtitle">${subtitle}</div>
+    <div class="tag">${tag}</div>
   </div>
+  ${product ? `<div class="family">${mark("lattices", 24)}<span>lattices</span></div>` : ""}
+
+  <div class="preview">${config.preview()}</div>
 
   <div class="accent-bar"></div>
 </body>
@@ -491,8 +695,12 @@ async function generate(configs) {
     await page.setViewport({ width: W, height: H, deviceScaleFactor: 2 });
 
     const html = buildHTML(config);
-    await page.setContent(html, { waitUntil: "networkidle0" });
-    await page.evaluate(() => document.fonts.ready);
+    // Not networkidle0: one stalled connection to the font CDN starves it past the timeout.
+    await page.setContent(html, { waitUntil: "load" });
+    await page.evaluate(async () => {
+      document.body.offsetHeight; // lay out first, so the faces in use start loading
+      await document.fonts.ready;
+    });
     await new Promise((r) => setTimeout(r, 800));
 
     const output = join(publicDir, config.filename);
