@@ -158,6 +158,12 @@ private extension LatticesCompanionBridgeServer {
                 return
             }
 
+            // A companion can hang up before its reply is written. On Darwin,
+            // writing to that socket would otherwise raise SIGPIPE and
+            // terminate the app.
+            var noSigPipe: Int32 = 1
+            setsockopt(clientFd, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
+
             let clientFlags = fcntl(clientFd, F_GETFL)
             if clientFlags >= 0 {
                 _ = fcntl(clientFd, F_SETFL, clientFlags & ~O_NONBLOCK)

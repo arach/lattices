@@ -9,7 +9,7 @@ import actionProductFilm from "../../../../products/action/docs/assets/action-re
 import actionProductFilmCaptions from "../../../../products/action/docs/assets/action-record-the-work.vtt";
 import actionProductFilmPoster from "../../../../products/action/docs/assets/action-record-the-work-poster.jpg";
 import { ActionArchitectureDiagram } from "./ActionArchitectureDiagram";
-import { LatticesLogo } from "./LandingPage";
+import { LatticesMark } from "./LatticesMark";
 import { ProductsMenu } from "./SiteChrome";
 import { ThemeToggle } from "./ThemeToggle";
 
@@ -79,9 +79,17 @@ export default function ActionPage() {
       <nav className="nav action-nav" aria-label="Action navigation">
         <div className="nav-inner">
           <a href="/" className="nav-brand action-family-lockup" aria-label="Lattices home">
-            <LatticesLogo size={20} />
+            <LatticesMark />
             <span className="nav-name">lattices</span>
             <span className="action-lockup-divider" aria-hidden="true">/</span>
+            <ActionMark
+              palette={{ ink: "currentColor" }}
+              guides={false}
+              background={false}
+              viewBox="15 35 590 590"
+              decorative
+              style={{ width: 16, height: 16 }}
+            />
             <span className="action-lockup-product">action</span>
           </a>
           <div className="nav-links">

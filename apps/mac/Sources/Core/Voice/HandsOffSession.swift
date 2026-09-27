@@ -322,7 +322,7 @@ final class HandsOffSession: ObservableObject {
               var str = String(data: data, encoding: .utf8) else { return }
         str += "\n"
         workerQueue.async { [weak self] in
-            self?.workerStdin?.write(str.data(using: .utf8)!)
+            try? self?.workerStdin?.write(contentsOf: str.data(using: .utf8)!)
         }
     }
 

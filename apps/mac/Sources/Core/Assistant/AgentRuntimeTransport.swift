@@ -286,7 +286,7 @@ final class AgentRuntimeTransport {
             let line = (try? JSONSerialization.data(withJSONObject: ["op": "shutdown", "id": 0]))
                 .flatMap { String(data: $0, encoding: .utf8) }
             if let line {
-                handle.write(Data((line + "\n").utf8))
+                try? handle.write(contentsOf: Data((line + "\n").utf8))
             }
         }
         process?.terminate()
@@ -530,7 +530,14 @@ final class AgentRuntimeTransport {
                 )
                 return
             }
-            handle.write(Data(line.utf8))
+            do {
+                try handle.write(contentsOf: Data(line.utf8))
+            } catch {
+                failPendingRequest(
+                    id: id,
+                    error: AgentRuntimeTransportError.turnFailed("Agent runtime stdin write failed: \(error.localizedDescription)")
+                )
+            }
         }
     }
 

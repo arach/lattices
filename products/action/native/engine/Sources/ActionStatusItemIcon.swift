@@ -13,19 +13,27 @@ extension ActionBrandMark {
     /// both a light and a dark menu bar.
     @MainActor
     static func statusItemImage(live: Bool) -> NSImage {
-        // 16pt of glyph inside an 18pt image. Menu bar extras are expected to
+        // A 14pt glyph centred in an 18pt image. Menu bar extras are expected to
         // sit a little inside their slot; filling it edge to edge reads as
         // shouting next to the system's own items.
         let side: CGFloat = 18
-        let padding: CGFloat = 1
+        let glyph: CGFloat = 14
         let image = NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
             guard let context = NSGraphicsContext.current?.cgContext else { return false }
-            context.addPath(markPath(in: rect.insetBy(dx: padding, dy: padding)))
+            let inset = (side - glyph) / 2
+            let design = designRect(fittingGlyphIn: rect.insetBy(dx: inset, dy: inset))
+            context.addPath(markPath(in: design, gap: statusItemGap))
             context.setFillColor(live ? coral : .black)
-            context.fillPath(using: .evenOdd)
+            context.fillPath()
             return true
         }
         image.isTemplate = !live
         return image
     }
+
+    /// Clearance between the letter and the cursor in the menu bar. In one
+    /// colour the gap is all that separates the cursor from the leg, and at
+    /// this size the standard ten units come to about a quarter of a point, so
+    /// the two fuse into one blot. Thirty-six units open it to about a point.
+    private static let statusItemGap = 36.0
 }

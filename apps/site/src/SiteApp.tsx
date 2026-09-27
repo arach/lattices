@@ -9,6 +9,7 @@ import LandingPage from './components/LandingPage'
 import ConceptExperimentPage from './components/ConceptExperimentPage'
 import FamilyPage from './components/FamilyPage'
 import { defaultDoc, getBlogPost, getDoc } from './lib/content'
+import { routeBrand } from './lib/brand'
 
 export default function SiteApp() {
   const [path, setPath] = useState(() => normalizePath(window.location.pathname))
@@ -18,6 +19,12 @@ export default function SiteApp() {
     document.title = route.title
     setMeta('description', route.description)
   }, [route.description, route.title])
+
+  useEffect(() => {
+    const brand = routeBrand(path)
+    setLink('icon', brand.icon)
+    setLink('apple-touch-icon', brand.touchIcon)
+  }, [path])
 
   useEffect(() => {
     const syncPath = () => setPath(normalizePath(window.location.pathname))
@@ -258,5 +265,12 @@ function setMeta(name: string, content: string): void {
   const meta = document.querySelector<HTMLMetaElement>(`meta[name="${name}"]`)
   if (meta) {
     meta.content = content
+  }
+}
+
+function setLink(rel: string, href: string): void {
+  const link = document.querySelector<HTMLLinkElement>(`link[rel="${rel}"]`)
+  if (link) {
+    link.href = href
   }
 }

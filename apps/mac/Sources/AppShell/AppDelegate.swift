@@ -114,6 +114,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// can be done for that case, which is the more reason to make the
     /// catchable one clean.
     private func installTerminationSignalHandlers() {
+        // A peer that hangs up must cost one failed write, not the app.
+        // SIGPIPE's default disposition kills us with no crash report and no
+        // applicationWillTerminate, only "(2, 13, 13)" in the RunningBoard
+        // log. Pipe writes must use `write(contentsOf:)`: the legacy
+        // `FileHandle.write(_:)` raises on EPIPE instead of throwing.
+        signal(SIGPIPE, SIG_IGN)
+
         for sig in [SIGTERM, SIGINT] {
             // Ignore the default disposition so the process survives long
             // enough for the dispatch source below to run.
