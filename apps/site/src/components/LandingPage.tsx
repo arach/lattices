@@ -3,48 +3,10 @@ import type { ReactNode } from "react";
 import { useReducedMotion } from "motion/react";
 import { ThemeToggle } from "./ThemeToggle";
 import { GestureMatrix } from "./GestureMatrix";
+import { LatticesMark } from "./LatticesMark";
 import { ProductsMenu } from "./SiteChrome";
 
 const latticesDownloadURL = "https://github.com/arach/lattices/releases/download/v0.12.3/Lattices.dmg";
-
-export function LatticesLogo({ size = 20 }: { size?: number }) {
-  // 3×3 grid with L-shape pattern (left column + bottom row bright, rest dim)
-  const cells = [
-    true, false, false,
-    true, false, false,
-    true, true, true,
-  ];
-  const pad = 2;
-  const gap = 1.2;
-  const cell = (size - 2 * pad - 2 * gap) / 3;
-  return (
-    <svg
-      aria-hidden="true"
-      className="lattices-logo"
-      width={size}
-      height={size}
-      viewBox={`0 0 ${size} ${size}`}
-      fill="none"
-    >
-      {cells.map((bright, i) => {
-        const row = Math.floor(i / 3);
-        const col = i % 3;
-        return (
-          <rect
-            key={i}
-            x={pad + col * (cell + gap)}
-            y={pad + row * (cell + gap)}
-            width={cell}
-            height={cell}
-            rx={1}
-            className="lattices-logo-cell"
-            style={{ fill: bright ? "var(--logo-ink)" : "var(--logo-dim)" }}
-          />
-        );
-      })}
-    </svg>
-  );
-}
 
 declare global {
   interface Window {
@@ -504,7 +466,7 @@ export default function App() {
       <nav className="nav">
         <div className="nav-inner">
           <a href="/" className="nav-brand">
-            <LatticesLogo size={20} />
+            <LatticesMark />
             <span className="nav-name">lattices</span>
           </a>
           <div className="nav-links">

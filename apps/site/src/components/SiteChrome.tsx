@@ -1,46 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { productLinks } from '../data/products'
+import { LatticesMark } from './LatticesMark'
 import { ThemeToggle } from './ThemeToggle'
 
 declare global {
   interface Window {
     PagefindUI?: new (options: { element: string; showSubResults?: boolean }) => unknown
   }
-}
-
-export function LatticesMark({ size = 20 }: { size?: number }) {
-  const cells = [true, false, false, true, false, false, true, true, true]
-  const pad = 2
-  const gap = 1.2
-  const cell = (size - 2 * pad - 2 * gap) / 3
-
-  return (
-    <svg
-      className="site-mark"
-      width={size}
-      height={size}
-      viewBox={`0 0 ${size} ${size}`}
-      fill="none"
-      aria-hidden="true"
-    >
-      {cells.map((bright, index) => {
-        const row = Math.floor(index / 3)
-        const col = index % 3
-        return (
-          <rect
-            key={index}
-            x={pad + col * (cell + gap)}
-            y={pad + row * (cell + gap)}
-            width={cell}
-            height={cell}
-            rx={1}
-            className="site-mark-cell"
-            style={{ fill: bright ? 'var(--logo-ink)' : 'var(--logo-dim)' }}
-          />
-        )
-      })}
-    </svg>
-  )
 }
 
 export function ProductsMenu() {
@@ -111,7 +77,14 @@ export function ProductsMenu() {
   )
 }
 
-export function SiteHeader() {
+/** A product page's half of the `lattices / <mark> product` lockup. */
+export interface HeaderProduct {
+  name: string
+  href: string
+  mark: ReactNode
+}
+
+export function SiteHeader({ product }: { product?: HeaderProduct }) {
   const [searchOpen, setSearchOpen] = useState(false)
   // The initial theme is set synchronously by the inline script in index.html
   // to avoid a flash of wrong-theme content. This effect re-syncs on toggle.
@@ -142,10 +115,24 @@ export function SiteHeader() {
     <>
       <header className="site-header" data-pagefind-ignore>
         <div className="site-header-inner">
-          <a className="site-brand" href="/">
-            <LatticesMark />
-            <span>lattices</span>
-          </a>
+          {product ? (
+            <div className="site-lockup">
+              <a className="site-brand" href="/" aria-label="Lattices home">
+                <LatticesMark />
+                <span>lattices</span>
+              </a>
+              <span className="site-lockup-slash" aria-hidden="true">/</span>
+              <a className="site-brand" href={product.href}>
+                {product.mark}
+                <span>{product.name}</span>
+              </a>
+            </div>
+          ) : (
+            <a className="site-brand" href="/">
+              <LatticesMark />
+              <span>lattices</span>
+            </a>
+          )}
           <nav className="site-links" aria-label="Primary navigation">
             <ProductsMenu />
             <a href="/blog" className="nav-blog-link">Blog</a>

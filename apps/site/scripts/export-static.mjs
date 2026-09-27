@@ -21,6 +21,7 @@ import BlinkPage from '../src/components/BlinkPage.tsx'
 import SpeechPage from '../src/components/SpeechPage.tsx'
 import ProductsPage from '../src/components/ProductsPage.tsx'
 import FamilyPage from '../src/components/FamilyPage.tsx'
+import { routeBrand } from '../src/lib/brand.ts'
 
 const siteDir = resolve(import.meta.dirname, '..')
 const repoRoot = resolve(siteDir, '..', '..')
@@ -257,8 +258,25 @@ async function readEntries(directory, extensions) {
 }
 
 async function writeRoute(route, title, description, appHtml) {
+  const brand = routeBrand(route)
   const html = template
     .replace(/<title>.*?<\/title>/, `<title>${escapeHtml(title)}</title>`)
+    .replace(
+      /<link rel="icon" type="image\/svg\+xml" href=".*?" \/>/,
+      `<link rel="icon" type="image/svg+xml" href="${brand.icon}" />`,
+    )
+    .replace(
+      /<link rel="apple-touch-icon" href=".*?" \/>/,
+      `<link rel="apple-touch-icon" href="${brand.touchIcon}" />`,
+    )
+    .replace(
+      /<meta property="og:image" content=".*?" \/>/,
+      `<meta property="og:image" content="${SITE_URL}${brand.ogImage}" />`,
+    )
+    .replace(
+      /<meta property="twitter:image" content=".*?" \/>/,
+      `<meta property="twitter:image" content="${SITE_URL}${brand.ogImage}" />`,
+    )
     .replace(
       /<meta name="description" content=".*?" \/>/,
       `<meta name="description" content="${escapeHtml(description)}" />`,
@@ -314,6 +332,7 @@ async function writeActionDownloadRedirect() {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex" />
     <link rel="canonical" href="${SITE_URL}${route}" />
+    <link rel="icon" type="image/svg+xml" href="${routeBrand(route).icon}" />
     <title>Downloading Action…</title>
   </head>
   <body>
@@ -613,6 +632,7 @@ async function writeBlinkDownloadRedirect() {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex" />
     <link rel="canonical" href="${SITE_URL}${route}" />
+    <link rel="icon" type="image/svg+xml" href="${routeBrand(route).icon}" />
     <title>Downloading Blink…</title>
   </head>
   <body>

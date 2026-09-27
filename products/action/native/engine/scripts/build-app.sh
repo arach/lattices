@@ -167,9 +167,9 @@ cp "$HOST_EXECUTABLE" "$APP_EXECUTABLE"
 cp "$AGENT_EXECUTABLE" "$APP_AGENT_EXECUTABLE"
 cp "$PLIST_TEMPLATE" "$CONTENTS_DIR/Info.plist"
 cp "$AGENT_PLIST_TEMPLATE" "$AGENT_HELPER_CONTENTS_DIR/Info.plist"
-# Prebuilt and committed: scripts/build-app-icon.sh renders it from the mark
-# geometry in CoreSources/ActionBrandMark.swift. Copied, never generated here,
-# so an ordinary build does not pay for it.
+# Prebuilt and committed: scripts/build-app-icon.sh renders it with the site's
+# brand exporter, from ActionMark in apps/site/src/components/ActionMark.tsx.
+# Copied, never generated here, so an ordinary build does not pay for it.
 if [[ -f "$ROOT_DIR/assets/brand/Action.icns" ]]; then
   cp "$ROOT_DIR/assets/brand/Action.icns" "$RESOURCES_DIR/Action.icns"
 else

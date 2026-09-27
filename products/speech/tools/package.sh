@@ -14,6 +14,9 @@ APP="$STAGE/Speech.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/Speech" "$APP/Contents/MacOS/Speech"
 cp "$ROOT/Info.plist" "$APP/Contents/Info.plist"
+# Prebuilt and committed: `bun run brand speech` in apps/site renders it from
+# SpeechMark in apps/site/src/components/SpeechMark.tsx.
+cp "$ROOT/assets/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 # Vox SpeechEngineResources resolves packaged resources from Contents/Resources.
 for RESOURCE in "$BIN_DIR"/*.bundle; do
     [ -d "$RESOURCE" ] || continue

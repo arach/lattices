@@ -1,4 +1,5 @@
 import { SiteHeader } from './SiteChrome'
+import { SpeechMark } from './SpeechMark'
 
 const downloadUrl = 'https://github.com/arach/lattices/releases/download/speech-v0.2.0/Speech.dmg'
 const sourceUrl = 'https://github.com/arach/lattices/tree/main/products/speech'
@@ -69,7 +70,7 @@ const ambient = [
 export default function SpeechPage() {
   return (
     <div className="family-page speech-page">
-      <SiteHeader />
+      <SiteHeader product={{ name: 'speech', href: '/speech', mark: <SpeechMark /> }} />
       <main>
         <section className="family-hero" aria-labelledby="speech-title">
           <div className="family-hero-copy">
