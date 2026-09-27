@@ -2,6 +2,9 @@
 # Build a local artifact only. Never install, launch or publish it.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# build.json names no voice feature, so Hudson leaves out HudsonVoice and Vox,
+# even when the Lattices app build that embeds Voice turned them on.
+eval "$(bun "$ROOT/../../bin/lattices-build-env.ts" shell "$ROOT/build.json")"
 CONFIG="${SPEECH_BUILD_CONFIGURATION:-release}"
 OUTPUT="${SPEECH_ARTIFACT_DIR:-$ROOT/.artifacts}"
 IDENTITY="${SPEECH_SIGN_IDENTITY:--}"

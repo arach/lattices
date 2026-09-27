@@ -18,7 +18,10 @@ through Vox or a Python runtime. Keep existing credential service
 Source provenance is recorded in SOURCE-PROVENANCE.json. The source checkout is
 an active snapshot and must remain untouched.
 
-Build/test with `swift test --package-path products/voice`. The remote Hudson default contains the shared speech changes.
+Build/test with `HUDSONKIT_WITH_VOICE=0 swift test --package-path products/voice`.
+Without the variable, Hudson adds Vox and Moonshine back to Package.resolved;
+tools/package.sh sets it from build.json. The remote Hudson default contains
+the shared speech changes.
 Set SPEECH_HUDSON_PATH only for an explicit local dependency experiment.
 Kokoro's live tests load the real model and run only with VOICE_KOKORO_LIVE=1;
 set VOICE_KOKORO_LIVE_OUT to a directory to keep their WAVs.
