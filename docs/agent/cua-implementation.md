@@ -110,9 +110,9 @@ git diff --check
 For live behavior, restart the app and use staged calls first:
 
 ```bash
-lattices app restart
-lattices call api.schema '{}'
-lattices call computer.launchApp '{"app":"Finder","treatment":"stage","capture":false}'
+lats app restart
+lats call api.schema '{}'
+lats call computer.launchApp '{"app":"Finder","treatment":"stage","capture":false}'
 ```
 
 Only run browser DOM/Javascript live checks against a page where the user has

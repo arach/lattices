@@ -40,7 +40,7 @@ test("skills/ is the family catalog", () => {
 
 test("lattices skill teaches current workspace commands", () => {
   const source = readFileSync(join(skillsRoot, "lattices", "SKILL.md"), "utf8");
-  expect(source).toContain("lattices daemon status");
+  expect(source).toContain("lats daemon status");
   expect(source).toContain("window.place");
 });
 
@@ -53,9 +53,9 @@ test("action skill teaches the native drive loop", () => {
 
 test("voice skill teaches say, simulate and intents", () => {
   const source = readFileSync(join(skillsRoot, "voice", "SKILL.md"), "utf8");
-  expect(source).toContain("lattices voice say");
-  expect(source).toContain("lattices voice simulate");
-  expect(source).toContain("lattices voice intents");
+  expect(source).toContain("lats voice say");
+  expect(source).toContain("lats voice simulate");
+  expect(source).toContain("lats voice intents");
   expect(source).toContain("window.place");
 });
 

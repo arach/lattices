@@ -53,7 +53,7 @@ App tabs are matched by app name and optional window-title substring.
 - The HUD shows a Lattices tab strip for the active layer's first group
 - The split button arranges members inside the group's configured tile; press
   it again to collapse the windows back into their shared slot
-- You can still launch projects independently: `cd vox-ios && lattices start`
+- You can still launch projects independently: `cd vox-ios && lats start`
   creates its own standalone session as before
 
 ### Tab group fields
@@ -75,17 +75,17 @@ Each tab needs either `path` or `app`.
 ### CLI commands
 
 ```bash
-lattices groups             # List all groups with status
-lattices group <id>         # Launch or attach to a group
-lattices tab <group> [tab]  # Switch tab by label or index
+lats groups                 # List all groups with status
+lats group <id>             # Launch or attach to a group
+lats tab <group> [tab]      # Switch tab by label or index
 ```
 
 Examples:
 
 ```bash
-lattices group vox       # Launch all Vox terminal and app tabs
-lattices tab vox Editor  # Open the editor tab
-lattices tab vox 0       # Switch to first tab (by index)
+lats group vox           # Launch all Vox terminal and app tabs
+lats tab vox Editor      # Open the editor tab
+lats tab vox 0           # Switch to first tab (by index)
 ```
 
 ### Menu bar app
@@ -279,7 +279,7 @@ Four ways to switch:
 | **Hotkey**           | Cmd+Option+1, Cmd+Option+2, Cmd+Option+3... |
 | **Layer bar**        | Click a layer pill in the menu bar panel |
 | **Command palette**  | Search "Switch to Layer" in Cmd+Shift+M  |
-| **CLI**              | `lattices layer <name\|index>`           |
+| **CLI**                  | `lats layer <name\|index>`           |
 
 When you switch to a layer:
 
@@ -296,8 +296,8 @@ The app remembers which layer was last active across restarts.
 You can switch layers by name from the CLI:
 
 ```bash
-lattices layer hudson     # Switch to the layer named "hudson"
-lattices layer 0          # Switch to the first layer (by index)
+lats layer hudson         # Switch to the layer named "hudson"
+lats layer 0              # Switch to the first layer (by index)
 ```
 
 This is useful for scripting — you don't need to know the index,
@@ -310,8 +310,8 @@ declared in `workspace.json`. This is useful for ad-hoc windows
 that you want to move with a layer:
 
 ```bash
-lattices window assign <wid> <layer>   # Tag a window to a layer
-lattices window map                    # Show all window→layer assignments
+lats window assign <wid> <layer>       # Tag a window to a layer
+lats window map                        # Show all window→layer assignments
 ```
 
 Tagged windows behave like declared ones — they're raised and tiled

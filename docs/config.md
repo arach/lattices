@@ -62,7 +62,7 @@ workspace layout. lattices reads this file when creating a session.
   main pane as a percentage. Default is 60.
 - `cmd` can be any shell command. If omitted, the pane opens a shell.
 - `name` is used in the lattices app to show a summary of your layout,
-  and as a target for `lattices restart <name>`.
+  and as a target for `lats restart <name>`.
 
 ## Layouts
 
@@ -116,7 +116,7 @@ If there's no `.lattices.json`, lattices still works. It will:
 
 ## Creating a config
 
-Run `lattices init` in your project directory to generate a starter
+Run `lats init` in your project directory to generate a starter
 `.lattices.json` based on your project. The generated config includes
 `"ensure": true` by default.
 
@@ -124,57 +124,57 @@ Run `lattices init` in your project directory to generate a starter
 
 | Command                    | Description                                      |
 |----------------------------|--------------------------------------------------|
-| `lattices`                   | Show workspace status and common commands         |
-| `lattices start`             | Create or attach to session for current project   |
-| `lattices tmux`              | Alias for `lattices start`                        |
-| `lattices init`              | Generate .lattices.json config for this project     |
-| `lattices ls`                | List active sessions (requires tmux)              |
-| `lattices kill [name]`       | Kill a session (defaults to current project)      |
-| `lattices sync`              | Reconcile session to match declared config        |
-| `lattices restart [pane]`    | Restart a pane's process (by name or index)       |
-| `lattices tile <position>`   | Tile the frontmost window to a screen position    |
-| `lattices tile family [app] [region]` | Smart-grid the frontmost app family, or a named app |
-| `lattices window move <wid> --display <n> [--placement <slot>]` | Move a window to another display |
-| `lattices window place <wid> <slot> [--display <n>]` | Snap a window into a placement slot |
-| `lattices distribute [app] [region]` | Smart-grid visible windows or just one app      |
-| `lattices group [id]`        | List tab groups or launch/attach a group          |
-| `lattices groups`            | List all tab groups with status                   |
-| `lattices tab <group> [tab]` | Switch tab within a group (by label or index)     |
-| `lattices app`               | Launch the menu bar companion app                 |
-| `lattices app install`       | Register launch-at-login and start now            |
-| `lattices app login status`  | Show launch-at-login registration                 |
-| `lattices app login disable` | Disable launch-at-login                           |
-| `lattices update`            | Update lattices (CLI + app), keep startup, relaunch |
-| `lattices app update`        | Swap in the latest app release only (not the CLI) |
-| `lattices app build`         | Rebuild the menu bar app from source              |
-| `lattices app restart`       | Rebuild and relaunch the menu bar app             |
-| `lattices layer [name\|index]` | Switch to a workspace layer by name or index      |
-| `lattices windows [--json]`  | List all visible windows                          |
-| [`lattices map [--json]`](/docs/workspace-map) | Read-only current-Space terminal/JSON map |
-| `lattices window assign <wid> <layer>` | Tag a window to a layer                |
-| `lattices window map [--json]` | Show all window→layer assignments                |
-| `lattices actor toggle`      | Hide/show persistent overlay actors               |
-| `lattices hud register [manifest]` | Register a `.lattices/hud/manifest.json`   |
-| `lattices hud publish [id\|manifest]` | Publish a static HUD actor to the desktop |
-| `lattices hud sync`          | Publish all registered HUD actors                 |
-| `lattices search <query>`      | Search windows by title, app, session, OCR       |
-| `lattices search <q> --deep`   | Deep search: index + live terminal inspection    |
-| `lattices search <q> --all`    | Same as `--deep` (all search sources)            |
-| `lattices search <q> --wid`    | Print matching window IDs only (pipeable)        |
-| `lattices place <query> [pos]` | Deep search + focus + tile (default: bottom-right)|
-| `lattices focus <session>`   | Focus a session's window and switch Spaces        |
-| `lattices scan search <query>` | Search indexed screen text                       |
-| `lattices diag [limit]`       | Show recent diagnostic entries                   |
-| `lattices app`               | Launch the menu bar companion app                 |
-| `lattices app install`       | Register launch-at-login and start now            |
-| `lattices app login status`  | Show launch-at-login registration                 |
-| `lattices app login disable` | Disable launch-at-login                           |
-| `lattices update`            | Update lattices (CLI + app), keep startup, relaunch |
-| `lattices app update`        | Swap in the latest app release only (not the CLI) |
-| `lattices app build`         | Rebuild the menu bar app from source              |
-| `lattices app restart`       | Rebuild and relaunch the menu bar app             |
-| `lattices app quit`          | Stop the menu bar app                             |
-| `lattices help`              | Show help                                         |
+| `lats`                       | Show workspace status and common commands         |
+| `lats start`                 | Create or attach to session for current project   |
+| `lats tmux`                      | Alias for `lats start`                        |
+| `lats init`                  | Generate .lattices.json config for this project     |
+| `lats ls`                    | List active sessions (requires tmux)              |
+| `lats kill [name]`           | Kill a session (defaults to current project)      |
+| `lats sync`                  | Reconcile session to match declared config        |
+| `lats restart [pane]`        | Restart a pane's process (by name or index)       |
+| `lats tile <position>`       | Tile the frontmost window to a screen position    |
+| `lats tile family [app] [region]`     | Smart-grid the frontmost app family, or a named app |
+| `lats window move <wid> --display <n> [--placement <slot>]`     | Move a window to another display |
+| `lats window place <wid> <slot> [--display <n>]`     | Snap a window into a placement slot |
+| `lats distribute [app] [region]`     | Smart-grid visible windows or just one app      |
+| `lats group [id]`            | List tab groups or launch/attach a group          |
+| `lats groups`                | List all tab groups with status                   |
+| `lats tab <group> [tab]`     | Switch tab within a group (by label or index)     |
+| `lats app`                   | Launch the menu bar companion app                 |
+| `lats app install`           | Register launch-at-login and start now            |
+| `lats app login status`      | Show launch-at-login registration                 |
+| `lats app login disable`     | Disable launch-at-login                           |
+| `lats update`                | Update lattices (CLI + app), keep startup, relaunch |
+| `lats app update`            | Swap in the latest app release only (not the CLI) |
+| `lats app build`             | Rebuild the menu bar app from source              |
+| `lats app restart`           | Rebuild and relaunch the menu bar app             |
+| `lats layer [name\    |index]` | Switch to a workspace layer by name or index      |
+| `lats windows [--json]`      | List all visible windows                          |
+| [`lats map [--json]`](/docs/workspace-map)     | Read-only current-Space terminal/JSON map |
+| `lats window assign <wid> <layer>`     | Tag a window to a layer                |
+| `lats window map [--json]`     | Show all window→layer assignments                |
+| `lats actor toggle`          | Hide/show persistent overlay actors               |
+| `lats hud register [manifest]`     | Register a `.lattices/hud/manifest.json`   |
+| `lats hud publish [id\    |manifest]` | Publish a static HUD actor to the desktop |
+| `lats hud sync`              | Publish all registered HUD actors                 |
+| `lats search <query>`          | Search windows by title, app, session, OCR       |
+| `lats search <q> --deep`       | Deep search: index + live terminal inspection    |
+| `lats search <q> --all`        | Same as `--deep` (all search sources)            |
+| `lats search <q> --wid`        | Print matching window IDs only (pipeable)        |
+| `lats place <query> [pos]`     | Deep search + focus + tile (default: bottom-right)|
+| `lats focus <session>`       | Focus a session's window and switch Spaces        |
+| `lats scan search <query>`     | Search indexed screen text                       |
+| `lats diag [limit]`           | Show recent diagnostic entries                   |
+| `lats app`                   | Launch the menu bar companion app                 |
+| `lats app install`           | Register launch-at-login and start now            |
+| `lats app login status`      | Show launch-at-login registration                 |
+| `lats app login disable`     | Disable launch-at-login                           |
+| `lats update`                | Update lattices (CLI + app), keep startup, relaunch |
+| `lats app update`            | Swap in the latest app release only (not the CLI) |
+| `lats app build`             | Rebuild the menu bar app from source              |
+| `lats app restart`           | Rebuild and relaunch the menu bar app             |
+| `lats app quit`              | Stop the menu bar app                             |
+| `lats help`                  | Show help                                         |
 
 Aliases: `ls`/`list`, `kill`/`rm`, `sync`/`reconcile`,
 `restart`/`respawn`, `tile`/`t`.
@@ -206,13 +206,13 @@ Keyboard remaps. Hold Caps Lock to send Hyper (`Control` + `Option` +
 
 ### `--json` flag
 
-`lattices windows --json` returns the raw window array.
-[`lattices map --json`](/docs/workspace-map) returns a versioned, per-display
+`lats windows --json` returns the raw window array.
+[`lats map --json`](/docs/workspace-map) returns a versioned, per-display
 current-Space snapshot with coordinate metadata:
 
 ```bash
-lattices windows --json
-lattices map --json
+lats windows --json
+lats map --json
 ```
 
 Both are useful for piping into `jq` or consuming from scripts.
@@ -236,7 +236,7 @@ from lattices, the daemon is easier than parsing stdout. See the
 ### sync
 
 ```
-lattices sync
+lats sync
 ```
 
 Reconciles a running session to match the declared config:
@@ -253,15 +253,15 @@ state without killing the whole session.
 ### restart
 
 ```
-lattices restart [target]
+lats restart [target]
 ```
 
 Kills the process in a specific pane and re-runs its declared command.
 The target can be:
 
-- A **pane name** (case-insensitive): `lattices restart server`
-- A **0-based index**: `lattices restart 1`
-- **Omitted** (defaults to pane 0): `lattices restart`
+- A **pane name** (case-insensitive): `lats restart server`
+- A **0-based index**: `lats restart 1`
+- **Omitted** (defaults to pane 0): `lats restart`
 
 The restart sequence: send Ctrl-C, wait 0.5s, check if the process
 stopped. If it's still running, escalate to SIGKILL on child
@@ -269,7 +269,7 @@ processes. Then send the declared command.
 
 ## Tile positions
 
-The `lattices tile` command moves the frontmost window to a preset
+The `lats tile` command moves the frontmost window to a preset
 screen position. Available positions:
 
 | Position       | Area                        |
@@ -296,46 +296,46 @@ area, not the full screen.
 
 For arbitrary cells, use compact `CxR:c,r` with 1-indexed coordinates
 from the top-left, or canonical `grid:CxR:c,r` with 0-indexed coordinates.
-Example: `lattices tile 4x4:1,2`.
+Example: `lats tile 4x4:1,2`.
 
-When the menu bar app is running, `lattices tile` routes through the daemon's
+When the menu bar app is running, `lats tile` routes through the daemon's
 canonical `window.place` and reports a verified receipt. Without the daemon it
 falls back to AppleScript (frontmost app, primary display) and says so.
 
 ### Moving a specific window
 
-`lattices tile` always targets the frontmost window. To move a *specific*
-window — by the CGWindowID shown in `lattices map` or `lattices windows` —
-use `lattices window move` / `lattices window place` (daemon required):
+`lats tile` always targets the frontmost window. To move a *specific*
+window — by the CGWindowID shown in `lats map` or `lats windows` —
+use `lats window move` / `lats window place` (daemon required):
 
 ```bash
-lattices window move 4182 --display 1              # keep relative size/position
-lattices window move 4182 --display 1 --placement right
-lattices window place 4182 top-left                # slot on its current display
-lattices window move 4182 --display 0 --dry-run --json   # plan without moving
+lats window move 4182 --display 1                  # keep relative size/position
+lats window move 4182 --display 1 --placement right
+lats window place 4182 top-left                    # slot on its current display
+lats window move 4182 --display 0 --dry-run --json       # plan without moving
 ```
 
 A malformed wid is an error; these commands never fall back to the frontmost
 window. Slots are the named positions above plus grid placements; fractional
-typed placements remain available via `lattices call window.place`.
+typed placements remain available via `lats call window.place`.
 
 ### Smart app tiling
 
-Use `lattices tile family` when you want lattices to arrange a whole
+Use `lats tile family` when you want lattices to arrange a whole
 window family instead of just moving the frontmost window.
 
 Examples:
 
 ```bash
-lattices tile family
-lattices tile family right
-lattices tile family iTerm2
-lattices tile family "Google Chrome" left
+lats tile family
+lats tile family right
+lats tile family iTerm2
+lats tile family "Google Chrome" left
 ```
 
 - With no app name, `family` means the **frontmost app**. If iTerm is
   frontmost, lattices grids your visible iTerm windows.
 - If you pass a region (`left`, `right`, `top`, `bottom`, etc.), the
   smart grid is constrained to that part of the screen.
-- `lattices distribute` uses the same smart grid engine, but defaults to
+- `lats distribute` uses the same smart grid engine, but defaults to
   **all visible windows** instead of the current app family.

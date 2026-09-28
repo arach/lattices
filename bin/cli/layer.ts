@@ -22,7 +22,7 @@ export async function layerCommand(sub?: string, ...rest: string[]): Promise<voi
       return;
     }
     if (sub === "delete" || sub === "rm") {
-      if (!rest[0]) { console.log("Usage: lattices layer delete <name>"); return; }
+      if (!rest[0]) { console.log("Usage: lats layer delete <name>"); return; }
       await daemonCall("session.layers.delete", { name: rest[0] });
       console.log(`Deleted session layer "${rest[0]}".`);
       return;
@@ -53,13 +53,13 @@ export async function layerCommand(sub?: string, ...rest: string[]): Promise<voi
 }
 
 // ── Layer create: build a session layer from window specs ────────────
-// Usage: lattices layer create <name> [wid:123 wid:456 ...]
-//        lattices layer create <name> --json '[{"app":"Chrome","tile":"left"},...]'
+// Usage: lats layer create <name> [wid:123 wid:456 ...]
+//        lats layer create <name> --json '[{"app":"Chrome","tile":"left"},...]'
 export async function layerCreateCommand(client: DaemonClient, args: string[]): Promise<void> {
   const { daemonCall } = client;
   const name = args[0];
   if (!name) {
-    console.log("Usage: lattices layer create <name> [wid:123 ...] [--json '<specs>']");
+    console.log("Usage: lats layer create <name> [wid:123 ...] [--json '<specs>']");
     return;
   }
 
@@ -107,7 +107,7 @@ export async function layerCreateCommand(client: DaemonClient, args: string[]): 
     return;
   }
 
-  // Simple wid mode: lattices layer create <name> wid:123 wid:456
+  // Simple wid mode: lats layer create <name> wid:123 wid:456
   const wids = args.slice(1)
     .filter(a => a.startsWith("wid:"))
     .map(a => parseInt(a.slice(4), 10))
@@ -153,7 +153,7 @@ export async function layerSessionCommand(client: DaemonClient, nameOrIndex?: st
   if (!nameOrIndex) {
     // List session layers
     if (!result.layers.length) {
-      console.log("No session layers. Create one with: lattices layer create <name>");
+      console.log("No session layers. Create one with: lats layer create <name>");
       return;
     }
     console.log("Session layers:\n");

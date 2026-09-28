@@ -13,10 +13,10 @@
 - Space switching uses private SkyLight framework APIs loaded via dlopen at runtime
 - The daemon runs on ws://127.0.0.1:9399 with 35+ RPC methods and real-time events (localhost only, no auth by design)
 - Voice runtime is hosted in-process by the menu bar app on ws://127.0.0.1:9398 (deterministic Lattices port family: 9399 agent API, 9398 voice; see `LatticesLocalEndpoints` / `docs/voice.md`)
-- Bare `lattices` (no args) shows a home/status screen — use `lattices start` (alias: `lattices tmux`) to create or attach a session
-- `lattices search <q> --deep` and `--all` both request all search sources (index + live terminal inspection)
+- Bare `lats` (no args) shows a home/status screen — use `lats start` (alias: `lats tmux`) to create or attach a session
+- `lats search <q> --deep` and `--all` both request all search sources (index + live terminal inspection)
 - Action is a separate Lattices product under `products/action/`; it keeps its own Bun workspace, signed `Action.app`, local agent runtime, and nested `AGENTS.md` contract.
-- `lattices action` (`bin/lattices-action.ts`) is the product-family entry point: installs `Action.app` from the latest `action-v*` GitHub release, reports status, launches/quits, calls the Action agent on ws://127.0.0.1:4319 (`lattices action call`), and forwards other verbs to the Action CLI when a `products/action` checkout is present.
+- `lats action` (`bin/lattices-action.ts`) is the product-family entry point: installs `Action.app` from the latest `action-v*` GitHub release, reports status, launches/quits, calls the Action agent on ws://127.0.0.1:4319 (`lats action call`), and forwards other verbs to the Action CLI when a `products/action` checkout is present.
 - Keep Action's AppKit and recording lifecycle separate from the Lattices menu bar app even though both products share this repository and website.
 - Blink is a separate Lattices product under `products/blink/`; it keeps its own Swift package, signed `Blink.app`, notes CLI, and nested `AGENTS.md` contract.
 - Keep Blink's note panels and NoteStore separate from the Lattices menu bar app even though both products share this repository and website.
@@ -54,7 +54,7 @@ bun run test:e2e                # daemon e2e tests (requires running app/daemon)
 bun run test:dependencies       # bun test tests/dependency-free.test.ts
 swift build --package-path swift   # Swift packages (LatticesTerminalKit, DeckKit)
 swift test --package-path swift    # Swift package tests
-lattices app build              # Rebuild the menu bar app from source
+lats app build                  # Rebuild the menu bar app from source
 scripts/build.sh                # Signed + notarized release DMG (--local to skip notarization)
 scripts/build.sh package        # npm/package app bundle
 bun run action:check            # Action TypeScript + safety guard

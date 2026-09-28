@@ -60,28 +60,28 @@ contextual snippets.
 
 ```bash
 # Search windows by title, app, session, and OCR content
-lattices search "error"
+lats search "error"
 
 # Deep search — also inspects terminal tabs and processes
-lattices search "myproject" --deep
+lats search "myproject" --deep
 
 # Same as --deep (all search sources)
-lattices search "myproject" --all
+lats search "myproject" --all
 
 # Search + focus + tile the top result
-lattices place "myproject" left
+lats place "myproject" left
 
 # View current OCR snapshot
-lattices scan
+lats scan
 
 # Search OCR history directly (FTS5 syntax)
-lattices scan search "error OR failed"
+lats scan search "error OR failed"
 
 # Trigger an immediate deep scan
-lattices scan deep
+lats scan deep
 
 # View OCR history for a specific window ID
-lattices scan history 12345
+lats scan history 12345
 ```
 
 ### From the agent API

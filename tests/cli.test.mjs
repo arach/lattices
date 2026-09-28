@@ -180,13 +180,13 @@ test("default command: prints home screen guidance", () => {
 
 test("help: mentions lattices start and display capture", () => {
   const out = runCli(["help"]);
-  assert.match(out, /lattices start/);
-  assert.match(out, /lattices capture display \[index\]/);
+  assert.match(out, /lats start/);
+  assert.match(out, /lats capture display \[index\]/);
 });
 
 test("capture help: documents delayed clipboard display capture", () => {
   const out = runCli(["capture", "help"]);
-  assert.match(out, /lattices capture display \[index\]/);
+  assert.match(out, /lats capture display \[index\]/);
   assert.match(out, /--clipboard/);
   assert.match(out, /--delay seconds/);
 });
@@ -766,7 +766,7 @@ test("window move: malformed wid exits non-zero without touching the daemon", ()
 
 test("window move --help: lists slots without a running daemon", () => {
   const out = runCli(["window", "move", "--help"]);
-  assert.match(out, /lattices window move <wid> --display <n>/);
+  assert.match(out, /lats window move <wid> --display <n>/);
   assert.match(out, /grid:CxR:c,r/);
   assert.match(out, /bottom-right/);
 });
