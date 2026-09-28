@@ -11,7 +11,7 @@ import actionProductFilmCaptions from "../../../../products/action/docs/assets/a
 import actionProductFilmPoster from "../../../../products/action/docs/assets/action-record-the-work-poster.jpg";
 import { ActionArchitectureDiagram } from "./ActionArchitectureDiagram";
 import { LatticesMark } from "./LatticesMark";
-import { ProductsMenu } from "./SiteChrome";
+import { ProductsMenu, SiteFooter } from "./SiteChrome";
 import { ThemeToggle } from "./ThemeToggle";
 
 const downloadUrl = "/action/download";
@@ -325,18 +325,7 @@ export default function ActionPage() {
         </section>
       </main>
 
-      <footer className="action-footer">
-        <div className="action-footer-inner">
-          <span>Action is a focused computer-use product from Lattices.</span>
-          <div>
-            <a href="/">Lattices</a>
-            <a href="/blink">Blink</a>
-            <a href="/speech">Speech</a>
-            <a href="/action/llms.txt" data-router="reload">Action docs</a>
-            <a href={sourceUrl}>GitHub</a>
-          </div>
-        </div>
-      </footer>
+      <SiteFooter current="/action" />
     </div>
   );
 }

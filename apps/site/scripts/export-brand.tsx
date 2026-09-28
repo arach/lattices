@@ -23,6 +23,7 @@ import { ActionMark } from '../src/components/ActionMark'
 import { BlinkMark } from '../src/components/blink/BlinkMark'
 import { LatticesMark } from '../src/components/LatticesMark'
 import { SpeechMark } from '../src/components/SpeechMark'
+import { faviconGlyphScale, iconGrid as grid, iconSizes as ladder, iconTiles as tiles, tilePath } from '../src/lib/iconGrid'
 import { actionMarkBox, latticesAccent, latticesPalette } from '../src/lib/marks'
 
 type Theme = 'light' | 'dark'
@@ -32,35 +33,6 @@ const siteDir = fileURLToPath(new URL('..', import.meta.url))
 const repoRoot = join(siteDir, '..', '..')
 const brandDir = join(siteDir, 'public', 'brand')
 const themes = ['light', 'dark'] as const
-const ladder = [16, 24, 32, 48, 64, 80, 128, 256, 512, 1024]
-
-/**
- * The app icon grid every product shares: Apple's 824-pixel tile in a 1024
- * canvas. The corners are superellipse quadrants reaching 34.5% along each
- * edge with exponent 2.85, fitted to the mask macOS 26 draws around system
- * icons (within a pixel at 1024). Every mark fills the same square of its own
- * box, so one glyph share puts them all on the same guides. ActionBrandMark.swift
- * draws Action's in-app chip with the same numbers.
- */
-const grid = {
-  canvas: 1024, inset: 100, cornerRatio: 0.345, exponent: 2.85, samples: 48,
-  /** The glyph's longer side as a share of the tile. */
-  glyph: 0.56,
-}
-
-/**
- * The tile for each appearance, named like the marks for the background it
- * makes: the family's light ink or white, with the mark in the matching ink.
- * The hairline just inside the edge keeps the tile's shape against a Dock of
- * the same tone.
- */
-const tiles = {
-  dark: { fill: latticesPalette.light.ink, edge: 'rgba(255,255,255,.08)' },
-  light: { fill: '#ffffff', edge: 'rgba(16,21,24,.10)' },
-} as const
-
-/** Favicons have no margin to spare, so the glyph grows to fill the tile. */
-const faviconGlyphScale = 1.18
 
 type Paint = { color: string; opacity?: number }
 type Role = 'accent' | 'ink' | 'dim'
@@ -243,33 +215,6 @@ const products: Product[] = [
 ]
 
 const round = (value: number) => Math.round(value * 1000) / 1000
-
-/** A rounded square with superellipse corners, sampled the way ActionBrandMark.swift samples it. */
-function tilePath(x0: number, y0: number, side: number, cornerRatio = grid.cornerRatio) {
-  const x1 = x0 + side
-  const y1 = y0 + side
-  const r = side * cornerRatio
-  const exponent = 2 / grid.exponent
-  const points: string[] = []
-  const at = (x: number, y: number) => points.push(`${round(x)} ${round(y)}`)
-  const corner = (cx: number, cy: number, sx: number, sy: number, reversed: boolean) => {
-    for (let i = 0; i <= grid.samples; i++) {
-      const t = (Math.PI / 2) * ((reversed ? grid.samples - i : i) / grid.samples)
-      at(cx + sx * r * Math.cos(t) ** exponent, cy + sy * r * Math.sin(t) ** exponent)
-    }
-  }
-
-  at(x0 + r, y0)
-  at(x1 - r, y0)
-  corner(x1 - r, y0 + r, 1, -1, true)
-  at(x1, y1 - r)
-  corner(x1 - r, y1 - r, 1, 1, false)
-  at(x0 + r, y1)
-  corner(x0 + r, y1 - r, -1, 1, true)
-  at(x0, y0 + r)
-  corner(x0 + r, y0 + r, -1, -1, false)
-  return `M${points.join('L')}Z`
-}
 
 /** The drawn glyph's bounds in the mark's own viewBox units, measured from a large raster. */
 async function glyphBounds(product: Product): Promise<Box> {

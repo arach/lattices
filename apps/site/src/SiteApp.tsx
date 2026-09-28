@@ -8,6 +8,8 @@ import { DocsPage } from './components/Docs'
 import LandingPage from './components/LandingPage'
 import ConceptExperimentPage from './components/ConceptExperimentPage'
 import FamilyPage from './components/FamilyPage'
+import BrandPage from './components/BrandPage'
+import { SiteFooter, SiteHeader } from './components/SiteChrome'
 import { defaultDoc, getBlogPost, getDoc } from './lib/content'
 import { routeBrand } from './lib/brand'
 
@@ -64,43 +66,48 @@ export default function SiteApp() {
   if (route.kind === 'speech') return <SpeechPage />
   if (route.kind === 'products') return <ProductsPage />
   if (route.kind === 'family') return <FamilyPage />
+  if (route.kind === 'brand') return <BrandPage />
   if (route.kind === 'docs') return <DocsPage slug={route.slug} />
   if (route.kind === 'blog-index') return <BlogIndex />
   if (route.kind === 'blog-post') return <BlogPostPage slug={route.slug} />
 
   return (
-    <main className="not-found-shell" data-pagefind-ignore>
-      <div className="not-found-card">
-        <p className="not-found-kicker">404</p>
-        <h1 className="not-found-title">We couldn't find that page</h1>
-        <p className="not-found-desc">
-          The link may be outdated, or we may have moved the page. Try one of these instead:
-        </p>
-        <ul className="not-found-suggestions">
-          <li>
-            <a href="/docs/overview">Documentation overview</a> — what lattices is and how to install it
-          </li>
-          <li>
-            <a href="/docs/quickstart">Quickstart</a> — running workspaces in 2 minutes
-          </li>
-          <li>
-            <a href="/products">Products</a> — Lattices, Action, Blink, and Speech
-          </li>
-          <li>
-            <a href="/docs/api">Agent API</a> — WebSocket reference for agents and scripts
-          </li>
-          <li>
-            <a href="/blog">Blog</a> — release notes and engineering write-ups
-          </li>
-          <li>
-            <a href="https://github.com/arach/lattices" target="_blank" rel="noopener noreferrer">
-              GitHub
-            </a>{' '}
-            — open an issue if the link should work
-          </li>
-        </ul>
-      </div>
-    </main>
+    <div className="docs-page">
+      <SiteHeader />
+      <main className="not-found-shell" data-pagefind-ignore>
+        <div className="not-found-card">
+          <p className="not-found-kicker">404</p>
+          <h1 className="not-found-title">We couldn't find that page</h1>
+          <p className="not-found-desc">
+            The link may be outdated, or we may have moved the page. Try one of these instead:
+          </p>
+          <ul className="not-found-suggestions">
+            <li>
+              <a href="/docs/overview">Documentation overview</a> — what lattices is and how to install it
+            </li>
+            <li>
+              <a href="/docs/quickstart">Quickstart</a> — running workspaces in 2 minutes
+            </li>
+            <li>
+              <a href="/products">Products</a> — Lattices, Action, Blink, and Speech
+            </li>
+            <li>
+              <a href="/docs/api">Agent API</a> — WebSocket reference for agents and scripts
+            </li>
+            <li>
+              <a href="/blog">Blog</a> — release notes and engineering write-ups
+            </li>
+            <li>
+              <a href="https://github.com/arach/lattices" target="_blank" rel="noopener noreferrer">
+                GitHub
+              </a>{' '}
+              — open an issue if the link should work
+            </li>
+          </ul>
+        </div>
+      </main>
+      <SiteFooter />
+    </div>
   )
 }
 
@@ -112,6 +119,7 @@ type Route =
   | { kind: 'speech'; title: string; description: string }
   | { kind: 'products'; title: string; description: string }
   | { kind: 'family'; title: string; description: string }
+  | { kind: 'brand'; title: string; description: string }
   | { kind: 'docs'; slug?: string; title: string; description: string }
   | { kind: 'blog-index'; title: string; description: string }
   | { kind: 'blog-post'; slug: string; title: string; description: string }
@@ -157,6 +165,14 @@ function resolveRoute(path: string): Route {
       kind: 'family',
       title: 'What Lattices can do — Lattices',
       description: 'A guided tour from workspace layout and agent collaboration to computer use, spatial notes, and speech.',
+    }
+  }
+
+  if (path === '/brand') {
+    return {
+      kind: 'brand',
+      title: 'Brand — Lattices',
+      description: 'Marks, app icons, favicons and social cards for Lattices, Action, Blink and Speech.',
     }
   }
 

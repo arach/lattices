@@ -21,6 +21,8 @@ import BlinkPage from '../src/components/BlinkPage.tsx'
 import SpeechPage from '../src/components/SpeechPage.tsx'
 import ProductsPage from '../src/components/ProductsPage.tsx'
 import FamilyPage from '../src/components/FamilyPage.tsx'
+import BrandPage from '../src/components/BrandPage.tsx'
+import { SiteFooter } from '../src/components/SiteChrome.tsx'
 import { routeBrand } from '../src/lib/brand.ts'
 
 const siteDir = resolve(import.meta.dirname, '..')
@@ -94,6 +96,12 @@ await writeRoute(
   'A guided tour from workspace layout and agent collaboration to computer use, spatial notes, and speech.',
   renderToString(createElement(FamilyPage)),
 )
+await writeRoute(
+  '/brand',
+  'Brand — Lattices',
+  'Marks, app icons, favicons and social cards for Lattices, Action, Blink and Speech.',
+  renderToString(createElement(BrandPage)),
+)
 await copyBlinkDocs()
 await writeBlinkDownloadRedirect()
 
@@ -166,6 +174,7 @@ async function writeSitemap() {
     { loc: `${SITE_URL}/speech`, priority: '0.9' },
     { loc: `${SITE_URL}/products`, priority: '0.9' },
     { loc: `${SITE_URL}/family`, priority: '0.9' },
+    { loc: `${SITE_URL}/brand`, priority: '0.6' },
     { loc: `${SITE_URL}/blink/agents.md`, priority: '0.7' },
     { loc: `${SITE_URL}/blog`, priority: '0.8' },
     ...docs.map((doc) => ({
@@ -401,6 +410,7 @@ async function writeNotFound() {
         </ul>
       </div>
     </main>
+    ${renderFooter()}
   `
   const html = template
     .replace(/<title>.*?<\/title>/, `<title>${escapeHtml(title)}</title>`)
@@ -411,6 +421,11 @@ async function writeNotFound() {
     .replace('<div id="root"></div>', `<div id="root">${body}</div>`)
 
   await writeFile(join(distDir, '404.html'), html)
+}
+
+/** The sitewide footer, so crawlers find its links on the hand-written pages too. */
+function renderFooter(current) {
+  return renderToString(createElement(SiteFooter, { current }))
 }
 
 function renderDoc(doc) {
@@ -435,6 +450,7 @@ function renderDoc(doc) {
         <div class="markdown-body">${rendered}</div>
       </article>
     </main>
+    ${renderFooter(`/docs/${doc.slug}`)}
   `
 }
 
@@ -465,6 +481,7 @@ function renderBlogIndex(items) {
         `).join('')}
       </div>
     </main>
+    ${renderFooter('/blog')}
   `
 }
 
@@ -496,6 +513,7 @@ function renderPost(post) {
         ${older ? `<a class="post-pager post-pager-next" href="/blog/${older.slug}"><span class="post-pager-label">Older</span><strong>${escapeHtml(older.data.title || titleFromSlug(older.slug))}</strong></a>` : '<span></span>'}
       </nav>
     </article>
+    ${renderFooter()}
   `
 }
 

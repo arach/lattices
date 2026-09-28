@@ -1,4 +1,4 @@
-import { SiteHeader } from './SiteChrome'
+import { SiteFooter, SiteHeader } from './SiteChrome'
 import { SpeechMark } from './SpeechMark'
 
 const downloadUrl = 'https://github.com/arach/lattices/releases/download/speech-v0.2.0/Speech.dmg'
@@ -298,14 +298,7 @@ export default function SpeechPage() {
           </nav>
         </section>
       </main>
-      <footer className="family-footer">
-        <span>Speech is a Lattices product.</span>
-        <nav aria-label="Footer">
-          <a href="/docs/overview">Docs</a>
-          <a href="/blog">Blog</a>
-          <a href="https://github.com/arach/lattices">GitHub</a>
-        </nav>
-      </footer>
+      <SiteFooter current="/speech" />
     </div>
   )
 }
