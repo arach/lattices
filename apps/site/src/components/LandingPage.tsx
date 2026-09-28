@@ -4,7 +4,7 @@ import { useReducedMotion } from "motion/react";
 import { ThemeToggle } from "./ThemeToggle";
 import { GestureMatrix } from "./GestureMatrix";
 import { LatticesMark } from "./LatticesMark";
-import { ProductsMenu } from "./SiteChrome";
+import { ProductsMenu, SiteFooter } from "./SiteChrome";
 
 const latticesDownloadURL = "https://github.com/arach/lattices/releases/download/v0.12.3/Lattices.dmg";
 
@@ -975,48 +975,9 @@ export default function App() {
           </div>
         </section>
 
-        {/* Footer */}
-        <footer className="footer">
-          <div className="footer-group">
-            <span>
-              Built by{" "}
-              <a
-                href="https://github.com/arach"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                @arach
-              </a>
-            </span>
-            <span className="footer-dot" aria-hidden="true">·</span>
-            <span>macOS only. tmux optional.</span>
-          </div>
-          <nav className="footer-links" aria-label="Footer">
-            <a href="/products">Products</a>
-            <a href="/docs/overview">Docs</a>
-            <a href="/blog">Blog</a>
-            <a href="/action">Action</a>
-            <a href="/blink">Blink</a>
-            <a href="/speech">Speech</a>
-            <a href="/rss.xml">RSS</a>
-            <a
-              href="https://github.com/arach/lattices"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              GitHub
-            </a>
-            <a
-                href="https://www.npmjs.com/package/@arach/lattices"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              npm
-            </a>
-          </nav>
-        </footer>
         </div>
       </main>
+      <SiteFooter current="/" className="site-footer-content-rail" />
     </>
   );
 }

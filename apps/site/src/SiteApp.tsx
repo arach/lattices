@@ -8,6 +8,7 @@ import { DocsPage } from './components/Docs'
 import LandingPage from './components/LandingPage'
 import ConceptExperimentPage from './components/ConceptExperimentPage'
 import FamilyPage from './components/FamilyPage'
+import { SiteFooter, SiteHeader } from './components/SiteChrome'
 import { defaultDoc, getBlogPost, getDoc } from './lib/content'
 import { routeBrand } from './lib/brand'
 
@@ -69,38 +70,42 @@ export default function SiteApp() {
   if (route.kind === 'blog-post') return <BlogPostPage slug={route.slug} />
 
   return (
-    <main className="not-found-shell" data-pagefind-ignore>
-      <div className="not-found-card">
-        <p className="not-found-kicker">404</p>
-        <h1 className="not-found-title">We couldn't find that page</h1>
-        <p className="not-found-desc">
-          The link may be outdated, or we may have moved the page. Try one of these instead:
-        </p>
-        <ul className="not-found-suggestions">
-          <li>
-            <a href="/docs/overview">Documentation overview</a> — what lattices is and how to install it
-          </li>
-          <li>
-            <a href="/docs/quickstart">Quickstart</a> — running workspaces in 2 minutes
-          </li>
-          <li>
-            <a href="/products">Products</a> — Lattices, Action, Blink, and Speech
-          </li>
-          <li>
-            <a href="/docs/api">Agent API</a> — WebSocket reference for agents and scripts
-          </li>
-          <li>
-            <a href="/blog">Blog</a> — release notes and engineering write-ups
-          </li>
-          <li>
-            <a href="https://github.com/arach/lattices" target="_blank" rel="noopener noreferrer">
-              GitHub
-            </a>{' '}
-            — open an issue if the link should work
-          </li>
-        </ul>
-      </div>
-    </main>
+    <div className="docs-page">
+      <SiteHeader />
+      <main className="not-found-shell" data-pagefind-ignore>
+        <div className="not-found-card">
+          <p className="not-found-kicker">404</p>
+          <h1 className="not-found-title">We couldn't find that page</h1>
+          <p className="not-found-desc">
+            The link may be outdated, or we may have moved the page. Try one of these instead:
+          </p>
+          <ul className="not-found-suggestions">
+            <li>
+              <a href="/docs/overview">Documentation overview</a> — what lattices is and how to install it
+            </li>
+            <li>
+              <a href="/docs/quickstart">Quickstart</a> — running workspaces in 2 minutes
+            </li>
+            <li>
+              <a href="/products">Products</a> — Lattices, Action, Blink, and Speech
+            </li>
+            <li>
+              <a href="/docs/api">Agent API</a> — WebSocket reference for agents and scripts
+            </li>
+            <li>
+              <a href="/blog">Blog</a> — release notes and engineering write-ups
+            </li>
+            <li>
+              <a href="https://github.com/arach/lattices" target="_blank" rel="noopener noreferrer">
+                GitHub
+              </a>{' '}
+              — open an issue if the link should work
+            </li>
+          </ul>
+        </div>
+      </main>
+      <SiteFooter />
+    </div>
   )
 }
 

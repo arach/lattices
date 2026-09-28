@@ -2280,8 +2280,7 @@ button.nav-link {
 }
 
 .action-page .nav-inner,
-.action-shell,
-.action-footer-inner {
+.action-shell {
   width: min(1120px, calc(100% - 48px));
   max-width: none;
   margin-inline: auto;
@@ -2660,29 +2659,6 @@ button.nav-link {
   display: flex;
   flex-shrink: 0;
   gap: 10px;
-}
-
-.action-footer {
-  border-top: 1px solid var(--border);
-}
-
-.action-footer-inner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  min-height: 92px;
-  color: var(--text-muted);
-  font-size: 11px;
-}
-
-.action-footer-inner > div {
-  display: flex;
-  gap: 20px;
-}
-
-.action-footer a:hover {
-  color: var(--action-coral);
 }
 
 .cua-showcase .code-pre {
@@ -3622,28 +3598,6 @@ button.nav-link {
 .family-close nav a { color: var(--text-muted); }
 .family-close nav a:hover { color: var(--green); }
 
-.family-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
-  width: min(1240px, calc(100% - 48px));
-  margin: 0 auto;
-  padding: 28px 0 40px;
-  border-top: 1px solid var(--border);
-  color: var(--text-muted);
-  font-size: 12px;
-}
-
-.family-footer nav {
-  display: flex;
-  gap: 18px;
-}
-
-.family-footer a { color: var(--text-dim); }
-.family-footer a:hover { color: var(--text); }
-
 @media (max-width: 900px) {
   .family-hero,
   .family-capability {
@@ -3664,8 +3618,7 @@ button.nav-link {
   }
   .family-capability-rail span:last-child { border-bottom: 0; }
   .family-hero { padding-top: 56px; }
-  .family-close,
-  .family-footer {
+  .family-close {
     width: calc(100% - 32px);
     flex-direction: column;
     align-items: flex-start;
@@ -4237,45 +4190,164 @@ button.nav-link {
   }
 }
 
-/* ── Footer ────────────────────────────────────────── */
+/* ── Site footer ───────────────────────────────────── */
 
-.footer {
-  padding: 32px 0 48px;
-  border-top: 1px solid var(--border);
+/* One footer on every page. A page with its own palette points the four
+   tokens at it (the docs pages, Action, Blink), and the rail at its own
+   content width. */
+.site-footer {
+  --footer-text: var(--text);
+  --footer-dim: var(--text-dim);
+  --footer-muted: var(--text-muted);
+  --footer-rule: var(--border);
+  border-top: 1px solid var(--footer-rule);
+  color: var(--footer-dim);
+  font-family: "Space Grotesk", -apple-system, sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.docs-page .site-footer {
+  --footer-text: var(--docs-text);
+  --footer-dim: var(--docs-muted);
+  --footer-muted: color-mix(in srgb, var(--docs-text) 42%, transparent);
+  --footer-rule: var(--docs-border);
+}
+
+.family-page .site-footer {
+  --footer-rail: 1240px;
+}
+
+.action-page .site-footer {
+  --footer-text: var(--action-ink);
+  --footer-dim: color-mix(in srgb, var(--action-ink) 68%, transparent);
+  --footer-muted: color-mix(in srgb, var(--action-ink) 46%, transparent);
+  --footer-rule: var(--action-rule);
+  --footer-rail: 1200px;
+}
+
+.site-footer-content-rail {
+  --footer-rail: calc(var(--content-rail) - 48px);
+}
+
+.site-footer-inner {
+  width: min(var(--footer-rail, 1272px), calc(100% - 48px));
+  margin: 0 auto;
+  padding: 56px 0 28px;
+}
+
+.site-footer-grid {
+  display: grid;
+  grid-template-columns: minmax(200px, 1.3fr) repeat(4, minmax(0, 1fr));
+  gap: 40px 32px;
+}
+
+.site-footer-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--footer-text);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.site-footer-lockup:hover {
+  --logo-ink: var(--logo-accent);
+}
+
+.site-footer-brand p {
+  max-width: 240px;
+  margin-top: 14px;
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+.site-footer-heading {
+  margin-bottom: 16px;
+  color: var(--footer-text);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.site-footer-col ul {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+}
+
+/* The product names carry their marks; the pages about the family follow. */
+.site-footer-col li:has(svg) + li:not(:has(svg)) {
+  margin-top: 8px;
+}
+
+.site-footer-col a {
+  --logo-ink: currentColor;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  /* A mark has no baseline, so align to the top to keep every row one height. */
+  vertical-align: top;
+  color: var(--footer-dim);
+  transition: color 0.15s ease;
+}
+
+.site-footer-col a svg {
+  flex-shrink: 0;
+}
+
+.site-footer-col a:hover,
+.site-footer-col a[aria-current='page'] {
+  color: var(--footer-text);
+}
+
+.site-footer-out {
+  color: var(--footer-muted);
+  font-size: 11px;
+}
+
+.site-footer-bar {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
+  gap: 8px 24px;
+  margin-top: 48px;
+  padding-top: 20px;
+  border-top: 1px solid var(--footer-rule);
   font-size: 12px;
-  color: var(--text-muted);
 }
 
-.footer a {
-  color: var(--text-dim);
-  transition: color 0.15s;
+.site-footer-bar a {
+  color: var(--footer-text);
 }
 
-.footer a:hover {
-  color: var(--text);
+.site-footer-bar a:hover {
+  color: var(--logo-accent);
 }
 
-.footer-group {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
+@media (max-width: 1024px) {
+  .site-footer-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .site-footer-brand {
+    grid-column: 1 / -1;
+  }
 }
 
-.footer-dot {
-  color: var(--text-muted);
-  opacity: 0.6;
-}
+@media (max-width: 640px) {
+  .site-footer-inner {
+    width: calc(100% - 32px);
+    padding: 44px 0 24px;
+  }
 
-.footer-links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
+  .site-footer-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 32px 20px;
+  }
 }
 
 /* ── Animations ────────────────────────────────────── */
@@ -5122,8 +5194,7 @@ button.nav-link {
   }
 
   .action-page .nav-inner,
-  .action-shell,
-  .action-footer-inner {
+  .action-shell {
     width: calc(100% - 32px);
   }
 
@@ -5177,16 +5248,6 @@ button.nav-link {
 
   .action-final-cta {
     padding-top: 72px;
-  }
-
-  .action-footer-inner {
-    align-items: flex-start;
-    flex-direction: column;
-    padding: 28px 0;
-  }
-
-  .action-footer-inner > div {
-    flex-wrap: wrap;
   }
 
   .nav-links {
@@ -5401,11 +5462,6 @@ button.nav-link {
   .deck-shell {
     width: 100%;
   }
-
-  .footer {
-    padding: 28px 0 40px;
-    font-size: 11px;
-  }
 }
 
 @media (max-width: 360px) {
@@ -5474,8 +5530,7 @@ button.nav-link {
   background: color-mix(in srgb, var(--action-paper) 93%, transparent);
 }
 
-.action-page .nav-inner,
-.action-footer-inner {
+.action-page .nav-inner {
   width: min(1200px, calc(100% - 48px));
   max-width: none;
   margin-inline: auto;
@@ -6358,14 +6413,6 @@ button.nav-link {
   margin: 0 0 22px;
 }
 
-.action-footer {
-  border-color: var(--action-rule);
-}
-
-.action-footer-inner {
-  color: color-mix(in srgb, var(--action-ink) 52%, transparent);
-}
-
 :root[data-theme='dark'] .action-page {
   --action-paper: #11191a;
   --action-paper-deep: #263032;
@@ -6415,7 +6462,6 @@ button.nav-link {
 
 @media (max-width: 680px) {
   .action-page .nav-inner,
-  .action-footer-inner,
   .action-hero-inner,
   .action-tech-rail,
   .action-film,

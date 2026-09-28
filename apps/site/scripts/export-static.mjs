@@ -21,6 +21,7 @@ import BlinkPage from '../src/components/BlinkPage.tsx'
 import SpeechPage from '../src/components/SpeechPage.tsx'
 import ProductsPage from '../src/components/ProductsPage.tsx'
 import FamilyPage from '../src/components/FamilyPage.tsx'
+import { SiteFooter } from '../src/components/SiteChrome.tsx'
 import { routeBrand } from '../src/lib/brand.ts'
 
 const siteDir = resolve(import.meta.dirname, '..')
@@ -401,6 +402,7 @@ async function writeNotFound() {
         </ul>
       </div>
     </main>
+    ${renderFooter()}
   `
   const html = template
     .replace(/<title>.*?<\/title>/, `<title>${escapeHtml(title)}</title>`)
@@ -411,6 +413,11 @@ async function writeNotFound() {
     .replace('<div id="root"></div>', `<div id="root">${body}</div>`)
 
   await writeFile(join(distDir, '404.html'), html)
+}
+
+/** The sitewide footer, so crawlers find its links on the hand-written pages too. */
+function renderFooter(current) {
+  return renderToString(createElement(SiteFooter, { current }))
 }
 
 function renderDoc(doc) {
@@ -435,6 +442,7 @@ function renderDoc(doc) {
         <div class="markdown-body">${rendered}</div>
       </article>
     </main>
+    ${renderFooter(`/docs/${doc.slug}`)}
   `
 }
 
@@ -465,6 +473,7 @@ function renderBlogIndex(items) {
         `).join('')}
       </div>
     </main>
+    ${renderFooter('/blog')}
   `
 }
 
@@ -496,6 +505,7 @@ function renderPost(post) {
         ${older ? `<a class="post-pager post-pager-next" href="/blog/${older.slug}"><span class="post-pager-label">Older</span><strong>${escapeHtml(older.data.title || titleFromSlug(older.slug))}</strong></a>` : '<span></span>'}
       </nav>
     </article>
+    ${renderFooter()}
   `
 }
 
