@@ -1,5 +1,5 @@
 import { useId, type SVGProps } from 'react';
-import { latticesAccent, latticesPalette } from '../lib/marks';
+import { actionCursor, latticesAccent, latticesPalette } from '../lib/marks';
 
 export interface ActionPalette {
   paper: string;
@@ -82,7 +82,7 @@ export function ActionMark({
       <path fill={`url(#${gridId})`} d="M0 0H720V640H0Z" />
       )}
       <path d="M265 70H335L530 530H70Z M300 233.93676624418646L215.2785567844705 433.7924784449227H384.72144321552946Z" fill={colors.ink} fillRule="evenodd" mask={`url(#${gapId})`} />
-      <path d="M 0 0 C 0 -2 3 -3 8 -3.730461265239989 L 170 -79.27230188634977 Q 180 -83.93537846789975 175 -73.93537846789975 L 140 -26 Q 124 0 140 26 L 175 73.93537846789975 Q 180 83.93537846789975 170 79.27230188634977 L 8 3.730461265239989 C 3 3 0 2 0 0 Z" transform="translate(348.61256823541 348.61256823541) rotate(45)" fill={colors.cursor} />
+      <path d={actionCursor.d} transform="translate(348.61256823541 348.61256823541) rotate(45)" fill={colors.cursor} />
       {guides && (
       <g fill="none" stroke={colors.guide} strokeWidth=".55" strokeOpacity=".6" strokeDasharray="3 4">
         <path d="M18 530H670 M18 70H470 M70 18V550 M530 160V550 M300 18V555 M286.19565217391306 20L61.52173913043484 550 M313.80434782608694 20L538.4782608695651 550 M318.625368299166 190L208.4079769948182 450 M281.374631700834 190L391.5920230051818 450 M190 433.7924784449227H410 M50 50L550 550" />
