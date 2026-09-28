@@ -822,6 +822,53 @@ const handsShortcuts: Array<{ keys: string[]; action: string }> = [
   { keys: ["Hyper", "L"], action: "Studio / screen map" },
 ];
 
+// The ⌃⌥ placement HUD, drawn offscreen by the app's own view code. It plays
+// while on screen; reduced-motion visitors keep the poster.
+function PlacementFilm() {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const reducedMotion = useReducedMotion() ?? false;
+  const [inView, setInView] = useState(false);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setInView(entry.isIntersecting),
+      { threshold: 0.35 },
+    );
+    observer.observe(video);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (inView && !reducedMotion) void video.play().catch(() => undefined);
+    else video.pause();
+  }, [inView, reducedMotion]);
+
+  return (
+    <figure className="hands-gesture-figure">
+      <video
+        ref={videoRef}
+        className="hands-gesture-film hands-placement-film"
+        muted
+        loop
+        playsInline
+        preload="metadata"
+        poster="/hands/placement-hud-poster.png"
+        aria-label="The placement matrix: the pointer turns toward each side and corner, then becomes the knob over the centre"
+      >
+        <source src="/hands/placement-hud.mp4" type="video/mp4" />
+      </video>
+      <figcaption>
+        Hold ⌃⌥ and point at a side or a corner, then let go to put the front
+        window there. The centre fills the screen; dead centre cancels.
+      </figcaption>
+    </figure>
+  );
+}
+
 function HandsOnSection() {
   return (
     <section className="home-sec fade-in" id="hands">
@@ -840,6 +887,7 @@ function HandsOnSection() {
       <div className="hands-stage">
         <div className="hands-panel">
           <h3>Keyboard</h3>
+          <PlacementFilm />
           <ul className="hands-list">
             {handsShortcuts.map((row) => (
               <li key={row.action}>

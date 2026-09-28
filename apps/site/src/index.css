@@ -1747,6 +1747,13 @@ button.nav-link {
   background: #111;
 }
 
+/* A wide strip: narrower panels crop the empty backdrop, never the HUD. */
+.hands-placement-film {
+  height: 200px;
+  object-fit: cover;
+  background: #1b1d20;
+}
+
 .hands-gesture-figure figcaption {
   margin-top: 8px;
   color: var(--text-muted);
