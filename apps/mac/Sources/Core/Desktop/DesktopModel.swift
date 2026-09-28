@@ -109,6 +109,17 @@ final class DesktopModel: ObservableObject {
         return entry.pid != getpid()   // never target Lattices' own panels
     }
 
+    /// The Space showing on each display right now.
+    static func currentSpaceIds() -> Set<Int> {
+        Set(WindowTiler.getDisplaySpaces().map(\.currentSpaceId))
+    }
+
+    /// On a desktop that's showing. A hidden app's windows count: they keep
+    /// their Space, only `isOnScreen` drops.
+    static func isOnCurrentSpace(_ entry: WindowEntry, current: Set<Int>) -> Bool {
+        entry.isOnScreen || !current.isDisjoint(with: entry.spaceIds)
+    }
+
     func focusedWindow() -> WindowEntry? {
         focusedWindowID.flatMap { windows[$0] }
     }
@@ -170,8 +181,15 @@ final class DesktopModel: ObservableObject {
         }
     }
 
-    func windowForSession(_ session: String) -> WindowEntry? {
-        SessionWindowLocator.cachedWindow(forSession: session, in: windows)
+    func windowForSession(_ session: String, currentSpaceOnly: Bool = false) -> WindowEntry? {
+        guard currentSpaceOnly else {
+            return SessionWindowLocator.cachedWindow(forSession: session, in: windows)
+        }
+        let current = Self.currentSpaceIds()
+        return windows.values.first { entry in
+            SessionWindowLocator.matches(session: session, title: entry.title, extractedSessionName: entry.latticesSession)
+                && Self.isOnCurrentSpace(entry, current: current)
+        }
     }
 
     /// Assign a layer tag to a window (in-memory only)
@@ -189,10 +207,14 @@ final class DesktopModel: ObservableObject {
         windowLayerTags.removeAll()
     }
 
-    /// Find a window by app name and optional title substring (case-insensitive)
-    func windowForApp(app: String, title: String?) -> WindowEntry? {
+    /// Find a window by app name and optional title substring (case-insensitive).
+    /// `currentSpaceOnly` skips windows on desktops that aren't showing —
+    /// raising or tiling one of those would switch Spaces.
+    func windowForApp(app: String, title: String?, currentSpaceOnly: Bool = false) -> WindowEntry? {
+        let current = currentSpaceOnly ? Self.currentSpaceIds() : []
         let matches = windows.values.filter {
             $0.app.localizedCaseInsensitiveContains(app)
+                && (!currentSpaceOnly || Self.isOnCurrentSpace($0, current: current))
         }
         if let title {
             return bestAppWindow(matches.filter { $0.title.localizedCaseInsensitiveContains(title) })

@@ -1685,18 +1685,9 @@ private extension LatticesDeckHost {
         return (title, detail.isEmpty ? nil : detail, kind)
     }
 
-    @MainActor
+    /// Desktops keep their macOS numbering; layers don't own one.
     func spaceName(for index: Int) -> String {
-        if let layers = WorkspaceManager.shared.config?.layers,
-           layers.indices.contains(index - 1) {
-            return layers[index - 1].label
-        }
-
-        let defaults = ["main", "code", "chat", "review", "media", "notes", "ops", "admin", "scratch"]
-        if defaults.indices.contains(index - 1) {
-            return defaults[index - 1]
-        }
-        return "space \(index)"
+        "Desktop \(index)"
     }
 
     func appCategory(for appName: String) -> String {

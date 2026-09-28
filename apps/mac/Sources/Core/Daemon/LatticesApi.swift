@@ -1024,7 +1024,26 @@ final class LatticesApi {
                             "projectCount": .int(layer.projects.count)
                         ])
                     }),
-                    "active": .int(wm.activeLayerIndex)
+                    "active": .int(wm.activeLayerIndex),
+                    "stage": Self.layerStageStatus()
+                ])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "layers.reveal",
+            description: "Show All: put back every window a layer switch parked and unhide every app it hid",
+            access: .mutate,
+            params: [],
+            returns: .custom("Object with 'unparked' and 'stillParked' counts, 'unhidden' app names, and the resulting 'stage'"),
+            handler: { _ in
+                let outcome = LayerStage.shared.showAll()
+                return .object([
+                    "ok": .bool(true),
+                    "unparked": .int(outcome.unparked),
+                    "stillParked": .int(outcome.stillParked),
+                    "unhidden": .array(outcome.unhidden.map { .string($0) }),
+                    "stage": Self.layerStageStatus()
                 ])
             }
         ))
@@ -4839,17 +4858,25 @@ private extension LatticesApi {
         ])
     }
 
-    static func defaultSpaceName(for index: Int) -> String {
-        if let layers = WorkspaceManager.shared.config?.layers,
-           layers.indices.contains(index - 1) {
-            return layers[index - 1].label
-        }
+    /// What layer switches have put away: parked windows and hidden apps.
+    static func layerStageStatus() -> JSON {
+        let status = LayerStage.shared.status()
+        return .object([
+            "parked": .array(status.parked.map { window in
+                .object([
+                    "wid": .int(Int(window.wid)),
+                    "app": .string(window.app),
+                    "title": .string(window.title)
+                ])
+            }),
+            "hidden": .array(status.hiddenApps.map { .string($0) })
+        ])
+    }
 
-        let defaults = ["main", "code", "chat", "review", "media", "notes", "ops", "admin", "scratch"]
-        if defaults.indices.contains(index - 1) {
-            return defaults[index - 1]
-        }
-        return "space \(index)"
+    /// Desktops are macOS Spaces and keep their own numbering; layers are
+    /// virtual and don't own one, so a desktop never takes a layer's name.
+    static func defaultSpaceName(for index: Int) -> String {
+        "Desktop \(index)"
     }
 
     static func executeSpaceOptimization(params: JSON?) throws -> JSON {

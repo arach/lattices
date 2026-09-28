@@ -920,6 +920,11 @@ private struct MiniHomeHomePane: View {
                     }
                     .buttonStyle(.plain)
                     .help(isActive ? "Release \(layer.label)" : "Focus \(layer.label)")
+                    .contextMenu {
+                        Button("Show All Windows") {
+                            DispatchQueue.global(qos: .userInitiated).async { LayerStage.shared.showAll() }
+                        }
+                    }
                 }
             }
         }

@@ -1681,8 +1681,8 @@ terminal/JSON projection, and visible-surface lifecycle guidance.
     "visibleFrame": { "x": 0, "y": 38, "w": 1728, "h": 1079 },
     "currentSpaceId": 1,
     "spaces": [
-      { "id": 1, "index": 1, "display": 0, "isCurrent": true },
-      { "id": 2, "index": 2, "display": 0, "isCurrent": false }
+      { "id": 1, "index": 1, "name": "Desktop 1", "display": 0, "isCurrent": true },
+      { "id": 2, "index": 2, "name": "Desktop 2", "display": 0, "isCurrent": false }
     ]
   }
 ]
@@ -2047,7 +2047,8 @@ Restart a specific pane's process within a session.
 |--------|------|-------------|
 | `projects.list` | read | Discovered projects |
 | `projects.scan` | write | Re-scan project directory |
-| `layers.list` | read | Workspace layers and active index |
+| `layers.list` | read | Workspace layers, active index, and what switches put away |
+| `layers.reveal` | write | Show All: put back parked windows, unhide apps a switch hid |
 | `layer.activate` | write | Activate a workspace layer using an explicit mode |
 | `layer.switch` | write | Compatibility wrapper for launch-style layer activation |
 | `group.launch` | write | Launch a tab group |
@@ -2094,7 +2095,8 @@ repo or adding a `.lattices.json` config.
 
 #### `layers.list`
 
-List configured workspace layers and the active index.
+List configured workspace layers and the active index. `stage` lists
+what layer switches have put away: parked windows and hidden apps.
 
 **Params**: none
 
@@ -2106,11 +2108,35 @@ List configured workspace layers and the active index.
     { "id": "web", "label": "Web", "index": 0, "projectCount": 2 },
     { "id": "mobile", "label": "Mobile", "index": 1, "projectCount": 2 }
   ],
-  "active": 0
+  "active": 0,
+  "stage": {
+    "parked": [{ "wid": 4812, "app": "Ghostty", "title": "mini: web · server" }],
+    "hidden": ["Slack"]
+  }
 }
 ```
 
 Returns empty `layers` array if no workspace config is loaded.
+
+#### `layers.reveal`
+
+Show All. Puts back every window a layer switch parked and unhides every
+app a switch hid; apps the user hid stay hidden. A window parked on a
+desktop that isn't showing stays parked until that desktop is showing.
+
+**Params**: none
+
+**Returns**:
+
+```json
+{
+  "ok": true,
+  "unparked": 3,
+  "stillParked": 0,
+  "unhidden": ["Slack"],
+  "stage": { "parked": [], "hidden": [] }
+}
+```
 
 #### `layer.activate`
 

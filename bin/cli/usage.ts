@@ -87,6 +87,7 @@ Usage:
                          Snap a window into a named or grid placement slot
   lattices distribute [app] [region]   Smart-grid visible windows or just one app (daemon required)
   lattices layer [name|index]  List layers or switch by name/index (daemon required)
+  lattices layer reveal        Show All: put back parked windows, unhide apps a switch hid
   lattices layer create <name> [wid:N ...] [--json '<specs>']  Create a session layer
   lattices layer snap [name]   Snapshot visible windows into a session layer
   lattices layer session [n]   List or switch session layers (runtime, no restart)

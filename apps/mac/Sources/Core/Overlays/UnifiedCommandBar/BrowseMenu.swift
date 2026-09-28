@@ -114,6 +114,18 @@ enum BrowseMenu {
                 })
             }
         }
+        let stage = LayerStage.shared.status()
+        if !stage.parked.isEmpty || !stage.hiddenApps.isEmpty {
+            out.append(OmniResult(
+                kind: .layer,
+                title: "Show All Windows",
+                subtitle: "\(stage.parked.count) parked · \(stage.hiddenApps.count) hidden",
+                icon: "eye",
+                score: 0
+            ) {
+                DispatchQueue.global(qos: .userInitiated).async { LayerStage.shared.showAll() }
+            })
+        }
         return out
     }
 
@@ -174,8 +186,9 @@ enum BrowseMenu {
                 SettingsWindowController.shared.show()
             },
             OmniResult(kind: .action, title: "Refresh Projects",
-                       subtitle: "Re-scan for .lattices.json configs", icon: "arrow.clockwise", score: 0) {
+                       subtitle: "Re-scan .lattices.json configs, reload workspace.json", icon: "arrow.clockwise", score: 0) {
                 ProjectScanner.shared.scan()
+                WorkspaceManager.shared.reloadConfig()
             },
             OmniResult(kind: .action, title: "Quit Lattices",
                        subtitle: "Exit the menu bar app", icon: "power", score: 0) {
