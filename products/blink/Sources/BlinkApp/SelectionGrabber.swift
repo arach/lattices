@@ -6,9 +6,11 @@ import HudsonObservability
 ///
 /// Accessibility's `kAXSelectedTextAttribute` is tried first because it leaves
 /// the clipboard alone. Most terminals (Ghostty, kitty, Alacritty) don't expose
-/// their selection that way, so the fallback asks the app to copy: wait for the
-/// hotkey's modifiers to lift, post ⌘C, read the pasteboard once it changes,
-/// then put every original pasteboard item back. Both paths need Accessibility
+/// their selection that way, so the fallback asks the app to copy — by pressing
+/// its ⌘C menu item through Accessibility, or, for apps without one, by posting
+/// ⌘C once the hotkey's modifiers lift — reads the pasteboard once it changes,
+/// then puts every original pasteboard item back. A menu Copy that leaves the
+/// pasteboard untouched means the selection is already on it (copy-on-select). Both paths need Accessibility
 /// trust; without it the grabber prompts once and reads the clipboard as is.
 @MainActor
 enum SelectionGrabber {
@@ -43,7 +45,7 @@ enum SelectionGrabber {
            let text = accessibilitySelection(pid: app.processIdentifier) {
             return Selection(text: text, source: .accessibility, app: app)
         }
-        if let text = await copySelection() {
+        if let text = await copySelection(from: app) {
             return Selection(text: text, source: .copy, app: app)
         }
         return nil
@@ -69,18 +71,29 @@ enum SelectionGrabber {
 
     // MARK: - Synthesized copy
 
-    private static func copySelection() async -> String? {
-        // A ⌘C posted while Hyper is still held arrives as ⌃⌥⇧⌘C.
-        await waitForModifierRelease()
+    private static func copySelection(from app: NSRunningApplication?) async -> String? {
+        let menuCopy = app.flatMap { copyMenuItem(pid: $0.processIdentifier) }
+        if menuCopy == nil, !(await waitForModifierRelease()) {
+            // A ⌘C posted while Hyper is still held can arrive as ⌃⌥⇧⌘C.
+            log.info("[BLINK] reader: modifiers still held, copying anyway")
+        }
 
         let pasteboard = NSPasteboard.general
         let saved = snapshot(pasteboard)
         let before = pasteboard.changeCount
 
-        postCommandC()
+        var pressedCopy = false
+        if let menuCopy {
+            pressedCopy = AXUIElementPerformAction(menuCopy, kAXPressAction as CFString) == .success
+        } else {
+            postCommandC()
+        }
 
+        // AX presses run synchronously in the app, so a menu copy has usually
+        // landed already; a posted ⌘C still has to travel the event queue.
+        let polls = menuCopy == nil ? 50 : 12
         var text: String?
-        for _ in 0..<30 {
+        for _ in 0..<polls {
             try? await Task.sleep(for: .milliseconds(10))
             if pasteboard.changeCount != before {
                 text = pasteboard.string(forType: .string)
@@ -89,6 +102,11 @@ enum SelectionGrabber {
         }
         if pasteboard.changeCount != before {
             restore(saved, to: pasteboard)
+        } else if pressedCopy {
+            // An enabled Copy that writes nothing found the selection already
+            // there: Ghostty's copy-on-select put it on the clipboard, and it
+            // skips re-copying identical text.
+            text = clipboardText()
         }
         guard let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             log.info("[BLINK] reader: copy produced no text")
@@ -97,15 +115,63 @@ enum SelectionGrabber {
         return text
     }
 
-    private static func waitForModifierRelease() async {
+    /// True once no modifier is held; false if they are still down after ~1.5s.
+    /// The enabled menu item bound to plain ⌘C (Edit ▸ Copy in any language).
+    /// Pressing it copies exactly as the user would, with no synthesized keys.
+    private static func copyMenuItem(pid: pid_t) -> AXUIElement? {
+        let appElement = AXUIElementCreateApplication(pid)
+        guard let menuBar = element(appElement, kAXMenuBarAttribute) else { return nil }
+        // Skip the Apple menu; the app's own menus follow it.
+        for barItem in children(menuBar).dropFirst() {
+            for menu in children(barItem) {
+                for item in children(menu) {
+                    guard string(item, kAXMenuItemCmdCharAttribute)?.uppercased() == "C",
+                          number(item, kAXMenuItemCmdModifiersAttribute) == 0,  // ⌘ alone
+                          number(item, kAXEnabledAttribute) == 1
+                    else { continue }
+                    return item
+                }
+            }
+        }
+        return nil
+    }
+
+    private static func attribute(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success else { return nil }
+        return value
+    }
+
+    private static func element(_ element: AXUIElement, _ name: String) -> AXUIElement? {
+        guard let value = attribute(element, name), CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
+        return (value as! AXUIElement)
+    }
+
+    private static func children(_ element: AXUIElement) -> [AXUIElement] {
+        (attribute(element, kAXChildrenAttribute) as? [AXUIElement]) ?? []
+    }
+
+    private static func string(_ element: AXUIElement, _ name: String) -> String? {
+        attribute(element, name) as? String
+    }
+
+    private static func number(_ element: AXUIElement, _ name: String) -> Int? {
+        (attribute(element, name) as? NSNumber)?.intValue
+    }
+
+    private static func waitForModifierRelease() async -> Bool {
         let held: NSEvent.ModifierFlags = [.command, .option, .control, .shift]
-        for _ in 0..<50 where !NSEvent.modifierFlags.intersection(held).isEmpty {
+        for _ in 0..<150 {
+            if NSEvent.modifierFlags.intersection(held).isEmpty { return true }
             try? await Task.sleep(for: .milliseconds(10))
         }
+        return false
     }
 
     private static func postCommandC() {
-        let source = CGEventSource(stateID: .hidSystemState)
+        // A private source carries only the flags set here, not the keyboard's
+        // live modifier state.
+        let source = CGEventSource(stateID: .privateState)
         let keyC: CGKeyCode = 8
         let down = CGEvent(keyboardEventSource: source, virtualKey: keyC, keyDown: true)
         let up = CGEvent(keyboardEventSource: source, virtualKey: keyC, keyDown: false)
