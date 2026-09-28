@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var store: NoteStore!
     private var panelManager: PanelManager!
     private var model: AppModel!
+    private let readerLayer = ReaderLayer()
     private var settingsWindow: NSWindow?
     private var guideWindow: NSWindow?
     private var commandPaletteController: BlinkCommandPaletteController?
@@ -52,6 +53,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             self?.model.selectWorkspace(scope)
         }
         panelManager.startObservingStore()
+        readerLayer.onKeep = { [weak self] text in
+            Task { await self?.model.createNote(content: text, initialMode: "read") }
+        }
         configureDiscovery()
         commandRequestObserver = NotificationCenter.default.addObserver(
             forName: .blinkCommandPaletteRequested,
@@ -97,6 +101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         AppearanceManager.shared.apply(BlinkConfigStore.shared.config.appearance)
         AppearanceManager.shared.onChange = { [weak self] _ in
             self?.panelManager.applyTheme(BlinkConfigStore.shared.config)
+            self?.readerLayer.applyTheme(BlinkConfigStore.shared.config)
         }
 
         // Agent-first config: hot-apply file edits to every live surface.
@@ -104,6 +109,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             // Appearance first, so applyTheme paints the resolved scheme.
             AppearanceManager.shared.apply(config.appearance)
             self?.panelManager.applyTheme(config)
+            self?.readerLayer.applyTheme(config)
             CompanionMenuBarVisibility.shared.alwaysShow = config.behavior.alwaysShowMenuBarIcon
             self?.applyHotkeys(config)
             self?.applyLoginItem(config)
@@ -249,6 +255,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         registerGlobalHotkey(id: 3, chord: config.hotkeys.grid, name: "grid") { [weak self] in
             self?.panelManager.toggleGridOverlay()
+        }
+        registerGlobalHotkey(id: 4, chord: config.hotkeys.reader, name: "reader") { [weak self] in
+            self?.readerLayer.toggle()
         }
         if let chord = KeyChord.parse(config.hotkeys.newNote) {
             statusItem?.button?.toolTip = "Blink — \(chord.display) for a new note"

@@ -38,6 +38,7 @@ Rules:
     "newNote": "hyper+n",       // global — create a note from anywhere
     "blink": "hyper+b",         // global — show all notes / hide all
     "grid": "hyper+c",          // global — grid/constellation overlay ("c" — hyper+g collides with Lattices)
+    "reader": "hyper+e",        // global — read the frontmost app's selection in the reader layer
     "toggleMode": "cmd+shift+p",// per-panel — flip read/edit
     "focus": "cmd+.",           // per-panel — quiet everything else
     "toggleChrome": "cmd+shift+t" // per-panel — pin the chrome rail after hover leaves
@@ -64,6 +65,11 @@ Rules:
   },
   "focus": {
     "dim": 0.30                 // 0–1 strength of the focus-mode veil over everything else
+  },
+  "reader": {                   // the reader layer (hotkeys.reader)
+    "width": 760,               // reading column width in points, capped at 80% of the screen
+    "fontSize": 17,             // starting size; ⌘+ / ⌘− adjust, ⌘0 resets
+    "dim": 0.35                 // 0–1 tint over the blurred screen behind the column
   },
   "drape": {                    // a backdrop parked BEHIND every note — a calm stage under the set
     "enabled": false,           // off by default; true parks a full-screen blur+dim behind the notes
@@ -129,6 +135,32 @@ Rules:
   (`--blink-font-size`, `--blink-text`, …) and is pushed over the bridge via
   `window.blink.setTheme`. The full variable table lives in
   `web/editor/README.md`.
+
+## Reader layer
+
+`hotkeys.reader` lifts the text selected in the frontmost app — usually a long
+answer in a terminal — into a centered reading column over the blurred screen.
+Esc, ⌘W, a click outside the column, the hotkey again, or switching to another
+app closes it; ⌘S keeps the text as a new note (opened in read mode). ⌘+ / ⌘−
+change the reading size and ⌘0 resets it to `reader.fontSize`.
+
+- Blink becomes the active app while the reader is up, and the column is an
+  ordinary resizable window, so window-manager placement (Lattices tiling
+  shortcuts, Rectangle, and the like) moves and sizes it. The placed frame is
+  remembered and reused while it sits on the screen the reader opens on.
+  Closing returns focus to the app the text came from.
+- The selection comes from Accessibility (`AXSelectedText`) when the app
+  exposes it. Terminals mostly don't, so Blink posts ⌘C once the hotkey's
+  modifiers are released, reads the pasteboard, and restores its previous
+  contents. Both need Accessibility permission; until it is granted, Blink
+  prompts and shows the current clipboard instead.
+- Terminal text is cleaned before rendering: ANSI escapes, TUI box frames, and
+  Claude Code's `⏺`/`⎿` markers are stripped, the common indent removed, and
+  lines the program hard-wrapped are rejoined. Box-drawn tables are kept as
+  monospace. Short lines, lists, and headings keep their breaks.
+- The text is not a note, so it renders under the editor's untrusted policy:
+  raw HTML shows as text, only web and mail links are clickable, and images
+  show their alt text.
 
 ## Examples
 
