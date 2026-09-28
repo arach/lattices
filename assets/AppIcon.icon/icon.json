@@ -23,13 +23,13 @@
           "fill-specializations": [
             {
               "value": {
-                "solid": "extended-srgb:0.10196,0.61569,0.32157,1.00000"
+                "solid": "extended-srgb:0.93725,0.41569,0.27843,1.00000"
               }
             },
             {
               "appearance": "dark",
               "value": {
-                "solid": "extended-srgb:0.20000,0.78039,0.45098,1.00000"
+                "solid": "extended-srgb:0.93725,0.41569,0.27843,1.00000"
               }
             },
             {

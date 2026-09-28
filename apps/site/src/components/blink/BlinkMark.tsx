@@ -6,7 +6,7 @@ export interface BlinkMarkProps extends Omit<SVGProps<SVGSVGElement>, 'children'
   theme?: BrandTheme
   /** Explicit ink. Overrides `theme`. */
   color?: string
-  /** The front note's colour, or `false` for one ink. Defaults to the family green. */
+  /** The front note's colour, or `false` for one ink. Defaults to the family coral. */
   accent?: string | false
   /** Accessible name. Ignored when decorative. */
   label?: string

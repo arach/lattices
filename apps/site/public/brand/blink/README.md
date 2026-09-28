@@ -20,9 +20,8 @@ A panel frame with two blocks stepping across it, on the Lattices grid: the fram
 | Role | Value |
 | --- | --- |
 | Ink on light | `#101518` |
-| Accent on light | `#1a9d52` |
 | Ink on dark | `#f2f2f2` |
-| Accent on dark | `#33c773` |
+| Accent, both themes | `#ef6a47` |
 | Icon tile, light | `#ffffff` |
 | Icon tile, dark | `#101518` |
 

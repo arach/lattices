@@ -1,30 +1,25 @@
 import type { SVGProps } from 'react'
-import { latticesAccent, latticesGrid, speechPalette, type BrandTheme, type MarkPalette } from '../lib/marks'
+import { latticesAccent, latticesGrid, latticesPalette, type BrandTheme, type MarkPalette } from '../lib/marks'
 
 /**
- * Four bars of a waveform on the Lattices grid. The first two are lit and the
- * rest dim: a readout part-way through, spoken words in ink and the queue still
- * ahead of the playhead faded — the same lit/dim split as the Lattices L, with
- * the queued bars a step stronger than the family's dim (`speechPalette`).
+ * Two bars of a waveform, frozen at the playhead: the word just spoken in ink
+ * and the one sounding now, the accent. The rest of the readout is left out.
+ * Short then tall, the pair also draws a speaker. Each bar is a Lattices cell
+ * wide, the tall one a full column of the grid, and the pair sits centred.
  */
-const speechBars = [
-  { height: 0.5, spoken: true },
-  { height: 1, spoken: true },
-  { height: 0.7, spoken: false },
-  { height: 0.36, spoken: false },
-] as const
+const speechBars = [0.5, 1] as const
 
-/** The accent: the last spoken bar, where the playhead is. */
+/** The accent: the bar sounding now. */
 const accentBar = 1
 
 export interface SpeechMarkProps extends Omit<SVGProps<SVGSVGElement>, 'children'> {
   size?: number
   /** Bake a palette in for export. Omit to follow the page's logo tokens. */
   theme?: BrandTheme
-  /** The current bar's colour, or `false` for one ink. Defaults to the family green. */
+  /** The current bar's colour, or `false` for one ink. Defaults to the family coral. */
   accent?: string | false
-  /** Colours over `theme`'s. The brand exporter paints one role at a time to split the mark into icon layers. */
-  palette?: Partial<MarkPalette>
+  /** Ink over `theme`'s. The brand exporter paints one role at a time to split the mark into icon layers. */
+  palette?: Partial<Pick<MarkPalette, 'ink'>>
   label?: string
   decorative?: boolean
 }
@@ -35,8 +30,9 @@ export function SpeechMark({
 }: SpeechMarkProps) {
   const { box, pad, gap, radius } = latticesGrid
   const span = box - 2 * pad
-  const width = (span - gap * (speechBars.length - 1)) / speechBars.length
-  const colors = theme ? { ...speechPalette[theme], ...palette } : undefined
+  const cell = (span - 2 * gap) / 3
+  const left = (box - speechBars.length * cell - (speechBars.length - 1) * gap) / 2
+  const ink = theme ? palette?.ink ?? latticesPalette[theme].ink : 'var(--logo-ink)'
   const accentFill = accent === false ? undefined : accent ?? (theme ? latticesAccent[theme] : 'var(--logo-accent)')
 
   return (
@@ -52,20 +48,19 @@ export function SpeechMark({
       aria-label={decorative ? undefined : label}
       {...svgProps}
     >
-      {speechBars.map(({ height, spoken }, index) => {
-        const accented = accentFill !== undefined && index === accentBar
+      {speechBars.map((height, index) => {
+        const fill = accentFill !== undefined && index === accentBar ? accentFill : ink
         return (
           <rect
             key={index}
-            x={pad + index * (width + gap)}
+            x={left + index * (cell + gap)}
             y={(box - height * span) / 2}
-            width={width}
+            width={cell}
             height={height * span}
             rx={radius}
-            className={colors ? undefined : 'site-mark-cell'}
-            fill={colors ? (accented ? accentFill : spoken ? colors.ink : colors.dim) : undefined}
-            fillOpacity={colors && !spoken ? colors.dimOpacity : undefined}
-            style={colors ? undefined : { fill: accented ? accentFill : spoken ? 'var(--logo-ink)' : 'var(--speech-dim)' }}
+            className={theme ? undefined : 'site-mark-cell'}
+            fill={theme ? fill : undefined}
+            style={theme ? undefined : { fill }}
           />
         )
       })}

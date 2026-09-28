@@ -23,7 +23,7 @@ import { ActionMark } from '../src/components/ActionMark'
 import { BlinkMark } from '../src/components/blink/BlinkMark'
 import { LatticesMark } from '../src/components/LatticesMark'
 import { SpeechMark } from '../src/components/SpeechMark'
-import { actionAccent, actionMarkBox, latticesAccent, latticesPalette, speechPalette } from '../src/lib/marks'
+import { actionMarkBox, latticesAccent, latticesPalette } from '../src/lib/marks'
 
 type Theme = 'light' | 'dark'
 type Box = { x: number; y: number; width: number; height: number }
@@ -106,9 +106,9 @@ const themed = (colors: Record<Theme, string>, opacity?: Record<Theme, number>):
   dark: { color: colors.dark, opacity: opacity?.dark },
 })
 const ink = themed({ light: latticesPalette.light.ink, dark: latticesPalette.dark.ink })
-const dim = (palette: typeof latticesPalette | typeof speechPalette) => themed(
-  { light: palette.light.dim, dark: palette.dark.dim },
-  { light: palette.light.dimOpacity, dark: palette.dark.dimOpacity },
+const dim = themed(
+  { light: latticesPalette.light.dim, dark: latticesPalette.dark.dim },
+  { light: latticesPalette.light.dimOpacity, dark: latticesPalette.dark.dimOpacity },
 )
 
 /**
@@ -140,21 +140,20 @@ const products: Product[] = [
       (paint, box) => h(LatticesMark, {
         theme: 'dark', palette: { ink: paint.ink, dim: paint.dim, dimOpacity: 1 }, accent: paint.accent, ...box,
       }),
-      { accent: themed(latticesAccent), ink, dim: dim(latticesPalette) },
+      { accent: themed(latticesAccent), ink, dim },
     ),
     app: { dir: 'assets', name: 'AppIcon', minimumSystem: '26.0' },
     colours: [
       ['Ink on light', latticesPalette.light.ink],
       ['Dim cells on light', `${latticesPalette.light.dim} at ${latticesPalette.light.dimOpacity * 100}%`],
-      ['Accent on light', latticesAccent.light],
       ['Ink on dark', latticesPalette.dark.ink],
       ['Dim cells on dark', `${latticesPalette.dark.dim} at ${latticesPalette.dark.dimOpacity * 100}%`],
-      ['Accent on dark', latticesAccent.dark],
+      ['Accent, both themes', latticesAccent.light],
       ['Icon tile, light', tiles.light.fill],
       ['Icon tile, dark', tiles.dark.fill],
     ],
     notes: [
-      'A 3 × 3 grid with the left column and bottom row lit: the L. The centre cell carries the accent, the tile snapping into the crook of the L. The site header draws the same component with `theme` unset, so it follows the `--logo-ink`, `--logo-dim` and `--logo-accent` tokens and their hover states.',
+      'A 3 × 3 grid with the left column and bottom row lit: the L. The centre carries the accent: a quarter turn pivoting on the crook of the L, the arc a tile sweeps as it swings into place. Its pivot keeps the cells’ 1-unit corner and its tips ease to 0.5. `accent={false}` draws the centre as a plain dim cell. The site header draws the same component with `theme` unset, so it follows the `--logo-ink`, `--logo-dim` and `--logo-accent` tokens and their hover states.',
       '`public/favicon.svg` is a copy of `lattices-favicon.svg`.',
     ],
   },
@@ -176,20 +175,20 @@ const products: Product[] = [
         theme: 'dark', ...actionKitProps, decorative: true, style: { width: undefined, height: undefined },
         palette: { ink: paint.ink }, accent: paint.accent, ...box,
       }),
-      { accent: themed(actionAccent), ink },
+      { accent: themed(latticesAccent), ink },
     ),
     app: { dir: 'products/action/assets/brand', name: 'Action', minimumSystem: '14.0' },
     iconPngs: { dir: 'products/action/assets/brand', sizes: [512, 1024] },
     colours: [
       ['Ink on light', latticesPalette.light.ink],
       ['Ink on dark', latticesPalette.dark.ink],
-      ['Cursor, both themes', actionAccent.light],
+      ['Cursor, both themes', latticesAccent.light],
       ['Icon tile, light', tiles.light.fill],
       ['Icon tile, dark', tiles.dark.fill],
     ],
     notes: [
       `The A fills a square and the cursor lies on its diagonal: the tip sits on the counter's edge and the tail touches the square's right and bottom sides, so the glyph is the square. The kit crops ActionMark's construction drawing to \`${actionMarkBox.join(' ')}\`, the square plus the family margin, so the glyph spans 80% of the box, as the Lattices grid's 16 units span 20.`,
-      'The cursor carries the accent: coral, the colour that already means live in the menu bar, where the other marks take the family green. The 10-unit gap separates it from the letter. `accent={false}` draws both in the ink.',
+      'The cursor carries the family accent, coral, which also means live in the menu bar. The 10-unit gap separates it from the letter. `accent={false}` draws both in the ink.',
       'The site hero uses the precomputed SVG. The full construction drawing remains a configurable React component.',
       '`products/action/native/engine/CoreSources/ActionBrandMark.swift` ports the same geometry for the menu bar and the in-app chip.',
     ],
@@ -209,9 +208,8 @@ const products: Product[] = [
     iconSvg: 'products/blink/assets/AppIcon.svg',
     colours: [
       ['Ink on light', latticesPalette.light.ink],
-      ['Accent on light', latticesAccent.light],
       ['Ink on dark', latticesPalette.dark.ink],
-      ['Accent on dark', latticesAccent.dark],
+      ['Accent, both themes', latticesAccent.light],
       ['Icon tile, light', tiles.light.fill],
       ['Icon tile, dark', tiles.dark.fill],
     ],
@@ -227,24 +225,19 @@ const products: Product[] = [
     mark: (theme) => h(SpeechMark, { theme, size: 512 }),
     iconMark: (theme, box) => h(SpeechMark, { theme, ...box }),
     layers: layers(
-      (paint, box) => h(SpeechMark, {
-        theme: 'dark', palette: { ink: paint.ink, dim: paint.dim, dimOpacity: 1 }, accent: paint.accent, ...box,
-      }),
-      { accent: themed(latticesAccent), ink, dim: dim(speechPalette) },
+      (paint, box) => h(SpeechMark, { theme: 'dark', palette: { ink: paint.ink }, accent: paint.accent, ...box }),
+      { accent: themed(latticesAccent), ink },
     ),
     app: { dir: 'products/voice/assets', name: 'AppIcon', minimumSystem: '26.0' },
     colours: [
       ['Ink on light', latticesPalette.light.ink],
-      ['Queued bars on light', `${speechPalette.light.dim} at ${speechPalette.light.dimOpacity * 100}%`],
-      ['Accent on light', latticesAccent.light],
       ['Ink on dark', latticesPalette.dark.ink],
-      ['Queued bars on dark', `${speechPalette.dark.dim} at ${speechPalette.dark.dimOpacity * 100}%`],
-      ['Accent on dark', latticesAccent.dark],
+      ['Accent, both themes', latticesAccent.light],
       ['Icon tile, light', tiles.light.fill],
       ['Icon tile, dark', tiles.dark.fill],
     ],
     notes: [
-      'Four waveform bars on the Lattices grid, the first two lit: a readout part-way through, with the words still queued dimmed. The last spoken bar, the playhead, carries the accent. It uses the Lattices palette and cell geometry, except that the queued bars sit at 45% on light and 35% on dark, against the family’s 22% and 18%, so they hold about 3:1 against either tile.',
+      'Two waveform bars frozen at the playhead: the word just spoken in ink and the one sounding now in the accent, with the rest of the readout left out. Short then tall, the pair also draws a speaker. Each bar is a Lattices cell wide, the tall one a full column of the grid, so the glyph runs the 16-unit height and 10.27 units across, centred in the box. It uses the Lattices ink and has no dim.',
     ],
   },
 ]

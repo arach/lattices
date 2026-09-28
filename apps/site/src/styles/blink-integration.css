@@ -6,14 +6,13 @@
   /* The family marks keep the family ink on Blink's own themes. */
   --logo-ink: #101518;
   --logo-dim: rgba(16, 21, 24, 0.22);
-  --logo-accent: #1a9d52;
+  --logo-accent: #ef6a47;
   min-height: 100vh;
   line-height: 1.5;
 }
 #blink-landing[data-theme="black"] {
   --logo-ink: #f2f2f2;
   --logo-dim: rgba(255, 255, 255, 0.18);
-  --logo-accent: #33c773;
 }
 #blink-landing h2 { font-family: var(--font-display); font-size: clamp(32px, 3vw, 42px); font-weight: 600; }
 #blink-landing #top p:first-of-type,

@@ -15,7 +15,7 @@ Theme names describe the intended background, so `light` is dark ink. The PNGs a
 
 The A fills a square and the cursor lies on its diagonal: the tip sits on the counter's edge and the tail touches the square's right and bottom sides, so the glyph is the square. The kit crops ActionMark's construction drawing to `12.5 12.5 575 575`, the square plus the family margin, so the glyph spans 80% of the box, as the Lattices grid's 16 units span 20.
 
-The cursor carries the accent: coral, the colour that already means live in the menu bar, where the other marks take the family green. The 10-unit gap separates it from the letter. `accent={false}` draws both in the ink.
+The cursor carries the family accent, coral, which also means live in the menu bar. The 10-unit gap separates it from the letter. `accent={false}` draws both in the ink.
 
 The site hero uses the precomputed SVG. The full construction drawing remains a configurable React component.
 

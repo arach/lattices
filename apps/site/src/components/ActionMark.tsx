@@ -1,10 +1,10 @@
 import { useId, type SVGProps } from 'react';
-import { actionAccent, latticesPalette } from '../lib/marks';
+import { latticesAccent, latticesPalette } from '../lib/marks';
 
 export interface ActionPalette {
   paper: string;
   ink: string;
-  /** Defaults to the accent, Action's coral; `accent={false}` draws it in the ink. */
+  /** Defaults to the family coral; `accent={false}` draws it in the ink. */
   cursor: string;
   guide: string;
   grid: string;
@@ -54,7 +54,7 @@ export function ActionMark({
   const ink = palette?.ink ?? latticesPalette[theme].ink;
   const colors: ActionPalette = {
     paper: theme === 'dark' ? '#19282a' : '#f4efe6',
-    ink, cursor: accent === false ? ink : accent ?? actionAccent[theme],
+    ink, cursor: accent === false ? ink : accent ?? latticesAccent[theme],
     guide: theme === 'dark' ? '#819d96' : '#71908d',
     grid: '#367b7c', ...palette,
   };

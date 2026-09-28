@@ -26,29 +26,14 @@ export const latticesPalette = {
 } as const
 
 /**
- * Speech keeps the Lattices ink but lifts its queued bars, which are words still
- * to come rather than empty cells. The family's dim reads at about 1.6:1 on
- * white and 1.7:1 on the dark tile; 45% and 35% bring the bars to about 3:1.
- * The live site reads `--speech-dim`, which matches.
- */
-export const speechPalette = {
-  light: { ...latticesPalette.light, dimOpacity: 0.45 },
-  dark: { ...latticesPalette.dark, dimOpacity: 0.35 },
-} as const
-
-/**
  * Each mark carries one accent, on the part doing the work: the tile Lattices
- * is snapping into place, Blink's front note, Speech's current bar. They take
- * the family green, stepped darker on light so it holds 3:1 against white, as
- * the site's `--green` does. The live site reads `--logo-accent`.
+ * swings into place, Action's cursor, Blink's front note, Speech's current bar.
+ * All four take coral, the colour that already means "live" in Action's menu
+ * bar. It holds 3:1 on white and about 6:1 on the dark tile, so one value
+ * serves both themes. The live site reads `--logo-accent`; the site's UI keeps
+ * `--green`.
  */
-export const latticesAccent = { light: '#1a9d52', dark: '#33c773' } as const
-
-/**
- * Action's cursor takes the contrasting coral instead: the colour that already
- * means "live" in its menu bar, and 3:1 or better on white and on the tile.
- */
-export const actionAccent = { light: '#ef6a47', dark: '#ef6a47' } as const
+export const latticesAccent = { light: '#ef6a47', dark: '#ef6a47' } as const
 
 /** The family grid: a 20-unit box, 2 units of padding, 1.2-unit gaps, 1-unit corners. */
 export const latticesGrid = { box: 20, pad: 2, gap: 1.2, radius: 1 } as const
