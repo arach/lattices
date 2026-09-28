@@ -136,12 +136,13 @@ the `tabStacks.*` daemon methods described in the Agent API.
 ## Layers
 
 Layers let you group projects into switchable contexts. Define two or
-three layers and switch between them. The target layer's windows come
-to the front and tile into position; the previous layer's windows fall
-behind.
+three layers and switch between them. A switch puts away what the new
+layer doesn't use, then brings its windows to the front and tiles them.
+Layers work like virtual desktops, without macOS Spaces: see
+[Putting windows away](#putting-windows-away).
 
-All tmux sessions stay alive across switches. Nothing is detached or
-killed. Layers only control which windows are focused.
+All tmux sessions stay alive across switches. Nothing is detached,
+killed or closed. Layers only control which windows are showing.
 
 ### Configuration
 
@@ -283,13 +284,59 @@ Four ways to switch:
 
 When you switch to a layer:
 
-1. Each project's window is **raised and focused**
-2. App windows are matched by `app` / `title` / `url`
-3. If a project isn't running yet, it gets **launched** automatically
-4. Windows with a `tile` value are **tiled** to that position
-5. The previous layer's windows stay open behind the new ones
+1. Everything the layer doesn't use is **put away** (see below)
+2. Each project's window is **raised and focused**
+3. App windows are matched by `app` / `title` / `url`
+4. If a project isn't running yet, it gets **launched** automatically
+5. Windows with a `tile` value are **tiled** to that position
+
+The hotkeys and the layer chips only raise: they don't launch or tile.
+The CLI and the command bar launch and tile too.
 
 The app remembers which layer was last active across restarts.
+
+### Putting windows away
+
+A switch clears the main display before it raises the new layer:
+
+- **Hidden apps.** An app with nothing in the new layer is hidden, as
+  if you pressed ⌘H.
+- **Parked windows.** The other windows of an app the layer does use
+  (a second Ghostty or Chrome window, say) are parked: moved into the
+  display's bottom-right corner, where macOS leaves a sliver showing.
+  An app that also has windows on another display or desktop is parked
+  rather than hidden, so those windows stay where they are.
+- **Scenes.** Each layer remembers what else it had showing, beyond its
+  own entries, and brings it back when you return. A window you open
+  while a layer is up comes back with that layer.
+
+Only the main display and the desktop it's showing take part. Other
+displays are left alone, and a switch never reaches onto another
+desktop or takes you there: a layer window on another desktop stays
+put. Re-tiling the active layer leaves the rest of the screen alone.
+Everything happens at the switch; nothing runs in the background.
+
+### Show All
+
+Parked windows go back where they were when Lattices quits. Their
+frames are saved in `~/.lattices/layer-stage.json`, so after a crash
+the next launch puts them back. To bring everything back without
+quitting:
+
+| Where                | How                                           |
+|----------------------|-----------------------------------------------|
+| **Command bar**      | Show All Windows, listed with the layers while anything is put away |
+| **Menu bar panel**   | Right-click a layer chip → Show All Windows   |
+| **CLI**              | `lattices layer reveal` (or `show-all`)       |
+| **API**              | `layers.reveal`                               |
+
+Show All puts back every parked window and unhides every app a switch
+hid. Apps you hid yourself stay hidden. A window parked on a desktop
+that isn't showing can only move once that desktop is showing, so run
+Show All again from there.
+
+⌘\` can land on a parked window: in Ghostty, a parked terminal. It
+stays in the corner until you switch layers or use Show All.
 
 ### Named layer switching
 
@@ -346,9 +393,11 @@ await daemonCall('layer.switch', { index: 0 })
 await daemonCall('layer.switch', { name: 'hudson' })
 ```
 
-The `layer.switch` call focuses and tiles all windows in the target
-layer, just like the hotkey or command palette. A `layer.switched`
-event is broadcast to all connected clients.
+The `layer.switch` call puts away what the target layer doesn't use,
+then focuses and tiles its windows, like the command bar. A
+`layer.switched` event is broadcast to all connected clients.
+`layers.list` also reports what switches have put away, under `stage`,
+and `layers.reveal` brings it all back.
 
 More methods in the [Agent API reference](/docs/api).
 
@@ -492,7 +541,8 @@ No `tile` — just focuses the window wherever it is.
   optionally `title` or `url` to match the right window.
 - You can have up to 9 layers (Cmd+Option+1 through Cmd+Option+9).
 - Edit `workspace.json` by hand — the app re-reads it on launch. Use
-  the Refresh Projects button or restart the app to pick up changes.
+  Refresh Projects in the command bar, or restart the app, to pick up
+  changes.
 - The `tile` field is optional. Omit it if you just want the window
   focused without repositioning.
 - Tab groups and standalone projects can coexist in the same workspace.

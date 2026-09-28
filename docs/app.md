@@ -86,6 +86,7 @@ Available when `layers` are configured in `~/.lattices/workspace.json`
 | Command                     | Description                              |
 |-----------------------------|------------------------------------------|
 | Switch to Layer: *label*    | Focus and tile the layer's project windows |
+| Show All Windows            | Put back what layer switches parked or hid |
 
 ### App commands
 
@@ -94,7 +95,7 @@ Available when `layers` are configured in `~/.lattices/workspace.json`
 | Settings          | Open preferences (terminal, scan root)   |
 | Update Lattices   | Download the latest release and relaunch |
 | Diagnostics       | View logs and debug info                 |
-| Refresh Projects  | Re-scan for .lattices.json configs        |
+| Refresh Projects  | Re-scan .lattices.json configs, reload workspace.json |
 | Quit Lattices      | Exit the menu bar app                    |
 
 ## Overlay actors and HUDs

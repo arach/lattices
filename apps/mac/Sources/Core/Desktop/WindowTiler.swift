@@ -3031,7 +3031,7 @@ enum WindowTiler {
     /// The SkyLight Space list for a CG display, matched by UUID — SkyLight's
     /// order is not NSScreen's. With "Displays have separate Spaces" off
     /// there is a single shared list, which owns every screen.
-    private static func displaySpaces(forDisplayID displayID: CGDirectDisplayID?, in all: [DisplaySpaces]) -> DisplaySpaces? {
+    static func displaySpaces(forDisplayID displayID: CGDirectDisplayID?, in all: [DisplaySpaces]) -> DisplaySpaces? {
         if all.count == 1 { return all[0] }
         let id = displayID ?? CGMainDisplayID()
         guard let uuid = CGDisplayCreateUUIDFromDisplayID(id)?.takeRetainedValue() else { return nil }

@@ -795,24 +795,24 @@ class WorkspaceManager: ObservableObject {
         DiagnosticLog.shared.info("WorkspaceManager: collapsed mixed group '\(group.label)' to \(placement.wireValue)")
     }
 
-    private func window(for tab: TabGroupTab) -> WindowEntry? {
+    private func window(for tab: TabGroupTab, currentSpaceOnly: Bool = false) -> WindowEntry? {
         if let path = tab.path {
-            return windowForSession(Self.sessionName(for: path))
+            return windowForSession(Self.sessionName(for: path), currentSpaceOnly: currentSpaceOnly)
         }
         guard let app = tab.app else { return nil }
-        return DesktopModel.shared.windowForApp(app: app, title: tab.title)
+        return DesktopModel.shared.windowForApp(app: app, title: tab.title, currentSpaceOnly: currentSpaceOnly)
     }
 
-    private func orderedWindows(for group: TabGroup) -> [WindowEntry] {
+    private func orderedWindows(for group: TabGroup, currentSpaceOnly: Bool = false) -> [WindowEntry] {
         let selected = selectedTabIndex(in: group)
         var result: [WindowEntry] = []
         for (index, tab) in group.tabs.enumerated() where index != selected {
-            if let entry = window(for: tab), !result.contains(where: { $0.wid == entry.wid }) {
+            if let entry = window(for: tab, currentSpaceOnly: currentSpaceOnly), !result.contains(where: { $0.wid == entry.wid }) {
                 result.append(entry)
             }
         }
         if selected < group.tabs.count,
-           let entry = window(for: group.tabs[selected]),
+           let entry = window(for: group.tabs[selected], currentSpaceOnly: currentSpaceOnly),
            !result.contains(where: { $0.wid == entry.wid }) {
             result.append(entry)
         }
@@ -867,14 +867,14 @@ class WorkspaceManager: ObservableObject {
     // MARK: - Window Lookup
 
     /// Find a tracked window for a session name (instant — uses DesktopModel cache)
-    private func windowForSession(_ sessionName: String) -> WindowEntry? {
-        DesktopModel.shared.windowForSession(sessionName)
+    private func windowForSession(_ sessionName: String, currentSpaceOnly: Bool = false) -> WindowEntry? {
+        DesktopModel.shared.windowForSession(sessionName, currentSpaceOnly: currentSpaceOnly)
     }
 
     /// Resolve a session name to a tile target: (wid, pid, frame).
-    /// Returns nil if the window isn't tracked or has no tile position.
+    /// Returns nil if the window isn't tracked on a desktop that's showing.
     private func batchTarget(session: String, position: PlacementSpec, screen: NSScreen) -> (wid: UInt32, pid: Int32, frame: CGRect)? {
-        guard let entry = windowForSession(session) else { return nil }
+        guard let entry = windowForSession(session, currentSpaceOnly: true) else { return nil }
         let frame = WindowTiler.tileFrame(for: position, on: screen)
         return (entry.wid, entry.pid, frame)
     }
@@ -907,10 +907,64 @@ class WorkspaceManager: ObservableObject {
         return (running, total)
     }
 
+    // MARK: - Layer Stage
+
+    /// Every window a layer's entries match, on any desktop: the layer's own
+    /// windows, as opposed to whatever else was showing when it was left.
+    func memberWindowIDs(of layer: Layer, in windows: [WindowEntry]) -> Set<UInt32> {
+        var ids = Set<UInt32>()
+        func matchApp(_ app: String, title: String?) {
+            for entry in windows where entry.app.localizedCaseInsensitiveContains(app)
+                && (title.map { entry.title.localizedCaseInsensitiveContains($0) } ?? true) {
+                ids.insert(entry.wid)
+            }
+        }
+        func matchSession(_ session: String) {
+            for entry in windows where SessionWindowLocator.matches(
+                session: session, title: entry.title, extractedSessionName: entry.latticesSession
+            ) {
+                ids.insert(entry.wid)
+            }
+        }
+        for lp in layer.projects {
+            if let groupId = lp.group, let grp = group(byId: groupId) {
+                for tab in grp.tabs {
+                    if let path = tab.path {
+                        matchSession(Self.sessionName(for: path))
+                    } else if let app = tab.app {
+                        matchApp(app, title: tab.title)
+                    }
+                }
+            } else if let app = lp.app {
+                matchApp(app, title: lp.title)
+            } else if let path = lp.path {
+                matchSession(Self.sessionName(for: path))
+                for cw in projectWindows(at: path) {
+                    if let app = cw.app { matchApp(app, title: cw.title) }
+                }
+            }
+        }
+        return ids
+    }
+
+    /// Put away what the incoming layer doesn't use and bring back what it
+    /// had showing (see `LayerStage`). Leaves `DesktopModel` freshly polled.
+    private func stageSwitch(to index: Int, in layers: [Layer]) {
+        let windows = DesktopModel.shared.refreshNow()
+        var members: [String: Set<UInt32>] = [:]
+        for layer in layers {
+            members[layer.id, default: []].formUnion(memberWindowIDs(of: layer, in: windows))
+        }
+        let outgoing = layers.indices.contains(activeLayerIndex) ? layers[activeLayerIndex] : nil
+        LayerStage.shared.stage(outgoing: outgoing, incoming: layers[index], members: members, windows: windows)
+    }
+
     // MARK: - Layer Focus (raise only)
 
-    /// Switch to a layer by raising all its windows in place — no launching, no tiling, no moving.
-    /// This is the default hotkey action: just bring the layer's windows to the front.
+    /// Switch to a layer: put away what it doesn't use, then raise its
+    /// windows in place — no launching, no tiling. This is the default
+    /// hotkey action. Windows on a desktop that isn't showing are left
+    /// there; raising one would switch Spaces.
     func focusLayer(index: Int) {
         guard let config, let layers = config.layers, index < layers.count else { return }
         if index == activeLayerIndex { return }
@@ -918,7 +972,7 @@ class WorkspaceManager: ObservableObject {
         let diag = DiagnosticLog.shared
         let t = diag.startTimed("focusLayer \(activeLayerIndex)→\(index)")
 
-        DesktopModel.shared.poll()
+        stageSwitch(to: index, in: layers)
 
         let targetLayer = layers[index]
         var windowsToRaise: [(wid: UInt32, pid: Int32)] = []
@@ -927,7 +981,7 @@ class WorkspaceManager: ObservableObject {
             if let groupId = lp.group, let grp = group(byId: groupId) {
                 // Raise all tab windows in the group
                 for tab in grp.tabs {
-                    if let entry = window(for: tab) {
+                    if let entry = window(for: tab, currentSpaceOnly: true) {
                         windowsToRaise.append((entry.wid, entry.pid))
                     }
                 }
@@ -935,7 +989,7 @@ class WorkspaceManager: ObservableObject {
             }
 
             if let appName = lp.app {
-                if let entry = DesktopModel.shared.windowForApp(app: appName, title: lp.title) {
+                if let entry = DesktopModel.shared.windowForApp(app: appName, title: lp.title, currentSpaceOnly: true) {
                     windowsToRaise.append((entry.wid, entry.pid))
                 }
                 continue
@@ -943,7 +997,7 @@ class WorkspaceManager: ObservableObject {
 
             guard let path = lp.path else { continue }
             let sessionName = Self.sessionName(for: path)
-            if let entry = windowForSession(sessionName) {
+            if let entry = windowForSession(sessionName, currentSpaceOnly: true) {
                 windowsToRaise.append((entry.wid, entry.pid))
             }
 
@@ -951,7 +1005,7 @@ class WorkspaceManager: ObservableObject {
             let companions = projectWindows(at: path)
             for cw in companions {
                 guard let appName = cw.app else { continue }
-                if let entry = DesktopModel.shared.windowForApp(app: appName, title: cw.title) {
+                if let entry = DesktopModel.shared.windowForApp(app: appName, title: cw.title, currentSpaceOnly: true) {
                     windowsToRaise.append((entry.wid, entry.pid))
                 }
             }
@@ -994,8 +1048,13 @@ class WorkspaceManager: ObservableObject {
         let scanner = ProjectScanner.shared
         let targetLayer = layers[index]
 
-        // Fresh poll so we see windows on all Spaces before matching
-        DesktopModel.shared.poll()
+        // Put away what the layer doesn't use, from a fresh inventory. A
+        // re-tile of the active layer leaves the rest of the screen alone.
+        if index != activeLayerIndex {
+            stageSwitch(to: index, in: layers)
+        } else {
+            DesktopModel.shared.refreshNow()
+        }
 
         // Tile debug log (written to ~/.lattices/tile-debug.log)
         let debugPath = (FileManager.default.homeDirectoryForCurrentUser.path as NSString).appendingPathComponent(".lattices/tile-debug.log")
@@ -1016,7 +1075,7 @@ class WorkspaceManager: ObservableObject {
 
             if let groupId = lp.group, let grp = group(byId: groupId) {
                 let position = lp.tile.flatMap { resolvePlacement($0) }
-                let groupWindows = orderedWindows(for: grp)
+                let groupWindows = orderedWindows(for: grp, currentSpaceOnly: true)
                 let groupRunning = isGroupRunning(grp)
 
                 if !groupWindows.isEmpty, let pos = position {
@@ -1051,18 +1110,15 @@ class WorkspaceManager: ObservableObject {
             // App-based window matching
             if let appName = lp.app {
                 let position = lp.tile.flatMap { resolvePlacement($0) }
-                if let entry = DesktopModel.shared.windowForApp(app: appName, title: lp.title) {
+                if let entry = DesktopModel.shared.windowForApp(app: appName, title: lp.title, currentSpaceOnly: true) {
                     if let pos = position {
                         let frame = WindowTiler.tileFrame(for: pos, on: lpScreen)
                         batchMoves.append((entry.wid, entry.pid, frame))
                     }
                 } else if let found = Self.findAppWindow(app: appName, title: lp.title) {
-                    // Window exists but wasn't in DesktopModel (e.g. different Space) — tile it
-                    diag.info("  found app via CGWindowList fallback: \(appName) wid=\(found.wid)")
-                    if let pos = position {
-                        let frame = WindowTiler.tileFrame(for: pos, on: lpScreen)
-                        batchMoves.append((found.wid, found.pid, frame))
-                    }
+                    // Open on a desktop that isn't showing: leave it there rather
+                    // than switch Spaces, and don't launch a second one.
+                    diag.info("  skip (on another desktop): \(appName) wid=\(found.wid)")
                 } else if launch {
                     diag.info("  launch app: \(appName)")
                     let capturedLp = lp
@@ -1105,8 +1161,13 @@ class WorkspaceManager: ObservableObject {
                     batchMoves.append(target)
                     debugLines.append("    → batch move wid=\(target.wid) frame=\(target.frame)")
                 } else if let pos = position {
-                    fallbacks.append((sessionName, pos, lpScreen))
-                    debugLines.append("    → fallback \(pos.wireValue)")
+                    if foundWindow != nil {
+                        // On a desktop that isn't showing: leave it there.
+                        debugLines.append("    → skip (on another desktop)")
+                    } else {
+                        fallbacks.append((sessionName, pos, lpScreen))
+                        debugLines.append("    → fallback \(pos.wireValue)")
+                    }
                 }
             } else if launch {
                 if let project {
@@ -1128,11 +1189,13 @@ class WorkspaceManager: ObservableObject {
                 guard let appName = cw.app else { continue }
                 let cwScreen = screen(for: cw.display ?? lp.display) ?? lpScreen
                 let cwPosition = cw.tile.flatMap { resolvePlacement($0) }
-                if let entry = DesktopModel.shared.windowForApp(app: appName, title: cw.title) {
+                if let entry = DesktopModel.shared.windowForApp(app: appName, title: cw.title, currentSpaceOnly: true) {
                     if let pos = cwPosition {
                         let frame = WindowTiler.tileFrame(for: pos, on: cwScreen)
                         batchMoves.append((entry.wid, entry.pid, frame))
                     }
+                } else if DesktopModel.shared.windowForApp(app: appName, title: cw.title) != nil {
+                    diag.info("  skip companion (on another desktop): \(appName)")
                 } else if launch {
                     diag.info("  launch companion: \(appName)")
                     let capturedCw = cw

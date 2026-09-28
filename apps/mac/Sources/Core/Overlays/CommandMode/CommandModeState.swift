@@ -1734,6 +1734,7 @@ final class CommandModeState: ObservableObject {
         // [r] refresh
         chords.append(Chord(key: "r", keyCode: 15, label: "refresh") {
             ProjectScanner.shared.scan()
+            WorkspaceManager.shared.reloadConfig()
             TmuxModel.shared.poll()
             InventoryManager.shared.refresh()
         })

@@ -21,6 +21,16 @@ export async function layerCommand(sub?: string, ...rest: string[]): Promise<voi
       console.log("Cleared all session layers.");
       return;
     }
+    if (sub === "reveal" || sub === "show-all") {
+      const result = await daemonCall("layers.reveal") as any;
+      const unhidden: string[] = result.unhidden ?? [];
+      console.log(`Put back ${result.unparked} parked window${result.unparked === 1 ? "" : "s"}` +
+        (unhidden.length ? `, unhid ${unhidden.join(", ")}` : "") + ".");
+      if (result.stillParked > 0) {
+        console.log(`${result.stillParked} still parked on a desktop that isn't showing; run this again from there.`);
+      }
+      return;
+    }
     if (sub === "delete" || sub === "rm") {
       if (!rest[0]) { console.log("Usage: lattices layer delete <name>"); return; }
       await daemonCall("session.layers.delete", { name: rest[0] });
@@ -38,6 +48,14 @@ export async function layerCommand(sub?: string, ...rest: string[]): Promise<voi
       for (const layer of result.layers) {
         const active = layer.index === result.active ? " \x1b[32m● active\x1b[0m" : "";
         console.log(`  [${layer.index}] ${layer.label}  (${layer.projectCount} projects)${active}`);
+      }
+      const parked = result.stage?.parked?.length ?? 0;
+      const hidden: string[] = result.stage?.hidden ?? [];
+      if (parked || hidden.length) {
+        const parts = [];
+        if (parked) parts.push(`${parked} window${parked === 1 ? "" : "s"} parked`);
+        if (hidden.length) parts.push(`${hidden.join(", ")} hidden`);
+        console.log(`\n  ${parts.join(" · ")} — \`lattices layer reveal\` brings them back`);
       }
       return;
     }
